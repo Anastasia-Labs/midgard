@@ -221,26 +221,26 @@ const exact = (
   return parsed;
 };
 
+// Artifacts carry the proof as the MPF library encodes it (an indefinite-length
+// CBOR list), so the chunk identity is bound to the canonical re-encoding and
+// any encoding of the same proof steps names the same publication.
 const requirementFor = ({
-  proofCbor,
+  proofCbor: encodedProofCbor,
   label,
 }: {
   readonly proofCbor: string;
   readonly label: string;
 }): ProofChunkRequirement => {
-  if (typeof proofCbor !== "string" || proofCbor.length === 0) {
-    throw new Error(`${label} omitted its canonical MPF proof`);
+  if (typeof encodedProofCbor !== "string" || encodedProofCbor.length === 0) {
+    throw new Error(`${label} omitted its MPF proof`);
   }
-  let canonical: string;
+  let proofCbor: string;
   try {
-    canonical = canonicalPlutusDataCbor(
-      Data.to(Data.from(proofCbor, Proof), Proof),
+    proofCbor = canonicalPlutusDataCbor(
+      Data.to(Data.from(encodedProofCbor, Proof), Proof),
     );
   } catch {
-    throw new Error(`${label} MPF proof is not canonical PlutusData CBOR`);
-  }
-  if (canonical !== proofCbor) {
-    throw new Error(`${label} MPF proof is not canonical PlutusData CBOR`);
+    throw new Error(`${label} MPF proof is not a PlutusData MPF proof`);
   }
   const chunkDatums = Object.freeze([...splitProofIntoChunkDatums(proofCbor)]);
   return Object.freeze({

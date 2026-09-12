@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { MAXIMUM_CHUNK_PROOF_STEP_COUNT, Proof } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
@@ -218,6 +220,59 @@ describe("production proof-chunk prerequisite V1", () => {
       kind: "action_required",
       action: baseAction,
     });
+  });
+
+  it("binds the publication identity to the canonical proof encoding", async () => {
+    // The MPF library and lucid both emit indefinite-length lists, so the
+    // artifact proof is never byte-canonical; the requirement must still be
+    // the same publication as for the canonical bytes.
+    const encodedProofCbor = Data.to(
+      Array.from({ length: MAXIMUM_CHUNK_PROOF_STEP_COUNT + 1 }, () => ({
+        Branch: { skip: 0n, neighbors: "" },
+      })),
+      Proof,
+    );
+    const canonicalProofCbor = canonicalPlutusDataCbor(encodedProofCbor);
+    expect(encodedProofCbor).not.toBe(canonicalProofCbor);
+    const inspect = async (proofCbor: string) => {
+      const port = createAuthenticatedProofChunkPrerequisitePort({
+        category: "invalidRange",
+        lucid: { utxosAt: async () => [] } as unknown as LucidEvolution,
+        network: "Preview",
+        signer: {
+          source: "test",
+          address: "addr_test1_proof_publication",
+          paymentKeyHash: "12".repeat(28),
+          selectWallet: () => undefined,
+        },
+        publications: {
+          observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
+          observeExact: async () => ({ kind: "not_found" }),
+        },
+        proofCborForAction: () => proofCbor,
+        transactionConfirmed: async () => false,
+      });
+      return await port.inspect({
+        headerHash,
+        baseAction,
+        artifact: context.artifact,
+        entries: [],
+      });
+    };
+    const encoded = await inspect(encodedProofCbor);
+    const canonical = await inspect(canonicalProofCbor);
+    expect(encoded.kind).toBe("required");
+    expect(encoded).toEqual(canonical);
+    if (encoded.kind !== "required")
+      throw new Error("missing proof publication requirement");
+    expect(encoded.action.input.chunkDatumSha256s).toEqual(
+      splitProofIntoChunkDatums(canonicalProofCbor).map((datum) =>
+        createHash("sha256").update(datum, "utf8").digest("hex"),
+      ),
+    );
+    await expect(inspect("9f01")).rejects.toThrow(
+      "is not a PlutusData MPF proof",
+    );
   });
 
   it("keeps journaled proof chunks pending and rejects incomplete authenticated output sets", async () => {
