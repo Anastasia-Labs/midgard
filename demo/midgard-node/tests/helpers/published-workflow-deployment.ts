@@ -93,6 +93,8 @@ export const createPublishedWorkflowDeploymentAccounts =
 export type PublishedWorkflowChain = Readonly<{
   now: () => number;
   awaitSlot: (slots: number) => void | Promise<void>;
+  /** Canonical tip height; absent where finality has no block depth. */
+  blockHeight?: () => Promise<number>;
 }>;
 
 export type PublishedWorkflowDeploymentResume = Readonly<{

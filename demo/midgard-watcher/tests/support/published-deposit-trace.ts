@@ -67,6 +67,7 @@ export const stagePublishedDepositTrace = async (
     resume,
     onCheckpoint = async () => {},
     timeoutCorrectionJournalPath,
+    finalityDepth,
   }: {
     daSignerConfig: DaLocalSignerConfig;
     honest?: boolean;
@@ -77,6 +78,8 @@ export const stagePublishedDepositTrace = async (
     ) => Promise<void>;
     /** Durable journal of abandoned-header removals; in memory when absent. */
     timeoutCorrectionJournalPath?: string;
+    /** Blocks a removal must be buried under before the watcher may start. */
+    finalityDepth?: number;
   },
 ) => {
   const { contracts, chain, references } = deployment;
@@ -124,6 +127,21 @@ export const stagePublishedDepositTrace = async (
   // A stopped run can leave headers whose DA attestation never followed. The
   // protocol lets anyone remove such a head once its attestation timeout
   // passes; apply that correction, waiting for the timeout, before publishing.
+  // The watcher bootstraps from the finalized queue and cannot classify a
+  // removed header it still sees there, so the removal must be finalized
+  // before the watcher starts.
+  const finalizeRemoval = async () => {
+    if (finalityDepth === undefined) return;
+    if (chain.blockHeight === undefined)
+      throw new Error("Removal finality requires the chain block height");
+    const removed = await chain.blockHeight();
+    for (;;) {
+      const height = await chain.blockHeight();
+      if (height >= removed + finalityDepth) return;
+      onStage(`abandoned header removal depth ${height - removed}`);
+      await chain.awaitSlot(20);
+    }
+  };
   const removeAbandonedHeaders = async () => {
     let memory: TimeoutCorrectionJournal | undefined;
     const journalStore =
@@ -168,6 +186,7 @@ export const stagePublishedDepositTrace = async (
       } else if (result.status === "complete") {
         onStage(`abandoned header removal ${result.targetHeaderHash}`);
         lucid.overrideUTxOs(await lucid.utxosAt(address));
+        await finalizeRemoval();
       } else {
         throw new Error(
           `State queue holds headers this fixture cannot remove: ${liveRoot.next.Key.key}`,

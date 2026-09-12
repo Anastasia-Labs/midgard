@@ -12,6 +12,7 @@ import {
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import type { JourneyFixture } from "./fixture.js";
 import { verifyTransitionTraceJourneyOutputPlan } from "./journey-timing.js";
+import { JOURNEY_FINALITY_DEPTH } from "./live-context.js";
 
 export const transitionTraceJourneyFixture: JourneyFixture = {
   category: "transitionTrace",
@@ -34,6 +35,7 @@ export const transitionTraceJourneyFixture: JourneyFixture = {
       onCheckpoint: (checkpoint) =>
         writeJourneyArtifact(checkpointPath, checkpoint),
       timeoutCorrectionJournalPath: join(directory, "timeout-correction.json"),
+      finalityDepth: JOURNEY_FINALITY_DEPTH,
     });
     const { depositEvent, depositMetadata } = staged.checkpoint;
     const datum = Data.from(depositEvent.datum!, SDK.DepositDatum);

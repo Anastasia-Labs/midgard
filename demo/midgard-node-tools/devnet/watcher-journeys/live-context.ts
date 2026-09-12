@@ -24,6 +24,9 @@ type PersistedDeployment = Omit<
 };
 
 /** Reopen run-owned artifacts and real providers after a stopped journey. */
+/** L1 depth the journey watcher requires before a block is finalized. */
+export const JOURNEY_FINALITY_DEPTH = 30;
+
 export const loadJourneyContext = async (runDirectory: string) => {
   if (!isAbsolute(runDirectory))
     throw new Error("Journey run directory must be absolute");
@@ -119,6 +122,21 @@ export const loadJourneyContext = async (runDirectory: string) => {
       now: () => operatorLucid.slotToUnixTime(operatorLucid.currentSlot()),
       awaitSlot: async (slots) => {
         await pause(slots * customNetwork.slotConfig.slotLength);
+      },
+      blockHeight: async () => {
+        const response = await fetch(ogmiosUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            method: "queryNetwork/blockHeight",
+            id: null,
+          }),
+        });
+        const { result } = (await response.json()) as { result?: unknown };
+        if (typeof result !== "number" || !Number.isSafeInteger(result))
+          throw new Error("Ogmios did not report a block height");
+        return result;
       },
     },
   };

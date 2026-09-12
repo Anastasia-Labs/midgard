@@ -27,6 +27,7 @@ import type {
   JourneySuccessor,
   StagedJourney,
 } from "./fixture.js";
+import { JOURNEY_FINALITY_DEPTH } from "./live-context.js";
 
 export type JourneyRetainedBlock = JourneyBlock & { payload: SDK.DaPayload };
 
@@ -266,6 +267,7 @@ async function stageJourney(
       onCheckpoint: (checkpoint) =>
         writeJourneyArtifact(initialPath, checkpoint),
       timeoutCorrectionJournalPath: join(directory, "timeout-correction.json"),
+      finalityDepth: JOURNEY_FINALITY_DEPTH,
     });
     await retain(initial.predecessor, initial.commits[0]!);
     await retain(initial.current, initial.commits[1]!);

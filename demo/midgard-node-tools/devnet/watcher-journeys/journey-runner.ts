@@ -35,7 +35,7 @@ import type {
 import { startJourneyHistoryArchives } from "./history-archives.js";
 import { prepareDuplicateEventHistory } from "./history-settlement.js";
 import { readTransitionTraceJourneyTiming } from "./journey-timing.js";
-import { loadJourneyContext } from "./live-context.js";
+import { JOURNEY_FINALITY_DEPTH, loadJourneyContext } from "./live-context.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
 import { startJourneyNativeRecorder } from "./native-recorder.js";
 import { journeyPorts, launchJourneyWatcherProcess } from "./process.js";
@@ -259,11 +259,11 @@ const runJourney = async (
         requestTimeoutMs: 30_000,
         maxConcurrency: 8,
         finality: {
-          depth: 30,
+          depth: JOURNEY_FINALITY_DEPTH,
           rollback: {
             beforeFinality: "rewind",
             afterFinality: "quarantine",
-            maxDepth: 30,
+            maxDepth: JOURNEY_FINALITY_DEPTH,
           },
         },
       },
