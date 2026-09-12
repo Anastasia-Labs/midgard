@@ -2,23 +2,18 @@
 
 Always-loaded context only. Keep this file narrow: project facts the code
 cannot tell you, repo-wide guardrails, and pitfalls observed across sessions.
-Move task-triggered rules to `docs/agents/*` or a skill.
+Put directory-specific rules in nested `AGENTS.md` files and shared task guidance
+in `docs/agents/*` or a skill.
 
 ## Project Context
 
-Midgard is Cardano's first optimistic rollup protocol. It runs across on-chain
+Midgard is an optimistic rollup for Cardano. It runs across on-chain
 Cardano validators and off-chain node/runtime services, with Plutus V3/Aiken
 contracts, TypeScript SDK/demo/e2e packages, and a technical specification.
 
 Treat it as production-grade L2 infrastructure. Faulty state transitions,
 timing assumptions, resets, or compatibility shortcuts can corrupt protocol
 state, break liveness, or put funds at risk.
-
-## North Star
-
-Build a strict, auditable, production-ready rollup. Prefer solutions that
-preserve protocol semantics, deterministic operation, explicit recovery paths,
-and evidence another engineer can verify.
 
 Tradeoff order: correctness, safety, liveness, performance, convenience.
 
@@ -27,95 +22,48 @@ Tradeoff order: correctness, safety, liveness, performance, convenience.
 - Grow the system in layers. Start from the smallest version that works end to
   end, and add each new capability on top of a product that already works.
   Never trade a working product for unfinished complexity.
-- Keep components modular and concerns clearly separated.
 - Prefer established, well-maintained libraries when they reduce overall
-  complexity or improve reliability. Do not reimplement common functionality
-  without a clear reason.
-- Make architectural decisions for the long term. Do not accept a stopgap that
-  only works for now and is meant to be replaced later.
+  complexity or improve reliability.
+- Write clean code, with a focus on maintainability, clear names, direct control flow, and abstractions
+  justified by current behavior. There are many human developers working on the codebase, and keeping it 
+  easy for them to work on is a top priority. 
+- Ship architecture that supports the intended deployment. Temporary diagnostic
+  instrumentation follows `docs/agents/production-l2.md`.
 
 ## Repo Shape
 
-- `onchain/aiken`: Plutus V3 contracts.
+- `onchain/aiken`: Plutus V3 contracts; read `onchain/aiken/AGENTS.md` for work
+  in this tree.
 - `demo`: pnpm TypeScript workspace for SDKs, node/runtime, manager/CLI, tests,
-  benchmarks, and e2e tooling.
+  benchmarks, and e2e tooling; read `demo/AGENTS.md` for work in this tree.
 - `technical-spec`: protocol specification built through the root `Makefile`.
 - `docs/agents`: progressive guidance; open only the relevant domain doc.
 
 Use the declared repo toolchain: pnpm/Node in `demo`, Aiken in
-`onchain/aiken`, and `make` for the spec. Demo, preprod, and e2e deployment
-work defaults to the Aiken `testnet` environment unless the task explicitly
-targets another environment.
+`onchain/aiken`, and `make` for the spec.
 
 ## Always-On Rules
 
 - Strict behavior is the default. Demo, benchmark, migration, or compatibility
   shortcuts must be explicit, isolated, and unavailable by default.
 - Before mainnet launch, undeployed versions have no compatibility contract:
-  replace V1 and database schemas in place, remove obsolete branches, and
-  wipe/redeploy development state instead of adding compatibility layers or
-  migrations. Keep versioning seams for post-launch upgrades, but preserve or
-  migrate only versions that actually shipped.
-- Named plan docs, review docs, commands, and verification surfaces are the
-  source of truth before improvising.
-- Import workspace packages by name (`@al-ft/midgard-core/hex`,
-  `da-committee-node/config`), never through `../<package>/src` or `dist`;
-  ESLint `no-restricted-imports` enforces it, so a missing subpath means adding
-  a workspace dependency and an `exports` entry, not a relative path. Every
-  package's `exports` carries a `midgard-source` condition that tsc
-  (`customConditions`), typescript-eslint, and vitest (`resolve.conditions`)
-  resolve first, so configured TypeScript, lint, and Vitest imports read sibling
-  source. Plain `node` scripts still resolve `dist`; follow the package scripts'
-  build prerequisites for subprocesses and packaged imports. The node and tooling
-  `typecheck` scripts currently build Lucid and the SDK before running tsc.
-- Names carry no version, no `production-` prefix, and no ticket id; the
-  version lives in wire and manifest values. See
-  `docs/agents/naming-and-versioning.md` before naming or renaming anything.
+  replace obsolete schemas and APIs in place. Keep versioning seams for
+  post-launch upgrades; preserve or migrate only versions that actually shipped.
+  This does not authorize resetting an existing deployment. Before resetting
+  durable state or redeploying, read `docs/agents/state-reset.md`.
 - Preserve user work: check dirty state, do not clean or revert unrelated
-  changes, and keep patches scoped to the request.
-- Before finalizing changes, run the narrow checks that prove the touched
-  behavior and report exactly what ran.
-- On-chain code trusts deployment parameterization: a validator never
-  re-checks a `validator main(...)` parameter's width, cardinality, or domain.
-  Such facts are asserted once, off chain, where the parameter is applied
-  (`demo/midgard-sdk/src/fraud-proof/contracts/blueprint.ts`).
-- Every contract has lucid-evolution emulator scenario tests that succeed on
-  the happy path and fail where the validator must refuse; those scenarios are
-  the assurance that parameters were applied correctly. Whenever a change to a
-  validator affects its parameters (added, removed, reordered, retyped), the
-  same change updates every off-chain builder, parameter application,
-  deployment fixture, and emulator scenario that deploys it, and the emulator
-  scenarios are re-run in both polarities. No dedicated arity gate stands in
-  for that process.
-- Install the repository hooks once per clone: `bash .githooks/install` (or
-  `pnpm --dir demo run hooks:install`). The pre-commit hook formats and lints
-  exactly what you staged — Prettier and ESLint over `demo/**/*.{ts,tsx,md}`,
-  the pinned fork's `aiken fmt` plus CI's trailing-whitespace normalization
-  over `*.ak` — so `static-demo-format`, `static-demo-lint`, `watcher-format`,
-  `watcher-lint` and the CI Aiken formatter check cannot go red on formatting
-  alone. It re-stages only the paths it touched, skips files that are only
-  partially staged rather than committing the unstaged half, and preserves any
-  hook already installed as `<hook>.local`. `MIDGARD_SKIP_HOOKS=1` bypasses it.
-
-## Observed Pitfalls
-
-- Plan work has drifted into nearby reliability fixes. Stay inside the named
-  boundary.
-- Dirty worktrees and generated artifacts have been mistaken for cleanup
-  targets. Leave unrelated state alone.
-- When a path is explicitly protected, search only individually named tracked
-  files. Shell wildcards expand before tool-level exclusions, so a later
-  `--glob` or ignore rule does not protect an argument the shell already added.
-- Loose smoke tests have replaced plan-requested checks. Run named checks
-  first.
-- Demo or benchmark behavior has leaked into defaults. Keep production
-  semantics strict.
+  changes.
+- Before finalizing changes, run the named required checks and the narrow checks
+  that prove touched behavior. Report exactly what ran; a smoke test does not
+  replace a required acceptance check.
 
 ## When Relevant
 
-Open `docs/agents/production-l2.md`, `state-reset.md`,
-`transaction-finalization.md`, `midgard-node.md`, or `README.md` only when the
-task enters that domain.
-
-Withdraw-zero yielding: open `docs/agents/withdraw-zero-yielding.md` when a
-spending validator delegates a redeemer arm to a rewarding validator.
+- Safety or architecture tradeoffs: read `docs/agents/production-l2.md` before
+  choosing behavior that affects protocol integrity or recovery.
+- Validator changes or deployment parameter application: read
+  `docs/agents/contracts.md` before editing contracts, builders, or fixtures.
+- Naming or renaming: read `docs/agents/naming-and-versioning.md`.
+- Before the first commit in a clone: ensure repository hooks are installed
+  with `bash .githooks/install`. Required verification still applies when hooks
+  skip a file or tool.
