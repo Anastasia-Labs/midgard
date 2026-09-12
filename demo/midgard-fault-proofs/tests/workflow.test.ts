@@ -27,6 +27,7 @@ import {
 import {
   type CanonicalViolationDetection,
   classifyCanonicalBlockViolations,
+  FRAUD_PROOF_CLASSIFICATION_FAMILY_PRECEDENCE,
   FRAUD_PROOF_CLASSIFICATION_RULES,
 } from "../src/workflow/classification.js";
 import {
@@ -329,6 +330,22 @@ describe("Q55/W-O6 deterministic violation classification", () => {
       ...rule.violationIds,
     ]);
     expect(new Set(identifiers).size).toBe(identifiers.length);
+  });
+
+  it("ranks crossBlockDuplicateEvent ahead of doubleWithdraw per decision 0008", () => {
+    expect([...FRAUD_PROOF_CLASSIFICATION_FAMILY_PRECEDENCE].sort()).toEqual(
+      [...SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER].sort(),
+    );
+    const promoted = FRAUD_PROOF_CLASSIFICATION_FAMILY_PRECEDENCE.indexOf(
+      "crossBlockDuplicateEvent",
+    );
+    expect(promoted).toBe(
+      FRAUD_PROOF_CLASSIFICATION_FAMILY_PRECEDENCE.indexOf("doubleWithdraw") -
+        1,
+    );
+    expect(
+      FRAUD_PROOF_CLASSIFICATION_FAMILY_PRECEDENCE.slice(0, promoted),
+    ).toEqual(SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.slice(0, promoted));
   });
 
   it("selects the earliest position, then stable family order", async () => {

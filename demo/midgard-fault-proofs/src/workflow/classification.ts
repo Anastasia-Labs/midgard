@@ -333,14 +333,37 @@ const classificationByViolationId = new Map<
   ResolvedClassificationRule
 >();
 
-for (const [
-  familyPriority,
-  rule,
-] of FRAUD_PROOF_CLASSIFICATION_RULES.entries()) {
-  if (rule.category !== FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER[familyPriority]) {
+/**
+ * Same-position family precedence. This is the catalogue order with exactly
+ * the owner-ruled corners moved: decision 0008 gives `crossBlockDuplicateEvent`
+ * the repeated event an ancestor already committed, ahead of `doubleWithdraw`,
+ * which keeps the intra-block pair. The catalogue order itself stays
+ * append-only because deployment identity is derived from it.
+ */
+export const FRAUD_PROOF_CLASSIFICATION_FAMILY_PRECEDENCE: readonly FraudProofCatalogueCategoryName[] =
+  (() => {
+    const order = [...FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER];
+    const promoted = order.indexOf("crossBlockDuplicateEvent");
+    const before = order.indexOf("doubleWithdraw");
+    if (promoted < 0 || before < 0 || promoted < before) {
+      throw new Error("decision 0008 precedence does not match the catalogue");
+    }
+    order.splice(promoted, 1);
+    order.splice(before, 0, "crossBlockDuplicateEvent");
+    return order;
+  })();
+
+for (const [ruleIndex, rule] of FRAUD_PROOF_CLASSIFICATION_RULES.entries()) {
+  if (rule.category !== FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER[ruleIndex]) {
     throw new Error(
-      `classification rule ${familyPriority.toString()} must be ${String(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER[familyPriority])}, got ${rule.category}`,
+      `classification rule ${ruleIndex.toString()} must be ${String(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER[ruleIndex])}, got ${rule.category}`,
     );
+  }
+  const familyPriority = FRAUD_PROOF_CLASSIFICATION_FAMILY_PRECEDENCE.indexOf(
+    rule.category,
+  );
+  if (familyPriority < 0) {
+    throw new Error(`classification precedence omits ${rule.category}`);
   }
   for (const [violationPriority, violationId] of rule.violationIds.entries()) {
     if (classificationByViolationId.has(violationId)) {
