@@ -32,6 +32,28 @@ export type PublishedWatcherBlock = {
   payloadEnvelopeCbor: Buffer;
 };
 
+/**
+ * A submitted transaction whose validity interval closed before any block
+ * included it. The devnet mints blocks at random ~20s intervals, so a short
+ * commit-bound validity range (Q60) can expire unminted; the caller rebuilds
+ * with a fresh interval instead of failing the journey.
+ */
+export class PublishedTransactionExpiredError extends Error {
+  constructor(
+    readonly label: string,
+    readonly txHash: string,
+    readonly expiryMs: number,
+  ) {
+    super(
+      `${label} ${txHash} expired at ${expiryMs} before any block included it`,
+    );
+    this.name = "PublishedTransactionExpiredError";
+  }
+}
+
+/** Grace after a validity upper bound for the indexer to publish the last eligible block. */
+const EXPIRY_GRACE_MS = 60_000;
+
 /** A real operator's registration, header commitments and DA attestations. */
 export const createPublishedWatcherBlockActor = async ({
   deployment,
@@ -52,6 +74,38 @@ export const createPublishedWatcherBlockActor = async ({
     // after direct SDK transactions so their successors use the live ledger.
     lucid.overrideUTxOs(await lucid.utxosAt(address));
   };
+  /**
+   * Wait for a transaction with a validity upper bound. Confirmation is the
+   * appearance of its expected output; once the chain clock passes the bound
+   * plus indexing grace without it, the transaction can never land.
+   */
+  const awaitLandedOrExpired = async ({
+    label,
+    txHash,
+    expiryMs,
+    landed,
+  }: {
+    label: string;
+    txHash: string;
+    expiryMs: number;
+    landed: () => Promise<boolean>;
+  }) => {
+    for (;;) {
+      if (await landed()) {
+        lucid.overrideUTxOs(await lucid.utxosAt(address));
+        return;
+      }
+      if (chain.now() > expiryMs + EXPIRY_GRACE_MS)
+        throw new PublishedTransactionExpiredError(label, txHash, expiryMs);
+      await chain.awaitSlot(1);
+    }
+  };
+  const outputLanded = (txHash: string) => async () =>
+    (
+      await lucid
+        .config()
+        .provider!.getUtxosByOutRef([{ txHash, outputIndex: 0 }])
+    ).length === 1;
   const operatorVkey = paymentCredentialOf(address).hash;
   const one = async (scriptAddress: string, unit: string): Promise<UTxO> => {
     const values = await lucid.utxosAtWithUnit(scriptAddress, unit);
@@ -148,6 +202,9 @@ export const createPublishedWatcherBlockActor = async ({
       contracts.activeOperators.spendingScriptAddress,
       activeUnit,
     );
+    await appointScheduler();
+  };
+  const appointScheduler = async (): Promise<void> => {
     const scheduler = await one(
       contracts.scheduler.spendingScriptAddress,
       schedulerUnit,
@@ -233,9 +290,22 @@ export const createPublishedWatcherBlockActor = async ({
       .validFrom(chain.now() - 60_000)
       .validTo(Number(schedulerStart + 1n))
       .complete({ localUPLCEval: true });
-    await awaitConfirmed(
-      await (await appointment.sign.withWallet().complete()).submit(),
-    );
+    const appointmentHash = await (
+      await appointment.sign.withWallet().complete()
+    ).submit();
+    try {
+      await awaitLandedOrExpired({
+        label: "scheduler appointment",
+        txHash: appointmentHash,
+        expiryMs: Number(schedulerStart) + 1,
+        landed: outputLanded(appointmentHash),
+      });
+    } catch (error) {
+      if (!(error instanceof PublishedTransactionExpiredError)) throw error;
+      onStage("scheduler appointment expired unminted; reappointing");
+      lucid.overrideUTxOs(await lucid.utxosAt(address));
+      return appointScheduler();
+    }
     await chain.awaitSlot(
       Math.max(0, Math.ceil((Number(schedulerStart) + 1 - chain.now()) / 1000)),
     );
@@ -390,7 +460,22 @@ export const createPublishedWatcherBlockActor = async ({
       throw new Error(
         "Submitted header hash differs from its signed transaction",
       );
-    await awaitConfirmed(txHash);
+    const headerUnit = toUnit(
+      contracts.stateQueue.policyId,
+      SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + block.headerHash,
+    );
+    await awaitLandedOrExpired({
+      label: `header commit ${block.headerHash}`,
+      txHash,
+      expiryMs: Number(block.header.endTime) + 1,
+      landed: async () =>
+        (
+          await lucid.utxosAtWithUnit(
+            contracts.stateQueue.spendingScriptAddress,
+            headerUnit,
+          )
+        ).length === 1,
+    });
     return txHash;
   };
   const attest = async (block: PublishedWatcherBlock) => {

@@ -12,7 +12,10 @@ import {
   toUnit,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { createPublishedWatcherBlockActor } from "midgard-watcher/tests/support/published-block-actor";
+import {
+  createPublishedWatcherBlockActor,
+  PublishedTransactionExpiredError,
+} from "midgard-watcher/tests/support/published-block-actor";
 import {
   type PublishedDepositTraceCheckpoint,
   stagePublishedDepositTrace,
@@ -405,18 +408,40 @@ async function stageJourney(
             history.block,
             history.signedCommit,
           );
-        else {
-          const anchor = await assertTail(predecessor);
-          history.commitTxHash = await actor.commit(
-            history.block,
-            anchor,
-            await queueHead(),
-            async (signed) => {
-              history.signedCommit = signed;
+        else
+          for (;;) {
+            const anchor = await assertTail(predecessor);
+            try {
+              history.commitTxHash = await actor.commit(
+                history.block,
+                anchor,
+                await queueHead(),
+                async (signed) => {
+                  history.signedCommit = signed;
+                  await writeJourneyArtifact(historyPath, history);
+                },
+              );
+              break;
+            } catch (error) {
+              if (!(error instanceof PublishedTransactionExpiredError))
+                throw error;
+              // Nothing the expired commit referenced was spent, so a fresh
+              // interval replaces the block before anything retained it.
+              onStage(`${error.label} expired unminted; rebuilding ${name}`);
+              const endTime = BigInt(chain.now() + 59_999);
+              history.block = await build({
+                predecessor: retainedPredecessor,
+                ledgerOwnerSeedPhrase: accounts.operator.seedPhrase,
+                operatorVkey: maliciousKey,
+                endTime,
+                blockSlot: BigInt(
+                  maliciousLucid.unixTimeToSlot(Number(endTime)),
+                ),
+              });
+              delete history.signedCommit;
               await writeJourneyArtifact(historyPath, history);
-            },
-          );
-        }
+            }
+          }
         await writeJourneyArtifact(historyPath, history);
       }
       await retain(history.block, history.commitTxHash);
@@ -472,16 +497,17 @@ async function stageJourney(
   // Onboard the faulty publisher now. The next producer registers after
   // confirmed correction, so its eligibility cannot block scheduler removal.
   if (resume === undefined) await actor.onboardOperator();
-  const faultEndTime = BigInt(chain.now() + 59_999);
-  const current =
-    resume?.current ??
-    (await prepared.buildFault({
+  const buildFault = () => {
+    const faultEndTime = BigInt(chain.now() + 59_999);
+    return prepared.buildFault({
       predecessor: retainedPredecessor,
       ledgerOwnerSeedPhrase: accounts.operator.seedPhrase,
       operatorVkey: maliciousKey,
       endTime: faultEndTime,
       blockSlot: BigInt(maliciousLucid.unixTimeToSlot(Number(faultEndTime))),
-    }));
+    });
+  };
+  let current = resume?.current ?? (await buildFault());
   const checkpoint: StagingCheckpoint = resume ?? {
     deploymentFingerprint: fingerprint,
     predecessor,
@@ -498,18 +524,31 @@ async function stageJourney(
         checkpoint.signedCommit,
       );
     else if (existing !== undefined) checkpoint.commitTxHash = existing.txHash;
-    else {
-      const anchor = await assertTail(predecessor);
-      checkpoint.commitTxHash = await actor.commit(
-        current,
-        anchor,
-        await queueHead(),
-        async (signed) => {
-          checkpoint.signedCommit = signed;
+    else
+      for (;;) {
+        const anchor = await assertTail(predecessor);
+        try {
+          checkpoint.commitTxHash = await actor.commit(
+            current,
+            anchor,
+            await queueHead(),
+            async (signed) => {
+              checkpoint.signedCommit = signed;
+              await writeJourneyArtifact(checkpointPath, checkpoint);
+            },
+          );
+          break;
+        } catch (error) {
+          if (!(error instanceof PublishedTransactionExpiredError)) throw error;
+          // Nothing the expired commit referenced was spent and nothing has
+          // retained this block yet, so a fresh interval replaces it.
+          onStage(`${error.label} expired unminted; rebuilding the fault`);
+          current = await buildFault();
+          checkpoint.current = current;
+          delete checkpoint.signedCommit;
           await writeJourneyArtifact(checkpointPath, checkpoint);
-        },
-      );
-    }
+        }
+      }
     await writeJourneyArtifact(checkpointPath, checkpoint);
   }
   await retain(current, checkpoint.commitTxHash);
@@ -534,26 +573,18 @@ async function stageJourney(
         onStage,
       });
       await successorActor.onboardOperator();
-      const endTime = BigInt(chain.now() + 59_999);
-      const successorInput: JourneyFaultBuildInput = {
-        predecessor: retainedPredecessor,
-        ledgerOwnerSeedPhrase: accounts.operator.seedPhrase,
-        operatorVkey: successorActor.operatorVkey,
-        endTime,
-        blockSlot: BigInt(successorLucid.unixTimeToSlot(Number(endTime))),
-      };
-      const resumedSuccessor = existsSync(successorPath)
-        ? await readJourneyArtifact<{
-            block: JourneyBlock;
-            commitTxHash?: string;
-            signedCommit?: NonNullable<StagingCheckpoint["signedCommit"]>;
-          }>(successorPath)
-        : undefined;
-      const successor =
-        resumedSuccessor?.block ??
-        (prepared.buildSuccessor !== undefined
-          ? await prepared.buildSuccessor(successorInput)
-          : await depositEventsRetainedBlock({
+      const buildSuccessor = async (): Promise<JourneyBlock> => {
+        const endTime = BigInt(chain.now() + 59_999);
+        const successorInput: JourneyFaultBuildInput = {
+          predecessor: retainedPredecessor,
+          ledgerOwnerSeedPhrase: accounts.operator.seedPhrase,
+          operatorVkey: successorActor.operatorVkey,
+          endTime,
+          blockSlot: BigInt(successorLucid.unixTimeToSlot(Number(endTime))),
+        };
+        return prepared.buildSuccessor !== undefined
+          ? prepared.buildSuccessor(successorInput)
+          : depositEventsRetainedBlock({
               operatorVkey: successorActor.operatorVkey,
               startTime: predecessor.header.endTime,
               endTime,
@@ -562,7 +593,16 @@ async function stageJourney(
               prevUtxosRoot: predecessor.header.utxosRoot,
               priorLedger: retainedPredecessor.payload.block_body.utxos,
               events: [],
-            }));
+            });
+      };
+      const resumedSuccessor = existsSync(successorPath)
+        ? await readJourneyArtifact<{
+            block: JourneyBlock;
+            commitTxHash?: string;
+            signedCommit?: NonNullable<StagingCheckpoint["signedCommit"]>;
+          }>(successorPath)
+        : undefined;
+      let successor = resumedSuccessor?.block ?? (await buildSuccessor());
       const successorCheckpoint: {
         block: JourneyBlock;
         commitTxHash?: string;
@@ -585,17 +625,27 @@ async function stageJourney(
           successorCheckpoint.signedCommit,
         );
       commitTxHash ??= existing?.txHash;
-      if (commitTxHash === undefined) {
+      while (commitTxHash === undefined) {
         const anchor = await assertTail(predecessor);
-        commitTxHash = await successorActor.commit(
-          successor,
-          anchor,
-          await queueHead(),
-          async (signed) => {
-            successorCheckpoint.signedCommit = signed;
-            await writeJourneyArtifact(successorPath, successorCheckpoint);
-          },
-        );
+        try {
+          commitTxHash = await successorActor.commit(
+            successor,
+            anchor,
+            await queueHead(),
+            async (signed) => {
+              successorCheckpoint.signedCommit = signed;
+              await writeJourneyArtifact(successorPath, successorCheckpoint);
+            },
+          );
+        } catch (error) {
+          if (!(error instanceof PublishedTransactionExpiredError)) throw error;
+          onStage(`${error.label} expired unminted; rebuilding the successor`);
+          successor = await buildSuccessor();
+          successorCheckpoint.block = successor;
+          delete successorCheckpoint.signedCommit;
+          await writeJourneyArtifact(successorPath, successorCheckpoint);
+          await beforeCommit(successor);
+        }
       }
       successorCheckpoint.commitTxHash = commitTxHash;
       await writeJourneyArtifact(successorPath, successorCheckpoint);

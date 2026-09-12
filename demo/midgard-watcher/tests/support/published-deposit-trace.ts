@@ -20,6 +20,7 @@ import { activateRegisteredOperatorProgram } from "midgard-node/transactions/reg
 
 import {
   createPublishedWatcherBlockActor,
+  PublishedTransactionExpiredError,
   type PublishedWatcherBlock,
 } from "./published-block-actor.js";
 
@@ -56,6 +57,14 @@ export type PublishedSuccessorCheckpoint = {
 
 /** The successor header's validity window; block production is Poisson. */
 export const SUCCESSOR_HEADER_INTERVAL_MS = 179_999;
+/**
+ * Longest interval the empty predecessor may close after; it is shortened to
+ * end before the staged deposit becomes eligible. Its commit's validity range
+ * ends at this interval (Q60), so a longer interval survives more block gaps.
+ */
+export const EMPTY_PREDECESSOR_INTERVAL_MS = 79_999;
+/** The deposit block closes this long after its event's inclusion second. */
+export const DEPOSIT_BLOCK_INTERVAL_MS = 59_999;
 
 /** Publish an ordinary deposit and retain the existing deposit-trace fixture. */
 export const stagePublishedDepositTrace = async (
@@ -194,6 +203,34 @@ export const stagePublishedDepositTrace = async (
       }
     }
   };
+  const buildDepositedBlock = ({
+    empty,
+    event,
+    depositAssetName,
+    endTime,
+  }: {
+    empty: Awaited<ReturnType<typeof depositEventsRetainedBlock>>;
+    event: UTxO;
+    depositAssetName: string;
+    endTime: bigint;
+  }) =>
+    depositEventsRetainedBlock({
+      operatorVkey,
+      prevHeaderHash: empty.headerHash,
+      prevUtxosRoot: empty.header.utxosRoot,
+      priorLedger: empty.payload.block_body.utxos,
+      startTime: empty.header.endTime,
+      endTime,
+      blockSlot: BigInt(lucid.unixTimeToSlot(Number(endTime))),
+      events: [
+        {
+          event,
+          depositPolicyId: contracts.deposit.policyId,
+          assetName: depositAssetName,
+          honest,
+        },
+      ],
+    });
   const prepare = async () => {
     await removeAbandonedHeaders();
     // A stopped preparation may have published an event before its block was
@@ -253,7 +290,13 @@ export const stagePublishedDepositTrace = async (
     await chain.awaitSlot(
       Math.max(
         0,
-        Math.ceil((latestPriorInclusion - 39_999 + 1_000 - chain.now()) / 1000),
+        Math.ceil(
+          (latestPriorInclusion -
+            EMPTY_PREDECESSOR_INTERVAL_MS +
+            1_000 -
+            chain.now()) /
+            1000,
+        ),
       ),
     );
     const l2Address = credentialToAddress("Preprod", {
@@ -277,7 +320,12 @@ export const stagePublishedDepositTrace = async (
       contracts.deposit.spendingScriptAddress,
       deposit.metadata.depositAuthUnit,
     );
-    const emptyEnd = BigInt(chain.now() + 39_999);
+    const emptyEnd = BigInt(
+      Math.min(
+        chain.now() + EMPTY_PREDECESSOR_INTERVAL_MS,
+        deposit.metadata.inclusionTime - 1_000,
+      ),
+    );
     if (emptyEnd >= BigInt(deposit.metadata.inclusionTime))
       throw new Error(
         "Ordinary deposit must become eligible after the empty predecessor",
@@ -308,25 +356,14 @@ export const stagePublishedDepositTrace = async (
         honest: true,
       })),
     });
-    const depositEnd = BigInt(
-      Math.ceil(deposit.metadata.inclusionTime / 1000) * 1000 + 59_999,
-    );
-    const deposited = await depositEventsRetainedBlock({
-      operatorVkey,
-      prevHeaderHash: empty.headerHash,
-      prevUtxosRoot: empty.header.utxosRoot,
-      priorLedger: empty.payload.block_body.utxos,
-      startTime: emptyEnd,
-      endTime: depositEnd,
-      blockSlot: BigInt(lucid.unixTimeToSlot(Number(depositEnd))),
-      events: [
-        {
-          event,
-          depositPolicyId: contracts.deposit.policyId,
-          assetName: deposit.metadata.depositAssetName,
-          honest,
-        },
-      ],
+    const deposited = await buildDepositedBlock({
+      empty,
+      event,
+      depositAssetName: deposit.metadata.depositAssetName,
+      endTime: BigInt(
+        Math.ceil(deposit.metadata.inclusionTime / 1000) * 1000 +
+          DEPOSIT_BLOCK_INTERVAL_MS,
+      ),
     });
     return {
       predecessor: empty,
@@ -347,7 +384,7 @@ export const stagePublishedDepositTrace = async (
               resume.predecessor.header.endTime)
         ? await prepare()
         : resume;
-  const {
+  let {
     predecessor: empty,
     current: deposited,
     depositEvent: event,
@@ -455,7 +492,34 @@ export const stagePublishedDepositTrace = async (
   const attest = (block: PublishedWatcherBlock) => actor.attest(block);
   if (!checkpoint.attestationsComplete) {
     if (commits.length === 0) {
-      await commit(empty);
+      for (;;) {
+        try {
+          await commit(empty);
+          break;
+        } catch (error) {
+          if (!(error instanceof PublishedTransactionExpiredError)) throw error;
+          // The deposit is due right after the empty interval, so a fresh
+          // interval needs a fresh deposit; the unspent one becomes retained
+          // prior history of the new empty predecessor.
+          onStage(`${error.label} expired unminted; republishing the deposit`);
+          const again = await prepare();
+          ({
+            predecessor: empty,
+            current: deposited,
+            depositEvent: event,
+            depositMetadata,
+          } = again);
+          checkpoint.predecessor = empty;
+          checkpoint.current = deposited;
+          checkpoint.depositEvent = event;
+          checkpoint.depositMetadata = depositMetadata;
+          checkpoint.priorDeposits = again.priorDeposits;
+          anchor = await one(
+            contracts.stateQueue.spendingScriptAddress,
+            rootUnit,
+          );
+        }
+      }
       await onCheckpoint(checkpoint);
     } else if (commits.length === 1) {
       headUnit = toUnit(
@@ -472,7 +536,27 @@ export const stagePublishedDepositTrace = async (
           Math.ceil((depositMetadata.inclusionTime - chain.now()) / 1000),
         ),
       );
-      await commit(deposited);
+      for (;;) {
+        try {
+          await commit(deposited);
+          break;
+        } catch (error) {
+          if (!(error instanceof PublishedTransactionExpiredError)) throw error;
+          onStage(
+            `${error.label} expired unminted; rebuilding the deposit block`,
+          );
+          deposited = await buildDepositedBlock({
+            empty,
+            event,
+            depositAssetName: depositMetadata.depositAssetName,
+            endTime: BigInt(
+              Math.ceil(chain.now() / 1000) * 1000 + DEPOSIT_BLOCK_INTERVAL_MS,
+            ),
+          });
+          checkpoint.current = deposited;
+          await onCheckpoint(checkpoint);
+        }
+      }
       await onCheckpoint(checkpoint);
     }
     if (commits.length !== 2)
@@ -617,49 +701,69 @@ export const stagePublishedDepositTrace = async (
         depositMetadata.depositAuthUnit,
       );
       const actualDeposit = Data.from(liveEvent.datum!, SDK.DepositDatum);
-      const endTime = BigInt(chain.now() + SUCCESSOR_HEADER_INTERVAL_MS);
-      if (
-        !(
-          predecessor.endTime < actualDeposit.inclusion_time &&
-          actualDeposit.inclusion_time <= endTime
+      const buildSuccessor = async (): Promise<PublishedWatcherBlock> => {
+        const endTime = BigInt(chain.now() + SUCCESSOR_HEADER_INTERVAL_MS);
+        if (
+          !(
+            predecessor.endTime < actualDeposit.inclusion_time &&
+            actualDeposit.inclusion_time <= endTime
+          )
         )
-      )
-        throw new Error(
-          "The unspent ordinary deposit is not due in the corrected successor interval",
-        );
-      const built = await depositEventsRetainedBlock({
-        operatorVkey,
-        prevHeaderHash: empty.headerHash,
-        prevUtxosRoot: predecessor.utxosRoot,
-        priorLedger: empty.payload.block_body.utxos,
-        startTime: predecessor.endTime,
-        endTime,
-        blockSlot: BigInt(lucid.unixTimeToSlot(Number(endTime))),
-        events: [
-          {
-            event: liveEvent,
-            depositPolicyId: contracts.deposit.policyId,
-            assetName: depositMetadata.depositAssetName,
-            honest: true,
-          },
-        ],
-      });
-      const block: PublishedWatcherBlock = {
-        header: built.header,
-        headerHash: built.headerHash,
-        payloadEnvelopeCbor: Buffer.from(built.payloadEnvelopeCbor),
+          throw new Error(
+            "The unspent ordinary deposit is not due in the corrected successor interval",
+          );
+        const built = await depositEventsRetainedBlock({
+          operatorVkey,
+          prevHeaderHash: empty.headerHash,
+          prevUtxosRoot: predecessor.utxosRoot,
+          priorLedger: empty.payload.block_body.utxos,
+          startTime: predecessor.endTime,
+          endTime,
+          blockSlot: BigInt(lucid.unixTimeToSlot(Number(endTime))),
+          events: [
+            {
+              event: liveEvent,
+              depositPolicyId: contracts.deposit.policyId,
+              assetName: depositMetadata.depositAssetName,
+              honest: true,
+            },
+          ],
+        });
+        return {
+          header: built.header,
+          headerHash: built.headerHash,
+          payloadEnvelopeCbor: Buffer.from(built.payloadEnvelopeCbor),
+        };
       };
-      const successorCheckpoint: PublishedSuccessorCheckpoint = { block };
+      let block = await buildSuccessor();
+      let successorCheckpoint: PublishedSuccessorCheckpoint = { block };
       await onSuccessorCheckpoint(successorCheckpoint);
-      // Removal spent the predecessor to update its link and replaced the lock.
-      // Refetch both through the ordinary commit path before constructing inputs.
-      anchor = await one(contracts.stateQueue.spendingScriptAddress, headUnit);
-      head = anchor;
-      await beforeCommit(block);
-      const txHash = await actor.commit(block, anchor, head, async (signed) => {
-        successorCheckpoint.signedCommit = signed;
-        await onSuccessorCheckpoint(successorCheckpoint);
-      });
+      let txHash: string;
+      for (;;) {
+        // Removal spent the predecessor to update its link and replaced the
+        // lock. Refetch both through the ordinary commit path before
+        // constructing inputs.
+        anchor = await one(
+          contracts.stateQueue.spendingScriptAddress,
+          headUnit,
+        );
+        head = anchor;
+        await beforeCommit(block);
+        const checkpoint = successorCheckpoint;
+        try {
+          txHash = await actor.commit(block, anchor, head, async (signed) => {
+            checkpoint.signedCommit = signed;
+            await onSuccessorCheckpoint(checkpoint);
+          });
+          break;
+        } catch (error) {
+          if (!(error instanceof PublishedTransactionExpiredError)) throw error;
+          onStage(`${error.label} expired unminted; rebuilding the successor`);
+          block = await buildSuccessor();
+          successorCheckpoint = { block };
+          await onSuccessorCheckpoint(successorCheckpoint);
+        }
+      }
       commits.push(txHash);
       anchor = await one(
         contracts.stateQueue.spendingScriptAddress,
