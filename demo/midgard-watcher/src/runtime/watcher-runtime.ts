@@ -864,6 +864,15 @@ export const createWatcherRuntime = async (input: {
       "workflow_recovery",
       () => faultDecisionBridge!.recoverExisting(),
     );
+    // Startup classification prepared its target without dispatch so journal
+    // recovery could resume existing executions first. Schedule that target
+    // now: finalized blocks that leave the queue untouched never re-enter
+    // dispatch, so a fault selected at startup would otherwise wait for the
+    // next queue movement.
+    await startup(
+      "fault_dispatch",
+      async () => await faultDecisionBridge!.dispatchPrepared(),
+    );
     operationsHttp = await startWatcherOperationsHttpServer({
       endpoint: input.config.operationsEndpoint,
       observability: operations,
