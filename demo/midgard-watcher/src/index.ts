@@ -17,6 +17,7 @@ export {
 } from "./fault-proofs/fault-decision-journal.js";
 export {
   createWatcherFaultProofApplication,
+  createWatcherFaultProofReadinessApplication,
   unsafeCreateWatcherFaultProofApplicationForTest,
   WATCHER_FAULT_PROOF_APPLICATION,
   WATCHER_FAULT_PROOF_STARTUP_READINESS,
@@ -147,6 +148,7 @@ export {
   type WatcherProofThreadJournalPhase,
   type WatcherProofThreadLayout,
   type WatcherProofThreadNetwork,
+  watcherProofThreadNextStepIndexes,
   type WatcherProofThreadObservation,
   type WatcherProofThreadPending,
   type WatcherProofThreadPolicy,
@@ -407,6 +409,11 @@ export {
   type WatcherNativeChainSyncRollForward,
   type WatcherNativeChainSyncRuntime,
 } from "./l1/native-chain-sync.js";
+export {
+  queryWatcherNativeRewardAccount,
+  WatcherLocalKupmios,
+  type WatcherNativeRewardAccountQuery,
+} from "./l1/native-reward-account.js";
 export {
   createWatcherResolvedBlockObservationSource,
   type WatcherResolvedBlockObservation,
@@ -720,10 +727,12 @@ export {
 } from "./storage/public-da-libp2p-transport.js";
 export {
   createWatcherRetainedDaRuntime,
+  createWatcherRetainedDaRuntimeOwner,
   createWatcherWorkflowRuntimeLoader,
   WATCHER_RETAINED_DA_RUNTIME,
   type WatcherRetainedDaRuntime,
   type WatcherRetainedDaRuntimeOptions,
+  type WatcherRetainedDaRuntimeOwner,
   type WatcherWorkflowInfrastructureBuilder,
 } from "./storage/retained-da-runtime.js";
 export {

@@ -32,6 +32,7 @@ import { type MinAdaFaultProofContracts } from "./families/min-ada.js";
 import { type MinFeeFaultProofContracts } from "./families/min-fee.js";
 import { type MintAuthorizationFaultProofContracts } from "./families/mint-authorization.js";
 import { type MintDeclaredAssetLimitFaultProofContracts } from "./families/mint-declared-asset-limit.js";
+import { type MintItemNonCanonicalFaultProofContracts } from "./families/mint-item-non-canonical.js";
 import { type MissingNativeScriptTxFaultProofContracts } from "./families/missing-native-script-tx.js";
 import { type MissingNativeScriptUtxoFaultProofContracts } from "./families/missing-native-script-utxo.js";
 import { type MissingRedeemerFaultProofContracts } from "./families/missing-redeemer.js";
@@ -110,6 +111,7 @@ export type FaultProofContracts = {
   readonly witnessScriptDecoding: WitnessScriptDecodingFaultProofContracts["witnessScriptDecoding"];
   readonly scriptIntegrityHashMissing: ScriptIntegrityHashMissingFaultProofContracts["scriptIntegrityHashMissing"];
   readonly transactionOutputNonCanonical: TransactionOutputNonCanonicalFaultProofContracts["transactionOutputNonCanonical"];
+  readonly mintItemNonCanonical: MintItemNonCanonicalFaultProofContracts["mintItemNonCanonical"];
   readonly resolvedOutputNonCanonical: ResolvedOutputNonCanonicalFaultProofContracts["resolvedOutputNonCanonical"];
   readonly mintDeclaredAssetLimit: MintDeclaredAssetLimitFaultProofContracts["mintDeclaredAssetLimit"];
   readonly spendInputSignerMissing: SpendInputSignerMissingFaultProofContracts["spendInputSignerMissing"];

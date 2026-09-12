@@ -6,7 +6,7 @@ Last reviewed: 2026-09-07 (source inventory and installation scope).
 
 ## Source inventory
 
-The 54 source catalogue categories and all 54 watcher installations are listed
+The 55 source catalogue categories and 55 watcher installations are listed
 below. This is source coverage, not a claim that a particular network has these
 contracts deployed or that every acceptance suite passed on this revision.
 
@@ -73,6 +73,7 @@ The documentation facts check compares this table to both sources.
 | `00000032` | `executionNativeScriptInvalid`        | Yes               |
 | `00000033` | `scriptIntegrityHashMismatch`         | Yes               |
 | `00000035` | `distinctAssetAccumulationLimit`      | Yes               |
+| `00000036` | `mintItemNonCanonical`                | Yes                |
 
 Shared verifier directories, including `mpf-chunked-proof`, are not additional
 catalogue categories. Count categories from the SDK map, not directories or

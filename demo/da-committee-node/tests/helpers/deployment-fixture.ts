@@ -296,6 +296,8 @@ export const buildDaDeploymentFixture = async (
         .fraudProofScriptIntegrityHashMismatch!.scriptHash as string,
       distinctAssetAccumulationLimit: contracts
         .fraudProofDistinctAssetAccumulationLimit!.scriptHash as string,
+      mintItemNonCanonical: contracts.fraudProofMintItemNonCanonical!
+        .scriptHash as string,
     }),
   };
   const referenceScripts = Object.fromEntries(

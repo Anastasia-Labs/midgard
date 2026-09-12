@@ -263,13 +263,15 @@ const setup = async (
 };
 
 describe("installed catalogue retained classification", () => {
-  it("uses exactly all 54 admitted catalogue members and derives healthy context inside classifyHeader", async () => {
+  it("uses exactly all admitted catalogue members and derives healthy context inside classifyHeader", async () => {
     const fixture = await buildRetainedPlutusIdentityFixture({
       verdict: "accepted",
     });
     const { replayer, classifyInput } = await setup(fixture, "normal");
     expect(replayer.launchScope).toEqual(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER);
-    expect(replayer.launchScope).toHaveLength(54);
+    expect(replayer.launchScope).toHaveLength(
+      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
+    );
     expect(requireCompleteCanonicalReplayBundle(replayer)).toBe(
       replayer.launchScope,
     );
@@ -308,14 +310,16 @@ describe("installed catalogue retained classification", () => {
     ).rejects.toThrow(/module-admitted/u);
   });
 
-  it("classifies the existing accepted forced identity through all 54 catalogue members", async () => {
+  it("classifies the existing accepted forced identity through all catalogue members", async () => {
     const fixture = await buildRetainedPlutusIdentityFixture(
       { verdict: "accepted" },
       { sourceKind: "forced" },
     );
     const { replayer, classifyInput } = await setup(fixture, "forced");
     expect(replayer.launchScope).toEqual(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER);
-    expect(replayer.launchScope).toHaveLength(54);
+    expect(replayer.launchScope).toHaveLength(
+      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
+    );
     const decision = await classifyHeader(classifyInput);
     expect(decision).toMatchObject({
       decision: "healthy",
@@ -435,7 +439,9 @@ describe("installed catalogue retained classification", () => {
       expect(replayer.launchScope).toEqual(
         FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
       );
-      expect(replayer.launchScope).toHaveLength(54);
+      expect(replayer.launchScope).toHaveLength(
+        FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
+      );
       const decision = await classifyHeader(classifyInput);
       expect(decision).toMatchObject({
         decision: "fault_detected",
@@ -536,7 +542,9 @@ describe("installed catalogue retained classification", () => {
     expect(fixture.replay.trace.verdict).toBe("accepted");
     const { replayer, classifyInput } = await setup(fixture, "forced");
     expect(replayer.launchScope).toEqual(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER);
-    expect(replayer.launchScope).toHaveLength(54);
+    expect(replayer.launchScope).toHaveLength(
+      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
+    );
     const decision = await classifyHeader(classifyInput);
     expect(decision).toMatchObject({
       decision: "fault_detected",
@@ -637,7 +645,9 @@ describe("installed catalogue retained classification", () => {
       expect(replayer.launchScope).toEqual(
         FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
       );
-      expect(replayer.launchScope).toHaveLength(54);
+      expect(replayer.launchScope).toHaveLength(
+        FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
+      );
       const decision = await classifyHeader(classifyInput);
       expect(decision).toMatchObject({
         decision: "fault_detected",

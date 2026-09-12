@@ -2353,10 +2353,10 @@ section moves: its verdict stays a function of the bytes alone and stays
 it, because §12.8 convicts only bytes this section calls grammatical and
 renders a non-convicting `not_an_envelope` for everything else. The two fault
 kinds therefore **partition** the committed byte strings a door refuses, and
-no committed field is faultable under both. §12.8's own residue — the §8
-carriage ladder cannot deliver a preimage above §5.4's bound to any step, so
-the byte-bound shape is a rule with no carriage above the bound — is named
-there.
+no committed field is faultable under both. §12.8's byte-bound verdict remains
+a defense-in-depth rule. Decision 0006 makes the §5.4 ceiling a DA-attestation
+admission responsibility, however, so a quorum-attested block cannot make an
+above-bound field a fault-proof obligation; §12.8 records that boundary below.
 
 #### The §5.1 well-formedness predicate
 
@@ -2796,7 +2796,7 @@ Five further conditions are normative:
   malicious challenger, and it is where a conformance suite must have a
   vector — as is the same asymmetry at code 1.
 
-#### Carriage, and this section's own residue
+#### Carriage and the DA-admission boundary
 
 **All three §8 tiers are admissible, at all nine fields**, on §12.7's
 argument: this path materialises the carriage and hashes it once against the
@@ -2808,28 +2808,28 @@ claim rests on §12.7's reasoning (the carve-out §8.3 erratum E2 used to make
 for this path is moot since #606 resolved limit 3 — every door admits the
 witness-set fields under tier 3 now).
 
-**The §5.4 shape has a rule and, above the bound, no carriage.** This is
-recorded rather than mitigated, exactly as §12.7 recorded the residue this
-section closes:
+**The §5.4 shape has a defense-in-depth rule and no above-bound proof
+obligation.** [Decision 0006](../fault-proofs/decisions/0006-da-attestation-transaction-size-admission.md)
+assigns canonical transaction-size, per-field preimage-size and aggregate
+per-block transaction-byte admission to each DA attester. An attester MUST
+refuse to sign when any of those limits is exceeded. Consequently:
 
-- The verdict above convicts an oversize envelope at any length, and the
-  §12.8 family's steps adjudicate it wherever the bytes can be carried.
+- The verdict above may still identify an oversize envelope wherever the bytes
+  can be carried, but that path is defense in depth rather than the security or
+  release-acceptance route for the size boundary.
 - The §8 ladder cannot carry a preimage above §5.4's bound to a step.
   `certified_chunks` refuses `total_length > max_transaction_aggregate_field_bytes`
   before it materialises tier 3, and the §8.6 certificate is refused at the
   same bound at minting, so no such certificate can exist. Tiers 1 and 2 are
   bounded far below it by L1's `maxTxSize`.
-- Therefore a committed preimage above §5.4's bound is convictable _in the
-  rule_ and unreachable _in the carriage_: the stall §12.7 named for that
-  shape is closed for every length the ladder can deliver, and open above it.
-  The §7.4 shape has no such gap — it lives entirely at lengths at or below
-  the bound and is convictable at all three tiers.
+- No §8 amendment is required to carry above-bound bytes: such bytes must not
+  acquire a DA quorum, and therefore cannot enter the attested block set to
+  which the fault-proof catalogue applies. The §7.4 wrong-stride shape remains
+  a content-level fault and is still adjudicable at all three tiers.
 
-Closing the remainder is an amendment to §8, not to this section: the ladder
-would have to admit a preimage above §5.4's bound for this adjudication and
-for no other consumer, which is a change to the certificate policy and to
-`certified_chunks` and is therefore an owner-class decision about the
-carriage. It is recorded on #601 and is not taken here.
+This allocation is size-only. It does not move malformed envelopes,
+declared-length mismatches, illegal item encodings or semantic transaction
+faults into the DA-only boundary.
 
 #### Cost claims
 

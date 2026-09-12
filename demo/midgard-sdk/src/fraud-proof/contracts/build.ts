@@ -30,6 +30,7 @@ import {
 import { buildMinFeeChain } from "./families/min-fee.js";
 import { buildMintAuthorizationChain } from "./families/mint-authorization.js";
 import { buildMintDeclaredAssetLimitChain } from "./families/mint-declared-asset-limit.js";
+import { buildMintItemNonCanonicalChain } from "./families/mint-item-non-canonical.js";
 import { buildMissingNativeScriptTxChain } from "./families/missing-native-script-tx.js";
 import { buildMissingNativeScriptUtxoChain } from "./families/missing-native-script-utxo.js";
 import { buildMissingRedeemerChain } from "./families/missing-redeemer.js";
@@ -206,6 +207,10 @@ export const buildFaultProofContracts = (
       yield* buildScriptIntegrityHashMissingChain({ ...params, ...shared });
     const transactionOutputNonCanonical =
       yield* buildTransactionOutputNonCanonicalChain({ ...params, ...shared });
+    const mintItemNonCanonical = yield* buildMintItemNonCanonicalChain({
+      ...params,
+      ...shared,
+    });
     const resolvedOutputNonCanonical =
       yield* buildResolvedOutputNonCanonicalChain({ ...params, ...shared });
     const mintDeclaredAssetLimit = yield* buildMintDeclaredAssetLimitChain({
@@ -306,6 +311,7 @@ export const buildFaultProofContracts = (
       witnessScriptDecoding,
       scriptIntegrityHashMissing,
       transactionOutputNonCanonical,
+      mintItemNonCanonical,
       resolvedOutputNonCanonical,
       mintDeclaredAssetLimit,
       spendInputSignerMissing,
@@ -375,6 +381,7 @@ export const fraudProofContractsToFirstSteps = (
   scriptIntegrityHashMissing: contracts.scriptIntegrityHashMissing.firstStep,
   transactionOutputNonCanonical:
     contracts.transactionOutputNonCanonical.firstStep,
+  mintItemNonCanonical: contracts.mintItemNonCanonical.firstStep,
   resolvedOutputNonCanonical: contracts.resolvedOutputNonCanonical.firstStep,
   mintDeclaredAssetLimit: contracts.mintDeclaredAssetLimit.firstStep,
   spendInputSignerMissing: contracts.spendInputSignerMissing.firstStep,

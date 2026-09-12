@@ -325,6 +325,7 @@ export type FraudProofs = {
   scriptIntegrityHashMissing: SpendingValidator;
   /** A committed transaction output is not a canonical ledger-output encoding. */
   transactionOutputNonCanonical: SpendingValidator;
+  mintItemNonCanonical: SpendingValidator;
   /** A spent input resolves to a non-canonical prior ledger output. */
   resolvedOutputNonCanonical: SpendingValidator;
   /** A mint policy declares more assets than the protocol limit. */

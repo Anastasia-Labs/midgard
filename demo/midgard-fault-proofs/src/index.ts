@@ -48,6 +48,7 @@ export * from "./invalid-signature/wrongful-rejection.js";
 export * from "./min-fee-forced.js";
 export * from "./min-fee-forced-artifact.js";
 export * from "./mint-declared-asset-limit/index.js";
+export * from "./mint-item-non-canonical/index.js";
 export * from "./missing-redeemer/index.js";
 export * as missingScriptSourceV1 from "./missing-script-source/index.js";
 export {

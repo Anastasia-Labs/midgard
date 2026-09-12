@@ -264,6 +264,7 @@ const REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES = [
   "witnessScriptDecoding",
   "scriptIntegrityHashMissing",
   "transactionOutputNonCanonical",
+  "mintItemNonCanonical",
   "resolvedOutputNonCanonical",
   "mintDeclaredAssetLimit",
   "spendInputSignerMissing",

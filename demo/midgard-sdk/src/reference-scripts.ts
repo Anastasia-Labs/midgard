@@ -611,12 +611,20 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
     "V1FpIntegrityMissingS04",
   "V1 fraud-proof transaction-output-non-canonical step-01":
     "V1FpTxOutputCanonicalS01",
+  "V1 fraud-proof mint-item-non-canonical step-01":
+    "V1FpMintItemNonCanonicalS01",
   "V1 fraud-proof transaction-output-non-canonical step-02":
     "V1FpTxOutputCanonicalS02",
+  "V1 fraud-proof mint-item-non-canonical step-02":
+    "V1FpMintItemNonCanonicalS02",
   "V1 fraud-proof transaction-output-non-canonical step-03":
     "V1FpTxOutputCanonicalS03",
+  "V1 fraud-proof mint-item-non-canonical step-03":
+    "V1FpMintItemNonCanonicalS03",
   "V1 fraud-proof transaction-output-non-canonical step-04":
     "V1FpTxOutputCanonicalS04",
+  "V1 fraud-proof mint-item-non-canonical step-04":
+    "V1FpMintItemNonCanonicalS04",
   "V1 fraud-proof resolved-output-non-canonical step-01":
     "V1FpResolvedOutputS01",
   "V1 fraud-proof resolved-output-non-canonical step-02":
@@ -1187,7 +1195,13 @@ export const incompleteReferenceScriptPublicationTxProgram = ({
           : tx.mintAssets(roleMintAssets, Data.void());
       tx = tx.attach.MintingPolicy(authPolicy.mintingScript);
       if (authPolicy.expiresAtUnixTime !== undefined) {
-        tx = tx.validTo(authPolicy.expiresAtUnixTime - 1);
+        // Bound by the native authority's slot, including a non-aligned planned
+        // lifetime. Subtracting one millisecond can remain in its expiry slot.
+        tx = tx.validTo(
+          lucid.slotToUnixTime(
+            lucid.unixTimeToSlot(authPolicy.expiresAtUnixTime) - 1,
+          ),
+        );
       }
       tx = tx.pay.ToAddressWithData(walletAddress, undefined, {
         lovelace: SCRIPT_REF_OUTPUT_LOVELACE,

@@ -79,6 +79,7 @@ export const FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = [
   "executionNativeScriptInvalid",
   "scriptIntegrityHashMismatch",
   "distinctAssetAccumulationLimit",
+  "mintItemNonCanonical",
 ] as const satisfies readonly (keyof FraudProofs)[];
 
 export type FraudProofCatalogueCategoryName =
@@ -144,6 +145,7 @@ export const FRAUD_PROOF_CATALOGUE_CATEGORY_IDS = {
   executionNativeScriptInvalid: "00000032",
   scriptIntegrityHashMismatch: "00000033",
   distinctAssetAccumulationLimit: "00000035",
+  mintItemNonCanonical: "00000036",
 } as const satisfies Readonly<Record<FraudProofCatalogueCategoryName, string>>;
 
 export const FIELD_PREIMAGE_LENGTH_MISMATCH_FRAUD_CATEGORY_ID =
@@ -154,6 +156,8 @@ export const WITNESS_SCRIPT_DECODING_FRAUD_CATEGORY_ID =
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.witnessScriptDecoding;
 export const SCRIPT_INTEGRITY_HASH_MISSING_FRAUD_CATEGORY_ID =
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.scriptIntegrityHashMissing;
+export const MINT_ITEM_NON_CANONICAL_FRAUD_CATEGORY_ID =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.mintItemNonCanonical;
 export const TRANSACTION_OUTPUT_NON_CANONICAL_FRAUD_CATEGORY_ID =
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.transactionOutputNonCanonical;
 export const RESOLVED_OUTPUT_NON_CANONICAL_FRAUD_CATEGORY_ID =

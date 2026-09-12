@@ -59,7 +59,7 @@ These are intentionally not additional catalogue entries:
 | Concern                                                       | Disposition                                                                                             |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | Separate required-signer membership family                    | Structural N/A: covered by the authenticated Signatures path and `missingSignature`                     |
-| ADA minting                                                   | Structural N/A under canonical value encoding and validation rules                                      |
+| ADA minting                                                   | Canonical ADA minting is unrepresentable; malformed empty-policy field-5 bytes are proved by `mintItemNonCanonical`                                      |
 | Negative output value                                         | Structural N/A under canonical output/value decoding                                                    |
 | Valid normal transaction made a no-op                         | Covered by accepted validation claim plus transition-trace binding                                      |
 | Valid forced transaction made a no-op or wrong forced verdict | Typed deterministic fault family or interactive execution dispute, plus transition-trace effect binding |

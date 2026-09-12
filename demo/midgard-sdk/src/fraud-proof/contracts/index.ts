@@ -150,6 +150,13 @@ export {
   type MintDeclaredAssetLimitFaultProofContracts,
 } from "./families/mint-declared-asset-limit.js";
 export {
+  buildMintItemNonCanonicalChain,
+  buildMintItemNonCanonicalFaultProofContracts,
+  type BuildMintItemNonCanonicalFaultProofContractsParams,
+  MINT_ITEM_NON_CANONICAL_FAULT_PROOF_TITLES,
+  type MintItemNonCanonicalFaultProofContracts,
+} from "./families/mint-item-non-canonical.js";
+export {
   buildMissingNativeScriptTxFaultProofContracts,
   type BuildMissingNativeScriptTxFaultProofContractsParams,
   MISSING_NATIVE_SCRIPT_TX_FAULT_PROOF_TITLES,

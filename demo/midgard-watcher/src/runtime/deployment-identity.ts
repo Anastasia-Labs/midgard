@@ -112,6 +112,7 @@ const CATALOGUE_CATEGORY_TO_CONTRACT = Object.freeze({
   witnessScriptDecoding: "fraudProofWitnessScriptDecoding",
   scriptIntegrityHashMissing: "fraudProofScriptIntegrityHashMissing",
   transactionOutputNonCanonical: "fraudProofTransactionOutputNonCanonical",
+  mintItemNonCanonical: "fraudProofMintItemNonCanonical",
   resolvedOutputNonCanonical: "fraudProofResolvedOutputNonCanonical",
   mintDeclaredAssetLimit: "fraudProofMintDeclaredAssetLimit",
   spendInputSignerMissing: "fraudProofSpendInputSignerMissing",
@@ -301,7 +302,7 @@ export type WatcherFraudProofCatalogueIdentity = Readonly<{
 }>;
 
 export type WatcherDeploymentIdentityPolicy = Readonly<{
-  network: "Mainnet" | "Preprod" | "Preview";
+  network: "Mainnet" | "Preprod" | "Preview" | "Custom";
   hubOracleOneShotOutRef: string;
   appliedScriptHashes: Readonly<Record<string, string>>;
   referenceScripts: Readonly<Record<string, WatcherReferenceScriptIdentity>>;
@@ -416,7 +417,8 @@ const parsePolicy = (value: WatcherDeploymentIdentityPolicy): ParsedPolicy => {
   if (
     policy.network !== "Mainnet" &&
     policy.network !== "Preprod" &&
-    policy.network !== "Preview"
+    policy.network !== "Preview" &&
+    policy.network !== "Custom"
   ) {
     fail("invalid_field", "$.policy.network");
   }
@@ -806,7 +808,7 @@ const verifyCanonicalManifest = (value: unknown): JsonRecord => {
 
 export type VerifiedWatcherDeploymentIdentity = Readonly<{
   manifestId: string;
-  network: "Mainnet" | "Preprod" | "Preview";
+  network: "Mainnet" | "Preprod" | "Preview" | "Custom";
   trustRootId: string;
   blueprintHash: string;
   fundingProfileBundleDigest: string;
@@ -818,7 +820,7 @@ export type VerifiedWatcherDeploymentIdentity = Readonly<{
 export type WatcherDeploymentProtocolScriptAuthority = Readonly<{
   schemaVersion: typeof WATCHER_DEPLOYMENT_PROTOCOL_SCRIPT_AUTHORITY_SCHEMA_VERSION;
   deploymentFingerprint: string;
-  network: "Mainnet" | "Preprod" | "Preview";
+  network: "Mainnet" | "Preprod" | "Preview" | "Custom";
   hubOracleOneShotOutRef: string;
   protocolScriptHashes: Readonly<{
     hubOracleMint: string;

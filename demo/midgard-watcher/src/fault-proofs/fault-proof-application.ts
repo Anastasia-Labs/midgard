@@ -62,6 +62,7 @@ import {
   createManifestBoundMinFeeWorkflow,
   createManifestBoundMintAuthorizationWorkflow,
   createManifestBoundMintDeclaredAssetLimitWorkflow,
+  createManifestBoundMintItemNonCanonicalWorkflow,
   createManifestBoundMissingNativeScriptTxWorkflow,
   createManifestBoundMissingNativeScriptUtxoWorkflow,
   createManifestBoundMissingRedeemerWorkflow,
@@ -96,6 +97,7 @@ import {
   createMinFeeWorkflowRunner,
   createMintAuthorizationWorkflowRunner,
   createMintDeclaredAssetLimitWorkflowRunner,
+  createMintItemNonCanonicalWorkflowRunner,
   createMissingNativeScriptTxWorkflowRunner,
   createMissingNativeScriptUtxoWorkflowRunner,
   createMissingRedeemerWorkflowRunner,
@@ -156,6 +158,7 @@ import {
   type ManifestBoundMinFeeWorkflowConfig,
   type ManifestBoundMintAuthorizationWorkflowConfig,
   type ManifestBoundMintDeclaredAssetLimitWorkflowConfig,
+  type ManifestBoundMintItemNonCanonicalWorkflowConfig,
   type ManifestBoundMissingNativeScriptTxWorkflowConfig,
   type ManifestBoundMissingNativeScriptUtxoWorkflowConfig,
   type ManifestBoundMissingRedeemerWorkflowConfig,
@@ -196,6 +199,7 @@ import {
   VALIDATION_TRACE_DISPUTE_CONTROL_CONTRACT_NAMES,
   VALIDATION_TRACE_DISPUTE_REMOVAL_CONTRACT_NAMES,
   VALIDATION_TRACE_DISPUTE_WITNESS_CONTRACT_NAMES,
+  workflowActuationPermitIsReconciliationOnly,
   type WorkflowAdapterReadinessInput,
   type WorkflowAdapterRunner,
   type WorkflowAdapterRunnerInput,
@@ -246,7 +250,7 @@ import {
 } from "../runtime/user-event-runtime.js";
 import type { WatcherReplayTranscriptStore } from "../storage/replay-transcript-store.js";
 import {
-  createWatcherRetainedDaRuntime,
+  createWatcherRetainedDaRuntimeOwner,
   createWatcherWorkflowRuntimeLoader,
   type WatcherRetainedDaRuntimeOptions,
 } from "../storage/retained-da-runtime.js";
@@ -326,6 +330,7 @@ export const WATCHER_INSTALLED_WORKFLOW_CATEGORIES = Object.freeze([
   "executionNativeScriptInvalid",
   "scriptIntegrityHashMismatch",
   "distinctAssetAccumulationLimit",
+  "mintItemNonCanonical",
 ] as const);
 
 export type WatcherInstalledWorkflowCategory =
@@ -426,6 +431,7 @@ export type WatcherFaultProofApplication = Readonly<{
     invocation: WorkflowAdapterReadinessInput,
   ): Promise<WatcherFaultProofStartupReadiness>;
   runOrResume(invocation: WorkflowAdapterRunnerInput): Promise<unknown>;
+  close(): Promise<void>;
 }>;
 
 type TaggedWorkflowConfig =
@@ -572,6 +578,10 @@ type TaggedWorkflowConfig =
       config: ManifestBoundTransactionOutputNonCanonicalWorkflowConfig;
     }>
   | Readonly<{
+      category: "mintItemNonCanonical";
+      config: ManifestBoundMintItemNonCanonicalWorkflowConfig;
+    }>
+  | Readonly<{
       category: "resolvedOutputNonCanonical";
       config: ManifestBoundResolvedOutputNonCanonicalWorkflowConfig;
     }>
@@ -686,6 +696,9 @@ export type WatcherFaultProofApplicationDependencies = Readonly<{
     readonly network: WatcherConfig["targetNetwork"];
     readonly kupoHttpUrl: string;
     readonly ogmiosUrl: string;
+    readonly slotConfig?: NonNullable<
+      WatcherConfig["customNetwork"]
+    >["slotConfig"];
   }): Promise<LucidEvolution>;
   resolveSigner(input: {
     readonly network: WatcherConfig["targetNetwork"];
@@ -740,6 +753,10 @@ const constructProductionWorkflow = async (
       );
     case "transactionOutputNonCanonical":
       return await createManifestBoundTransactionOutputNonCanonicalWorkflow(
+        input.config,
+      );
+    case "mintItemNonCanonical":
+      return await createManifestBoundMintItemNonCanonicalWorkflow(
         input.config,
       );
     case "resolvedOutputNonCanonical":
@@ -871,11 +888,12 @@ const productionDependencies: WatcherFaultProofApplicationDependencies =
   Object.freeze({
     readText: async (path) => await readFile(path, "utf8"),
     canonicalPath: realpath,
-    makeLucid: async ({ network, kupoHttpUrl, ogmiosUrl }) =>
+    makeLucid: async ({ network, kupoHttpUrl, ogmiosUrl, slotConfig }) =>
       await makeLucidForSubmit(
         {
           network,
           provider: "Kupmios",
+          slotConfig,
           kupoUrl: kupoHttpUrl,
           ogmiosUrl,
         },
@@ -1573,6 +1591,15 @@ const referenceContracts = (
         ...base,
         fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
       });
+    case "mintItemNonCanonical":
+      return Object.freeze({
+        step01: "fraudProofMintItemNonCanonical",
+        step02: "fraudProofMintItemNonCanonicalStep02",
+        step03: "fraudProofMintItemNonCanonicalStep03",
+        step04: "fraudProofMintItemNonCanonicalStep04",
+        ...base,
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+      });
     case "resolvedOutputNonCanonical":
       return Object.freeze({
         step01: "fraudProofResolvedOutputNonCanonical",
@@ -2019,6 +2046,7 @@ const buildCommonInfrastructure = async ({
   const deploymentInfo = parseContractDeploymentInfo(deploymentInfoValue);
   const lucid = await dependencies.makeLucid({
     network: watcherConfig.targetNetwork,
+    slotConfig: watcherConfig.customNetwork?.slotConfig,
     kupoHttpUrl: kupo.endpoint,
     ogmiosUrl: ogmios.endpoint,
   });
@@ -2033,6 +2061,12 @@ const buildCommonInfrastructure = async ({
       : replayContexts.get(executionInvocation.decisionDigest);
   if (
     executionInvocation.decisionDigest !== undefined &&
+    !(
+      executionInvocation.actuationPermit !== undefined &&
+      workflowActuationPermitIsReconciliationOnly(
+        executionInvocation.actuationPermit,
+      )
+    ) &&
     (category === "nonExistentInput" ||
       category === "noReferenceInput" ||
       category === "nativeScriptDecoding" ||
@@ -2293,6 +2327,10 @@ function taggedConfig(
   TaggedWorkflowConfig,
   { readonly category: "transactionOutputNonCanonical" }
 >;
+function taggedConfig(
+  category: "mintItemNonCanonical",
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "mintItemNonCanonical" }>;
 function taggedConfig(
   category: "resolvedOutputNonCanonical",
   common: CommonInfrastructure,
@@ -3280,6 +3318,26 @@ function taggedConfig(
           }),
         }),
       });
+    case "mintItemNonCanonical":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          stateQueueMutationLeaseCoordinator:
+            common.stateQueueMutationLeaseCoordinator,
+          referenceScripts: Object.freeze({
+            step01: reference("step01"),
+            step02: reference("step02"),
+            step03: reference("step03"),
+            step04: reference("step04"),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+            witnesses: Object.freeze(baseWitnesses(common.references)),
+          }),
+        }),
+      });
     case "resolvedOutputNonCanonical":
       return Object.freeze({
         category,
@@ -3906,6 +3964,15 @@ const taggedReferenceOutRefs = (
           ...Object.values(tagged.config.referenceScripts.witnesses),
           tagged.config.referenceScripts.fieldPreimageCertificateMint,
         ];
+      case "mintItemNonCanonical":
+        return [
+          tagged.config.referenceScripts.step01,
+          tagged.config.referenceScripts.step02,
+          tagged.config.referenceScripts.step03,
+          tagged.config.referenceScripts.step04,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+          tagged.config.referenceScripts.fieldPreimageCertificateMint,
+        ];
       case "resolvedOutputNonCanonical":
         return [
           tagged.config.referenceScripts.step01,
@@ -4204,7 +4271,7 @@ const createApplication = ({
     string,
     Awaited<ReturnType<typeof captureWatcherValidationReplayTranscript>>
   >();
-  const loaderOptions = {
+  const retainedDaOptions = {
     deploymentIdentity,
     ...(options.unsafeTransportOptionsForTest === undefined
       ? {}
@@ -4217,6 +4284,9 @@ const createApplication = ({
           unsafeTransportFactoryForTest: options.unsafeTransportFactoryForTest,
         }),
   };
+  const retainedDaOwner =
+    createWatcherRetainedDaRuntimeOwner(retainedDaOptions);
+  const loaderOptions = { ...retainedDaOptions, runtimeOwner: retainedDaOwner };
   function makeTaggedLoader(
     category: "doubleSpend",
   ): TaggedWorkflowLoaderFor<"doubleSpend">;
@@ -4322,6 +4392,9 @@ const createApplication = ({
   function makeTaggedLoader(
     category: "transactionOutputNonCanonical",
   ): TaggedWorkflowLoaderFor<"transactionOutputNonCanonical">;
+  function makeTaggedLoader(
+    category: "mintItemNonCanonical",
+  ): TaggedWorkflowLoaderFor<"mintItemNonCanonical">;
   function makeTaggedLoader(
     category: "resolvedOutputNonCanonical",
   ): TaggedWorkflowLoaderFor<"resolvedOutputNonCanonical">;
@@ -4441,6 +4514,7 @@ const createApplication = ({
     transactionOutputNonCanonical: makeTaggedLoader(
       "transactionOutputNonCanonical",
     ),
+    mintItemNonCanonical: makeTaggedLoader("mintItemNonCanonical"),
     resolvedOutputNonCanonical: makeTaggedLoader("resolvedOutputNonCanonical"),
     mintDeclaredAssetLimit: makeTaggedLoader("mintDeclaredAssetLimit"),
     spendInputSignerMissing: makeTaggedLoader("spendInputSignerMissing"),
@@ -4968,6 +5042,20 @@ const createApplication = ({
       tagged: loaded.config,
     });
   };
+  const mintItemNonCanonicalLoader = async (
+    input: Parameters<(typeof taggedLoaders)["mintItemNonCanonical"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.mintItemNonCanonical(input);
+    if (loaded.config.category !== "mintItemNonCanonical") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
   const resolvedOutputNonCanonicalLoader = async (
     input: Parameters<(typeof taggedLoaders)["resolvedOutputNonCanonical"]>[0],
   ) => {
@@ -5418,6 +5506,10 @@ const createApplication = ({
         transactionOutputNonCanonicalLoader,
         fundingProfile("transactionOutputNonCanonical"),
       ),
+    mintItemNonCanonical: createMintItemNonCanonicalWorkflowRunner(
+      mintItemNonCanonicalLoader,
+      fundingProfile("mintItemNonCanonical"),
+    ),
     resolvedOutputNonCanonical: createResolvedOutputNonCanonicalWorkflowRunner(
       resolvedOutputNonCanonicalLoader,
       fundingProfile("resolvedOutputNonCanonical"),
@@ -5599,6 +5691,7 @@ const createApplication = ({
       });
       const lucid = await dependencies.makeLucid({
         network: watcherConfig.targetNetwork,
+        slotConfig: watcherConfig.customNetwork?.slotConfig,
         kupoHttpUrl: kupo.endpoint,
         ogmiosUrl: ogmios.endpoint,
       });
@@ -5648,6 +5741,13 @@ const createApplication = ({
     return classifierPromise;
   };
   const application: WatcherFaultProofApplication = Object.freeze({
+    close: async () => {
+      admittedApplications.delete(application);
+      authorityGeneration += 1;
+      replayContexts.clear();
+      validationCaptures.clear();
+      await retainedDaOwner.close();
+    },
     schemaVersion: WATCHER_FAULT_PROOF_APPLICATION,
     deploymentFingerprint: deploymentIdentity.manifestId,
     installedCategories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
@@ -5709,10 +5809,7 @@ const createApplication = ({
       } catch {
         throw new Error("watcher runtime configuration is not JSON");
       }
-      const retainedDa = await createWatcherRetainedDaRuntime({
-        watcherConfig,
-        ...loaderOptions,
-      });
+      const retainedDa = await retainedDaOwner.createRuntime(watcherConfig);
       let completedDecision: HeaderDecision;
       let pendingCapture:
         | Awaited<ReturnType<typeof captureWatcherValidationReplayTranscript>>
@@ -5907,6 +6004,36 @@ export const createWatcherFaultProofApplication = (
     environment: process.env,
     allowExecution: true,
   });
+
+/** Bind installed production workflows without exposing execution or classification. */
+export const createWatcherFaultProofReadinessApplication = (
+  options: Pick<
+    WatcherFaultProofApplicationOptions,
+    | "deploymentAuthority"
+    | "infrastructure"
+    | "historicalNativeScriptCheckpointStore"
+    | "fundingProfileOverlay"
+  >,
+): Pick<
+  WatcherFaultProofApplication,
+  "installedCategories" | "assertStartupReady" | "close"
+> => {
+  assertWatcherVerifiedDeploymentAuthority(options.deploymentAuthority);
+  const application = createApplication({
+    options: {
+      ...options,
+      deploymentIdentity: options.deploymentAuthority.deploymentIdentity,
+    },
+    dependencies: productionDependencies,
+    environment: process.env,
+    allowExecution: false,
+  });
+  return Object.freeze({
+    installedCategories: application.installedCategories,
+    assertStartupReady: application.assertStartupReady,
+    close: application.close,
+  });
+};
 
 /** Narrow test-only dependency seam. It cannot execute transactions. */
 export const unsafeCreateWatcherFaultProofApplicationForTest = (

@@ -32,6 +32,7 @@ import {
   WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_SCHEMA_VERSION,
   type WatcherProofThreadFamily,
   type WatcherProofThreadJournal,
+  watcherProofThreadNextStepIndexes,
   type WatcherProofThreadObservation,
   type WatcherProofThreadPolicy,
   type WatcherProofThreadPublicContext,
@@ -133,15 +134,6 @@ const proofThreadFixtureStepHash = (
     .digest("hex")
     .slice(0, 56);
 
-const linearNextStepIndexes = (
-  stepCount: number,
-): readonly (readonly string[])[] =>
-  Object.freeze(
-    Array.from({ length: stepCount }, (_, index) =>
-      Object.freeze(index + 1 < stepCount ? [(index + 1).toString()] : []),
-    ),
-  );
-
 const makeDeploymentAuthority = () => {
   const contractSet = makeWatcherAuthorityContracts();
   const families: readonly WatcherProofThreadFamily[] = Object.freeze(
@@ -179,26 +171,9 @@ const makeDeploymentAuthority = () => {
           categoryId: category.categoryId,
           firstStepScriptHash: category.scriptHash,
           stepScriptHashes,
-          nextStepIndexes:
-            catalogueCategory === "transitionTrace"
-              ? Object.freeze([
-                  Object.freeze(
-                    Array.from(
-                      { length: familyAuthority.stepCount - 1 },
-                      (_, index) => (index + 1).toString(),
-                    ),
-                  ),
-                  ...Array.from(
-                    { length: familyAuthority.stepCount - 1 },
-                    (_, index) =>
-                      Object.freeze(
-                        index === 4 || index === 5
-                          ? [(index + 1).toString()]
-                          : ([] as string[]),
-                      ),
-                  ),
-                ])
-              : linearNextStepIndexes(familyAuthority.stepCount),
+          nextStepIndexes: watcherProofThreadNextStepIndexes(
+            catalogueCategory as keyof typeof WATCHER_PROOF_THREAD_FAMILY_AUTHORITY,
+          ),
         });
       })
       .sort((left, right) => left.familyId.localeCompare(right.familyId)),
@@ -604,9 +579,9 @@ const witnessSetFor = (fixture: TxFixture): CML.TransactionWitnessSet => {
   return witnessSet;
 };
 
-const initTransaction = (): TxFixture => {
+const initTransaction = (selectedFamilyId = "invalid-range"): TxFixture => {
   const family = policy.families.find(
-    ({ familyId }) => familyId === "invalid-range",
+    ({ familyId }) => familyId === selectedFamilyId,
   )!;
   const assetName = `${family.categoryId}${FRAUD_HEADER}`;
   const datumHex = Data.to(
@@ -677,7 +652,10 @@ const policyIndex = (body: CML.TransactionBody, policyId: string): string => {
   throw new Error(`missing fixture mint policy ${policyId}`);
 };
 
-const stepTransaction = (source: WatcherProofThreadJournal): TxFixture => {
+const stepTransaction = (
+  source: WatcherProofThreadJournal,
+  targetStep = 1,
+): TxFixture => {
   const family = policy.families.find(
     ({ familyId }) => familyId === source.familyId,
   )!;
@@ -688,7 +666,7 @@ const stepTransaction = (source: WatcherProofThreadJournal): TxFixture => {
     ),
   );
   const output = outputWithToken(
-    scriptAddress(family.stepScriptHashes[1]!),
+    scriptAddress(family.stepScriptHashes[targetStep]!),
     CT_POLICY,
     source.computationThreadAssetName,
     datumHex,
@@ -985,7 +963,10 @@ const emptyRecords = (): WatcherDurableRecords => ({
   correctionResults: [],
 });
 
-const baseStore = (fixture: TxFixture): WatcherDurableStore => {
+const baseStore = (
+  fixture: TxFixture,
+  selectedFamilyId = "invalid-range",
+): WatcherDurableStore => {
   const records = emptyRecords();
   const priorPoint = {
     chainPointId: h32("50"),
@@ -1044,7 +1025,7 @@ const baseStore = (fixture: TxFixture): WatcherDurableStore => {
         {
           faultId: FAULT_ID,
           blockHash: FRAUD_BLOCK,
-          familyId: "invalid-range",
+          familyId: selectedFamilyId,
           evidence: makeWatcherDurablePayload("80"),
         },
       ],
@@ -1160,16 +1141,19 @@ const journalIdentity = digest({
   faultId: FAULT_ID,
 });
 
-const initJournal = (fixture: TxFixture): WatcherProofThreadJournal =>
+const initJournal = (
+  fixture: TxFixture,
+  selectedFamilyId = "invalid-range",
+): WatcherProofThreadJournal =>
   makeWatcherProofThreadJournal({
     journalId: journalIdentity,
     faultId: FAULT_ID,
-    familyId: "invalid-range",
+    familyId: selectedFamilyId,
     fraudulentBlockHash: FRAUD_BLOCK,
     fraudulentHeaderHash: FRAUD_HEADER,
     fraudProver: PROVER,
     computationThreadAssetName: `${
-      policy.families.find(({ familyId }) => familyId === "invalid-range")!
+      policy.families.find(({ familyId }) => familyId === selectedFamilyId)!
         .categoryId
     }${FRAUD_HEADER}`,
     phase: "active",
@@ -1210,6 +1194,7 @@ const initStage = ({
   sourceMode = "external_providers",
   transactionIsValid = true,
   ordinal = 0,
+  familyId = "invalid-range",
 }: {
   phase: "pending" | "final";
   previousState: WatcherProofThreadState | null;
@@ -1218,8 +1203,9 @@ const initStage = ({
   sourceMode?: FixtureSourceMode;
   transactionIsValid?: boolean;
   ordinal?: number;
+  familyId?: string;
 }): InitStage => {
-  const fixture = initTransaction();
+  const fixture = initTransaction(familyId);
   const depth = phase === "pending" ? "1" : "2";
   const l1 = sourceFixture(sourceMode);
   const normalized = l1.providers.map((provider) =>
@@ -1259,7 +1245,7 @@ const initStage = ({
       ],
     );
   }
-  const sourceStore = suppliedSource ?? baseStore(fixture);
+  const sourceStore = suppliedSource ?? baseStore(fixture, familyId);
   const store = appendPublicStore({
     source: sourceStore,
     block: normalized[0]!,
@@ -1267,7 +1253,7 @@ const initStage = ({
     phase,
     applyEffects: previousState?.pending === null || previousState === null,
   });
-  const journal = initJournal(fixture);
+  const journal = initJournal(fixture, familyId);
   const observation = makeWatcherProofThreadObservation({
     policyDigest: policy.policyDigest,
     network: policy.network,
@@ -1535,7 +1521,18 @@ const transitionJournal = ({
           : transitionKind === "cancel"
             ? "cancelled"
             : "removed",
-    stepIndex: transitionKind === "step" ? "1" : null,
+    stepIndex:
+      transitionKind === "step"
+        ? policy.families
+            .find((family) => family.familyId === source.familyId)!
+            .stepScriptHashes.indexOf(
+              fixture.outputs[0]!.address()
+                .payment_cred()!
+                .as_script()!
+                .to_hex(),
+            )
+            .toString()
+        : null,
     threadOutRef: transitionKind === "step" ? `${fixture.txHash}#0` : null,
     proofTokenOutRef:
       transitionKind === "success"
@@ -2387,6 +2384,11 @@ describe("W17 public proof/computation-thread indexer", () => {
       [],
       [],
     ]);
+    expect(
+      policy.families.find(
+        (family) => family.catalogueCategory === "mintItemNonCanonical",
+      )!.nextStepIndexes,
+    ).toEqual([["1"], ["1", "2"], ["2", "3"], []]);
     for (const family of policy.families) {
       const registered =
         WATCHER_PROOF_THREAD_FAMILY_AUTHORITY[
@@ -2425,6 +2427,22 @@ describe("W17 public proof/computation-thread indexer", () => {
       action: "reject",
       reasonCodes: ["malformed_public_context"],
     });
+  });
+
+  it("requires both mint continuation loops and refuses skipped stages", () => {
+    const { schemaVersion: _schema, policyDigest: _digest, ...input } = policy;
+    for (const graph of [
+      [["1"], ["2"], ["3"], []],
+      [["1"], ["1", "3"], ["2", "3"], []],
+    ]) {
+      const families = policy.families.map((family) =>
+        family.catalogueCategory === "mintItemNonCanonical"
+          ? { ...family, nextStepIndexes: graph }
+          : family,
+      );
+      expect(makeWatcherProofThreadPolicy({ ...input, families })).toBeNull();
+    }
+    expect(makeWatcherProofThreadPolicy(input)).not.toBeNull();
   });
 
   it("rejects incomplete, ambiguous, and unreachable signed family graphs", () => {
@@ -2895,6 +2913,66 @@ describe("W17 public proof/computation-thread indexer", () => {
       });
     },
   );
+
+  it("indexes mint envelope and asset self-loops through authenticated finality", () => {
+    const familyId = "mint-item-non-canonical";
+    const pending = initStage({
+      familyId,
+      phase: "pending",
+      previousState: null,
+      previousFinalityState: null,
+    });
+    const pendingResult = evaluateWatcherProofThreadIndexer(
+      policy,
+      null,
+      pending.observation,
+      pending.context,
+    );
+    expect(pendingResult.action).toBe("accept");
+    const initial = initStage({
+      familyId,
+      phase: "final",
+      previousState: pendingResult.state!,
+      previousFinalityState: pending.finalityState,
+      sourceStore: pending.store,
+    });
+    const initialResult = evaluateWatcherProofThreadIndexer(
+      policy,
+      pendingResult.state,
+      initial.observation,
+      initial.context,
+    );
+    expect(initialResult.action).toBe("accept");
+    let state = initialResult.state!;
+    let store = initial.store;
+    let journal = initial.journal;
+    for (const [index, targetStep] of [1, 1, 2, 2, 3].entries()) {
+      const ordinal = index + 1;
+      const fixture = stepTransaction(journal, targetStep);
+      const source = addSubmittedTransaction(
+        store,
+        fixture,
+        transitionIds(ordinal).submissionId,
+      );
+      const result = runFinalTransition({
+        transitionKind: "step",
+        fixture,
+        previousState: state,
+        previousFinalityState: null,
+        sourceStore: source,
+        sourceJournal: journal,
+        ordinal,
+      });
+      expect(result.state.journal).toMatchObject({
+        familyId,
+        stepIndex: targetStep.toString(),
+        threadOutRef: `${fixture.txHash}#0`,
+      });
+      state = result.state;
+      store = result.final.store;
+      journal = result.final.journal;
+    }
+  });
 
   it("indexes deterministic step, success, proof-token removal, and cancellation lifecycles", () => {
     const initPending = initStage({

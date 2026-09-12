@@ -65,6 +65,35 @@ export type AttestStateQueueHeaderResult = {
   readonly candidateCount: number;
 };
 
+/** Leave room for node slot lag without shortening the protocol's permitted window. */
+export const daAttestationApplyValidityRangeProgram = ({
+  currentTime,
+  headerEndTime,
+}: {
+  readonly currentTime: bigint;
+  readonly headerEndTime: bigint;
+}): Effect.Effect<
+  { readonly validFrom: bigint; readonly validTo: bigint },
+  SDK.DaAttestationBuildError
+> =>
+  Effect.gen(function* () {
+    const deadline = headerEndTime + SDK.DA_ATTESTATION_TIMEOUT_MS;
+    if (currentTime >= deadline)
+      return yield* Effect.fail(
+        new SDK.DaAttestationBuildError({
+          reason: "validity_range_past_deadline",
+          message: "DA attestation apply deadline has already elapsed",
+          cause: `current_time=${currentTime},deadline=${deadline}`,
+        }),
+      );
+    const validFrom = currentTime - 60_000n;
+    const maximumValidTo = validFrom + SDK.MAX_VALIDITY_RANGE_LENGTH_MS;
+    return {
+      validFrom,
+      validTo: maximumValidTo < deadline ? maximumValidTo : deadline,
+    };
+  });
+
 const decodeDatum = <T>(
   utxo: UTxO,
   schema: Parameters<typeof Data.from>[1],
@@ -588,13 +617,10 @@ const attestHeader = ({
       "threshold-signed",
       daAttestationReachedThreshold,
     );
-    const applyValidFrom = BigInt(lucid.slotToUnixTime(lucid.currentSlot()));
-    const applyDeadline =
-      target.stateQueueNode.header.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS;
-    const applyValidTo =
-      applyValidFrom + 120_000n < applyDeadline
-        ? applyValidFrom + 120_000n
-        : applyDeadline;
+    const validityRange = yield* daAttestationApplyValidityRangeProgram({
+      currentTime: BigInt(lucid.slotToUnixTime(lucid.currentSlot())),
+      headerEndTime: target.stateQueueNode.header.endTime,
+    });
     const applyTx =
       yield* SDK.incompleteApplyDaAttestationToStateQueueTxProgram(
         lucid,
@@ -606,10 +632,7 @@ const attestHeader = ({
           target,
           attestation: signedAttestation,
           referenceScripts,
-          validityRange: {
-            validFrom: applyValidFrom,
-            validTo: applyValidTo,
-          },
+          validityRange,
         },
       );
     const applyTxHash = yield* submitCompletedTx(

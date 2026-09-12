@@ -607,6 +607,7 @@ const REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES = [
   "witnessScriptDecoding",
   "scriptIntegrityHashMissing",
   "transactionOutputNonCanonical",
+  "mintItemNonCanonical",
   "resolvedOutputNonCanonical",
   "mintDeclaredAssetLimit",
   "spendInputSignerMissing",
@@ -1424,6 +1425,13 @@ export const midgardContractsFromDeploymentManifest = (
       sourcePath,
       baseContracts,
       "transactionOutputNonCanonical",
+    ),
+    mintItemNonCanonical: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "mintItemNonCanonical",
     ),
     resolvedOutputNonCanonical: linearFaultProofChainFromManifest(
       network,

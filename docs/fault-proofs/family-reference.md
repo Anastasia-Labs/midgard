@@ -222,8 +222,9 @@ equation. The prover finds an unbalanced asset off-chain.
 
 The claim convicts only when the final delta is non-zero and its sign matches
 the claimed inflation/deflation direction. ADA minting and negative output
-quantities are structurally unrepresentable in canonical V1 and are covered by
-the Q24/Q25 executable N/A controls.
+quantities are structurally unrepresentable in canonical V1. Malformed committed
+bytes are covered by `mintItemNonCanonical` and `transactionOutputNonCanonical`;
+the Q24/Q25 decoder controls alone do not prove adversarial-byte coverage.
 
 The installed conservation route also authenticates the selected event
 pre-state, including prior effects in the same block. Wrongful forced rejection
@@ -281,3 +282,53 @@ reference input absent from the ledger is handled by
 output index belongs to `referenceInputNoIdx`.
 
 [Validator source](../../onchain/aiken/validators/fraud-proofs/withdrawn-reference-input).
+
+## Mint-item non-canonicity
+
+`mintItemNonCanonical` (`00000036`) proves that an accepted transaction's
+nonempty field-5 item violates §5.6. The accepted source can be either the
+transactions root or a `ForcedTxValid` leaf. It does not adjudicate wrongful
+rejection: the current machine has no typed malformed-mint rejection reason.
+
+Its statement owns incorrect item shape, policy IDs other than 28 bytes
+(including the empty ADA policy), empty asset maps, asset names over 32 bytes,
+zero quantities, nonminimal/invalid signed integer encodings, truncated or
+trailing bytes, and duplicate/descending asset or adjacent policy keys.
+Canonical negative quantities are burns and never convict.
+
+The ownership boundaries are:
+
+- `canonicalDecodability`: outer field envelope grammar.
+- `committedFieldShape`: field byte limit; an oversized field cannot enter this proof.
+- `fieldItemWidthIllegal`: empty mint item; step 02 refuses it.
+- `mintDeclaredAssetLimit` and `distinctAssetAccumulationLimit`: declared and
+  accumulated asset counts. This scanner does not impose either count limit.
+- `mintAuthorization` and the script-source families: authorization and execution
+  of well-formed mint statements.
+
+An invalid count and a malformed body may coexist in one transaction; those are
+independent statements. This family never convicts solely because an asset count
+exceeds a semantic limit, a script is absent, or value is not preserved.
+
+Step 01 authenticates the accepted subject and selected ordinal. Step 02 opens
+field 5 and certifies at most 32 item envelopes per transaction. Its datum
+retains the next ordinal/byte offset, selected item extent, and preceding policy
+key, so a late selection never re-walks its prefix. Each round authenticates the
+bounded field preimage once. Only after the entire envelope is certified does it
+retain the selected item length/hash and 4095-byte chunk hashes for step 03. A malformed predecessor must be
+challenged at its own ordinal. Step 03 scans at most 32 entries using the current
+chunk and its successor, retaining a cursor across transactions. A token crossing
+a chunk boundary remains authenticated. Step 04 mints the permanent proof only
+for a noncanonical result, followed by the shared queue-removal path.
+
+The SDK registers the four scripts and their deployment/reference identities.
+The fault-proofs package exports accepted/forced binding, field opening,
+resumable scanning, finalization, cancellation, and retained-DA detection.
+The watcher installs the manifest-bound runner, retained-DA replay, reference
+roster, durable journal, and resumable proof-thread indexer topology. This is
+source installation, not live deployment or release-acceptance evidence.
+The Lucid suites exercise the registered scripts with local UPLC evaluation,
+including a 32764-byte item in the maximum 32768-byte certified field, a fault
+at policy index 909 in a 32763-byte field, journal recovery after each physical
+continuation, honest
+mint/burn refusal, forged evidence, cancellation at all four steps, and removal.

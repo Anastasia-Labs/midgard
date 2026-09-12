@@ -23,6 +23,7 @@ import {
   buildMinFeeFaultProofContracts,
   buildMintAuthorizationFaultProofContracts,
   buildMintDeclaredAssetLimitFaultProofContracts,
+  buildMintItemNonCanonicalFaultProofContracts,
   buildMissingNativeScriptTxFaultProofContracts,
   buildMissingNativeScriptUtxoFaultProofContracts,
   buildMissingSignatureFaultProofContracts,
@@ -1179,6 +1180,7 @@ export const buildMinimalFaultProofContracts = async (
     realDistinctAssetAccumulationLimit = false,
     realMintDeclaredAssetLimit = false,
     realTransactionOutputNonCanonical = false,
+    realMintItemNonCanonical = false,
     realResolvedOutputNonCanonical = false,
     realSpendInputSignerMissing = false,
     realProtectedOutputSignerMissing = false,
@@ -1230,6 +1232,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realDistinctAssetAccumulationLimit?: boolean;
     readonly realMintDeclaredAssetLimit?: boolean;
     readonly realTransactionOutputNonCanonical?: boolean;
+    readonly realMintItemNonCanonical?: boolean;
     readonly realResolvedOutputNonCanonical?: boolean;
     readonly realSpendInputSignerMissing?: boolean;
     readonly realProtectedOutputSignerMissing?: boolean;
@@ -1599,6 +1602,10 @@ export const buildMinimalFaultProofContracts = async (
   const transactionOutputNonCanonicalContracts = await buildFamilyContracts(
     realTransactionOutputNonCanonical,
     buildTransactionOutputNonCanonicalFaultProofContracts,
+  );
+  const mintItemNonCanonicalContracts = await buildFamilyContracts(
+    realMintItemNonCanonical,
+    buildMintItemNonCanonicalFaultProofContracts,
   );
   const resolvedOutputNonCanonicalContracts = await buildFamilyContracts(
     realResolvedOutputNonCanonical,
@@ -2183,6 +2190,9 @@ export const buildMinimalFaultProofContracts = async (
     transactionOutputNonCanonical:
       transactionOutputNonCanonicalContracts?.transactionOutputNonCanonical ??
       withActiveOperators.fraudProofContracts.transactionOutputNonCanonical,
+    mintItemNonCanonical:
+      mintItemNonCanonicalContracts?.mintItemNonCanonical ??
+      withActiveOperators.fraudProofContracts.mintItemNonCanonical,
     resolvedOutputNonCanonical:
       resolvedOutputNonCanonicalContracts?.resolvedOutputNonCanonical ??
       withActiveOperators.fraudProofContracts.resolvedOutputNonCanonical,
