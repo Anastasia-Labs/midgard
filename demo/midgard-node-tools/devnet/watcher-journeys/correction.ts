@@ -220,17 +220,52 @@ export const readJourneyWorkflowEntries = async ({
   return ids.length === 0 ? [] : await workflow.load(ids[0]!.name);
 };
 
-/** A retained failure is history; every new failure still stops the current attempt. */
+/**
+ * How long a workflow may keep journaling `stalled` before the attempt fails.
+ *
+ * The orchestrator journals a stall as a diagnostic and retries every pass.
+ * The watcher observes the state queue at finality depth while preflight
+ * builds against the live chain, so a header the queue re-created in that
+ * window (a DA attestation moves the header output) stalls preflight until
+ * the re-creating block finalizes; the next pass then binds the live output.
+ */
+export const JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS = 600_000;
+
+/**
+ * A retained failure is history. A new stall fails the current attempt unless
+ * the workflow is still retrying inside the allowance or already moved past
+ * it; without an allowance every new stall fails immediately.
+ */
 export const journeyWorkflowUpdates = (
   records: readonly FraudProofWorkflowJournalEntry[],
   baseline: readonly FraudProofWorkflowJournalEntry[],
   reported = baseline.length - 1,
+  stall?: { readonly now: number; readonly allowanceMs: number },
 ) => {
   expect(records.slice(0, baseline.length)).toEqual(baseline);
   const updates = records.filter(({ sequence }) => sequence > reported);
   const failure = updates.find(({ event }) => event.kind === "stalled")?.event;
-  if (failure?.kind === "stalled")
+  if (failure?.kind !== "stalled") return updates;
+  let trailingStart = records.length;
+  while (
+    trailingStart > 0 &&
+    records[trailingStart - 1]!.event.kind === "stalled"
+  )
+    trailingStart -= 1;
+  const trailing = records.slice(trailingStart);
+  if (stall === undefined)
     throw new Error(`Workflow stalled: ${failure.reason}`);
+  if (trailing.length === 0) return updates;
+  const since = Date.parse(trailing[0]!.recordedAt);
+  const latest = trailing[trailing.length - 1]!.event;
+  if (
+    !Number.isFinite(since) ||
+    stall.now - since > stall.allowanceMs ||
+    latest.kind !== "stalled"
+  )
+    throw new Error(
+      `Workflow stalled: ${latest.kind === "stalled" ? latest.reason : failure.reason}`,
+    );
   return updates;
 };
 
@@ -260,6 +295,7 @@ export const verifyJourneyCorrection = async ({
   predecessorHeaderHash,
   workflowBaseline,
   correctionTimeoutMs = 1_800_000,
+  stallAllowanceMs = JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS,
   operatorVkey,
   requireLive,
   poll,
@@ -274,6 +310,7 @@ export const verifyJourneyCorrection = async ({
   predecessorHeaderHash: string;
   workflowBaseline: readonly FraudProofWorkflowJournalEntry[];
   correctionTimeoutMs?: number;
+  stallAllowanceMs?: number;
   operatorVkey: string;
   requireLive(): void;
   poll<T>(
@@ -285,6 +322,7 @@ export const verifyJourneyCorrection = async ({
 }) => {
   const { deployment, provider, accounts } = context;
   let reported = workflowBaseline.length - 1;
+  let reportedStall: string | undefined;
   const completion = await poll(
     "confirmed proof and correction",
     async () => {
@@ -298,9 +336,14 @@ export const verifyJourneyCorrection = async ({
         records,
         workflowBaseline,
         reported,
+        { now: Date.now(), allowanceMs: stallAllowanceMs },
       )) {
         if (event.kind === "submitted" || event.kind === "confirmed")
           console.info(`Live proof: ${event.kind} ${event.actionId}`);
+        if (event.kind === "stalled" && event.reason !== reportedStall) {
+          reportedStall = event.reason;
+          console.info(`Live proof: stalled, retrying: ${event.reason}`);
+        }
         reported = sequence;
       }
       const terminal = records.find(

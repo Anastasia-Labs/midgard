@@ -53,6 +53,53 @@ it("resumes after an immutable historical failure without hiding a new failure",
   ).toThrow("Workflow stalled: new failure");
 });
 
+it("tolerates a stall the workflow is still retrying inside the allowance", () => {
+  const at = (sequence: number, recordedAt: string, reason: string) => ({
+    ...entry(sequence, { kind: "stalled", reason }),
+    recordedAt,
+  });
+  const prepared = entry(1, {
+    kind: "reconciled",
+    actionId: "init:ab#0",
+    txHash: "78".repeat(32),
+    outcome: "pending",
+  });
+  const stalls = [
+    at(2, "2026-09-12T15:45:25.000Z", "preflight failed for init:ab#0"),
+    at(3, "2026-09-12T15:45:26.000Z", "preflight failed for init:ab#0"),
+  ];
+  const now = Date.parse("2026-09-12T15:47:00.000Z");
+  const stall = { now, allowanceMs: 600_000 };
+  expect(
+    journeyWorkflowUpdates(
+      [...baseline, prepared, ...stalls],
+      baseline,
+      1,
+      stall,
+    ),
+  ).toEqual(stalls);
+  expect(() =>
+    journeyWorkflowUpdates([...baseline, prepared, ...stalls], baseline, 1, {
+      now: now + 600_000,
+      allowanceMs: 600_000,
+    }),
+  ).toThrow("Workflow stalled: preflight failed for init:ab#0");
+  const moved = entry(4, {
+    kind: "reconciled",
+    actionId: "init:cd#0",
+    txHash: "56".repeat(32),
+    outcome: "pending",
+  });
+  expect(
+    journeyWorkflowUpdates(
+      [...baseline, prepared, ...stalls, moved],
+      baseline,
+      1,
+      { now: now + 3_600_000, allowanceMs: 600_000 },
+    ),
+  ).toEqual([...stalls, moved]);
+});
+
 it("rejects a changed or truncated pre-launch journal prefix", () => {
   expect(() => journeyWorkflowUpdates([], baseline)).toThrow();
   expect(() =>
