@@ -238,11 +238,21 @@ const createRuntime = async (input: {
               "touched block finalized without a local observation",
             );
           }
-          const next = await input.source.observe({
-            nativeBlock,
-            localObservation,
-            previous,
-          });
+          // The coordinator records block progress only after this hook
+          // returns, so a crash while dispatching replays the block whose
+          // observation is already the durable cursor. That replay reuses
+          // the cursor instead of observing the block a second time.
+          const alreadyObserved =
+            previous.nativePoint.blockHash === nativeBlock.blockHash &&
+            previous.nativePoint.blockNo === nativeBlock.blockNo &&
+            previous.nativePoint.slot === nativeBlock.slot;
+          const next = alreadyObserved
+            ? previous
+            : await input.source.observe({
+                nativeBlock,
+                localObservation,
+                previous,
+              });
           if (
             next !== null &&
             next.observationDigest !== previous.observationDigest

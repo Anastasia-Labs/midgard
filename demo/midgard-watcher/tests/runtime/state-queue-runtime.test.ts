@@ -308,6 +308,69 @@ describe("production state-queue runtime V1", () => {
       decisionBridge.reconcileAndDispatch.mock.invocationCallOrder[0]!,
     );
   });
+  it("replays the finalized block already recorded as the durable cursor without re-observing it", async () => {
+    // A crash between appending the observation and recording block progress
+    // makes the coordinator deliver the same finalized block again on restart.
+    const before = observation(100, "44", null);
+    const current = observation(101, "45", before.observationDigest);
+    const observe = vi.fn(async () => {
+      throw new Error(
+        "state-queue observation predecessor is foreign or non-monotone",
+      );
+    });
+    const append = vi.fn(async () => "appended" as const);
+    const source: WatcherStateQueueObservationSource = {
+      restore: async () => ({
+        previous: current,
+        discardedObservationCount: 0,
+        replayIntersection: point(101, "45"),
+        catchupBoundary: {
+          ...point(101, "45"),
+          finalityDepth: "30",
+          ogmiosTipBlockNo: "131",
+        },
+      }),
+      bootstrap: async () => {
+        throw new Error("not used");
+      },
+      observe,
+      resolveRetainedHeader: async () => {
+        throw new Error("not used");
+      },
+    };
+    const runtime = await createWatcherStateQueueRuntime({
+      source,
+      store: {
+        readAll: async () => [before, current],
+        append,
+        rollbackTo: async () => undefined,
+      },
+    });
+    const decisionBridge = bridge();
+    const reconcile = vi.fn(async () => undefined);
+    const hooks = runtime.bindFaultDecisionBridge(decisionBridge.value, {
+      reconcile,
+      invalidateForRollback: () => undefined,
+    });
+    await hooks.onFinalized({
+      nativeBlock: nativeBlock(101, "45"),
+      localObservation,
+      relevance: "touched",
+    });
+    expect(observe).not.toHaveBeenCalled();
+    expect(append).not.toHaveBeenCalled();
+    expect(runtime.current()).toBe(current);
+    expect(reconcile).toHaveBeenCalledWith(current, true);
+    expect(decisionBridge.reconcileAndDispatch).toHaveBeenCalledWith(current);
+    await expect(
+      hooks.onFinalized({
+        nativeBlock: nativeBlock(101, "46"),
+        localObservation,
+        relevance: "touched",
+      }),
+    ).rejects.toThrow("non-monotone");
+  });
+
   it.each([
     { blockNo: 102, byte: "33", reason: "foreign" },
     { blockNo: 103, byte: "22", reason: "skipped" },
