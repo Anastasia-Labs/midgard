@@ -77,7 +77,7 @@ validator main(
               header_start_time,
               header_end_time,
               committed_withdrawal_id,
-              committed_withdrawal_info_hash,
+              committed_withdrawal_content_hash,
             })
           = m_input_state_data
 
@@ -101,7 +101,7 @@ validator main(
           header_start_time,
           header_end_time,
           committed_withdrawal_id,
-          committed_withdrawal_info_hash,
+          committed_withdrawal_content_hash,
           verdict,
         }
         expect output_state_data == expected_output_state
@@ -137,7 +137,7 @@ fn run_step_02(
     header_start_time: input_state.header_start_time,
     header_end_time: input_state.header_end_time,
     committed_withdrawal_id: input_state.committed_withdrawal_id,
-    committed_withdrawal_info_hash: input_state.committed_withdrawal_info_hash,
+    committed_withdrawal_content_hash: input_state.committed_withdrawal_content_hash,
     verdict,
   }
   main.spend(

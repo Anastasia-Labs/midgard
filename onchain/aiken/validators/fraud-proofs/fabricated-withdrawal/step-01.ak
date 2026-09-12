@@ -20,7 +20,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/fabricated_withdrawal/step_01.{
-  Args, Datum, SpendRedeemer, committed_withdrawal_info_hash_v1,
+  Args, Datum, SpendRedeemer, committed_withdrawal_content_hash_v1,
   verify_challenged_header_v1, verify_committed_withdrawal_membership_v1,
 }
 use midgard/fraud_proofs/fabricated_withdrawal/step_02
@@ -108,7 +108,7 @@ validator main(
           header_start_time: header.start_time,
           header_end_time: header.end_time,
           committed_withdrawal_id: committed_withdrawal.key,
-          committed_withdrawal_info_hash: committed_withdrawal_info_hash_v1(
+          committed_withdrawal_content_hash: committed_withdrawal_content_hash_v1(
             committed_withdrawal,
           ),
         }
@@ -142,7 +142,7 @@ fn run_step_01(
     header_start_time: block.block.header.start_time,
     header_end_time: block.block.header.end_time,
     committed_withdrawal_id: membership.key,
-    committed_withdrawal_info_hash: committed_withdrawal_info_hash_v1(
+    committed_withdrawal_content_hash: committed_withdrawal_content_hash_v1(
       membership,
     ),
   }

@@ -10,15 +10,16 @@
 //// keeps the thread's L1 footprint independent of the withdrawer's chosen
 //// `l2_value`/`l1_datum` sizes.
 ////
-//// One commitment inequality covers all three ways a withdrawal's content can be
-//// fabricated — a diverted `body`, a forged `signature`, an overridden `validity`
-//// — because a `WithdrawalInfo` is exactly that triple; the positive selector
-//// drives all three.
+//// One commitment inequality covers both ways a withdrawal's content can be
+//// fabricated — a diverted `body` and a forged `signature` — and the positive
+//// selector drives both. The committed `validity` verdict is outside the
+//// comparison: the operator owns it (decision 0007), so a leaf that differs from
+//// the authentic order only in its verdict is not convictable here, which
+//// `rejects_validity_only_difference` pins.
 
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/fabricated_withdrawal/step_01
@@ -163,8 +164,10 @@ fn content_mismatch_fault(
   committed_info: ledger_state.WithdrawalInfo,
 ) -> step_04.FabricatedWithdrawalFaultV1 {
   step_04.MismatchedWithdrawalContent {
-    committed_withdrawal_info_hash: utils.serialise_and_hash_32(committed_info),
-    authentic_withdrawal_info_hash: utils.serialise_and_hash_32(
+    committed_withdrawal_content_hash: step_01.withdrawal_content_hash_v1(
+      committed_info,
+    ),
+    authentic_withdrawal_content_hash: step_01.withdrawal_content_hash_v1(
       step_01.authentic_withdrawal_info_v1(),
     ),
     event_inclusion_time: step_02.authentic_inclusion_time_v1,
@@ -204,23 +207,20 @@ fn run_fidelity_variant(committed_info: ledger_state.WithdrawalInfo) -> Bool {
 }
 
 /// Positive selector: both `FabricatedWithdrawal` faults are classified from
-/// authenticated material, and the content arm catches a fabrication of *any* of
-/// the three `WithdrawalInfo` fields.
+/// authenticated material, and the content arm catches a fabrication of either
+/// L1-owned `WithdrawalInfo` field.
 ///
-/// - a diverted `body` (the payout redirected to another L1 address),
-/// - a forged `signature` (an authorisation the owner never produced),
-/// - an overridden `validity` (the verdict `transition_trace/proof`'s
-///   `ValidWithdrawalTransition` arm reads out of the committed leaf),
+/// - a diverted `body` (the payout redirected to another L1 address), and
+/// - a forged `signature` (an authorisation the owner never produced)
 ///
 /// each re-open the exact event datum step-02 committed to and show the committed
-/// `WithdrawalInfo` commitment differs from the authentic one; the
+/// `(body, signature)` commitment differs from the authentic one; the
 /// nonexistent-identity arm carries forward the absence verdict with nothing left
 /// to open.
 test accepts_withdrawal_content_mismatch() {
   and {
     run_fidelity_variant(step_01.diverted_withdrawal_info_v1()),
     run_fidelity_variant(step_01.forged_signature_withdrawal_info_v1()),
-    run_fidelity_variant(step_01.overridden_validity_withdrawal_info_v1()),
     run_step_03(
       state_from(
         step_01.fabricated_identity_block_v1(),
@@ -232,11 +232,23 @@ test accepts_withdrawal_content_mismatch() {
   }
 }
 
+/// Operator-owned verdict negative selector (decision 0007): a header whose
+/// committed leaf carries the authentic order's body and signature but a
+/// `validity` verdict the L1 order datum's placeholder never held has fabricated
+/// nothing. That verdict is the operator's adjudication of L2 state — the honest
+/// tag for a withdrawal whose referenced L2 output does not exist — and if it is
+/// wrong it is `withdrawalMistag`'s fault, proved against the authenticated
+/// ledger. Here the committed and authentic content commitments are equal, so no
+/// mismatch can be named and the step refuses.
+test rejects_validity_only_difference() fail {
+  run_fidelity_variant(step_01.revalidated_withdrawal_info_v1())
+}
+
 /// Valid-block negative selector: a header that commits exactly the authentic
-/// event's `WithdrawalInfo` — same body, same signature, same validity — has
-/// fabricated nothing, and no fault can be classified from it. This is the whole
-/// family's valid-block guard on the content arm: the committed commitment and the
-/// authentic one are equal, so there is no mismatch to name.
+/// event's `WithdrawalInfo` — same body, same signature — has fabricated nothing,
+/// and no fault can be classified from it. This is the whole family's valid-block
+/// guard on the content arm: the committed commitment and the authentic one are
+/// equal, so there is no mismatch to name.
 test rejects_exact_info_match() fail {
   run_content_mismatch(
     step_01.authentic_withdrawal_block_v1(),

@@ -16,19 +16,26 @@
 //// *non-existence* conviction, which is a strictly stronger claim than the
 //// evidence supports.
 ////
-//// ### One comparison settles body, signature and validity
+//// ### One comparison settles body and signature
 ////
-//// The mismatch arm compares the committed `WithdrawalInfo` commitment with the
-//// authentic event's. Because a `WithdrawalInfo` is exactly
-//// `(body, signature, validity)`, that single 32-byte inequality convicts a header
-//// that diverted the payout address or value (body), that attached an
-//// authorisation the owner never produced (signature), or that overrode the
-//// verdict `transition_trace/proof`'s `ValidWithdrawalTransition` arm reads out of
-//// the committed leaf (validity). The family does not need — and deliberately does
-//// not have — three separate faults for that: a per-field classification would
-//// invite disagreement about which field "really" differs when a header changes
-//// two at once, and every one of the three is equally a fabrication of the
+//// The mismatch arm compares the committed `(body, signature)` commitment with
+//// the authentic event's. That single 32-byte inequality convicts a header that
+//// diverted the payout address or value (body) or that attached an authorisation
+//// the owner never produced (signature). The family does not need — and
+//// deliberately does not have — a separate fault per field: a per-field
+//// classification would invite disagreement about which field "really" differs
+//// when a header changes both at once, and either is equally a fabrication of the
 //// authentic order.
+////
+//// The committed `validity` verdict is **not** compared. Decision 0007
+//// (`docs/fault-proofs/decisions/0007-operator-owned-event-validity.md`) rules
+//// that the operator owns it: the L1 order datum's verdict is a placeholder
+//// written at order creation, so a committed verdict that differs from it is the
+//// operator's adjudication of L2 state, not a fabrication of the L1 order. A
+//// wrong verdict is convicted by `withdrawalMistag` against the authenticated
+//// ledger state. Comparing it here would convict every honest block that
+//// correctly tagged a withdrawal whose L2 output does not exist — see
+//// `rejects_validity_only_difference` in the step-03 validator.
 ////
 //// ### Why the event datum arrives in the redeemer
 ////
@@ -66,7 +73,7 @@ pub type State {
   header_start_time: PosixTime,
   header_end_time: PosixTime,
   committed_withdrawal_id: ledger_state.WithdrawalId,
-  committed_withdrawal_info_hash: step_01.WithdrawalInfoHash,
+  committed_withdrawal_content_hash: step_01.WithdrawalContentHash,
   verdict: WithdrawalEvidenceVerdictV1,
 }
 
@@ -102,7 +109,7 @@ pub fn fixture_state_v1(
     header_start_time: input_state.header_start_time,
     header_end_time: input_state.header_end_time,
     committed_withdrawal_id: input_state.committed_withdrawal_id,
-    committed_withdrawal_info_hash: input_state.committed_withdrawal_info_hash,
+    committed_withdrawal_content_hash: input_state.committed_withdrawal_content_hash,
     verdict,
   }
 }
@@ -148,19 +155,22 @@ pub fn open_authentic_withdrawal_content_v1(
       expect authentic_datum: withdrawal.Datum = event_datum
       expect authentic_datum.event.id == state.committed_withdrawal_id
 
-      // 3. The fault: the authentic event's content is not what the header
-      //    committed. Comparing the two 32-byte commitments is equivalent to
-      //    comparing the `WithdrawalInfo`s, and the committed side is the exact
-      //    hash of the bytes step-01 fed to the counted-root membership check.
-      let authentic_withdrawal_info_hash = utils.serialise_and_hash_32(
+      // 3. The fault: the authentic event's `(body, signature)` content is not
+      //    what the header committed. Comparing the two 32-byte commitments is
+      //    equivalent to comparing the contents, and the committed side is the
+      //    commitment step-01 took from the very leaf value it fed to the
+      //    counted-root membership check. The `validity` verdict is excluded
+      //    from both sides (decision 0007): the operator owns it, and a verdict
+      //    the chain contradicts is `withdrawalMistag`'s fault, not this one's.
+      let authentic_withdrawal_content_hash = step_01.withdrawal_content_hash_v1(
         authentic_datum.event.info,
       )
       expect
-        authentic_withdrawal_info_hash != state.committed_withdrawal_info_hash
+        authentic_withdrawal_content_hash != state.committed_withdrawal_content_hash
 
       step_04.MismatchedWithdrawalContent {
-        committed_withdrawal_info_hash: state.committed_withdrawal_info_hash,
-        authentic_withdrawal_info_hash,
+        committed_withdrawal_content_hash: state.committed_withdrawal_content_hash,
+        authentic_withdrawal_content_hash,
         event_inclusion_time,
       }
     }

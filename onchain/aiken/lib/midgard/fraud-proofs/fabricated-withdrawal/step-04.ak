@@ -12,7 +12,10 @@
 ////    block.
 ////
 //// 2. **The fault is really a fault.** `MismatchedWithdrawalContent` must carry
-////    two *different* content commitments, and its event must have been due for
+////    two *different* `(body, signature)` content commitments — a committed leaf
+////    whose only divergence from the authentic order is its operator-owned
+////    `validity` verdict commits the same content, so it cannot reach a
+////    conviction here (decision 0007) — and its event must have been due for
 ////    the challenged block: `header.start_time < inclusion_time <=
 ////    header.end_time`, the same window
 ////    `midgard/fraud_proofs/transition_trace/proof` applies to a timed L1 event.
@@ -39,11 +42,13 @@ pub type FabricatedWithdrawalFaultV1 {
   /// No L1 withdrawal event with the committed `WithdrawalId` was ever
   /// authenticated.
   NonexistentWithdrawalIdentity
-  /// The authentic L1 event exists and was due, but its `WithdrawalInfo` — its
-  /// body, its signature or its validity verdict — is not the committed one.
+  /// The authentic L1 event exists and was due, but its `(body, signature)`
+  /// content is not the committed one. The committed `validity` verdict is
+  /// excluded from the comparison: the operator owns it (decision 0007), and a
+  /// verdict the chain contradicts is `withdrawalMistag`'s fault.
   MismatchedWithdrawalContent {
-    committed_withdrawal_info_hash: step_01.WithdrawalInfoHash,
-    authentic_withdrawal_info_hash: step_01.WithdrawalInfoHash,
+    committed_withdrawal_content_hash: step_01.WithdrawalContentHash,
+    authentic_withdrawal_content_hash: step_01.WithdrawalContentHash,
     event_inclusion_time: PosixTime,
   }
 }
@@ -84,11 +89,11 @@ pub fn fabricated_withdrawal_fault_is_established_v1(state: State) -> Bool {
     // manufactured this arm out of a present-event verdict.
     NonexistentWithdrawalIdentity -> True
     MismatchedWithdrawalContent {
-      committed_withdrawal_info_hash,
-      authentic_withdrawal_info_hash,
+      committed_withdrawal_content_hash,
+      authentic_withdrawal_content_hash,
       event_inclusion_time,
     } -> and {
-        committed_withdrawal_info_hash != authentic_withdrawal_info_hash,
+        committed_withdrawal_content_hash != authentic_withdrawal_content_hash,
         // The `timed_l1_event_is_due` window, restated: it is private to
         // `midgard/fraud_proofs/transition_trace/proof`, so this family cannot
         // call it. See the step-04 validator's `rejects_stale_evidence`.

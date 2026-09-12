@@ -9,7 +9,6 @@ use cardano/address.{Address}
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/types.{PosixTime}
-use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/fabricated_withdrawal/step_01
@@ -136,10 +135,10 @@ fn mismatch_state(
     block,
     step_02.observed_verdict_v1(authentic_event_datum()),
     step_04.MismatchedWithdrawalContent {
-      committed_withdrawal_info_hash: utils.serialise_and_hash_32(
+      committed_withdrawal_content_hash: step_01.withdrawal_content_hash_v1(
         committed_info,
       ),
-      authentic_withdrawal_info_hash: utils.serialise_and_hash_32(
+      authentic_withdrawal_content_hash: step_01.withdrawal_content_hash_v1(
         step_01.authentic_withdrawal_info_v1(),
       ),
       event_inclusion_time,
@@ -204,7 +203,7 @@ test accepts_exact_fabricated_withdrawal_fault() {
 }
 
 /// Valid-block negative selector: a block that committed exactly the authentic
-/// withdrawal order — body, signature and validity — is not convictable. Even if
+/// withdrawal order — same body, same signature — is not convictable. Even if
 /// such a thread somehow reached the final step, the "mismatch" it carries names
 /// the same content commitment twice, and no permanent token is minted for it.
 test rejects_authentic_valid_withdrawal() fail {
@@ -214,6 +213,34 @@ test rejects_authentic_valid_withdrawal() fail {
       step_01.authentic_withdrawal_info_v1(),
       step_02.authentic_inclusion_time_v1,
     ),
+  )
+}
+
+/// Operator-owned verdict negative selector (decision 0007): a block whose
+/// committed leaf differs from the authentic order only in its `validity`
+/// verdict has fabricated no content. The operator owns that verdict — the L1
+/// order datum holds a placeholder written before any block adjudicated the
+/// withdrawal — so even a thread that reached the final step with such a leaf
+/// carries the same `(body, signature)` commitment twice and mints nothing. A
+/// verdict the chain contradicts is `withdrawalMistag`'s fault instead.
+test rejects_validity_only_difference() fail {
+  run_own_thread(
+    mismatch_state(
+      block_committing(step_01.revalidated_withdrawal_info_v1()),
+      step_01.revalidated_withdrawal_info_v1(),
+      step_02.authentic_inclusion_time_v1,
+    ),
+  )
+}
+
+/// A challenged block committing the authentic withdrawal identity with
+/// `committed_info` as its content.
+fn block_committing(
+  committed_info: ledger_state.WithdrawalInfo,
+) -> step_01.FabricatedWithdrawalBlockV1 {
+  step_01.fabricated_withdrawal_block_v1(
+    step_01.authentic_withdrawal_id_v1(),
+    committed_info,
   )
 }
 

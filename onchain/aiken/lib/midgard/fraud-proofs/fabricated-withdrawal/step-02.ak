@@ -87,7 +87,7 @@ pub type State {
   header_start_time: PosixTime,
   header_end_time: PosixTime,
   committed_withdrawal_id: ledger_state.WithdrawalId,
-  committed_withdrawal_info_hash: step_01.WithdrawalInfoHash,
+  committed_withdrawal_content_hash: step_01.WithdrawalContentHash,
 }
 
 /// The prover's chosen L1 witness about the committed withdrawal identity.
@@ -223,7 +223,7 @@ pub fn fixture_state_v1(block: step_01.FabricatedWithdrawalBlockV1) -> State {
     header_start_time: block.block.header.start_time,
     header_end_time: block.block.header.end_time,
     committed_withdrawal_id: block.committed_withdrawal_id,
-    committed_withdrawal_info_hash: step_01.committed_withdrawal_info_hash_v1(
+    committed_withdrawal_content_hash: step_01.committed_withdrawal_content_hash_v1(
       step_01.committed_withdrawal_membership_v1(block),
     ),
   }

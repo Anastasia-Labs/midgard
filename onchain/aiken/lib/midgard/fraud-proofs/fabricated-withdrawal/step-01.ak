@@ -7,21 +7,28 @@
 //// `withdrawals_root`/`withdrawal_count` pair, whose leaves are
 //// `(WithdrawalId, WithdrawalInfo)`: the L1 withdrawal `OutputReference` and the
 //// `body`/`signature`/`validity` triple the block claims the order carried
-//// (`midgard/ledger_state`). That value is wider than a deposit's — it commits
-//// the withdrawal *body* (the L2 outref, owner, value and the L1 address and
-//// datum the payout must go to), the *signature* that authorises it, and the
-//// *validity* verdict that decides whether it pays out at all — so a header can
-//// fabricate any of the three independently while keeping the other two honest.
+//// (`midgard/ledger_state`). Two of those three come from L1: the withdrawal
+//// *body* (the L2 outref, owner, value and the L1 address and datum the payout
+//// must go to) and the *signature* that authorises it are fixed by the
+//// authenticated withdrawal order, and a header can fabricate either
+//// independently while keeping the other honest. The third, *validity*, does not:
+//// decision 0007
+//// (`docs/fault-proofs/decisions/0007-operator-owned-event-validity.md`) rules
+//// that the operator owns the verdict a block stamps on a committed user event.
+//// The L1 order datum carries only a placeholder verdict, written before any
+//// block adjudicated the withdrawal, so a committed verdict that differs from it
+//// is the operator's claim about L2 state and belongs to `withdrawalMistag`,
+//// which judges it against the authenticated ledger. This family therefore
+//// compares exactly `(body, signature)`.
 ////
 //// The transition-trace family verifies that a committed withdrawal leaf is a
 //// member of that root and that the projected L2 transition follows from it, but
 //// every one of its withdrawal arms *starts* from the committed leaf: it assumes
-//// the committed `WithdrawalInfo` is the genuine L1 order's content — its
-//// `ValidWithdrawalTransition` arm even reads `source_membership.value.validity`
-//// straight out of the committed leaf — and it can only run at all when the
-//// prover can produce the matching authentic event NFT. A header that commits a
-//// withdrawal with no authentic L1 event, or with a body, signature or validity
-//// the authentic event never carried, is therefore outside its reach.
+//// the committed `WithdrawalInfo` is the genuine L1 order's content, and it can
+//// only run at all when the prover can produce the matching authentic event NFT.
+//// A header that commits a withdrawal with no authentic L1 event, or with a body
+//// or signature the authentic event never carried, is therefore outside its
+//// reach.
 ////
 //// Violation identifier: **`FabricatedWithdrawal`**. A block is faulty when its
 //// counted `withdrawals_root` commits a `(WithdrawalId, WithdrawalInfo)` leaf
@@ -30,7 +37,7 @@
 //// - `NonexistentWithdrawalIdentity` — no L1 withdrawal event with that
 ////   `WithdrawalId` was ever authenticated, or
 //// - `MismatchedWithdrawalContent` — the authentic event exists and was due for
-////   this block, but its `WithdrawalInfo` is not the committed one.
+////   this block, but its `(body, signature)` content is not the committed one.
 ////
 //// ### Why non-existence is positively provable
 ////
@@ -233,27 +240,55 @@ pub fn verify_committed_withdrawal_membership_v1(
   )
 }
 
-/// Blake2b-256 hash of `cbor.serialise` of a `WithdrawalInfo`.
+/// The part of a committed withdrawal leaf the authentic L1 order fixes: the
+/// `body` that says what is withdrawn and where it is paid, and the `signature`
+/// that authorises it.
 ///
-/// The thread carries this hash rather than the `WithdrawalInfo` itself, and that
-/// is a soundness property rather than an optimisation: the value embeds
+/// `WithdrawalInfo`'s third field, `validity`, is deliberately absent. Decision
+/// 0007 (`docs/fault-proofs/decisions/0007-operator-owned-event-validity.md`)
+/// rules that the operator owns the validity verdict: the L1 order datum carries
+/// only a placeholder verdict, written before any block adjudicated the
+/// withdrawal, so a committed verdict that differs from it is the operator's own
+/// claim rather than a fabrication of the order. A wrong verdict is the
+/// `withdrawalMistag` family's fault, proved against the authenticated ledger
+/// state; including `validity` here would let this family convict every honest
+/// block that correctly tagged a withdrawal the L1 datum could not know about.
+pub type WithdrawalContentV1 {
+  body: ledger_state.WithdrawalBody,
+  signature: ledger_state.WithdrawalSignature,
+}
+
+/// Blake2b-256 hash of `cbor.serialise` of a withdrawal's `(body, signature)`
+/// content.
+///
+/// The thread carries this hash rather than the content itself, and that is a
+/// soundness property rather than an optimisation: the body embeds
 /// `WithdrawalBody.l2_value` (a whole multi-asset value) and
 /// `WithdrawalBody.l1_datum` (an `InlineDatum` of unbounded `Data`), so a thread
 /// state that embedded it would let the block producer choose how many bytes
 /// every later step of the dispute has to pay for — a griefing lever on the fraud
 /// prover. A 32-byte commitment makes each handoff a fixed size, and comparing
-/// two such hashes is equivalent to comparing the `WithdrawalInfo`s themselves,
-/// which is why one comparison settles body, signature and validity fidelity at
+/// two such hashes is equivalent to comparing the `(body, signature)` pairs
+/// themselves, which is why one comparison settles body and signature fidelity at
 /// once.
-pub type WithdrawalInfoHash =
-  H32<ledger_state.WithdrawalInfo>
+pub type WithdrawalContentHash =
+  H32<WithdrawalContentV1>
 
-/// The committed leaf's value commitment, taken from the very bytes
+/// The `(body, signature)` content commitment of a `WithdrawalInfo`.
+pub fn withdrawal_content_hash_v1(
+  info: ledger_state.WithdrawalInfo,
+) -> WithdrawalContentHash {
+  utils.serialise_and_hash_32(
+    WithdrawalContentV1 { body: info.body, signature: info.signature },
+  )
+}
+
+/// The committed leaf's content commitment, taken from the value
 /// `verify_committed_withdrawal_membership_v1` fed to the counted-root check.
-pub fn committed_withdrawal_info_hash_v1(
+pub fn committed_withdrawal_content_hash_v1(
   membership: CommittedWithdrawalSourceProofV1,
-) -> WithdrawalInfoHash {
-  utils.serialise_and_hash_32(membership.value)
+) -> WithdrawalContentHash {
+  withdrawal_content_hash_v1(membership.value)
 }
 
 // ## Step-01 thread types
@@ -311,7 +346,8 @@ pub fn foreign_withdrawal_id_v1() -> ledger_state.WithdrawalId {
 
 /// The order an authentic withdrawal event carries: the L2 UTxO being withdrawn,
 /// its owner and value, the L1 destination, the owner's signature, and the
-/// `WithdrawalIsValid` verdict that makes it payable.
+/// `WithdrawalIsValid` placeholder verdict the L1 order datum is always created
+/// with (`demo/midgard-sdk/src/user-events/withdrawal.ts`).
 pub fn authentic_withdrawal_info_v1() -> ledger_state.WithdrawalInfo {
   ledger_state.WithdrawalInfo {
     body: ledger_state.WithdrawalBody {
@@ -367,11 +403,13 @@ pub fn forged_signature_withdrawal_info_v1() -> ledger_state.WithdrawalInfo {
   }
 }
 
-/// The same body and signature under a validity verdict the authentic event
-/// never carried — the shape a header commits when it fabricates the *verdict*,
-/// which is the field `transition_trace/proof`'s `ValidWithdrawalTransition` arm
-/// reads straight out of the committed leaf.
-pub fn overridden_validity_withdrawal_info_v1() -> ledger_state.WithdrawalInfo {
+/// The same body and signature under a validity verdict the L1 order datum's
+/// placeholder never carried — the shape an honest block commits when it
+/// adjudicates the withdrawal against L2 state and finds the referenced output
+/// missing. Under decision 0007 this is the operator's own verdict, so this
+/// family must **not** convict it; the step-03 and step-04 negative selectors
+/// named `rejects_validity_only_difference` pin that.
+pub fn revalidated_withdrawal_info_v1() -> ledger_state.WithdrawalInfo {
   ledger_state.WithdrawalInfo {
     ..authentic_withdrawal_info_v1(),
     validity: ledger_state.NonExistentWithdrawalUtxo,
