@@ -1,3 +1,4 @@
+import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   canonicalBlockEvidenceFromVerifiedPayload,
   type CompleteCanonicalReplay,
@@ -6,8 +7,11 @@ import {
   prepareDoubleWithdrawFromCommittedLeaves,
   prepareWithdrawnInputFromCanonicalEvidence,
   prepareWithdrawnReferenceInput,
+  WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY,
 } from "@al-ft/midgard-fault-proofs";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import { prepareFabricatedDepositFromCommittedLeaves } from "@al-ft/midgard-fault-proofs/test-support/prepare-fabricated-deposit";
+import { prepareFabricatedWithdrawalFromCommittedLeaves } from "@al-ft/midgard-fault-proofs/test-support/prepare-fabricated-withdrawal";
 import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 import * as SDK from "@al-ft/midgard-sdk";
 import { afterEach, expect, it } from "vitest";
@@ -20,6 +24,7 @@ import {
 } from "./history-event-local-staging.js";
 import { classifyLocalHistoryEventFixture } from "./history-event-verification.js";
 import {
+  buildJourneyFabricatedDeposit,
   buildJourneyRepeatedDeposit,
   buildJourneyWithdrawalEvent,
   buildJourneyWithdrawnTransaction,
@@ -246,31 +251,22 @@ it("doubleWithdraw proves two real published withdrawals of one L2 output and it
     // withdrawalMistag ahead of doubleWithdraw, so the installed catalogue
     // currently selects withdrawalMistag for this fault.
     //
-    // Owner decision: the honest block marks the second leaf
-    // NonExistentWithdrawalUtxo while the published L1 order datum always
-    // carries WithdrawalIsValid, and the fabricated-withdrawal rule convicts
-    // on any WithdrawalInfo difference, validity included. Until that rule and
-    // the operator-verdict leaf shape are reconciled, the honest control is
-    // verified against the family replayer only.
-    if (honest)
-      await select({
-        category: "doubleWithdraw",
-        replayer: DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
-        block,
-        predecessor,
-        history,
-        honest,
-      });
-    else
-      await selectWithinInstalledCatalogue({
-        category: "doubleWithdraw",
-        winners: ["withdrawalMistag", "doubleWithdraw"],
-        replayer: DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
-        block,
-        predecessor,
-        history,
-        honest,
-      });
+    // The honest control's second leaf carries the NonExistentWithdrawalUtxo
+    // verdict it actually earned, which differs from the WithdrawalIsValid
+    // placeholder the published L1 order datum always carries. Decision 0007
+    // (docs/fault-proofs/decisions/0007-operator-owned-event-validity.md)
+    // excludes the committed validity from the fabricated-withdrawal
+    // comparison, so that leaf is not a fabrication and the honest control
+    // runs through the whole installed catalogue like the fault block.
+    await selectWithinInstalledCatalogue({
+      category: "doubleWithdraw",
+      winners: ["withdrawalMistag", "doubleWithdraw"],
+      replayer: DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
+      block,
+      predecessor,
+      history,
+      honest,
+    });
     const prepared = prepareDoubleWithdrawFromCommittedLeaves({
       headerHash: block.headerHash,
       committedWithdrawalsRoot: block.header.withdrawalsRoot,
@@ -342,6 +338,155 @@ it("crossBlockDuplicateEvent proves a deposit repeated from a really settled anc
       block,
       predecessor,
       history: [settled],
+      honest,
+    });
+  }
+}, 1_800_000);
+
+it("fabricatedDeposit proves a committed deposit leaf that is not its real published L1 event and its honest control passes", async () => {
+  const { predecessor, history } = await openFamilyWindow(1);
+  const deposit = await stage.publishDeposit();
+  const endTime = latestInclusion([deposit]);
+  const slot = blockSlot++;
+  for (const honest of [false, true]) {
+    const block = await buildJourneyFabricatedDeposit({
+      predecessor,
+      operatorVkey: stage.operatorVkey,
+      endTime,
+      blockSlot: slot,
+      deposit,
+      honest,
+    });
+    // Decision 0007: a committed deposit leaf whose authentic L1 event differs
+    // is directly this family's fraud, not a replay abort, so the installed
+    // catalogue must name fabricatedDeposit and nothing else.
+    await select({
+      category: "fabricatedDeposit",
+      block,
+      predecessor,
+      history,
+      honest,
+    });
+    const prepared = prepareFabricatedDepositFromCommittedLeaves({
+      headerHash: block.headerHash,
+      committedDepositsRoot: block.header.depositsRoot,
+      depositCount: block.header.depositCount,
+      headerStartTime: block.header.startTime,
+      headerEndTime: block.header.endTime,
+      entries: block.payload.block_body.deposits,
+      witness: {
+        kind: "present_event",
+        observation: authenticatedHeaderObservation(block),
+        depositEventPolicyId: deposit.policyId,
+        observedEventAssetName: deposit.assetName,
+        // The retained datum keeps the ledger's encoding; the proof
+        // commitments are serialise_data bytes, exactly as the installed
+        // fabricated-deposit evidence authority converts them.
+        eventDatumCbor: aikenSerialisedPlutusDataCborPreservingMapOrder(
+          deposit.event.datum!,
+        ),
+      },
+      minimumConfirmationDepth: 30,
+    });
+    if (honest) await expect(prepared).rejects.toThrow();
+    else expect((await prepared).headerHash).toBe(block.headerHash);
+  }
+}, 1_800_000);
+
+it("fabricatedWithdrawal proves a committed withdrawal body that is not its real published L1 order and its honest control passes", async () => {
+  const { predecessor, history } = await openFamilyWindow(1);
+  const body = journeyWithdrawalBody({
+    predecessor,
+    owner: stage.ownerKey.to_public().hash().to_hex(),
+  });
+  const withdrawal = await stage.publishWithdrawal(body, 0);
+  const endTime = latestInclusion([withdrawal]);
+  const slot = blockSlot++;
+  for (const honest of [false, true]) {
+    const block = await buildJourneyWithdrawalEvent({
+      predecessor,
+      operatorVkey: stage.operatorVkey,
+      endTime,
+      blockSlot: slot,
+      category: "fabricatedWithdrawal",
+      withdrawals: [withdrawal],
+      honest,
+    });
+    // Decision 0007: the committed leaf's body is compared against the
+    // authentic L1 order and the committed validity verdict is not, so the
+    // diverted payout address is the whole fault and the honest control,
+    // which commits the verdict the ledger earned, is clean.
+    await select({
+      category: "fabricatedWithdrawal",
+      block,
+      predecessor,
+      history,
+      honest,
+    });
+    const prepared = prepareFabricatedWithdrawalFromCommittedLeaves({
+      headerHash: block.headerHash,
+      committedWithdrawalsRoot: block.header.withdrawalsRoot,
+      withdrawalCount: block.header.withdrawalCount,
+      headerStartTime: block.header.startTime,
+      headerEndTime: block.header.endTime,
+      entries: block.payload.block_body.withdrawals,
+      witness: {
+        kind: "present_event",
+        observation: authenticatedHeaderObservation(block),
+        withdrawalEventPolicyId: withdrawal.policyId,
+        observedEventAssetName: withdrawal.assetName,
+        // The withdrawal order datum embeds an l2_value map, so the ledger's
+        // encoding has to be converted to serialise_data bytes the way the
+        // installed fabricated-withdrawal evidence authority does.
+        eventDatumCbor: aikenSerialisedPlutusDataCborPreservingMapOrder(
+          withdrawal.event.datum!,
+        ),
+      },
+      minimumConfirmationDepth: 30,
+    });
+    if (honest) await expect(prepared).rejects.toThrow();
+    else expect((await prepared).headerHash).toBe(block.headerHash);
+  }
+}, 1_800_000);
+
+it("withdrawalMistag proves a wrong verdict on a real published withdrawal and its honest control passes", async () => {
+  const { predecessor, history } = await openFamilyWindow(1);
+  const body = journeyWithdrawalBody({
+    predecessor,
+    owner: stage.ownerKey.to_public().hash().to_hex(),
+  });
+  const withdrawal = await stage.publishWithdrawal(body, 0);
+  const endTime = latestInclusion([withdrawal]);
+  const slot = blockSlot++;
+  for (const honest of [false, true]) {
+    const block = await buildJourneyWithdrawalEvent({
+      predecessor,
+      operatorVkey: stage.operatorVkey,
+      endTime,
+      blockSlot: slot,
+      category: "withdrawalMistag",
+      withdrawals: [withdrawal],
+      honest,
+    });
+    // The fault leaf keeps the authentic L1 body and only stamps the wrong
+    // verdict on it, which decision 0007 assigns to this family alone: the
+    // fabricated family excludes validity from its comparison.
+    expect(block.classifications.map(({ validity }) => validity)).toEqual([
+      "WithdrawalIsValid",
+    ]);
+    await select({
+      category: "withdrawalMistag",
+      block,
+      predecessor,
+      history,
+      honest,
+    });
+    await select({
+      category: "withdrawalMistag",
+      replayer: WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY,
+      block,
+      predecessor,
+      history,
       honest,
     });
   }
