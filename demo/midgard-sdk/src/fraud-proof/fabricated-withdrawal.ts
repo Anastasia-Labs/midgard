@@ -5,9 +5,18 @@
  * Proves a block header commits a withdrawal leaf that is not the authentic L1
  * withdrawal event pair: either no withdrawal event with the committed
  * `WithdrawalId` was ever authenticated (`NonexistentWithdrawalIdentity`), or the
- * authentic event exists and was due for the block but its `WithdrawalInfo` — its
- * body, its signature, or its validity verdict — is not the committed one
- * (`MismatchedWithdrawalContent`).
+ * authentic event exists and was due for the block but its `(body, signature)`
+ * content is not the committed one (`MismatchedWithdrawalContent`).
+ *
+ * The committed `validity` verdict is deliberately outside that comparison.
+ * Decision 0007
+ * (`docs/fault-proofs/decisions/0007-operator-owned-event-validity.md`) rules
+ * that the operator owns the verdict a block stamps on a committed user event:
+ * the L1 order datum's `WithdrawalIsValid` is a placeholder written at order
+ * creation (`../user-events/withdrawal.ts`), so a committed verdict that differs
+ * from it is the operator's adjudication of L2 state, judged by
+ * `withdrawalMistag` against the authenticated ledger, not a fabrication of the
+ * L1 order.
  *
  * Violation: `fabricated-withdrawal`.
  * Production catalogue category: `fabricatedWithdrawal` (`0000000c`).
@@ -49,7 +58,13 @@ import {
   OutputReferenceSchema,
   POSIXTimeSchema,
 } from "../common.js";
-import { WithdrawalInfo } from "../ledger-state.js";
+import {
+  WithdrawalBody,
+  WithdrawalBodySchema,
+  WithdrawalInfo,
+  WithdrawalSignatureSchema,
+  type WithdrawalSignature,
+} from "../ledger-state.js";
 import {
   type RootMembershipProof,
   WithdrawalSourceMembershipProofSchema,
@@ -168,8 +183,8 @@ export const FabricatedWithdrawalStep02StateSchema = Data.Object({
   header_end_time: POSIXTimeSchema,
   /** The committed withdrawal identity — an L1 output reference. */
   committed_withdrawal_id: OutputReferenceSchema,
-  /** Blake2b-256 of the committed `WithdrawalInfo`'s canonical bytes. */
-  committed_withdrawal_info_hash: H32Schema,
+  /** Blake2b-256 of the committed withdrawal's `(body, signature)` bytes. */
+  committed_withdrawal_content_hash: H32Schema,
 });
 export type FabricatedWithdrawalStep02State = Data.Static<
   typeof FabricatedWithdrawalStep02StateSchema
@@ -265,8 +280,8 @@ export const FabricatedWithdrawalStep03StateSchema = Data.Object({
   header_end_time: POSIXTimeSchema,
   /** The committed withdrawal identity — an L1 output reference. */
   committed_withdrawal_id: OutputReferenceSchema,
-  /** Blake2b-256 of the committed `WithdrawalInfo`'s canonical bytes. */
-  committed_withdrawal_info_hash: H32Schema,
+  /** Blake2b-256 of the committed withdrawal's `(body, signature)` bytes. */
+  committed_withdrawal_content_hash: H32Schema,
   /** The authenticated verdict about L1. */
   verdict: FabricatedWithdrawalEvidenceVerdictSchema,
 });
@@ -347,8 +362,8 @@ export const FabricatedWithdrawalFaultSchema = Data.Enum([
   Data.Literal("NonexistentWithdrawalIdentity"),
   Data.Object({
     MismatchedWithdrawalContent: Data.Object({
-      committed_withdrawal_info_hash: H32Schema,
-      authentic_withdrawal_info_hash: H32Schema,
+      committed_withdrawal_content_hash: H32Schema,
+      authentic_withdrawal_content_hash: H32Schema,
       event_inclusion_time: POSIXTimeSchema,
     }),
   }),
@@ -476,18 +491,47 @@ export const withdrawalEventDatumBytes = (
   );
 
 /**
- * Blake2b-256 of a `WithdrawalInfo`'s canonical bytes — the commitment the thread
- * carries in place of the `WithdrawalInfo` itself, so no step's L1 footprint
- * depends on the withdrawer-chosen size of `l2_value` or `l1_datum`.
- *
- * Twin of `step_01.committed_withdrawal_info_hash_v1` /
- * `utils.serialise_and_hash_32`. One inequality between two of these settles body,
- * signature and validity fidelity at once.
+ * The part of a committed withdrawal leaf the authentic L1 order fixes: its
+ * `body` and its `signature`. Twin of `step_01.WithdrawalContentV1`; `validity`
+ * is absent because the operator owns it (decision 0007).
  */
-export const withdrawalInfoCommitment = (
+export const WithdrawalContentSchema = Data.Object({
+  body: WithdrawalBodySchema,
+  signature: WithdrawalSignatureSchema,
+});
+export type WithdrawalContent = Data.Static<typeof WithdrawalContentSchema>;
+export const WithdrawalContent = asDataType<WithdrawalContent>(
+  WithdrawalContentSchema,
+);
+
+/** The `(body, signature)` content of a `WithdrawalInfo`. */
+export const withdrawalContentOf = (
+  info: WithdrawalInfo,
+): WithdrawalContent => ({
+  body: info.body as WithdrawalBody,
+  signature: info.signature as WithdrawalSignature,
+});
+
+/** The canonical bytes a withdrawal's `(body, signature)` content commits to. */
+export const withdrawalContentBytes = (info: WithdrawalInfo): string =>
+  aikenSerialisedPlutusDataCborPreservingMapOrder(
+    Data.to(withdrawalContentOf(info), WithdrawalContent),
+  );
+
+/**
+ * Blake2b-256 of a withdrawal's `(body, signature)` canonical bytes — the
+ * commitment the thread carries in place of the content itself, so no step's L1
+ * footprint depends on the withdrawer-chosen size of `l2_value` or `l1_datum`.
+ *
+ * Twin of `step_01.withdrawal_content_hash_v1`. One inequality between two of
+ * these settles body and signature fidelity at once; the committed `validity`
+ * verdict is excluded, because the operator owns it and a verdict the chain
+ * contradicts is `withdrawalMistag`'s fault (decision 0007).
+ */
+export const withdrawalContentCommitment = (
   info: WithdrawalInfo,
 ): Effect.Effect<string, HashingError> =>
-  hashHexWithBlake2b(committedWithdrawalValueBytes(info), 32);
+  hashHexWithBlake2b(withdrawalContentBytes(info), 32);
 
 /**
  * Blake2b-256 of a withdrawal event datum's canonical bytes — step-02's retained
@@ -528,13 +572,13 @@ export const fabricatedWithdrawalStep02State = ({
   readonly committedWithdrawal: CommittedWithdrawalSourceProof;
 }): Effect.Effect<FabricatedWithdrawalStep02State, HashingError> =>
   Effect.map(
-    withdrawalInfoCommitment(committedWithdrawal.value),
-    (committed_withdrawal_info_hash) => ({
+    withdrawalContentCommitment(committedWithdrawal.value),
+    (committed_withdrawal_content_hash) => ({
       challenged_header_hash: challengedHeaderHash,
       header_start_time: headerStartTime,
       header_end_time: headerEndTime,
       committed_withdrawal_id: committedWithdrawal.key,
-      committed_withdrawal_info_hash,
+      committed_withdrawal_content_hash,
     }),
   );
 
@@ -547,7 +591,7 @@ export const fabricatedWithdrawalStep03State = (
   header_start_time: state.header_start_time,
   header_end_time: state.header_end_time,
   committed_withdrawal_id: state.committed_withdrawal_id,
-  committed_withdrawal_info_hash: state.committed_withdrawal_info_hash,
+  committed_withdrawal_content_hash: state.committed_withdrawal_content_hash,
   verdict,
 });
 
@@ -579,12 +623,12 @@ export const isFabricatedWithdrawalFault = (
     return true;
   }
   const {
-    committed_withdrawal_info_hash,
-    authentic_withdrawal_info_hash,
+    committed_withdrawal_content_hash,
+    authentic_withdrawal_content_hash,
     event_inclusion_time,
   } = fault.MismatchedWithdrawalContent;
   return (
-    committed_withdrawal_info_hash !== authentic_withdrawal_info_hash &&
+    committed_withdrawal_content_hash !== authentic_withdrawal_content_hash &&
     state.header_start_time < event_inclusion_time &&
     event_inclusion_time <= state.header_end_time
   );

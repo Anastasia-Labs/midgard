@@ -86,7 +86,7 @@ import {
 // `step-01.ak`'s `authentic_withdrawal_id_v1` / `fabricated_withdrawal_id_v1` /
 // `authentic_withdrawal_info_v1` / `diverted_withdrawal_info_v1` /
 // `forged_signature_withdrawal_info_v1` /
-// `overridden_validity_withdrawal_info_v1`, and `step-02.ak`'s
+// `revalidated_withdrawal_info_v1`, and `step-02.ak`'s
 // `authentic_withdrawal_datum_v1` / `authentic_inclusion_time_v1`.
 
 const AUTHENTIC_WITHDRAWAL_ID: SDK.OutputReference = {
@@ -109,14 +109,18 @@ const VALUE_AUTHENTIC_WITHDRAWAL_INFO =
 const VALUE_DIVERTED_WITHDRAWAL_INFO =
   "d8799fd8799fd8799f58207e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e01ff581c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9ca1581c4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4ba14d6d6964676172642d746f6b656e182ad8799fd8799f581c5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5dffd87a80ffd87980ff9f5820adadadadadadadadadadadadadadadadadadadadadadadadadadadadadadadad5840bebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebeffd87980ff";
 
-const HASH_AUTHENTIC_WITHDRAWAL_INFO =
-  "f6b65e77ecfcfcaccba6fc17cf30e124829e93d60ef0e7259200316869ef38a0";
-const HASH_DIVERTED_WITHDRAWAL_INFO =
-  "6d8fd0959a65127c274f31b291d1ed97899bba0866c6945473ca7102a30de973";
-const HASH_FORGED_SIGNATURE_WITHDRAWAL_INFO =
-  "a3b578b5798f5dd0fd76e68a612d9d8d4af873908c1855e73e33fdb340402939";
-const HASH_OVERRIDDEN_VALIDITY_WITHDRAWAL_INFO =
-  "56b23f1caeca79d65bf2dcc91c4e1f47d7904b03b442481491edd3acae9f64a8";
+/**
+ * `step-01.ak`'s `withdrawal_content_hash_v1` — the commitment over the leaf's
+ * `(body, signature)` only. Decision 0007 keeps the operator-owned `validity`
+ * verdict out of it, so `revalidated_withdrawal_info_v1` hashes to exactly
+ * `HASH_AUTHENTIC_WITHDRAWAL_CONTENT`.
+ */
+const HASH_AUTHENTIC_WITHDRAWAL_CONTENT =
+  "283ad237b5850498ff2cc5e4c2017d6129a3d955265f5e3a889387776716d12f";
+const HASH_DIVERTED_WITHDRAWAL_CONTENT =
+  "8e8f341a7ae7b42e43bf1b09b3e63c742979eb2ada627a417d7af04be1dbe2a3";
+const HASH_FORGED_SIGNATURE_WITHDRAWAL_CONTENT =
+  "20b97ac437a93d4f4fc7c0cf4c8a5b84840b408d836723c98f663cc2e8376f22";
 
 /** `user_events.out_ref_to_nonce(authentic_withdrawal_id_v1)`. */
 const NONCE_AUTHENTIC_WITHDRAWAL_ID =
@@ -154,7 +158,7 @@ const MM_HEADER_HASH =
 const FI_STEP_04_STATE_CBOR =
   "d8799f581c735fcb9ab869fa81efc508ca11991963a774ae8024658d6de18899670a14d8799f58203a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a00ffd87980ff";
 const MM_STEP_04_STATE_CBOR =
-  "d8799f581c44201f07972dae5999a6a5f5b8659c0ac65fb96168f3035dd47281820a14d8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ffd87a9f58206d8fd0959a65127c274f31b291d1ed97899bba0866c6945473ca7102a30de9735820f6b65e77ecfcfcaccba6fc17cf30e124829e93d60ef0e7259200316869ef38a00fffff";
+  "d8799f581c44201f07972dae5999a6a5f5b8659c0ac65fb96168f3035dd47281820a14d8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ffd87a9f58208e8f341a7ae7b42e43bf1b09b3e63c742979eb2ada627a417d7af04be1dbe2a35820283ad237b5850498ff2cc5e4c2017d6129a3d955265f5e3a889387776716d12f0fffff";
 
 const DA_PROVENANCE: SDK.EvidenceProvenance = {
   trustClass: "public_or_permissionless_da",
@@ -447,7 +451,7 @@ const fiStep03State: SDK.FabricatedWithdrawalStep03State = {
   header_start_time: HEADER_START_TIME,
   header_end_time: HEADER_END_TIME,
   committed_withdrawal_id: FABRICATED_WITHDRAWAL_ID,
-  committed_withdrawal_info_hash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
+  committed_withdrawal_content_hash: HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
   verdict: "WithdrawalIdentityAbsent",
 };
 
@@ -456,7 +460,7 @@ const mmStep03State: SDK.FabricatedWithdrawalStep03State = {
   header_start_time: HEADER_START_TIME,
   header_end_time: HEADER_END_TIME,
   committed_withdrawal_id: AUTHENTIC_WITHDRAWAL_ID,
-  committed_withdrawal_info_hash: HASH_DIVERTED_WITHDRAWAL_INFO,
+  committed_withdrawal_content_hash: HASH_DIVERTED_WITHDRAWAL_CONTENT,
   verdict: {
     WithdrawalEventObserved: {
       event_datum_hash: HASH_AUTHENTIC_WITHDRAWAL_EVENT_DATUM,
@@ -750,7 +754,7 @@ describe("Q40 fabricated-withdrawal proof plan", () => {
       headerStartTime: "10",
       headerEndTime: "20",
       committedWithdrawalIdCbor: KEY_FABRICATED_WITHDRAWAL_ID,
-      committedWithdrawalInfoHash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
+      committedWithdrawalContentHash: HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
     });
     // An absence proof has no retained content to open at step 03.
     expect(plan.authenticContent.eventDatumCbor).toBeNull();
@@ -788,13 +792,13 @@ describe("Q40 fabricated-withdrawal proof plan", () => {
     });
     expect(plan.classification.fault).toEqual({
       MismatchedWithdrawalContent: {
-        committed_withdrawal_info_hash: HASH_DIVERTED_WITHDRAWAL_INFO,
-        authentic_withdrawal_info_hash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
+        committed_withdrawal_content_hash: HASH_DIVERTED_WITHDRAWAL_CONTENT,
+        authentic_withdrawal_content_hash: HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
         event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
       },
     });
-    expect(plan.challengedLeaf.committedWithdrawalInfoHash).toBe(
-      HASH_DIVERTED_WITHDRAWAL_INFO,
+    expect(plan.challengedLeaf.committedWithdrawalContentHash).toBe(
+      HASH_DIVERTED_WITHDRAWAL_CONTENT,
     );
     expect(plan.authenticContent.eventDatumCbor).toBe(
       DATUM_AUTHENTIC_WITHDRAWAL_EVENT,
@@ -1004,6 +1008,41 @@ describe("Q40 fabricated-withdrawal L1 witness authentication", () => {
     });
   });
 
+  it("refuses to challenge a block whose committed leaf differs from the authentic order only in its operator-owned validity verdict", async () => {
+    // Decision 0007: the L1 order datum's `WithdrawalIsValid` is a placeholder,
+    // so the honest verdict for a withdrawal whose L2 output does not exist is
+    // the operator's own claim, not fabricated content. This is the honest
+    // control of every withdrawal fixture: it must survive this family with the
+    // verdict it actually earned, and a wrong verdict belongs to
+    // `withdrawalMistag`.
+    const revalidated: SDK.WithdrawalInfo = {
+      ...authenticWithdrawalInfo(),
+      validity: "NonExistentWithdrawalUtxo",
+    };
+    const value = SDK.committedWithdrawalValueBytes(revalidated);
+    expect(value).not.toBe(VALUE_AUTHENTIC_WITHDRAWAL_INFO);
+    expect(
+      await Effect.runPromise(SDK.withdrawalContentCommitment(revalidated)),
+    ).toBe(HASH_AUTHENTIC_WITHDRAWAL_CONTENT);
+    const fixture = await buildWithdrawalsBlockFixture({
+      leaves: [{ key: KEY_AUTHENTIC_WITHDRAWAL_ID, value }],
+    });
+    await expect(
+      prepareFabricatedWithdrawalFromCommittedLeaves({
+        headerHash: fixture.headerHash,
+        committedWithdrawalsRoot: fixture.withdrawalsRoot,
+        withdrawalCount: fixture.withdrawalCount,
+        headerStartTime: HEADER_START_TIME,
+        headerEndTime: HEADER_END_TIME,
+        entries: fixture.entries,
+        witness: presentEventWitness(),
+      }),
+    ).rejects.toMatchObject({
+      name: "FabricatedWithdrawalRejectionV1",
+      code: "authentic_content_matches_commitment",
+    });
+  });
+
   it("refuses an authentic event that was not due for the challenged block, on either side of the window", async () => {
     const leaf = await leafOf(MM_LEAF, presentEventWitness());
     for (const inclusionTime of [HEADER_START_TIME, HEADER_END_TIME + 1n]) {
@@ -1059,7 +1098,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
       header_start_time: HEADER_START_TIME,
       header_end_time: HEADER_END_TIME,
       committed_withdrawal_id: AUTHENTIC_WITHDRAWAL_ID,
-      committed_withdrawal_info_hash: HASH_DIVERTED_WITHDRAWAL_INFO,
+      committed_withdrawal_content_hash: HASH_DIVERTED_WITHDRAWAL_CONTENT,
     });
 
     await expect(
@@ -1102,7 +1141,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
       header_start_time: HEADER_START_TIME,
       header_end_time: HEADER_END_TIME,
       committed_withdrawal_id: AUTHENTIC_WITHDRAWAL_ID,
-      committed_withdrawal_info_hash: HASH_DIVERTED_WITHDRAWAL_INFO,
+      committed_withdrawal_content_hash: HASH_DIVERTED_WITHDRAWAL_CONTENT,
     };
     const authenticated = await authenticateFabricatedWithdrawalEventUtxo({
       state,
@@ -1139,7 +1178,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
     ).rejects.toThrow(/not the committed identity/u);
   });
 
-  it("opens step-02's retained commitment into the Aiken scenarios' exact step-04 handoffs, for all three fidelity fabrications", async () => {
+  it("opens step-02's retained commitment into the Aiken scenarios' exact step-04 handoffs, for both fidelity fabrications", async () => {
     const absent = await deriveFabricatedWithdrawalStep03Handoff({
       state: fiStep03State,
     });
@@ -1155,8 +1194,8 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
     });
     expect(present.fault).toEqual({
       MismatchedWithdrawalContent: {
-        committed_withdrawal_info_hash: HASH_DIVERTED_WITHDRAWAL_INFO,
-        authentic_withdrawal_info_hash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
+        committed_withdrawal_content_hash: HASH_DIVERTED_WITHDRAWAL_CONTENT,
+        authentic_withdrawal_content_hash: HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
         event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
       },
     });
@@ -1164,28 +1203,24 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
       Data.to(present.step04State, SDK.FabricatedWithdrawalStep04State),
     ).toBe(MM_STEP_04_STATE_CBOR);
 
-    // One 32-byte inequality settles body, signature and validity: a forged
-    // signature and an overridden validity verdict convict on the same rule as
-    // the diverted payout body.
-    for (const committedHash of [
-      HASH_FORGED_SIGNATURE_WITHDRAWAL_INFO,
-      HASH_OVERRIDDEN_VALIDITY_WITHDRAWAL_INFO,
-    ]) {
-      const handoff = await deriveFabricatedWithdrawalStep03Handoff({
-        state: {
-          ...mmStep03State,
-          committed_withdrawal_info_hash: committedHash,
-        },
-        eventDatumCbor: DATUM_AUTHENTIC_WITHDRAWAL_EVENT,
-      });
-      expect(handoff.fault).toEqual({
-        MismatchedWithdrawalContent: {
-          committed_withdrawal_info_hash: committedHash,
-          authentic_withdrawal_info_hash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
-          event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
-        },
-      });
-    }
+    // One 32-byte inequality settles body and signature: a forged signature
+    // convicts on the same rule as the diverted payout body.
+    const forged = await deriveFabricatedWithdrawalStep03Handoff({
+      state: {
+        ...mmStep03State,
+        committed_withdrawal_content_hash:
+          HASH_FORGED_SIGNATURE_WITHDRAWAL_CONTENT,
+      },
+      eventDatumCbor: DATUM_AUTHENTIC_WITHDRAWAL_EVENT,
+    });
+    expect(forged.fault).toEqual({
+      MismatchedWithdrawalContent: {
+        committed_withdrawal_content_hash:
+          HASH_FORGED_SIGNATURE_WITHDRAWAL_CONTENT,
+        authentic_withdrawal_content_hash: HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
+        event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
+      },
+    });
 
     // Lucid's indefinite-map wire form of the same event datum is accepted,
     // because the on-chain step re-serialises the redeemer before hashing it —
@@ -1226,8 +1261,8 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
 
     const established = SDK.fabricatedWithdrawalStep04State(mmStep03State, {
       MismatchedWithdrawalContent: {
-        committed_withdrawal_info_hash: HASH_DIVERTED_WITHDRAWAL_INFO,
-        authentic_withdrawal_info_hash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
+        committed_withdrawal_content_hash: HASH_DIVERTED_WITHDRAWAL_CONTENT,
+        authentic_withdrawal_content_hash: HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
         event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
       },
     });
@@ -1252,8 +1287,10 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
           ...established,
           fault: {
             MismatchedWithdrawalContent: {
-              committed_withdrawal_info_hash: HASH_DIVERTED_WITHDRAWAL_INFO,
-              authentic_withdrawal_info_hash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
+              committed_withdrawal_content_hash:
+                HASH_DIVERTED_WITHDRAWAL_CONTENT,
+              authentic_withdrawal_content_hash:
+                HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
               event_inclusion_time: HEADER_END_TIME + 1n,
             },
           },

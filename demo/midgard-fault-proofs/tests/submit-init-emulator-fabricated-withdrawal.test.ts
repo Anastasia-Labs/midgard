@@ -81,10 +81,10 @@ const DATUM_AUTHENTIC_WITHDRAWAL_EVENT =
   "d8799fd8799fd8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ffd8799fd8799fd8799f58207e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e01ff581c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9ca1581c4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4ba14d6d6964676172642d746f6b656e182ad8799fd8799f581c2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2bffd87a80ffd87980ff9f5820adadadadadadadadadadadadadadadadadadadadadadadadadadadadadadadad5840bebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebeffd87980ffff0f581c57575757575757575757575757575757575757575757575757575757d8799fd8799f581c2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2bffd87a80ffd87980ff";
 const HASH_AUTHENTIC_WITHDRAWAL_EVENT_DATUM =
   "b5e4fa1c72a874ec61778f2e29dc4cc326313b3bc581bc64738fd45f1d9a9a70";
-const HASH_AUTHENTIC_WITHDRAWAL_INFO =
-  "f6b65e77ecfcfcaccba6fc17cf30e124829e93d60ef0e7259200316869ef38a0";
-const HASH_DIVERTED_WITHDRAWAL_INFO =
-  "6d8fd0959a65127c274f31b291d1ed97899bba0866c6945473ca7102a30de973";
+const HASH_AUTHENTIC_WITHDRAWAL_CONTENT =
+  "283ad237b5850498ff2cc5e4c2017d6129a3d955265f5e3a889387776716d12f";
+const HASH_DIVERTED_WITHDRAWAL_CONTENT =
+  "8e8f341a7ae7b42e43bf1b09b3e63c742979eb2ada627a417d7af04be1dbe2a3";
 const MM_WITHDRAWALS_ROOT =
   "ddf6c2b73b0a5be5c6afcb11cbb8c47ecec36a856231911288306a01e411bbed";
 const NONCE_AUTHENTIC_WITHDRAWAL_ID =
@@ -378,13 +378,13 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       state: step03Handoff.step04State,
       fraudulentHeaderHash: block.headerHash,
     });
-    expect(step01Handoff.step02State.committed_withdrawal_info_hash).toBe(
-      HASH_DIVERTED_WITHDRAWAL_INFO,
+    expect(step01Handoff.step02State.committed_withdrawal_content_hash).toBe(
+      HASH_DIVERTED_WITHDRAWAL_CONTENT,
     );
     expect(step03Handoff.step04State.fault).toEqual({
       MismatchedWithdrawalContent: {
-        committed_withdrawal_info_hash: HASH_DIVERTED_WITHDRAWAL_INFO,
-        authentic_withdrawal_info_hash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
+        committed_withdrawal_content_hash: HASH_DIVERTED_WITHDRAWAL_CONTENT,
+        authentic_withdrawal_content_hash: HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
         event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
       },
     });
@@ -508,8 +508,8 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
     );
     expect(plan.classification.fault).toEqual({
       MismatchedWithdrawalContent: {
-        committed_withdrawal_info_hash: HASH_DIVERTED_WITHDRAWAL_INFO,
-        authentic_withdrawal_info_hash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
+        committed_withdrawal_content_hash: HASH_DIVERTED_WITHDRAWAL_CONTENT,
+        authentic_withdrawal_content_hash: HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
         event_inclusion_time: eventInclusionTime,
       },
     });
@@ -564,8 +564,8 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
     });
     expect(step01Result.txHash).toHaveLength(64);
     expect(step01Result.fraudulentHeaderHash).toBe(headerHash);
-    expect(step01Result.committedWithdrawalInfoHash).toBe(
-      HASH_DIVERTED_WITHDRAWAL_INFO,
+    expect(step01Result.committedWithdrawalContentHash).toBe(
+      HASH_DIVERTED_WITHDRAWAL_CONTENT,
     );
     await expect(
       proverLucid.utxosAtWithUnit(

@@ -14,9 +14,10 @@
  * - **establishment** — `isFabricatedWithdrawalFault`, the twin of
  *   `fabricated_withdrawal_fault_is_established_v1`, must hold for the carried
  *   state, so a stale or content-identical "fault" is never made permanent. For the
- *   mismatch shape that means the two `WithdrawalInfo` commitments really differ —
- *   the single inequality that settles body, signature and validity fidelity at
- *   once — and the authentic event was due for the challenged block.
+ *   mismatch shape that means the two `(body, signature)` commitments really
+ *   differ — the single inequality that settles body and signature fidelity at
+ *   once, with the operator-owned `validity` verdict excluded per decision 0007 —
+ *   and the authentic event was due for the challenged block.
  */
 import {
   FabricatedWithdrawalStep04Datum,

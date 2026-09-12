@@ -281,7 +281,7 @@ export type SubmitFabricatedWithdrawalStep01Result = {
   readonly firstStepAddress: string;
   readonly secondStepAddress: string;
   readonly committedWithdrawalIdCbor: string;
-  readonly committedWithdrawalInfoHash: string;
+  readonly committedWithdrawalContentHash: string;
   readonly withdrawalsPhasRoot: string;
   readonly committedWithdrawalsRoot: string;
   readonly inputIndex: number;
@@ -504,7 +504,8 @@ export const submitFabricatedWithdrawalStep01 = async ({
     firstStepAddress: contracts.steps[0].spendingScriptAddress,
     secondStepAddress: contracts.steps[1].spendingScriptAddress,
     committedWithdrawalIdCbor: withdrawalInclusion.committedWithdrawalIdCbor,
-    committedWithdrawalInfoHash: step02State.committed_withdrawal_info_hash,
+    committedWithdrawalContentHash:
+      step02State.committed_withdrawal_content_hash,
     withdrawalsPhasRoot: withdrawalInclusion.withdrawalsPhasRoot,
     committedWithdrawalsRoot: header.withdrawalsRoot,
     inputIndex: Number(resolvedLayout.inputIndex),

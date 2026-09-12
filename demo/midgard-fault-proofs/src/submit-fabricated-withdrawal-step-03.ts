@@ -46,9 +46,9 @@ import {
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
+  withdrawalContentCommitment,
   withdrawalEventDatumBytes,
   withdrawalEventDatumCommitment,
-  withdrawalInfoCommitment,
   WithdrawalOrderDatum,
 } from "@al-ft/midgard-sdk";
 import {
@@ -184,19 +184,22 @@ export const deriveFabricatedWithdrawalStep03Handoff = async ({
         `Supplied withdrawal event datum names identity ${suppliedId}, not the committed identity ${committedId}.`,
       );
     }
-    const authenticWithdrawalInfoHash = await Effect.runPromise(
-      withdrawalInfoCommitment(eventDatum.event.info),
+    const authenticWithdrawalContentHash = await Effect.runPromise(
+      withdrawalContentCommitment(eventDatum.event.info),
     );
-    if (authenticWithdrawalInfoHash === state.committed_withdrawal_info_hash) {
+    if (
+      authenticWithdrawalContentHash === state.committed_withdrawal_content_hash
+    ) {
       throw new Error(
-        `Fabricated-withdrawal step 03 cannot classify a fault: the authentic withdrawal content hashes to ${authenticWithdrawalInfoHash}, which is exactly what the header committed.`,
+        `Fabricated-withdrawal step 03 cannot classify a fault: the authentic withdrawal content hashes to ${authenticWithdrawalContentHash}, which is exactly what the header committed.`,
       );
     }
     opening = { RetainedEventDatum: { event_datum: eventDatum } };
     fault = {
       MismatchedWithdrawalContent: {
-        committed_withdrawal_info_hash: state.committed_withdrawal_info_hash,
-        authentic_withdrawal_info_hash: authenticWithdrawalInfoHash,
+        committed_withdrawal_content_hash:
+          state.committed_withdrawal_content_hash,
+        authentic_withdrawal_content_hash: authenticWithdrawalContentHash,
         event_inclusion_time,
       },
     };

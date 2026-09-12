@@ -5,8 +5,11 @@
  * The fault this family proves is a committed `withdrawals_root` leaf that is not
  * the authentic L1 withdrawal event pair: either no withdrawal event with the
  * committed `WithdrawalId` was ever authenticated, or the authentic event exists
- * and was due for the block but its `WithdrawalInfo` — its body, its signature or
- * its validity verdict — is not the committed one.
+ * and was due for the block but its `(body, signature)` content is not the
+ * committed one. The committed `validity` verdict is not compared: the operator
+ * owns it (decision 0007,
+ * `docs/fault-proofs/decisions/0007-operator-owned-event-validity.md`), and a
+ * verdict the chain contradicts is `withdrawalMistag`'s fault.
  *
  * Such a block cannot be reconstructed by `reconstructDaPayloadV1` — a whole block
  * whose withdrawal source set disagrees with L1 fails reconstruction long before
@@ -121,7 +124,7 @@ export type CommittedWithdrawalLeaf = {
   readonly committedWithdrawalId: SDK.OutputReference;
   readonly committedWithdrawalInfo: SDK.WithdrawalInfo;
   /** Blake2b-256 of the committed `WithdrawalInfo`'s canonical bytes. */
-  readonly committedWithdrawalInfoHash: string;
+  readonly committedWithdrawalContentHash: string;
   readonly committedLeafByteCount: number;
 };
 
@@ -163,8 +166,8 @@ const decodeCommittedWithdrawalLeaf = async (
       `${label} leaf bytes are not canonical for (WithdrawalId, WithdrawalInfo)`,
     );
   }
-  const committedWithdrawalInfoHash = await Effect.runPromise(
-    SDK.withdrawalInfoCommitment(committedWithdrawalInfo),
+  const committedWithdrawalContentHash = await Effect.runPromise(
+    SDK.withdrawalContentCommitment(committedWithdrawalInfo),
   );
   return {
     index,
@@ -172,7 +175,7 @@ const decodeCommittedWithdrawalLeaf = async (
     committedWithdrawalInfoCbor,
     committedWithdrawalId,
     committedWithdrawalInfo,
-    committedWithdrawalInfoHash,
+    committedWithdrawalContentHash,
     committedLeafByteCount: value.length,
   };
 };
@@ -223,7 +226,7 @@ export type ClassifiedFabricatedWithdrawalFault = {
   readonly verdict: SDK.FabricatedWithdrawalEvidenceVerdict;
   readonly fault: SDK.FabricatedWithdrawalFault;
   /** Present only for the content-mismatch shape. */
-  readonly authenticWithdrawalInfoHash?: string;
+  readonly authenticWithdrawalContentHash?: string;
   /** Present only for the content-mismatch shape. */
   readonly eventInclusionTime?: bigint;
   /** Present only for the content-mismatch shape. */
@@ -253,8 +256,11 @@ const admitWitnessObservation = ({
  * live-set membership of the committed identity, presence by the event NFT asset
  * name the committed identity derives, and mismatch by comparing two commitments
  * over canonical bytes inside the block's own event window. The content comparison
- * is a single 32-byte inequality over the whole `WithdrawalInfo`, so a diverted
- * body, a forged signature and an overridden validity are all caught by it.
+ * is a single 32-byte inequality over the leaf's `(body, signature)` content, so
+ * both a diverted body and a forged signature are caught by it. A committed
+ * `validity` verdict that differs from the L1 order datum's placeholder is the
+ * operator's own claim (decision 0007) and is deliberately outside the
+ * comparison.
  */
 export const classifyFabricatedWithdrawalFault = async ({
   leaf,
@@ -336,14 +342,14 @@ export const classifyFabricatedWithdrawalFault = async ({
       `event_id=${SDK.committedWithdrawalKeyBytes(eventDatum.event.id)} committed_withdrawal_id=${leaf.committedWithdrawalIdCbor}`,
     );
   }
-  const [authenticWithdrawalInfoHash, eventDatumHash] = await Promise.all([
-    Effect.runPromise(SDK.withdrawalInfoCommitment(eventDatum.event.info)),
+  const [authenticWithdrawalContentHash, eventDatumHash] = await Promise.all([
+    Effect.runPromise(SDK.withdrawalContentCommitment(eventDatum.event.info)),
     Effect.runPromise(SDK.withdrawalEventDatumCommitment(eventDatum)),
   ]);
-  if (authenticWithdrawalInfoHash === leaf.committedWithdrawalInfoHash) {
+  if (authenticWithdrawalContentHash === leaf.committedWithdrawalContentHash) {
     throw new FabricatedWithdrawalRejection(
       "authentic_content_matches_commitment",
-      `committed_withdrawal_info_hash=${leaf.committedWithdrawalInfoHash} equals the authentic event's content; a valid block cannot be challenged`,
+      `committed_withdrawal_content_hash=${leaf.committedWithdrawalContentHash} equals the authentic event's content; a valid block cannot be challenged`,
     );
   }
   const inclusionTime = eventDatum.inclusion_time;
@@ -362,12 +368,12 @@ export const classifyFabricatedWithdrawalFault = async ({
     },
     fault: {
       MismatchedWithdrawalContent: {
-        committed_withdrawal_info_hash: leaf.committedWithdrawalInfoHash,
-        authentic_withdrawal_info_hash: authenticWithdrawalInfoHash,
+        committed_withdrawal_content_hash: leaf.committedWithdrawalContentHash,
+        authentic_withdrawal_content_hash: authenticWithdrawalContentHash,
         event_inclusion_time: inclusionTime,
       },
     },
-    authenticWithdrawalInfoHash,
+    authenticWithdrawalContentHash,
     eventInclusionTime: inclusionTime,
     eventDatumHash,
   };
@@ -393,7 +399,7 @@ export type PreparedFabricatedWithdrawalStateJson = {
   readonly headerStartTime: string;
   readonly headerEndTime: string;
   readonly committedWithdrawalIdCbor: string;
-  readonly committedWithdrawalInfoHash: string;
+  readonly committedWithdrawalContentHash: string;
 };
 
 export type PreparedFabricatedWithdrawalOutput = {
@@ -549,7 +555,8 @@ export const prepareFabricatedWithdrawalFromCommittedLeaves = async ({
       headerStartTime: headerStartTime.toString(),
       headerEndTime: headerEndTime.toString(),
       committedWithdrawalIdCbor: challengedLeaf.committedWithdrawalIdCbor,
-      committedWithdrawalInfoHash: challengedLeaf.committedWithdrawalInfoHash,
+      committedWithdrawalContentHash:
+        challengedLeaf.committedWithdrawalContentHash,
     },
   };
   if (outputDir === undefined) {

@@ -44,7 +44,8 @@ import {
   withdrawalEventDatumBytes,
   withdrawalEventDatumCommitment,
   withdrawalEventNonce,
-  withdrawalInfoCommitment,
+  withdrawalContentBytes,
+  withdrawalContentCommitment,
 } from "../src/fraud-proof/fabricated-withdrawal.js";
 import {
   type WithdrawalInfo,
@@ -61,7 +62,7 @@ import { type WithdrawalOrderDatum } from "../src/user-events/withdrawal.js";
 // `step-01.ak`'s `authentic_withdrawal_id_v1`, `fabricated_withdrawal_id_v1`,
 // `authentic_withdrawal_info_v1`, `diverted_withdrawal_info_v1`,
 // `forged_signature_withdrawal_info_v1`,
-// `overridden_validity_withdrawal_info_v1`, and `step-02.ak`'s
+// `revalidated_withdrawal_info_v1`, and `step-02.ak`'s
 // `authentic_withdrawal_datum_v1` / `authentic_inclusion_time_v1`.
 
 const AUTHENTIC_WITHDRAWAL_ID = {
@@ -133,8 +134,12 @@ const FORGED_SIGNATURE_WITHDRAWAL_INFO: WithdrawalInfo = {
   ],
 };
 
-/** A verdict the authentic event never carried — a fabricated `validity`. */
-const OVERRIDDEN_VALIDITY_WITHDRAWAL_INFO: WithdrawalInfo = {
+/**
+ * The authentic body and signature under the verdict an honest block stamps when
+ * the referenced L2 output does not exist. The operator owns that verdict
+ * (decision 0007), so this is not a fabrication and must not convict.
+ */
+const REVALIDATED_WITHDRAWAL_INFO: WithdrawalInfo = {
   ...AUTHENTIC_WITHDRAWAL_INFO,
   validity: "NonExistentWithdrawalUtxo",
 };
@@ -169,14 +174,18 @@ const KEY_FABRICATED_WITHDRAWAL_ID =
 const VALUE_AUTHENTIC_WITHDRAWAL_INFO =
   "d8799fd8799fd8799f58207e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e01ff581c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9ca1581c4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4ba14d6d6964676172642d746f6b656e182ad8799fd8799f581c2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2bffd87a80ffd87980ff9f5820adadadadadadadadadadadadadadadadadadadadadadadadadadadadadadadad5840bebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebeffd87980ff";
 
-const HASH_AUTHENTIC_WITHDRAWAL_INFO =
-  "f6b65e77ecfcfcaccba6fc17cf30e124829e93d60ef0e7259200316869ef38a0";
-const HASH_DIVERTED_WITHDRAWAL_INFO =
-  "6d8fd0959a65127c274f31b291d1ed97899bba0866c6945473ca7102a30de973";
-const HASH_FORGED_SIGNATURE_WITHDRAWAL_INFO =
-  "a3b578b5798f5dd0fd76e68a612d9d8d4af873908c1855e73e33fdb340402939";
-const HASH_OVERRIDDEN_VALIDITY_WITHDRAWAL_INFO =
-  "56b23f1caeca79d65bf2dcc91c4e1f47d7904b03b442481491edd3acae9f64a8";
+/**
+ * `step-01.ak`'s `withdrawal_content_hash_v1` of each fixture — the commitment
+ * over `(body, signature)` only. The authentic order and the revalidated one
+ * share a hash on purpose: they differ only in the operator-owned `validity`
+ * verdict (decision 0007).
+ */
+const HASH_AUTHENTIC_WITHDRAWAL_CONTENT =
+  "283ad237b5850498ff2cc5e4c2017d6129a3d955265f5e3a889387776716d12f";
+const HASH_DIVERTED_WITHDRAWAL_CONTENT =
+  "8e8f341a7ae7b42e43bf1b09b3e63c742979eb2ada627a417d7af04be1dbe2a3";
+const HASH_FORGED_SIGNATURE_WITHDRAWAL_CONTENT =
+  "20b97ac437a93d4f4fc7c0cf4c8a5b84840b408d836723c98f663cc2e8376f22";
 
 const NONCE_AUTHENTIC_WITHDRAWAL_ID =
   "630f633bd50fa6888cf4e56be119c4970c013d0c7a45216b7eed46960fac800b";
@@ -211,23 +220,23 @@ const AU_WITHDRAWALS_ROOT =
 
 /** `step_02.State` of the nonexistent-identity scenario. */
 const FI_STEP_02_STATE_CBOR =
-  "d8799f581c735fcb9ab869fa81efc508ca11991963a774ae8024658d6de18899670a14d8799f58203a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a00ff5820f6b65e77ecfcfcaccba6fc17cf30e124829e93d60ef0e7259200316869ef38a0ff";
+  "d8799f581c735fcb9ab869fa81efc508ca11991963a774ae8024658d6de18899670a14d8799f58203a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a00ff5820283ad237b5850498ff2cc5e4c2017d6129a3d955265f5e3a889387776716d12fff";
 /** `step_03.State` of the nonexistent-identity scenario. */
 const FI_STEP_03_STATE_CBOR =
-  "d8799f581c735fcb9ab869fa81efc508ca11991963a774ae8024658d6de18899670a14d8799f58203a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a00ff5820f6b65e77ecfcfcaccba6fc17cf30e124829e93d60ef0e7259200316869ef38a0d87980ff";
+  "d8799f581c735fcb9ab869fa81efc508ca11991963a774ae8024658d6de18899670a14d8799f58203a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a00ff5820283ad237b5850498ff2cc5e4c2017d6129a3d955265f5e3a889387776716d12fd87980ff";
 /** `step_04.State` of the nonexistent-identity scenario. */
 const FI_STEP_04_STATE_CBOR =
   "d8799f581c735fcb9ab869fa81efc508ca11991963a774ae8024658d6de18899670a14d8799f58203a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a00ffd87980ff";
 
 /** `step_02.State` of the content-mismatch scenario. */
 const MM_STEP_02_STATE_CBOR =
-  "d8799f581c44201f07972dae5999a6a5f5b8659c0ac65fb96168f3035dd47281820a14d8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ff58206d8fd0959a65127c274f31b291d1ed97899bba0866c6945473ca7102a30de973ff";
+  "d8799f581c44201f07972dae5999a6a5f5b8659c0ac65fb96168f3035dd47281820a14d8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ff58208e8f341a7ae7b42e43bf1b09b3e63c742979eb2ada627a417d7af04be1dbe2a3ff";
 /** `step_03.State` of the content-mismatch scenario. */
 const MM_STEP_03_STATE_CBOR =
-  "d8799f581c44201f07972dae5999a6a5f5b8659c0ac65fb96168f3035dd47281820a14d8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ff58206d8fd0959a65127c274f31b291d1ed97899bba0866c6945473ca7102a30de973d87a9f5820b5e4fa1c72a874ec61778f2e29dc4cc326313b3bc581bc64738fd45f1d9a9a700fffff";
+  "d8799f581c44201f07972dae5999a6a5f5b8659c0ac65fb96168f3035dd47281820a14d8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ff58208e8f341a7ae7b42e43bf1b09b3e63c742979eb2ada627a417d7af04be1dbe2a3d87a9f5820b5e4fa1c72a874ec61778f2e29dc4cc326313b3bc581bc64738fd45f1d9a9a700fffff";
 /** `step_04.State` of the content-mismatch scenario. */
 const MM_STEP_04_STATE_CBOR =
-  "d8799f581c44201f07972dae5999a6a5f5b8659c0ac65fb96168f3035dd47281820a14d8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ffd87a9f58206d8fd0959a65127c274f31b291d1ed97899bba0866c6945473ca7102a30de9735820f6b65e77ecfcfcaccba6fc17cf30e124829e93d60ef0e7259200316869ef38a00fffff";
+  "d8799f581c44201f07972dae5999a6a5f5b8659c0ac65fb96168f3035dd47281820a14d8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ffd87a9f58208e8f341a7ae7b42e43bf1b09b3e63c742979eb2ada627a417d7af04be1dbe2a35820283ad237b5850498ff2cc5e4c2017d6129a3d955265f5e3a889387776716d12f0fffff";
 
 // ## Handoff builders under test
 
@@ -236,7 +245,7 @@ const fiStep02State: FabricatedWithdrawalStep02State = {
   header_start_time: HEADER_START_TIME,
   header_end_time: HEADER_END_TIME,
   committed_withdrawal_id: FABRICATED_WITHDRAWAL_ID,
-  committed_withdrawal_info_hash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
+  committed_withdrawal_content_hash: HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
 };
 
 const mmStep02State: FabricatedWithdrawalStep02State = {
@@ -244,7 +253,7 @@ const mmStep02State: FabricatedWithdrawalStep02State = {
   header_start_time: HEADER_START_TIME,
   header_end_time: HEADER_END_TIME,
   committed_withdrawal_id: AUTHENTIC_WITHDRAWAL_ID,
-  committed_withdrawal_info_hash: HASH_DIVERTED_WITHDRAWAL_INFO,
+  committed_withdrawal_content_hash: HASH_DIVERTED_WITHDRAWAL_CONTENT,
 };
 
 const fiStep03State: FabricatedWithdrawalStep03State =
@@ -267,8 +276,8 @@ const fiStep04State: FabricatedWithdrawalStep04State =
 const mmStep04State: FabricatedWithdrawalStep04State =
   fabricatedWithdrawalStep04State(mmStep03State, {
     MismatchedWithdrawalContent: {
-      committed_withdrawal_info_hash: HASH_DIVERTED_WITHDRAWAL_INFO,
-      authentic_withdrawal_info_hash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
+      committed_withdrawal_content_hash: HASH_DIVERTED_WITHDRAWAL_CONTENT,
+      authentic_withdrawal_content_hash: HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
       event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
     },
   });
@@ -304,33 +313,41 @@ describe("fabricated-withdrawal v1 byte twins", () => {
     );
   });
 
-  it("commits body, signature and validity fidelity in one 32-byte hash, exactly as Aiken does", () => {
+  it("commits body and signature fidelity — and nothing else — in one 32-byte hash, exactly as Aiken does", () => {
     expect(
-      Effect.runSync(withdrawalInfoCommitment(AUTHENTIC_WITHDRAWAL_INFO)),
-    ).toBe(HASH_AUTHENTIC_WITHDRAWAL_INFO);
+      Effect.runSync(withdrawalContentCommitment(AUTHENTIC_WITHDRAWAL_INFO)),
+    ).toBe(HASH_AUTHENTIC_WITHDRAWAL_CONTENT);
     expect(
-      Effect.runSync(withdrawalInfoCommitment(DIVERTED_WITHDRAWAL_INFO)),
-    ).toBe(HASH_DIVERTED_WITHDRAWAL_INFO);
-    expect(
-      Effect.runSync(
-        withdrawalInfoCommitment(FORGED_SIGNATURE_WITHDRAWAL_INFO),
-      ),
-    ).toBe(HASH_FORGED_SIGNATURE_WITHDRAWAL_INFO);
+      Effect.runSync(withdrawalContentCommitment(DIVERTED_WITHDRAWAL_INFO)),
+    ).toBe(HASH_DIVERTED_WITHDRAWAL_CONTENT);
     expect(
       Effect.runSync(
-        withdrawalInfoCommitment(OVERRIDDEN_VALIDITY_WITHDRAWAL_INFO),
+        withdrawalContentCommitment(FORGED_SIGNATURE_WITHDRAWAL_INFO),
       ),
-    ).toBe(HASH_OVERRIDDEN_VALIDITY_WITHDRAWAL_INFO);
-    // Each of the three fabrications is distinguishable from the authentic order
-    // and from the other two, which is what lets one inequality settle all three.
+    ).toBe(HASH_FORGED_SIGNATURE_WITHDRAWAL_CONTENT);
+    // Each fabrication of an L1-owned field is distinguishable from the authentic
+    // order and from the other, which is what lets one inequality settle both.
     expect(
       new Set([
-        HASH_AUTHENTIC_WITHDRAWAL_INFO,
-        HASH_DIVERTED_WITHDRAWAL_INFO,
-        HASH_FORGED_SIGNATURE_WITHDRAWAL_INFO,
-        HASH_OVERRIDDEN_VALIDITY_WITHDRAWAL_INFO,
+        HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
+        HASH_DIVERTED_WITHDRAWAL_CONTENT,
+        HASH_FORGED_SIGNATURE_WITHDRAWAL_CONTENT,
       ]).size,
-    ).toBe(4);
+    ).toBe(3);
+    // Decision 0007: the committed `validity` verdict is the operator's own, so a
+    // leaf that differs from the authentic order only in its verdict commits the
+    // very same content and cannot be a fabrication.
+    expect(
+      Effect.runSync(withdrawalContentCommitment(REVALIDATED_WITHDRAWAL_INFO)),
+    ).toBe(HASH_AUTHENTIC_WITHDRAWAL_CONTENT);
+    expect(withdrawalContentBytes(REVALIDATED_WITHDRAWAL_INFO)).toBe(
+      withdrawalContentBytes(AUTHENTIC_WITHDRAWAL_INFO),
+    );
+    // The leaf value the header commits still carries the verdict, so the two
+    // blocks are distinguishable — this family simply does not judge that field.
+    expect(committedWithdrawalValueBytes(REVALIDATED_WITHDRAWAL_INFO)).not.toBe(
+      committedWithdrawalValueBytes(AUTHENTIC_WITHDRAWAL_INFO),
+    );
   });
 
   it("derives the withdrawal event NFT nonce exactly as Aiken's out_ref_to_nonce does", () => {
@@ -430,8 +447,10 @@ describe("fabricated-withdrawal v1 byte twins", () => {
         ...mmStep04State,
         fault: {
           MismatchedWithdrawalContent: {
-            committed_withdrawal_info_hash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
-            authentic_withdrawal_info_hash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
+            committed_withdrawal_content_hash:
+              HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
+            authentic_withdrawal_content_hash:
+              HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
             event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
           },
         },
@@ -442,8 +461,9 @@ describe("fabricated-withdrawal v1 byte twins", () => {
         ...mmStep04State,
         fault: {
           MismatchedWithdrawalContent: {
-            committed_withdrawal_info_hash: HASH_DIVERTED_WITHDRAWAL_INFO,
-            authentic_withdrawal_info_hash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
+            committed_withdrawal_content_hash: HASH_DIVERTED_WITHDRAWAL_CONTENT,
+            authentic_withdrawal_content_hash:
+              HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
             event_inclusion_time: HEADER_END_TIME + 1n,
           },
         },
@@ -454,40 +474,50 @@ describe("fabricated-withdrawal v1 byte twins", () => {
         ...mmStep04State,
         fault: {
           MismatchedWithdrawalContent: {
-            committed_withdrawal_info_hash: HASH_DIVERTED_WITHDRAWAL_INFO,
-            authentic_withdrawal_info_hash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
+            committed_withdrawal_content_hash: HASH_DIVERTED_WITHDRAWAL_CONTENT,
+            authentic_withdrawal_content_hash:
+              HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
             event_inclusion_time: HEADER_START_TIME,
           },
         },
       }),
     ).toBe(false);
-    // A forged signature or an overridden validity convicts on the same rule.
+    // A forged signature convicts on the same rule as a diverted body.
     expect(
       isFabricatedWithdrawalFault({
         ...mmStep04State,
         fault: {
           MismatchedWithdrawalContent: {
-            committed_withdrawal_info_hash:
-              HASH_FORGED_SIGNATURE_WITHDRAWAL_INFO,
-            authentic_withdrawal_info_hash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
+            committed_withdrawal_content_hash:
+              HASH_FORGED_SIGNATURE_WITHDRAWAL_CONTENT,
+            authentic_withdrawal_content_hash:
+              HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
             event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
           },
         },
       }),
     ).toBe(true);
+    // Decision 0007: a leaf whose only difference from the authentic order is its
+    // operator-owned `validity` verdict commits the same content, so this family
+    // cannot convict it — the honest control survives, and a wrong verdict is
+    // `withdrawalMistag`'s fault instead.
+    expect(
+      Effect.runSync(withdrawalContentCommitment(REVALIDATED_WITHDRAWAL_INFO)),
+    ).toBe(HASH_AUTHENTIC_WITHDRAWAL_CONTENT);
     expect(
       isFabricatedWithdrawalFault({
         ...mmStep04State,
         fault: {
           MismatchedWithdrawalContent: {
-            committed_withdrawal_info_hash:
-              HASH_OVERRIDDEN_VALIDITY_WITHDRAWAL_INFO,
-            authentic_withdrawal_info_hash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
+            committed_withdrawal_content_hash:
+              HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
+            authentic_withdrawal_content_hash:
+              HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
             event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
           },
         },
       }),
-    ).toBe(true);
+    ).toBe(false);
     // The identity fault is a bare constructor and the content fault a
     // three-field one, so a conviction cannot be re-labelled on the wire.
     expect(FI_STEP_04_STATE_CBOR.endsWith("d87980ff")).toBe(true);
