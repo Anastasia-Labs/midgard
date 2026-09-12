@@ -3,6 +3,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 import { inspect } from "node:util";
 
 import {
@@ -282,12 +283,21 @@ export const publishWorkflowDeploymentOnChain = async ({
   }) => void | Promise<void>;
 }>) => {
   const { operator, cosigner } = accounts;
-  const blueprintPath = process.env.MIDGARD_REAL_BLUEPRINT_PATH;
-  if (blueprintPath === undefined)
-    throw new Error(
-      "Set MIDGARD_REAL_BLUEPRINT_PATH to the frozen testnet blueprint",
+  // Same resolution as the package's other real-contract suites: an explicit
+  // frozen blueprint wins; otherwise the locally built testnet blueprint.
+  const blueprintPath =
+    process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
+    fileURLToPath(
+      new URL("../../../../onchain/aiken/plutus.json", import.meta.url),
     );
-  const blueprintJson = await readFile(blueprintPath, "utf8");
+  const blueprintJson = await readFile(blueprintPath, "utf8").catch(
+    (cause: unknown) => {
+      throw new Error(
+        `Missing Aiken blueprint at ${blueprintPath}. Run \`aiken build --env testnet\` in onchain/aiken, or point MIDGARD_REAL_BLUEPRINT_PATH at one.`,
+        { cause },
+      );
+    },
+  );
   // Give initialization a real creating transaction. Emulator genesis outputs
   // have no transaction CBOR for the watcher's historical input resolver.
   let nonce = resume?.nonce;
