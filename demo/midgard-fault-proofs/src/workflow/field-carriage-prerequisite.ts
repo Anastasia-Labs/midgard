@@ -378,6 +378,32 @@ const frozenBaseAction = (
     input: Object.freeze({ ...action.input }),
   });
 
+/**
+ * §8.5 raw carriage publishes a nothing-but-bytes inline datum, so its content
+ * address is taken over the unwrapped payload. A structured evidence
+ * publication *is* the Data its consumer reads, so its content address is taken
+ * over the datum itself. Journal-only recovery cannot rebuild a removed
+ * requirement to tell the two apart, so the publication action records which
+ * encoding it published under.
+ */
+const PUBLICATION_ENCODINGS = ["nothing_but_bytes", "structured_data"] as const;
+type PublicationEncoding = (typeof PUBLICATION_ENCODINGS)[number];
+
+const publicationEncoding = (requirement: Requirement): PublicationEncoding =>
+  "kind" in requirement && requirement.kind === "structured_data_preimage"
+    ? "structured_data"
+    : "nothing_but_bytes";
+
+const publishedContentDigest = (
+  encoding: PublicationEncoding,
+  datumCbor: string,
+): string =>
+  computeHash32(
+    encoding === "structured_data"
+      ? Buffer.from(datumCbor, "hex")
+      : fieldPreimagePublicationBytes(datumCbor),
+  ).toString("hex");
+
 const publicationAction = <Category extends FraudProofCatalogueCategoryName>({
   category,
   baseAction,
@@ -401,6 +427,7 @@ const publicationAction = <Category extends FraudProofCatalogueCategoryName>({
       forAction: frozenBaseAction(baseAction),
       requirementSha256: requirement.identitySha256,
       publicationIndex,
+      publicationEncoding: publicationEncoding(requirement),
       publicationDigest: requirement.publicationDigests[publicationIndex]!,
       datumCborSha256: sha256(requirement.publicationDatums[publicationIndex]!),
     }),
@@ -579,6 +606,7 @@ const recordedCarriageRecovery = ({
           "forAction",
           "requirementSha256",
           "publicationIndex",
+          "publicationEncoding",
           "publicationDigest",
           "datumCborSha256",
         ]
@@ -627,9 +655,13 @@ const recordedCarriageRecovery = ({
         `publish-${raw ? "raw-datum-preimage" : "field-carriage"}:${base.actionId}:${input.requirementSha256}:${input.publicationIndex}` ||
       recovered.unit !== null ||
       sha256(recovered.datumCbor) !== input.datumCborSha256 ||
-      computeHash32(
-        fieldPreimagePublicationBytes(recovered.datumCbor),
-      ).toString("hex") !== input.publicationDigest
+      !PUBLICATION_ENCODINGS.includes(
+        input.publicationEncoding as PublicationEncoding,
+      ) ||
+      publishedContentDigest(
+        input.publicationEncoding as PublicationEncoding,
+        recovered.datumCbor,
+      ) !== input.publicationDigest
     )
       throw new Error("recorded field publication changed its exact output");
   } else {
@@ -839,6 +871,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
             "forAction",
             "requirementSha256",
             "publicationIndex",
+            "publicationEncoding",
             "publicationDigest",
             "datumCborSha256",
           ]

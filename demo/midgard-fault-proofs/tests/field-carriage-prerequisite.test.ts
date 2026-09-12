@@ -43,6 +43,7 @@ const publicationAction: FraudProofWorkflowAction = Object.freeze({
     forAction: baseAction,
     requirementSha256,
     publicationIndex: 0,
+    publicationEncoding: "nothing_but_bytes",
     publicationDigest: "66".repeat(32),
     datumCborSha256: "77".repeat(32),
   }),

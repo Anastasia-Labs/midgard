@@ -55,6 +55,7 @@ const fixture = (certificate: boolean) => {
           forAction: base,
           requirementSha256,
           publicationIndex: 0,
+          publicationEncoding: "nothing_but_bytes",
           publicationDigest: computeHash32(Buffer.from("80", "hex")).toString(
             "hex",
           ),
