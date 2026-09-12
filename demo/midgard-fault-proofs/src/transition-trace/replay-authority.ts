@@ -15,6 +15,10 @@ import {
 } from "../workflow/historical-native-script-corpus.js";
 import { computeFraudProofRawL1SnapshotEvidenceDigest } from "../workflow/raw-l1-snapshot.js";
 import {
+  CanonicalReplayPrerequisiteError,
+  replayPrerequisiteFailure,
+} from "../workflow/replay-prerequisite.js";
+import {
   detectTransitionTraceFaults,
   type TransitionTraceDetection,
   type TransitionTraceDetectionEvidence,
@@ -129,16 +133,32 @@ const readTransitionTraceEventCoverage = ({
     if (due && source === undefined) omitted.push(omittedItem);
     if (!due && source !== undefined) outside.push(outsideItem);
   }
+  // Decision 0007: a committed deposit or withdrawal with no authentic L1
+  // origin is the fabricated-family fraud, so it is carried out of coverage as
+  // a prerequisite the replay caller raises rather than an abort here. A
+  // forced-transaction source has no fabricated family and still aborts.
+  const uncovered: SDK.EventKey[] = [];
   for (const source of current.sourceEventsByFingerprint.values()) {
     if (
-      source.phase !== "L2Transaction" &&
-      !referencesByEvent.has(source.fingerprint)
+      source.phase === "L2Transaction" ||
+      referencesByEvent.has(source.fingerprint)
     )
+      continue;
+    if (source.phase === "ForcedTransaction")
       throw new Error(
         "Transition replay lacks authenticated L1 coverage for a committed source",
       );
+    uncovered.push(source.eventKey);
   }
-  return { l1, current, omitted, outside, referencesByEvent, relevantEvents };
+  return {
+    l1,
+    current,
+    omitted,
+    outside,
+    referencesByEvent,
+    relevantEvents,
+    uncovered,
+  };
 };
 
 // Each key is an opaque handle owning immutable, already admitted raw evidence.
@@ -259,7 +279,7 @@ export const replayTransitionTraceFromRetainedHistory = async ({
     throw new Error(
       "Transition replay authority targets another canonical block",
     );
-  const { l1, current, omitted, outside, referencesByEvent } =
+  const { l1, current, omitted, outside, referencesByEvent, uncovered } =
     readTransitionTraceEventCoverage({ evidence, l1Events });
   const timed = {
     omittedDueL1Events: omitted,
@@ -271,6 +291,21 @@ export const replayTransitionTraceFromRetainedHistory = async ({
       (item) => item.buildable,
     )
   ) {
+    // Decision 0007: the fabricated family owns a committed deposit or
+    // withdrawal whose L1 origin is absent. Its finding at that leaf discharges
+    // this prerequisite; a merely consumed origin yields no finding and the
+    // block fails closed.
+    if (uncovered.length > 0)
+      throw new CanonicalReplayPrerequisiteError(
+        uncovered.map(
+          (eventKey) =>
+            replayPrerequisiteFailure(
+              evidence.headerHash,
+              eventKey,
+              "present_source_origin",
+            ).failures[0]!,
+        ),
+      );
     completeEvidence = {
       ...(await deriveTransitionTraceReplayEvidence({
         current,

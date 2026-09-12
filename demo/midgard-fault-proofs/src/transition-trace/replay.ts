@@ -232,19 +232,34 @@ export const deriveTransitionTraceReplayEvidence = async ({
           Data.to(source.entry.key, SDK.OutputReference)
         );
       });
-      if (selected.length !== 1)
+      if (selected.length > 1)
         throw new Error(
-          "Transition replay needs one authenticated deposit event preimage",
+          "Transition replay captured ambiguous deposit event preimages",
+        );
+      // Decision 0007: a committed deposit with no authentic L1 origin is the
+      // `fabricatedDeposit` fraud, not a replay abort. Only that family's
+      // finding at this leaf discharges the prerequisite, which keeps a merely
+      // consumed/settled origin fail-closed: the family proves absence from the
+      // authenticated live output-reference set and refuses a consumed outref.
+      if (selected.length === 0)
+        throw replayPrerequisiteFailure(
+          current.headerHash,
+          step.event_key,
+          "present_source_origin",
         );
       const { event, eventAssetName, eventRefInputIndex } = selected[0]!;
       const decoded = Data.from(event.datum!, SDK.DepositDatum).event;
+      // Decision 0007: an authentic deposit whose content differs from the
+      // committed leaf is the `fabricatedDeposit` fraud at that leaf.
       if (
         Data.to(decoded.info, SDK.DepositInfo) !==
           source.entry.valueBytes.toString("hex") ||
         event.assets[depositPolicyId + eventAssetName] !== 1n
       )
-        throw new Error(
-          "Transition deposit preimage differs from authenticated source",
+        throw replayPrerequisiteFailure(
+          current.headerHash,
+          step.event_key,
+          "matching_source_origin",
         );
       const info = source.entry.value;
       const effect = deriveCanonicalDepositTransitionEffect({

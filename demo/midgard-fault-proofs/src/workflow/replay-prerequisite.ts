@@ -2,13 +2,18 @@ import {
   CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID,
   DOUBLE_WITHDRAW_VIOLATION_ID,
   EventKey,
+  FABRICATED_DEPOSIT_VIOLATION_ID,
+  FABRICATED_WITHDRAWAL_VIOLATION_ID,
   type EventKey as EventKeyValue,
   WITHDRAWAL_MISTAG_VIOLATION_ID,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { eventKeyFingerprint } from "../transition-trace/reconstruct.js";
+import {
+  eventKeyFingerprint,
+  type SourceEventRecord,
+} from "../transition-trace/reconstruct.js";
 import {
   type CanonicalViolationDetection,
   FRAUD_PROOF_CLASSIFICATION_RULES,
@@ -17,6 +22,8 @@ import { TYPED_REASON_DISPOSITIONS } from "./reason-disposition.js";
 
 export type ReplayPrerequisite =
   | "accepted_terminal"
+  | "matching_source_origin"
+  | "present_source_origin"
   | "present_spend_input"
   | "prior_transition_effect"
   | "representable_field_shape"
@@ -144,6 +151,56 @@ const withdrawalPrerequisiteCovered = (
   });
 };
 
+/**
+ * Decision 0007 (`docs/fault-proofs/decisions/0007-operator-owned-event-validity.md`):
+ * a committed deposit or withdrawal leaf whose L1 origin is absent, or whose
+ * authentic origin differs in content, *is* the fabricated-family fraud. The
+ * replay cannot project such a leaf, so it records a prerequisite, and only the
+ * finding owed to that family — at this leaf's own committed position — may
+ * discharge it.
+ *
+ * The replay itself cannot tell a never-authenticated identity from an origin
+ * that was authenticated and has since been consumed or settled; a live-UTxO
+ * capture shows the same emptiness for both, and the second is a
+ * data-availability problem rather than fraud. The distinction is made where the
+ * evidence lives: `classifyFabricatedDepositFault` establishes absence only by
+ * exhibiting the committed identity in the authenticated *live* output-reference
+ * set and refuses a consumed outref
+ * (`consumed_live_utxo_fallback_refused`), and the withdrawal family follows the
+ * same rule. A consumed origin therefore yields no finding, this prerequisite
+ * stays undischarged, and the block fails closed instead of being convicted.
+ *
+ * Forced-transaction origins have no fabricated family, so 0007 does not reach
+ * them and they never take this route.
+ */
+const fabricatedSourceOriginCovered = (
+  evidence: CanonicalBlockEvidence,
+  source: SourceEventRecord | undefined,
+  detections: readonly CanonicalViolationDetection[],
+): boolean => {
+  const family =
+    source?.phase === "Deposit"
+      ? {
+          leaves: evidence.reconstruction.deposits as readonly unknown[],
+          violationId: FABRICATED_DEPOSIT_VIOLATION_ID as string,
+        }
+      : source?.phase === "Withdrawal"
+        ? {
+            leaves: evidence.reconstruction.withdrawals as readonly unknown[],
+            violationId: FABRICATED_WITHDRAWAL_VIOLATION_ID as string,
+          }
+        : undefined;
+  if (family === undefined) return false;
+  const leaf = family.leaves.indexOf(source!.entry);
+  if (leaf < 0) return false;
+  return detections.some(
+    (detection) =>
+      detection.headerHash === evidence.headerHash &&
+      detection.violationId === family.violationId &&
+      detection.position === BigInt(leaf),
+  );
+};
+
 /** The union may discharge a proof-domain failure only with a direct finding
  * for its exact transaction. Positions in separate source frontiers must never
  * be mistaken for an event identity. */
@@ -158,6 +215,13 @@ export const assertReplayPrerequisiteCovered = (
   const source = evidence.reconstruction.sourceEventsByFingerprint.get(
     eventKeyFingerprint(eventKey),
   );
+  if (
+    failure.prerequisite === "present_source_origin" ||
+    failure.prerequisite === "matching_source_origin"
+  ) {
+    if (fabricatedSourceOriginCovered(evidence, source, detections)) return;
+    throw new CanonicalReplayPrerequisiteError([failure]);
+  }
   if (failure.prerequisite === "prior_transition_effect") {
     if (
       source !== undefined &&

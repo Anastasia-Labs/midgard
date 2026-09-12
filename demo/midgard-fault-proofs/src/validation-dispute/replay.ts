@@ -19,6 +19,7 @@ import {
   committedWithdrawalValueBytes,
   DepositDatum,
   DepositInfo,
+  type DepositInfo as DepositInfoValue,
   EMPTY_MERKLE_TREE_ROOT,
   EventKey,
   ForcedTxProofSource,
@@ -32,6 +33,7 @@ import {
   validationTraceDescriptorDataFromCore,
   Value,
   WithdrawalInfo,
+  type WithdrawalInfo as WithdrawalInfoValue,
   WithdrawalOrderDatum,
 } from "@al-ft/midgard-sdk";
 import {
@@ -233,7 +235,7 @@ const readOriginEvents = (
 const matchingOrigin = (
   source: Exclude<SourceEventRecord, { phase: "L2Transaction" }>,
   origins: ReturnType<typeof readOriginEvents>,
-): OriginEvent => {
+): OriginEvent | undefined => {
   const kind =
     source.phase === "Deposit"
       ? "deposit"
@@ -253,12 +255,60 @@ const matchingOrigin = (
       Data.to(source.entry.key, OutputReference)
     );
   });
-  if (matches.length !== 1)
+  if (matches.length > 1)
     throw new Error(
-      "validation replay requires one captured originating event; absent or consumed origins require retained history",
+      "validation replay captured ambiguous originating events for one identity",
     );
+  if (matches.length === 0) {
+    // Decision 0007: a committed deposit or withdrawal with no L1 origin is
+    // the fabricated-family fraud, not a replay abort. The caller turns the
+    // absence into a prerequisite that only that family's finding discharges,
+    // which is also what keeps a merely consumed/settled origin fail-closed:
+    // the fabricated families prove absence from the authenticated live
+    // output-reference set and refuse a consumed outref, so no finding exists
+    // to discharge it. Forced transactions have no fabricated family, so an
+    // absent forced origin stays an abort.
+    if (source.phase === "ForcedTransaction")
+      throw new Error(
+        "validation replay requires one captured originating forced event; absent or consumed origins require retained history",
+      );
+    return undefined;
+  }
   return matches[0]!;
 };
+
+/** Decision 0007: the fabricated-deposit comparison is the authentic deposit's
+ * whole committed body; a deposit carries no operator-owned verdict. */
+export const committedDepositMatchesOrigin = ({
+  originInfo,
+  committedValueBytes,
+}: {
+  readonly originInfo: DepositInfoValue;
+  readonly committedValueBytes: string;
+}): boolean => Data.to(originInfo, DepositInfo) === committedValueBytes;
+
+/**
+ * Decision 0007: the operator owns the committed validity verdict, so the
+ * fabricated-withdrawal comparison substitutes the committed leaf's validity
+ * into the authentic L1 order and judges only its body and signature. A
+ * committed validity that differs from the L1 order's placeholder is not
+ * fabricated content; a wrong verdict belongs to `withdrawalMistag`.
+ */
+export const committedWithdrawalMatchesOrigin = ({
+  originInfo,
+  committedValidity,
+  committedValueBytes,
+}: {
+  readonly originInfo: WithdrawalInfoValue;
+  readonly committedValidity: WithdrawalInfoValue["validity"];
+  readonly committedValueBytes: string;
+}): boolean =>
+  // The producer and Aiken serialiseData commit definite asset maps, so the
+  // committed leaf is compared in its canonical committed encoding.
+  committedWithdrawalValueBytes({
+    ...originInfo,
+    validity: committedValidity,
+  }) === committedValueBytes;
 
 /**
  * The direct reason catalogue owns every non-Plutus route. Descriptor drift
@@ -323,8 +373,11 @@ const replayDetectionId = (entry: ReplayMaterial): string =>
  * Freshly authenticates retained inputs and derives each verdict,
  * ledger mutation and trace through the canonical validation owner. No caller
  * supplies a verdict, descriptor, replay input, evaluator or detector callback.
- * Non-L2 events require their exact originating L1 authority. Its present-event
- * capture cannot stand in for an absent or already-consumed origin's history.
+ * Non-L2 events require their exact originating L1 authority. Under decision
+ * 0007 a committed deposit or withdrawal whose origin is absent, or whose
+ * authentic origin differs in content, records the prerequisite owed to
+ * `fabricatedDeposit`/`fabricatedWithdrawal` rather than aborting; an absent
+ * forced origin still aborts, because no family proves it.
  */
 export const admitValidationTraceReplayContext = async ({
   evidence,
@@ -448,15 +501,38 @@ export const admitValidationTraceReplayContext = async ({
       source.phase === "L2Transaction"
         ? undefined
         : matchingOrigin(source, origins!);
+    if (source.phase !== "L2Transaction" && origin === undefined) {
+      // Decision 0007: report the fabricated-family finding owed to this
+      // event instead of throwing out of classification. The ledger is left
+      // untouched, exactly as the other prerequisite routes leave it.
+      prerequisites.push(
+        ...replayPrerequisiteFailure(
+          evidence.headerHash,
+          source.eventKey,
+          "present_source_origin",
+        ).failures,
+      );
+      continue;
+    }
     if (source.phase === "Deposit") {
       const original = Data.from(origin!.event.datum!, DepositDatum).event;
       if (
-        Data.to(original.info, DepositInfo) !==
-        source.entry.valueBytes.toString("hex")
-      )
-        throw new Error(
-          "validation replay deposit differs from its originating event",
+        !committedDepositMatchesOrigin({
+          originInfo: original.info,
+          committedValueBytes: source.entry.valueBytes.toString("hex"),
+        })
+      ) {
+        // Decision 0007: the authentic deposit's content differs from the
+        // committed one, which is exactly `fabricatedDeposit`.
+        prerequisites.push(
+          ...replayPrerequisiteFailure(
+            evidence.headerHash,
+            source.eventKey,
+            "matching_source_origin",
+          ).failures,
         );
+        continue;
+      }
       const effect = deriveCanonicalDepositTransitionEffect({
         configuredNetwork: origins!.network,
         eventId: original.id,
@@ -507,17 +583,24 @@ export const admitValidationTraceReplayContext = async ({
         origin!.event.datum!,
         WithdrawalOrderDatum,
       ).event;
-      // The producer and Aiken serialiseData commit definite asset maps, so the
-      // committed leaf is compared in its canonical committed encoding.
       if (
-        committedWithdrawalValueBytes({
-          ...original.info,
-          validity: source.entry.value.validity,
-        }) !== source.entry.valueBytes.toString("hex")
-      )
-        throw new Error(
-          "validation replay withdrawal differs from its originating body and signature",
+        !committedWithdrawalMatchesOrigin({
+          originInfo: original.info,
+          committedValidity: source.entry.value.validity,
+          committedValueBytes: source.entry.valueBytes.toString("hex"),
+        })
+      ) {
+        // Decision 0007: the authentic order's body or signature differs from
+        // the committed one, which is exactly `fabricatedWithdrawal`.
+        prerequisites.push(
+          ...replayPrerequisiteFailure(
+            evidence.headerHash,
+            source.eventKey,
+            "matching_source_origin",
+          ).failures,
         );
+        continue;
+      }
       const outRef = encodeMidgardSpendInputItem({
         txId: Buffer.from(original.info.body.l2_outref.transactionId, "hex"),
         outputIndex: Number(original.info.body.l2_outref.outputIndex),

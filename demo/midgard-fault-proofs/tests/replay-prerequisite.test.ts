@@ -8,6 +8,8 @@ import {
   CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID,
   EMPTY_MERKLE_TREE_ROOT,
   EventKey,
+  FABRICATED_DEPOSIT_VIOLATION_ID,
+  FABRICATED_WITHDRAWAL_VIOLATION_ID,
   outOfWindowSourceEventFault,
   type OutputReference,
   type TransitionFault,
@@ -235,6 +237,37 @@ describe("complete replay proof prerequisites", () => {
     });
   });
 
+  it("classifies a fabricated event as its own family instead of aborting", async () => {
+    const { evidence } = await fixture();
+    // Decision 0007: the fabricated families are ordinary provable findings,
+    // so a block that fabricates an event still classifies as a fault.
+    for (const violationId of [
+      FABRICATED_DEPOSIT_VIOLATION_ID,
+      FABRICATED_WITHDRAWAL_VIOLATION_ID,
+    ]) {
+      const detection = {
+        headerHash: evidence.headerHash,
+        detectionId: `${violationId}:0`,
+        violationId,
+        position: 0n,
+      };
+      await expect(
+        classifyCanonicalBlockViolations({
+          evidence,
+          detections: [detection],
+          minimumConfirmationDepth: 1,
+        }),
+      ).resolves.toMatchObject({
+        decision: "fault_detected",
+        category:
+          violationId === FABRICATED_DEPOSIT_VIOLATION_ID
+            ? "fabricatedDeposit"
+            : "fabricatedWithdrawal",
+        selected: detection,
+      });
+    }
+  });
+
   it("allows an empty complete scan only when no prerequisite remains", async () => {
     const { evidence, event } = await fixture();
     expect(completeReplayFindings([], [])).toEqual([]);
@@ -384,6 +417,39 @@ describe("withdrawal replay prerequisites", () => {
       assertReplayPrerequisiteCovered(evidence, other, [mistag(1n)]),
     ).toThrow(CanonicalReplayPrerequisiteError);
   });
+
+  it("lets only the fabricated-withdrawal finding at the exact leaf cover an absent or mismatched origin", () => {
+    const { evidence, eventKey } = doubleWithdrawEvidence();
+    const fabricated = (position: bigint): CanonicalViolationDetection => ({
+      headerHash: evidence.headerHash,
+      detectionId: `${FABRICATED_WITHDRAWAL_VIOLATION_ID}:${position.toString()}`,
+      violationId: FABRICATED_WITHDRAWAL_VIOLATION_ID,
+      position,
+    });
+    for (const prerequisite of [
+      "present_source_origin",
+      "matching_source_origin",
+    ] as const) {
+      const failure = replayPrerequisiteFailure(
+        evidence.headerHash,
+        eventKey(1),
+        prerequisite,
+      ).failures[0]!;
+      expect(() =>
+        assertReplayPrerequisiteCovered(evidence, failure, [fabricated(1n)]),
+      ).not.toThrow();
+      for (const unrelated of [
+        [],
+        [fabricated(0n)],
+        [{ ...fabricated(1n), headerHash: "99".repeat(28) }],
+        [{ ...fabricated(1n), violationId: WITHDRAWAL_MISTAG_VIOLATION_ID }],
+        [{ ...fabricated(1n), violationId: FABRICATED_DEPOSIT_VIOLATION_ID }],
+      ])
+        expect(() =>
+          assertReplayPrerequisiteCovered(evidence, failure, unrelated),
+        ).toThrow(CanonicalReplayPrerequisiteError);
+    }
+  });
 });
 
 /** A deposit source frontier, as the reconstruction admits it. */
@@ -515,5 +581,63 @@ describe("deposit replay prerequisites", () => {
     expect(
       provenTransitionEventKeyCbor({ ...detection, buildable: false } as never),
     ).toBeUndefined();
+  });
+
+  it("lets only the fabricated-deposit finding at the exact leaf cover an absent or mismatched origin", () => {
+    const { evidence, eventKey } = depositEvidence();
+    const fabricated = (position: bigint): CanonicalViolationDetection => ({
+      headerHash: evidence.headerHash,
+      detectionId: `${FABRICATED_DEPOSIT_VIOLATION_ID}:${position.toString()}`,
+      violationId: FABRICATED_DEPOSIT_VIOLATION_ID,
+      position,
+    });
+    for (const prerequisite of [
+      "present_source_origin",
+      "matching_source_origin",
+    ] as const) {
+      const failure = replayPrerequisiteFailure(
+        evidence.headerHash,
+        eventKey(1),
+        prerequisite,
+      ).failures[0]!;
+      expect(() =>
+        assertReplayPrerequisiteCovered(evidence, failure, [fabricated(1n)]),
+      ).not.toThrow();
+      // An origin absent only because it was consumed or settled yields no
+      // fabricated finding, so the prerequisite stays undischarged and the
+      // block fails closed rather than being convicted.
+      for (const unrelated of [
+        [],
+        [fabricated(0n)],
+        [{ ...fabricated(1n), headerHash: "99".repeat(28) }],
+        [
+          {
+            ...fabricated(1n),
+            violationId: CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID,
+          },
+        ],
+        [
+          {
+            ...fabricated(1n),
+            violationId: FABRICATED_WITHDRAWAL_VIOLATION_ID,
+          },
+        ],
+      ])
+        expect(() =>
+          assertReplayPrerequisiteCovered(evidence, failure, unrelated),
+        ).toThrow(CanonicalReplayPrerequisiteError);
+    }
+    // The other prerequisite kinds are not dischargeable by this family.
+    expect(() =>
+      assertReplayPrerequisiteCovered(
+        evidence,
+        replayPrerequisiteFailure(
+          evidence.headerHash,
+          eventKey(1),
+          "prior_transition_effect",
+        ).failures[0]!,
+        [fabricated(1n)],
+      ),
+    ).toThrow(CanonicalReplayPrerequisiteError);
   });
 });
