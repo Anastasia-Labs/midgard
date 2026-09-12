@@ -2,7 +2,8 @@
 
 Status: Active — no-go for an open public testnet.
 
-Last full readiness review: 2026-09-01. Consolidated: 2026-09-07.
+Last full readiness review: 2026-09-01. Consolidated: 2026-09-07. Updated
+2026-09-12 for the forced-submission merge and watcher journey status.
 This edit does not rerun launch acceptance or close any release gate.
 
 This is the release acceptance checklist for an externally reachable deployment.
@@ -36,6 +37,13 @@ Previously implemented portions of a combined gate still need release verificati
       docs and the manifest. Likewise accept settlement resolution claims or declare
       them unsupported: claims, deposit/withdrawal/tx-order disproof, economic slashing,
       matured removal, restart, valid-claim maturity, and no-slash tests are required.
+- [ ] Forced (tx-order) submissions use the immutable-submission format from the
+      [forced-submission decision](midgard/decisions/forced-inclusion-submission-verdict.md):
+      the L1 order carries no validity field and `OperatorVerdictV1` is the only
+      committed operator claim. Its encoding is bound into the consensus profile
+      as `forcedTransactionSourceEncoding`, so a manifest published before it
+      fails deployment identity and must be republished. The format is merged
+      and locally verified; it is not deployed or live-accepted anywhere.
 - [ ] Publish a threat model covering runtime, APIs, key/admin compromise, L1
       provider compromise and rate limits, spam, read amplification, mempool behavior,
       operational DoS, and incident assumptions. Publish `SECURITY.md` with scope,
@@ -86,6 +94,18 @@ Previously implemented portions of a combined gate still need release verificati
       demo seeds, default DB credentials, mutable images, exposed internal services,
       missing identity, or unapproved placeholder economics. Define image and Mithril
       snapshot policy, CPU/memory/disk/DB/indexer sizing, and retention capacity.
+      The owner-set production hardware floor from the
+      [economics decision](midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md)
+      is accepted and carried here verbatim:
+
+      | Role                                         | Floor                                                                                                             |
+      | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+      | midgard-node (operator)                      | ≥ 32 GiB RAM, ≥ 16 vCPU (2026 gaming-PC class), NVMe storage                                                      |
+      | DA committee node, midgard-watcher, Postgres | sized from C74/C86 measured usage plus ≥ 2× headroom; the §5.1 ceilings are containment caps, not recommendations |
+
+      C86 bounded-stress results refine the non-node role sizing but cannot
+      lower the node floor.
+
 - [ ] Use mounted secrets/secret files and prove startup errors/logs redact them.
       Separate operator, merge, reference-script, admin, provider, and release key
       owners, balances, privileges, signer isolation, and rotation/revocation.
@@ -252,6 +272,12 @@ Previously implemented portions of a combined gate still need release verificati
       next action, and safe recovery semantics. Verify the
       [challenger](fault-proofs/challenger-runbook.md) and
       [manual recovery](fault-proofs/manual-recovery-runbook.md) runbooks externally.
+      The [automatic watcher journeys](fault-proofs/automatic-watcher-journeys.md)
+      harness is the acceptance vehicle for this gate on a real devnet. As of
+      2026-09-12 one of the 54 non-interactive families (`transitionTrace`) has a
+      completed live journey, on a pre-merge revision; the rest are locally
+      verified, blocked on owner rulings, or unrun. Watcher installation covers
+      all 55 source categories; installation is not acceptance.
 - [ ] Expose machine-readable rule/reject-code to family, script hashes, DA needs,
       and supported/disabled/unsupported status. Status cannot excuse missing
       normative coverage. Public tooling must not rely on incompatible-output or

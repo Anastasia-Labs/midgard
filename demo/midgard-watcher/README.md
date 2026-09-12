@@ -2,7 +2,8 @@
 
 Status: Active
 
-Last reviewed: 2026-09-08 (availability lifecycle wiring; not deployment acceptance).
+Last reviewed: 2026-09-12 (forced-submission merge, installed scope, and live
+acceptance status; not deployment acceptance).
 
 `midgard-watcher` is the independent verifier and challenger. The DA committee
 service is a separate package, `demo/da-committee-node`.
@@ -107,9 +108,11 @@ availability state halts the journal and requires authenticated recovery.
 The nested wire parser accepts both `local_node` and `external_providers`.
 External-provider mode requires independent provider identities. The installed
 CLI process parser is narrower: it requires `mode: "acceptance"`,
-`targetNetwork: "Preprod"`, and `local_node` authority, with confirmation depth
-30, prefinality rollback depth 30, and postfinality recovery bound 2160.
-The authority process enforces the same policy.
+`targetNetwork` of `"Preprod"` or `"Custom"`, and `local_node` authority, with
+confirmation depth 30, prefinality rollback depth 30, and postfinality recovery
+bound 2160. `Custom` admits an explicitly bound isolated devnet, the network the
+automatic watcher journeys run against; it is not a relaxation of finality or
+rollback policy. The authority process enforces the same policy.
 
 Local authority binds the Cardano node socket, node/genesis configuration, and
 genesis identity; the native chain-sync process provides ordered chain evidence.
@@ -119,15 +122,39 @@ DA retrieval authenticates the configured peer and payload commitments.
 Acceptance of a generic nested configuration does not establish support by the
 installed process launcher.
 
+Startup verifies the deployment manifest against the canonical V1 consensus
+profile exactly, including `forcedTransactionSourceEncoding`
+(`midgard-forced-submission-v1`, added by the forced-submission redesign). A
+manifest published before that field existed fails closed with
+`canonical_manifest_invalid`; the deployment must be republished, not patched.
+Forced submissions are adjudicated per
+[the forced-submission decision](../../docs/midgard/decisions/forced-inclusion-submission-verdict.md):
+the L1 order authenticates the immutable submission and the operator's
+`OperatorVerdictV1` is the sole committed classification.
+
 ## Source and verification map
 
 - [CLI](src/cli.ts) and [command lifecycle](src/runtime/scaffold.ts).
 - [Runtime composition](src/runtime/watcher-runtime.ts).
 - [Installed proof categories](src/fault-proofs/fault-proof-application.ts):
   `WATCHER_INSTALLED_WORKFLOW_CATEGORIES` is the executable installation scope.
+  It lists all 55 source catalogue categories;
+  `WATCHER_MISSING_WORKFLOW_CATEGORIES` is empty. Installation is source
+  scope only, not live acceptance.
 - [Catalogue status](../../docs/fault-proofs/catalogue-status.md): source
   inventory, deployment identity, and acceptance boundaries.
+- [Automatic watcher journeys](../../docs/fault-proofs/automatic-watcher-journeys.md):
+  the real-devnet acceptance harness in
+  `demo/midgard-node-tools/devnet/watcher-journeys/`. It launches this package's
+  built `dist/cli.js` against a fresh Cardano devnet and drives each
+  non-interactive family from committed header to healthy successor. As of
+  2026-09-12 only `transitionTrace` has completed that journey, on a revision
+  before the forced-submission merge; the other 53 non-interactive families
+  are verified locally or still blocked, not live-accepted. The interactive
+  `validationTraceDispute` family is installed but outside that harness.
 - `pnpm run typecheck`, `pnpm run lint`, and `pnpm test` check this package.
+  The journey harness runs the built `dist`; rebuild before a live run or the
+  child process executes stale code while the test process reads source.
 
 The [verification-boundary decision](../../docs/midgard/decisions/watcher-verification-boundaries.md)
 explains the trust and recovery model; the runtime and its tests determine

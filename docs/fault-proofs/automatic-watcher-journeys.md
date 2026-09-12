@@ -15,6 +15,14 @@ run took 2,896.92 seconds: deployment 19.6s, startup 57.9s, proof/correction
 34.0s, and successor catch-up 2,760.1s. These measurements motivate profiling
 catch-up; they do not establish the real devnet's performance.
 
+Live status, 2026-09-12: `transitionTrace` completed the full real-devnet
+journey (10,730 seconds end to end, on a revision before the forced-submission
+merge, which invalidated that deployment's manifest). No other family has a
+completed live journey on this harness; the remaining 53 non-interactive
+families are locally verified, blocked on owner rulings, or unrun. A family
+that fails mid-journey leaves its attested, unproven header on the state
+queue, and every later family fails until that header is proven or times out.
+
 ## Work sequence
 
 1. Provision an independent run directory, network magic, genesis, wallets and
@@ -28,7 +36,7 @@ catch-up; they do not establish the real devnet's performance.
    retain independent protocol state and evidence for each family. Use the
    production builders and existing canonical fault material, without mocked
    classifier decisions, proof results, chain receipts, DA responses or clocks.
-5. Run all 53 non-interactive catalogue entries and repair defects reached by
+5. Run all 54 non-interactive catalogue entries and repair defects reached by
    the real flow. The installed interactive `validationTraceDispute` family is
    outside this acceptance scope.
 6. Retain a per-family result index with source revision/dirty diff, compiler,
