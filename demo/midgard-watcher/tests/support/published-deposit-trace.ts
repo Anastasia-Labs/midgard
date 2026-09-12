@@ -158,10 +158,11 @@ export const stagePublishedDepositTrace = async (
       });
       if (result.status === "not-ready") {
         onStage(`abandoned header timeout ${result.targetHeaderHash}`);
+        // Chain time is slot-quantised: land one slot past the deadline.
         await chain.awaitSlot(
           Math.max(
             1,
-            Math.ceil((Number(result.deadlineMs) + 1 - chain.now()) / 1000),
+            Math.ceil((Number(result.deadlineMs) - chain.now()) / 1000) + 1,
           ),
         );
       } else if (result.status === "complete") {

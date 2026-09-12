@@ -1580,16 +1580,14 @@ const timeoutRemovalBaseTx = ({
   readonly requiredReferenceInputs: readonly UTxO[];
   readonly correctionLockOutputDatum: CorrectionLockDatum;
 }): TxBuilder => {
+  const referenceScriptInputs = Object.values(
+    params.referenceScripts ?? {},
+  ).filter((utxo): utxo is UTxO => utxo !== undefined);
   const referenceInputs = dedupeAndSortUtxos([
     params.hubOracleRefInput,
     ...requiredReferenceInputs,
     ...(params.additionalRefInputs ?? []),
-    ...(params.referenceScripts?.stateQueueSpend === undefined
-      ? []
-      : [params.referenceScripts.stateQueueSpend]),
-    ...(params.referenceScripts?.stateQueueMint === undefined
-      ? []
-      : [params.referenceScripts.stateQueueMint]),
+    ...referenceScriptInputs,
     params.yieldWitness.referenceInput,
   ]);
   let tx = lucid
