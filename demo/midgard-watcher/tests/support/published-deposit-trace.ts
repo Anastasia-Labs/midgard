@@ -1,3 +1,8 @@
+import {
+  createFileTimeoutCorrectionJournalStore,
+  submitUnattestedTimeoutCorrection,
+  type TimeoutCorrectionJournal,
+} from "@al-ft/midgard-fault-proofs";
 import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -61,6 +66,7 @@ export const stagePublishedDepositTrace = async (
     onStage = () => {},
     resume,
     onCheckpoint = async () => {},
+    timeoutCorrectionJournalPath,
   }: {
     daSignerConfig: DaLocalSignerConfig;
     honest?: boolean;
@@ -69,6 +75,8 @@ export const stagePublishedDepositTrace = async (
     onCheckpoint?: (
       checkpoint: PublishedDepositTraceCheckpoint,
     ) => Promise<void>;
+    /** Durable journal of abandoned-header removals; in memory when absent. */
+    timeoutCorrectionJournalPath?: string;
   },
 ) => {
   const { contracts, chain, references } = deployment;
@@ -112,7 +120,62 @@ export const stagePublishedDepositTrace = async (
     onStage,
   });
   const onboardOperator = () => actor.onboardOperator();
+  // This fixture appends to the confirmed state, so the queue must be empty.
+  // A stopped run can leave headers whose DA attestation never followed. The
+  // protocol lets anyone remove such a head once its attestation timeout
+  // passes; apply that correction, waiting for the timeout, before publishing.
+  const removeAbandonedHeaders = async () => {
+    let memory: TimeoutCorrectionJournal | undefined;
+    const journalStore =
+      timeoutCorrectionJournalPath === undefined
+        ? {
+            load: async () => memory,
+            save: async (journal: TimeoutCorrectionJournal) => {
+              memory = journal;
+            },
+          }
+        : createFileTimeoutCorrectionJournalStore(timeoutCorrectionJournalPath);
+    for (;;) {
+      const liveRoot = await Effect.runPromise(
+        SDK.getLinkedListNodeViewFromUTxO(
+          await one(contracts.stateQueue.spendingScriptAddress, rootUnit),
+        ),
+      );
+      if (liveRoot.next === "Empty") return;
+      const result = await submitUnattestedTimeoutCorrection({
+        lucid,
+        deploymentInfo: deployment.deploymentInfo,
+        network: daSignerConfig.NETWORK,
+        signer: {
+          source: "journey-operator-wallet",
+          address,
+          paymentKeyHash: operatorVkey,
+          selectWallet: () => undefined,
+        },
+        journalStore,
+        awaitConfirmation: true,
+        nowMs: () => chain.now(),
+      });
+      if (result.status === "not-ready") {
+        onStage(`abandoned header timeout ${result.targetHeaderHash}`);
+        await chain.awaitSlot(
+          Math.max(
+            1,
+            Math.ceil((Number(result.deadlineMs) + 1 - chain.now()) / 1000),
+          ),
+        );
+      } else if (result.status === "complete") {
+        onStage(`abandoned header removal ${result.targetHeaderHash}`);
+        lucid.overrideUTxOs(await lucid.utxosAt(address));
+      } else {
+        throw new Error(
+          `State queue holds headers this fixture cannot remove: ${liveRoot.next.Key.key}`,
+        );
+      }
+    }
+  };
   const prepare = async () => {
+    await removeAbandonedHeaders();
     // A stopped preparation may have published an event before its block was
     // checkpointed. Recover every real pending deposit from the isolated chain.
     const priorDeposits: NonNullable<
@@ -159,6 +222,18 @@ export const stagePublishedDepositTrace = async (
       Math.max(
         0,
         Math.ceil((Number(genesis.data.endTime) + 1 - chain.now()) / 1000),
+      ),
+    );
+    // Retained deposits of a stopped run become eligible at their own
+    // inclusion times; the empty predecessor must close after every one.
+    const latestPriorInclusion = Math.max(
+      0,
+      ...priorDeposits.map((prior) => prior.metadata.inclusionTime),
+    );
+    await chain.awaitSlot(
+      Math.max(
+        0,
+        Math.ceil((latestPriorInclusion - 39_999 + 1_000 - chain.now()) / 1000),
       ),
     );
     const l2Address = credentialToAddress("Preprod", {
@@ -326,7 +401,8 @@ export const stagePublishedDepositTrace = async (
     lucid.overrideUTxOs(await lucid.utxosAt(address));
   };
   await activateDanglingSuccessorRegistration();
-  let anchor = root;
+  // Abandoned-header removal continues the root in a new output.
+  let anchor = await one(contracts.stateQueue.spendingScriptAddress, rootUnit);
   let head: UTxO | undefined;
   let headUnit: string | undefined;
   const commits: string[] = [...prepared.commits];

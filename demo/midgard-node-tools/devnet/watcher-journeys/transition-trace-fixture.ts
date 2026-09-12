@@ -33,6 +33,7 @@ export const transitionTraceJourneyFixture: JourneyFixture = {
       resume,
       onCheckpoint: (checkpoint) =>
         writeJourneyArtifact(checkpointPath, checkpoint),
+      timeoutCorrectionJournalPath: join(directory, "timeout-correction.json"),
     });
     const { depositEvent, depositMetadata } = staged.checkpoint;
     const datum = Data.from(depositEvent.datum!, SDK.DepositDatum);

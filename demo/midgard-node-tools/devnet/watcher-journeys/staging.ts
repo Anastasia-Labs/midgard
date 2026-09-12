@@ -265,6 +265,7 @@ async function stageJourney(
         : undefined,
       onCheckpoint: (checkpoint) =>
         writeJourneyArtifact(initialPath, checkpoint),
+      timeoutCorrectionJournalPath: join(directory, "timeout-correction.json"),
     });
     await retain(initial.predecessor, initial.commits[0]!);
     await retain(initial.current, initial.commits[1]!);
