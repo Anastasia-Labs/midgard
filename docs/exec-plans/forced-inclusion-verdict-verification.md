@@ -247,18 +247,18 @@ was deleted and no fallback was added to bypass that dependency.
 
 ## Merge verification (2026-09-12)
 
-Prepared integration commit: `427948f40596857e8525bbc3c4181b81d7ecf8a6` on
-`codex/forced-inclusion-verdict`. It includes the current watcher branch through
-`75bcfdc3ba91fe782d0e700c11fa7fb46d74878e` and the committed redesign above.
-The destination is `colll78/canonical-v1-watcher-l1-source-checkpoint` in
-`/home/gumbo/midgard-hub/midgard`.
+Completed integration commit: `3742e4beb555b1901ce2b89af5dd5142d35e63ef`.
+It includes watcher work through
+`32e3e815974e4a4bae19465b613afe1420f84791` and the committed redesign above.
+After the user confirmed the watcher task had paused at a safe checkpoint,
+`colll78/canonical-v1-watcher-l1-source-checkpoint` in
+`/home/gumbo/midgard-hub/midgard` was fast-forwarded to the integration commit.
 
-**Destination update is pending.** The watcher task continues running live
-journeys in that checkout. It must reach a safe pause before the final branch
-update. The original checkout's files and index have not been changed by this
-integration task. Its initial 44 uncommitted paths were backed up; the owner
-subsequently committed the 43 code paths as `920194bc7`. The initial measurement
-report is retained in the backup too.
+**Destination update is complete.** The three remaining uncommitted documents
+(`docs/fault-proofs/README.md`, `coverage-matrix.md`, and `remaining-gaps.md`)
+were preserved byte-for-byte and remain uncommitted. The initial 44 uncommitted
+paths were backed up; the owner subsequently committed the 43 code paths as
+`920194bc7`. The initial measurement report is retained in the backup too.
 
 Manual resolutions preserve both source kinds and exact order-key selection in
 newly refactored proof workflows, while retaining watcher recovery after a
@@ -279,8 +279,27 @@ watcher branch. The latest checkpoint/retry changes are preserved unchanged.
 | Workspace lint, formatting and diff checks                    | Passed                                                                                                  |
 | Independent standards and spec merge reviews                  | No actionable findings in either review                                                                 |
 
-Total: 827 passing test executions and 3 explicitly recorded skips. The selected
-proof run includes forced submission lifecycle/capacity, redeemer canonicity in
+The final watcher checkpoint changes only raw L1 header observation and its
+regression test: observations bind to the original header NFT mint across DA
+attestation output recreation. It merged cleanly. On `3742e4beb`, an additional
+focused run passed 115 tests in four files with zero skips: raw L1 family
+derivation, manifest-bound family recovery, terminal recovery, and Kupmios
+source. The full workspace typecheck passed again, as did lint and formatting
+for the two checkpoint files.
+
+The destination had an older ignored `onchain/aiken/plutus.json` (SHA-256
+`20302aad09931798b0b7e9775bdddc21b450b18e5d6470ee5132d93e24258cd4`).
+It was backed up in the evidence directory and replaced with the exact verified
+1,149-entry blueprint from the redesign worktree, matching the `e91e45ab…`
+hash recorded above. Git does not transfer this generated artifact. An additional
+28 tests in three files passed in the destination checkout using that blueprint:
+Aiken blueprint data, forced submission lifecycle, and exact forced-order
+source selection. The serialized full workspace build also passed in the
+destination, rebuilding its local package outputs. Documentation checks passed
+(12 fact groups, 272 files). No live service was restarted or redeployed.
+
+Earlier integration total: 827 passing test executions and 3 explicitly recorded
+skips. The selected proof run includes forced submission lifecycle/capacity, redeemer canonicity in
 both directions, zero-input lifecycle, exact order selection, raw L1 recovery,
 publication prerequisites and terminal recovery. The initially attempted tooling
 command selected zero files under its default configuration; it was replaced by

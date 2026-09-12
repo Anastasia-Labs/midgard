@@ -6,11 +6,12 @@
 - Dependencies: Task 1 completed, including its ADR, impact inventory, acceptance matrix, and reconstructible baseline.
 - Non-goals: live deployment/reset, changes to normal transaction semantics, rejection-policy redesign, unrelated cleanup, or partial deployment of the new format.
 
-Integration update (2026-09-12): the local merge with current watcher work is
-prepared and verified. The full workspace typecheck now passes, resolving the
-inherited recovery API dependency described in the earlier checkpoint below.
-The destination checkout still runs live watcher journeys; its final branch
-update awaits a safe pause. See the [merge verification record](../forced-inclusion-verdict-verification.md#merge-verification-2026-09-12).
+Integration update (2026-09-12): the forced redesign is merged into the watcher
+working branch at `3742e4beb`, including its final checkpoint `32e3e8159`.
+The user confirmed a safe pause before the destination update. The full
+workspace typecheck passes, resolving the inherited recovery API dependency
+described below; another 115 focused recovery tests passed on the final merge.
+The three unrelated uncommitted fault-proof documents remain unchanged. See the [merge verification record](../forced-inclusion-verdict-verification.md#merge-verification-2026-09-12).
 
 ## What this task accomplishes
 
