@@ -2,7 +2,7 @@
 
 Status: Task 2 implementation and focused local verification complete;
 integration/release dependencies, Task 3 and deployment acceptance remain open.
-Updated: 2026-09-11. Consumer: review and release decisions for this change.
+Updated: 2026-09-12. Consumer: review and release decisions for this change.
 
 ## Reviewed state
 
@@ -12,9 +12,10 @@ It lives in `/home/gumbo/midgard-hub/midgard-forced-inclusion`, branch
 `codex/forced-inclusion-verdict`, against snapshot
 `a46ec6222a46650872061570cbe7f462d18e88e1`. The snapshot contains 298 inherited
 watcher paths; its parent is `9797ce41ce5d436e309eca07e2020ee29c395859`.
-Review `git diff a46ec6222a46650872061570cbe7f462d18e88e1` and all untracked
-implementation files. No implementation commit, merge, reset or deployment has
-been made. Dirty-tree results remain provisional until bound to a release commit.
+The implementation was committed as `742df026e9215842101ea2e60b2c887e7e033fbd`.
+Review its difference from the snapshot for the original redesign. Subsequent
+local merge commits integrate watcher work as recorded below. No reset or
+deployment has been performed; these commits are not release approval.
 
 The forced full envelope is `[1, body, witness]`; its compact envelope and
 three-field source contain no validity decision. L1 orders commit that immutable
@@ -166,7 +167,8 @@ This task owns migration of affected watcher source/claim/replay boundaries and
 regressions introduced by that migration. Continue recording full watcher-suite
 results, but attribute failures before doing further repairs; do not absorb the
 separate autonomous watcher project or count an inherited failure as a redesign
-regression. The captured missing recovery API remains an integration dependency.
+regression. The captured missing recovery API was subsequently resolved in the
+2026-09-12 integration recorded below.
 
 All tests in the full fault-proof package passed on the rebuilt identity:
 2,587 cases in 350 files, with no skipped cases. The separate complete
@@ -230,7 +232,8 @@ Four judgments remain separate:
    independent review remains open.
 2. **Local behavior:** full proof suite, complete transaction-preparation
    acceptance and the focused boundary matrix passed; watcher results and the
-   inherited workspace typecheck failure are recorded separately.
+   historical workspace typecheck failure are recorded separately. The integrated
+   workspace now passes typechecking.
 3. **Capability/fit:** final F4 passed. Maximum forced-order mint remains an
    explicit [bounded-authentication dependency](forced-inclusion-verdict/order-mint-capacity-dependency.md).
    Task 1 M1 permits this report, but it does not establish maximum-order support.
@@ -238,9 +241,67 @@ Four judgments remain separate:
 
 The inherited node-tools live test imports
 `readAdmittedLocalKupmiosSignedTransactionRecovery`, absent from the captured
-fault-proof baseline. This requires reconciliation with the ongoing watcher
-work before workspace acceptance. It has not been bypassed by deleting a test,
-weakening types or adding a fallback.
+fault-proof baseline. The 2026-09-12 integration incorporates the watcher
+implementation and its tests. The full workspace typecheck now passes; no test
+was deleted and no fallback was added to bypass that dependency.
+
+## Merge verification (2026-09-12)
+
+Prepared integration commit: `427948f40596857e8525bbc3c4181b81d7ecf8a6` on
+`codex/forced-inclusion-verdict`. It includes the current watcher branch through
+`75bcfdc3ba91fe782d0e700c11fa7fb46d74878e` and the committed redesign above.
+The destination is `colll78/canonical-v1-watcher-l1-source-checkpoint` in
+`/home/gumbo/midgard-hub/midgard`.
+
+**Destination update is pending.** The watcher task continues running live
+journeys in that checkout. It must reach a safe pause before the final branch
+update. The original checkout's files and index have not been changed by this
+integration task. Its initial 44 uncommitted paths were backed up; the owner
+subsequently committed the 43 code paths as `920194bc7`. The initial measurement
+report is retained in the backup too.
+
+Manual resolutions preserve both source kinds and exact order-key selection in
+newly refactored proof workflows, while retaining watcher recovery after a
+header leaves the queue. A new regression verifies redeemer workflow artifact
+serialization and re-admission select the second of two same-body orders with
+different witness data. Six newer field-publication prerequisite calls now carry
+the authenticated source kind. The recovery API implementation matches the
+watcher branch. The latest checkpoint/retry changes are preserved unchanged.
+
+| Verification                                                  | Result                                                                                                  |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Serialized full workspace typecheck                           | Passed on `427948f40`                                                                                   |
+| Serialized workspace build                                    | Passed on `30f20157a`; only journey tooling changed afterward and its build passed again on `427948f40` |
+| Forced-redesign T1–T7 boundary matrix                         | 410 passed, 29 files, zero skips                                                                        |
+| Selected proof workflow and emulator regressions              | 251 passed, 16 files, zero skips                                                                        |
+| Watcher runtime, funding, origin and finality regressions     | 119 passed, 7 files; 2 retained-run-dependent cases skipped                                             |
+| Journey source, correction, timing and checkpoint regressions | 47 passed, 5 files; 1 retained-run timing case skipped                                                  |
+| Workspace lint, formatting and diff checks                    | Passed                                                                                                  |
+| Independent standards and spec merge reviews                  | No actionable findings in either review                                                                 |
+
+Total: 827 passing test executions and 3 explicitly recorded skips. The selected
+proof run includes forced submission lifecycle/capacity, redeemer canonicity in
+both directions, zero-input lifecycle, exact order selection, raw L1 recovery,
+publication prerequisites and terminal recovery. The initially attempted tooling
+command selected zero files under its default configuration; it was replaced by
+the explicit `vitest.watcher-journeys.config.ts` run over all five named files.
+The zero-file attempt is not counted as verification.
+
+The boundary/proof/watcher runs used `30f20157a`; those package sources are
+byte-identical in `427948f40`. Validator source and blueprint are byte-identical
+to `742df026e`, including the SHA-256 recorded above. The earlier full 2,587-case
+proof suite and 4,152 Aiken cases remain historical evidence against that
+validator artifact; they were not rerun in full for this merge. The maximum-order
+capacity limitation remains open. No deferred admission-grammar redesign,
+Preprod acceptance, live submission or deployment reset was performed here.
+
+Commands, logs, original working-tree backups and result metadata are archived
+under `/home/gumbo/midgard-hub/midgard/.git/evidence/forced-merge-20260912`.
+Final successful remaining-check script: `/var/tmp/forced-merge-final-checks.sh`
+(exit 0). Boundary script: `/var/tmp/forced-merge-boundaries.sh` (exit 0).
+Proof/watcher commands and passing results are preserved from
+`/var/tmp/forced-merge-checks.sh`; its subsequent zero-file tooling attempt
+returned 1 and was corrected by the final script.
 
 ## Deployment handoff to Task 3
 
