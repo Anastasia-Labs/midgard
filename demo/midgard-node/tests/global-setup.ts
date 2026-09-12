@@ -28,6 +28,7 @@ import { PgClient } from "@effect/sql-pg";
 import { Effect, Layer, Redacted } from "effect";
 
 import { MigrationRunner } from "../src/database/index.js";
+import { MigrationError } from "../src/database/migrations/runner.js";
 import { NodeConfig } from "../src/services/config.js";
 import { Database } from "../src/services/database.js";
 import {
@@ -61,6 +62,14 @@ const createShard = (shard: string) =>
     yield* sql.unsafe(`ALTER DATABASE "${shard}" SET synchronous_commit = on`);
   }).pipe(Effect.provide(maintenanceClient("postgres")));
 
+const dropShard = (shard: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    // Plain DROP (no FORCE) refuses a shard another process is connected to,
+    // so a concurrent run on that shard fails loudly instead of being killed.
+    yield* sql.unsafe(`DROP DATABASE IF EXISTS "${shard}"`);
+  }).pipe(Effect.provide(maintenanceClient("postgres")));
+
 const migrateShard = (shard: string) =>
   Effect.gen(function* () {
     process.env.POSTGRES_DB = shard;
@@ -71,6 +80,40 @@ const migrateShard = (shard: string) =>
       Effect.provide(Layer.provideMerge(Database.layer, NodeConfig.layer)),
     );
   });
+
+/**
+ * Migration codes that mean the shard's applied schema belongs to a different
+ * revision of the migration set than the one under test — a checkout that
+ * edited a migration, or another worktree that migrated the shard ahead. The
+ * runner refuses such a database because a production database must never be
+ * silently rewritten; a test shard has no data worth keeping, so provisioning
+ * recreates it instead of leaving the whole suite red until someone drops it
+ * by hand. Every other migration failure (connection, SQL, lock) still throws.
+ */
+const STALE_SHARD_SCHEMA_CODES: ReadonlySet<string> = new Set([
+  "schema_checksum_mismatch",
+  "schema_manifest_hash_mismatch",
+  "schema_name_mismatch",
+  "schema_version_ahead",
+]);
+
+const isStaleShardSchema = (error: unknown): error is MigrationError =>
+  error instanceof MigrationError && STALE_SHARD_SCHEMA_CODES.has(error.code);
+
+const provisionShard = (shard: string) =>
+  createShard(shard).pipe(
+    Effect.andThen(migrateShard(shard)),
+    Effect.catchIf(isStaleShardSchema, (error) =>
+      Effect.gen(function* () {
+        process.stderr.write(
+          `[global-setup] ${shard}: ${error.message} (${error.code}) — recreating the shard for the current migration set\n`,
+        );
+        yield* dropShard(shard);
+        yield* createShard(shard);
+        yield* migrateShard(shard);
+      }),
+    ),
+  );
 
 /**
  * Build the native architecture-G owner binary the mpf-differential and
@@ -134,8 +177,7 @@ export const provisionMidgardNodeTestDatabaseShards =
     const pinnedDatabase = process.env.POSTGRES_DB;
     try {
       for (const shard of testDatabaseNames()) {
-        await Effect.runPromise(createShard(shard));
-        await Effect.runPromise(migrateShard(shard));
+        await Effect.runPromise(provisionShard(shard));
       }
     } finally {
       process.env.POSTGRES_DB = pinnedDatabase;
