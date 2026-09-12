@@ -8,6 +8,7 @@ import {
   deriveMidgardNativeTxFaultEvidenceMaterial,
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
@@ -171,9 +172,11 @@ export const prepareSpendInputSignerMissingEvidence = ({
   if (priorRoot === undefined) return fail("prior-ledger root is required");
   if (resolved !== undefined && resolved.priorRoot !== priorRoot)
     return fail("resolved prior-ledger output names another root");
-  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-    canonicalTransactionCbor,
-  );
+  const material = (
+    subject.source_kind === 1n
+      ? deriveMidgardForcedTxFaultEvidenceMaterial
+      : deriveMidgardNativeTxFaultEvidenceMaterial
+  )(canonicalTransactionCbor);
   if (material.transactionId.toString("hex") !== subject.transaction_id)
     return fail("transaction identity was substituted");
   const witnessPreimage = material.fieldPreimages[7]!;
@@ -354,7 +357,11 @@ export const detectSpendInputSignerMissingCompleteReplay = ({
     subject: VerdictSubject,
     inputIndex: number,
   ): void => {
-    const material = deriveMidgardNativeTxFaultEvidenceMaterial(bytes);
+    const material = (
+      subject.source_kind === 1n
+        ? deriveMidgardForcedTxFaultEvidenceMaterial
+        : deriveMidgardNativeTxFaultEvidenceMaterial
+    )(bytes);
     const selected = decodeMidgardInputFieldPreimage(
       material.fieldPreimages[0]!,
     )[inputIndex];

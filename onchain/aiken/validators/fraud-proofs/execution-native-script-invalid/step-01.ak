@@ -1,9 +1,11 @@
+use aiken/cbor
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{
-  cancel, continue, pass_native_tx_to_next_step_carried,
+  PublishedChunkInclusion, RedeemerCarriedInclusion, cancel, continue,
+  pass_native_tx_to_next_step_carried,
 }
 use midgard/fraud_proofs/execution_native_script_invalid/rule.{
   bind_execution_v1,
@@ -11,10 +13,8 @@ use midgard/fraud_proofs/execution_native_script_invalid/rule.{
 use midgard/fraud_proofs/execution_native_script_invalid/step_01.{
   AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
 }
-use midgard/fraud_proofs/native_tx/compact.{
-  encode_native_tx_compact_v1, verify_native_tx_proof_source_v1,
-}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
+use midgard/ledger_state.{L2TransactionSourceV1}
 
 validator main(
   accepted_reconstruction_init_script_hash: ScriptHash,
@@ -47,13 +47,22 @@ validator main(
           own_out_ref,
           tx,
         )
+        // The inclusion helper authenticated these exact source bytes. Carry
+        // its compact bytes forward instead of rebuilding the same envelope;
+        // keeping the encoder out of this dispatcher preserves publication fit.
+        let source_cbor = when inclusion is {
+          RedeemerCarriedInclusion(args) -> args.l2_transaction_source_cbor
+          PublishedChunkInclusion(args) -> args.l2_transaction_source_cbor
+        }
+        expect Some(source_data) = cbor.deserialise(source_cbor)
+        expect source: L2TransactionSourceV1 = source_data
         let expected: Data = bind_execution_v1(
           substrate.bind_accepted_subject_v1(verified),
           header.validation_traces_root,
           header.validation_trace_count,
           execution_index,
           header.prev_utxos_root,
-          encode_native_tx_compact_v1(verified.tx_compact),
+          source.source.compact_cbor,
         )
         and {
           next_script_hash == accepted_reconstruction_init_script_hash,
@@ -88,20 +97,14 @@ validator main(
           direction,
         )
         let leaf = membership.value
-        let Pair(verified, _) = verify_native_tx_proof_source_v1(
-          leaf.tx_id,
-          leaf.source.compact_cbor,
-          leaf.source.witness_set_compact_cbor,
-          leaf.source.field_preimage_lengths_cbor,
-        )
-        expect verified.tx_id == subject.transaction_id
+        // bind_forced_subject_to_thread_v1 already verified this exact source.
         let expected: Data = bind_execution_v1(
           subject,
           header.validation_traces_root,
           header.validation_trace_count,
           execution_index,
           header.prev_utxos_root,
-          encode_native_tx_compact_v1(verified.tx_compact),
+          leaf.submitted_source.compact_cbor,
         )
         and {
           next_script_hash == forced_step_02_validator_script_hash,

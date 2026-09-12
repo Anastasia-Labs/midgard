@@ -1,11 +1,9 @@
 import {
-  adjudicateMidgardNativeTxFullValidity,
   decodeMidgardFieldPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxFaultEvidenceMaterial,
-  encodeMidgardNativeTxCanonical,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   type ForcedInclusionTxV1,
@@ -312,7 +310,11 @@ export const deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock = (
       readonly itemIndex: number;
     };
   }) => {
-    const material = deriveMidgardNativeTxFaultEvidenceMaterial(canonicalCbor);
+    const material = (
+      subject.source_kind === 1n
+        ? deriveMidgardForcedTxFaultEvidenceMaterial
+        : deriveMidgardNativeTxFaultEvidenceMaterial
+    )(canonicalCbor);
     if (material.transactionId.toString("hex") !== subject.transaction_id) {
       throw new Error(
         "fieldItemWidthIllegal retained-DA transaction identity changed",
@@ -364,7 +366,7 @@ export const deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock = (
     if (typeof reason === "string" || !("FieldItemWidthIllegal" in reason))
       continue;
     const coordinate = reason.FieldItemWidthIllegal;
-    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+    const material = deriveMidgardForcedTxFaultEvidenceMaterial(
       forced.fullTransactionCbor,
     );
     if (material.transactionId.toString("hex") !== forced.value.tx_id) {
@@ -456,10 +458,7 @@ export const deriveFieldItemWidthIllegalAuthenticatedSource = async ({
     ({ key, value }) =>
       value.tx_id === evidence.subject.transaction_id &&
       Data.to(key as never, OutputReferenceSchema as never) ===
-        Data.to(
-          evidence.subject.source_key as never,
-          OutputReferenceSchema as never,
-        ),
+        evidence.subject.source_key,
   );
   if (forced === undefined || forced.value.verdict === "ForcedTxValid") {
     throw new Error(
@@ -479,21 +478,16 @@ export const deriveFieldItemWidthIllegalAuthenticatedSource = async ({
       "fieldItemWidthIllegal forced reason differs from authenticated source",
     );
   }
-  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-    encodeMidgardNativeTxCanonical(
-      adjudicateMidgardNativeTxFullValidity(
-        decodeMidgardNativeTxFullFromCanonicalCbor(forced.fullTransactionCbor),
-        "TxIsInvalid",
-      ),
-    ),
+  const material = deriveMidgardForcedTxFaultEvidenceMaterial(
+    forced.fullTransactionCbor,
   );
   if (
     material.proofSource.compactCbor.toString("hex") !==
-      forced.value.source.compact_cbor ||
+      forced.value.submitted_source.compact_cbor ||
     material.proofSource.witnessSetCompactCbor.toString("hex") !==
-      forced.value.source.witness_set_compact_cbor ||
+      forced.value.submitted_source.witness_set_compact_cbor ||
     material.proofSource.fieldPreimageLengthsCbor.toString("hex") !==
-      forced.value.source.field_preimage_lengths_cbor
+      forced.value.submitted_source.field_preimage_lengths_cbor
   ) {
     throw new Error(
       "fieldItemWidthIllegal forced source material differs from authenticated leaf",
@@ -556,24 +550,17 @@ export const detectFieldItemWidthIllegalCompleteReplay = (
       if (typeof reason === "string" || !("FieldItemWidthIllegal" in reason)) {
         return [];
       }
-      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-        encodeMidgardNativeTxCanonical(
-          adjudicateMidgardNativeTxFullValidity(
-            decodeMidgardNativeTxFullFromCanonicalCbor(
-              transaction.fullTransactionCbor,
-            ),
-            "TxIsInvalid",
-          ),
-        ),
+      const material = deriveMidgardForcedTxFaultEvidenceMaterial(
+        transaction.fullTransactionCbor,
       );
       if (
         material.transactionId.toString("hex") !== transaction.value.tx_id ||
         material.proofSource.compactCbor.toString("hex") !==
-          transaction.value.source.compact_cbor ||
+          transaction.value.submitted_source.compact_cbor ||
         material.proofSource.witnessSetCompactCbor.toString("hex") !==
-          transaction.value.source.witness_set_compact_cbor ||
+          transaction.value.submitted_source.witness_set_compact_cbor ||
         material.proofSource.fieldPreimageLengthsCbor.toString("hex") !==
-          transaction.value.source.field_preimage_lengths_cbor
+          transaction.value.submitted_source.field_preimage_lengths_cbor
       ) {
         throw new Error(
           "fieldItemWidthIllegal forced transaction differs from its authenticated leaf",

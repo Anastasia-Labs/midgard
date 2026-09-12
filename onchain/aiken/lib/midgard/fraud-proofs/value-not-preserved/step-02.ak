@@ -45,7 +45,6 @@
 //// duplicate-bearing fold is a conviction of a genuinely fraudulent block.
 //// The dedup-balanced completeness corner belongs to that other family.
 
-use aiken/collection/list
 use midgard/common/types.{Proof}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1}
@@ -158,30 +157,35 @@ pub fn spent_input_claimed_quantity_v1(
       descriptor.lovelace
     }
     // 3b. The full authenticated leaf walk, summing the claimed unit.
-    TokenAsset { .. } -> {
-      expect list.length(witness.asset_openings) == descriptor.asset_count
+    TokenAsset { policy_id, asset_name } ->
       sum_claimed_leaves(
         descriptor,
-        claimed_asset,
+        policy_id,
+        asset_name,
         witness.asset_peaks,
         witness.asset_openings,
         0,
         0,
       )
-    }
   }
 }
 
 fn sum_claimed_leaves(
   descriptor: ledger_output_commitment_v1.LedgerOutputCommitmentV1,
-  claimed_asset: ClaimedAssetV1,
+  policy_id: ByteArray,
+  asset_name: ByteArray,
   peaks: List<FrontierPeak>,
   openings: List<AssetLeafOpeningV1>,
   index: Int,
   accumulated: Int,
 ) -> Int {
   when openings is {
-    [] -> accumulated
+    [] -> {
+      // Count the authenticated walk itself, avoiding a second traversal.
+      // This retains exact exhaustion while keeping step-02 publishable.
+      expect index == descriptor.asset_count
+      accumulated
+    }
     [opening, ..rest] -> {
       // Leaf `index` really is `(policy, name, quantity)`: the leaf hash
       // binds all three, and the index-position binding of
@@ -199,21 +203,18 @@ fn sum_claimed_leaves(
           peaks,
           opening.siblings,
         )
-      let contribution = when claimed_asset is {
-        AdaAsset -> 0
-        TokenAsset { policy_id, asset_name } ->
-          if and {
-            opening.policy_id == policy_id,
-            opening.asset_name == asset_name,
-          } {
-            opening.quantity
-          } else {
-            0
-          }
+      let contribution = if and {
+        opening.policy_id == policy_id,
+        opening.asset_name == asset_name,
+      } {
+        opening.quantity
+      } else {
+        0
       }
       sum_claimed_leaves(
         descriptor,
-        claimed_asset,
+        policy_id,
+        asset_name,
         peaks,
         rest,
         index + 1,

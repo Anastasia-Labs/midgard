@@ -127,8 +127,12 @@ fn output_proof_step_dispatch(
   reference_script_auth_policy_id: PolicyId,
   tx: Transaction,
 ) -> Bool {
-  let frame =
-    raw.open_frame_v1(pre, transition, frame_item_count, output_proof_stage)
+  let frame = raw.open_frame_v1(
+    pre,
+    transition,
+    frame_item_count,
+    output_proof_stage,
+  )
   // Outer well-formedness of the agreed control bytes: version, stage range,
   // descriptor scalars and canonical re-encoding. `expect` so the checked
   // decode actually runs (an unused `let` is fully ignored in Aiken).

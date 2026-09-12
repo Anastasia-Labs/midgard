@@ -467,8 +467,6 @@ export const revalidateAndPersistSpeculativeCandidateSources = ({
           current[ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE],
           expected[ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE],
         ) ||
-        current[ForcedTransactionsDB.Columns.OPERATOR_VALIDITY] !==
-          expected[ForcedTransactionsDB.Columns.OPERATOR_VALIDITY] ||
         current[ForcedTransactionsDB.Columns.INCLUSION_TIME].getTime() !==
           expected[ForcedTransactionsDB.Columns.INCLUSION_TIME].getTime() ||
         !headerIsUnassigned(

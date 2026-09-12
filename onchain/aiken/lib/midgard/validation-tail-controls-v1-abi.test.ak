@@ -414,7 +414,7 @@ fn forced_source_membership() -> validation_claim_v1.ValidationSourceMembershipV
       },
       value: ledger_state.ForcedInclusionTxV1 {
         tx_id: #"1414141414141414141414141414141414141414141414141414141414141414",
-        source: ledger_state.NativeTxProofSourceV1 {
+        submitted_source: ledger_state.ForcedTxProofSourceV1 {
           compact_cbor: #"8101",
           witness_set_compact_cbor: #"8102",
           field_preimage_lengths_cbor: #"8103",

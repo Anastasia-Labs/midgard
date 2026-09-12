@@ -129,6 +129,7 @@ fn initial_walk() {
     WitnessAnchor {
       tx_id: block.tx_id,
       witness_set_hash: block.compact.witness_set_hash,
+      source_kind: 0,
     },
     address_witnesses_field_index,
     fixture.certified_reference_inputs_v1(

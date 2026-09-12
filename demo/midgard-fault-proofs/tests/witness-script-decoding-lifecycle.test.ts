@@ -7,6 +7,10 @@ import {
   encodeMidgardNativeTxCanonical,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
+import {
+  encodeMidgardForcedTxCompact as forcedCompact,
+  materializeMidgardForcedTxFromCanonical as forcedView,
+} from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -635,7 +639,12 @@ const makeHarness = async () => {
           signer,
           threadOutRef,
           evidence,
-          nativeTxCompactCbor: shape.carriage.compactCbor,
+          nativeTxCompactCbor:
+            evidence.finding.subject.source_kind === 1n
+              ? forcedCompact(forcedView(shape.nativeTx).compact).toString(
+                  "hex",
+                )
+              : shape.carriage.compactCbor,
           witnessSet: shape.carriage.witnessSet,
           witnessSetCompactCbor: shape.carriage.witnessSetCompactCbor,
           scriptWitnessItems: [shape.item],
@@ -658,6 +667,7 @@ const makeHarness = async () => {
    */
   const publishField = async (shape: Shape, prefix: string | null) => {
     const planned = planFaultProofFieldOpening({
+      anchorSourceKind: 0n,
       fieldIndex: SDK.MIDGARD_FIELD_INDEX.scriptWitnesses,
       anchorTxId: shape.txId,
       nativeTxCompactCbor: shape.carriage.compactCbor,
@@ -733,6 +743,7 @@ const makeHarness = async () => {
       preimage,
     });
     const planned: FaultProofFieldOpeningPlan = {
+      sourceKind: 0n,
       fieldIndex: SDK.MIDGARD_FIELD_INDEX.scriptWitnesses,
       nativeTxId: shape.txId,
       nativeTxCompactCbor: shape.carriage.compactCbor,

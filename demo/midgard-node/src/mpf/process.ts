@@ -544,10 +544,7 @@ export const processMpfs = (
       yield* ForcedTransactionsDB.setProofClassifications(
         classifiedForcedTransactions.map(({ entry }) => ({
           txOrderId: entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],
-          operatorValidity:
-            entry[ForcedTransactionsDB.Columns.OPERATOR_VALIDITY],
-          forcedInclusionValue:
-            entry[ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE],
+          verdict: ForcedTransactionsDB.operatorVerdictOfEntry(entry),
           programMaterialSidecarCbor:
             entry[
               ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR
@@ -949,7 +946,7 @@ export const processMpfs = (
             entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString("hex"),
           );
           if (
-            entry[ForcedTransactionsDB.Columns.OPERATOR_VALIDITY] ===
+            ForcedTransactionsDB.operatorValidityOfEntry(entry) ===
               "TxIsValid" &&
             ledgerOps === undefined
           ) {

@@ -400,6 +400,7 @@ export const submitReferenceInputNoIdxStep04 = async ({
     inputDatum.data.bad_reference_input_output_index;
 
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     anchorTxId: producingTxId,
     nativeTxCompactCbor,

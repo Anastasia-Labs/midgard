@@ -67,8 +67,9 @@ fn inner_of(control: raw.Frame, index: Int) -> Data {
 pub fn terminal_scan(control: raw.Frame) -> scan.LedgerOutputScanControlV1 {
   expect raw.integer(control, item_stage) == proof.stage_terminal
   let total_length = raw.integer(control, item_total_length)
-  let scan_control =
-    scan.control_from_data_v1(raw.item(control, item_output_scan))
+  let scan_control = scan.control_from_data_v1(
+    raw.item(control, item_output_scan),
+  )
   expect scan_control.cursor <= total_length
   expect scan.terminal_is_exact_v1(scan_control, total_length)
   scan_control
@@ -110,8 +111,9 @@ pub fn datum_summary_is_pinned(
       claimed == None,
     }
   } else {
-    let datum_control =
-      traverse.control_from_data_v1(inner_of(control, item_datum))
+    let datum_control = traverse.control_from_data_v1(
+      inner_of(control, item_datum),
+    )
     expect datum_control.source_start == scan_control.datum_offset
     expect datum_control.source_length == scan_control.datum_length
     expect scan_control.datum_length > 0
@@ -139,8 +141,9 @@ pub fn reference_script_is_pinned(
   let total_length = raw.integer(control, item_total_length)
   let language = scan_control.reference_script_language
   let reference_count = raw.integer(control, item_reference_script_count)
-  let reference_peaks =
-    decode_frontier_peaks(raw.item(control, item_reference_script_peaks))
+  let reference_peaks = decode_frontier_peaks(
+    raw.item(control, item_reference_script_peaks),
+  )
   if language == -1 {
     and {
       descriptor.reference_script_language == -1,
@@ -154,22 +157,21 @@ pub fn reference_script_is_pinned(
     }
   } else {
     let item_length = total_length - scan_control.reference_script_item_offset
-    let hash_control =
-      blake.control_from_data_v1(inner_of(control, item_script_hash))
-    let native_is_pinned =
-      if language == 0 {
-        let native_control =
-          native.structure_control_from_data_v1(
-            inner_of(control, item_native_script),
-          )
-        and {
-          native_control.start_offset == scan_control.reference_script_offset,
-          native_control.end_offset == scan_control.reference_script_offset + scan_control.reference_script_length,
-          native.structure_terminal_is_exact_v1(native_control),
-        }
-      } else {
-        raw.item(control, item_native_script) == none_data()
+    let hash_control = blake.control_from_data_v1(
+      inner_of(control, item_script_hash),
+    )
+    let native_is_pinned = if language == 0 {
+      let native_control = native.structure_control_from_data_v1(
+        inner_of(control, item_native_script),
+      )
+      and {
+        native_control.start_offset == scan_control.reference_script_offset,
+        native_control.end_offset == scan_control.reference_script_offset + scan_control.reference_script_length,
+        native.structure_terminal_is_exact_v1(native_control),
       }
+    } else {
+      raw.item(control, item_native_script) == none_data()
+    }
     when blake.digest_v1(hash_control) is {
       None -> False
       Some(digest) -> and {
@@ -267,38 +269,33 @@ pub fn scan_facts_are_pinned(
 ) -> Bool {
   let descriptor = commitment.decode(descriptor_cbor)
   let scan_control = terminal_scan(control)
-  expect Some(address) =
-    ledger_output_v1.decode_canonical_address_bytes(scan_control.address)
+  expect Some(address) = ledger_output_v1.decode_canonical_address_bytes(
+    scan_control.address,
+  )
   let empty_fields = summary.empty_data_list_summary_v1()
-  let datum_field =
-    when claimed_datum_summary is {
-      None -> summary.small_constr_data_summary_v1(0, empty_fields)
-      Some(datum) ->
-        summary.small_constr_data_summary_v1(
-          2,
-          summary.prepend_data_list_summary_v1(datum, empty_fields),
-        )
-    }
-  let spend_datum =
-    when claimed_datum_summary is {
-      None -> summary.small_constr_data_summary_v1(1, empty_fields)
-      Some(datum) ->
-        summary.small_constr_data_summary_v1(
-          0,
-          summary.prepend_data_list_summary_v1(datum, empty_fields),
-        )
-    }
-  let reference_script_field =
-    if scan_control.reference_script_language == -1 {
-      summary.small_constr_data_summary_v1(1, empty_fields)
-    } else {
-      summary.semantic_data_summary_v1(
-        builtin.constr_data(
-          0,
-          [builtin.b_data(descriptor.reference_script_hash)],
-        ),
+  let datum_field = when claimed_datum_summary is {
+    None -> summary.small_constr_data_summary_v1(0, empty_fields)
+    Some(datum) ->
+      summary.small_constr_data_summary_v1(
+        2,
+        summary.prepend_data_list_summary_v1(datum, empty_fields),
       )
-    }
+  }
+  let spend_datum = when claimed_datum_summary is {
+    None -> summary.small_constr_data_summary_v1(1, empty_fields)
+    Some(datum) ->
+      summary.small_constr_data_summary_v1(
+        0,
+        summary.prepend_data_list_summary_v1(datum, empty_fields),
+      )
+  }
+  let reference_script_field = if scan_control.reference_script_language == -1 {
+    summary.small_constr_data_summary_v1(1, empty_fields)
+  } else {
+    summary.semantic_data_summary_v1(
+      builtin.constr_data(0, [builtin.b_data(descriptor.reference_script_hash)]),
+    )
+  }
   and {
     // The claimed datum mode is the scan's own datum presence, so a prover
     // cannot summarise a datum-bearing output as datum-free.

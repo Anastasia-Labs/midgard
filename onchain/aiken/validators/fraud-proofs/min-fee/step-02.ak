@@ -6,7 +6,7 @@
 //// machine's `reject_min_fee` rule, shared through
 //// `compact.min_fee_lovelace_v1`).
 ////
-//// The canonical size is the machine's `native_tx_canonical_size_v1` over
+//// The canonical size is the machine's `ledger_tx_size_v1` over
 //// the thread-anchored compact structure and the nine §5.1 field-preimage
 //// byte lengths, each authenticated through the §8.8 door: understating a
 //// length would only *shrink* the claimed minimum, and overstating one
@@ -17,6 +17,7 @@ use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/field_opening_v1.{
   BodyAnchor, BodyTxOpening, WitnessAnchor, WitnessTxOpening,
@@ -29,12 +30,13 @@ use midgard/fraud_proofs/field_opening_v1.{
 use midgard/fraud_proofs/min_fee/step_02.{Args, Datum, SpendRedeemer, State}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{
-  min_fee_lovelace_v1, native_tx_canonical_size_v1,
-  verify_native_tx_compact_cbor_v1,
+  ledger_tx_size_v1, min_fee_lovelace_v1, validation_source_kind_v1,
+  verify_native_tx_compact_cbor_v1, verify_tx_compact_cbor_v1,
 }
 use midgard/fraud_proofs/native_tx/types.{
-  MidgardTransaction, MidgardTransactionBody, MidgardTransactionWitnessSet,
-  NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact,
+  ForcedTxCompact, MidgardTransaction, MidgardTransactionBody,
+  MidgardTransactionWitnessSet, NativeTxFieldPreimageLengthsV1,
+  NativeTxWitnessSetCompact,
 }
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/native_tx_field_access_v1.{
@@ -138,19 +140,21 @@ validator main(
 
         let body_handle = anchored_native_tx(
           BodyTxOpening { native_tx_compact_cbor },
-          BodyAnchor { tx_id: bad_tx_id },
+          BodyAnchor { tx_id: bad_tx_id, source_kind: subject.source_kind },
         )
         let witness_handle = anchored_native_tx(
           WitnessTxOpening { native_tx_compact_cbor, witness_set },
           WitnessAnchor {
             tx_id: bad_tx_id,
             witness_set_hash: bad_tx.witness_set_hash,
+            source_kind: subject.source_kind,
           },
         )
         // The forced negation needs exact byte lengths, never an item count.
         // Authenticate committed bytes directly so variable field grammar does
         // not consume unbounded work merely to compute bytearray.length.
-        let verified = verify_native_tx_compact_cbor_v1(
+        let verified = verify_tx_compact_cbor_v1(
+          validation_source_kind_v1(subject.source_kind),
           bad_tx_id,
           native_tx_compact_cbor,
         )
@@ -234,10 +238,7 @@ validator main(
         //    over the canonical full-transaction size — the validation
         //    machine's own formula, byte for byte. A fee exactly at the
         //    minimum satisfies the ledger rule and refuses here.
-        let canonical_tx_size = native_tx_canonical_size_v1(
-          bad_tx,
-          field_lengths,
-        )
+        let canonical_tx_size = ledger_tx_size_v1(bad_tx.body, field_lengths)
         expect
           substrate.terminal_contradiction_v1(
             subject,
@@ -264,8 +265,8 @@ validator main(
 /// The canonical full-transaction size of the fixture's committed
 /// transaction — what the header's `min_fee_a` multiplies.
 fn fixture_tx_size(block: fixture.NativeBlockFixtureV1) -> Int {
-  native_tx_canonical_size_v1(
-    block.compact,
+  ledger_tx_size_v1(
+    block.compact.body,
     fixture.field_preimage_lengths_v1(block.tx),
   )
 }
@@ -279,7 +280,10 @@ fn state_for(
     subject: substrate.bind_accepted_subject_v1(
       verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
     ),
-    bad_tx: block.compact,
+    bad_tx: ForcedTxCompact {
+      body: block.compact.body,
+      witness_set_hash: block.compact.witness_set_hash,
+    },
     bad_tx_body_fee: block.compact.body.fee,
     bad_tx_id: block.tx_id,
     min_fee_a,
@@ -474,7 +478,9 @@ fn run_forced_boundary(min_fee_b: Int, reason: RejectionReasonV1) -> Bool {
         input_index: 0,
         output_index: 0,
         fraud_proof_mint_redeemer_index: 0,
-        native_tx_compact_cbor: block.compact_cbor,
+        native_tx_compact_cbor: forced_fixture.from_native_compact(
+          block.compact_cbor,
+        ),
         witness_set: block.witness_set_compact,
         field_carriages: fixture.inline_field_carriages_v1(block.tx),
       },

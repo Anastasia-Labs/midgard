@@ -223,6 +223,7 @@ export const admitReferenceInputNoIdxArtifact = (
     );
   }
   const referenceInputFieldPlan = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.referenceInputs,
     anchorTxId: bad.artifact.nativeTxId,
     nativeTxCompactCbor: bad.artifact.nativeTxCompactCbor,
@@ -231,6 +232,7 @@ export const admitReferenceInputNoIdxArtifact = (
     label: "reference-input-no-idx reference inputs",
   });
   const outputFieldPlan = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     anchorTxId: producing.artifact.nativeTxId,
     nativeTxCompactCbor: producing.artifact.nativeTxCompactCbor,

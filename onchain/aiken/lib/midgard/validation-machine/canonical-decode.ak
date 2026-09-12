@@ -1,8 +1,8 @@
 use aiken/builtin
 use aiken/cbor
 use midgard/fraud_proofs/native_tx/compact.{
-  decode_native_tx_field_preimage_lengths_v1, native_tx_proof_commitment_v1,
-  verify_native_tx_proof_source_v1,
+  decode_native_tx_field_preimage_lengths_v1, tx_proof_commitment_v1,
+  verify_tx_proof_source_v1,
 }
 use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1.{
@@ -108,7 +108,8 @@ fn verify_canonical_decode_empty(
   witness: ValidationOneStepWitnessV1,
   control: CanonicalDecodeControlV1,
 ) -> Bool {
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -170,7 +171,8 @@ fn verify_canonical_decode_chunk(
   item_index: Int,
   carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -326,6 +328,7 @@ pub fn bind_canonical_decode_item_source_v1(
 ) -> CanonicalDecodeItemSourceV1 {
   let control = canonical_decode_control_from_witness(witness.work_witness_cbor)
   let Pair(expected_field_commitment, expected_field_length) = canonical_item_source_field_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -350,7 +353,8 @@ pub fn bind_canonical_decode_item_source_v1(
       control.chunk_index >= 0,
       control.item_count >= -1,
       control.encoded_length >= 0,
-      native_tx_proof_commitment_v1(
+      tx_proof_commitment_v1(
+        pre.source_kind,
         control.compact_cbor,
         control.witness_set_compact_cbor,
         control.field_preimage_lengths_cbor,
@@ -420,7 +424,8 @@ pub fn observe_canonical_decode_item_v1(
   carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> CanonicalDecodeItemObservationV1 {
   let control = canonical_decode_control_from_witness(witness.work_witness_cbor)
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -582,13 +587,15 @@ pub fn verify_canonical_decode_item_successor_v1(
 }
 
 fn canonical_item_source_field_v1(
+  source_kind: validation_trace_v1.ValidationSourceKind,
   transaction_id: ByteArray,
   compact_cbor: ByteArray,
   witness_set_compact_cbor: ByteArray,
   field_preimage_lengths_cbor: ByteArray,
   field_index: Int,
 ) -> Pair<ByteArray, Int> {
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    source_kind,
     transaction_id,
     compact_cbor,
     witness_set_compact_cbor,
@@ -695,7 +702,8 @@ pub fn verify_compact_binding(
     field_preimage_lengths_cbor_data,
   )
   let context_cbor = builtin.un_b_data(context_cbor_data)
-  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
+  let Pair(verified_source, _) = verify_tx_proof_source_v1(
+    pre.source_kind,
     transaction_id,
     compact_cbor,
     witness_set_compact_cbor,
@@ -705,7 +713,8 @@ pub fn verify_compact_binding(
     verified_source.version == 1,
     transaction_id == pre.transaction_id,
     commitment == pre.transaction_commitment,
-    commitment == native_tx_proof_commitment_v1(
+    commitment == tx_proof_commitment_v1(
+      pre.source_kind,
       compact_cbor,
       witness_set_compact_cbor,
       field_preimage_lengths_cbor,

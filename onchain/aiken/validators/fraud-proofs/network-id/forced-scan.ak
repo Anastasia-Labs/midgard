@@ -20,6 +20,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Input, OutputReference, Transaction}
 use midgard/computation_thread as ct
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{
   BodyAnchor, FieldOpeningV1, NativeTxAnchorV1,
@@ -116,7 +117,7 @@ fn execute(
       expect Ready { bound } = state
       let Pair(view, start) = opened_field_walk(
         opening,
-        BodyAnchor { tx_id: bound.bad_tx_id },
+        BodyAnchor { tx_id: bound.bad_tx_id, source_kind: 1 },
         outputs_field_index,
         reference_inputs,
         certificate_policy,
@@ -142,7 +143,7 @@ fn execute(
       expect Ready { bound } = state
       let Pair(view, start) = opened_field_grammar_certification(
         opening,
-        BodyAnchor { tx_id: bound.bad_tx_id },
+        BodyAnchor { tx_id: bound.bad_tx_id, source_kind: 1 },
         outputs_field_index,
         reference_inputs,
         certificate_policy,
@@ -165,7 +166,7 @@ fn execute(
       expect Grammar { bound, checkpoint_hash } = state
       let Pair(view, resumed) = resume_opened_field_grammar_certification(
         opening,
-        BodyAnchor { tx_id: bound.bad_tx_id },
+        BodyAnchor { tx_id: bound.bad_tx_id, source_kind: 1 },
         outputs_field_index,
         checkpoint_hash,
         checkpoint_bytes,
@@ -187,7 +188,7 @@ fn execute(
       expect Grammar { bound, checkpoint_hash } = state
       let Pair(_view, start) = opened_certified_field_walk_from_grammar(
         opening,
-        BodyAnchor { tx_id: bound.bad_tx_id },
+        BodyAnchor { tx_id: bound.bad_tx_id, source_kind: 1 },
         outputs_field_index,
         checkpoint_hash,
         checkpoint_bytes,
@@ -211,7 +212,7 @@ fn execute(
       expect Scanning { bound, checkpoint_hash } = state
       let Pair(view, resumed) = resume_opened_field_walk(
         opening,
-        BodyAnchor { tx_id: bound.bad_tx_id },
+        BodyAnchor { tx_id: bound.bad_tx_id, source_kind: 1 },
         outputs_field_index,
         checkpoint_hash,
         checkpoint_bytes,
@@ -363,11 +364,14 @@ fn inline_opening(
   block: fixture.NativeBlockFixtureV1,
   outputs: List<MidgardTxOutput>,
 ) -> FieldOpeningV1 {
-  fixture.inline_body_opening(block.compact_cbor, encoded_outputs(outputs))
+  fixture.inline_body_opening(
+    forced_fixture.from_native_compact(block.compact_cbor),
+    encoded_outputs(outputs),
+  )
 }
 
 fn anchor_of(block: fixture.NativeBlockFixtureV1) -> NativeTxAnchorV1 {
-  BodyAnchor { tx_id: block.tx_id }
+  BodyAnchor { tx_id: block.tx_id, source_kind: 1 }
 }
 
 fn bound_of(block: fixture.NativeBlockFixtureV1) -> BoundV1 {
@@ -674,7 +678,10 @@ test network_id_forced_scan_walks_a_certified_field_through_the_grammar() {
   let outputs = outputs_v1(certified_output_count, -1)
   let block = block_of(outputs)
   let preimage = encode_field_preimage(encoded_outputs(outputs))
-  let opening = fixture.certified_body_opening(block.compact_cbor, preimage)
+  let opening = fixture.certified_body_opening(
+    forced_fixture.from_native_compact(block.compact_cbor),
+    preimage,
+  )
   let refs = fixture.certified_reference_inputs_v1(
     block.tx_id,
     outputs_field_index,
@@ -776,7 +783,10 @@ test network_id_forced_scan_advances_a_sixteen_output_certified_batch() {
   let outputs = outputs_v1(certified_output_count, -1)
   let block = block_of(outputs)
   let preimage = encode_field_preimage(encoded_outputs(outputs))
-  let opening = fixture.certified_body_opening(block.compact_cbor, preimage)
+  let opening = fixture.certified_body_opening(
+    forced_fixture.from_native_compact(block.compact_cbor),
+    preimage,
+  )
   let refs = fixture.certified_reference_inputs_v1(
     block.tx_id,
     outputs_field_index,
@@ -800,7 +810,10 @@ test network_id_forced_scan_advances_a_forty_eight_output_certified_batch() {
   let outputs = outputs_v1(certified_output_count, -1)
   let block = block_of(outputs)
   let preimage = encode_field_preimage(encoded_outputs(outputs))
-  let opening = fixture.certified_body_opening(block.compact_cbor, preimage)
+  let opening = fixture.certified_body_opening(
+    forced_fixture.from_native_compact(block.compact_cbor),
+    preimage,
+  )
   let refs = fixture.certified_reference_inputs_v1(
     block.tx_id,
     outputs_field_index,
@@ -824,7 +837,10 @@ test network_id_forced_scan_certifies_a_sixteen_item_grammar_batch() {
   let outputs = outputs_v1(certified_output_count, -1)
   let block = block_of(outputs)
   let preimage = encode_field_preimage(encoded_outputs(outputs))
-  let opening = fixture.certified_body_opening(block.compact_cbor, preimage)
+  let opening = fixture.certified_body_opening(
+    forced_fixture.from_native_compact(block.compact_cbor),
+    preimage,
+  )
   let refs = fixture.certified_reference_inputs_v1(
     block.tx_id,
     outputs_field_index,
@@ -843,7 +859,10 @@ test network_id_forced_scan_certifies_a_forty_eight_item_grammar_batch() {
   let outputs = outputs_v1(certified_output_count, -1)
   let block = block_of(outputs)
   let preimage = encode_field_preimage(encoded_outputs(outputs))
-  let opening = fixture.certified_body_opening(block.compact_cbor, preimage)
+  let opening = fixture.certified_body_opening(
+    forced_fixture.from_native_compact(block.compact_cbor),
+    preimage,
+  )
   let refs = fixture.certified_reference_inputs_v1(
     block.tx_id,
     outputs_field_index,
@@ -911,7 +930,10 @@ test network_id_forced_scan_refuses_an_open_over_a_certified_opening() fail {
   let outputs = outputs_v1(certified_output_count, -1)
   let block = block_of(outputs)
   let preimage = encode_field_preimage(encoded_outputs(outputs))
-  let opening = fixture.certified_body_opening(block.compact_cbor, preimage)
+  let opening = fixture.certified_body_opening(
+    forced_fixture.from_native_compact(block.compact_cbor),
+    preimage,
+  )
   let refs = fixture.certified_reference_inputs_v1(
     block.tx_id,
     outputs_field_index,

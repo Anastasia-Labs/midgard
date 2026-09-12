@@ -1,3 +1,7 @@
+import {
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardForcedTxCanonical,
+} from "@al-ft/midgard-core/codec";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -298,7 +302,9 @@ describe.sequential("deposit flow emulator", () => {
 
       const forcedEncoding = await Effect.runPromise(
         ForcedTransactionsDB.encodeForcedInclusionValueV1({
-          nativeTxCbor: forcedTransfer.txCbor,
+          nativeTxCbor: encodeMidgardForcedTxCanonical(
+            decodeMidgardNativeTxFullFromCanonicalCbor(forcedTransfer.txCbor),
+          ),
           verdict: "ForcedTxValid",
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         }),
@@ -329,11 +335,15 @@ describe.sequential("deposit flow emulator", () => {
             [ForcedTransactionsDB.Columns.TX_COMPACT]: forcedEncoding.txCompact,
             [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]:
               forcedEncoding.value,
-            [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]: "TxIsValid",
+
             [ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID]:
               MIDGARD_CONSENSUS_PROFILE.profileId,
             [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]:
-              forcedTransfer.txCbor,
+              encodeMidgardForcedTxCanonical(
+                decodeMidgardNativeTxFullFromCanonicalCbor(
+                  forcedTransfer.txCbor,
+                ),
+              ),
             [ForcedTransactionsDB.Columns.TRANSACTION_COMMITMENT]:
               forcedEncoding.transactionCommitment,
             [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]:

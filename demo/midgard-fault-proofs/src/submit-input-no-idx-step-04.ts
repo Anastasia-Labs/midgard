@@ -393,6 +393,7 @@ export const submitInputNoIdxStep04 = async ({
   const badInputOutputIndex = inputDatum.data.bad_input_output_index;
 
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     anchorTxId: producingTxId,
     nativeTxCompactCbor,

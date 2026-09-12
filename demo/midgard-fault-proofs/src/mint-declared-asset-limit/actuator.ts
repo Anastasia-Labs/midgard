@@ -98,6 +98,7 @@ export const mintDeclaredAssetLimitFieldRequirement = ({
   const admitted = admitMintDeclaredAssetLimitArtifact(artifact);
   return {
     planned: planFaultProofFieldOpening({
+      anchorSourceKind: admitted.artifact.sourceKind === "forced" ? 1n : 0n,
       fieldIndex: 5,
       anchorTxId: admitted.artifact.transactionId,
       nativeTxCompactCbor: admitted.artifact.nativeTxCompactCbor,

@@ -1272,7 +1272,7 @@ pub fn validate_l2_transaction_transition(
   // both of which the bridge re-runs per field opened.
   let anchored = anchored_native_tx(
     BodyTxOpening { native_tx_compact_cbor: source.source.compact_cbor },
-    BodyAnchor { tx_id: source_membership.key },
+    BodyAnchor { tx_id: source_membership.key, source_kind: 0 },
   )
   // 3. The transaction's §2.5 `validity_code` must be `TxIsValid` (0), because
   //    this rule is about a transaction the block declared valid. The accessor is
@@ -1491,9 +1491,9 @@ fn tx_order_compact_body(
   // §4/§8.8: only the scalar body fields (the validity interval) are read here,
   // so the transaction id re-derived from the compact bytes is the whole anchor;
   // the retired proof-source triple and its commitment are not consulted.
-  let verified = native_compact.verify_native_tx_compact_cbor_v1(
+  let verified = native_compact.verify_forced_tx_compact_cbor_v1(
     payload.tx_id,
-    payload.source.compact_cbor,
+    payload.submitted_source.compact_cbor,
   )
   verified.tx_compact.body
 }
@@ -1726,31 +1726,15 @@ fn validate_out_of_window_source_event(
         event_ref_input_index,
       )
       let user_events.OptimisticDatum { event, inclusion_time, .. } = tx_order_datum
-      // The order retains submitted bytes. The committed forced source changes
-      // only its adjudicated validity bit; authenticate every other source byte.
-      let verified = native_compact.verify_native_tx_compact_cbor_v1(
-        event.tx.tx_id,
-        event.tx.source.compact_cbor,
-      )
-      let adjudicated_compact = native_types.NativeTxCompact {
-        ..verified.tx_compact,
-        validity_code: if validity_override == rejection_reason_v1.ForcedTxValid {
-          0
-        } else {
-          1
-        },
-      }
       let expected_source_value = ledger_state.ForcedInclusionTxV1 {
         tx_id: event.tx.tx_id,
-        source: ledger_state.NativeTxProofSourceV1 {
-          ..event.tx.source,
-          compact_cbor: native_compact.encode_native_tx_compact_v1(
-            adjudicated_compact,
-          ),
-        },
+        submitted_source: event.tx.submitted_source,
         verdict: validity_override,
       }
-      let compact_body = verified.tx_compact.body
+      let compact_body = native_compact.verify_forced_tx_compact_cbor_v1(
+        event.tx.tx_id,
+        event.tx.submitted_source.compact_cbor,
+      ).tx_compact.body
       and {
         !forced_event_is_due(header, inclusion_time, compact_body),
         source_membership.key == event.id,

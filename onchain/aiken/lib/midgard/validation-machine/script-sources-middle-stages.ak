@@ -3,14 +3,14 @@ use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/codec.{
   decode_canonical_int_at, decode_definite_array_header_at,
 }
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
+use midgard/fraud_proofs/native_tx/compact.{verify_tx_proof_source_v1}
 use midgard/fraud_proofs/native_tx/preimages.{
   canonical_bytes_key_precedes, decode_canonical_bytes_at,
   decode_canonical_map_header_at,
 }
 use midgard/fraud_proofs/native_tx/types.{
   MidgardAddress, NativeTxWitnessSetCompact, PubKeyCredential, ScriptCredential,
-  VerifiedMidgardNativeTxCompact,
+  VerifiedTxSourceView,
 }
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_v1
@@ -300,7 +300,8 @@ pub fn script_sources_stage_four_with_successor(
   door: field_door.MachineFieldDoorV1,
   successor_is_exact: fn(ScriptSourcesControlV1) -> Bool,
 ) -> Bool {
-  let Pair(verified_source, stage_four_witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified_source, stage_four_witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -764,7 +765,7 @@ fn script_sources_begin_mint_policy(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: ScriptSourcesControlV1,
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   door: field_door.MachineFieldDoorV1,
   field_index: Int,
@@ -789,7 +790,7 @@ pub fn script_sources_begin_mint_policy_with_successor(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: ScriptSourcesControlV1,
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   door: field_door.MachineFieldDoorV1,
   field_index: Int,
@@ -993,7 +994,8 @@ pub fn script_sources_stage_six(
   control: ScriptSourcesControlV1,
   door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  let Pair(verified, stage_six_witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, stage_six_witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,

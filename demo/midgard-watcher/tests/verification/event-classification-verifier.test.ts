@@ -1,4 +1,4 @@
-import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec";
+import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildCanonicalTransitionEffect,
@@ -6,7 +6,6 @@ import {
 } from "@al-ft/midgard-validation";
 import {
   FUNDED_OUTPUT_LOVELACE,
-  makeNativeTx,
   makeOutput,
   nativeScriptWitness,
   outRefFromByte,
@@ -33,6 +32,7 @@ import {
   watcherTimedL1EventIsDue,
 } from "../../src/verification/event-classification-verifier.js";
 import { WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION } from "../../src/verification/phase-a-verifier.js";
+import { makeForcedTxFixture } from "../support/forced-submission-fixture.js";
 import {
   type GenuineReplayPublicReplayFixture,
   makeGenuineReplayPublicReplayFixture,
@@ -215,7 +215,7 @@ const FIXED_ADDRESS = Buffer.from(
 );
 const FLOW_OUTPUT = makeOutput(FUNDED_OUTPUT_LOVELACE, FIXED_ADDRESS);
 const FORCED_VALID_INPUT = outRefFromByte(0x71);
-const FORCED_VALID_NATIVE = makeNativeTx({
+const FORCED_VALID_NATIVE = makeForcedTxFixture({
   spendInputs: [FORCED_VALID_INPUT],
   outputs: [FLOW_OUTPUT],
   privateKey: FIXED_KEY,
@@ -223,7 +223,7 @@ const FORCED_VALID_NATIVE = makeNativeTx({
 const FORCED_INVALID_CASES = Object.freeze({
   InputNotFound: Object.freeze({
     input: outRefFromByte(0x72),
-    native: makeNativeTx({
+    native: makeForcedTxFixture({
       spendInputs: [outRefFromByte(0x72)],
       outputs: [FLOW_OUTPUT],
       privateKey: FIXED_KEY,
@@ -232,7 +232,7 @@ const FORCED_INVALID_CASES = Object.freeze({
   }),
   AddressWitnessSignatureInvalid: Object.freeze({
     input: outRefFromByte(0x73),
-    native: makeNativeTx({
+    native: makeForcedTxFixture({
       spendInputs: [outRefFromByte(0x73)],
       outputs: [FLOW_OUTPUT],
       privateKey: FIXED_KEY,
@@ -242,7 +242,7 @@ const FORCED_INVALID_CASES = Object.freeze({
   }),
   WitnessNativeScriptFalse: Object.freeze({
     input: outRefFromByte(0x74),
-    native: makeNativeTx({
+    native: makeForcedTxFixture({
       spendInputs: [outRefFromByte(0x74)],
       outputs: [FLOW_OUTPUT],
       privateKey: FIXED_KEY,
@@ -257,7 +257,7 @@ const FORCED_INVALID_CASES = Object.freeze({
   }),
   FeeBelowMinimum: Object.freeze({
     input: outRefFromByte(0x75),
-    native: makeNativeTx({
+    native: makeForcedTxFixture({
       spendInputs: [outRefFromByte(0x75)],
       outputs: [FLOW_OUTPUT],
       privateKey: FIXED_KEY,
@@ -267,7 +267,7 @@ const FORCED_INVALID_CASES = Object.freeze({
   }),
   ValueNotPreserved: Object.freeze({
     input: outRefFromByte(0x76),
-    native: makeNativeTx({
+    native: makeForcedTxFixture({
       spendInputs: [outRefFromByte(0x76)],
       outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE - 1n, FIXED_ADDRESS)],
       privateKey: FIXED_KEY,
@@ -280,8 +280,9 @@ const FORCED_INVALID_CASES = Object.freeze({
 // travels with the §8 carriage vector its mint redeemer supplies (#594), and two
 // hand-rolled copies of that pairing would be two chances to get the vector wrong
 // in a way the fixture cannot detect.
-const forcedPayloadForNative = (native: ReturnType<typeof makeNativeTx>) =>
-  genuineUserEventForcedPayloadForCanonicalTx(native.txCbor);
+const forcedPayloadForNative = (
+  native: ReturnType<typeof makeForcedTxFixture>,
+) => genuineUserEventForcedPayloadForCanonicalTx(native.txCbor);
 
 const WITHDRAWAL_BODY: SDK.WithdrawalBody = {
   l2_outref: { transactionId: "a6".repeat(32), outputIndex: 0n },
@@ -384,7 +385,7 @@ const userEventAuthority = (authority: UserEventAcceptedAuthorityScenario) => ({
 
 const forcedNativeAuthority = (
   authority: UserEventAcceptedAuthorityScenario,
-  native: ReturnType<typeof makeNativeTx>,
+  native: ReturnType<typeof makeForcedTxFixture>,
 ) => ({
   eventOutRef: authority.event.outRef,
   canonicalNativeTxCbor: native.txCbor,
@@ -820,9 +821,8 @@ describe("W26 canonical event classification rules", () => {
       },
     ]);
     expect(
-      decodeMidgardNativeTxFullFromCanonicalCbor(FORCED_VALID_NATIVE.txCbor)
-        .validity,
-    ).toBe("TxIsValid");
+      decodeMidgardForcedTxFullFromCanonicalCbor(FORCED_VALID_NATIVE.txCbor),
+    ).not.toHaveProperty("validity");
     expect(
       evaluateWatcherEventClassification({
         header: validFixture.header,
@@ -855,9 +855,8 @@ describe("W26 canonical event classification rules", () => {
         invalidCase.operatorValidity,
       );
       expect(
-        decodeMidgardNativeTxFullFromCanonicalCbor(invalidCase.native.txCbor)
-          .validity,
-      ).toBe("TxIsValid");
+        decodeMidgardForcedTxFullFromCanonicalCbor(invalidCase.native.txCbor),
+      ).not.toHaveProperty("validity");
       const priorState =
         category === "InputNotFound"
           ? []

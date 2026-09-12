@@ -3,8 +3,8 @@ use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/compact.{
-  decode_native_tx_witness_set_compact, native_tx_proof_commitment_v1,
-  verify_native_tx_compact_cbor_v1,
+  decode_native_tx_witness_set_compact, tx_proof_commitment_v1,
+  verify_tx_compact_cbor_v1,
 }
 use midgard/rejection_reason_v1.{reject_invalid_field_type}
 use midgard/script_language_views_v1
@@ -37,7 +37,8 @@ pub fn verify_script_integrity_authentication(
     stage == 0,
     control.execution_cursor == control.execution_count,
     native_resolved_context_is_well_formed(control),
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,
@@ -61,7 +62,8 @@ pub fn verify_script_integrity_compact(
   let Pair(control, stage) = script_integrity_control_and_stage(
     witness.work_witness_cbor,
   )
-  let verified_source = verify_native_tx_compact_cbor_v1(
+  let verified_source = verify_tx_compact_cbor_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
   )

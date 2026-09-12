@@ -1,10 +1,10 @@
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSource,
-  encodeMidgardNativeTxCanonical,
+  encodeMidgardForcedTxCanonical,
   initialMidgardLedgerOutputScanControl,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
@@ -497,6 +497,7 @@ export const publishOutputFieldCarriage = async ({
   readonly certificateReferenceScriptUtxo: UTxO;
 }): Promise<PublishedOutputFieldCarriage> => {
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: 2,
     anchorTxId,
     nativeTxCompactCbor,
@@ -610,15 +611,15 @@ export const buildForcedOutputFixture = async ({
     outputCbors: [outputCbor],
     witnessByte: "b8",
   });
-  const source = deriveMidgardNativeTxProofSource(
-    adjudicateMidgardNativeTxFullValidity(nativeTx, "TxIsInvalid"),
+  const source = deriveMidgardForcedTxProofSource(
+    materializeMidgardForcedTxFromCanonical(nativeTx),
   );
   const rejectionReason = {
     OutputNonCanonical: { output_index: outputIndex },
   } as const;
   const transaction = {
     tx_id: computeMidgardNativeTxId(nativeTx).toString("hex"),
-    source: {
+    submitted_source: {
       compact_cbor: source.compactCbor.toString("hex"),
       witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
       field_preimage_lengths_cbor:
@@ -728,7 +729,7 @@ export const buildForcedOutputFixture = async ({
         forced_transaction_preimages: sortedDaEntries([
           transitionTraceRawEntry(
             forcedEntries[0]![0],
-            encodeMidgardNativeTxCanonical(nativeTx).toString("hex"),
+            encodeMidgardForcedTxCanonical(nativeTx).toString("hex"),
           ),
         ]),
         cek_program_material: [],

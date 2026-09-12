@@ -132,6 +132,7 @@ export const submitNativeScriptInvalidStep02 = async ({
     throw new Error(`${label}: selected witness is not a native script`);
   }
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: state.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.scriptWitnesses,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor,

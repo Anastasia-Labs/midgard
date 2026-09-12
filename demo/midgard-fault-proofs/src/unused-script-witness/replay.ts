@@ -232,7 +232,10 @@ export const buildUnusedScriptWitnessMaterialFromRetainedDa = async ({
     retainedValidationWitnessEntries: witnesses,
     expectedValidationTracesRoot: block.header.validationTracesRoot,
   });
-  const projection = projectMidgardRawEnvelopeForPhaseAV1(txCbor);
+  const projection = projectMidgardRawEnvelopeForPhaseAV1(
+    txCbor,
+    subject.source_kind === 1n ? "forced" : "normal",
+  );
   const sourceBare = base.sources;
   const sourceLeaves = sourceBare.map((source) =>
     source.originKind === 0

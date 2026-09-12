@@ -30,8 +30,7 @@ const terminal: ByteArray =
 /// Literal cross-language vectors shared with the SDK: the two-byte tranche
 /// index follows the on-chain little-endian asset-name encoding.
 test tranche_asset_names_match_little_endian_cross_language_vectors() {
-  let challenge_asset_name =
-    #"4441434822222222222222222222222222222222222222222222222222222222"
+  let challenge_asset_name = #"4441434822222222222222222222222222222222222222222222222222222222"
   and {
     availability.tranche_asset_name_v1(challenge_asset_name, 0) == #"4454222222222222222222222222222222222222222222222222222222220000",
     availability.tranche_asset_name_v1(challenge_asset_name, 1) == #"4454222222222222222222222222222222222222222222222222222222220100",
@@ -110,13 +109,12 @@ test q58_deadline_classes_are_exact() {
 }
 
 test q58_geometry_is_release_authenticated_not_probe_frozen() {
-  let alternate =
-    availability.ParametersV1 {
-      ..candidate_parameters(),
-      response_geometry: alternate_geometry(),
-      da_bond_lovelace: 12_000_000_000,
-      challenger_bond_lovelace: 12_000_000_000,
-    }
+  let alternate = availability.ParametersV1 {
+    ..candidate_parameters(),
+    response_geometry: alternate_geometry(),
+    da_bond_lovelace: 12_000_000_000,
+    challenger_bond_lovelace: 12_000_000_000,
+  }
   and {
     availability.response_geometry_is_canonical_v1(candidate_geometry()),
     availability.response_geometry_is_canonical_v1(alternate_geometry()),
@@ -134,21 +132,18 @@ test q58_geometry_is_release_authenticated_not_probe_frozen() {
 /// therefore 2,081,416 and the first unfunded one 2,081,417 — and it is the
 /// timeout ceiling, not the smaller close ceiling, that binds there.
 test q58_matching_bond_and_fee_reserve_are_exact() {
-  let mismatch =
-    availability.ParametersV1 {
-      ..candidate_parameters(),
-      challenger_bond_lovelace: 9_999_999_999,
-    }
-  let funded_publication_fee =
-    availability.ParametersV1 {
-      ..candidate_parameters(),
-      max_publication_fee_lovelace: 2_081_416,
-    }
-  let excessive_publication_fee =
-    availability.ParametersV1 {
-      ..candidate_parameters(),
-      max_publication_fee_lovelace: 2_081_417,
-    }
+  let mismatch = availability.ParametersV1 {
+    ..candidate_parameters(),
+    challenger_bond_lovelace: 9_999_999_999,
+  }
+  let funded_publication_fee = availability.ParametersV1 {
+    ..candidate_parameters(),
+    max_publication_fee_lovelace: 2_081_416,
+  }
+  let excessive_publication_fee = availability.ParametersV1 {
+    ..candidate_parameters(),
+    max_publication_fee_lovelace: 2_081_417,
+  }
   and {
     !availability.parameters_are_canonical_v1(mismatch),
     availability.parameters_are_canonical_v1(funded_publication_fee),
@@ -160,12 +155,11 @@ test q58_matching_bond_and_fee_reserve_are_exact() {
 /// for every full tranche, rather than ceil(64 MiB / 14,020), which would
 /// undercount the independent per-tranche terminal fragments.
 test q58_non_divisible_tranche_publication_rounding_is_funded() {
-  let underfunded =
-    availability.ParametersV1 {
-      ..candidate_parameters(),
-      da_bond_lovelace: 2_409_200_000,
-      challenger_bond_lovelace: 2_409_200_000,
-    }
+  let underfunded = availability.ParametersV1 {
+    ..candidate_parameters(),
+    da_bond_lovelace: 2_409_200_000,
+    challenger_bond_lovelace: 2_409_200_000,
+  }
   !availability.parameters_are_canonical_v1(underfunded)
 }
 
@@ -187,24 +181,22 @@ test q58_commitment_geometry_must_equal_release_parameters() {
 }
 
 test q58_reordered_or_gapped_descriptor_rejects() {
-  let reordered =
-    availability.CommitmentV1 {
-      ..small_commitment(),
-      payload_byte_length: 4 * 1024 * 1024 + 1,
-      tranche_descriptors: [
-        descriptor(1, 4 * 1024 * 1024, 1),
-        descriptor(0, 0, 4 * 1024 * 1024),
-      ],
-    }
-  let gapped =
-    availability.CommitmentV1 {
-      ..small_commitment(),
-      payload_byte_length: 4 * 1024 * 1024 + 1,
-      tranche_descriptors: [
-        descriptor(0, 0, 4 * 1024 * 1024),
-        descriptor(1, 4 * 1024 * 1024 + 1, 1),
-      ],
-    }
+  let reordered = availability.CommitmentV1 {
+    ..small_commitment(),
+    payload_byte_length: 4 * 1024 * 1024 + 1,
+    tranche_descriptors: [
+      descriptor(1, 4 * 1024 * 1024, 1),
+      descriptor(0, 0, 4 * 1024 * 1024),
+    ],
+  }
+  let gapped = availability.CommitmentV1 {
+    ..small_commitment(),
+    payload_byte_length: 4 * 1024 * 1024 + 1,
+    tranche_descriptors: [
+      descriptor(0, 0, 4 * 1024 * 1024),
+      descriptor(1, 4 * 1024 * 1024 + 1, 1),
+    ],
+  }
   and {
     !availability.commitment_is_canonical_v1(reordered, candidate_parameters()),
     !availability.commitment_is_canonical_v1(gapped, candidate_parameters()),
@@ -222,36 +214,36 @@ fn response_fixture(
   let chunk = #"010203"
   let provisional = descriptor(0, 0, bytearray.length(chunk))
   let expected_chunk_hash = crypto.blake2b_256(chunk)
-  let leaf_hash =
-    availability.chunk_leaf_hash_v1(
-      0,
-      0,
-      0,
-      bytearray.length(chunk),
-      expected_chunk_hash,
-    )
+  let leaf_hash = availability.chunk_leaf_hash_v1(
+    0,
+    0,
+    0,
+    bytearray.length(chunk),
+    expected_chunk_hash,
+  )
   let frontier = validation_merkle_v1.build_frontier([leaf_hash])
-  let start =
-    availability.tranche_start_accumulator_v1(deployment, header, provisional)
-  let next =
-    availability.tranche_step_accumulator_v1(
-      deployment,
-      header,
-      0,
-      0,
-      chunk,
-      start,
-    )
-  let exact_descriptor =
-    availability.TrancheDescriptorV1 {
-      ..provisional,
-      chunk_count: frontier.count,
-      chunk_commitment: validation_merkle_v1.frontier_commitment(
-        frontier.count,
-        frontier.peaks,
-      ),
-      terminal_accumulator: next,
-    }
+  let start = availability.tranche_start_accumulator_v1(
+    deployment,
+    header,
+    provisional,
+  )
+  let next = availability.tranche_step_accumulator_v1(
+    deployment,
+    header,
+    0,
+    0,
+    chunk,
+    start,
+  )
+  let exact_descriptor = availability.TrancheDescriptorV1 {
+    ..provisional,
+    chunk_count: frontier.count,
+    chunk_commitment: validation_merkle_v1.frontier_commitment(
+      frontier.count,
+      frontier.peaks,
+    ),
+    terminal_accumulator: next,
+  }
   (
     availability.Active {
       deployment_identity: deployment,
@@ -283,15 +275,14 @@ fn response_fixture(
 }
 
 test q58_exact_publication_yields_compact_receipt() {
-  let (active, publication) =
-    response_fixture(
-      deployment,
-      header,
-      challenge,
-      0,
-      3,
-      #"11c0e79b71c3976ccd0c02d1310e2516c08edc9d8b6f57ccd680d63a4d8e72da",
-    )
+  let (active, publication) = response_fixture(
+    deployment,
+    header,
+    challenge,
+    0,
+    3,
+    #"11c0e79b71c3976ccd0c02d1310e2516c08edc9d8b6f57ccd680d63a4d8e72da",
+  )
   when
     availability.publication_advances_active_tranche_v1(
       active,
@@ -307,60 +298,54 @@ test q58_exact_publication_yields_compact_receipt() {
 }
 
 test q58_wrong_identity_offset_length_or_hash_rejects() {
-  let (active_deployment, wrong_deployment) =
-    response_fixture(
-      other_deployment,
-      header,
-      challenge,
-      0,
-      3,
-      #"11c0e79b71c3976ccd0c02d1310e2516c08edc9d8b6f57ccd680d63a4d8e72da",
-    )
-  let (active_header, wrong_header) =
-    response_fixture(
-      deployment,
-      other_header,
-      challenge,
-      0,
-      3,
-      #"11c0e79b71c3976ccd0c02d1310e2516c08edc9d8b6f57ccd680d63a4d8e72da",
-    )
-  let (active_challenge, wrong_challenge) =
-    response_fixture(
-      deployment,
-      header,
-      other_challenge,
-      0,
-      3,
-      #"11c0e79b71c3976ccd0c02d1310e2516c08edc9d8b6f57ccd680d63a4d8e72da",
-    )
-  let (active_offset, wrong_offset) =
-    response_fixture(
-      deployment,
-      header,
-      challenge,
-      1,
-      3,
-      #"11c0e79b71c3976ccd0c02d1310e2516c08edc9d8b6f57ccd680d63a4d8e72da",
-    )
-  let (active_length, wrong_length) =
-    response_fixture(
-      deployment,
-      header,
-      challenge,
-      0,
-      2,
-      #"11c0e79b71c3976ccd0c02d1310e2516c08edc9d8b6f57ccd680d63a4d8e72da",
-    )
-  let (active_hash, wrong_hash) =
-    response_fixture(
-      deployment,
-      header,
-      challenge,
-      0,
-      3,
-      #"0000000000000000000000000000000000000000000000000000000000000000",
-    )
+  let (active_deployment, wrong_deployment) = response_fixture(
+    other_deployment,
+    header,
+    challenge,
+    0,
+    3,
+    #"11c0e79b71c3976ccd0c02d1310e2516c08edc9d8b6f57ccd680d63a4d8e72da",
+  )
+  let (active_header, wrong_header) = response_fixture(
+    deployment,
+    other_header,
+    challenge,
+    0,
+    3,
+    #"11c0e79b71c3976ccd0c02d1310e2516c08edc9d8b6f57ccd680d63a4d8e72da",
+  )
+  let (active_challenge, wrong_challenge) = response_fixture(
+    deployment,
+    header,
+    other_challenge,
+    0,
+    3,
+    #"11c0e79b71c3976ccd0c02d1310e2516c08edc9d8b6f57ccd680d63a4d8e72da",
+  )
+  let (active_offset, wrong_offset) = response_fixture(
+    deployment,
+    header,
+    challenge,
+    1,
+    3,
+    #"11c0e79b71c3976ccd0c02d1310e2516c08edc9d8b6f57ccd680d63a4d8e72da",
+  )
+  let (active_length, wrong_length) = response_fixture(
+    deployment,
+    header,
+    challenge,
+    0,
+    2,
+    #"11c0e79b71c3976ccd0c02d1310e2516c08edc9d8b6f57ccd680d63a4d8e72da",
+  )
+  let (active_hash, wrong_hash) = response_fixture(
+    deployment,
+    header,
+    challenge,
+    0,
+    3,
+    #"0000000000000000000000000000000000000000000000000000000000000000",
+  )
   and {
     availability.publication_advances_active_tranche_v1(
       active_deployment,
@@ -402,87 +387,87 @@ test q58_wrong_identity_offset_length_or_hash_rejects() {
 }
 
 test q58_wrong_first_chunk_rejects_before_state_advance() {
-  let (active, correct) =
-    response_fixture(
+  let (active, correct) = response_fixture(
+    deployment,
+    header,
+    challenge,
+    0,
+    3,
+    #"11c0e79b71c3976ccd0c02d1310e2516c08edc9d8b6f57ccd680d63a4d8e72da",
+  )
+  let wrong_chunk = #"020304"
+  let wrong = availability.PublicationDatumV1 {
+    ..correct,
+    chunk_hash: crypto.blake2b_256(wrong_chunk),
+    next_accumulator: availability.tranche_step_accumulator_v1(
       deployment,
       header,
-      challenge,
       0,
-      3,
-      #"11c0e79b71c3976ccd0c02d1310e2516c08edc9d8b6f57ccd680d63a4d8e72da",
-    )
-  let wrong_chunk = #"020304"
-  let wrong =
-    availability.PublicationDatumV1 {
-      ..correct,
-      chunk_hash: crypto.blake2b_256(wrong_chunk),
-      next_accumulator: availability.tranche_step_accumulator_v1(
-        deployment,
-        header,
-        0,
-        0,
-        wrong_chunk,
-        correct.previous_accumulator,
-      ),
-      chunk: wrong_chunk,
-    }
+      0,
+      wrong_chunk,
+      correct.previous_accumulator,
+    ),
+    chunk: wrong_chunk,
+  }
   availability.publication_advances_active_tranche_v1(active, wrong, 4095, 1) == None
 }
 
 test q58_wrong_chunk_index_frontier_sibling_or_count_rejects() {
-  let (active, correct) =
-    response_fixture(
-      deployment,
-      header,
-      challenge,
-      0,
-      3,
-      #"11c0e79b71c3976ccd0c02d1310e2516c08edc9d8b6f57ccd680d63a4d8e72da",
-    )
-  expect availability.Active {
+  let (active, correct) = response_fixture(
+    deployment,
+    header,
+    challenge,
+    0,
+    3,
+    #"11c0e79b71c3976ccd0c02d1310e2516c08edc9d8b6f57ccd680d63a4d8e72da",
+  )
+  expect
+      availability.Active {
+        deployment_identity,
+        header_hash,
+        challenge_asset_name,
+        descriptor,
+        next_offset,
+        accumulator,
+        latest_carrier_output_index,
+        response_deadline,
+        challenger,
+      }
+    = active
+  let wrong_index = availability.PublicationDatumV1 {
+    ..correct,
+    chunk_index: 1,
+  }
+  let wrong_frontier = availability.PublicationDatumV1 {
+    ..correct,
+    chunk_frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: #"0000000000000000000000000000000000000000000000000000000000000000",
+      },
+    ],
+  }
+  let wrong_sibling = availability.PublicationDatumV1 {
+    ..correct,
+    chunk_siblings: [
+      #"0000000000000000000000000000000000000000000000000000000000000000",
+    ],
+  }
+  let wrong_count_descriptor = availability.TrancheDescriptorV1 {
+    ..descriptor,
+    chunk_count: 2,
+  }
+  let wrong_count_active: availability.TrancheDatumV1 = availability.Active {
     deployment_identity,
     header_hash,
     challenge_asset_name,
-    descriptor,
+    descriptor: wrong_count_descriptor,
     next_offset,
     accumulator,
     latest_carrier_output_index,
     response_deadline,
     challenger,
-  } = active
-  let wrong_index =
-    availability.PublicationDatumV1 { ..correct, chunk_index: 1 }
-  let wrong_frontier =
-    availability.PublicationDatumV1 {
-      ..correct,
-      chunk_frontier: [
-        validation_merkle_v1.FrontierPeak {
-          height: 0,
-          hash: #"0000000000000000000000000000000000000000000000000000000000000000",
-        },
-      ],
-    }
-  let wrong_sibling =
-    availability.PublicationDatumV1 {
-      ..correct,
-      chunk_siblings: [
-        #"0000000000000000000000000000000000000000000000000000000000000000",
-      ],
-    }
-  let wrong_count_descriptor =
-    availability.TrancheDescriptorV1 { ..descriptor, chunk_count: 2 }
-  let wrong_count_active: availability.TrancheDatumV1 =
-    availability.Active {
-      deployment_identity,
-      header_hash,
-      challenge_asset_name,
-      descriptor: wrong_count_descriptor,
-      next_offset,
-      accumulator,
-      latest_carrier_output_index,
-      response_deadline,
-      challenger,
-    }
+  }
   and {
     availability.publication_advances_active_tranche_v1(
       active,
@@ -516,72 +501,82 @@ test q58_wrong_middle_chunk_rejects_before_state_advance() {
   let chunk_1 = #"02"
   let chunk_2 = #"03"
   let provisional = descriptor(0, 0, 3)
-  let leaf_0 =
-    availability.chunk_leaf_hash_v1(0, 0, 0, 1, crypto.blake2b_256(chunk_0))
-  let leaf_1 =
-    availability.chunk_leaf_hash_v1(0, 1, 1, 1, crypto.blake2b_256(chunk_1))
-  let leaf_2 =
-    availability.chunk_leaf_hash_v1(0, 2, 2, 1, crypto.blake2b_256(chunk_2))
+  let leaf_0 = availability.chunk_leaf_hash_v1(
+    0,
+    0,
+    0,
+    1,
+    crypto.blake2b_256(chunk_0),
+  )
+  let leaf_1 = availability.chunk_leaf_hash_v1(
+    0,
+    1,
+    1,
+    1,
+    crypto.blake2b_256(chunk_1),
+  )
+  let leaf_2 = availability.chunk_leaf_hash_v1(
+    0,
+    2,
+    2,
+    1,
+    crypto.blake2b_256(chunk_2),
+  )
   let frontier = validation_merkle_v1.build_frontier([leaf_0, leaf_1, leaf_2])
-  let exact_descriptor =
-    availability.TrancheDescriptorV1 {
-      ..provisional,
-      chunk_count: 3,
-      chunk_commitment: validation_merkle_v1.frontier_commitment(
-        3,
-        frontier.peaks,
-      ),
-    }
-  let start =
-    availability.tranche_start_accumulator_v1(
-      deployment,
-      header,
-      exact_descriptor,
-    )
-  let after_first =
-    availability.tranche_step_accumulator_v1(
-      deployment,
-      header,
-      0,
-      0,
-      chunk_0,
-      start,
-    )
-  let active: availability.TrancheDatumV1 =
-    availability.Active {
-      deployment_identity: deployment,
-      header_hash: header,
-      challenge_asset_name: challenge,
-      descriptor: exact_descriptor,
-      next_offset: 1,
-      accumulator: after_first,
-      latest_carrier_output_index: Some(1),
-      response_deadline: 1_000_000,
-      challenger: owner,
-    }
+  let exact_descriptor = availability.TrancheDescriptorV1 {
+    ..provisional,
+    chunk_count: 3,
+    chunk_commitment: validation_merkle_v1.frontier_commitment(
+      3,
+      frontier.peaks,
+    ),
+  }
+  let start = availability.tranche_start_accumulator_v1(
+    deployment,
+    header,
+    exact_descriptor,
+  )
+  let after_first = availability.tranche_step_accumulator_v1(
+    deployment,
+    header,
+    0,
+    0,
+    chunk_0,
+    start,
+  )
+  let active: availability.TrancheDatumV1 = availability.Active {
+    deployment_identity: deployment,
+    header_hash: header,
+    challenge_asset_name: challenge,
+    descriptor: exact_descriptor,
+    next_offset: 1,
+    accumulator: after_first,
+    latest_carrier_output_index: Some(1),
+    response_deadline: 1_000_000,
+    challenger: owner,
+  }
   let wrong_chunk = #"ff"
-  let wrong: availability.PublicationDatumV1 =
-    availability.PublicationDatumV1 {
-      deployment_identity: deployment,
-      header_hash: header,
-      challenge_asset_name: challenge,
-      tranche_index: 0,
-      chunk_index: 1,
-      chunk_offset: 1,
-      chunk_byte_length: 1,
-      chunk_hash: crypto.blake2b_256(wrong_chunk),
-      chunk_frontier: frontier.peaks,
-      chunk_siblings: [leaf_0],
-      previous_accumulator: after_first,
-      next_accumulator: availability.tranche_step_accumulator_v1(
-        deployment,
-        header,
-        0,
-        1,
-        wrong_chunk,
-        after_first,
-      ),
-      chunk: wrong_chunk,
-    }
+  let wrong: availability.PublicationDatumV1 = availability.PublicationDatumV1 {
+    deployment_identity: deployment,
+    header_hash: header,
+    challenge_asset_name: challenge,
+    tranche_index: 0,
+    chunk_index: 1,
+    chunk_offset: 1,
+    chunk_byte_length: 1,
+    chunk_hash: crypto.blake2b_256(wrong_chunk),
+    chunk_frontier: frontier.peaks,
+    chunk_siblings: [leaf_0],
+    previous_accumulator: after_first,
+    next_accumulator: availability.tranche_step_accumulator_v1(
+      deployment,
+      header,
+      0,
+      1,
+      wrong_chunk,
+      after_first,
+    ),
+    chunk: wrong_chunk,
+  }
   availability.publication_advances_active_tranche_v1(active, wrong, 1, 1) == None
 }

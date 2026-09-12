@@ -74,6 +74,7 @@ export const prepareMissingNativeScriptTxStagedFieldOpening = async ({
   readonly label: string;
 }): Promise<MissingNativeScriptTxStagedFieldOpening> => {
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.scriptWitnesses,
     anchorTxId: badTxId,
     nativeTxCompactCbor,

@@ -1,8 +1,8 @@
 import {
   decodeMidgardFieldPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxProofSource,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxProofSourceFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 
 import { planFaultProofFieldOpening } from "../field-opening.js";
 import {
@@ -56,11 +56,15 @@ export const createValueConservationFieldPrerequisite = ({
         selected.fieldIndex ??
         (selected.position === "unionOutputScan" ? 2 : undefined);
       if (fieldIndex === undefined) return null;
-      const transaction = decodeMidgardNativeTxFullFromCanonicalCbor(
-        Buffer.from(admitted.artifact.transactionCbor, "hex"),
-      );
+      const proofSource = (
+        admitted.source.claim === "ForcedConservation"
+          ? deriveMidgardForcedTxProofSourceFromCanonicalCbor
+          : deriveMidgardNativeTxProofSourceFromCanonicalCbor
+      )(Buffer.from(admitted.artifact.transactionCbor, "hex"));
       return {
         planned: planFaultProofFieldOpening({
+          anchorSourceKind:
+            admitted.source.claim === "ForcedConservation" ? 1n : 0n,
           fieldIndex,
           anchorTxId: admitted.source.transaction_id,
           nativeTxCompactCbor: admitted.nativeTxCompactCbor,
@@ -73,9 +77,7 @@ export const createValueConservationFieldPrerequisite = ({
         }),
         compactCbor: admitted.nativeTxCompactCbor,
         witnessSetCompactCbor:
-          deriveMidgardNativeTxProofSource(
-            transaction,
-          ).witnessSetCompactCbor.toString("hex"),
+          proofSource.witnessSetCompactCbor.toString("hex"),
         certificate,
       };
     },

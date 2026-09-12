@@ -117,6 +117,7 @@ export const submitMissingNativeScriptTxStep02 = async ({
     );
   }
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor,

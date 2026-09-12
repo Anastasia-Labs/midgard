@@ -56,9 +56,7 @@ it.skipIf(runDirectory === undefined).each([false, true])(
       );
     const { queryServices } = config.l1.source;
     const endpoint = (kind: "kupo" | "ogmios") => {
-      const service = queryServices.find(
-        (service) => service.kind === kind,
-      );
+      const service = queryServices.find((service) => service.kind === kind);
       if (service === undefined) throw new Error(`Missing ${kind} endpoint`);
       return service.endpoint;
     };

@@ -1,9 +1,9 @@
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSource,
-  encodeMidgardNativeTxCanonical,
+  encodeMidgardForcedTxCanonical,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   forcedVerdictSubject,
   minFeeTerminalContradiction,
@@ -20,11 +20,8 @@ import { makeNativeTx } from "./support/emulator/native-tx.js";
 
 const fixture = (minimum = 1_000n, reason = "FeeBelowMinimum") => {
   const submitted = makeNativeTx({ spendInputCbors: [], fee: 1_000n });
-  const adjudicated = adjudicateMidgardNativeTxFullValidity(
-    submitted,
-    "TxIsInvalid",
-  );
-  const source = deriveMidgardNativeTxProofSource(adjudicated);
+  const adjudicated = materializeMidgardForcedTxFromCanonical(submitted);
+  const source = deriveMidgardForcedTxProofSource(adjudicated);
   const block = {
     transactions: [],
     headerHash: "04".repeat(28),
@@ -35,7 +32,7 @@ const fixture = (minimum = 1_000n, reason = "FeeBelowMinimum") => {
           key: { transactionId: "05".repeat(32), outputIndex: 0n },
           value: {
             tx_id: computeMidgardNativeTxId(submitted).toString("hex"),
-            source: {
+            submitted_source: {
               compact_cbor: source.compactCbor.toString("hex"),
               witness_set_compact_cbor:
                 source.witnessSetCompactCbor.toString("hex"),
@@ -44,8 +41,8 @@ const fixture = (minimum = 1_000n, reason = "FeeBelowMinimum") => {
             },
             verdict: { ForcedTxInvalid: { reason } },
           },
-          // Real retained DA carries the submitted scalar, unlike the leaf.
-          fullTransactionCbor: encodeMidgardNativeTxCanonical(submitted),
+          // Retained DA is the same immutable submission used by the leaf.
+          fullTransactionCbor: encodeMidgardForcedTxCanonical(adjudicated),
         },
       ],
     },
@@ -60,7 +57,10 @@ describe("minFee authenticated forced detection", () => {
       const { canonical } = fixture(minimum);
       const detected = detectMinFeeForcedReplay(canonical);
       expect(detected).toHaveLength(1);
-      expect(detected[0]!.evidence.state.bad_tx.validity_code).toBe(1n);
+      expect(detected[0]!.evidence.state.bad_tx).not.toHaveProperty(
+        "validity_code",
+      );
+      expect(detected[0]!.evidence.subject.direction).toBe(1n);
       expect(detected[0]!.evidence.minimumFee).toBe(minimum);
       expect(detected[0]!.evidence.fieldItemCbors).toHaveLength(9);
       expect(detected[0]!.evidence.subject.rejection_reason).toBe(
@@ -90,7 +90,9 @@ describe("minFee authenticated forced detection", () => {
     const { block, canonical } = fixture();
     const leaf = block.reconstruction.forcedTransactions[0]!.value;
     if (field === "tx_id") leaf.tx_id = "ff".repeat(32);
-    else leaf.source[field as keyof typeof leaf.source] += "00";
+    else
+      leaf.submitted_source[field as keyof typeof leaf.submitted_source] +=
+        "00";
     expect(() => detectMinFeeForcedReplay(canonical)).toThrow(
       /preimage differs/,
     );

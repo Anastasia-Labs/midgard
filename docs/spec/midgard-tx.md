@@ -91,15 +91,36 @@ Canonical encoding: `83 ‖ 58 20 addr ‖ 58 20 script ‖ 58 20 redeemer`.
 
 ### 2.3 `NativeTxCompact`
 
-`{ body: NativeTxBodyCompact, witness_set_hash: 32-byte hash,
-validity_code: uint ≤ 1 }` — `0` = `TxIsValid`, `1` = `TxIsInvalid`; the
-former coarse rejection codes `2..5` were retired by the #640 format wave
-(rejection reasons live in the forced leaf's verdict, §13). User transaction
-admission requires code `0`; on a forced-inclusion leaf the code is the
-operator's adjudication, bound to the leaf's verdict by the §13.1
-predicates. Versioned encoding
-(`encode_native_tx_compact_for_version`):
-`84 ‖ uint(version) ‖ body ‖ 58 20 witness_set_hash ‖ uint(validity_code)`.
+Normal transactions retain `{ body: NativeTxBodyCompact,
+witness_set_hash: 32-byte hash, validity_code: uint ≤ 1 }`, encoded as
+`84 ‖ uint(version) ‖ body ‖ bytes(witness_set_hash) ‖ uint(validity_code)`.
+Normal admission and normal accepted leaves require code `0`.
+
+Forced submissions use a distinct `ForcedTxCompact` containing only `body`
+and `witness_set_hash`, encoded as
+`83 ‖ 01 ‖ body ‖ bytes(witness_set_hash)`. The corresponding full submitted
+transaction is exactly `[1, full_body, full_witness_set]`; the normal full
+transaction remains `[1, full_body, full_witness_set, validity_code]`.
+Both reuse the same body and witness encodings. A forced decoder MUST refuse
+the obsolete four-element envelope, including one whose extra scalar is zero.
+
+The committed `ForcedTxProofSourceV1` is the triple of canonical CBOR byte
+strings `(compact_cbor, witness_set_compact_cbor, field_preimage_lengths_cbor)`.
+Neither its outer shape nor its nested compact contains a validity decision.
+Its immutable submitted bytes survive submission, inclusion, proof and settlement.
+Only `ForcedInclusionTxV1.verdict` carries the operator's decision (§13.1).
+
+A validation consumer may construct a temporary view with a scalar derived
+from the authenticated verdict (`ForcedTxValid → 0`, `ForcedTxInvalid → 1`).
+That view has no committed encoding and cannot define a source commitment.
+Independent replay determines actual validity from the submitted material.
+Authenticated source kind selects the normal or forced decoder and hash;
+consumers MUST NOT guess the kind from envelope length.
+
+For ledger fee and capability checks, forced logical transaction size is the
+three-element full encoding's byte length plus one, preserving the existing
+size policy. DA transport size counts the actual submitted bytes; the extra
+logical byte is neither serialized nor independently committed.
 
 ### 2.4 `NativeTxFieldPreimageLengthsV1`
 
@@ -144,15 +165,24 @@ order:
 - **Level 2 — transaction id:**
   `tx_id = blake2b_256("MidgardNativeTxBodyV1" ‖ uint(version) ‖ body_cbor)`
   where `body_cbor` is the §2.1 encoding (domain string as raw ASCII bytes).
-- **Full-transaction commitment:**
+- **Normal full-transaction commitment:**
   `blake2b_256("MidgardNativeTxFullV1" ‖ uint(version) ‖ native_tx_cbor)`,
   over the exact canonical full transaction, including witness preimages.
-- **Proof-source commitment:**
+- **Normal proof-source commitment:**
   `blake2b_256("MidgardNativeTxProofSourceV1" ‖ uint(1) ‖ proof_source_cbor)`,
   where `proof_source_cbor` is `83` followed by `bytes(compact_cbor)`,
   `bytes(witness_set_compact_cbor)`, and
   `bytes(field_preimage_lengths_cbor)`. Both domain strings include the literal
   `V1` suffix, as the Aiken and TypeScript twins encode them.
+
+- **Forced submission commitment:**
+  `blake2b_256("MidgardForcedTxProofSourceV1" ‖ 01 ‖ source_cbor)`,
+  where `source_cbor = 83 ‖ bytes(C) ‖ bytes(W) ‖ bytes(L)` and `C` is the
+  three-element forced compact from §2.3. `W` and `L` retain §§2.2/2.4 order.
+  The body-derived transaction ID is unchanged. A verdict change changes the
+  forced leaf commitment, including a reason-only change, but cannot change
+  the submission commitment. Witness substitution can preserve the body ID
+  and MUST change the submission commitment.
 
 All fixtures and golden vectors that embed any of the nine hashes, the
 witness-set hash, or a tx-id regenerate under this document; none migrate.
@@ -657,6 +687,7 @@ off-chain minter emits these tags and the compiled policy branches on them:
 ```aiken
 pub type FieldPreimageCertificateMintRedeemerV1 {
   Certify {
+    source_kind: Int,                    // 0 = normal, 1 = forced
     compact_cbor: ByteArray,
     witness_set_compact_cbor: ByteArray,
     chunk_ref_input_indices: List<Int>,   // all-chunks-positional, ≤ 3 (§8.3)
@@ -887,8 +918,8 @@ framing, witness configuration, parameters, or serialization changes.
 ### 8.11 Forced-order material carriage (normative)
 
 An **L1 forced order** commits to an L2 transaction it wants included: its datum
-is `TxOrderPayload { tx_id, transaction_commitment, source }`, and its
-`source`'s compact structures carry §4's nine field commitments. This subsection
+is `TxOrderPayload { tx_id, transaction_commitment, submitted_source }`, and its
+validity-free `submitted_source` compact structures carry §4's nine field commitments. This subsection
 is normative for how that transaction's material reaches L1. (Owner ruling,
 2026-08-11; it supersedes the earlier all-fields-empty stopgap.)
 
@@ -2933,12 +2964,15 @@ type are wire-normative here:
 - **The sum shape is total and minimal.** "Valid with a reason" and "invalid
   without one" are unrepresentable; every rejection names its reason.
 
-The transaction's own embedded validity scalar (§2.3's compact tail byte) is
-correspondingly two-valued: `TxIsValid` (0) | `TxIsInvalid` (1). A forced
-leaf's verdict arm must agree bit-for-bit with that scalar, and a Normal
-(operator-built) transaction's scalar must be 0 — both adjudicated leaf-
-internally by the claim layer (`validation-claim-v1.ak`,
-`verify_source_authentication`).
+The forced leaf is exactly `{ tx_id, submitted_source, verdict }`.
+The verdict is its sole authoritative validity claim; the submitted source has
+no validity scalar. Source authentication binds the unchanged submission to its
+L1 order and uses the forced hash domain. Settlement authenticates the exact
+order key, source and verdict-bearing leaf, not the body ID alone.
+Normal transaction leaves retain their native scalar and must use zero.
+Reason/subject binding remains exact even when two reasons share a coarse
+machine rejection code. Rejected execution preserves the original disputed
+delta commitment while independently deriving no ledger operations.
 
 ### 13.2 The register
 

@@ -4,6 +4,7 @@ import {
   decodeMidgardNativeTxCompact,
   decodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
+import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
@@ -194,11 +195,15 @@ export const admitScriptIntegrityHashMissingArtifact = (
   );
   const plan = (fieldIndex: 6 | 8, items: readonly Buffer[]) =>
     planFaultProofFieldOpening({
+      anchorSourceKind: evidence.finding.source === "forced" ? 1n : 0n,
       fieldIndex,
       anchorTxId: evidence.finding.transactionId,
       nativeTxCompactCbor: evidence.nativeTxCompactCbor,
       witnessSet,
-      anchorWitnessSetHash: txWitnessSetHash(evidence.nativeTxCompactCbor),
+      anchorWitnessSetHash: txWitnessSetHash(
+        evidence.nativeTxCompactCbor,
+        evidence.finding.source === "forced" ? "forced" : "normal",
+      ),
       itemCbors: items,
       owner,
       publish: true,
@@ -214,9 +219,14 @@ export const admitScriptIntegrityHashMissingArtifact = (
   });
 };
 
-const txWitnessSetHash = (compactCbor: string): string =>
+const txWitnessSetHash = (
+  compactCbor: string,
+  source: "normal" | "forced",
+): string =>
   Buffer.from(
-    decodeMidgardNativeTxCompact(Buffer.from(compactCbor, "hex"))
+    (source === "forced"
+      ? decodeMidgardForcedTxCompact
+      : decodeMidgardNativeTxCompact)(Buffer.from(compactCbor, "hex"))
       .transactionWitnessSetHash,
   ).toString("hex");
 

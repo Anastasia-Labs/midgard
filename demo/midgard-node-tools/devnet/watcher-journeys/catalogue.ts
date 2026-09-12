@@ -38,6 +38,7 @@ export const JOURNEY_FIXTURE_OWNERS = {
   transactionOutputNonCanonical: "transaction",
   resolvedOutputNonCanonical: "transaction",
   mintDeclaredAssetLimit: "transaction",
+  mintItemNonCanonical: "transaction",
   spendInputSignerMissing: "transaction",
   protectedOutputSignerMissing: "transaction",
   observersForbiddenOnUntaggedNetwork: "transaction",

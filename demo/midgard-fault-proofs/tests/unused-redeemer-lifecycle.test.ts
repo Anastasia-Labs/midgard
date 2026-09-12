@@ -1,7 +1,9 @@
 import {
   buildMidgardValidationTraceTree,
   computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxBodyCompact,
+  encodeMidgardForcedTxCanonical,
   hashMidgardValidationMachineState,
   hashMidgardValidationRejectionCode,
   MIDGARD_CONSENSUS_PROFILE,
@@ -176,7 +178,12 @@ const buildMaterial = async (
       minFeeB: 0n,
       blockSlot: 100n,
       transactionId: transaction.txId,
-      canonicalTransactionCbor: transaction.txCbor,
+      canonicalTransactionCbor:
+        direction === "forced"
+          ? encodeMidgardForcedTxCanonical(
+              decodeMidgardNativeTxFullFromCanonicalCbor(transaction.txCbor),
+            )
+          : transaction.txCbor,
       programMaterialSidecarCbor: Buffer.from(
         "82018282582072c078cab22fca41a65b75e6dfcff21d6258a743068e190836bd227ad35dd99d47830100438200008258207d068efad94d2953eefe63951671327af75e08c963cd1f232b08966e6026bf5e582983010058248202582072c078cab22fca41a65b75e6dfcff21d6258a743068e190836bd227ad35dd99d",
         "hex",
@@ -352,7 +359,12 @@ const buildMaterial = async (
     eventKey,
     subject,
     redeemerIndex,
-    txCbor: transaction.txCbor,
+    txCbor:
+      direction === "forced"
+        ? encodeMidgardForcedTxCanonical(
+            decodeMidgardNativeTxFullFromCanonicalCbor(transaction.txCbor),
+          )
+        : transaction.txCbor,
   });
   return {
     material,
@@ -545,7 +557,11 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
         const capture = await captureEmulatorSubmission(
           harness.emulator,
           operation,
-        );
+        ).catch((cause: unknown) => {
+          throw new Error(`unused-redeemer lifecycle failed at ${label}`, {
+            cause,
+          });
+        });
         ledger.push({
           label,
           bytes: capture.measurement.completeSignedBytes,

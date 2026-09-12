@@ -35,6 +35,7 @@ import {
   MIDGARD_CONSENSUS_LIMITS,
   type MidgardBoundedItemChunkProof,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
 import {
   AddressData,
   addressDataFromBech32,
@@ -395,7 +396,7 @@ describe("step-02 redeemer envelope chart (THE escalation-capable check, §2.3)"
       outputByte: "c7",
       witnessByte: "c8",
     });
-    const source = deriveMidgardNativeTxProofSource(forcedNativeTx);
+    const source = deriveMidgardForcedTxProofSource(forcedNativeTx);
 
     const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
     const header = makeHeader(
@@ -443,7 +444,7 @@ describe("step-02 redeemer envelope chart (THE escalation-capable check, §2.3)"
             key: txOrderId,
             value: {
               tx_id: h32("da"),
-              source: {
+              submitted_source: {
                 compact_cbor: Buffer.from(source.compactCbor).toString("hex"),
                 witness_set_compact_cbor: Buffer.from(
                   source.witnessSetCompactCbor,

@@ -284,6 +284,7 @@ export const admitWithdrawnInputArtifact = async (
     throw new Error("withdrawn-input detection identity changed");
   }
   const spendPlan = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: 0,
     anchorTxId: tx.artifact.nativeTxId,
     nativeTxCompactCbor: tx.artifact.nativeTxCompactCbor,

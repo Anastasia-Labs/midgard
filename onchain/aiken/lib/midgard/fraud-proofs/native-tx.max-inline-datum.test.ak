@@ -127,7 +127,8 @@ test maximum_cardano_inline_datum_terminal_fold_matches_typescript() {
     validation_context_hash: validation_trace_v1.hash_validation_context(
       maximum_cardano_inline_datum_validation_context_cbor,
     ),
-    source_kind: validation_trace_v1.Forced,
+    // These generated vectors commit the normal four-field transaction source.
+    source_kind: validation_trace_v1.Normal,
     prior_ledger_root: maximum_cardano_inline_datum_transaction_commitment,
     phase: validation_trace_v1.CanonicalDecode,
     program_counter: 40,

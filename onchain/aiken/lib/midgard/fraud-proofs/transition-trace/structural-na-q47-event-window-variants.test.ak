@@ -32,6 +32,7 @@ use cardano/assets
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference}
 use env
 use midgard/common/utils
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/native_tx/compact as native_compact
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
@@ -279,11 +280,13 @@ fn authenticated_tx_order_payload() -> ledger_state.TxOrderPayloadV1 {
     transaction_commitment: native_transaction.midgard_transaction_proof_commitment_v1(
       tx,
     ),
-    source: ledger_state.NativeTxProofSourceV1 {
-      compact_cbor: proof_source.compact_cbor,
-      witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
-      field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
-    },
+    submitted_source: forced_fixture.from_native_source(
+      ledger_state.NativeTxProofSourceV1 {
+        compact_cbor: proof_source.compact_cbor,
+        witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
+        field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
+      },
+    ),
   }
 }
 
@@ -316,7 +319,7 @@ fn authenticated_forced_tx(
   let payload = authenticated_tx_order_payload()
   ledger_state.ForcedInclusionTxV1 {
     tx_id: payload.tx_id,
-    source: payload.source,
+    submitted_source: payload.submitted_source,
     verdict,
   }
 }

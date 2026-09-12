@@ -143,6 +143,7 @@ const spendInputs = (admitted: Admitted): readonly MidgardTxInput[] =>
 
 const spendFieldPlan = (admitted: Admitted, owner: string) =>
   planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: admitted.prepared.badTxId,
     nativeTxCompactCbor: admitted.prepared.nativeTxCompactCbor,
@@ -154,6 +155,7 @@ const spendFieldPlan = (admitted: Admitted, owner: string) =>
 
 const scriptFieldPlan = (admitted: Admitted, owner: string) =>
   planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.scriptWitnesses,
     anchorTxId: admitted.prepared.badTxId,
     nativeTxCompactCbor: admitted.prepared.nativeTxCompactCbor,

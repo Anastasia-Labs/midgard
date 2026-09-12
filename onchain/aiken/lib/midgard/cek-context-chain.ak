@@ -5,12 +5,14 @@ use midgard/computation_thread as ct
 use midgard/validation_machine/machine_types.{
   CekContextControlV1, ValidationOneStepWitnessV1,
 }
+use midgard/validation_trace_v1.{ValidationSourceKind}
 
 pub type ContextBound {
   prepared: Data,
   control: Data,
   auxiliary_hash: ByteArray,
   transaction_id: ByteArray,
+  source_kind: ValidationSourceKind,
 }
 
 pub type ContextStaged {

@@ -181,7 +181,7 @@ try {
       "tests/ordered-collection-spend-inputs-boundary.test.ts": 1,
       "tests/ordered-collection-reference-inputs-boundary.test.ts": 1,
       "tests/ordered-collection-observer-native-script-boundary.test.ts": 1,
-      "tests/ordered-collection-mint-boundary.test.ts": 1,
+      "tests/ordered-collection-mint-boundary.test.ts": 2,
       "tests/ordered-collection-redeemer-boundary.test.ts": 1,
       "tests/blob-chunk-boundary.test.ts": 1,
       // C22 closure: the boundary case plus the complete-Value carriage-fit

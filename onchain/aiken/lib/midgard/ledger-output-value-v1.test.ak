@@ -77,102 +77,91 @@ test folds_the_exact_plutus_value_from_reverse_memberships() {
   expect [first, second, _third] = asset_leaves()
   let peaks = asset_peaks()
   let control0 = ledger_output_value_v1.initial_control_v1(3)
-  expect Some(control1) =
-    ledger_output_value_v1.step_v1(
-      control0,
-      3,
-      peaks,
-      8000000,
-      ledger_output_value_v1.LedgerOutputValueAsset {
-        asset_index: 2,
-        policy_id: policy(34),
-        asset_name: #"bbcc",
-        quantity: 18446744073709551615,
-        siblings: [],
-        previous: None,
-      },
-    )
-  expect Some(control2) =
-    ledger_output_value_v1.step_v1(
-      control1,
-      3,
-      peaks,
-      8000000,
-      ledger_output_value_v1.LedgerOutputValueAsset {
-        asset_index: 1,
-        policy_id: policy(17),
-        asset_name: #"aa",
-        quantity: 42,
-        siblings: [first],
-        previous: None,
-      },
-    )
-  expect Some(control3) =
-    ledger_output_value_v1.step_v1(
-      control2,
-      3,
-      peaks,
-      8000000,
-      ledger_output_value_v1.LedgerOutputValueAsset {
-        asset_index: 0,
-        policy_id: policy(17),
-        asset_name: #"",
-        quantity: 1,
-        siblings: [second],
-        previous: Some(
-          ledger_output_value_v1.LedgerOutputValueHeadV1 {
-            asset_name: #"aa",
-            quantity: 42,
-            tail: cek_data_v1.empty_data_pair_summary_v1(),
-          },
+  expect Some(control1) = ledger_output_value_v1.step_v1(
+    control0,
+    3,
+    peaks,
+    8000000,
+    ledger_output_value_v1.LedgerOutputValueAsset {
+      asset_index: 2,
+      policy_id: policy(34),
+      asset_name: #"bbcc",
+      quantity: 18446744073709551615,
+      siblings: [],
+      previous: None,
+    },
+  )
+  expect Some(control2) = ledger_output_value_v1.step_v1(
+    control1,
+    3,
+    peaks,
+    8000000,
+    ledger_output_value_v1.LedgerOutputValueAsset {
+      asset_index: 1,
+      policy_id: policy(17),
+      asset_name: #"aa",
+      quantity: 42,
+      siblings: [first],
+      previous: None,
+    },
+  )
+  expect Some(control3) = ledger_output_value_v1.step_v1(
+    control2,
+    3,
+    peaks,
+    8000000,
+    ledger_output_value_v1.LedgerOutputValueAsset {
+      asset_index: 0,
+      policy_id: policy(17),
+      asset_name: #"",
+      quantity: 1,
+      siblings: [second],
+      previous: Some(
+        ledger_output_value_v1.LedgerOutputValueHeadV1 {
+          asset_name: #"aa",
+          quantity: 42,
+          tail: cek_data_v1.empty_data_pair_summary_v1(),
+        },
+      ),
+    },
+  )
+  expect Some(control4) = ledger_output_value_v1.step_v1(
+    control3,
+    3,
+    peaks,
+    8000000,
+    ledger_output_value_v1.LedgerOutputValueNoWitness,
+  )
+  expect Some(terminal) = ledger_output_value_v1.step_v1(
+    control4,
+    3,
+    peaks,
+    8000000,
+    ledger_output_value_v1.LedgerOutputValueNoWitness,
+  )
+  let expected = builtin.map_data(
+    [
+      Pair(
+        builtin.b_data(#""),
+        builtin.map_data([Pair(builtin.b_data(#""), builtin.i_data(8000000))]),
+      ),
+      Pair(
+        builtin.b_data(policy(17)),
+        builtin.map_data(
+          [
+            Pair(builtin.b_data(#""), builtin.i_data(1)),
+            Pair(builtin.b_data(#"aa"), builtin.i_data(42)),
+          ],
         ),
-      },
-    )
-  expect Some(control4) =
-    ledger_output_value_v1.step_v1(
-      control3,
-      3,
-      peaks,
-      8000000,
-      ledger_output_value_v1.LedgerOutputValueNoWitness,
-    )
-  expect Some(terminal) =
-    ledger_output_value_v1.step_v1(
-      control4,
-      3,
-      peaks,
-      8000000,
-      ledger_output_value_v1.LedgerOutputValueNoWitness,
-    )
-  let expected =
-    builtin.map_data(
-      [
-        Pair(
-          builtin.b_data(#""),
-          builtin.map_data([Pair(builtin.b_data(#""), builtin.i_data(8000000))]),
+      ),
+      Pair(
+        builtin.b_data(policy(34)),
+        builtin.map_data(
+          [Pair(builtin.b_data(#"bbcc"), builtin.i_data(18446744073709551615))],
         ),
-        Pair(
-          builtin.b_data(policy(17)),
-          builtin.map_data(
-            [
-              Pair(builtin.b_data(#""), builtin.i_data(1)),
-              Pair(builtin.b_data(#"aa"), builtin.i_data(42)),
-            ],
-          ),
-        ),
-        Pair(
-          builtin.b_data(policy(34)),
-          builtin.map_data(
-            [
-              Pair(
-                builtin.b_data(#"bbcc"),
-                builtin.i_data(18446744073709551615),
-              ),
-            ],
-          ),
-        ),
-      ],
-    )
+      ),
+    ],
+  )
   and {
     ledger_output_value_v1.finalize_v1(terminal) == Some(
       cek_data_v1.semantic_data_summary_v1(expected),
@@ -205,45 +194,41 @@ test maximum_nested_value_terminal_agrees_with_typescript() {
   // structural rather than measured: a producer that moved the boundary to a
   // different asset count fails `frontier_is_well_formed` below rather than
   // silently agreeing. The hashes are generated alongside the controls.
-  let asset_peaks =
-    [
-      validation_merkle_v1.FrontierPeak {
-        height: 3,
-        hash: typescript_maximum_value_asset_peak_hash_0,
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 4,
-        hash: typescript_maximum_value_asset_peak_hash_1,
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 5,
-        hash: typescript_maximum_value_asset_peak_hash_2,
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 9,
-        hash: typescript_maximum_value_asset_peak_hash_3,
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 10,
-        hash: typescript_maximum_value_asset_peak_hash_4,
-      },
-    ]
-  let pre_terminal =
-    ledger_output_value_v1.decode_control_v1(
-      typescript_maximum_value_pre_terminal_control,
-    )
-  expect Some(terminal) =
-    ledger_output_value_v1.step_v1(
-      pre_terminal,
-      asset_count,
-      asset_peaks,
-      lovelace,
-      ledger_output_value_v1.LedgerOutputValueNoWitness,
-    )
-  let decoded =
-    ledger_output_value_v1.decode_control_v1(
-      typescript_maximum_value_terminal_control,
-    )
+  let asset_peaks = [
+    validation_merkle_v1.FrontierPeak {
+      height: 3,
+      hash: typescript_maximum_value_asset_peak_hash_0,
+    },
+    validation_merkle_v1.FrontierPeak {
+      height: 4,
+      hash: typescript_maximum_value_asset_peak_hash_1,
+    },
+    validation_merkle_v1.FrontierPeak {
+      height: 5,
+      hash: typescript_maximum_value_asset_peak_hash_2,
+    },
+    validation_merkle_v1.FrontierPeak {
+      height: 9,
+      hash: typescript_maximum_value_asset_peak_hash_3,
+    },
+    validation_merkle_v1.FrontierPeak {
+      height: 10,
+      hash: typescript_maximum_value_asset_peak_hash_4,
+    },
+  ]
+  let pre_terminal = ledger_output_value_v1.decode_control_v1(
+    typescript_maximum_value_pre_terminal_control,
+  )
+  expect Some(terminal) = ledger_output_value_v1.step_v1(
+    pre_terminal,
+    asset_count,
+    asset_peaks,
+    lovelace,
+    ledger_output_value_v1.LedgerOutputValueNoWitness,
+  )
+  let decoded = ledger_output_value_v1.decode_control_v1(
+    typescript_maximum_value_terminal_control,
+  )
   expect Some(result) = ledger_output_value_v1.finalize_v1(terminal)
   and {
     validation_merkle_v1.frontier_is_well_formed(asset_count, asset_peaks),
@@ -306,21 +291,20 @@ fn mixed_width_peaks() -> List<validation_merkle_v1.FrontierPeak> {
 
 fn mixed_width_first_step() -> ledger_output_value_v1.LedgerOutputValueControlV1 {
   expect [_first, second] = mixed_width_leaves()
-  expect Some(control1) =
-    ledger_output_value_v1.step_v1(
-      ledger_output_value_v1.initial_control_v1(2),
-      2,
-      mixed_width_peaks(),
-      8000000,
-      ledger_output_value_v1.LedgerOutputValueAsset {
-        asset_index: 0,
-        policy_id: policy(17),
-        asset_name: #"aa",
-        quantity: 5,
-        siblings: [second],
-        previous: None,
-      },
-    )
+  expect Some(control1) = ledger_output_value_v1.step_v1(
+    ledger_output_value_v1.initial_control_v1(2),
+    2,
+    mixed_width_peaks(),
+    8000000,
+    ledger_output_value_v1.LedgerOutputValueAsset {
+      asset_index: 0,
+      policy_id: policy(17),
+      asset_name: #"aa",
+      quantity: 5,
+      siblings: [second],
+      previous: None,
+    },
+  )
   control1
 }
 
@@ -349,48 +333,44 @@ fn mixed_width_head() -> ledger_output_value_v1.LedgerOutputValueHeadV1 {
 
 test mixed_width_permutation_folds_to_the_lexicographic_map() {
   let peaks = mixed_width_peaks()
-  expect Some(control2) =
-    ledger_output_value_v1.step_v1(
-      mixed_width_first_step(),
-      2,
-      peaks,
-      8000000,
-      mixed_width_second_witness(1, Some(mixed_width_head())),
-    )
-  expect Some(control3) =
-    ledger_output_value_v1.step_v1(
-      control2,
-      2,
-      peaks,
-      8000000,
-      ledger_output_value_v1.LedgerOutputValueNoWitness,
-    )
-  expect Some(terminal) =
-    ledger_output_value_v1.step_v1(
-      control3,
-      2,
-      peaks,
-      8000000,
-      ledger_output_value_v1.LedgerOutputValueNoWitness,
-    )
-  let expected =
-    builtin.map_data(
-      [
-        Pair(
-          builtin.b_data(#""),
-          builtin.map_data([Pair(builtin.b_data(#""), builtin.i_data(8000000))]),
+  expect Some(control2) = ledger_output_value_v1.step_v1(
+    mixed_width_first_step(),
+    2,
+    peaks,
+    8000000,
+    mixed_width_second_witness(1, Some(mixed_width_head())),
+  )
+  expect Some(control3) = ledger_output_value_v1.step_v1(
+    control2,
+    2,
+    peaks,
+    8000000,
+    ledger_output_value_v1.LedgerOutputValueNoWitness,
+  )
+  expect Some(terminal) = ledger_output_value_v1.step_v1(
+    control3,
+    2,
+    peaks,
+    8000000,
+    ledger_output_value_v1.LedgerOutputValueNoWitness,
+  )
+  let expected = builtin.map_data(
+    [
+      Pair(
+        builtin.b_data(#""),
+        builtin.map_data([Pair(builtin.b_data(#""), builtin.i_data(8000000))]),
+      ),
+      Pair(
+        builtin.b_data(policy(17)),
+        builtin.map_data(
+          [
+            Pair(builtin.b_data(#"0102"), builtin.i_data(7)),
+            Pair(builtin.b_data(#"aa"), builtin.i_data(5)),
+          ],
         ),
-        Pair(
-          builtin.b_data(policy(17)),
-          builtin.map_data(
-            [
-              Pair(builtin.b_data(#"0102"), builtin.i_data(7)),
-              Pair(builtin.b_data(#"aa"), builtin.i_data(5)),
-            ],
-          ),
-        ),
-      ],
-    )
+      ),
+    ],
+  )
   ledger_output_value_v1.finalize_v1(terminal) == Some(
     cek_data_v1.semantic_data_summary_v1(expected),
   )
@@ -503,21 +483,20 @@ test policy_change_with_head_opening_is_refused() {
   expect [first, second, _third] = asset_leaves()
   let peaks = asset_peaks()
   let control0 = ledger_output_value_v1.initial_control_v1(3)
-  expect Some(control1) =
-    ledger_output_value_v1.step_v1(
-      control0,
-      3,
-      peaks,
-      8000000,
-      ledger_output_value_v1.LedgerOutputValueAsset {
-        asset_index: 2,
-        policy_id: policy(34),
-        asset_name: #"bbcc",
-        quantity: 18446744073709551615,
-        siblings: [],
-        previous: None,
-      },
-    )
+  expect Some(control1) = ledger_output_value_v1.step_v1(
+    control0,
+    3,
+    peaks,
+    8000000,
+    ledger_output_value_v1.LedgerOutputValueAsset {
+      asset_index: 2,
+      policy_id: policy(34),
+      asset_name: #"bbcc",
+      quantity: 18446744073709551615,
+      siblings: [],
+      previous: None,
+    },
+  )
   ledger_output_value_v1.step_v1(
     control1,
     3,
@@ -543,11 +522,10 @@ test policy_change_with_head_opening_is_refused() {
 test stale_first_step_resumption_is_refused() {
   // A crafted control that still claims an empty current policy after a step
   // has been consumed must not accept a fresh no-head first step.
-  let crafted =
-    ledger_output_value_v1.LedgerOutputValueControlV1 {
-      ..ledger_output_value_v1.initial_control_v1(2),
-      asset_remaining: 1,
-    }
+  let crafted = ledger_output_value_v1.LedgerOutputValueControlV1 {
+    ..ledger_output_value_v1.initial_control_v1(2),
+    asset_remaining: 1,
+  }
   expect [_first, second] = mixed_width_leaves()
   ledger_output_value_v1.step_v1(
     crafted,
@@ -567,22 +545,20 @@ test stale_first_step_resumption_is_refused() {
 
 test empty_value_map_is_supported() {
   let control0 = ledger_output_value_v1.initial_control_v1(0)
-  expect Some(control1) =
-    ledger_output_value_v1.step_v1(
-      control0,
-      0,
-      [],
-      0,
-      ledger_output_value_v1.LedgerOutputValueNoWitness,
-    )
-  expect Some(terminal) =
-    ledger_output_value_v1.step_v1(
-      control1,
-      0,
-      [],
-      0,
-      ledger_output_value_v1.LedgerOutputValueNoWitness,
-    )
+  expect Some(control1) = ledger_output_value_v1.step_v1(
+    control0,
+    0,
+    [],
+    0,
+    ledger_output_value_v1.LedgerOutputValueNoWitness,
+  )
+  expect Some(terminal) = ledger_output_value_v1.step_v1(
+    control1,
+    0,
+    [],
+    0,
+    ledger_output_value_v1.LedgerOutputValueNoWitness,
+  )
   ledger_output_value_v1.finalize_v1(terminal) == Some(
     cek_data_v1.semantic_data_summary_v1(builtin.map_data([])),
   )

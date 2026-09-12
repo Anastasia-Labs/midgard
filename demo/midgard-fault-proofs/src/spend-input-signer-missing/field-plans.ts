@@ -21,6 +21,7 @@ export const planSpendInputSignerInputOpening = ({
   readonly publish?: boolean;
 }): FaultProofFieldOpeningPlan =>
   planFaultProofFieldOpening({
+    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: 0,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,
@@ -49,6 +50,7 @@ export const planSpendInputSignerWitnessOpening = ({
     Buffer.from(witnessSetCompactCbor, "hex"),
   );
   return planFaultProofFieldOpening({
+    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: 7,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,

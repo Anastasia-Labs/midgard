@@ -51,6 +51,7 @@ describe("planFaultProofFieldOpeningV1", () => {
   it("plans tier-1 inline carriage for a body field and opens the anchored slot", () => {
     const { txId, compactCbor, spendInputItems, nativeTx } = fixture();
     const planned = planFaultProofFieldOpening({
+      anchorSourceKind: 0n,
       fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
       anchorTxId: txId,
       nativeTxCompactCbor: compactCbor,
@@ -98,6 +99,7 @@ describe("planFaultProofFieldOpeningV1", () => {
 
     expect(() =>
       planFaultProofFieldOpening({
+        anchorSourceKind: 0n,
         fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
         anchorTxId: txId,
         nativeTxCompactCbor: otherCompactCbor,
@@ -120,6 +122,7 @@ describe("planFaultProofFieldOpeningV1", () => {
 
     expect(() =>
       planFaultProofFieldOpening({
+        anchorSourceKind: 0n,
         fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
         anchorTxId: txId,
         nativeTxCompactCbor: compactCbor,
@@ -134,6 +137,7 @@ describe("planFaultProofFieldOpeningV1", () => {
     const { txId, compactCbor } = fixture();
     expect(() =>
       planFaultProofFieldOpening({
+        anchorSourceKind: 0n,
         fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
         anchorTxId: txId,
         nativeTxCompactCbor: compactCbor,
@@ -163,6 +167,7 @@ describe("planFaultProofFieldOpeningV1", () => {
 
     expect(() =>
       planFaultProofFieldOpening({
+        anchorSourceKind: 0n,
         fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
         anchorTxId: txId,
         nativeTxCompactCbor: compactCbor,

@@ -287,6 +287,7 @@ describe("no-reference-input emulator lifecycle", () => {
     // far inside the tier-1 bound, so the opening is carried inline.
     expect(
       planFaultProofFieldOpening({
+        anchorSourceKind: 0n,
         fieldIndex: SDK.MIDGARD_FIELD_INDEX.referenceInputs,
         anchorTxId: fixture.subjectTxId,
         nativeTxCompactCbor: fixture.nativeTxCompactCbor,
@@ -471,6 +472,7 @@ describe("no-reference-input emulator lifecycle", () => {
     expect(preimage.length).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K);
     expect(
       planFaultProofFieldOpening({
+        anchorSourceKind: 0n,
         fieldIndex: SDK.MIDGARD_FIELD_INDEX.referenceInputs,
         anchorTxId: fixture.subjectTxId,
         nativeTxCompactCbor: fixture.nativeTxCompactCbor,

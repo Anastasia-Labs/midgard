@@ -62,7 +62,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{Input}
 use midgard/fraud_proofs/native_tx/components.{decode_midgard_tx_input_cbor}
 use midgard/fraud_proofs/native_tx/types.{
-  MidgardTxInput, NativeTxWitnessSetCompact, VerifiedMidgardNativeTxCompact,
+  MidgardTxInput, NativeTxWitnessSetCompact, VerifiedTxSourceView,
 }
 use midgard/native_tx_field_access_v1.{
   FieldCarriageV1, FieldViewV1, authenticated_field_view,
@@ -180,7 +180,7 @@ pub const field_grammar_checkpoint_bytes: Int = 87
 /// positional commitment, total length and header bytes; only the header's
 /// count remains provisional.
 pub fn open_field_grammar_certification(
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   field_index: Int,
   carriage: FieldCarriageV1,
@@ -258,7 +258,7 @@ pub fn field_grammar_is_complete(checkpoint: FieldGrammarCheckpointV1) -> Bool {
 /// Resume provisional certification from the exact position committed by the
 /// preceding computation-thread state.
 pub fn resume_field_grammar_certification_from_commitment(
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   committed: ByteArray,
   checkpoint_bytes: ByteArray,
@@ -322,7 +322,7 @@ fn grammar_checkpoint_is_bound_to_view(
 /// ordinary committed semantic-walk resume and never repeat this envelope
 /// pass.
 pub fn open_certified_field_walk_from_grammar_commitment(
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   committed: ByteArray,
   checkpoint_bytes: ByteArray,
@@ -360,7 +360,7 @@ pub fn open_certified_field_walk_from_grammar_commitment(
 /// view — it is not a redeemer argument — which is the base case the inductive
 /// argument in this module's header rests on.
 pub fn open_field_walk(
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   field_index: Int,
   carriage: FieldCarriageV1,
@@ -428,7 +428,7 @@ fn walk_at_start_with_count(
 /// Returns the freshly authenticated view; the position is the checkpoint the
 /// commitment pinned.
 fn resume_field_walk(
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   checkpoint: FieldWalkCheckpointV1,
   carriage: FieldCarriageV1,
@@ -465,7 +465,7 @@ fn resume_field_walk(
 /// digest the *previous* step committed, so the only positions that can be
 /// resumed are ones a walk over authenticated bytes actually reached.
 pub fn resume_field_walk_from_commitment(
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   committed: ByteArray,
   checkpoint_bytes: ByteArray,

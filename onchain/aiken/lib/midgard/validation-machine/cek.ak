@@ -8,7 +8,7 @@ use midgard/cek_machine_v1
 use midgard/cek_mint_order
 use midgard/cek_proof_v1
 use midgard/fraud_proofs/native_tx/compact.{
-  decode_native_tx_compact_v1, verify_native_tx_proof_source_v1,
+  decode_tx_compact_view_v1, verify_tx_proof_source_v1,
 }
 use midgard/native_script_scan_v1
 use midgard/native_tx_field_access_v1
@@ -1006,7 +1006,8 @@ pub fn verify_cek_observer_context_step(
   completed_memory: Int,
   door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  let Pair(verified_source, cek_observer_witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified_source, cek_observer_witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     native_control.compact_cbor,
     native_control.witness_set_compact_cbor,
@@ -1795,7 +1796,10 @@ fn verify_cek_tx_info_finalize(
   completed_memory: Int,
 ) -> Bool {
   expect CekTxInfoFinalizeWitness { control } = auxiliary
-  let compact = decode_native_tx_compact_v1(native_control.compact_cbor)
+  let compact = decode_tx_compact_view_v1(
+    pre.source_kind,
+    native_control.compact_cbor,
+  )
   let tx_info = script_context_v1.tx_info_from_tail_summary_v1(
     context_control.language_tag == 128,
     context_control.spend_items,

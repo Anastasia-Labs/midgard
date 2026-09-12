@@ -14,6 +14,7 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core";
+import { encodeProofThreadForcedSourceKey } from "@al-ft/midgard-sdk";
 import {
   type AuthenticatedStateQueueHeaderObservation,
   CANONICAL_DECODABILITY_VIOLATION_ID,
@@ -822,6 +823,7 @@ const detectMinFees = async (
   return transactions.flatMap((transaction, transactionIndex) => {
     const fee = transaction.nativeTx.body.fee;
     const { minimumFee } = minimumFeeFromProofSource({
+      sourceKind: "normal",
       source: deriveMidgardNativeTxProofSource(transaction.nativeTx),
       minFeeA: evidence.header.minFeeA,
       minFeeB: evidence.header.minFeeB,
@@ -1805,7 +1807,11 @@ const verdictSubjectReplayPosition = (
           (transaction) => transaction.nodeTxId === subject.transaction_id,
         )
       : evidence.reconstruction.forcedTransactions.findIndex(
-          (transaction) => transaction.value.tx_id === subject.transaction_id,
+          (transaction) =>
+            transaction.value.tx_id === subject.transaction_id &&
+            encodeProofThreadForcedSourceKey(transaction.key).toString(
+              "hex",
+            ) === subject.source_key,
         );
   if (index < 0) {
     throw new Error(

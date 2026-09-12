@@ -47,17 +47,6 @@ export type ValidationMachineReplayInput = {
   readonly ledgerMutationSteps: readonly ValidationMachineLedgerMutationStep[];
   readonly expectedVerdict: "accepted" | "rejected";
   readonly expectedRejectionCode: RejectCode | null;
-  /**
-   * Verdict carried by the COMMITTED forced leaf — the operator's
-   * adjudication, which is what `source_binding_is_exact` reveals on-chain
-   * and therefore what the machine's `transaction_commitment` must bind.
-   * Defaults to the replay's own verdict, which is exact on the classifier
-   * path (the leaf is produced from this replay, and the machine aborts on
-   * any expected/replayed divergence). A dispute trace replayed AGAINST an
-   * operator leaf whose verdict it contests must pass the leaf's verdict
-   * here, or its states bind a commitment the committed leaf does not carry.
-   */
-  readonly committedForcedVerdict?: "accepted" | "rejected";
   readonly blockEndTimeMs: number;
   readonly expectedNetworkId: bigint;
   readonly minFeeA: bigint;

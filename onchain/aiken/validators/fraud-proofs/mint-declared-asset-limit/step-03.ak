@@ -58,7 +58,10 @@ validator main(
         expect state.outcome == outcome_scanning
         let Pair(view, resumed) = resume_opened_field_walk(
           args.opening,
-          BodyAnchor { tx_id: state.subject.transaction_id },
+          BodyAnchor {
+            tx_id: state.subject.transaction_id,
+            source_kind: state.subject.source_kind,
+          },
           mint_field_index,
           state.checkpoint_hash,
           args.checkpoint_bytes,

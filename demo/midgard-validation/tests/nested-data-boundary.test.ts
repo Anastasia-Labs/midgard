@@ -427,7 +427,9 @@ describe("canonical V1 nested Cardano Data boundary", () => {
       corpusLabel: "balanced-nested-datum",
     });
     expect(retained.normal.reconstructedCanonicalBytes).toBe(canonical.length);
-    expect(retained.forced.reconstructedCanonicalBytes).toBe(canonical.length);
+    expect(retained.forced.reconstructedCanonicalBytes).toBe(
+      canonical.length - 1,
+    );
     expect(retained.normal.revealStepCount).toBe(field.completeFoldStepCount);
     expect(retained.forced.revealStepCount).toBe(field.completeFoldStepCount);
 

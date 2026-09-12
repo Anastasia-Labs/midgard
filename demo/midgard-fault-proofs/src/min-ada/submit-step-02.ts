@@ -218,6 +218,7 @@ export const submitMinAdaTxStep02 = async ({
     throw new Error(`${label}: selected output does not violate min-Ada`);
   }
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: state.direction === 1n ? 1n : 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor: prepared.nativeTxCompactCbor,

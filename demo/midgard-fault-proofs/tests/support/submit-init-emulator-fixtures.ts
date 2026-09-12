@@ -10,19 +10,13 @@
  * lets each journey theme run in its own worker while sharing one definition
  * of every fixture.
  */
-
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullValidity,
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   buildMidgardValidationTraceTree,
   computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxProofSource,
-  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   encodeMidgardFieldPreimage,
-  encodeMidgardNativeTxCanonical,
   encodeMidgardNativeTxCompact,
   encodeMidgardRedeemerWitnessItem,
   encodeMidgardSpendInputItem,
@@ -33,6 +27,13 @@ import {
   type MidgardNativeTxFull,
   outRefLabel,
 } from "@al-ft/midgard-core";
+import {
+  decodeMidgardForcedTxFullFromCanonicalCbor,
+  deriveMidgardForcedTxProofSource,
+  deriveMidgardForcedTxProofSourceFromCanonicalCbor,
+  encodeMidgardForcedTxCanonical,
+} from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
@@ -1124,16 +1125,16 @@ export const buildInvalidForcedTransitionTraceFixture = async ({
           ]),
         }),
   });
-  const forcedCanonicalCbor = encodeMidgardNativeTxCanonical(forcedNativeTx);
-  // The leaf is rejected, so its committed source is the operator-adjudicated
-  // (TxIsInvalid-stamped) triple; the DA preimage row stays the submitted
-  // canonical bytes, which is exactly what reconstruction re-adjudicates.
-  const forcedSource = deriveMidgardNativeTxProofSource(
-    adjudicateMidgardNativeTxFullValidity(forcedNativeTx, "TxIsInvalid"),
+  const forcedCanonicalCbor = encodeMidgardForcedTxCanonical(
+    materializeMidgardForcedTxFromCanonical(forcedNativeTx),
+  );
+  // DA and the verdict-bearing leaf commit the same immutable submission.
+  const forcedSource = deriveMidgardForcedTxProofSource(
+    materializeMidgardForcedTxFromCanonical(forcedNativeTx),
   );
   const forcedTransaction = {
     tx_id: computeMidgardNativeTxId(forcedNativeTx).toString("hex"),
-    source: {
+    submitted_source: {
       compact_cbor: forcedSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:
         forcedSource.witnessSetCompactCbor.toString("hex"),
@@ -1339,9 +1340,11 @@ export const buildInvalidForcedValidationDisputeFixture = async ({
     fee: 0n,
     outputCbor: largeFittingOutputCbor(inlineDatumPayloadBytes),
   });
-  const forcedCanonicalCbor = encodeMidgardNativeTxCanonical(forcedNativeTx);
+  const forcedCanonicalCbor = encodeMidgardForcedTxCanonical(
+    materializeMidgardForcedTxFromCanonical(forcedNativeTx),
+  );
   const decodedForcedNativeTx =
-    decodeMidgardNativeTxFullFromCanonicalCbor(forcedCanonicalCbor);
+    decodeMidgardForcedTxFullFromCanonicalCbor(forcedCanonicalCbor);
   if (
     decodeMidgardNativeByteListPreimage(
       decodedForcedNativeTx.witnessSet.addrTxWitsPreimageCbor,
@@ -1353,11 +1356,11 @@ export const buildInvalidForcedValidationDisputeFixture = async ({
     );
   }
   const forcedSource =
-    deriveMidgardNativeTxProofSourceFromCanonicalCbor(forcedCanonicalCbor);
+    deriveMidgardForcedTxProofSourceFromCanonicalCbor(forcedCanonicalCbor);
   const transactionId = computeMidgardNativeTxId(forcedNativeTx);
   const forcedTransaction = {
     tx_id: transactionId.toString("hex"),
-    source: {
+    submitted_source: {
       compact_cbor: forcedSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:
         forcedSource.witnessSetCompactCbor.toString("hex"),
@@ -1387,7 +1390,6 @@ export const buildInvalidForcedValidationDisputeFixture = async ({
       expectedRejectionCode: RejectCodes.EmptyInputs,
       // The challenger replays the operator's ACCEPTED leaf to a rejection;
       // its states must still bind the committed (ForcedTxValid) source.
-      committedForcedVerdict: "accepted",
     }),
   );
   // #600: the complete-item witness carries the carriage **plan input** — which

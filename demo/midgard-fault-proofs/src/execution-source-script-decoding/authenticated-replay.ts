@@ -1,12 +1,10 @@
 import {
-  adjudicateMidgardNativeTxFullValidity,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxFaultEvidenceMaterial,
-  encodeMidgardNativeTxCanonical,
   hashMidgardInlineScriptSourceLeaf,
   hashMidgardScriptExecutionLeaf,
   hashMidgardScriptPurposeLeaf,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   decodeRetainedValidationWitnessKey,
   forcedVerdictSubject,
@@ -383,30 +381,25 @@ const replayExecutionSourceScriptDecodingCandidates = async (
           throw new Error(
             "executionSourceScriptDecoding retained forced state changed identity",
           );
-        const adjudicatedCbor = encodeMidgardNativeTxCanonical(
-          adjudicateMidgardNativeTxFullValidity(
-            decodeMidgardNativeTxFullFromCanonicalCbor(
-              transaction.fullTransactionCbor,
-            ),
-            "TxIsInvalid",
-          ),
-        );
+        const adjudicatedCbor = transaction.fullTransactionCbor;
         const material =
-          deriveMidgardNativeTxFaultEvidenceMaterial(adjudicatedCbor);
+          deriveMidgardForcedTxFaultEvidenceMaterial(adjudicatedCbor);
         if (
           material.transactionId.toString("hex") !== transaction.value.tx_id ||
           material.proofSource.compactCbor.toString("hex") !==
-            transaction.value.source.compact_cbor ||
+            transaction.value.submitted_source.compact_cbor ||
           material.proofSource.witnessSetCompactCbor.toString("hex") !==
-            transaction.value.source.witness_set_compact_cbor ||
+            transaction.value.submitted_source.witness_set_compact_cbor ||
           material.proofSource.fieldPreimageLengthsCbor.toString("hex") !==
-            transaction.value.source.field_preimage_lengths_cbor
+            transaction.value.submitted_source.field_preimage_lengths_cbor
         )
           throw new Error(
             "executionSourceScriptDecoding forced source changed authenticated leaf",
           );
-        const projection =
-          projectMidgardRawEnvelopeForPhaseAV1(adjudicatedCbor);
+        const projection = projectMidgardRawEnvelopeForPhaseAV1(
+          adjudicatedCbor,
+          "forced",
+        );
         const descriptor = descriptorFromAuthentication({
           authentication,
           projection,

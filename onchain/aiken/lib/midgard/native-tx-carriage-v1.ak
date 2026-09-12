@@ -89,10 +89,11 @@ use aiken/crypto.{VerificationKeyHash, blake2b_256}
 use aiken/primitive/bytearray
 use cardano/transaction.{InlineDatum, Input}
 use midgard/fraud_proofs/native_tx/compact.{
-  decode_native_tx_witness_set_compact, verify_native_tx_compact_cbor_v1,
+  decode_native_tx_witness_set_compact, validation_source_kind_v1,
+  verify_native_tx_compact_cbor_v1, verify_tx_compact_cbor_v1,
 }
 use midgard/fraud_proofs/native_tx/types.{
-  NativeTxBodyCompact, NativeTxCompact, NativeTxWitnessSetCompact,
+  NativeTxBodyCompact, NativeTxWitnessSetCompact, TxCompactView,
 }
 use midgard/native_tx_field_access_v1.{
   FieldPreimageCertificateV1, chunk_bytes_k, expected_chunk_count,
@@ -115,6 +116,7 @@ use midgard/native_tx_field_access_v1.{
 /// by the redeemer's reference-input indices and verified in one shot").
 pub type FieldPreimageCertificateMintRedeemerV1 {
   Certify {
+    source_kind: Int,
     /// The disputed L2 transaction's compact CBOR. The tx-id is re-derived
     /// from this, never taken from the redeemer.
     compact_cbor: ByteArray,
@@ -309,6 +311,7 @@ pub fn raw_chunk_bytes(reference_inputs: List<Input>, index: Int) -> ByteArray {
 /// no consumer could compute, and dropping the per-chunk digests would leave
 /// §8.6's "O(one chunk hash)" access with nothing to compare against.
 pub fn verify_field_preimage_certificate_v1(
+  source_kind: Int,
   certificate: FieldPreimageCertificateV1,
   compact_cbor: ByteArray,
   witness_set_compact_cbor: ByteArray,
@@ -333,8 +336,12 @@ pub fn verify_field_preimage_certificate_v1(
   // would put a fourth, unused ByteArray in the frozen §8.6 redeemer whose only
   // job would be to satisfy a check about something else. Two lines of overlap
   // is the cheaper price than a wire field that means nothing.
-  let verified = verify_native_tx_compact_cbor_v1(tx_id, compact_cbor)
-  let NativeTxCompact { body, witness_set_hash, .. } = verified.tx_compact
+  let verified = verify_tx_compact_cbor_v1(
+    validation_source_kind_v1(source_kind),
+    tx_id,
+    compact_cbor,
+  )
+  let TxCompactView { body, witness_set_hash, .. } = verified.tx_compact
   expect blake2b_256(witness_set_compact_cbor) == witness_set_hash
   let witness_set = decode_native_tx_witness_set_compact(
     witness_set_compact_cbor,

@@ -2,6 +2,7 @@ import {
   decodeMidgardNativeTxCompact,
   decodeMidgardVersionedScript,
 } from "@al-ft/midgard-core";
+import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
 import {
   nativeScriptItemCommitment,
   requireInputIndex,
@@ -83,14 +84,17 @@ export const submitExecutionNativeScriptInvalidStep03 = async ({
   const script = decodeMidgardVersionedScript(scriptItemCbor);
   if (script.language !== "NativeCardano")
     throw new Error(`${label}: authenticated source is not a native script`);
-  const compact = decodeMidgardNativeTxCompact(
-    Buffer.from(state.compact_cbor, "hex"),
-  );
+  const compact = (
+    state.bound.subject.source_kind === 1n
+      ? decodeMidgardForcedTxCompact
+      : decodeMidgardNativeTxCompact
+  )(Buffer.from(state.compact_cbor, "hex"));
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
         direction: state.bound.subject.direction,
+        source_kind: state.bound.subject.source_kind,
         execution_index: state.bound.execution_index,
         source_index: state.source_index,
         origin_kind: state.origin_kind,

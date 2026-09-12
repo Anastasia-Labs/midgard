@@ -239,6 +239,7 @@ describe("§8.6 FieldPreimageCertificateMintRedeemerV1 wire contract", () => {
       (match) => match[1],
     );
     expect(fields).toEqual([
+      "source_kind",
       "compact_cbor",
       "witness_set_compact_cbor",
       "chunk_ref_input_indices",
@@ -246,13 +247,14 @@ describe("§8.6 FieldPreimageCertificateMintRedeemerV1 wire contract", () => {
     ]);
   });
 
-  it("encodes Certify at Constr 0 with its four fields flat", () => {
+  it("encodes Certify at Constr 0 with its five fields flat", () => {
     // Exact CBOR, not a prefix check — the same `Data.Object` vs `Data.Tuple`
     // hazard the §8.8 carriage assertions guard. `Certify` carries named
     // fields, so its payload sits directly in the constructor.
     const certify = Data.to(
       {
         Certify: {
+          source_kind: 0n,
           compact_cbor: "a1",
           witness_set_compact_cbor: "b2",
           chunk_ref_input_indices: [0n, 1n, 2n],
@@ -261,10 +263,11 @@ describe("§8.6 FieldPreimageCertificateMintRedeemerV1 wire contract", () => {
       },
       FieldPreimageCertificateMintRedeemer,
     );
-    expect(certify).toBe("d8799f41a141b29f000102ff00ff");
+    expect(certify).toBe("d8799f0041a141b29f000102ff00ff");
     expect(certify.startsWith(constructorTagPrefix(0))).toBe(true);
     expect(Data.from(certify, FieldPreimageCertificateMintRedeemer)).toEqual({
       Certify: {
+        source_kind: 0n,
         compact_cbor: "a1",
         witness_set_compact_cbor: "b2",
         chunk_ref_input_indices: [0n, 1n, 2n],
@@ -291,6 +294,7 @@ describe("§8.6 FieldPreimageCertificateMintRedeemerV1 wire contract", () => {
     const overlong = Data.to(
       {
         Certify: {
+          source_kind: 0n,
           compact_cbor: "a1",
           witness_set_compact_cbor: "b2",
           chunk_ref_input_indices: [0n, 1n, 2n, 3n],

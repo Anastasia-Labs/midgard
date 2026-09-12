@@ -398,6 +398,7 @@ export const admitInvalidSignatureArtifact = (
     );
   }
   const fieldPlan = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
     anchorTxId: artifact.nativeTxId,
     nativeTxCompactCbor: artifact.nativeTxCompactCbor,
@@ -437,6 +438,7 @@ const admitWorkflowArtifact = async (
     witnessSet: evidence.witnessSet,
     addressWitnesses: evidence.addressWitnesses,
     fieldPlan: planFaultProofFieldOpening({
+      anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
       fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
       anchorTxId: evidence.subject.transaction_id,
       nativeTxCompactCbor: evidence.nativeTxCompactCbor,

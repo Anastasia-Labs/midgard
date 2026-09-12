@@ -40,7 +40,7 @@ validator main(
           tx,
         )
       ct.Continue(Args { source: AcceptedSource { inclusion }, output_index }) -> {
-        let  
+        let
             _own,
             _name,
             _prover,

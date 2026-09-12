@@ -5,7 +5,9 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{
   cancel, continue, pass_native_tx_to_next_step_carried,
 }
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
+use midgard/fraud_proofs/native_tx/compact.{
+  verify_forced_tx_proof_source_v1, verify_native_tx_proof_source_v1,
+}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/fraud_proofs/redeemer_canonicity/rule.{bind_redeemer_v1}
 use midgard/fraud_proofs/redeemer_canonicity/step_01.{
@@ -79,11 +81,11 @@ validator main(
           membership,
           direction,
         )
-        let Pair(verified, _witness_set) = verify_native_tx_proof_source_v1(
+        let Pair(verified, _witness_set) = verify_forced_tx_proof_source_v1(
           membership.value.tx_id,
-          membership.value.source.compact_cbor,
-          membership.value.source.witness_set_compact_cbor,
-          membership.value.source.field_preimage_lengths_cbor,
+          membership.value.submitted_source.compact_cbor,
+          membership.value.submitted_source.witness_set_compact_cbor,
+          membership.value.submitted_source.field_preimage_lengths_cbor,
         )
         let expected: Data = bind_redeemer_v1(
           subject,

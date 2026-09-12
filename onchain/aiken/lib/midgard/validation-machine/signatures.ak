@@ -1,7 +1,7 @@
 use aiken/cbor
 use aiken/crypto.{blake2b_224, verify_ed25519_signature}
 use aiken/primitive/bytearray
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
+use midgard/fraud_proofs/native_tx/compact.{verify_tx_proof_source_v1}
 use midgard/fraud_proofs/native_tx/components.{
   decode_midgard_address_witness_cbor,
 }
@@ -97,7 +97,8 @@ fn verify_signature_address_item(
   item_index: Int,
   carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -202,7 +203,8 @@ fn verify_signatures_advance(
   witness: ValidationOneStepWitnessV1,
   control: SignaturesControlV1,
 ) -> Bool {
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -282,7 +284,8 @@ fn verify_required_signer_item(
   carriage: native_tx_field_access_v1.FieldCarriageV1,
   signer_proof: SignerSetProofV1,
 ) -> Bool {
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -364,7 +367,8 @@ fn verify_signatures_handoff(
   witness: ValidationOneStepWitnessV1,
   control: SignaturesControlV1,
 ) -> Bool {
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,

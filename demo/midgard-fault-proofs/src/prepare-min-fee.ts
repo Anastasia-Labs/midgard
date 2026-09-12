@@ -201,6 +201,7 @@ export const prepareMinFeeFromTransactions = async ({
   );
   const priced = decoded.map((material) => {
     const boundary = minimumFeeFromProofSource({
+      sourceKind: "normal",
       source: deriveMidgardNativeTxProofSource(material.nativeTx),
       minFeeA: feeA,
       minFeeB: feeB,

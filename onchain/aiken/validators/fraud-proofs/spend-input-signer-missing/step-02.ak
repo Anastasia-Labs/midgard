@@ -4,6 +4,7 @@ use aiken/merkle_patricia_forestry as mpf
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/common.{
   RedeemerCarriedMembership, cancel, continue, verify_membership_carried,
 }
@@ -76,7 +77,10 @@ validator main(
         expect Some(bound) = state
         let view = opened_field_view(
           spend_inputs_opening,
-          BodyAnchor { tx_id: bound.subject.transaction_id },
+          BodyAnchor {
+            tx_id: bound.subject.transaction_id,
+            source_kind: bound.subject.source_kind,
+          },
           spend_inputs_field_index,
           reference_inputs,
           certificate_policy,
@@ -323,6 +327,16 @@ fn run_step_02(
   args: Args,
   tx: Transaction,
 ) -> Bool {
+  let args = if state.subject.source_kind == 1 {
+    Args {
+      ..args,
+      spend_inputs_opening: forced_fixture.from_native_opening(
+        args.spend_inputs_opening,
+      ),
+    }
+  } else {
+    args
+  }
   main.spend(
     step_03_hash,
     step_05_hash,

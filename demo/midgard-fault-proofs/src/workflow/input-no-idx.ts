@@ -412,6 +412,7 @@ export const admitInputNoIdxArtifact = (
     throw new Error("input-no-idx artifact detection identity changed");
   }
   const inputFieldPlan = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: bad.artifact.nativeTxId,
     nativeTxCompactCbor: bad.artifact.nativeTxCompactCbor,
@@ -420,6 +421,7 @@ export const admitInputNoIdxArtifact = (
     label: "input-no-idx artifact spend inputs",
   });
   const outputFieldPlan = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     anchorTxId: producing.artifact.nativeTxId,
     nativeTxCompactCbor: producing.artifact.nativeTxCompactCbor,

@@ -13,6 +13,7 @@ import {
   computeMidgardNativeTxCanonicalSizeFromProofSource,
   type MidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
+import { computeMidgardForcedTxCanonicalSizeFromProofSource } from "@al-ft/midgard-core/codec/forced";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -26,7 +27,7 @@ import {
   FaultProofStepCancelSchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  NativeTxCompactSchema,
+  NativeTxBodyCompactSchema,
   NativeTxInclusionCarriage,
   NativeTxInclusionCarriageSchema,
   NativeTxWitnessSetCompactSchema,
@@ -111,7 +112,10 @@ export const MinFeeStep01SpendRedeemer = asDataType<MinFeeStep01SpendRedeemer>(
 
 export const MinFeeStep02StateSchema = Data.Object({
   subject: MinFeeVerdictSubjectSchema,
-  bad_tx: NativeTxCompactSchema,
+  bad_tx: Data.Object({
+    body: NativeTxBodyCompactSchema,
+    witness_set_hash: H32Schema,
+  }),
   bad_tx_body_fee: Data.Integer(),
   bad_tx_id: H32Schema,
   min_fee_a: Data.Integer(),
@@ -197,16 +201,20 @@ export const minFeeLovelace = ({
  * applies the header's fee schedule without Number arithmetic.
  */
 export const minimumFeeFromProofSource = ({
+  sourceKind,
   source,
   minFeeA,
   minFeeB,
 }: {
   readonly source: MidgardNativeTxProofSource;
+  readonly sourceKind: "normal" | "forced";
   readonly minFeeA: bigint;
   readonly minFeeB: bigint;
 }): { readonly canonicalTxSize: bigint; readonly minimumFee: bigint } => {
   const canonicalTxSize = BigInt(
-    computeMidgardNativeTxCanonicalSizeFromProofSource(source),
+    (sourceKind === "forced"
+      ? computeMidgardForcedTxCanonicalSizeFromProofSource
+      : computeMidgardNativeTxCanonicalSizeFromProofSource)(source),
   );
   return {
     canonicalTxSize,

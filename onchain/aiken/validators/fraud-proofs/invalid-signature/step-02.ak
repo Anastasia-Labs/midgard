@@ -90,6 +90,7 @@ validator main(
           WitnessAnchor {
             tx_id: subject.transaction_id,
             witness_set_hash: bad_tx_witness_set_hash,
+            source_kind: subject.source_kind,
           },
           address_witnesses_field_index,
           reference_inputs,

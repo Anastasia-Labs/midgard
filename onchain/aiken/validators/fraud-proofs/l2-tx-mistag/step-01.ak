@@ -60,7 +60,7 @@ validator main(
 
         // A normal `transactions_root` leaf is an acceptance verdict. Its
         // canonical scalar domain is {0, 1}, so non-zero is exactly code 1.
-        let committed_validity_code = bad_tx_view.tx_compact.validity_code
+        expect Some(committed_validity_code) = bad_tx_view.tx_compact.validity_code
         expect committed_validity_code != 0
 
         expect output_script_hash == step_02_validator_script_hash

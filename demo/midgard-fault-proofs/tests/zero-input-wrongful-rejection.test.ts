@@ -1,12 +1,14 @@
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSource,
   encodeMidgardFieldPreimage,
-  encodeMidgardNativeTxCanonical,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
+import {
+  deriveMidgardForcedTxProofSource,
+  encodeMidgardForcedTxCanonical,
+} from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
@@ -123,12 +125,9 @@ describe("zeroInput direction-complete V1 semantics", () => {
       outputIndex: 0,
     });
     const submitted = makeNativeTx({ spendInputCbors: [item], fee: 0n });
-    const invalid = adjudicateMidgardNativeTxFullValidity(
-      submitted,
-      "TxIsInvalid",
-    );
+    const invalid = materializeMidgardForcedTxFromCanonical(submitted);
     const transactionId = computeMidgardNativeTxId(invalid).toString("hex");
-    const source = deriveMidgardNativeTxProofSource(invalid);
+    const source = deriveMidgardForcedTxProofSource(invalid);
     const detections = detectZeroInputForcedReplay({
       headerHash: "04".repeat(28),
       reconstruction: {
@@ -137,7 +136,7 @@ describe("zeroInput direction-complete V1 semantics", () => {
             key: { transactionId: "05".repeat(32), outputIndex: 0n },
             value: {
               tx_id: transactionId,
-              source: {
+              submitted_source: {
                 compact_cbor: source.compactCbor.toString("hex"),
                 witness_set_compact_cbor:
                   source.witnessSetCompactCbor.toString("hex"),
@@ -146,7 +145,7 @@ describe("zeroInput direction-complete V1 semantics", () => {
               },
               verdict: { ForcedTxInvalid: { reason: "EmptyInputs" } },
             },
-            fullTransactionCbor: encodeMidgardNativeTxCanonical(invalid),
+            fullTransactionCbor: encodeMidgardForcedTxCanonical(invalid),
           },
         ],
       },

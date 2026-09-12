@@ -349,11 +349,15 @@ const makeHarness = async () => {
    * the way the production builder expects to resolve it. Returns the chunk
    * and certificate measurements of a certified publication.
    */
-  const publishField = async (shape: ObserverShape) => {
+  const publishField = async (
+    shape: ObserverShape,
+    sourceKind: 0n | 1n = 0n,
+  ) => {
     const planned = planFaultProofFieldOpening({
+      anchorSourceKind: sourceKind,
       fieldIndex: 3,
       anchorTxId: transactionIdOf(shape),
-      nativeTxCompactCbor: compactCborHex(shape.nativeTx),
+      nativeTxCompactCbor: compactCborHex(shape.nativeTx, sourceKind),
       itemCbors: observerHashes(shape.observerCount),
       owner: harness.proverSigner.paymentKeyHash,
       publish: true,
@@ -390,7 +394,7 @@ const makeHarness = async () => {
           harness.contracts.fieldPreimageCertificate.mintingScript,
         certificateReferenceScriptUtxo: requireCertificateReference(),
         chunkUtxos: carriage.result,
-        compactCbor: compactCborHex(shape.nativeTx),
+        compactCbor: compactCborHex(shape.nativeTx, sourceKind),
         witnessSetCompactCbor: witnessSetCompactCborHex(shape.nativeTx),
       }),
     );
@@ -526,7 +530,10 @@ const makeHarness = async () => {
         signer: harness.proverSigner,
         threadOutRef,
         evidence,
-        nativeTxCompactCbor: compactCborHex(shape.nativeTx),
+        nativeTxCompactCbor: compactCborHex(
+          shape.nativeTx,
+          evidence.subject.source_kind,
+        ),
         referenceScriptUtxo: references[1]!,
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
@@ -546,7 +553,10 @@ const makeHarness = async () => {
       signer: harness.proverSigner,
       threadOutRef,
       evidence,
-      nativeTxCompactCbor: compactCborHex(shape.nativeTx),
+      nativeTxCompactCbor: compactCborHex(
+        shape.nativeTx,
+        evidence.subject.source_kind,
+      ),
       referenceScriptUtxo: references[1]!,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       mutateOpening,
@@ -714,7 +724,7 @@ const forcedSuccess = async (
     source,
   );
   record(`${prefix}-step01`, shape.label, bound.measurement);
-  const published = await h.publishField(shape);
+  const published = await h.publishField(shape, 1n);
   if (published.tier === "Certified")
     h.recordCarriage(prefix, shape, published);
   const proven = await h.step02(bound.result.nextThreadOutRef, evidence, shape);
@@ -1123,7 +1133,7 @@ describe("observersForbiddenOnUntaggedNetwork registered-chain lifecycle", () =>
       evidence,
       source,
     );
-    await h.publishField(shape);
+    await h.publishField(shape, 1n);
     await expectOnchainRefusal(() =>
       h.step02Raw(bound.result.nextThreadOutRef, evidence, shape),
     );

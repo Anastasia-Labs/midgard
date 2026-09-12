@@ -7,9 +7,7 @@
  */
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSource,
   deriveMidgardNativeTxWitnessSetCompact,
   encodeMidgardNativeTxCanonical,
   encodeMidgardNativeTxCompact,
@@ -18,6 +16,11 @@ import {
   type MidgardNativeScript,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import {
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   AddressData,
@@ -443,12 +446,12 @@ export const commitForcedBlock = async (
   const built = leaves.map(({ nativeTx, reason }, index) => {
     const txOrderId = transitionTraceOutRef(`f${(index + 1).toString()}`);
     const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
-    const source = deriveMidgardNativeTxProofSource(
-      adjudicateMidgardNativeTxFullValidity(nativeTx, "TxIsInvalid"),
+    const source = deriveMidgardForcedTxProofSource(
+      materializeMidgardForcedTxFromCanonical(nativeTx),
     );
     const transaction = {
       tx_id: computeMidgardNativeTxId(nativeTx).toString("hex"),
-      source: {
+      submitted_source: {
         compact_cbor: source.compactCbor.toString("hex"),
         witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
         field_preimage_lengths_cbor:
@@ -503,7 +506,7 @@ export const commitForcedBlock = async (
         },
         valueSchema: ValidationTraceDescriptorSchema,
       }),
-      canonicalHex: encodeMidgardNativeTxCanonical(nativeTx).toString("hex"),
+      canonicalHex: encodeMidgardForcedTxCanonical(nativeTx).toString("hex"),
     };
   });
   const counted = async (
@@ -599,7 +602,7 @@ export const commitForcedBlock = async (
       reason: leaf.reason,
       eventKey: leaf.eventKey,
       membership,
-      canonicalCbor: Buffer.from(encodeMidgardNativeTxCanonical(leaf.nativeTx)),
+      canonicalCbor: Buffer.from(encodeMidgardForcedTxCanonical(leaf.nativeTx)),
     });
   }
   return { header, headerHash, reconstruction, setup, leaves: forcedLeaves };
@@ -1007,6 +1010,7 @@ export const makeOutputReferenceStages = ({
       await import("@al-ft/midgard-core")
     ).decodeMidgardFieldPreimage(Buffer.from(outputFieldPreimageHex, "hex"));
     const planned = planFaultProofFieldOpening({
+      anchorSourceKind: 0n,
       fieldIndex: 2,
       anchorTxId: other.nativeTxId,
       nativeTxCompactCbor: other.compactCborHex,

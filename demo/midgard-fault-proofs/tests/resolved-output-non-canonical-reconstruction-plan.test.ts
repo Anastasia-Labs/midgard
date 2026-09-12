@@ -3,6 +3,7 @@ import {
   encodeMidgardNativeTxCanonical,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
+import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
@@ -64,7 +65,9 @@ const evidenceFor = (output: Buffer): ResolvedOutputEvidence => {
   const evidence = prepareResolvedOutputNonCanonicalEvidence({
     subject,
     coordinate,
-    canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
+    canonicalTransactionCbor: canonical
+      ? encodeMidgardForcedTxCanonical(nativeTx)
+      : encodeMidgardNativeTxCanonical(nativeTx),
     resolved: {
       priorRoot,
       transactionId: priorTxId,

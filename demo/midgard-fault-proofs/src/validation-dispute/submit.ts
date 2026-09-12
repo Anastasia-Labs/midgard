@@ -15,6 +15,7 @@ import {
   timeoutMidgardValidationDispute,
   verifyMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
+import { verifyMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
 import type { MidgardFieldCarriagePlan } from "@al-ft/midgard-core/codec/native-tx-carriage";
 import {
   decodeMidgardFieldPreimage,
@@ -6050,7 +6051,13 @@ export const deriveCanonicalDecodeItemStageData = ({
   };
   // Called for its verification, not its value: it binds these compact structures
   // to the disputed transaction id, which the positional extraction below does not.
-  verifyMidgardNativeTxProofSource({
+  const sourceKind =
+    preparedResolution.resolution.pre_state.source_kind === "Forced"
+      ? "forced"
+      : "normal";
+  (sourceKind === "forced"
+    ? verifyMidgardForcedTxProofSource
+    : verifyMidgardNativeTxProofSource)({
     transactionId: Buffer.from(
       preparedResolution.resolution.pre_state.transaction_id,
       "hex",
@@ -6064,7 +6071,10 @@ export const deriveCanonicalDecodeItemStageData = ({
   // than hand-copied for a third time. `verifyMidgardNativeTxProofSource` above
   // stays: the helper deliberately does not authenticate the source, and binding
   // these structures to `pre_state.transaction_id` is what that call is for.
-  const fieldCommitments = midgardTxFieldCommitmentsFromSource(proofSource);
+  const fieldCommitments = midgardTxFieldCommitmentsFromSource(
+    proofSource,
+    sourceKind,
+  );
   const expectedFieldCommitment = fieldCommitments[fieldIndex];
   const expectedFieldLength = lengths[fieldIndex];
   if (

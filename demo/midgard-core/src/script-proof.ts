@@ -117,7 +117,7 @@ export const hashMidgardV1VersionedScript = (
  * state later and therefore are intentionally not inferred here.
  */
 export const collectMidgardAttachedProgramEnvelopes = (
-  tx: MidgardNativeTxCanonical,
+  tx: Pick<MidgardNativeTxCanonical, "body" | "witnessSet">,
 ): readonly MidgardCekProgramEnvelope[] => {
   const envelopes: MidgardCekProgramEnvelope[] = [];
   for (const script of decodeMidgardVersionedScriptListPreimage(
@@ -149,7 +149,7 @@ export const collectMidgardAttachedProgramEnvelopes = (
  * corresponding canonical ledger-output bytes.
  */
 export const collectMidgardReferencedProgramEnvelopes = (
-  tx: MidgardNativeTxCanonical,
+  tx: Pick<MidgardNativeTxCanonical, "body" | "witnessSet">,
   resolvedOutputsByOutRef: ReadonlyMap<string, Uint8Array>,
 ): readonly MidgardCekProgramEnvelope[] => {
   const envelopes: MidgardCekProgramEnvelope[] = [];

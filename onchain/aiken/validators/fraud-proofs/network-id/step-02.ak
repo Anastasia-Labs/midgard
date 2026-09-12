@@ -119,7 +119,7 @@ validator main(
             expect None = state.forced_source_key
             let outputs_view = opened_field_view(
               opening,
-              BodyAnchor { tx_id: state.bad_tx_id },
+              BodyAnchor { tx_id: state.bad_tx_id, source_kind: 0 },
               outputs_field_index,
               reference_inputs,
               field_preimage_certificate_policy_id,

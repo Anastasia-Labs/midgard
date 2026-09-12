@@ -1,13 +1,11 @@
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeHash28,
   decodeMidgardFieldPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardForcedTxFullFromCanonicalCbor,
   decodeMidgardSpendInputItem,
-  deriveMidgardNativeTxFaultEvidenceMaterial,
-  encodeMidgardNativeTxCanonical,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
@@ -58,25 +56,17 @@ export const noReferenceInputForcedSourceMaterial = (
     reason.InputNotFound.source_kind !== 1n
   )
     throw new Error("noReferenceInput: wrong typed rejection/source kind");
-  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-    encodeMidgardNativeTxCanonical(
-      adjudicateMidgardNativeTxFullValidity(
-        decodeMidgardNativeTxFullFromCanonicalCbor(
-          Buffer.from(fullTransactionCbor, "hex"),
-        ),
-        "TxIsInvalid",
-      ),
-    ),
+  const material = deriveMidgardForcedTxFaultEvidenceMaterial(
+    Buffer.from(fullTransactionCbor, "hex"),
   );
   if (
-    material.compact.validity !== "TxIsInvalid" ||
     material.transactionId.toString("hex") !== leaf.tx_id ||
     material.proofSource.compactCbor.toString("hex") !==
-      leaf.source.compact_cbor ||
+      leaf.submitted_source.compact_cbor ||
     material.proofSource.witnessSetCompactCbor.toString("hex") !==
-      leaf.source.witness_set_compact_cbor ||
+      leaf.submitted_source.witness_set_compact_cbor ||
     material.proofSource.fieldPreimageLengthsCbor.toString("hex") !==
-      leaf.source.field_preimage_lengths_cbor
+      leaf.submitted_source.field_preimage_lengths_cbor
   )
     throw new Error("noReferenceInput: forced transaction source changed");
   const inputItems = decodeMidgardFieldPreimage(material.fieldPreimages[1]!);
@@ -153,7 +143,7 @@ const priorLedger = async (
       }
     } else if (event.phase === "ForcedTransaction") {
       if (event.entry.value.verdict === "ForcedTxValid") {
-        const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
+        const tx = decodeMidgardForcedTxFullFromCanonicalCbor(
           event.entry.fullTransactionCbor,
         );
         for (const input of decodeMidgardFieldPreimage(

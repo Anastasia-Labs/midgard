@@ -27,6 +27,7 @@ import {
   type MidgardValidationMachineState,
 } from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
 import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -299,9 +300,11 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
             Buffer.alloc(32, height + 1),
           ])
         : [];
-      const sourceFields = deriveMidgardNativeTxProofSourceFromCanonicalCbor(
-        encodeMidgardNativeTxCanonical(nativeTx),
-      );
+      const sourceFields = forced
+        ? deriveMidgardForcedTxProofSource(nativeTx)
+        : deriveMidgardNativeTxProofSourceFromCanonicalCbor(
+            encodeMidgardNativeTxCanonical(nativeTx),
+          );
       // Conservative control envelope: all nonselected frontiers have every
       // height below the 32,768-byte field ceiling, simultaneously. Hidden
       // subtrees are operator commitments; only the selected fold is opened.

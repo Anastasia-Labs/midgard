@@ -1,8 +1,8 @@
 import { midgardFieldCommitment } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { deriveRejectedTransactionFaultEvidenceMaterial } from "../evidence/rejected-transaction.js";
 import {
   prepareZeroInputEvidence,
   ZERO_INPUT_FIELD_INDEX,
@@ -38,17 +38,17 @@ export const detectZeroInputForcedReplay = (
         verdict.ForcedTxInvalid.reason !== "EmptyInputs"
       )
         return;
-      const material = deriveRejectedTransactionFaultEvidenceMaterial(
+      const material = deriveMidgardForcedTxFaultEvidenceMaterial(
         transaction.fullTransactionCbor,
       );
       if (
         material.transactionId.toString("hex") !== transaction.value.tx_id ||
         material.proofSource.compactCbor.toString("hex") !==
-          transaction.value.source.compact_cbor ||
+          transaction.value.submitted_source.compact_cbor ||
         material.proofSource.witnessSetCompactCbor.toString("hex") !==
-          transaction.value.source.witness_set_compact_cbor ||
+          transaction.value.submitted_source.witness_set_compact_cbor ||
         material.proofSource.fieldPreimageLengthsCbor.toString("hex") !==
-          transaction.value.source.field_preimage_lengths_cbor
+          transaction.value.submitted_source.field_preimage_lengths_cbor
       )
         throw new Error(
           "zeroInput: forced preimage differs from authenticated leaf",

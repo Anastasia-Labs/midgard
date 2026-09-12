@@ -89,6 +89,7 @@ export const planMissingRedeemerFieldOpening = ({
   const witnessSetBytes = Buffer.from(witnessSetCompactCbor, "hex");
   const witnessSet = decodeMidgardNativeTxWitnessSetCompact(witnessSetBytes);
   return planFaultProofFieldOpening({
+    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: 8,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,

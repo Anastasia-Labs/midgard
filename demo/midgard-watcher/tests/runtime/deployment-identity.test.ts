@@ -777,7 +777,12 @@ describe("watcher deployment identity", () => {
       scriptHash:
         fixture.policy.appliedScriptHashes.fraudProofMintDeclaredAssetLimit,
     });
-    expect(Object.keys(categories)).toHaveLength(54);
+    expect(categories.mintItemNonCanonical).toEqual({
+      categoryId: "00000036",
+      scriptHash:
+        fixture.policy.appliedScriptHashes.fraudProofMintItemNonCanonical,
+    });
+    expect(Object.keys(categories)).toHaveLength(55);
 
     fixture.policy = {
       ...fixture.policy,

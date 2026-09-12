@@ -185,6 +185,7 @@ export const submitMissingSignatureStep04 = async ({
   // The §8.8 door: plan against the thread-anchored witness-set hash,
   // publish whatever the tier demands, open.
   const planned = planMissingSignatureAddressWitnessesOpening({
+    anchorSourceKind: 0n,
     anchorTxId: state.verified_tx_id,
     nativeTxCompactCbor,
     addrTxWits,

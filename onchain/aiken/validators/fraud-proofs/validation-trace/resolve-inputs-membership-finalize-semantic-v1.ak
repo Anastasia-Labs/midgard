@@ -98,8 +98,10 @@ validator main(
         attach_roles,
         yield_ref_input_indices,
       }) -> {
-        let auxiliary =
-          LedgerOutputProofFinalizeWitness { descriptor_cbor, signer_proof }
+        let auxiliary = LedgerOutputProofFinalizeWitness {
+          descriptor_cbor,
+          signer_proof,
+        }
         let auxiliary_data: Data = auxiliary
         continue_winning(
           ResolveInputs,
@@ -249,8 +251,9 @@ fn membership_terminal_dispatch(
     carrier.control_raw_lop_is_pinned(frame, pending.descriptor_cbor),
     {
       let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
-      expect Some(address) =
-        ledger_output_v1.decode_canonical_address_bytes(descriptor.address)
+      expect Some(address) = ledger_output_v1.decode_canonical_address_bytes(
+        descriptor.address,
+      )
       when
         input_signer_authorization(
           pending.source_kind,

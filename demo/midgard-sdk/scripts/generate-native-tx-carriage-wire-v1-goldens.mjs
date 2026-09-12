@@ -268,6 +268,7 @@ const vectors = [
     schema: FieldPreimageCertificateMintRedeemer,
     value: {
       Certify: {
+        source_kind: 0n,
         compact_cbor: hex(compactCbor),
         witness_set_compact_cbor: hex(witnessSetCompactCbor),
         chunk_ref_input_indices: [1n, 2n, 3n],
@@ -276,6 +277,7 @@ const vectors = [
     },
     aiken: [
       "Certify {",
+      "  source_kind: 0,",
       `  compact_cbor: ${aikenBytes(hex(compactCbor))},`,
       `  witness_set_compact_cbor: ${aikenBytes(hex(witnessSetCompactCbor))},`,
       "  chunk_ref_input_indices: [1, 2, 3],",
@@ -289,6 +291,7 @@ const vectors = [
     schema: FieldPreimageCertificateMintRedeemer,
     value: {
       Certify: {
+        source_kind: 0n,
         compact_cbor: hex(smallCompactCbor),
         witness_set_compact_cbor: hex(smallWitnessSetCompactCbor),
         chunk_ref_input_indices: [0n, 1n],
@@ -297,6 +300,7 @@ const vectors = [
     },
     aiken: [
       "Certify {",
+      "  source_kind: 0,",
       `  compact_cbor: ${aikenBytes(hex(smallCompactCbor))},`,
       `  witness_set_compact_cbor: ${aikenBytes(hex(smallWitnessSetCompactCbor))},`,
       "  chunk_ref_input_indices: [0, 1],",
@@ -516,6 +520,7 @@ const negativeVectors = [
     aikenType: "FieldPreimageCertificateMintRedeemerV1",
     cborHex: Data.to(
       new Constr(0, [
+        0n,
         hex(smallCompactCbor),
         hex(smallWitnessSetCompactCbor),
         hex(chunkedViewChunkB),
@@ -531,13 +536,14 @@ const negativeVectors = [
     aikenType: "FieldPreimageCertificateMintRedeemerV1",
     cborHex: Data.to(
       new Constr(0, [
+        0n,
         hex(smallCompactCbor),
         hex(smallWitnessSetCompactCbor),
         [0n, 1n],
       ]),
     ),
     reason:
-      "`Certify` has arity 4; without `output_index` the policy has no named output to check",
+      "`Certify` has arity 5; without `output_index` the policy has no named output to check",
     rejectedBy: { aiken: "data-cast", typescript: "throws" },
   },
   {

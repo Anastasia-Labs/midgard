@@ -55,6 +55,10 @@
     "./test-support/prepare-fabricated-withdrawal": {
       "midgard-source": "./src/prepare-fabricated-withdrawal.ts",
       "types": "./src/prepare-fabricated-withdrawal.ts"
+    },
+    "./test-support/forced-order-settlement": {
+      "midgard-source": "./tests/support/forced-order-settlement.ts",
+      "types": "./tests/support/forced-order-settlement.ts"
     }
   },
   "type": "module",

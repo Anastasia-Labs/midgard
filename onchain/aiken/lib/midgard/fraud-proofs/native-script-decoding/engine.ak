@@ -40,7 +40,9 @@ use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
 }
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
+use midgard/fraud_proofs/native_tx/compact.{
+  verify_forced_tx_proof_source_v1, verify_native_tx_proof_source_v1,
+}
 use midgard/ledger_output_commitment_v1.{LedgerOutputCommitmentV1}
 use midgard/ledger_state
 use midgard/native_script_scan_v1.{
@@ -550,11 +552,11 @@ pub fn verify_forced_leaf_v1(
   >,
 ) -> ledger_state.ForcedInclusionTxV1 {
   let leaf = membership.value
-  let Pair(verified, _witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, _witness_set) = verify_forced_tx_proof_source_v1(
     leaf.tx_id,
-    leaf.source.compact_cbor,
-    leaf.source.witness_set_compact_cbor,
-    leaf.source.field_preimage_lengths_cbor,
+    leaf.submitted_source.compact_cbor,
+    leaf.submitted_source.witness_set_compact_cbor,
+    leaf.submitted_source.field_preimage_lengths_cbor,
   )
   expect and {
       transition_trace.verify_root_membership_with_bytes(
@@ -566,10 +568,6 @@ pub fn verify_forced_leaf_v1(
         cbor.serialise(membership.value),
       ),
       verified.version == 1,
-      when leaf.verdict is {
-        ForcedTxValid -> verified.tx_compact.validity_code == 0
-        ForcedTxInvalid { .. } -> verified.tx_compact.validity_code == 1
-      },
     }
   leaf
 }

@@ -288,6 +288,7 @@ export const submitInputSetUniquenessStep02 = async ({
   // is published below and consumed as a reference input.
   const planField = (fieldIndex: number, items: readonly string[]) =>
     planFaultProofFieldOpening({
+      anchorSourceKind: 0n,
       fieldIndex,
       anchorTxId: badTxId,
       nativeTxCompactCbor,

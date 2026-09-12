@@ -55,7 +55,7 @@ validator main(
         )
 
         expect Some(State { bad_input_tx_id, bad_input_output_index }) = m_input_state_data
-        expect producing_tx_view.tx_compact.validity_code == 0
+        expect producing_tx_view.tx_compact.validity_code == Some(0)
 
         // 2. The verified producing tx ID must match the bad transaction's
         //    input.

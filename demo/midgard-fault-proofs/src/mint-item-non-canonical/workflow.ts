@@ -1,4 +1,5 @@
 import { deriveMidgardNativeTxFaultEvidenceMaterial } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   type ForcedInclusionTxV1,
   type FraudProofCatalogueCategoryName,
@@ -382,16 +383,16 @@ export const deriveMintItemNonCanonicalAuthenticatedSource = async ({
     throw new Error(
       "mintItemNonCanonical does not adjudicate rejected transactions",
     );
-  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+  const material = deriveMidgardForcedTxFaultEvidenceMaterial(
     forced.fullTransactionCbor,
   );
   if (
     material.proofSource.compactCbor.toString("hex") !==
-      forced.value.source.compact_cbor ||
+      forced.value.submitted_source.compact_cbor ||
     material.proofSource.witnessSetCompactCbor.toString("hex") !==
-      forced.value.source.witness_set_compact_cbor ||
+      forced.value.submitted_source.witness_set_compact_cbor ||
     material.proofSource.fieldPreimageLengthsCbor.toString("hex") !==
-      forced.value.source.field_preimage_lengths_cbor
+      forced.value.submitted_source.field_preimage_lengths_cbor
   ) {
     throw new Error(
       "mintItemNonCanonical forced source material differs from authenticated leaf",

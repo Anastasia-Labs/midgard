@@ -464,6 +464,7 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
       state.outpoint_source_kind,
     );
     const planned = planFaultProofFieldOpening({
+      anchorSourceKind: state.source_kind === 1n ? 1n : 0n,
       fieldIndex,
       anchorTxId: state.verified_tx_id,
       nativeTxCompactCbor,

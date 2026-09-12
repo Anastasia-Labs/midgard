@@ -28,6 +28,7 @@ use midgard/fraud_proofs/native_script_decoding/step_02.{
   Args, Datum, SpendRedeemer,
 }
 use midgard/fraud_proofs/native_script_decoding/thread_fixture_v1 as tf
+use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/ledger_state
 use midgard/rejection_reason_v1.{ForcedTxInvalid, ForcedTxValid}
@@ -507,12 +508,21 @@ test decoding_step_02_rejects_direction_a_on_a_rejecting_leaf() fail {
 
 /// §2.4.3(e) leaf-internal authoritativeness: a leaf whose verdict disagrees
 /// with its own compact bytes' validity scalar never opens.
-test decoding_step_02_rejects_a_verdict_scalar_mismatch() fail {
+test decoding_step_02_rejects_an_obsolete_four_element_source() fail {
   let leaf = tf.forced_leaf_v1(
     tf.subject_tx_v1(native_types.TxIsInvalid),
-    // TxIsInvalid bytes, accepting verdict: (e) must refuse.
+    // The obsolete committed scalar is injected below and must be refused.
     ForcedTxValid,
   )
+  let leaf = ledger_state.ForcedInclusionTxV1 {
+    ..leaf,
+    submitted_source: ledger_state.ForcedTxProofSourceV1 {
+      ..leaf.submitted_source,
+      compact_cbor: native_transaction.midgard_transaction_proof_source_v1(
+        tf.subject_tx_v1(native_types.TxIsInvalid),
+      ).compact_cbor,
+    },
+  }
   let (membership, claim) = forced_claim(leaf)
   let expected: Data = engine.pre_bind_scan_state_v1(
     engine.direction_wrongful_acceptance,

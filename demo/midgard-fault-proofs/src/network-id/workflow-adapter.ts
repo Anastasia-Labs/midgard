@@ -13,6 +13,7 @@ import {
   decodeMidgardOutputFieldPreimage,
   outRefLabel,
 } from "@al-ft/midgard-core";
+import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
 import {
   type AuthenticatedStateQueueHeaderObservation,
   bindExactVerdictSubjectReason,
@@ -514,7 +515,7 @@ export const admitNetworkIdForcedArtifact = (
   const leaf = forcedSource.membership.value;
   if (
     leaf.tx_id !== badTxId ||
-    leaf.source.compact_cbor !== nativeTxCompactCbor ||
+    leaf.submitted_source.compact_cbor !== nativeTxCompactCbor ||
     leaf.verdict === "ForcedTxValid"
   ) {
     throw new Error(
@@ -554,9 +555,9 @@ export const admitNetworkIdForcedArtifact = (
   const evidence: NetworkIdWrongfulRejectionEvidence = Object.freeze({
     subject,
     expectedNetworkId,
-    committedNetworkId: nativeTxFromCoreCompact(
-      decodeMidgardNativeTxCompact(Buffer.from(nativeTxCompactCbor, "hex")),
-    ).body.network_id,
+    committedNetworkId: decodeMidgardForcedTxCompact(
+      Buffer.from(nativeTxCompactCbor, "hex"),
+    ).transactionBody.networkId,
     outputNetworkIds: Object.freeze(outputNetworkIds),
     outputsItemCbors: Object.freeze(outputsItemCbors),
     outputsPreimageCbor: outputsPreimage.toString("hex"),

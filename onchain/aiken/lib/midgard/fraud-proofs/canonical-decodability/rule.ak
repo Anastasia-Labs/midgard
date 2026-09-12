@@ -52,7 +52,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{Input}
 use midgard/fraud_proofs/field_opening_v1.{first_witness_set_field_index}
 use midgard/fraud_proofs/native_tx/types.{
-  NativeTxWitnessSetCompact, VerifiedMidgardNativeTxCompact,
+  NativeTxWitnessSetCompact, VerifiedTxSourceView,
 }
 use midgard/native_tx_field_access_v1.{
   FieldCarriageV1, authenticated_committed_preimage, field_count,
@@ -340,7 +340,7 @@ fn unread_witness_set() -> NativeTxWitnessSetCompact {
 /// it were the transaction's witness set, and a witness claim at a body index
 /// would carry one the door discards.
 pub fn committed_field_verdict_v1(
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   claim: CommittedFieldClaimV1,
   reference_inputs: List<Input>,
   certificate_policy_id: PolicyId,
@@ -383,7 +383,7 @@ pub fn committed_field_verdict_v1(
 /// drift into deciding over bytes the other arm would have authenticated
 /// differently.
 fn authenticated_field_verdict(
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   field_index: Int,
   carriage: FieldCarriageV1,

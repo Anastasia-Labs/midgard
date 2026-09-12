@@ -112,7 +112,7 @@ fn pinned_membership() -> transition_trace.RootMembershipProof<
     key: order_key(),
     value: ledger_state.ForcedInclusionTxV1 {
       tx_id: bad_tx_id,
-      source: ledger_state.NativeTxProofSourceV1 {
+      submitted_source: ledger_state.ForcedTxProofSourceV1 {
         compact_cbor: #"80",
         witness_set_compact_cbor: #"81",
         field_preimage_lengths_cbor: #"82",

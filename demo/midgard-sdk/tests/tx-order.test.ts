@@ -1,6 +1,6 @@
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardForcedTxFullFromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
@@ -9,12 +9,12 @@ import {
   encodeMidgardCekProgramMaterialDaValue,
   encodeMidgardCekProgramMaterialSidecar,
   encodeMidgardCekTermNode,
-  encodeMidgardNativeTxCanonical,
+  encodeMidgardForcedTxCanonical,
   encodeMidgardTxOutput,
   hashMidgardCekProgramEnvelope,
   hashMidgardCekProgramMaterialPreimage,
   hashMidgardCekTermNode,
-  materializeMidgardNativeTxFromCanonical,
+  materializeMidgardForcedTxFromCanonical,
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_ENVELOPE_MEASUREMENTS,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
@@ -31,10 +31,9 @@ import { describe, expect, it } from "vitest";
 import * as SDK from "../src/index.js";
 
 const transactionCbor = (): Buffer =>
-  encodeMidgardNativeTxCanonical(
-    materializeMidgardNativeTxFromCanonical({
+  encodeMidgardForcedTxCanonical(
+    materializeMidgardForcedTxFromCanonical({
       version: MIDGARD_NATIVE_TX_VERSION,
-      validity: "TxIsValid",
       body: {
         spendInputsPreimageCbor: EMPTY_CBOR_LIST,
         referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -154,7 +153,7 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
       transactionId: "33".repeat(32),
       outputIndex: 4n,
     };
-    const source: SDK.NativeTxProofSource = {
+    const source: SDK.ForcedTxProofSource = {
       compact_cbor: "01",
       witness_set_compact_cbor: "0203",
       field_preimage_lengths_cbor: "04",
@@ -162,7 +161,7 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
     const payload: SDK.TxOrderPayload = {
       tx_id: "44".repeat(32),
       transaction_commitment: "55".repeat(32),
-      source,
+      submitted_source: source,
     };
     const event: SDK.TxOrderEvent = { id: txOrderId, tx: payload };
     const datum: SDK.TxOrderDatum = {
@@ -179,7 +178,7 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
     };
     const forced: SDK.ForcedInclusionTxV1 = {
       tx_id: payload.tx_id,
-      source,
+      submitted_source: source,
       verdict: {
         ForcedTxInvalid: {
           reason: { PlutusExecutionFailed: { execution_index: 0n } },
@@ -287,7 +286,7 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
   it("derives the §8 carriage of every non-empty field and nothing for the empty ones", () => {
     const cbor = transactionCbor();
     const material = SDK.deriveTxOrderMaterial({
-      nativeTxCbor: cbor,
+      submittedTxCbor: cbor,
       owner: Buffer.alloc(28, 0x44),
     });
 
@@ -303,7 +302,7 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
     const outputs = material.carriage[0]!;
     expect(outputs.fieldName).toBe("outputs");
     expect(outputs.preimage).toEqual(
-      decodeMidgardNativeTxFullFromCanonicalCbor(cbor).body.outputsPreimageCbor,
+      decodeMidgardForcedTxFullFromCanonicalCbor(cbor).body.outputsPreimageCbor,
     );
     expect(outputs.commitment).toBe(
       midgardFieldCommitment(outputs.preimage).toString("hex"),
@@ -321,7 +320,10 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
   it("plans inline carriage under the order reserve and publishes what will not fit", () => {
     const cbor = transactionCbor();
     const owner = Buffer.alloc(28, 0x44);
-    const material = SDK.deriveTxOrderMaterial({ nativeTxCbor: cbor, owner });
+    const material = SDK.deriveTxOrderMaterial({
+      submittedTxCbor: cbor,
+      owner,
+    });
     const [outputs] = material.carriage;
     expect(outputs).toBeDefined();
 
@@ -419,7 +421,7 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
   it("refuses material it cannot bind to a canonical transaction", () => {
     expect(() =>
       SDK.deriveTxOrderMaterial({
-        nativeTxCbor: Buffer.from("00", "hex"),
+        submittedTxCbor: Buffer.from("00", "hex"),
         owner: Buffer.alloc(28, 0x44),
       }),
     ).toThrow();

@@ -27,7 +27,7 @@ This invalidity claim itself can then be subject to fraud proofs if the operator
     \T{ForcedInclusionTxV1} &\coloneq \left\{
     \begin{array}{ll}
         \T{tx\_id} : & \T{TxId} \\
-        \T{source} : & \T{NativeTxProofSourceV1} \\
+        \T{submitted\_source} : & \T{ForcedTxProofSourceV1} \\
         \T{verdict} : & \T{OperatorVerdictV1}
     \end{array} \right\}
 \end{align*}
@@ -41,9 +41,17 @@ The L2 transaction ID is derived from the compact transaction body and is
 repeated as \code{tx\_id} inside \code{ForcedInclusionTxV1} so the source value
 authenticates its own key-independent transaction identity.  The compact,
 witness-set, and field-length CBOR values are carried by the nested
-\code{NativeTxProofSourceV1}; there is no alternate \code{compact\_tx} or
+\code{ForcedTxProofSourceV1}; there is no alternate \code{compact\_tx} or
 \code{field\_preimage\_hashes} projection.
-The order payload is \code{TxOrderPayloadV1}\{\code{tx\_id}, \code{transaction\_commitment}, \code{source}\}.
+The order payload is \code{TxOrderPayloadV1}\{\code{tx\_id}, \code{transaction\_commitment}, \code{submitted\_source}\}.
+The submitted full transaction is exactly the three-element array
+\code{[1, body, witness\_set]}; its compact likewise has three elements and
+no validity scalar. The submission commitment uses the domain
+\code{MidgardForcedTxProofSourceV1}. The operator's verdict is the only
+committed validity decision. Changing it preserves the original submitted
+source and transaction ID. Normal transactions retain their native encoding.
+Settlement authenticates the exact order key and unchanged submission source;
+a matching body ID alone does not authenticate substituted witnesses.
 The optimistic L1 order datum also retains a separate \code{inclusion\_time}.
 Due checks use that inclusion time and the transaction validity interval; the unresolved interval-unit conformance issue is described in \cref{h:deviations-from-cardano-transaction-types}.
 

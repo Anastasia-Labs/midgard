@@ -4,14 +4,14 @@ import { readFile } from "node:fs/promises";
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSource,
   encodeMidgardFieldPreimage,
-  encodeMidgardNativeTxCanonical,
+  encodeMidgardForcedTxCanonical,
   encodeMidgardTxOutput,
   materializeMidgardNativeTxFromCanonical,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildCanonicalMidgardLedgerOutputMaterial,
@@ -171,9 +171,9 @@ const setup = async ({
   const submitted = materializeMidgardNativeTxFromCanonical(
     makeNativeTx({ spendInputCbors: [], fee: 7n, outputCbors: outputs }),
   );
-  const tx = adjudicateMidgardNativeTxFullValidity(submitted, "TxIsInvalid");
+  const tx = materializeMidgardForcedTxFromCanonical(submitted);
   const txId = computeMidgardNativeTxId(tx).toString("hex");
-  const proofSource = deriveMidgardNativeTxProofSource(tx);
+  const proofSource = deriveMidgardForcedTxProofSource(tx);
   const credential = getAddressDetails(
     await h.funderLucid.wallet().address(),
   ).paymentCredential!;
@@ -192,7 +192,7 @@ const setup = async ({
     : { OutputBelowMinAda: { output_index: outputIndex } };
   const value = {
     tx_id: txId,
-    source: {
+    submitted_source: {
       compact_cbor: proofSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:
         proofSource.witnessSetCompactCbor.toString("hex"),
@@ -289,7 +289,7 @@ const setup = async ({
     badOutputIndex: outputIndex,
     nativeTxCompactCbor: proofSource.compactCbor.toString("hex"),
     nativeTxCanonicalCbor:
-      encodeMidgardNativeTxCanonical(submitted).toString("hex"),
+      encodeMidgardForcedTxCanonical(submitted).toString("hex"),
     outputItemCbors: outputs.map((item) => item.toString("hex")),
     descriptorCbor: material.descriptorCbor.toString("hex"),
     fault: state.fault,
@@ -310,7 +310,7 @@ const setup = async ({
       SDK.MinAdaForcedSourcePayloadSchema as never,
     ),
     fullTransactionCbor:
-      encodeMidgardNativeTxCanonical(submitted).toString("hex"),
+      encodeMidgardForcedTxCanonical(submitted).toString("hex"),
   };
   const common = {
     lucid: h.proverLucid,
@@ -374,7 +374,7 @@ const setup = async ({
       value,
       keyBytes,
       valueBytes,
-      fullTransactionCbor: encodeMidgardNativeTxCanonical(submitted),
+      fullTransactionCbor: encodeMidgardForcedTxCanonical(submitted),
     };
     const eventKey = { ForcedTransactionEventKey: { tx_order_id: key } };
     const fingerprint = eventKeyFingerprint(eventKey);
@@ -466,6 +466,7 @@ describe("minimum-Ada forced rejection", () => {
         }),
       );
       const planned = planFaultProofFieldOpening({
+        anchorSourceKind: 1n,
         fieldIndex: 2,
         anchorTxId: f.prepared.badTxId,
         nativeTxCompactCbor: f.prepared.nativeTxCompactCbor,
@@ -514,7 +515,8 @@ describe("minimum-Ada forced rejection", () => {
             chunkUtxos: carriage,
             compactCbor: f.prepared.nativeTxCompactCbor,
             witnessSetCompactCbor:
-              f.source.membership.value.source.witness_set_compact_cbor,
+              f.source.membership.value.submitted_source
+                .witness_set_compact_cbor,
           }),
         );
         certificateUtxo = certified.certificateUtxo;

@@ -16,6 +16,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardNativeTxCanonical,
+  encodeMidgardForcedTxCanonical,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -466,9 +467,9 @@ const makeAiken = ({ transactions, forcedOrders, roots }) => {
       `    order.transaction_id == ${entry.constantPrefix}_order_transaction_id,`,
       `    order.output_index == ${aikenInt(entry.orderId.outputIndex)},`,
       `    value.tx_id == ${aikenBytes(entry.txIdHex)},`,
-      `    value.source.compact_cbor == ${entry.constantPrefix}_compact_cbor,`,
-      `    value.source.witness_set_compact_cbor == ${entry.constantPrefix}_witness_set_compact_cbor,`,
-      `    value.source.field_preimage_lengths_cbor == ${entry.constantPrefix}_field_preimage_lengths_cbor,`,
+      `    value.submitted_source.compact_cbor == ${entry.constantPrefix}_compact_cbor,`,
+      `    value.submitted_source.witness_set_compact_cbor == ${entry.constantPrefix}_witness_set_compact_cbor,`,
+      `    value.submitted_source.field_preimage_lengths_cbor == ${entry.constantPrefix}_field_preimage_lengths_cbor,`,
       `    value.verdict == ${aikenVerdict(entry.verdict)},`,
       "  }",
       "}",
@@ -631,9 +632,10 @@ for (const [index, value] of canonical.forcedOrders.entries()) {
     outputIndex,
   };
   const keyCbor = Buffer.from(Data.to(orderId, SDK.OutputReference), "hex");
+  const submittedCbor = encodeMidgardForcedTxCanonical(decodeMidgardNativeTxFullFromCanonicalCbor(Buffer.from(transaction.canonicalTransactionCborHex, "hex")));
   const forced = await Effect.runPromise(
     production.encodeForcedInclusionValueV1({
-      nativeTxCbor: Buffer.from(transaction.canonicalTransactionCborHex, "hex"),
+      nativeTxCbor: submittedCbor,
       verdict: VERDICTS[verdictName].sdk,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     }),
@@ -662,10 +664,10 @@ for (const [index, value] of canonical.forcedOrders.entries()) {
       outputIndex,
     },
     txIdHex: decoded.tx_id,
-    compactCborHex: decoded.source.compact_cbor,
-    witnessSetCompactCborHex: decoded.source.witness_set_compact_cbor,
-    fieldPreimageLengthsCborHex: decoded.source.field_preimage_lengths_cbor,
-    canonicalTransactionCborHex: transaction.canonicalTransactionCborHex,
+    compactCborHex: decoded.submitted_source.compact_cbor,
+    witnessSetCompactCborHex: decoded.submitted_source.witness_set_compact_cbor,
+    fieldPreimageLengthsCborHex: decoded.submitted_source.field_preimage_lengths_cbor,
+    canonicalTransactionCborHex: submittedCbor.toString("hex"),
     verdict: verdictName,
   });
 }

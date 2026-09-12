@@ -4,6 +4,7 @@ import {
   computeMidgardNativeTxProofCommitment,
   encodeCbor,
 } from "@al-ft/midgard-core";
+import { computeMidgardForcedTxProofCommitment } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import {
   hashMidgardValidationContext,
@@ -62,14 +63,16 @@ export const committedValidationClaimEndpointsAndSourceAreValid = (
     "NormalValidationSource" in claim.source_membership
       ? claim.source_membership.NormalValidationSource.membership.value
       : claim.source_membership.ForcedValidationSource.membership.value;
+  const submitted =
+    "submitted_source" in entry ? entry.submitted_source : entry.source;
   const source = {
-    compactCbor: Buffer.from(entry.source.compact_cbor, "hex"),
+    compactCbor: Buffer.from(submitted.compact_cbor, "hex"),
     witnessSetCompactCbor: Buffer.from(
-      entry.source.witness_set_compact_cbor,
+      submitted.witness_set_compact_cbor,
       "hex",
     ),
     fieldPreimageLengthsCbor: Buffer.from(
-      entry.source.field_preimage_lengths_cbor,
+      submitted.field_preimage_lengths_cbor,
       "hex",
     ),
   };
@@ -150,7 +153,9 @@ export const committedValidationClaimEndpointsAndSourceAreValid = (
     initial.prior_ledger_root === terminal.prior_ledger_root &&
     initial.ledger_delta_root === terminal.ledger_delta_root &&
     entry.tx_id === initial.transaction_id &&
-    computeMidgardNativeTxProofCommitment(source).toString("hex") ===
+    (forced === undefined
+      ? computeMidgardNativeTxProofCommitment
+      : computeMidgardForcedTxProofCommitment)(source).toString("hex") ===
       initial.transaction_commitment &&
     initial.source_kind === (forced === undefined ? "Normal" : "Forced") &&
     sourceVerdictMatches &&

@@ -16,6 +16,10 @@ import {
   type MidgardVersionedScript,
 } from "@al-ft/midgard-core";
 import {
+  encodeMidgardForcedTxCanonical as forcedTraceBytes,
+  materializeMidgardForcedTxFromCanonical as forcedTraceView,
+} from "@al-ft/midgard-core/codec/forced";
+import {
   AddressData,
   addressDataFromBech32,
   decodeRetainedValidationWitness,
@@ -280,14 +284,17 @@ export const buildMissingScriptSourceFixture = async (
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor,
       sourceKind: direction === "accepted" ? "normal" : "forced",
-      committedForcedVerdict: direction === "accepted" ? undefined : "rejected",
+
       blockEndTimeMs: 1_750_000_000_000,
       expectedNetworkId: 0n,
       minFeeA: 0n,
       minFeeB: 0n,
       blockSlot: 100n,
       transactionId: transaction.txId,
-      canonicalTransactionCbor: transaction.txCbor,
+      canonicalTransactionCbor:
+        direction === "forced"
+          ? forcedTraceBytes(forcedTraceView(transaction.tx))
+          : transaction.txCbor,
       priorUtxosRoot: priorLedgerRoot,
       postUtxosRoot: honest
         ? mutations.at(-1)!.postRoot.toString("hex")

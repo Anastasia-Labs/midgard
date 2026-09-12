@@ -51,7 +51,10 @@ validator tx(
       = spend_redeemer
     expect Some(state) = step_datum.data
     expect MinAdaTx { output_index: bad_output_index } = state.fault
-    let anchor = BodyAnchor { tx_id: state.bad_tx_id }
+    let anchor = BodyAnchor {
+      tx_id: state.bad_tx_id,
+      source_kind: state.direction,
+    }
     expect Some(next_output) = outputs |> list.at(output_index)
     expect InlineDatum(next_datum_data) = next_output.datum
     expect next_datum: ct.StepDatum<Data> = next_datum_data
@@ -135,6 +138,9 @@ validator tx(
               subject: substrate.VerdictSubjectV1 {
                 version: 1,
                 direction: 0,
+                // This reused output-grammar scanner carries no verdict claim.
+                // Its neutral subject stays canonical; the authenticated forced
+                // direction remains in the surrounding MinAdaTxScan state.
                 source_kind: 0,
                 transaction_id: state.bad_tx_id,
                 source_key: #"",

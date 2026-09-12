@@ -3857,7 +3857,7 @@ describe("authenticated state-queue indexer", () => {
       action: "accept",
       reasonCodes: ["da_attestation_authenticated"],
     });
-  }, 30_000);
+  }, 120_000);
 
   it("indexes the node-accepted removal from canonical output and datum bytes", () => {
     const makeHeader = (

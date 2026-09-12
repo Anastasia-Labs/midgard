@@ -10,7 +10,6 @@ import {
 import { Effect } from "effect";
 import type { DaLocalSignerConfig } from "midgard-node/da/local-signers";
 import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
-import { registerOperatorProgram } from "midgard-node/transactions/register-active-operator";
 
 import { createPublishedWatcherBlockActor } from "./published-block-actor.js";
 
@@ -87,8 +86,6 @@ export const stagePublishedDepositTrace = async (
     SDK.getConfirmedStateFromStateQueueDatum(rootDatum),
   );
   const publisher = deployment.publisherLucid;
-  const publicationAddress = await publisher.wallet().address();
-  const bond = SDK.getProtocolParameters("Preprod").required_bond;
   let actor = await createPublishedWatcherBlockActor({
     deployment,
     lucid,
@@ -135,19 +132,6 @@ export const stagePublishedDepositTrace = async (
       events: [],
     });
     await onboardOperator();
-    // The honest successor has a separate real operator. Start its eligibility
-    // wait while the fraudulent commitment and proof journey are in progress.
-    onStage("successor operator registration");
-    publisher.overrideUTxOs(await publisher.utxosAt(publicationAddress));
-    await Effect.runPromise(
-      registerOperatorProgram(
-        publisher,
-        contracts,
-        bond,
-        publisher,
-        publicationAddress,
-      ),
-    );
     // Genesis itself closes a real protocol interval. Faster onboarding must
     // not let the first header end before that confirmed-state cutoff.
     await chain.awaitSlot(
@@ -377,6 +361,8 @@ export const stagePublishedDepositTrace = async (
         daSignerConfig,
         onStage,
       });
+      // Register and activate only after correction. A pending eligible
+      // successor prevents the last active operator's scheduler rewind.
       await onboardOperator();
       const liveEvent = await one(
         contracts.deposit.spendingScriptAddress,

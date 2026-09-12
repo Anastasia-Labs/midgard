@@ -258,6 +258,7 @@ export const runMintAuthorizationProofMaximum = async (
     }),
   );
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: SDK.MIDGARD_FIELD_INDEX.mint,
     anchorTxId: block.nativeTxId,
     nativeTxCompactCbor: block.nativeTxCompactCbor,

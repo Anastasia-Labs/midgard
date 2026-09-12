@@ -119,6 +119,7 @@ export const planMintDeclaredFieldOpening = ({
   readonly label: string;
 }): PlannedMintDeclaredFieldOpening =>
   planFaultProofFieldOpening({
+    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: 5,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,

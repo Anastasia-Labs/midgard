@@ -9,15 +9,13 @@ use fraud_proofs/validation_trace/phase_a_native_scripts_item_semantic_v1 as ite
 use fraud_proofs/validation_trace/phase_a_native_scripts_item_yields_v1 as item_yields
 use midgard/bounded_item_v1
 use midgard/computation_thread as item_ct
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/native_binding_fixture_v1 as item_fixture
 use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_body_compact, native_tx_id_for_version,
 }
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_versioned_script}
-use midgard/fraud_proofs/native_tx/transaction.{
-  midgard_transaction_proof_commitment_v1, midgard_transaction_proof_source_v1,
-  midgard_transaction_to_compact,
-}
+use midgard/fraud_proofs/native_tx/transaction.{midgard_transaction_to_compact}
 use midgard/fraud_proofs/native_tx/types.{
   MidgardAddressWitness, MidgardTransaction, MidgardTransactionBody,
   MidgardTransactionWitnessSet, MidgardTxInput, MidgardVersionedScript,
@@ -142,7 +140,7 @@ fn signatures_scan_witness(
   signer_frontier: validation_merkle_v1.BuiltFrontier,
   invalid_signature_seen: Int,
 ) -> ByteArray {
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = forced_fixture.from_native_transaction(tx)
   vm_witness.encode_signatures_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
@@ -203,7 +201,9 @@ fn signatures_step_fixture(
       machine_version: validation_trace_v1.machine_version,
       event_key_hash: h_a,
       transaction_id: tx_id,
-      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      transaction_commitment: forced_fixture.commitment_of_native_transaction(
+        tx,
+      ),
       validation_context_hash: validation_trace_v1.hash_validation_context(
         validation_context_cbor,
       ),
@@ -234,7 +234,7 @@ fn phase_a_native_step_fixture(
     tx,
     ledger_delta_root,
   )
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = forced_fixture.from_native_transaction(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let script_count = if tx.witness_set.script_tx_wits == [] {
     0
@@ -294,7 +294,7 @@ fn phase_a_native_scan_witness(
   node_count: Int,
   result: Int,
 ) -> ByteArray {
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = forced_fixture.from_native_transaction(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   vm_witness.encode_phase_a_native_scripts_scan_witness(
     proof_source.compact_cbor,

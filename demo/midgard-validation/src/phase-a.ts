@@ -10,10 +10,12 @@ import {
   MidgardTxCodecError,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
+import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import {
   isMidgardConsensusProfile,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core/consensus-profile";
+import { validateMidgardConsensusForcedTxCbor } from "@al-ft/midgard-core/consensus-validation";
 import {
   type MidgardConsensusViolationCode,
   validateMidgardConsensusTxCbor,
@@ -420,7 +422,10 @@ export const validatePhaseASingle = (
 ): PhaseAValidatedTx | RejectedTx => {
   let submittedTx: MidgardSubmittedTx;
   try {
-    submittedTx = decodeMidgardSubmittedTxFromCanonicalCbor(queuedTx.txCbor);
+    submittedTx = decodeMidgardSubmittedTxFromCanonicalCbor(
+      queuedTx.txCbor,
+      queuedTx.sourceKind,
+    );
   } catch (e) {
     const code =
       e instanceof MidgardLedgerTxDecodeError && e.stage === "ledger"
@@ -460,7 +465,11 @@ export const validatePhaseASingle = (
       "V1 admission is missing its canonical program-material sidecar",
     );
   }
-  const consensusViolation = validateMidgardConsensusTxCbor(queuedTx.txCbor);
+  const consensusViolation = (
+    queuedTx.sourceKind === "forced"
+      ? validateMidgardConsensusForcedTxCbor
+      : validateMidgardConsensusTxCbor
+  )(queuedTx.txCbor);
   if (consensusViolation !== null) {
     return reject(
       ledgerTx.txId,
@@ -472,9 +481,11 @@ export const validatePhaseASingle = (
     const material = decodeMidgardCekProgramMaterialSidecar(
       queuedTx.programMaterialSidecarCbor,
     );
-    const canonicalTx = decodeMidgardNativeTxFullFromCanonicalCbor(
-      queuedTx.txCbor,
-    );
+    const canonicalTx = (
+      queuedTx.sourceKind === "forced"
+        ? decodeMidgardForcedTxFullFromCanonicalCbor
+        : decodeMidgardNativeTxFullFromCanonicalCbor
+    )(queuedTx.txCbor);
     const envelopes = collectMidgardAttachedProgramEnvelopes(canonicalTx);
     if (ledgerTx.referenceInputs.length > 0) {
       // Phase A has not resolved reference-input outputs yet. Require complete
@@ -509,7 +520,11 @@ export const validatePhaseASingle = (
   }
 
   const minFee =
-    config.minFeeA * BigInt(queuedTx.txCbor.length) + config.minFeeB;
+    config.minFeeA *
+      BigInt(
+        queuedTx.txCbor.length + (queuedTx.sourceKind === "forced" ? 1 : 0),
+      ) +
+    config.minFeeB;
   if (ledgerTx.fee < minFee) {
     return reject(
       ledgerTx.txId,
@@ -539,6 +554,7 @@ export const validatePhaseASingle = (
 
   try {
     return buildPhaseAValidatedTx({
+      sourceKind: queuedTx.sourceKind ?? "normal",
       ledgerTx,
       expectedNetworkId: config.expectedNetworkId,
       txCbor: submittedTx.txCbor,

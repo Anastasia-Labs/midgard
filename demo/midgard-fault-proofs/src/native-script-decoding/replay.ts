@@ -1,17 +1,19 @@
 import {
-  adjudicateMidgardNativeTxFullValidity,
   buildMidgardNativeScriptDecodingTrace,
   decodeMidgardFieldPreimage,
   decodeMidgardLedgerOutputCommitment,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardSpendInputItem,
   deriveMidgardNativeTxFaultEvidenceMaterial,
-  encodeMidgardNativeTxCanonical,
   encodeMidgardSpendInputItem,
   MidgardNativeScriptDecodingBindKinds,
   MidgardNativeScriptDecodingDirections,
   MidgardNativeScriptDecodingTraceOutcomeKinds,
 } from "@al-ft/midgard-core";
+import {
+  decodeMidgardForcedTxFullFromCanonicalCbor,
+  deriveMidgardForcedTxFaultEvidenceMaterial,
+} from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import { createCanonicalMidgardLedgerDescriptorResolver } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
@@ -120,9 +122,11 @@ export const nativeScriptDecodingPriorLedger = async (
           ? event.entry.validity === "TxIsValid"
           : event.entry.value.verdict === "ForcedTxValid";
       if (accepted) {
-        const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
-          event.entry.fullTransactionCbor,
-        );
+        const tx = (
+          event.phase === "ForcedTransaction"
+            ? decodeMidgardForcedTxFullFromCanonicalCbor
+            : decodeMidgardNativeTxFullFromCanonicalCbor
+        )(event.entry.fullTransactionCbor);
         for (const key of decodeMidgardFieldPreimage(
           tx.body.spendInputsPreimageCbor,
         ))
@@ -232,13 +236,11 @@ export const prepareNativeScriptDecodingReplay = async ({
     scanReasonClass = BigInt(index);
   }
   const raw = forced?.fullTransactionCbor ?? normal!.fullTransactionCbor;
-  const committed = adjudicateMidgardNativeTxFullValidity(
-    decodeMidgardNativeTxFullFromCanonicalCbor(raw),
-    direction === 1n ? "TxIsInvalid" : (normal?.validity ?? "TxIsValid"),
-  );
-  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-    encodeMidgardNativeTxCanonical(committed),
-  );
+  const material = (
+    forced === undefined
+      ? deriveMidgardNativeTxFaultEvidenceMaterial
+      : deriveMidgardForcedTxFaultEvidenceMaterial
+  )(raw);
   const items =
     kind === 0n || kind === 1n
       ? decodeMidgardFieldPreimage(material.fieldPreimages[Number(kind)]!)
@@ -377,9 +379,11 @@ export const detectNativeScriptDecodingReplay = async ({
           }
         }
       } else {
-        const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
-          source.fullTransactionCbor,
-        );
+        const tx = (
+          sourceKind === 1
+            ? decodeMidgardForcedTxFullFromCanonicalCbor
+            : decodeMidgardNativeTxFullFromCanonicalCbor
+        )(source.fullTransactionCbor);
         for (const kind of [0, 1] as const)
           for (const cursor of decodeMidgardFieldPreimage(
             kind === 0

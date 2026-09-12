@@ -1,9 +1,10 @@
 import {
   decodeMidgardAddressBytes,
   decodeMidgardFieldPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardForcedTxFullFromCanonicalCbor,
   decodeMidgardOutputFieldPreimage,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   forcedVerdictSubject,
   isAnyNetworkIdMismatch,
@@ -12,7 +13,6 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { deriveRejectedTransactionFaultEvidenceMaterial } from "../evidence/rejected-transaction.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 
 export const NETWORK_ID_MISMATCH_REASON = "NetworkIdMismatch" as const;
@@ -63,22 +63,22 @@ const evidenceFor = ({
     forced.value.verdict.ForcedTxInvalid.reason !== NETWORK_ID_MISMATCH_REASON
   )
     return null;
-  const material = deriveRejectedTransactionFaultEvidenceMaterial(
+  const material = deriveMidgardForcedTxFaultEvidenceMaterial(
     forced.fullTransactionCbor,
   );
   if (
     material.transactionId.toString("hex") !== forced.value.tx_id ||
     material.proofSource.compactCbor.toString("hex") !==
-      forced.value.source.compact_cbor ||
+      forced.value.submitted_source.compact_cbor ||
     material.proofSource.witnessSetCompactCbor.toString("hex") !==
-      forced.value.source.witness_set_compact_cbor ||
+      forced.value.submitted_source.witness_set_compact_cbor ||
     material.proofSource.fieldPreimageLengthsCbor.toString("hex") !==
-      forced.value.source.field_preimage_lengths_cbor
+      forced.value.submitted_source.field_preimage_lengths_cbor
   )
     throw new Error(
       "networkId: forced preimage differs from authenticated leaf",
     );
-  const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(
+  const decoded = decodeMidgardForcedTxFullFromCanonicalCbor(
     forced.fullTransactionCbor,
   );
   const outputs = decodeMidgardOutputFieldPreimage(
@@ -171,7 +171,7 @@ export const createNetworkIdWrongfulRejectionPlanner =
       headerHash: block.headerHash,
       expectedNetworkId,
       badTxId: forced.value.tx_id,
-      nativeTxCompactCbor: forced.value.source.compact_cbor,
+      nativeTxCompactCbor: forced.value.submitted_source.compact_cbor,
       outputsItemCbors: detection.evidence.outputsItemCbors,
       faultClaim: Object.freeze({ kind: "forced-network-mismatch" as const }),
       fault: "ForcedNetworkIdMismatch" as NetworkIdFault,

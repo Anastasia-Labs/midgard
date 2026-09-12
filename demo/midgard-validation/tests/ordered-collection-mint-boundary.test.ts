@@ -168,7 +168,7 @@ describe("canonical V1 mint Cardano boundary", () => {
       mintField.nativeCanonicalBytes,
     );
     expect(retainedDa.forced.reconstructedCanonicalBytes).toBe(
-      mintField.nativeCanonicalBytes,
+      mintField.nativeCanonicalBytes - 1,
     );
     expect(retainedDa.normal.revealStepCount).toBe(
       mintField.completeFoldStepCount,

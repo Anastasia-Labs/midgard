@@ -2,6 +2,10 @@ import {
   encodeMidgardCekProgramMaterialSidecar,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
+import {
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import { EventKey } from "@al-ft/midgard-sdk";
 import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
 import { Data } from "@lucid-evolution/lucid";
@@ -198,7 +202,10 @@ describe("independent validation event replay", () => {
       replayValidationMachineEvent({
         ...normal,
         sourceKind: "forced",
-        committedForcedVerdict: "rejected",
+        canonicalTransactionCbor: encodeMidgardForcedTxCanonical(
+          materializeMidgardForcedTxFromCanonical(transaction.tx),
+        ),
+
         eventKeyCbor: Buffer.from(
           Data.to(
             {

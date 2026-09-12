@@ -149,7 +149,10 @@ export const submitMinFeeStep01 = async ({
   );
   const state = {
     subject: acceptedVerdictSubject(txInclusion.nativeTxId),
-    bad_tx: txInclusion.nativeTx,
+    bad_tx: {
+      body: txInclusion.nativeTx.body,
+      witness_set_hash: txInclusion.nativeTx.witness_set_hash,
+    },
     bad_tx_body_fee: txInclusion.nativeTx.body.fee,
     bad_tx_id: txInclusion.nativeTxId,
     min_fee_a: header.minFeeA,

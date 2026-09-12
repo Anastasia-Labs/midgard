@@ -3,6 +3,7 @@ import {
   decodeMidgardNativeTxWitnessSetCompact,
   deriveMidgardNativeTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 
 import {
   type FaultProofFieldOpeningPlan,
@@ -22,11 +23,14 @@ export const planProtectedOutputSignerOutputOpening = ({
   readonly publish?: boolean;
 }): FaultProofFieldOpeningPlan =>
   planFaultProofFieldOpening({
+    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: 2,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,
     itemCbors: decodeMidgardFieldPreimage(
-      deriveMidgardNativeTxFaultEvidenceMaterial(
+      (evidence.subject.source_kind === 1n
+        ? deriveMidgardForcedTxFaultEvidenceMaterial
+        : deriveMidgardNativeTxFaultEvidenceMaterial)(
         Buffer.from(evidence.canonicalTransactionCborHex, "hex"),
       ).fieldPreimages[2]!,
     ),
@@ -52,6 +56,7 @@ export const planProtectedOutputSignerWitnessOpening = ({
     Buffer.from(witnessSetCompactCbor, "hex"),
   );
   return planFaultProofFieldOpening({
+    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: 7,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,

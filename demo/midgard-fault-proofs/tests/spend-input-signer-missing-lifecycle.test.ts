@@ -7,10 +7,9 @@ import {
 import { readFile, writeFile } from "node:fs/promises";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core";
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSource,
   deriveMidgardNativeTxWitnessSetCompact,
   encodeCbor,
   encodeMidgardAddressWitnessItem,
@@ -21,6 +20,9 @@ import {
   encodeMidgardTxOutput,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
+import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   AddressData,
@@ -68,7 +70,7 @@ import { planSpendInputSignerWitnessOpening } from "../src/spend-input-signer-mi
 import {
   applySpendInputSignerMissingScripts,
   classifySpendInputSignerMissingFinding,
-  prepareSpendInputSignerMissingEvidence,
+  prepareSpendInputSignerMissingEvidence as prepareSpendEvidence,
   SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES,
   SPEND_INPUT_SIGNER_MISSING_ID,
   type SpendInputSignerMissingContracts,
@@ -120,6 +122,25 @@ import {
   publishRemovalReferenceScripts,
   transitionTraceOutRef,
 } from "./support/submit-init-emulator-shared.js";
+
+// These fixtures construct native transactions, then explicitly project them
+// into the source kind of the claim they are testing.
+const prepareSpendInputSignerMissingEvidence = (
+  input: Parameters<typeof prepareSpendEvidence>[0],
+) =>
+  prepareSpendEvidence({
+    ...input,
+    canonicalTransactionCbor:
+      input.subject.source_kind === 1n
+        ? encodeMidgardForcedTxCanonical(
+            materializeMidgardForcedTxFromCanonical(
+              decodeMidgardNativeTxFullFromCanonicalCbor(
+                input.canonicalTransactionCbor,
+              ),
+            ),
+          )
+        : input.canonicalTransactionCbor,
+  });
 
 const network = "Custom" as const;
 const FAMILY = "spend-input-signer-missing" as const;
@@ -499,8 +520,8 @@ const commitForcedBlock = async (
   sourceKeyByte: string,
 ) => {
   const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
-  const proofSource = deriveMidgardNativeTxProofSource(
-    adjudicateMidgardNativeTxFullValidity(nativeTx, "TxIsInvalid"),
+  const proofSource = deriveMidgardForcedTxProofSource(
+    materializeMidgardForcedTxFromCanonical(nativeTx),
   );
   const sourceKey = transitionTraceOutRef(sourceKeyByte);
   const predecessor = await setupFraudulentBlock({
@@ -1170,6 +1191,8 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
     const honest: SpendInputSignerMissingEvidence = {
       ...contradicting,
       subject: accepted,
+      canonicalTransactionCborHex:
+        encodeMidgardNativeTxCanonical(nativeTx).toString("hex"),
     };
     const { references, certificateReference } = await publishReferences(
       harness,
@@ -1363,6 +1386,9 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
     const honest: SpendInputSignerMissingEvidence = {
       ...contradicting,
       subject: block.subject,
+      canonicalTransactionCborHex: encodeMidgardForcedTxCanonical(
+        materializeMidgardForcedTxFromCanonical(nativeTx),
+      ).toString("hex"),
     };
     // Classification refuses another family's typed reason outright.
     expect(() =>

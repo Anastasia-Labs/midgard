@@ -1141,12 +1141,14 @@ export const createMissingSignatureForcedFieldPrerequisite = ({
       const planned =
         input.stage === "step_06"
           ? planMissingSignatureRequiredSignersOpening({
+              anchorSourceKind: 1n,
               anchorTxId: prepared.transactionId,
               nativeTxCompactCbor: prepared.nativeTxCompactCbor,
               requiredSignerHashes: prepared.evidence.requiredSignerHashes,
               owner: signer.paymentKeyHash,
             })
           : planMissingSignatureAddressWitnessesOpening({
+              anchorSourceKind: 1n,
               anchorTxId: prepared.transactionId,
               nativeTxCompactCbor: prepared.nativeTxCompactCbor,
               addrTxWits: prepared.evidence.addrTxWits,

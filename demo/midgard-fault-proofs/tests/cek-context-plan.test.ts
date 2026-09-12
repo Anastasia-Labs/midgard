@@ -257,12 +257,14 @@ describe("CEK context retained successor planning", () => {
         SDK.PreparedValidationResolutionState,
       );
       const binding = SDK.deriveCekContextBinding({
+        sourceKind: "Normal",
         prepared: input.prepared,
         transactionId: prepared.resolution.pre_state.transaction_id,
         workWitnessCbor: transition.work_witness_cbor,
         auxiliary: input.auxiliary,
       });
       const next = SDK.deriveCekContextBinding({
+        sourceKind: "Normal",
         prepared: input.prepared,
         transactionId: prepared.resolution.pre_state.transaction_id,
         workWitnessCbor: input.successorWorkWitnessCbor,

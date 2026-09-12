@@ -1,12 +1,11 @@
 import {
   decodeMidgardFieldPreimage,
   decodeMidgardVersionedScript,
-  deriveMidgardNativeTxFaultEvidenceMaterial,
   deriveMidgardNativeTxWitnessSetCompact,
-  encodeMidgardNativeTxCanonical,
   MIDGARD_POSIX_TIME_NONE,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
@@ -27,16 +26,10 @@ export const detectNativeScriptInvalidForcedReplay = (
         return [];
       const reason = verdict.ForcedTxInvalid.reason;
       const scriptIndex = reason.WitnessNativeScriptFalse.script_index;
-      const submitted = deriveMidgardNativeTxFaultEvidenceMaterial(
+      const material = deriveMidgardForcedTxFaultEvidenceMaterial(
         transaction.fullTransactionCbor,
       );
-      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-        encodeMidgardNativeTxCanonical({
-          ...submitted.canonical,
-          validity: "TxIsInvalid",
-        }),
-      );
-      const source = transaction.value.source;
+      const source = transaction.value.submitted_source;
       if (
         material.transactionId.toString("hex") !== transaction.value.tx_id ||
         material.proofSource.compactCbor.toString("hex") !==

@@ -158,6 +158,7 @@ describe("Q38 tier-3 workflow action chains", () => {
       fee: 1n,
     });
     const plan = planFaultProofFieldOpening({
+      anchorSourceKind: 0n,
       fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
       anchorTxId: transaction.txId,
       nativeTxCompactCbor: transaction.compactCbor.toString("hex"),

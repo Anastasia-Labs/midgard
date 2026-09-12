@@ -2,7 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/fuzz
 use aiken/primitive/bytearray
-use midgard/fraud_proofs/native_tx/compact.{native_tx_proof_commitment_v1}
+use midgard/fraud_proofs/native_tx/compact.{forced_tx_proof_commitment_v1}
 use midgard/ledger_output_scan_v1
 use midgard/script_sources_raw_frame_v1 as raw
 use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
@@ -51,7 +51,7 @@ fn pre(compact: ByteArray) -> validation_trace.ValidationMachineStateV1 {
     machine_version: 1,
     event_key_hash: h,
     transaction_id: h,
-    transaction_commitment: native_tx_proof_commitment_v1(compact, #"80", #"80"),
+    transaction_commitment: forced_tx_proof_commitment_v1(compact, #"80", #"80"),
     validation_context_hash: validation_trace.hash_validation_context(#"80"),
     source_kind: validation_trace.Forced,
     prior_ledger_root: h,

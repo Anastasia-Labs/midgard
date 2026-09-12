@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { getAddressDetails, toUnit } from "@lucid-evolution/lucid";
-import { afterAll,describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 import { createNativeScriptDecodingTransactionPort } from "../src/native-script-decoding/workflow.js";
 import {

@@ -105,6 +105,7 @@ fn native_script_item() -> ByteArray {
 fn input_state() -> step_04.State {
   step_04.State {
     direction: 0,
+    source_kind: 0,
     execution_index: 0,
     source_index: 0,
     origin_kind: 0,
@@ -293,6 +294,7 @@ fn state_32() -> step_05.State {
   let state = input_state()
   step_05.State {
     direction: 0,
+    source_kind: 0,
     execution_index: 0,
     source_index: 0,
     origin_kind: 0,
@@ -313,6 +315,7 @@ fn state_16() -> step_05.State {
   let state = input_state()
   step_05.State {
     direction: 0,
+    source_kind: 0,
     execution_index: 0,
     source_index: 0,
     origin_kind: 0,
@@ -363,6 +366,7 @@ fn state_318() -> step_06.State {
   let state = input_state()
   step_06.State {
     direction: 0,
+    source_kind: 0,
     execution_index: 0,
     source_index: 0,
     origin_kind: 0,

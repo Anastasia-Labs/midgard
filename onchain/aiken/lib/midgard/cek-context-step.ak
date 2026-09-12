@@ -5,7 +5,7 @@ use midgard/cek_data_v1
 use midgard/cek_machine_v1
 use midgard/cek_mint_order
 use midgard/cek_proof_v1
-use midgard/fraud_proofs/native_tx/compact.{decode_native_tx_compact_v1}
+use midgard/fraud_proofs/native_tx/compact.{decode_tx_compact_view_v1}
 use midgard/script_context_v1
 use midgard/validation_machine/machine_types.{
   CekContextControlV1, CekContextPartsControlV1, CekFinalContextControlV1,
@@ -16,6 +16,7 @@ use midgard/validation_machine/shared.{
 }
 use midgard/validation_machine/witness as witness
 use midgard/validation_merkle_v1.{FrontierPeak}
+use midgard/validation_trace_v1.{ValidationSourceKind}
 
 /// Only authenticated native fields consumed while constructing a context.
 pub type NativeFacts {
@@ -225,6 +226,7 @@ pub fn next_assemble(
 }
 
 pub fn next_tx_info(
+  source_kind: ValidationSourceKind,
   context: CekContextControlV1,
   native: NativeFacts,
   auxiliary: Data,
@@ -233,7 +235,7 @@ pub fn next_tx_info(
   expect control: CekTxInfoAssemblyControlV1 = control_data
   expect
     witness.hash_cek_tx_info_assembly_control_v1(control) == context.redeemer_context_control_hash
-  let compact = decode_native_tx_compact_v1(native.compact_cbor)
+  let compact = decode_tx_compact_view_v1(source_kind, native.compact_cbor)
   let tx_info = script_context_v1.tx_info_from_tail_summary_v1(
     context.language_tag == 128,
     context.spend_items,

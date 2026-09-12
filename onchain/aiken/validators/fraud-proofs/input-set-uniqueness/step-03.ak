@@ -58,7 +58,10 @@ validator main(
         expect Some(State { bound }) = input_state
         let anchored = anchored_native_tx(
           BodyTxOpening { native_tx_compact_cbor },
-          BodyAnchor { tx_id: bound.subject.transaction_id },
+          BodyAnchor {
+            tx_id: bound.subject.transaction_id,
+            source_kind: bound.subject.source_kind,
+          },
         )
         let spend_view = anchored_field_view(
           anchored,

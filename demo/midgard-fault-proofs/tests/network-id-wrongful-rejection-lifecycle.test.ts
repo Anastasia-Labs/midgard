@@ -17,13 +17,13 @@
  */
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSource,
   encodeMidgardFieldPreimage,
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   ForcedInclusionTxV1Schema,
   forcedVerdictSubject,
@@ -127,7 +127,7 @@ const forcedTransactionAt = ({
       value: { lovelace: 2_000_000n + BigInt(index), assets: new Map() },
     }),
   );
-  const invalid = adjudicateMidgardNativeTxFullValidity(
+  const invalid = materializeMidgardForcedTxFromCanonical(
     makeNativeTx({
       spendInputCbors: [
         encodeMidgardSpendInputItem({
@@ -139,9 +139,8 @@ const forcedTransactionAt = ({
       fee: 0n,
       networkId: bodyNetworkId,
     }),
-    "TxIsInvalid",
   );
-  const proofSource = deriveMidgardNativeTxProofSource(invalid);
+  const proofSource = deriveMidgardForcedTxProofSource(invalid);
   return {
     transactionId: computeMidgardNativeTxId(invalid).toString("hex"),
     outputs,
@@ -163,7 +162,7 @@ type ForcedLeaf = {
   readonly outputIndex: bigint;
   readonly value: {
     readonly tx_id: string;
-    readonly source: ForcedTransaction["source"];
+    readonly submitted_source: ForcedTransaction["source"];
     readonly verdict: unknown;
   };
 };
@@ -648,7 +647,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
         outputIndex: 0n,
         value: {
           tx_id: transaction.transactionId,
-          source: transaction.source,
+          submitted_source: transaction.source,
           verdict: NETWORK_ID_MISMATCH,
         },
       },
@@ -766,7 +765,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
         outputIndex: 0n,
         value: {
           tx_id: transaction.transactionId,
-          source: transaction.source,
+          submitted_source: transaction.source,
           verdict: NETWORK_ID_MISMATCH,
         },
       },
@@ -831,7 +830,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
           outputIndex: 0n,
           value: {
             tx_id: transaction.transactionId,
-            source: transaction.source,
+            submitted_source: transaction.source,
             verdict: NETWORK_ID_MISMATCH,
           },
         },
@@ -916,7 +915,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
         outputIndex: 0n,
         value: {
           tx_id: wrongful.transactionId,
-          source: wrongful.source,
+          submitted_source: wrongful.source,
           verdict: { ForcedTxInvalid: { reason: "FeeBelowMinimum" } },
         },
       },
@@ -943,7 +942,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
         Data.to(
           {
             tx_id: wrongful.transactionId,
-            source: wrongful.source,
+            submitted_source: wrongful.source,
             verdict: NETWORK_ID_MISMATCH,
           } as never,
           ForcedInclusionTxV1Schema as never,
@@ -965,7 +964,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
         key: committed.key,
         value: {
           tx_id: wrongful.transactionId,
-          source: wrongful.source,
+          submitted_source: wrongful.source,
           verdict: NETWORK_ID_MISMATCH,
         },
         proof: Data.from(
@@ -1015,7 +1014,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
         outputIndex: 0n,
         value: {
           tx_id: other.transactionId,
-          source: wrongful.source,
+          submitted_source: wrongful.source,
           verdict: NETWORK_ID_MISMATCH,
         },
       },
@@ -1089,7 +1088,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
         outputIndex: 0n,
         value: {
           tx_id: transaction.transactionId,
-          source: transaction.source,
+          submitted_source: transaction.source,
           verdict: NETWORK_ID_MISMATCH,
         },
       },
@@ -1168,7 +1167,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
         outputIndex: 0n,
         value: {
           tx_id: transaction.transactionId,
-          source: transaction.source,
+          submitted_source: transaction.source,
           verdict: NETWORK_ID_MISMATCH,
         },
       },
@@ -1270,7 +1269,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
         outputIndex: 0n,
         value: {
           tx_id: transaction.transactionId,
-          source: transaction.source,
+          submitted_source: transaction.source,
           verdict: NETWORK_ID_MISMATCH,
         },
       },

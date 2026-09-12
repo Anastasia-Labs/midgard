@@ -92,7 +92,10 @@ validator main(
         //    identity lives inside the door, and this is how the family gets it.
         let spend_inputs_view = opened_field_view(
           spend_inputs_opening,
-          BodyAnchor { tx_id: state.subject.transaction_id },
+          BodyAnchor {
+            tx_id: state.subject.transaction_id,
+            source_kind: state.subject.source_kind,
+          },
           spend_inputs_field_index,
           reference_inputs,
           field_preimage_certificate_policy_id,

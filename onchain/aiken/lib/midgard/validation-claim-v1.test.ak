@@ -11,6 +11,7 @@ use aiken/cbor
 use aiken/merkle_patricia_forestry as mpf
 use cardano/transaction.{OutputReference}
 use env
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/native_tx/compact as native_compact
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
@@ -171,7 +172,7 @@ fn forced_source(
   let tx = native_tx_with(validity)
   let forced = ledger_state.ForcedInclusionTxV1 {
     tx_id: native_tx_id_of(tx),
-    source: proof_source_of(tx),
+    submitted_source: forced_fixture.from_native_source(proof_source_of(tx)),
     verdict,
   }
   let key_bytes = cbor.serialise(tx_order_id())
@@ -380,21 +381,21 @@ fn source_is_authenticated(
   )
 }
 
-// ## §2.4.3(e) Forced-source authoritativeness (leaf-internal bit equality)
+// Forced-source authoritativeness: validity-free source, sole verdict claim.
 
-test forced_source_accepts_valid_verdict_with_validity_code_zero() {
+test forced_source_accepts_valid_verdict() {
   source_is_authenticated(
     forced_source(native_types.TxIsValid, rejection_reason_v1.ForcedTxValid),
   )
 }
 
-test forced_source_rejects_valid_verdict_with_validity_code_one() {
-  !source_is_authenticated(
+test forced_source_does_not_copy_native_invalid_bit() {
+  source_is_authenticated(
     forced_source(native_types.TxIsInvalid, rejection_reason_v1.ForcedTxValid),
   )
 }
 
-test forced_source_accepts_invalid_verdict_with_validity_code_one() {
+test forced_source_accepts_invalid_verdict() {
   source_is_authenticated(
     forced_source(
       native_types.TxIsInvalid,
@@ -405,8 +406,8 @@ test forced_source_accepts_invalid_verdict_with_validity_code_one() {
   )
 }
 
-test forced_source_rejects_invalid_verdict_with_validity_code_zero() {
-  !source_is_authenticated(
+test forced_source_accepts_rejection_of_admission_valid_submission() {
+  source_is_authenticated(
     forced_source(
       native_types.TxIsValid,
       rejection_reason_v1.ForcedTxInvalid {

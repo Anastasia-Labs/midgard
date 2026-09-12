@@ -10,6 +10,7 @@ import {
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   type MidgardValidationVerdictName,
 } from "@al-ft/midgard-core";
+import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
 import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { parseExactAikenDataCbor } from "@al-ft/midgard-fault-proofs";
 import { Constr, Data } from "@lucid-evolution/lucid";
@@ -152,7 +153,9 @@ const buildAcceptedForcedTrace =
       buildDeterministicValidationMachineTrace({
         ...baseContext,
         transactionId: transaction.txId,
-        canonicalTransactionCbor: transaction.txCbor,
+        canonicalTransactionCbor: encodeMidgardForcedTxCanonical(
+          transaction.tx,
+        ),
         priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
         postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
         ledgerWitnessEntries: [{ outRef: spent, output }],
@@ -175,7 +178,9 @@ const buildRejectedForcedTrace =
       buildDeterministicValidationMachineTrace({
         ...baseContext,
         transactionId: transaction.txId,
-        canonicalTransactionCbor: transaction.txCbor,
+        canonicalTransactionCbor: encodeMidgardForcedTxCanonical(
+          transaction.tx,
+        ),
         priorUtxosRoot: "00".repeat(32),
         postUtxosRoot: "00".repeat(32),
         ledgerWitnessEntries: [],

@@ -3,7 +3,7 @@ use midgard/blake2b_224_trace_v1
 use midgard/bounded_item_v1
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
-use midgard/fraud_proofs/native_tx/types.{VerifiedMidgardNativeTxCompact}
+use midgard/fraud_proofs/native_tx/types.{VerifiedTxSourceView}
 use midgard/ledger_output_proof_v1
 use midgard/mpf_proof_fold_v1
 use midgard/native_script_scan_v1
@@ -526,13 +526,13 @@ pub type NativeChunkWindowV1 {
 }
 
 pub type AuthenticatedNativeScriptTokenHeadV1 {
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   window: NativeChunkWindowV1,
   head: Option<native_script_scan_v1.NativeScriptTokenHeadV1>,
 }
 
 pub type AuthenticatedNativeScriptWindowV1 {
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   window: NativeChunkWindowV1,
 }
 

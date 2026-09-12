@@ -5,12 +5,12 @@ import {
   computeMidgardNativeTxId,
   computeScriptIntegrityHashForLanguages,
   decodeSingleCbor,
-  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
+  deriveMidgardForcedTxProofSourceFromCanonicalCbor,
   EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardFieldPreimageForField,
+  encodeMidgardForcedTxCanonical,
   encodeMidgardNativeScript,
-  encodeMidgardNativeTxCanonical,
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScriptListPreimage,
@@ -434,13 +434,13 @@ export const buildAcceptedClaimOverRejectingTransactionFixture = async ({
     fee: 0n,
     outputCbor: plainOutputCbor(100_000_000n),
   });
-  const forcedCanonicalCbor = encodeMidgardNativeTxCanonical(forcedNativeTx);
+  const forcedCanonicalCbor = encodeMidgardForcedTxCanonical(forcedNativeTx);
   const forcedSource =
-    deriveMidgardNativeTxProofSourceFromCanonicalCbor(forcedCanonicalCbor);
+    deriveMidgardForcedTxProofSourceFromCanonicalCbor(forcedCanonicalCbor);
   const transactionId = computeMidgardNativeTxId(forcedNativeTx);
   const forcedTransaction = {
     tx_id: transactionId.toString("hex"),
-    source: {
+    submitted_source: {
       compact_cbor: forcedSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:
         forcedSource.witnessSetCompactCbor.toString("hex"),
@@ -470,7 +470,6 @@ export const buildAcceptedClaimOverRejectingTransactionFixture = async ({
       expectedRejectionCode: RejectCodes.EmptyInputs,
       // The challenger replays the operator's ACCEPTED leaf to a rejection;
       // its states must still bind the committed (ForcedTxValid) source.
-      committedForcedVerdict: "accepted",
     }),
   );
   const restamped = restampTraceLedgerDeltaRoot(
@@ -628,12 +627,12 @@ export const buildAcceptedClaimOverMinAdaRejectingTransactionFixture = async ({
       ),
     ]),
   });
-  const forcedCanonicalCbor = encodeMidgardNativeTxCanonical(forcedNativeTx);
+  const forcedCanonicalCbor = encodeMidgardForcedTxCanonical(forcedNativeTx);
   const forcedSource =
-    deriveMidgardNativeTxProofSourceFromCanonicalCbor(forcedCanonicalCbor);
+    deriveMidgardForcedTxProofSourceFromCanonicalCbor(forcedCanonicalCbor);
   const forcedTransaction = {
     tx_id: transactionId.toString("hex"),
-    source: {
+    submitted_source: {
       compact_cbor: forcedSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:
         forcedSource.witnessSetCompactCbor.toString("hex"),
@@ -673,7 +672,6 @@ export const buildAcceptedClaimOverMinAdaRejectingTransactionFixture = async ({
     expectedRejectionCode: RejectCodes.MinAda,
     // The challenger replays the operator's ACCEPTED leaf to a rejection;
     // its states must still bind the committed (ForcedTxValid) source.
-    committedForcedVerdict: "accepted",
   } as const;
   const challengerTrace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace(challengerReplayInput),
@@ -1060,12 +1058,12 @@ const buildNativeTransactionTrace = async ({
       ),
     ]),
   });
-  const forcedCanonicalCbor = encodeMidgardNativeTxCanonical(forcedNativeTx);
+  const forcedCanonicalCbor = encodeMidgardForcedTxCanonical(forcedNativeTx);
   const forcedSource =
-    deriveMidgardNativeTxProofSourceFromCanonicalCbor(forcedCanonicalCbor);
+    deriveMidgardForcedTxProofSourceFromCanonicalCbor(forcedCanonicalCbor);
   const forcedTransaction = {
     tx_id: transactionId.toString("hex"),
-    source: {
+    submitted_source: {
       compact_cbor: forcedSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:
         forcedSource.witnessSetCompactCbor.toString("hex"),
@@ -1138,7 +1136,7 @@ const buildNativeTransactionTrace = async ({
       !resolveMissingInput &&
       scriptSourcesRejection === undefined
         ? {}
-        : { committedForcedVerdict: "accepted" as const }),
+        : {}),
       expectedVerdict:
         preconditionsRejection === undefined &&
         !rejectAfterPreconditions &&
@@ -1903,7 +1901,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
   const resolveFieldCarriage = await prepareFieldCarriage?.({
     trace: claimedChallengerTrace,
     stateIndex: disputedLowIndex,
-    source: forcedTransaction.source,
+    source: forcedTransaction.submitted_source,
   });
   const evidence = buildValidationDisputeEvidenceBundle({
     ...(resolveFieldCarriage === undefined ? {} : { resolveFieldCarriage }),

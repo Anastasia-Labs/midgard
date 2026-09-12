@@ -76,6 +76,7 @@ export type RejectCode = (typeof RejectCodes)[keyof typeof RejectCodes];
  * signature work has happened.
  */
 export type QueuedTx = {
+  readonly sourceKind?: "normal" | "forced";
   readonly txId: Buffer;
   readonly txCbor: Buffer;
   readonly programMaterialSidecarCbor?: Buffer | null;
@@ -113,6 +114,7 @@ export type PhaseAValidatedTx = {
 
   /** Non-ledger submission metadata retained for ordering and persistence. */
   readonly submission: {
+    readonly sourceKind: "normal" | "forced";
     readonly txCbor: Buffer;
     readonly programMaterialSidecarCbor: Buffer | null;
     readonly arrivalSeq: bigint;

@@ -1,5 +1,5 @@
 use aiken/merkle_patricia_forestry.{Proof}
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
+use midgard/fraud_proofs/native_tx/compact.{verify_tx_proof_source_v1}
 use midgard/fraud_proofs/native_tx/components.{decode_midgard_tx_input_cbor}
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_v1
@@ -376,7 +376,8 @@ pub fn verify_resolve_inputs(
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
   let control = resolve_inputs_control_from_witness(witness.work_witness_cbor)
-  let Pair(verified, _) = verify_native_tx_proof_source_v1(
+  let Pair(verified, _) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -479,7 +480,8 @@ pub fn verify_resolve_inputs_initial_semantics_v1(
   let control = raw_control.control_no_pending_from_witness(
     witness.work_witness_cbor,
   )
-  let Pair(verified, _) = verify_native_tx_proof_source_v1(
+  let Pair(verified, _) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,

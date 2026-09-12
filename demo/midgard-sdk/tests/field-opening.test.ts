@@ -132,9 +132,10 @@ describe("NativeTxAnchorV1 wire contract", () => {
   it("keeps each variant's frozen field order", () => {
     expect(aikenVariantFieldOrder("NativeTxAnchorV1", "BodyAnchor")).toEqual([
       "tx_id",
+      "source_kind",
     ]);
     expect(aikenVariantFieldOrder("NativeTxAnchorV1", "WitnessAnchor")).toEqual(
-      ["tx_id", "witness_set_hash"],
+      ["tx_id", "witness_set_hash", "source_kind"],
     );
   });
 
@@ -143,22 +144,35 @@ describe("NativeTxAnchorV1 wire contract", () => {
     // so the payload sits directly in the constructor: `BodyAnchor { tx_id }` is
     // `Constr 0 [B]`, never `Constr 0 [Constr 0 [B]]`. A `Data.Tuple` payload
     // would produce the second shape and this assertion is what catches it.
-    const body = Data.to({ BodyAnchor: { tx_id: TX_ID } }, NativeTxAnchor);
+    const body = Data.to(
+      { BodyAnchor: { tx_id: TX_ID, source_kind: 0n } },
+      NativeTxAnchor,
+    );
     const witness = Data.to(
-      { WitnessAnchor: { tx_id: TX_ID, witness_set_hash: WITNESS_SET_HASH } },
+      {
+        WitnessAnchor: {
+          tx_id: TX_ID,
+          witness_set_hash: WITNESS_SET_HASH,
+          source_kind: 0n,
+        },
+      },
       NativeTxAnchor,
     );
 
-    expect(body).toBe(`d8799f5820${TX_ID}ff`);
-    expect(witness).toBe(`d87a9f5820${TX_ID}5820${WITNESS_SET_HASH}ff`);
+    expect(body).toBe(`d8799f5820${TX_ID}00ff`);
+    expect(witness).toBe(`d87a9f5820${TX_ID}5820${WITNESS_SET_HASH}00ff`);
     expect(body.startsWith(constructorTagPrefix(0))).toBe(true);
     expect(witness.startsWith(constructorTagPrefix(1))).toBe(true);
 
     expect(Data.from(body, NativeTxAnchor)).toEqual({
-      BodyAnchor: { tx_id: TX_ID },
+      BodyAnchor: { tx_id: TX_ID, source_kind: 0n },
     });
     expect(Data.from(witness, NativeTxAnchor)).toEqual({
-      WitnessAnchor: { tx_id: TX_ID, witness_set_hash: WITNESS_SET_HASH },
+      WitnessAnchor: {
+        tx_id: TX_ID,
+        witness_set_hash: WITNESS_SET_HASH,
+        source_kind: 0n,
+      },
     });
   });
 });
@@ -276,24 +290,31 @@ describe("the §2.5 pairing is derived, not chosen", () => {
   it("anchors a body field on BodyAnchor and a witness field on WitnessAnchor", () => {
     expect(
       nativeTxAnchorForField({
+        sourceKind: 0n,
         fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
         txId: TX_ID,
       }),
-    ).toEqual({ BodyAnchor: { tx_id: TX_ID } });
+    ).toEqual({ BodyAnchor: { tx_id: TX_ID, source_kind: 0n } });
     expect(
       nativeTxAnchorForField({
+        sourceKind: 0n,
         fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
         txId: TX_ID,
         witnessSetHash: WITNESS_SET_HASH,
       }),
     ).toEqual({
-      WitnessAnchor: { tx_id: TX_ID, witness_set_hash: WITNESS_SET_HASH },
+      WitnessAnchor: {
+        tx_id: TX_ID,
+        witness_set_hash: WITNESS_SET_HASH,
+        source_kind: 0n,
+      },
     });
   });
 
   it("refuses a witness anchor with no witness_set_hash to anchor", () => {
     expect(() =>
       nativeTxAnchorForField({
+        sourceKind: 0n,
         fieldIndex: MIDGARD_FIELD_INDEX.scriptWitnesses,
         txId: TX_ID,
       }),
@@ -303,6 +324,7 @@ describe("the §2.5 pairing is derived, not chosen", () => {
   it("refuses a body anchor handed a witness_set_hash it cannot carry", () => {
     expect(() =>
       nativeTxAnchorForField({
+        sourceKind: 0n,
         fieldIndex: MIDGARD_FIELD_INDEX.outputs,
         txId: TX_ID,
         witnessSetHash: WITNESS_SET_HASH,
@@ -359,9 +381,9 @@ describe("the §2.5 pairing is derived, not chosen", () => {
 
   it("refuses a field index §2.5 does not name", () => {
     for (const fieldIndex of [-1, 9, 1.5]) {
-      expect(() => nativeTxAnchorForField({ fieldIndex, txId: TX_ID })).toThrow(
-        MidgardFieldOpeningError,
-      );
+      expect(() =>
+        nativeTxAnchorForField({ sourceKind: 0n, fieldIndex, txId: TX_ID }),
+      ).toThrow(MidgardFieldOpeningError);
     }
   });
 });

@@ -1,6 +1,6 @@
 use aiken/primitive/bytearray
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
-use midgard/fraud_proofs/native_tx/types.{VerifiedMidgardNativeTxCompact}
+use midgard/fraud_proofs/native_tx/compact.{verify_tx_proof_source_v1}
+use midgard/fraud_proofs/native_tx/types.{VerifiedTxSourceView}
 use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1.{reject_invalid_field_type}
 use midgard/script_language_views_v1.{empty_script_integrity_hash}
@@ -78,7 +78,7 @@ fn phase_a_script_preconditions_finalize(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: PhaseAScriptPreconditionsControlV1,
-  verified_source: VerifiedMidgardNativeTxCompact,
+  verified_source: VerifiedTxSourceView,
   has_redeemers: Bool,
   observer_count: Int,
 ) -> Bool {
@@ -128,7 +128,8 @@ pub fn verify_phase_a_script_preconditions(
   let control = phase_a_script_preconditions_control_from_witness(
     witness.work_witness_cbor,
   )
-  let Pair(verified_source, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified_source, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -228,7 +229,8 @@ pub fn verify_phase_a_script_preconditions_finalize_semantics_v1(
   let control = phase_a_script_preconditions_control_from_witness(
     witness.work_witness_cbor,
   )
-  let Pair(verified_source, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified_source, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -283,7 +285,8 @@ pub fn verify_phase_a_script_preconditions_item_semantics_v1(
   let control = phase_a_script_preconditions_control_from_witness(
     witness.work_witness_cbor,
   )
-  let Pair(verified_source, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified_source, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,

@@ -5,9 +5,9 @@ import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCanonical,
+  encodeMidgardForcedTxCanonical,
   encodeMidgardTxOutput,
-  materializeMidgardNativeTxFromCanonical,
+  materializeMidgardForcedTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
@@ -102,10 +102,9 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
  * §8.4's partition rather than this file's preference.
  */
 const nativeTransactionCbor = (outputFills: readonly number[]): Buffer =>
-  encodeMidgardNativeTxCanonical(
-    materializeMidgardNativeTxFromCanonical({
+  encodeMidgardForcedTxCanonical(
+    materializeMidgardForcedTxFromCanonical({
       version: MIDGARD_NATIVE_TX_VERSION,
-      validity: "TxIsValid",
       body: {
         spendInputsPreimageCbor: EMPTY_CBOR_LIST,
         referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -237,6 +236,7 @@ const publishCarriage = async (
     const chunkUtxos = published.slice(-field.plan.publications.length);
     const tx = await Effect.runPromise(
       SDK.buildUnsignedFieldPreimageCertificationProgram(harness.lucid, {
+        sourceKind: 1n,
         plan: field.plan,
         certificatePolicyId:
           harness.contracts.fieldPreimageCertificate.policyId,
@@ -261,23 +261,23 @@ const publishCarriage = async (
 };
 
 /**
- * Builds, submits and observes a forced order carrying `nativeTxCbor`'s material
+ * Builds, submits and observes a forced order carrying `submittedTxCbor`'s material
  * under whichever tiers `inlineReserveBytes` leaves the planner.
  */
 const submitForcedOrder = async ({
   harness,
-  nativeTxCbor,
+  submittedTxCbor,
   inlineReserveBytes,
 }: {
   readonly harness: Harness;
-  readonly nativeTxCbor: Buffer;
+  readonly submittedTxCbor: Buffer;
   readonly inlineReserveBytes?: number;
 }): Promise<{
   readonly plan: SDK.TxOrderCarriagePlan;
   readonly orderUtxo: SDK.TxOrderUTxOV1;
 }> => {
   const material = SDK.deriveTxOrderMaterial({
-    nativeTxCbor,
+    submittedTxCbor,
     owner: harness.creatorKeyHash,
   });
   const plan = SDK.planTxOrderMaterialCarriage({
@@ -313,7 +313,7 @@ const submitForcedOrder = async ({
       tx: {
         tx_id: material.transactionId,
         transaction_commitment: material.transactionCommitment,
-        source: material.source,
+        submitted_source: material.submitted_source,
       },
     },
     inclusion_time: BigInt(harness.emulator.now()),
@@ -431,10 +431,10 @@ afterEach(async () => {
 describe("V1 forced-order §8 carriage, read off L1", () => {
   it("ingests a tier-1 order whose preimage rides the mint redeemer", async () => {
     const harness = await withHarness();
-    const nativeTxCbor = nativeTransactionCbor([0x11, 0x22]);
+    const submittedTxCbor = nativeTransactionCbor([0x11, 0x22]);
     const { plan, orderUtxo } = await submitForcedOrder({
       harness,
-      nativeTxCbor,
+      submittedTxCbor,
     });
     expect(plan.carriage.map((field) => field.plan.tier)).toEqual(["Inline"]);
 
@@ -481,19 +481,19 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
           material,
         }),
       ),
-    ).resolves.toEqual(nativeTxCbor);
+    ).resolves.toEqual(submittedTxCbor);
   }, 120_000);
 
   it("ingests a tier-2 order whose preimage is a published raw UTxO", async () => {
     const harness = await withHarness();
-    const nativeTxCbor = nativeTransactionCbor([0x11, 0x22]);
+    const submittedTxCbor = nativeTransactionCbor([0x11, 0x22]);
     // The same preimage as tier 1. §8.4's partition puts it inside `K`, so which
     // of tiers 1–2 carries it is the creator's budget decision: an order with no
     // inline reserve publishes it instead, which is the demotion
     // `planTxOrderMaterialCarriage` exists for.
     const { plan, orderUtxo } = await submitForcedOrder({
       harness,
-      nativeTxCbor,
+      submittedTxCbor,
       inlineReserveBytes: 0,
     });
     expect(plan.carriage.map((field) => field.plan.tier)).toEqual(["RawUtxo"]);
@@ -509,7 +509,7 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
           material,
         }),
       ),
-    ).resolves.toEqual(nativeTxCbor);
+    ).resolves.toEqual(submittedTxCbor);
   }, 120_000);
 
   it("ingests a tier-3 order whose preimage is chunked under a certificate", async () => {
@@ -518,10 +518,10 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
     // partition makes tier 3 the only admissible carriage — the tier whose bytes
     // arrive split, whose length claim comes from a separate datum, and whose
     // reference inputs the reader has to resolve in two different shapes.
-    const nativeTxCbor = nativeTransactionCbor([0x11, 0x22, 0x33, 0x44]);
+    const submittedTxCbor = nativeTransactionCbor([0x11, 0x22, 0x33, 0x44]);
     const { plan, orderUtxo } = await submitForcedOrder({
       harness,
-      nativeTxCbor,
+      submittedTxCbor,
     });
     expect(plan.carriage.map((field) => field.plan.tier)).toEqual([
       "Certified",
@@ -537,7 +537,7 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
           material,
         }),
       ),
-    ).resolves.toEqual(nativeTxCbor);
+    ).resolves.toEqual(submittedTxCbor);
 
     // The whole reference-input set is resolved positionally, not just the
     // carriage: the manifest and its chunks land where the redeemer says, and the
@@ -599,7 +599,7 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
     const harness = await withHarness();
     const { orderUtxo } = await submitForcedOrder({
       harness,
-      nativeTxCbor: nativeTransactionCbor([0x11, 0x22]),
+      submittedTxCbor: nativeTransactionCbor([0x11, 0x22]),
     });
 
     // The mint redeemer is selected by *policy*, through the mint's ascending
@@ -627,7 +627,7 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
     const harness = await withHarness();
     const { orderUtxo } = await submitForcedOrder({
       harness,
-      nativeTxCbor: nativeTransactionCbor([0x11, 0x22]),
+      submittedTxCbor: nativeTransactionCbor([0x11, 0x22]),
     });
 
     await expect(
@@ -654,10 +654,10 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
 
   it("refuses a tier-2 order whose carriage datum Kupo does not resolve", async () => {
     const harness = await withHarness();
-    const nativeTxCbor = nativeTransactionCbor([0x11, 0x22]);
+    const submittedTxCbor = nativeTransactionCbor([0x11, 0x22]);
     const { orderUtxo } = await submitForcedOrder({
       harness,
-      nativeTxCbor,
+      submittedTxCbor,
       inlineReserveBytes: 0,
     });
     // The order reads correctly first, so what the negatives below change is only
@@ -744,15 +744,15 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
           material: await readCarriage(harness, orderUtxo),
         }),
       ),
-    ).resolves.toEqual(nativeTxCbor);
+    ).resolves.toEqual(submittedTxCbor);
   }, 120_000);
 
   it("reads nothing for a canonically-empty order, which needs no carriage", async () => {
     const harness = await withHarness();
-    const nativeTxCbor = nativeTransactionCbor([]);
+    const submittedTxCbor = nativeTransactionCbor([]);
     const { plan, orderUtxo } = await submitForcedOrder({
       harness,
-      nativeTxCbor,
+      submittedTxCbor,
     });
     expect(plan.carriage).toEqual([]);
 
@@ -768,7 +768,7 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
           material,
         }),
       ),
-    ).resolves.toEqual(nativeTxCbor);
+    ).resolves.toEqual(submittedTxCbor);
   }, 120_000);
 });
 
@@ -819,10 +819,10 @@ describe.skipIf(!dbEnabled)(
 
       // Tier 2, so the row can only exist if the Kupo reference-input resolution
       // ran: the preimage is in a published UTxO, not in the redeemer.
-      const nativeTxCbor = nativeTransactionCbor([0x11, 0x22]);
+      const submittedTxCbor = nativeTransactionCbor([0x11, 0x22]);
       const { plan, orderUtxo } = await submitForcedOrder({
         harness,
-        nativeTxCbor,
+        submittedTxCbor,
         inlineReserveBytes: 0,
       });
       expect(plan.carriage.map((field) => field.plan.tier)).toEqual([
@@ -886,12 +886,10 @@ describe.skipIf(!dbEnabled)(
           return yield* sql<{
             readonly native_tx_cbor: Buffer;
             readonly tx_order_l1_tx_hash: Buffer;
-            readonly operator_validity: string;
             readonly consensus_profile_id: string;
           }>`
           SELECT ${sql(ForcedTransactionsDB.Columns.NATIVE_TX_CBOR)},
                  ${sql(ForcedTransactionsDB.Columns.TX_ORDER_L1_TX_HASH)},
-                 ${sql(ForcedTransactionsDB.Columns.OPERATOR_VALIDITY)},
                  ${sql(ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID)}
           FROM ${sql(ForcedTransactionsDB.tableName)}
         `;
@@ -903,7 +901,7 @@ describe.skipIf(!dbEnabled)(
       // payload's own §4 commitments. Nothing in this file hands the fiber those
       // bytes; it read them off the local L1 itself.
       expect(rows.length).toBe(1);
-      expect(Buffer.from(rows[0]!.native_tx_cbor)).toEqual(nativeTxCbor);
+      expect(Buffer.from(rows[0]!.native_tx_cbor)).toEqual(submittedTxCbor);
       expect(Buffer.from(rows[0]!.tx_order_l1_tx_hash).toString("hex")).toBe(
         orderUtxo.utxo.txHash,
       );

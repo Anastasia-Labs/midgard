@@ -69,6 +69,7 @@ validator main(
           WitnessAnchor {
             tx_id: state.bad_tx_id,
             witness_set_hash: state.bad_tx_witness_set_hash,
+            source_kind: state.subject.source_kind,
           },
           address_witnesses_field_index,
           state.signer_checkpoint_hash,

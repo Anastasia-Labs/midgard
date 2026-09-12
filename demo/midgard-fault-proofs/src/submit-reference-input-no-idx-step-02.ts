@@ -281,6 +281,7 @@ export const submitReferenceInputNoIdxStep02 = async ({
   // anchored transaction committed *at field 1*, and the compact bytes must
   // re-derive to the anchor the thread carries.
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.referenceInputs,
     anchorTxId: verifiedTxId,
     nativeTxCompactCbor,

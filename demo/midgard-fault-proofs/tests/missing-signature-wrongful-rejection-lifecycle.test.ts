@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  encodeMidgardNativeTxCanonical,
+  encodeMidgardForcedTxCanonical,
   midgardFieldCarriageBounds,
 } from "@al-ft/midgard-core";
 import {
@@ -183,7 +183,7 @@ const setupScenario = async (
       outputIndex: 0n,
       value: {
         tx_id: transaction.transactionId,
-        source: transaction.source,
+        submitted_source: transaction.source,
         verdict: { ForcedTxInvalid: { reason } },
       },
     },
@@ -337,12 +337,14 @@ const setupScenario = async (
     const planned =
       index === 2
         ? planMissingSignatureRequiredSignersOpening({
+            anchorSourceKind: 1n,
             anchorTxId: prepared.transactionId,
             nativeTxCompactCbor: prepared.nativeTxCompactCbor,
             requiredSignerHashes: prepared.evidence.requiredSignerHashes,
             owner: harness.proverSigner.paymentKeyHash,
           })
         : planMissingSignatureAddressWitnessesOpening({
+            anchorSourceKind: 1n,
             anchorTxId: prepared.transactionId,
             nativeTxCompactCbor: prepared.nativeTxCompactCbor,
             addrTxWits: prepared.evidence.addrTxWits,
@@ -397,7 +399,7 @@ const setupScenario = async (
     remove,
     record,
     certify,
-    transactionCbor: encodeMidgardNativeTxCanonical(
+    transactionCbor: encodeMidgardForcedTxCanonical(
       transaction.transaction,
     ).toString("hex"),
   };
@@ -735,6 +737,7 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
     ]);
     if (threadUtxo === undefined) throw new Error("thread absent");
     const planned = planMissingSignatureAddressWitnessesOpening({
+      anchorSourceKind: 1n,
       anchorTxId: s.prepared.transactionId,
       nativeTxCompactCbor: s.prepared.nativeTxCompactCbor,
       addrTxWits: s.prepared.evidence.addrTxWits,

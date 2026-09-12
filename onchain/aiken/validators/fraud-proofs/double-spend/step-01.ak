@@ -77,7 +77,7 @@ validator main(
         )
 
         expect None = m_input_state_data
-        expect bad_tx_view.tx_compact.validity_code == 0
+        expect bad_tx_view.tx_compact.validity_code == Some(0)
 
         // 2. The UTxO must be produced at next step's script hash with the
         //    verified first bad transaction ID in the `data` field of its

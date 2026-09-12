@@ -4,6 +4,7 @@ import {
   decodeMidgardVersionedScript,
   deriveMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
+import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import {
   FraudProofComputationThreadStepDatum,
   MIDGARD_FIELD_INDEX,
@@ -108,7 +109,9 @@ const witnessSet = (
   >,
 ) => {
   const compact = deriveMidgardNativeTxWitnessSetCompact(
-    decodeMidgardNativeTxFullFromCanonicalCbor(
+    (admitted.forced !== undefined
+      ? decodeMidgardForcedTxFullFromCanonicalCbor
+      : decodeMidgardNativeTxFullFromCanonicalCbor)(
       Buffer.from(admitted.prepared.nativeTxCanonicalCbor, "hex"),
     ).witnessSet,
   );
@@ -128,6 +131,7 @@ const scriptFieldPlan = (
   owner: string,
 ) =>
   planFaultProofFieldOpening({
+    anchorSourceKind: admitted.forced !== undefined ? 1n : 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.scriptWitnesses,
     anchorTxId: admitted.prepared.badTxId,
     nativeTxCompactCbor: admitted.prepared.nativeTxCompactCbor,
@@ -146,6 +150,7 @@ const signerFieldPlan = (
   owner: string,
 ) =>
   planFaultProofFieldOpening({
+    anchorSourceKind: admitted.forced !== undefined ? 1n : 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
     anchorTxId: admitted.prepared.badTxId,
     nativeTxCompactCbor: admitted.prepared.nativeTxCompactCbor,

@@ -1,9 +1,5 @@
-import {
-  adjudicateMidgardNativeTxFullValidity,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxFaultEvidenceMaterial,
-  encodeMidgardNativeTxCanonical,
-} from "@al-ft/midgard-core";
+import { deriveMidgardNativeTxFaultEvidenceMaterial } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
@@ -233,24 +229,17 @@ const replayCandidates = async (block: CanonicalBlockEvidence) => {
           expectedValidationTracesRoot: block.header.validationTracesRoot,
           expectedPresence: !hasMissingTerminal,
         });
-        const adjudicated = encodeMidgardNativeTxCanonical(
-          adjudicateMidgardNativeTxFullValidity(
-            decodeMidgardNativeTxFullFromCanonicalCbor(
-              transaction.fullTransactionCbor,
-            ),
-            "TxIsInvalid",
-          ),
-        );
+        const adjudicated = transaction.fullTransactionCbor;
         const material =
-          deriveMidgardNativeTxFaultEvidenceMaterial(adjudicated);
+          deriveMidgardForcedTxFaultEvidenceMaterial(adjudicated);
         if (
           material.transactionId.toString("hex") !== transaction.value.tx_id ||
           material.proofSource.compactCbor.toString("hex") !==
-            transaction.value.source.compact_cbor ||
+            transaction.value.submitted_source.compact_cbor ||
           material.proofSource.witnessSetCompactCbor.toString("hex") !==
-            transaction.value.source.witness_set_compact_cbor ||
+            transaction.value.submitted_source.witness_set_compact_cbor ||
           material.proofSource.fieldPreimageLengthsCbor.toString("hex") !==
-            transaction.value.source.field_preimage_lengths_cbor
+            transaction.value.submitted_source.field_preimage_lengths_cbor
         )
           throw new Error(
             "missingScriptSource forced source changed authenticated leaf",

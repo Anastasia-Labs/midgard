@@ -109,6 +109,7 @@ export const submitRedeemerCanonicityStep02 = async ({
     Buffer.from(witnessSetCompactCbor, "hex"),
   );
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: REDEEMER_CANONICITY_FIELD_INDEX,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,

@@ -212,7 +212,7 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
       midgard.nativeCanonicalBytes,
     );
     expect(retained.forced.reconstructedCanonicalBytes).toBe(
-      midgard.nativeCanonicalBytes,
+      midgard.nativeCanonicalBytes - 1,
     );
     expect(retained.normal.revealStepCount).toBe(midgard.completeFoldStepCount);
     expect(retained.forced.revealStepCount).toBe(midgard.completeFoldStepCount);

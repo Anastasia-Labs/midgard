@@ -56,7 +56,7 @@ validator main(
         expect Some(claim) = input_state
         expect AcceptedImbalance { asset, .. } = claim
         expect claimed_asset_is_well_formed_v1(asset)
-        expect verified.tx_compact.validity_code == 0
+        expect verified.tx_compact.validity_code == Some(0)
         let expected: Data = SourceState {
           transaction_id,
           claim,

@@ -138,6 +138,7 @@ const mintPolicyHashHexes = (tx: MidgardLedgerTx): readonly string[] => {
 };
 
 type BuildPhaseAValidatedTxArgs = {
+  readonly sourceKind: "normal" | "forced";
   readonly ledgerTx: MidgardLedgerTx;
   readonly expectedNetworkId: bigint;
   readonly txCbor: Buffer;
@@ -148,6 +149,7 @@ type BuildPhaseAValidatedTxArgs = {
 };
 
 export const buildPhaseAValidatedTx = ({
+  sourceKind,
   ledgerTx,
   expectedNetworkId,
   txCbor,
@@ -175,6 +177,7 @@ export const buildPhaseAValidatedTx = ({
   return {
     ledgerTx,
     submission: {
+      sourceKind,
       txCbor: Buffer.from(txCbor),
       programMaterialSidecarCbor:
         programMaterialSidecarCbor == null

@@ -1,5 +1,5 @@
 import {
-  decodeMidgardNativeTxCompact,
+  decodeMidgardForcedTxCompact,
   deriveMidgardNativeTxWitnessSetCompact,
   encodeMidgardNativeTxWitnessSetCompact,
   midgardFieldCommitment,
@@ -503,8 +503,11 @@ describe("redeemer-canonicity forced lifecycle", () => {
         finding: evidence,
         forcedSource: { header: forced.header, membership, direction: 1n },
         witnessSetHash: Buffer.from(
-          decodeMidgardNativeTxCompact(
-            Buffer.from(forced.forcedTransaction.source.compact_cbor, "hex"),
+          decodeMidgardForcedTxCompact(
+            Buffer.from(
+              forced.forcedTransaction.submitted_source.compact_cbor,
+              "hex",
+            ),
           ).transactionWitnessSetHash,
         ).toString("hex"),
         referenceScriptUtxo: references[0],
@@ -519,9 +522,10 @@ describe("redeemer-canonicity forced lifecycle", () => {
         signer: harness.proverSigner,
         threadOutRef: step01.result.nextThreadOutRef,
         evidence,
-        nativeTxCompactCbor: forced.forcedTransaction.source.compact_cbor,
+        nativeTxCompactCbor:
+          forced.forcedTransaction.submitted_source.compact_cbor,
         witnessSetCompactCbor:
-          forced.forcedTransaction.source.witness_set_compact_cbor,
+          forced.forcedTransaction.submitted_source.witness_set_compact_cbor,
         referenceScriptUtxo: references[1],
       }),
     );

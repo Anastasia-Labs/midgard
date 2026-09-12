@@ -1,8 +1,8 @@
 import { createPrivateKey, createPublicKey, sign } from "node:crypto";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { materializeMidgardNativeTxFromCanonical } from "@al-ft/midgard-core";
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
   deriveMidgardNativeTxFaultEvidenceMaterial,
   deriveMidgardNativeTxWitnessSetCompact,
@@ -19,6 +19,12 @@ import {
   type MidgardFieldPreimageCertificate,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
+import {
+  encodeMidgardForcedTxCanonical,
+  encodeMidgardForcedTxCompact,
+  type MidgardForcedTxFull,
+} from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   acceptedVerdictSubject,
@@ -217,16 +223,23 @@ const nativeTxWith = ({
   });
 };
 
-const compactHex = (nativeTx: MidgardNativeTxFull): string =>
-  encodeMidgardNativeTxCompact(nativeTx.compact).toString("hex");
+const compactHex = (
+  nativeTx: MidgardNativeTxFull | MidgardForcedTxFull,
+): string =>
+  ("validity" in nativeTx
+    ? encodeMidgardNativeTxCompact(nativeTx.compact)
+    : encodeMidgardForcedTxCompact(nativeTx.compact)
+  ).toString("hex");
 
-const witnessSetCompactHex = (nativeTx: MidgardNativeTxFull): string =>
+const witnessSetCompactHex = (
+  nativeTx: MidgardNativeTxFull | MidgardForcedTxFull,
+): string =>
   encodeMidgardNativeTxWitnessSetCompact(
     deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
   ).toString("hex");
 
 const witnessSetOf = (
-  nativeTx: MidgardNativeTxFull,
+  nativeTx: MidgardNativeTxFull | MidgardForcedTxFull,
 ): SDK.NativeTxWitnessSetCompact => {
   const derived = deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet);
   return {
@@ -238,14 +251,29 @@ const witnessSetOf = (
   };
 };
 
+const fixtureBytes = (
+  nativeTx: MidgardNativeTxFull | MidgardForcedTxFull,
+  sourceKind: bigint,
+) =>
+  sourceKind === 1n
+    ? encodeMidgardForcedTxCanonical(
+        materializeMidgardForcedTxFromCanonical(nativeTx),
+      )
+    : encodeMidgardNativeTxCanonical(
+        materializeMidgardNativeTxFromCanonical({
+          ...nativeTx,
+          validity: "TxIsValid",
+        }),
+      );
+
 const evidenceFor = (
   subject: SDK.VerdictSubject,
-  nativeTx: MidgardNativeTxFull,
+  nativeTx: MidgardNativeTxFull | MidgardForcedTxFull,
 ): ProtectedOutputSignerMissingEvidence =>
   prepareProtectedOutputSignerMissingEvidence({
     subject,
     outputIndex: 0,
-    canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
+    canonicalTransactionCbor: fixtureBytes(nativeTx, subject.source_kind),
   });
 
 /**
@@ -257,11 +285,15 @@ const evidenceFor = (
 const honestEvidenceFor = (
   honestSubject: SDK.VerdictSubject,
   closingSubject: SDK.VerdictSubject,
-  nativeTx: MidgardNativeTxFull,
+  nativeTx: MidgardNativeTxFull | MidgardForcedTxFull,
 ): ProtectedOutputSignerMissingEvidence =>
   Object.freeze({
     ...evidenceFor(closingSubject, nativeTx),
     subject: honestSubject,
+    canonicalTransactionCborHex: fixtureBytes(
+      nativeTx,
+      honestSubject.source_kind,
+    ).toString("hex"),
   });
 
 /**
@@ -492,7 +524,7 @@ const makeScenario = async ({
   const step02 = (
     threadOutRef: string,
     evidence: ProtectedOutputSignerMissingEvidence,
-    subject: MidgardNativeTxFull,
+    subject: MidgardNativeTxFull | MidgardForcedTxFull,
   ) =>
     submitProtectedOutputSignerMissingStep02({
       ...common(1),
@@ -505,7 +537,7 @@ const makeScenario = async ({
   const step03 = (
     threadOutRef: string,
     evidence: ProtectedOutputSignerMissingEvidence,
-    subject: MidgardNativeTxFull,
+    subject: MidgardNativeTxFull | MidgardForcedTxFull,
   ) =>
     submitProtectedOutputSignerMissingStep03({
       ...common(2),
@@ -518,7 +550,7 @@ const makeScenario = async ({
   const step04 = (
     threadOutRef: string,
     evidence: ProtectedOutputSignerMissingEvidence,
-    subject: MidgardNativeTxFull,
+    subject: MidgardNativeTxFull | MidgardForcedTxFull,
     carriage: Awaited<
       ReturnType<typeof submitProtectedOutputSignerMissingStep03>
     >,
@@ -648,7 +680,7 @@ const scanToTerminal = async (
   s: Scenario,
   threadOutRef: string,
   evidence: ProtectedOutputSignerMissingEvidence,
-  subject: MidgardNativeTxFull,
+  subject: MidgardNativeTxFull | MidgardForcedTxFull,
   carriage: Awaited<
     ReturnType<typeof submitProtectedOutputSignerMissingStep03>
   >,
@@ -784,7 +816,10 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
     const evidence = prepareProtectedOutputSignerMissingEvidence({
       subject: acceptedVerdictSubject(nativeTxId),
       outputIndex: 0,
-      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
+      canonicalTransactionCbor:
+        "validity" in nativeTx
+          ? encodeMidgardNativeTxCanonical(nativeTx)
+          : encodeMidgardForcedTxCanonical(nativeTx),
     });
     expect(evidence.witnessCarriage).toBe("Certified");
     expect(evidence.validSignerHashes).toEqual([]);
@@ -1162,10 +1197,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       nativeTx,
       forcedReason: { ProtectedOutputSignerMissing: { output_index: 0n } },
     });
-    const adjudicated = adjudicateMidgardNativeTxFullValidity(
-      nativeTx,
-      "TxIsInvalid",
-    );
+    const adjudicated = materializeMidgardForcedTxFromCanonical(nativeTx);
     const subject = forcedVerdictSubject({
       transactionId: s.block.nativeTxId,
       sourceKey: FORCED_ORDER_KEY,
@@ -1357,6 +1389,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
     coverage.scenario("reason_or_subject_coordinate_mutation");
     // Compact transaction: another transaction's bytes under the anchored id.
     const foreignPlan = planFaultProofFieldOpening({
+      anchorSourceKind: 0n,
       fieldIndex: 2,
       anchorTxId: computeMidgardNativeTxId(overBoundTx).toString("hex"),
       nativeTxCompactCbor: compactHex(overBoundTx),
@@ -1590,6 +1623,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       certificateAssetName: MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME,
     };
     const overBoundPlanned: FaultProofFieldOpeningPlan = {
+      sourceKind: 0n,
       fieldIndex: 7,
       nativeTxId: overBoundId,
       nativeTxCompactCbor: compactHex(overBoundTx),
@@ -1639,10 +1673,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       nativeTx,
       forcedReason: { ProtectedOutputSignerMissing: { output_index: 0n } },
     });
-    const adjudicated = adjudicateMidgardNativeTxFullValidity(
-      nativeTx,
-      "TxIsInvalid",
-    );
+    const adjudicated = materializeMidgardForcedTxFromCanonical(nativeTx);
     const subject = forcedVerdictSubject({
       transactionId: s.block.nativeTxId,
       sourceKey: FORCED_ORDER_KEY,
@@ -1694,10 +1725,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
         witnesses: () => [],
       });
       const s = await makeScenario({ nativeTx, forcedReason });
-      const adjudicated = adjudicateMidgardNativeTxFullValidity(
-        nativeTx,
-        "TxIsInvalid",
-      );
+      const adjudicated = materializeMidgardForcedTxFromCanonical(nativeTx);
       const evidence = evidenceFor(
         forcedVerdictSubject({
           transactionId: s.block.nativeTxId,
@@ -1753,10 +1781,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       witnesses: () => [forgedWitness()],
     });
     const s = await makeScenario({ nativeTx: unsignedTx, forcedReason });
-    const adjudicated = adjudicateMidgardNativeTxFullValidity(
-      unsignedTx,
-      "TxIsInvalid",
-    );
+    const adjudicated = materializeMidgardForcedTxFromCanonical(unsignedTx);
     const honest = honestEvidenceFor(
       forcedVerdictSubject({
         transactionId: s.block.nativeTxId,

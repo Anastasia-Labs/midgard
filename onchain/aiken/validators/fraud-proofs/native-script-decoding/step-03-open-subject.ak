@@ -7,9 +7,11 @@
 
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
+use aiken/option
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{
   BodyAnchor, opened_field_view, reference_inputs_field_index,
@@ -100,7 +102,10 @@ validator main(
           expect Some(opening) = subject_field_opening
           let subject_view = opened_field_view(
             opening,
-            BodyAnchor { tx_id: state.verified_tx_id },
+            BodyAnchor {
+              tx_id: state.verified_tx_id,
+              source_kind: state.source_kind,
+            },
             if state.outpoint_source_kind == engine.outpoint_source_spend {
               spend_inputs_field_index
             } else {
@@ -187,6 +192,15 @@ fn run_open_subject(
   expected_output_state: Data,
 ) -> Bool {
   let asset_name = fixture.ct_token_asset_name(open_subject_block())
+  let args = if state.source_kind == 1 {
+    OpenSubjectArgs {
+      ..args,
+      subject_field_opening: args.subject_field_opening
+        |> option.map(forced_fixture.from_native_opening),
+    }
+  } else {
+    args
+  }
   main.spend(
     fixture.next_step_script_hash,
     fixture.next_step_script_hash,

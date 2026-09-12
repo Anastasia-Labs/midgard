@@ -20,9 +20,11 @@ use cardano/transaction.{OutputReference, Transaction}
 use env
 use midgard/common/utils
 use midgard/computation_thread as ct
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proof_catalogue
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/fraud_proofs/native_tx/compact.{verify_forced_tx_proof_source_v1}
 use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1} as native_compact
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
@@ -98,16 +100,13 @@ validator main(
             ),
           }
         expect ForcedTxInvalid { reason: NetworkIdMismatch } = leaf.verdict
-        let Pair(verified, _) = verify_native_tx_proof_source_v1(
+        let Pair(verified, _) = verify_forced_tx_proof_source_v1(
           leaf.tx_id,
-          leaf.source.compact_cbor,
-          leaf.source.witness_set_compact_cbor,
-          leaf.source.field_preimage_lengths_cbor,
+          leaf.submitted_source.compact_cbor,
+          leaf.submitted_source.witness_set_compact_cbor,
+          leaf.submitted_source.field_preimage_lengths_cbor,
         )
-        // `verify_native_tx_proof_source_v1` already binds the source bytes to
-        // `leaf.tx_id` (it aborts on any other id), so only the operator's
-        // own rejection code is left to check here.
-        expect verified.tx_compact.validity_code == 1
+        // The source authenticates immutable submission content; the verdict above authenticates rejection.
         // The body half of the negated predicate, decided here. A committed
         // body network that really is foreign makes the operator's
         // `NetworkIdMismatch` rejection honest, and no amount of scanning the
@@ -195,7 +194,7 @@ fn forced_leaf_v1(
 ) -> ledger_state.ForcedInclusionTxV1 {
   ledger_state.ForcedInclusionTxV1 {
     tx_id: fixture.native_block_fixture_v1(tx).tx_id,
-    source: proof_source_of_v1(tx),
+    submitted_source: forced_fixture.from_native_source(proof_source_of_v1(tx)),
     verdict,
   }
 }
@@ -500,7 +499,9 @@ test network_id_forced_step_rejects_a_substituted_leaf_source() fail {
   let base = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
   let leaf = ledger_state.ForcedInclusionTxV1 {
     ..base,
-    source: proof_source_of_v1(rejected_forced_tx_v1(1)),
+    submitted_source: forced_fixture.from_native_source(
+      proof_source_of_v1(rejected_forced_tx_v1(1)),
+    ),
   }
   let membership = forced_membership_v1(key, leaf, 1)
   let header = forced_header_v1(membership.root, 1)
@@ -526,8 +527,8 @@ test network_id_forced_step_rejects_substituted_witness_set_bytes() fail {
   let base = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
   let leaf = ledger_state.ForcedInclusionTxV1 {
     ..base,
-    source: ledger_state.NativeTxProofSourceV1 {
-      ..base.source,
+    submitted_source: ledger_state.ForcedTxProofSourceV1 {
+      ..base.submitted_source,
       witness_set_compact_cbor: native_compact.encode_native_tx_witness_set_compact(
         fixture.empty_witness_set_compact(),
       ),
@@ -557,10 +558,10 @@ test network_id_forced_step_rejects_a_malformed_field_length_vector() fail {
   let base = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
   let leaf = ledger_state.ForcedInclusionTxV1 {
     ..base,
-    source: ledger_state.NativeTxProofSourceV1 {
-      ..base.source,
+    submitted_source: ledger_state.ForcedTxProofSourceV1 {
+      ..base.submitted_source,
       field_preimage_lengths_cbor: bytearray.concat(
-        base.source.field_preimage_lengths_cbor,
+        base.submitted_source.field_preimage_lengths_cbor,
         #"00",
       ),
     },
@@ -582,10 +583,17 @@ test network_id_forced_step_rejects_a_malformed_field_length_vector() fail {
 }
 
 /// An accepted source (`validity_code == 0`) has no rejection to contradict.
-test network_id_forced_step_rejects_an_accepted_source_validity_code() fail {
+test network_id_forced_step_rejects_an_obsolete_four_element_source() fail {
   let tx = accepted_forced_tx_v1(0)
   let key = forced_order_key_v1()
   let leaf = forced_leaf_v1(tx, ForcedTxInvalid { reason: NetworkIdMismatch })
+  let leaf = ledger_state.ForcedInclusionTxV1 {
+    ..leaf,
+    submitted_source: ledger_state.ForcedTxProofSourceV1 {
+      ..leaf.submitted_source,
+      compact_cbor: native_transaction.midgard_transaction_proof_source_v1(tx).compact_cbor,
+    },
+  }
   let membership = forced_membership_v1(key, leaf, 1)
   let header = forced_header_v1(membership.root, 1)
   let state: Data = expected_forced_state_v1(leaf, key, 0)

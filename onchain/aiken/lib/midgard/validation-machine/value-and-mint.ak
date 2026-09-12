@@ -3,7 +3,7 @@ use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use env
 use midgard/fraud_proofs/native_tx/compact.{
-  native_tx_proof_commitment_v1, verify_native_tx_proof_source_v1,
+  tx_proof_commitment_v1, verify_tx_proof_source_v1,
 }
 use midgard/fraud_proofs/native_tx/types.{NativeTxBodyCompact}
 use midgard/ledger_output_commitment_v1
@@ -699,14 +699,16 @@ fn value_and_mint_verified_body_v1(
   control: ValueAndMintControlV1,
 ) -> Pair<NativeTxBodyCompact, Bool> {
   let native_control = control.native_control
-  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
+  let Pair(verified_source, _) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     native_control.compact_cbor,
     native_control.witness_set_compact_cbor,
     native_control.field_preimage_lengths_cbor,
   )
   Pair(verified_source.tx_compact.body, and {
-      native_tx_proof_commitment_v1(
+      tx_proof_commitment_v1(
+        pre.source_kind,
         native_control.compact_cbor,
         native_control.witness_set_compact_cbor,
         native_control.field_preimage_lengths_cbor,

@@ -767,7 +767,7 @@ fn phase_a_semantic_fixture() -> Pair<
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
-    source_kind: validation_trace_v1.Forced,
+    source_kind: validation_trace_v1.Normal,
     prior_ledger_root: h_b,
     phase: validation_trace_v1.PhaseAScriptPreconditions,
     program_counter: 6,

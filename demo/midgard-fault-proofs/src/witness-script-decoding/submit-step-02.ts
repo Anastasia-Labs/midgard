@@ -114,6 +114,7 @@ export const submitWitnessScriptDecodingStep02 = async ({
     throw new Error(`${FAMILY}: retained evidence differs from bound subject`);
   }
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: bound.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.scriptWitnesses,
     anchorTxId: bound.subject.transaction_id,
     nativeTxCompactCbor,

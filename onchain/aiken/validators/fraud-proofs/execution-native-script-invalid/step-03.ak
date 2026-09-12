@@ -12,7 +12,10 @@ use midgard/fraud_proofs/execution_native_script_invalid/step_03.{
   Args, Datum, SpendRedeemer,
 }
 use midgard/fraud_proofs/execution_native_script_invalid/step_04
-use midgard/fraud_proofs/native_tx/compact.{decode_native_tx_compact_v1}
+use midgard/fraud_proofs/field_opening_v1.{source_kind_of_anchor}
+use midgard/fraud_proofs/native_tx/compact.{
+  decode_native_tx_compact_v1, decode_tx_compact_view_v1,
+}
 use midgard/fraud_proofs/native_tx/components.{
   decode_midgard_versioned_script_at, encode_midgard_versioned_script,
 }
@@ -60,7 +63,10 @@ validator main(
           outputs,
         )
         expect Some(source) = m_input_state_data
-        let compact = decode_native_tx_compact_v1(source.compact_cbor)
+        let compact = decode_tx_compact_view_v1(
+          source_kind_of_anchor(source.bound.subject.source_kind),
+          source.compact_cbor,
+        )
         let direction = source.bound.subject.direction
         let execution_index = source.bound.execution_index
         let source_index = source.source_index
@@ -83,6 +89,7 @@ validator main(
         expect output_script_hash == step_04_validator_script_hash
         let expected_output_state: Data = step_04.State {
           direction,
+          source_kind: source.bound.subject.source_kind,
           execution_index,
           source_index,
           origin_kind,

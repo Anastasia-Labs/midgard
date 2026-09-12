@@ -206,6 +206,7 @@ describe("mintItemNonCanonical registered Lucid Evolution lifecycle", () => {
       }
       if (i === 0) {
         const planned = planFaultProofFieldOpening({
+          anchorSourceKind: 0n,
           fieldIndex: 5,
           anchorTxId: inclusion.nativeTxId,
           nativeTxCompactCbor: inclusion.nativeTxCompactCbor,
@@ -285,6 +286,7 @@ describe("mintItemNonCanonical registered Lucid Evolution lifecycle", () => {
           );
           if (!advanced.terminal) {
             const planned = planFaultProofFieldOpening({
+              anchorSourceKind: 0n,
               fieldIndex: 5,
               anchorTxId: inclusion.nativeTxId,
               nativeTxCompactCbor: inclusion.nativeTxCompactCbor,

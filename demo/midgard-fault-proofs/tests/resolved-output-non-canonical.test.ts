@@ -7,6 +7,7 @@ import {
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
+import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   buildResolvedOutputNonCanonicalFaultProofContracts,
@@ -163,7 +164,7 @@ describe("resolvedOutputNonCanonical V1 family boundary", () => {
     } as const;
     const forced = (txId = transactionId) => ({
       key: { transactionId: "55".repeat(32), outputIndex: 0n },
-      fullTransactionCbor: transactionCbor,
+      fullTransactionCbor: encodeMidgardForcedTxCanonical(transaction),
       value: {
         tx_id: txId,
         verdict: { ForcedTxInvalid: { reason } },

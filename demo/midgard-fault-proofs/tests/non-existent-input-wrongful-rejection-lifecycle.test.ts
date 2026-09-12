@@ -3,13 +3,15 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeHash28,
   computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSource,
-  encodeMidgardNativeTxCanonical,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
+import {
+  deriveMidgardForcedTxProofSource,
+  encodeMidgardForcedTxCanonical,
+} from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
@@ -178,14 +180,13 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
           outputIndex: i,
         }),
       );
-      const native = adjudicateMidgardNativeTxFullValidity(
+      const native = materializeMidgardForcedTxFromCanonical(
         makeNativeTx({ spendInputCbors: inputs, fee: 0n }),
-        "TxIsInvalid",
       );
-      const source = deriveMidgardNativeTxProofSource(native);
+      const source = deriveMidgardForcedTxProofSource(native);
       const leaf = {
         tx_id: computeMidgardNativeTxId(native).toString("hex"),
-        source: {
+        submitted_source: {
           compact_cbor: source.compactCbor.toString("hex"),
           witness_set_compact_cbor:
             source.witnessSetCompactCbor.toString("hex"),
@@ -311,7 +312,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
         direction: 1n,
       };
       const fullTransactionCbor =
-        encodeMidgardNativeTxCanonical(native).toString("hex");
+        encodeMidgardForcedTxCanonical(native).toString("hex");
       const material = nonExistentInputForcedSourceMaterial(
         forcedSource,
         fullTransactionCbor,
@@ -450,8 +451,9 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
               harness.contracts.fieldPreimageCertificate.mintingScript,
             certificateReferenceScriptUtxo: reference.utxo,
             chunkUtxos: chunks,
-            compactCbor: leaf.source.compact_cbor,
-            witnessSetCompactCbor: leaf.source.witness_set_compact_cbor,
+            compactCbor: leaf.submitted_source.compact_cbor,
+            witnessSetCompactCbor:
+              leaf.submitted_source.witness_set_compact_cbor,
           }),
         );
         certificates = [certified.certificateUtxo];

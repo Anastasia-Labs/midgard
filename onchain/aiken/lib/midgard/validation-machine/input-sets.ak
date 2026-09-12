@@ -1,5 +1,5 @@
 use aiken/primitive/bytearray
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
+use midgard/fraud_proofs/native_tx/compact.{verify_tx_proof_source_v1}
 use midgard/fraud_proofs/native_tx/components.{
   decode_midgard_tx_input_cbor, encode_midgard_tx_input,
 }
@@ -32,7 +32,8 @@ fn verify_input_sets_empty(
   witness: ValidationOneStepWitnessV1,
   control: InputSetsControlV1,
 ) -> Bool {
-  let Pair(verified, _) = verify_native_tx_proof_source_v1(
+  let Pair(verified, _) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -157,7 +158,8 @@ fn verify_input_sets_item(
   item_index: Int,
   carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,

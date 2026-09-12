@@ -103,7 +103,7 @@ validator main(
         //    argument the transition-trace family's
         //    `unanchored_validity_code_of(anchored) == 0` call site owes and
         //    documents (`midgard/fraud_proofs/field_opening_v1`).
-        expect bad_tx_view.tx_compact.validity_code == 0
+        expect bad_tx_view.tx_compact.validity_code == Some(0)
 
         // 3. The claim must be inside the domain committed leaves and mint
         //    entries are defined over.

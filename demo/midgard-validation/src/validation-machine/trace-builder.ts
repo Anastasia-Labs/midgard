@@ -2,7 +2,6 @@
  * buildDeterministicValidationMachineTrace: the phase-by-phase construction of the deterministic
  * validation-machine trace for one transaction.
  */
-
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   aikenSerialisedPlutusDataCbor,
@@ -73,17 +72,14 @@ import {
   type MidgardValidationPhaseName,
 } from "@al-ft/midgard-core";
 import {
-  adjudicateMidgardNativeTxFullValidity,
   decodeMidgardAddressBytes,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxCompact,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardNativeTxWitnessSetCompact,
   decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
   decodeMidgardVersionedScript,
   decodeSingleCbor,
-  deriveMidgardNativeTxProofSource,
   encodeMidgardSpendInputItem,
   encodeMidgardVersionedScript,
   type MidgardVersionedScript,
@@ -94,6 +90,11 @@ import {
   readCborInteger,
   readCborMapHeader,
 } from "@al-ft/midgard-core/codec/cbor";
+import {
+  computeMidgardForcedTxProofCommitment,
+  decodeMidgardForcedTxCompact,
+  deriveMidgardForcedTxProofSourceFromCanonicalCbor,
+} from "@al-ft/midgard-core/codec/forced";
 import { CML } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
@@ -314,6 +315,7 @@ export const buildDeterministicValidationMachineTrace = (
     }
 
     const queued: QueuedTx = {
+      sourceKind: input.sourceKind,
       txId: Buffer.from(input.transactionId),
       txCbor: Buffer.from(input.canonicalTransactionCbor),
       programMaterialSidecarCbor:
@@ -363,7 +365,10 @@ export const buildDeterministicValidationMachineTrace = (
       phaseA.consensusPhase === "canonicalDecode"
     ) {
       try {
-        const projected = projectMidgardRawEnvelopeForPhaseAV1(queued.txCbor);
+        const projected = projectMidgardRawEnvelopeForPhaseAV1(
+          queued.txCbor,
+          queued.sourceKind,
+        );
         if (
           projected.canonicalSubmittedTx === null &&
           projected.scriptWitnesses.some(
@@ -609,44 +614,28 @@ export const buildDeterministicValidationMachineTrace = (
         ledgerDeltaOperationLeafHashes,
         operationIndex,
       );
-    // The machine's `transaction_commitment` — and every carriage that reveals
-    // compact bytes — binds the COMMITTED source triple, i.e. the leaf under
-    // the block root. For a forced transaction that leaf carries the
-    // OPERATOR'S adjudicated validity scalar (§2.4.3(e)), not the submitted
-    // admission claim — and not this replay's verdict: a challenger replaying
-    // an operator's accepted claim to a rejection still binds the accepted
-    // leaf it disputes. So the proof source is adjudicated by the committed
-    // leaf's verdict (defaulting to the replayed verdict, exact on the
-    // classifier path where this replay produces the leaf). No machine step
-    // reads the scalar (on-chain or here) and the body bytes are untouched,
-    // so the trace's decisions are unchanged; only the bound bytes move.
-    // Normal sources are committed as submitted.
-    const committedForcedVerdict = input.committedForcedVerdict ?? verdict;
-    const proofSource =
+    // Exact submitted bytes bind the source independently of the operator's verdict.
+    const proofSource = (
       input.sourceKind === "forced"
-        ? deriveMidgardNativeTxProofSource(
-            adjudicateMidgardNativeTxFullValidity(
-              decodeMidgardNativeTxFullFromCanonicalCbor(
-                input.canonicalTransactionCbor,
-              ),
-              committedForcedVerdict === "accepted"
-                ? "TxIsValid"
-                : "TxIsInvalid",
-            ),
-          )
-        : deriveMidgardNativeTxProofSourceFromCanonicalCbor(
-            input.canonicalTransactionCbor,
-          );
-    const compactProofTransaction = decodeMidgardNativeTxCompact(
-      proofSource.compactCbor,
-    );
+        ? deriveMidgardForcedTxProofSourceFromCanonicalCbor
+        : deriveMidgardNativeTxProofSourceFromCanonicalCbor
+    )(input.canonicalTransactionCbor);
+    const compactProofTransaction = (
+      input.sourceKind === "forced"
+        ? decodeMidgardForcedTxCompact
+        : decodeMidgardNativeTxCompact
+    )(proofSource.compactCbor);
     const compactProofWitnessSet = decodeMidgardNativeTxWitnessSetCompact(
       proofSource.witnessSetCompactCbor,
     );
-    const transactionCommitment =
-      computeMidgardNativeTxProofCommitment(proofSource);
+    const transactionCommitment = (
+      input.sourceKind === "forced"
+        ? computeMidgardForcedTxProofCommitment
+        : computeMidgardNativeTxProofCommitment
+    )(proofSource);
     const fieldPreimages = deriveMidgardTxFieldPreimages(
       input.canonicalTransactionCbor,
+      input.sourceKind,
     );
     const machineFieldTrace = (fieldIndex: number): MidgardBoundedCollection =>
       countedMachineFieldTrace(

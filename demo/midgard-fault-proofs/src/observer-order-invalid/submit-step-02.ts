@@ -99,6 +99,7 @@ export const submitObserverOrderInvalidStep02 = async ({
     Buffer.from(evidence.fieldPreimageHex, "hex"),
   );
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: 3,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,

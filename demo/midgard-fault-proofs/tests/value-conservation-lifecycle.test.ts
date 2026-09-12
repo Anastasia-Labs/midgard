@@ -10,6 +10,10 @@ import {
   encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
+import {
+  encodeMidgardForcedTxCanonical as forcedFullBytes,
+  materializeMidgardForcedTxFromCanonical as forcedView,
+} from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 import { Constr, Data, type UTxO } from "@lucid-evolution/lucid";
@@ -647,8 +651,8 @@ describe("universal value conservation", () => {
         ? conservationForcedSource({
             header: block.header,
             membership: forcedMembership!,
-            transactionCbor: encodeMidgardNativeTxCanonical(
-              fixture.nativeTx,
+            transactionCbor: forcedFullBytes(
+              forcedView(fixture.nativeTx),
             ).toString("hex"),
           })
         : {
@@ -743,8 +747,9 @@ describe("universal value conservation", () => {
       const artifact: ValueConservationArtifact = {
         schemaVersion: VALUE_CONSERVATION_ARTIFACT,
         headerCbor: Data.to(block.header, SDK.Header),
-        transactionCbor: encodeMidgardNativeTxCanonical(
-          fixture.nativeTx,
+        transactionCbor: (forced
+          ? forcedFullBytes(forcedView(fixture.nativeTx))
+          : encodeMidgardNativeTxCanonical(fixture.nativeTx)
         ).toString("hex"),
         claimCbor: Data.to(source.source.claim, ConservationClaim),
         forcedMembershipCbor:
@@ -951,6 +956,7 @@ describe("universal value conservation", () => {
             artifact,
           });
           const planned = planFaultProofFieldOpening({
+            anchorSourceKind: forced ? 1n : 0n,
             fieldIndex,
             anchorTxId: source.source.transaction_id,
             nativeTxCompactCbor: source.nativeTxCompactCbor,
@@ -974,6 +980,7 @@ describe("universal value conservation", () => {
         }
 
         const planned = planFaultProofFieldOpening({
+          anchorSourceKind: forced ? 1n : 0n,
           fieldIndex,
           anchorTxId: source.source.transaction_id,
           nativeTxCompactCbor: source.nativeTxCompactCbor,

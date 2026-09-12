@@ -4,6 +4,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardForcedTxCanonical,
+} from "@al-ft/midgard-core";
+import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
   computeFraudProofRawL1RollbackCursor,
@@ -120,7 +124,11 @@ const ordinaryForcedOrder = (
   const witness = SDK.userEventWitnessScriptHash(assetName);
   const scripts = facts.scripts.forcedOrder;
   const payload = genuineUserEventForcedPayloadForCanonicalTx(
-    retained.transaction.canonicalCbor,
+    encodeMidgardForcedTxCanonical(
+      decodeMidgardNativeTxFullFromCanonicalCbor(
+        retained.transaction.canonicalCbor,
+      ),
+    ),
   );
   const datum = Data.to(
     {
@@ -141,7 +149,7 @@ const ordinaryForcedOrder = (
         tx: {
           tx_id: payload.tx_id,
           transaction_commitment: payload.transaction_commitment,
-          source: payload.source,
+          submitted_source: payload.submitted_source,
         },
       },
     },

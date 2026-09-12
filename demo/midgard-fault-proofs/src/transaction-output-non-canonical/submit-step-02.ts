@@ -104,6 +104,7 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
     Buffer.from(evidence.fieldPreimageHex, "hex"),
   );
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: evidence.fieldIndex,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,

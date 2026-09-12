@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
-  deriveMidgardNativeTxFaultEvidenceMaterial,
+  deriveMidgardForcedTxFaultEvidenceMaterial,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import * as FP from "@al-ft/midgard-fault-proofs";
@@ -150,7 +150,7 @@ it
       sourceKey: forced.key,
       rejectionReason: forced.value.verdict.ForcedTxInvalid.reason,
     });
-    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+    const material = deriveMidgardForcedTxFaultEvidenceMaterial(
       forced.fullTransactionCbor,
     );
     if (category === "redeemerCanonicity")

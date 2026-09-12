@@ -39,7 +39,7 @@ const FORCED_KEY_CBOR = `d8799f5820${"9d".repeat(32)}03ff`;
 const FORCED_VALUE_CBOR = Data.to(
   {
     tx_id: "ae".repeat(32),
-    source: {
+    submitted_source: {
       compact_cbor: "80",
       witness_set_compact_cbor: "80",
       field_preimage_lengths_cbor: "80",

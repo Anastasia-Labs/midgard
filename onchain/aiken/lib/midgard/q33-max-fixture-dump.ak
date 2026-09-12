@@ -167,6 +167,7 @@ fn grammar_after(budget: Int) {
     WitnessAnchor {
       tx_id: block.tx_id,
       witness_set_hash: block.compact.witness_set_hash,
+      source_kind: 0,
     },
     script_witnesses_field_index,
     [],
@@ -183,6 +184,7 @@ fn semantic_after(budget: Int) {
     WitnessAnchor {
       tx_id: block.tx_id,
       witness_set_hash: block.compact.witness_set_hash,
+      source_kind: 0,
     },
     script_witnesses_field_index,
     field_grammar_checkpoint_hash(terminal_grammar),
@@ -249,6 +251,7 @@ pub fn all() -> ByteArray {
     WitnessAnchor {
       tx_id: block.tx_id,
       witness_set_hash: block.compact.witness_set_hash,
+      source_kind: 0,
     },
     script_witnesses_field_index,
     [],
@@ -270,6 +273,7 @@ pub fn all() -> ByteArray {
     WitnessAnchor {
       tx_id: block.tx_id,
       witness_set_hash: block.compact.witness_set_hash,
+      source_kind: 0,
     },
     script_witnesses_field_index,
     field_grammar_checkpoint_hash(grammar_224_value),

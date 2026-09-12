@@ -295,6 +295,7 @@ export const admitLedgerAbsenceArtifact = (
     throw new Error("ledger-absence artifact changed detection identity");
   }
   const fieldPlan = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex:
       category === "nonExistentInput"
         ? MIDGARD_FIELD_INDEX.spendInputs

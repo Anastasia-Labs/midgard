@@ -6,17 +6,18 @@
  */
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
   decodeMidgardFieldPreimage,
-  deriveMidgardNativeTxProofSource,
   deriveMidgardNativeTxWitnessSetCompact,
   encodeMidgardFieldPreimage,
+  encodeMidgardForcedTxCompact,
   encodeMidgardNativeTxCompact,
   encodeMidgardNativeTxWitnessSetCompact,
   materializeMidgardNativeTxFromCanonical,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   type FieldOpening,
   ForcedInclusionTxV1Schema,
@@ -133,8 +134,14 @@ export const observerShape = ({
 export const transactionIdOf = (shape: ObserverShape): string =>
   computeMidgardNativeTxId(shape.nativeTx).toString("hex");
 
-export const compactCborHex = (nativeTx: MidgardNativeTxFull): string =>
-  encodeMidgardNativeTxCompact(nativeTx.compact).toString("hex");
+export const compactCborHex = (
+  nativeTx: MidgardNativeTxFull,
+  sourceKind = 0n,
+): string =>
+  (sourceKind === 1n
+    ? encodeMidgardForcedTxCompact(nativeTx.compact)
+    : encodeMidgardNativeTxCompact(nativeTx.compact)
+  ).toString("hex");
 
 export const witnessSetCompactCborHex = (
   nativeTx: MidgardNativeTxFull,
@@ -208,15 +215,12 @@ export const buildForcedObserverLeaf = async ({
   readonly sourceKey: { transactionId: string; outputIndex: bigint };
   readonly rejectionReason: RejectionReason;
 }) => {
-  const invalid = adjudicateMidgardNativeTxFullValidity(
-    shape.nativeTx,
-    "TxIsInvalid",
-  );
+  const invalid = materializeMidgardForcedTxFromCanonical(shape.nativeTx);
   const transactionId = computeMidgardNativeTxId(invalid).toString("hex");
-  const proofSource = deriveMidgardNativeTxProofSource(invalid);
+  const proofSource = deriveMidgardForcedTxProofSource(invalid);
   const transaction = {
     tx_id: transactionId,
-    source: {
+    submitted_source: {
       compact_cbor: proofSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:
         proofSource.witnessSetCompactCbor.toString("hex"),
@@ -408,6 +412,7 @@ export const submitObserversForbiddenStep02Raw = async ({
     stepIndex,
   });
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: 3,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,

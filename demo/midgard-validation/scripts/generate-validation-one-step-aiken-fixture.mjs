@@ -12,7 +12,7 @@ import {
   deriveMidgardNativeTxCompact,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCanonical,
+  encodeMidgardForcedTxCanonical,
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   hashMidgardValidationMachineState,
@@ -22,8 +22,8 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_DISPUTE_VERSION,
 } from "@al-ft/midgard-core";
-import { planMidgardFieldCarriage } from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
-import { selectMidgardFieldCarriageTier } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+import { planMidgardFieldCarriage } from "@al-ft/midgard-core/codec/native-tx-carriage";
+import { selectMidgardFieldCarriageTier } from "@al-ft/midgard-core/codec/native-tx-field-access";
 import {
   deriveFieldPreimageCertification,
   fieldPreimagePublicationDatumCbor,
@@ -84,7 +84,7 @@ const spent = encodeMidgardSpendInputItem({
 });
 const output = encodeMidgardTxOutput({
   address,
-  value: { lovelace: 10n, assets: new Map() },
+  value: { lovelace: 100_000_000n, assets: new Map() },
 });
 const encodeByteList = (items) => encodeCbor(items.map(Buffer.from));
 const body = {
@@ -132,7 +132,7 @@ const transaction = {
   witnessSet,
 };
 const transactionId = computeMidgardNativeTxId(transaction);
-const canonicalTransactionCbor = encodeMidgardNativeTxCanonical(transaction);
+const canonicalTransactionCbor = encodeMidgardForcedTxCanonical(transaction);
 // The ledger insert key, so the same §5.3 encoder as `spent` above: on-chain
 // `ledger_outref_key` is a direct call to `encode_midgard_tx_input`, and a key
 // built any other way would not be the one the validator derives.
@@ -198,7 +198,7 @@ const buildTraceForOutputItem = async (itemBytes) => {
   const probe = (payloadBytes) =>
     encodeMidgardTxOutput({
       address,
-      value: { lovelace: 10n, assets: new Map() },
+      value: { lovelace: 100_000_000n, assets: new Map() },
       datum: { kind: "inline", cbor: datumFiller(payloadBytes) },
     });
   let payload = Math.max(0, itemBytes - probe(0).length);
@@ -276,7 +276,7 @@ const buildTraceForOutputItem = async (itemBytes) => {
       blockSlot: 100n,
       transactionId: vectorTransactionId,
       canonicalTransactionCbor:
-        encodeMidgardNativeTxCanonical(vectorTransaction),
+        encodeMidgardForcedTxCanonical(vectorTransaction),
       priorUtxosRoot: vectorSteps[0].preRoot.toString("hex"),
       postUtxosRoot: vectorSteps.at(-1).postRoot.toString("hex"),
       ledgerWitnessEntries: [{ outRef: spent, output }],
@@ -677,8 +677,14 @@ test typescript_generated_canonical_decode_step_is_exact() {
 /// below (#600).
 test typescript_generated_field_chunk_auxiliary_is_exact() {
   expect Some(auxiliary_data) = cbor.deserialise(field_chunk_auxiliary_cbor)
-  expect auxiliary: ValidationAuxiliaryWitnessV1 = auxiliary_data
-  expect TransactionFieldChunkWitness { field_index, item_index, carriage } = auxiliary
+  expect auxiliary: vm_machine_types.ValidationAuxiliaryWitnessV1 = auxiliary_data
+  expect
+      vm_machine_types.TransactionFieldChunkWitness {
+        field_index,
+        item_index,
+        carriage,
+      }
+    = auxiliary
   and {
     bytearray.length(field_chunk_auxiliary_cbor) == ${fieldChunkArgument.auxiliaryCbor.length.toString()},
     bytearray.length(field_chunk_auxiliary_cbor) < 16_384,
@@ -709,8 +715,14 @@ test typescript_generated_field_chunk_auxiliary_is_exact() {
 /// transaction's *whole* reference-input list and not just its carriage.
 test typescript_generated_raw_utxo_carriage_auxiliary_is_exact() {
   expect Some(auxiliary_data) = cbor.deserialise(raw_utxo_auxiliary_cbor)
-  expect auxiliary: ValidationAuxiliaryWitnessV1 = auxiliary_data
-  expect TransactionFieldChunkWitness { field_index, item_index, carriage } = auxiliary
+  expect auxiliary: vm_machine_types.ValidationAuxiliaryWitnessV1 = auxiliary_data
+  expect
+      vm_machine_types.TransactionFieldChunkWitness {
+        field_index,
+        item_index,
+        carriage,
+      }
+    = auxiliary
   and {
     // O(1) in field size: a tier-2 carriage is one integer.
     bytearray.length(raw_utxo_auxiliary_cbor) == ${rawUtxoVector.auxiliaryCbor.length.toString()},
@@ -732,8 +744,14 @@ test typescript_generated_raw_utxo_carriage_auxiliary_is_exact() {
 /// just the shape.
 test typescript_generated_certified_carriage_auxiliary_is_exact() {
   expect Some(auxiliary_data) = cbor.deserialise(certified_auxiliary_cbor)
-  expect auxiliary: ValidationAuxiliaryWitnessV1 = auxiliary_data
-  expect TransactionFieldChunkWitness { field_index, item_index, carriage } = auxiliary
+  expect auxiliary: vm_machine_types.ValidationAuxiliaryWitnessV1 = auxiliary_data
+  expect
+      vm_machine_types.TransactionFieldChunkWitness {
+        field_index,
+        item_index,
+        carriage,
+      }
+    = auxiliary
   and {
     // O(1) in field size at the top of the ladder too: at most three indices
     // plus the manifest's, whatever the preimage weighs.
@@ -760,8 +778,8 @@ test typescript_generated_certified_carriage_auxiliary_is_exact() {
 /// commitment arithmetic, not delivery.
 test typescript_generated_complete_item_commitment_is_transition_only() {
   expect Some(item_auxiliary_data) = cbor.deserialise(item_auxiliary_cbor)
-  expect item_auxiliary: ValidationAuxiliaryWitnessV1 = item_auxiliary_data
-  expect TransactionFieldItemWitness { carriage } = item_auxiliary
+  expect item_auxiliary: vm_machine_types.ValidationAuxiliaryWitnessV1 = item_auxiliary_data
+  expect vm_machine_types.TransactionFieldItemWitness { carriage } = item_auxiliary
   expect Some(transition_data) = cbor.deserialise(transition_cbor)
   let no_auxiliary_data: Data = vm_machine_types.NoAuxiliaryWitness
   and {

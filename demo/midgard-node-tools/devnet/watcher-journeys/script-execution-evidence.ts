@@ -1,7 +1,7 @@
 import {
   computeHash32,
   decodeMidgardFieldPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardForcedTxFullFromCanonicalCbor,
   decodeMidgardVersionedScript,
   hashMidgardInlineScriptSourceLeaf,
 } from "@al-ft/midgard-core";
@@ -20,7 +20,7 @@ export const prepareJourneyNativeExecutionEvidence = async (
   const forced = block.reconstruction.forcedTransactions[0];
   if (forced === undefined || forced.value.verdict === "ForcedTxValid")
     throw new Error("Native execution fixture omitted its forced rejection");
-  const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
+  const tx = decodeMidgardForcedTxFullFromCanonicalCbor(
     forced.fullTransactionCbor,
   );
   const resolvedOutputsByOutRef = new Map(
@@ -32,6 +32,7 @@ export const prepareJourneyNativeExecutionEvidence = async (
   const reconstruction =
     executionNativeScriptInvalid.reconstructExecutionNativeScriptPurposes({
       canonicalTransactionCbor: forced.fullTransactionCbor,
+      sourceKind: "forced",
       resolvedOutputsByOutRef,
     });
   const purpose = reconstruction.purposes[0];

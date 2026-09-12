@@ -12,13 +12,13 @@ import {
   type WatcherConfig,
 } from "../runtime/config.js";
 import {
-  assertVerifiedWatcherDeploymentIdentity,
-  type VerifiedWatcherDeploymentIdentity,
-} from "../runtime/deployment-identity.js";
-import {
   parseWatcherCustomNetwork,
   type WatcherCustomNetwork,
 } from "../runtime/custom-network.js";
+import {
+  assertVerifiedWatcherDeploymentIdentity,
+  type VerifiedWatcherDeploymentIdentity,
+} from "../runtime/deployment-identity.js";
 import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
 import {
   readWatcherLocalBackfillObservation,

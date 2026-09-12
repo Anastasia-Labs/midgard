@@ -3,11 +3,10 @@ use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/codec.{encode_definite_bytes}
 use midgard/fraud_proofs/native_tx/compact.{
-  decode_native_tx_compact_v1, native_tx_proof_commitment_v1,
-  verify_native_tx_proof_source_v1,
+  decode_tx_compact_view_v1, tx_proof_commitment_v1, verify_tx_proof_source_v1,
 }
 use midgard/fraud_proofs/native_tx/types.{
-  NativeTxWitnessSetCompact, VerifiedMidgardNativeTxCompact,
+  NativeTxWitnessSetCompact, VerifiedTxSourceView,
 }
 use midgard/ledger_output_v1
 use midgard/native_tx_field_access_v1
@@ -186,7 +185,7 @@ pub fn script_sources_stage_seven_with_observer_commitment(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ScriptSourcesControlV1,
   observer_commitment: ByteArray,
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   door: field_door.MachineFieldDoorV1,
 ) -> Bool {
@@ -278,7 +277,8 @@ pub fn script_sources_stage_seven(
   control: ScriptSourcesControlV1,
   door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  let Pair(verified_source, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified_source, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -399,7 +399,8 @@ fn script_sources_stage_seven_control_is_bound(
   and {
     script_sources_stage_seven_exact_control(control) == witness.work_witness_cbor,
     control.stage == 7,
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,
@@ -627,7 +628,8 @@ pub fn verify_script_sources_stage_seven_observer_semantics_v1(
   let control = script_sources_stage_seven_control_from_witness(
     witness.work_witness_cbor,
   )
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -706,7 +708,8 @@ pub fn verify_script_sources_stage_seven_observer_item_facts_v1(
   let control = script_sources_stage_seven_control_from_witness(
     witness.work_witness_cbor,
   )
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -802,7 +805,10 @@ pub fn verify_script_sources_stage_seven_receive_semantics_v1(
   let control = script_sources_stage_seven_control_from_witness(
     witness.work_witness_cbor,
   )
-  let observer_commitment = decode_native_tx_compact_v1(control.compact_cbor).body.required_observers_hash
+  let observer_commitment = decode_tx_compact_view_v1(
+    pre.source_kind,
+    control.compact_cbor,
+  ).body.required_observers_hash
   let purpose_leaf = script_proof_v1.purpose_leaf_hash(
     purpose_kind,
     purpose_index,
@@ -843,7 +849,10 @@ pub fn verify_script_sources_stage_seven_finish_semantics_v1(
   let control = script_sources_stage_seven_control_from_witness(
     witness.work_witness_cbor,
   )
-  let observer_commitment = decode_native_tx_compact_v1(control.compact_cbor).body.required_observers_hash
+  let observer_commitment = decode_tx_compact_view_v1(
+    pre.source_kind,
+    control.compact_cbor,
+  ).body.required_observers_hash
   and {
     script_sources_stage_seven_control_is_bound(pre, witness, control),
     script_sources_stage_seven_observer_scan_is_complete(
@@ -978,7 +987,8 @@ fn script_sources_stage_eight_control_is_bound(
   and {
     script_sources_discovery_frame_is_exact(witness, control),
     control.stage == 8,
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,
@@ -1230,7 +1240,8 @@ fn script_sources_stage_nine_control_is_bound(
   )
   and {
     control.stage == 9,
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,
@@ -1681,7 +1692,8 @@ fn script_sources_stage_ten_control_is_bound(
   and {
     script_sources_discovery_frame_is_exact(witness, control),
     control.stage == 10,
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,
@@ -1835,7 +1847,8 @@ fn script_sources_stage_eleven_control_is_bound(
   and {
     script_sources_discovery_frame_is_exact(witness, control),
     control.stage == 11,
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,
@@ -2098,7 +2111,8 @@ fn script_sources_stage_twelve_control_is_bound(
   and {
     script_sources_discovery_frame_is_exact(witness, control),
     control.stage == 12,
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,

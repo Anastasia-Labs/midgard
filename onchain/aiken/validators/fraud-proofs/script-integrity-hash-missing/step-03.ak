@@ -6,9 +6,9 @@ use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{
   WitnessAnchor, WitnessFieldOpening, WitnessTxOpening, anchored_field_view,
   anchored_native_tx, opened_field_grammar_certification,
-  script_witnesses_field_index,
+  script_witnesses_field_index, source_kind_of_anchor,
 }
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor_v1}
+use midgard/fraud_proofs/native_tx/compact.{verify_tx_compact_cbor_v1}
 use midgard/fraud_proofs/script_integrity_hash_missing/rule
 use midgard/fraud_proofs/script_integrity_hash_missing/state.{
   DecisionStateV1, ScriptGrammar, StagedStateV1, direct_field_item_limit,
@@ -70,6 +70,7 @@ validator main(
               WitnessAnchor {
                 tx_id: state.subject.transaction_id,
                 witness_set_hash: state.witness_set_hash,
+                source_kind: state.subject.source_kind,
               },
             )
             let script_view = anchored_field_view(
@@ -90,7 +91,8 @@ validator main(
                 field_item_count(script_view) <= direct_field_item_limit,
                 field_item_count(redeemer_view) <= direct_field_item_limit,
               }
-            let verified = verify_native_tx_compact_cbor_v1(
+            let verified = verify_tx_compact_cbor_v1(
+              source_kind_of_anchor(state.subject.source_kind),
               state.subject.transaction_id,
               native_tx_compact_cbor,
             )
@@ -113,6 +115,7 @@ validator main(
               WitnessAnchor {
                 tx_id: state.subject.transaction_id,
                 witness_set_hash: state.witness_set_hash,
+                source_kind: state.subject.source_kind,
               },
               script_witnesses_field_index,
               reference_inputs,
@@ -126,7 +129,8 @@ validator main(
             // complete grammar checkpoint.
             let next = certify_field_grammar(view, start, item_budget)
             expect WitnessFieldOpening { native_tx_compact_cbor, .. } = script_witnesses_opening
-            let verified = verify_native_tx_compact_cbor_v1(
+            let verified = verify_tx_compact_cbor_v1(
+              source_kind_of_anchor(state.subject.source_kind),
               state.subject.transaction_id,
               native_tx_compact_cbor,
             )

@@ -381,7 +381,9 @@ await import(${JSON.stringify(new URL("../support/native-chain-sync-fixture.mjs"
       );
     }
     close(): void {
+      if (this.closed) return;
       this.closed = true;
+      queueMicrotask(() => this.dispatchEvent(new Event("close")));
     }
   }
   vi.stubGlobal("WebSocket", BoundarySocket);

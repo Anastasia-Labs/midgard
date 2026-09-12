@@ -13,8 +13,10 @@ import {
   MidgardNativeScriptDecodingTraceOutcomeKinds,
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
+  encodeProofThreadForcedSourceKey,
   encodeVerdictSubject,
   forcedVerdictSubject,
   hashHexWithBlake2b,
@@ -183,9 +185,11 @@ export const prepareOutputReferenceScriptDecodingEvidence = ({
   readonly admitHonestVerdict?: boolean;
 }): OutputReferenceScriptDecodingEvidence => {
   classifyOutputReferenceScriptDecodingFinding({ subject, outputIndex });
-  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-    canonicalTransactionCbor,
-  );
+  const material = (
+    subject.source_kind === 1n
+      ? deriveMidgardForcedTxFaultEvidenceMaterial
+      : deriveMidgardNativeTxFaultEvidenceMaterial
+  )(canonicalTransactionCbor);
   if (material.transactionId.toString("hex") !== subject.transaction_id)
     return fail("transaction identity was substituted");
   const field = material.fieldPreimages[2]!;
@@ -430,7 +434,10 @@ export const detectOutputReferenceScriptDecodingCanonicalViolations = (
     );
     const position = forced
       ? block.reconstruction.forcedTransactions.findIndex(
-          ({ value }) => value.tx_id === evidence.subject.transaction_id,
+          ({ key, value }) =>
+            value.tx_id === evidence.subject.transaction_id &&
+            encodeProofThreadForcedSourceKey(key).toString("hex") ===
+              evidence.subject.source_key,
         )
       : block.transactions.findIndex(
           ({ nodeTxId }) => nodeTxId === evidence.subject.transaction_id,

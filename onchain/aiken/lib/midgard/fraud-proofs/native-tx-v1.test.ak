@@ -1,3 +1,10 @@
+use aiken/builtin
+use aiken/cbor
+use aiken/collection/list
+use aiken/crypto.{blake2b_256}
+use aiken/primitive/bytearray
+use midgard/bounded_collection_v1
+use midgard/bounded_item_v1
 // Some constants in this module are GENERATED; the tests around them are written
 // by hand.
 //
@@ -11,20 +18,14 @@
 // `demo/midgard-validation/tests/`. Both families were hand-mirrored twins before
 // #588 and are regenerated now, never retyped.
 
-use aiken/builtin
-use aiken/cbor
-use aiken/collection/list
-use aiken/crypto.{blake2b_256}
-use aiken/primitive/bytearray
-use midgard/bounded_collection_v1
-use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/codec as native_codec
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_compact_v1, decode_native_tx_field_preimage_lengths_v1,
   decode_native_tx_witness_set_compact, encode_native_tx_body_compact,
   encode_native_tx_compact_v1, encode_native_tx_field_preimage_lengths_v1,
   encode_native_tx_proof_source_v1, encode_native_tx_witness_set_compact,
-  native_tx_canonical_size_v1, native_tx_full_hash_v1, native_tx_id_for_version,
+  ledger_tx_size_v1, native_tx_canonical_size_v1, native_tx_compact_view,
+  native_tx_full_hash_v1, native_tx_id_for_version,
   native_tx_proof_commitment_v1, verify_native_tx_compact_cbor_v1,
   verify_native_tx_proof_source_v1,
 }
@@ -41,7 +42,7 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardAddressWitness, MidgardV1Script, MidgardVersionedScript,
   NativeCardanoScript, NativeTxBodyCompact, NativeTxCompact,
   NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact, PlutusV3Script,
-  TxIsInvalid, TxIsValid, VerifiedMidgardNativeTxCompact, native_tx_version_v1,
+  TxIsInvalid, TxIsValid, VerifiedTxSourceView, native_tx_version_v1,
 }
 use midgard/native_tx_field_access_v1
 use midgard/native_tx_machine_walk_v1
@@ -129,21 +130,19 @@ fn c20_witness_set(
   }
 }
 
-fn c20_verified(
-  witness_set: NativeTxWitnessSetCompact,
-) -> VerifiedMidgardNativeTxCompact {
+fn c20_verified(witness_set: NativeTxWitnessSetCompact) -> VerifiedTxSourceView {
   let witness_set_cbor = encode_native_tx_witness_set_compact(witness_set)
   let compact = NativeTxCompact {
     ..sample_compact(),
     witness_set_hash: blake2b_256(witness_set_cbor),
   }
-  VerifiedMidgardNativeTxCompact {
+  VerifiedTxSourceView {
     tx_id: native_tx_id_for_version(
       native_tx_version_v1,
       encode_native_tx_body_compact(compact.body),
     ),
     version: native_tx_version_v1,
-    tx_compact: compact,
+    tx_compact: native_tx_compact_view(compact),
   }
 }
 
@@ -279,7 +278,9 @@ test v1_n02_n06_compact_and_preimage_exact_vector() {
     encode_native_tx_witness_set_compact(witness_set) == n05_compact_witness_cbor,
     blake2b_256(n05_compact_witness_cbor) == compact.witness_set_hash,
     native_tx_id_for_version(native_tx_version_v1, n03_compact_body_cbor) == n02_transaction_id,
-    verify_native_tx_compact_cbor_v1(n02_transaction_id, n02_compact_cbor).tx_compact == compact,
+    verify_native_tx_compact_cbor_v1(n02_transaction_id, n02_compact_cbor).tx_compact == native_tx_compact_view(
+      compact,
+    ),
   }
 }
 
@@ -326,7 +327,7 @@ test v1_n07_n09_proof_source_and_full_hash_exact_vector() {
       source.witness_set_compact_cbor,
       source.field_preimage_lengths_cbor,
     ) == n07_proof_commitment,
-    native_tx_canonical_size_v1(verified.tx_compact, lengths) == 96,
+    ledger_tx_size_v1(verified.tx_compact.body, lengths) == 96,
     encode_native_tx_witness_set_compact(witness_set) == n05_compact_witness_cbor,
     native_tx_full_hash_v1(n01_canonical_full_cbor) == n09_full_hash,
     native_tx_proof_commitment_v1(
@@ -528,7 +529,7 @@ test v1_compact_round_trips_through_exact_v1_entry_points() {
   and {
     decode_native_tx_compact_v1(compact_cbor) == compact,
     verified.version == native_tx_version_v1,
-    verified.tx_compact == compact,
+    verified.tx_compact == native_tx_compact_view(compact),
   }
 }
 
@@ -549,7 +550,7 @@ test v1_proof_source_binds_compact_body_and_all_witness_field_hashes() {
     field_preimage_lengths_cbor,
   )
   and {
-    verified.tx_compact == compact,
+    verified.tx_compact == native_tx_compact_view(compact),
     verified_witness_set == witness_set,
     bytearray.length(
       encode_native_tx_proof_source_v1(
@@ -1569,7 +1570,7 @@ test v1_c20_7_accepted_cardano_maximum_matches_typescript_boundary_fixture() {
     native_tx_field_access_v1.field_commitment_from_items(item_cbors) == c20_7_maximum_cardano_collection_commitment,
     witness_set.addr_tx_wits_hash == c20_7_maximum_cardano_collection_commitment,
     encode_address_witness_preimage(decoded) == preimage,
-    native_tx_canonical_size_v1(verified.tx_compact, lengths) == c20_7_maximum_cardano_canonical_bytes,
+    ledger_tx_size_v1(verified.tx_compact.body, lengths) == c20_7_maximum_cardano_canonical_bytes,
     transaction.verify_midgard_transaction_field_preimage_v1(
       c20_7_maximum_cardano_transaction_id,
       c20_7_maximum_cardano_transaction_commitment,
@@ -1657,7 +1658,7 @@ test v1_c20_6_accepted_cardano_maximum_matches_typescript_boundary_fixture() {
     native_tx_field_access_v1.field_commitment_from_items(item_cbors) == c20_6_maximum_cardano_collection_commitment,
     witness_set.script_tx_wits_hash == c20_6_maximum_cardano_collection_commitment,
     encode_script_witness_preimage(decoded) == preimage,
-    native_tx_canonical_size_v1(verified.tx_compact, lengths) == c20_6_maximum_cardano_canonical_bytes,
+    ledger_tx_size_v1(verified.tx_compact.body, lengths) == c20_6_maximum_cardano_canonical_bytes,
     transaction.verify_midgard_transaction_field_preimage_v1(
       c20_6_maximum_cardano_transaction_id,
       c20_6_maximum_cardano_transaction_commitment,

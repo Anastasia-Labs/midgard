@@ -1,8 +1,8 @@
 import {
   computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSource,
+  deriveMidgardForcedTxProofSource,
   deriveMidgardNativeTxWitnessSetCompact,
-  materializeMidgardNativeTxFromCanonical,
+  materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import {
@@ -28,9 +28,8 @@ export const buildMissingSignatureForcedTransaction = ({
       index === signerCount - 1 ? hash : index.toString(16).padStart(56, "0"),
   );
   const base = buildMissingSignatureSubject().nativeTx;
-  const unsigned = materializeMidgardNativeTxFromCanonical({
+  const unsigned = materializeMidgardForcedTxFromCanonical({
     ...base,
-    validity: "TxIsInvalid",
     body: {
       ...base.body,
       requiredSignersPreimageCbor: encodeCbor(
@@ -52,14 +51,14 @@ export const buildMissingSignatureForcedTransaction = ({
           signature: "00".repeat(64),
         },
   );
-  const transaction = materializeMidgardNativeTxFromCanonical({
+  const transaction = materializeMidgardForcedTxFromCanonical({
     ...unsigned,
     witnessSet: {
       ...unsigned.witnessSet,
       addrTxWitsPreimageCbor: encodeAddressWitnessPreimage(addrTxWits),
     },
   });
-  const source = deriveMidgardNativeTxProofSource(transaction);
+  const source = deriveMidgardForcedTxProofSource(transaction);
   const compact = deriveMidgardNativeTxWitnessSetCompact(
     transaction.witnessSet,
   );

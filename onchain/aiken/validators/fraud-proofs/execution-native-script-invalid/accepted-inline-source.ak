@@ -70,6 +70,7 @@ validator main(
           WitnessAnchor {
             tx_id: state.bound.subject.transaction_id,
             witness_set_hash: compact.witness_set_hash,
+            source_kind: state.bound.subject.source_kind,
           },
           script_witnesses_field_index,
           reference_inputs,

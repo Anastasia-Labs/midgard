@@ -160,7 +160,7 @@ describe("canonical V1 spend-inputs Cardano boundary", () => {
       inputField.nativeCanonicalBytes,
     );
     expect(retainedDa.forced.reconstructedCanonicalBytes).toBe(
-      inputField.nativeCanonicalBytes,
+      inputField.nativeCanonicalBytes - 1,
     );
     expect(retainedDa.normal.revealStepCount).toBe(
       inputField.completeFoldStepCount,

@@ -845,7 +845,7 @@ export const publishReferenceChain = async (
           ) {
             if (count === 1)
               throw new Error(
-                `${batch[0]!.name} exceeds signed publication limit`,
+                `${batch[0]!.name} exceeds signed publication limit (${signed.toCBOR().length / 2} > ${params.publicationLimit(batch[0]!.name)} bytes)`,
               );
             count -= 1;
             continue;

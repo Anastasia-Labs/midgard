@@ -1,7 +1,7 @@
 # Task 2: Implement one committed forced-transaction verdict
 
-- Status: Proposed
-- Last reviewed: 2026-09-10
+- Status: Implemented and locally verified; integration/release dependencies recorded
+- Last reviewed: 2026-09-11
 - Implementation boundary: complete local protocol implementation, rebuilt validators, and behavioral tests on one integration branch.
 - Dependencies: Task 1 completed, including its ADR, impact inventory, acceptance matrix, and reconstructible baseline.
 - Non-goals: live deployment/reset, changes to normal transaction semantics, rejection-policy redesign, unrelated cleanup, or partial deployment of the new format.
@@ -121,5 +121,119 @@ calls supports review but cannot replace working submission and challenge tests.
 
 ## Progress and handoff
 
-Execution not started; waiting for Task 1 outputs. Hand the complete integration
-state and evidence to [Task 3](03-verification.md), not an isolated package diff.
+Task 1 is complete. Task 2 has an isolated implementation checkout:
+
+- Worktree: `/home/gumbo/midgard-hub/midgard-forced-inclusion`.
+- Branch: `codex/forced-inclusion-verdict`.
+- Baseline snapshot: `a46ec6222a46650872061570cbe7f462d18e88e1`.
+- Snapshot parent: `9797ce41ce5d436e309eca07e2020ee29c395859` on
+  `colll78/canonical-v1-watcher-l1-source-checkpoint`.
+
+The snapshot includes Task 1 documents and the current uncommitted dependencies
+from the watcher checkout (298 changed or untracked paths). It was captured with
+a private Git index; the watcher branch and staged tree were not changed.
+This is an unverified integration baseline, not an implementation or release
+commit. Review Task 2 changes against this snapshot so inherited watcher work
+does not get attributed to the schema redesign. Capture provenance is in the
+original repository's `.git/codex-task-baselines/forced-inclusion-verdict-task2/baseline.json`.
+
+Dependencies were installed independently with the frozen lockfile, offline,
+using pnpm's copy import method. No ignored deployment configuration, durable
+state, Aiken build directory, or blueprint was copied. Worktree-local Git hook
+configuration points to `.githooks` in this checkout.
+
+Before commands in this worktree, load its local environment:
+
+```bash
+cd /home/gumbo/midgard-hub/midgard-forced-inclusion
+source "$(git rev-parse --absolute-git-dir)/task2-env.sh"
+```
+
+That file sets `MIDGARD_TEST_DATABASE_PREFIX=midgard_forced_verdict_task2`, points
+`MIDGARD_REAL_BLUEPRINT_PATH` at this checkout's future `onchain/aiken/plutus.json`,
+and separates Graphify state and fit evidence under this worktree's Git directory.
+Database suites now run only in the configured isolated namespace. Inspect any
+harness that bypasses the shared database helper before running it. Allocate fresh fit evidence
+directories and run identifiers for subsequent measurement runs as Task 1 requires.
+
+The Nix shell selects Node 22.22.2, but its pnpm 9.15.9 launcher has a Node 24
+shebang. Invoke pnpm through the shell's Node explicitly:
+
+```bash
+nix develop ./demo --command bash -c 'node "$(command -v pnpm)" --dir demo/midgard-core exec vitest run tests/native-codec.test.ts --reporter=verbose'
+```
+
+This baseline check passed: one file, 17 tests, exit 0, Vitest 3.0.7, Node 22.22.2,
+against snapshot `a46ec6222a46650872061570cbe7f462d18e88e1`. It establishes only
+the existing codec baseline; the full Task 2 acceptance matrix remains pending.
+
+Keep the watcher checkout running independently. At explicit integration
+checkpoints, compare its new work with this snapshot, reconcile overlapping
+source/codec/identity changes, and rerun the affected tests against the combined
+revision and rebuilt artifact. A separate worktree prevents concurrent file
+edits; it does not eliminate semantic integration work.
+
+Hand the complete integration state and evidence to
+[Task 3](03-verification.md), not an isolated package diff.
+
+### Implementation and focused verification (2026-09-11, 18:23 UTC)
+
+The schema migration is implemented across Aiken, core, SDK, validation, node,
+DA, watcher and all proof consumers. The full/compact forced source has no
+validity decision; the committed verdict is authoritative. Exact order-key
+selection, immutable SQL classification, independent replay, source-kind
+bindings, and incompatible-identity refusal have behavioral coverage.
+
+The current normal testnet blueprint contains 1,149 validator entries, SHA-256
+`e91e45ab81fc779a7b404cdbfde347c4f148aadd7bbf5a12160392640bb419e0`.
+Compiler: `v1.1.23+5adf783`; command: `aiken build --env testnet`.
+Nine deployment/initialization tests passed and regenerated watcher/DA fixtures
+from this identity. A late value-not-preserved size repair saves 23 compiled
+bytes while preserving exact opening authentication; eight focused Aiken tests
+and seven emulator lifecycle tests passed.
+
+The final Aiken run passed all 4,152 cases in 33 batches with exact inventory
+coverage. The full serialized fault-proof suite passed all 2,587 cases in all
+350 files, with no skips; the fresh namespace contains all 20 expected recorder
+fragments and 1,489 evaluated transaction rows. The complete local
+transaction-preparation command passed, including all 432 fault-proof emulator
+cases in 100 files. The focused T1–T7 matrix passed 410 cases across 29 files.
+
+Core (553), SDK (518), validation (461), DA (338) and node (1,609) have passing
+full-suite checkpoints. The watcher run passed 1,160 cases and failed one stale
+query-response assertion; the corrected file's four tests passed on recheck.
+The installed correction/healthy-successor journey passed. This is local
+regression evidence, not completion of the separate devnet watcher objective.
+Whole workspace lint, formatting and diff checks passed. Workspace typecheck
+still reports only the inherited missing recovery API. Final bounded reviews
+closed the identified source-migration defects.
+
+The [evidence index](../forced-inclusion-verdict-verification.md) records final
+counts, artifact identities, commands, limitations and the durable evidence
+archive. The [maximum-order dependency](order-mint-capacity-dependency.md)
+remains open under Task 1 M1's explicit reporting exception; maximum-order
+admission is not established. Reconcile the inherited watcher API dependency
+before workspace acceptance.
+
+The implementation and requested focused local verification are complete for
+handoff to Task 3's independent review, with those integration/capacity limits
+recorded. This is not release acceptance. No deployment, durable-state reset or
+merge has run. Task 3 and manual Preprod acceptance have not started.
+
+Command corrections: forward test flags with `pnpm run test --no-file-parallelism`.
+For fit writes, use `MIDGARD_FIT_FRAGMENT_DIR` and
+`MIDGARD_FIT_MEASUREMENT_RUN`; similarly named variables are ignored. Pin
+`MIDGARD_AIKEN_BIN` for the root-fixture generator as well as contract builds.
+
+### Scope clarification (2026-09-11)
+
+The user confirmed that making the already failing autonomous watcher detect and
+complete proofs on a Cardano devnet with Van Rossem configuration belongs to the
+separate watcher task. This change still owns its source/claim/replay migrations
+and introduced regressions. Run the prescribed watcher regression checks and
+record inherited failures separately; do not make completion of the independent
+autonomous watcher objective a redesign gate. Full Lucid Evolution fault-proof
+emulator confirmation has now passed as recorded above. Manual Preprod deployment, deposit, L2
+transactions, fraud, CLI proof completion and block removal have not run for this
+identity; Task 3's current live-submission exclusion means its handoff alone will
+not execute that separate acceptance flow.

@@ -19,6 +19,11 @@ import {
   reconstructMidgardTransaction,
   verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core";
+import {
+  computeMidgardForcedTxProofCommitment,
+  decodeMidgardForcedTxFullFromCanonicalCbor,
+  deriveMidgardForcedTxProofSourceFromCanonicalCbor,
+} from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import { countedMachineTransactionChunkSteps } from "@al-ft/midgard-validation";
@@ -123,6 +128,7 @@ const verifyFixtureProgramMaterial = ({
 
 const reconstructAuthenticatedCanonicalTransactionFromFieldChunks = (
   canonicalCbor: Uint8Array,
+  sourceKind: "normal" | "forced",
 ): {
   readonly transactionIdHex: string;
   readonly transactionCommitmentHex: string;
@@ -131,21 +137,34 @@ const reconstructAuthenticatedCanonicalTransactionFromFieldChunks = (
   readonly reconstructed: Buffer;
 } => {
   const exactCanonicalCbor = Buffer.from(canonicalCbor);
-  const transaction =
-    decodeMidgardNativeTxFullFromCanonicalCbor(exactCanonicalCbor);
+  const transaction = (
+    sourceKind === "forced"
+      ? decodeMidgardForcedTxFullFromCanonicalCbor
+      : decodeMidgardNativeTxFullFromCanonicalCbor
+  )(exactCanonicalCbor);
   const transactionId = computeMidgardNativeTxId(transaction);
-  const source =
-    deriveMidgardNativeTxProofSourceFromCanonicalCbor(exactCanonicalCbor);
-  const transactionCommitment = computeMidgardNativeTxProofCommitment(source);
+  const source = (
+    sourceKind === "forced"
+      ? deriveMidgardForcedTxProofSourceFromCanonicalCbor
+      : deriveMidgardNativeTxProofSourceFromCanonicalCbor
+  )(exactCanonicalCbor);
+  const transactionCommitment = (
+    sourceKind === "forced"
+      ? computeMidgardForcedTxProofCommitment
+      : computeMidgardNativeTxProofCommitment
+  )(source);
   // §4 authenticates a field once, over its whole preimage, against the hash the
   // compact structure carries — which is what `reconstructMidgardTransaction`
   // does for all nine. The retired counted chain verified per-item chunk openings
   // here instead; §4 leaves nothing for such an opening to be checked against.
-  const fields = deriveMidgardTxFieldPreimages(exactCanonicalCbor);
+  const fields = deriveMidgardTxFieldPreimages(exactCanonicalCbor, sourceKind);
   // The machine's own counted trace is still what a dispute step walks, so its
   // step count and widest chunk stay measured here. They are trace measurements,
   // not publication claims (see `countedMachineFieldChunkSteps`).
-  const chunks = countedMachineTransactionChunkSteps(exactCanonicalCbor);
+  const chunks = countedMachineTransactionChunkSteps(
+    exactCanonicalCbor,
+    sourceKind,
+  );
   return {
     transactionIdHex: transactionId.toString("hex"),
     transactionCommitmentHex: transactionCommitment.toString("hex"),
@@ -154,6 +173,7 @@ const reconstructAuthenticatedCanonicalTransactionFromFieldChunks = (
       ...chunks.map(({ chunkProof }) => chunkProof.chunk.length),
     ),
     reconstructed: reconstructMidgardTransaction({
+      sourceKind,
       transactionId,
       transactionCommitment,
       source,
@@ -313,26 +333,39 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       expect(forced).toBeDefined();
 
       const authenticated = [
-        normal!.fullTransactionCbor,
-        forced!.fullTransactionCbor,
-      ];
-      for (const sourceCanonicalCbor of authenticated) {
+        [
+          "normal",
+          normal!.fullTransactionCbor,
+          fixture.transactionCommitmentHex,
+        ],
+        [
+          "forced",
+          forced!.fullTransactionCbor,
+          fixture.forcedTransactionCommitmentHex,
+        ],
+      ] as const;
+      for (const [
+        sourceKind,
+        sourceCanonicalCbor,
+        expectedCommitment,
+      ] of authenticated) {
         const folded =
           reconstructAuthenticatedCanonicalTransactionFromFieldChunks(
             sourceCanonicalCbor,
+            sourceKind,
           );
         expect({
           transactionIdHex: folded.transactionIdHex,
           transactionCommitmentHex: folded.transactionCommitmentHex,
         }).toEqual({
           transactionIdHex: boundary.transactionIdHex,
-          transactionCommitmentHex: boundary.transactionCommitmentHex,
+          transactionCommitmentHex: expectedCommitment,
         });
         expect(folded.revealStepCount).toBeGreaterThan(0);
         expect(folded.maximumChunkBytes).toBeLessThanOrEqual(
           MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
         );
-        expect(folded.reconstructed).toEqual(canonicalCbor);
+        expect(folded.reconstructed).toEqual(sourceCanonicalCbor);
       }
     }
   }, 120_000);

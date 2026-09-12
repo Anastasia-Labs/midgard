@@ -124,10 +124,10 @@ describe("input-set-uniqueness wrongful-rejection rules", () => {
             key: { transactionId: "bb".repeat(32), outputIndex: 0n },
             value: {
               tx_id: fixture.nativeTxId,
-              source: fixture.forcedSource,
+              submitted_source: fixture.forcedSource,
               verdict: { ForcedTxInvalid: { reason } },
             },
-            fullTransactionCbor: fixture.fullTransactionCbor,
+            fullTransactionCbor: fixture.forcedFullTransactionCbor,
           },
         ],
       },
@@ -152,6 +152,7 @@ describe("input-set-uniqueness wrongful-rejection rules", () => {
     });
     expect(() =>
       planFaultProofFieldOpening({
+        anchorSourceKind: 0n,
         fieldIndex: 1,
         anchorTxId: fixture.nativeTxId,
         nativeTxCompactCbor: fixture.nativeTxCompactCbor,

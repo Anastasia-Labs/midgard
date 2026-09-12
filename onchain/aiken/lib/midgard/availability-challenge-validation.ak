@@ -104,15 +104,16 @@ fn validate_da_apply_binding(
   state_queue_input_index: Int,
   state_queue_output_index: Int,
 ) -> Bool {
-  let redeemer_data =
-    tx.redeemers
-      |> utils.get_redeemer_at(Mint(da_policy_id), da_mint_redeemer_index)
-  expect da_attestation.ApplyToStateQueue {
-    da_attestation_input_index: bound_attestation_input_index,
-    state_queue_input_index: bound_state_queue_input_index,
-    state_queue_output_index: bound_state_queue_output_index,
-    ..
-  }: da_attestation.MintRedeemer = redeemer_data
+  let redeemer_data = tx.redeemers
+    |> utils.get_redeemer_at(Mint(da_policy_id), da_mint_redeemer_index)
+  expect
+      da_attestation.ApplyToStateQueue {
+        da_attestation_input_index: bound_attestation_input_index,
+        state_queue_input_index: bound_state_queue_input_index,
+        state_queue_output_index: bound_state_queue_output_index,
+        ..
+      }: da_attestation.MintRedeemer
+    = redeemer_data
   and {
     bound_attestation_input_index == da_attestation_input_index,
     bound_state_queue_input_index == state_queue_input_index,
@@ -132,28 +133,28 @@ pub fn validate_mint_bond_from_attestation(
   state_queue_input_index: Int,
   state_queue_output_index: Int,
 ) -> Bool {
-  let hub_datum =
-    hub.get_datum(
-      tx.reference_inputs,
-      hub_oracle_policy_id,
-      hub_oracle_ref_input_index,
-    )
+  let hub_datum = hub.get_datum(
+    tx.reference_inputs,
+    hub_oracle_policy_id,
+    hub_oracle_ref_input_index,
+  )
   let attestation_input = input_at(tx.inputs, da_attestation_input_index)
   let da_policy_id = script_hash(attestation_input.output.address)
-  expect attestation_datum: da_attestation.DaAttestationDatum =
-    inline_datum(attestation_input.output)
+  expect attestation_datum: da_attestation.DaAttestationDatum = inline_datum(
+    attestation_input.output,
+  )
   let commitment = attestation_datum.availability_commitment
   let da_asset_name = da_attestation_asset_name(attestation_datum.header_hash)
-  let bond_asset_name =
-    availability.da_bond_asset_name_v1(attestation_input.output_reference)
+  let bond_asset_name = availability.da_bond_asset_name_v1(
+    attestation_input.output_reference,
+  )
   let bond_output = output_at(tx.outputs, bond_output_index)
-  let expected_bond_datum: availability.BondDatumV1 =
-    availability.Available {
-      commitment,
-      da_bond_asset_name: bond_asset_name,
-      committee_signers_hash: attestation_datum.committee_signers_hash,
-      attested_signers: attestation_datum.attested_signers,
-    }
+  let expected_bond_datum: availability.BondDatumV1 = availability.Available {
+    commitment,
+    da_bond_asset_name: bond_asset_name,
+    committee_signers_hash: attestation_datum.committee_signers_hash,
+    attested_signers: attestation_datum.attested_signers,
+  }
   let expected_bond_datum_data: Data = expected_bond_datum
   and {
     da_attestation_input_index != state_queue_input_index,
@@ -233,28 +234,26 @@ fn validate_initial_tranche_outputs(
   when Pair(descriptors, initial_lovelaces) is {
     Pair([], []) -> True
     Pair([descriptor, ..rest], [initial_lovelace, ..rest_lovelaces]) -> {
-      let tranche_asset_name =
-        availability.tranche_asset_name_v1(
-          challenge_asset_name,
-          descriptor_index,
-        )
+      let tranche_asset_name = availability.tranche_asset_name_v1(
+        challenge_asset_name,
+        descriptor_index,
+      )
       let output = output_at(outputs, first_output_index + descriptor_index)
-      let expected_datum: availability.TrancheDatumV1 =
-        availability.Active {
-          deployment_identity: commitment.deployment_identity,
-          header_hash: commitment.header_hash,
-          challenge_asset_name,
+      let expected_datum: availability.TrancheDatumV1 = availability.Active {
+        deployment_identity: commitment.deployment_identity,
+        header_hash: commitment.header_hash,
+        challenge_asset_name,
+        descriptor,
+        next_offset: descriptor.start_offset,
+        accumulator: availability.tranche_start_accumulator_v1(
+          commitment.deployment_identity,
+          commitment.header_hash,
           descriptor,
-          next_offset: descriptor.start_offset,
-          accumulator: availability.tranche_start_accumulator_v1(
-            commitment.deployment_identity,
-            commitment.header_hash,
-            descriptor,
-          ),
-          latest_carrier_output_index: None,
-          response_deadline,
-          challenger,
-        }
+        ),
+        latest_carrier_output_index: None,
+        response_deadline,
+        challenger,
+      }
       let expected_datum_data: Data = expected_datum
       and {
         descriptor.tranche_index == descriptor_index,
@@ -292,21 +291,20 @@ fn validate_initial_terminal_accumulator_output(
   response_deadline: Int,
   initial_lovelace: Int,
 ) -> Bool {
-  let expected_datum: availability.TerminalAccumulatorDatumV1 =
-    availability.TerminalAccumulatorDatumV1 {
-      deployment_identity: commitment.deployment_identity,
-      header_hash: commitment.header_hash,
+  let expected_datum: availability.TerminalAccumulatorDatumV1 = availability.TerminalAccumulatorDatumV1 {
+    deployment_identity: commitment.deployment_identity,
+    header_hash: commitment.header_hash,
+    challenge_asset_name,
+    next_tranche_index: 0,
+    folded_terminal_accumulator: availability.terminal_accumulator_start_v1(
+      commitment,
       challenge_asset_name,
-      next_tranche_index: 0,
-      folded_terminal_accumulator: availability.terminal_accumulator_start_v1(
-        commitment,
-        challenge_asset_name,
-      ),
-      has_timed_out_tranche: False,
-      response_deadline,
-      challenger,
-      remaining_challenger_lovelace: initial_lovelace,
-    }
+    ),
+    has_timed_out_tranche: False,
+    response_deadline,
+    challenger,
+    remaining_challenger_lovelace: initial_lovelace,
+  }
   let expected_datum_data: Data = expected_datum
   exact_script_output(
     output,
@@ -335,56 +333,59 @@ pub fn validate_open_challenge(
   terminal_accumulator_output_index: Int,
   challenger: ByteArray,
 ) -> Bool {
-  let hub_datum =
-    hub.get_datum(
-      tx.reference_inputs,
-      hub_oracle_policy_id,
-      hub_oracle_ref_input_index,
-    )
+  let hub_datum = hub.get_datum(
+    tx.reference_inputs,
+    hub_oracle_policy_id,
+    hub_oracle_ref_input_index,
+  )
   let bond_input = input_at(tx.inputs, bond_input_index)
-  expect availability.Available {
+  expect
+      availability.Available {
+        commitment,
+        da_bond_asset_name,
+        committee_signers_hash,
+        attested_signers,
+      }: availability.BondDatumV1
+    = inline_datum(bond_input.output)
+  let challenge_asset_name = availability.challenge_asset_name_v1(
+    bond_input.output_reference,
+  )
+  let challenger_input = input_at(tx.inputs, challenger_input_index)
+  let bond_output = output_at(tx.outputs, bond_output_index)
+  let (inclusive_lower_bound, _inclusive_upper_bound) = utils.get_inclusive_bounds_of_a_short_validity_range(
+    tx.validity_range,
+  )
+  expect Some(response_deadline) = availability.response_deadline_v1(
+    commitment.payload_byte_length,
+    inclusive_lower_bound,
+  )
+  let expected_bond_datum: availability.BondDatumV1 = availability.ChallengedBond {
     commitment,
     da_bond_asset_name,
     committee_signers_hash,
     attested_signers,
-  }: availability.BondDatumV1 = inline_datum(bond_input.output)
-  let challenge_asset_name =
-    availability.challenge_asset_name_v1(bond_input.output_reference)
-  let challenger_input = input_at(tx.inputs, challenger_input_index)
-  let bond_output = output_at(tx.outputs, bond_output_index)
-  let (inclusive_lower_bound, _inclusive_upper_bound) =
-    utils.get_inclusive_bounds_of_a_short_validity_range(tx.validity_range)
-  expect Some(response_deadline) =
-    availability.response_deadline_v1(
-      commitment.payload_byte_length,
-      inclusive_lower_bound,
-    )
-  let expected_bond_datum: availability.BondDatumV1 =
-    availability.ChallengedBond {
-      commitment,
-      da_bond_asset_name,
-      committee_signers_hash,
-      attested_signers,
-      challenge_asset_name,
-      challenger,
-      opened_at: inclusive_lower_bound,
-      response_deadline,
-    }
+    challenge_asset_name,
+    challenger,
+    opened_at: inclusive_lower_bound,
+    response_deadline,
+  }
   let expected_bond_datum_data: Data = expected_bond_datum
   let descriptors = commitment.tranche_descriptors
-  expect Some(initial_tranche_lovelaces) =
-    availability.tranche_initial_lovelaces_v1(commitment, parameters)
-  let terminal_accumulator_lovelace =
-    availability.terminal_accumulator_reserve_lovelace_v1(parameters)
-  let expected_mint_pairs =
-    [
-      Pair(challenge_asset_name, 1),
-      Pair(
-        availability.terminal_accumulator_asset_name_v1(challenge_asset_name),
-        1,
-      ),
-      ..expected_tranche_mint_pairs(descriptors, challenge_asset_name, 0, 1)
-    ]
+  expect Some(initial_tranche_lovelaces) = availability.tranche_initial_lovelaces_v1(
+    commitment,
+    parameters,
+  )
+  let terminal_accumulator_lovelace = availability.terminal_accumulator_reserve_lovelace_v1(
+    parameters,
+  )
+  let expected_mint_pairs = [
+    Pair(challenge_asset_name, 1),
+    Pair(
+      availability.terminal_accumulator_asset_name_v1(challenge_asset_name),
+      1,
+    ),
+    ..expected_tranche_mint_pairs(descriptors, challenge_asset_name, 0, 1)
+  ]
   let descriptor_count = list.length(descriptors)
   and {
     list.length(tx.inputs) == 3,
@@ -492,17 +493,16 @@ fn validate_settlement_status(
     } -> {
       expect Some(carrier_index) = carrier_input_index
       let carrier_input = input_at(tx.inputs, carrier_index)
-      expect Some(carrier_lovelace) =
-        timeout_carrier_lovelace(
-          tx.inputs,
-          own_policy_id,
-          commitment,
-          challenge_asset_name,
-          descriptor,
-          terminal_accumulator,
-          descriptor.start_offset + descriptor.byte_length,
-          Some(carrier_index),
-        )
+      expect Some(carrier_lovelace) = timeout_carrier_lovelace(
+        tx.inputs,
+        own_policy_id,
+        commitment,
+        challenge_asset_name,
+        descriptor,
+        terminal_accumulator,
+        descriptor.start_offset + descriptor.byte_length,
+        Some(carrier_index),
+      )
       if and {
         deployment_identity == commitment.deployment_identity,
         header_hash == commitment.header_hash,
@@ -535,31 +535,30 @@ fn validate_settlement_status(
       response_deadline: thread_response_deadline,
       challenger: thread_challenger,
     } -> {
-      let carrier_reference_is_valid =
-        when latest_carrier_output_index is {
-          None -> carrier_input_index == None
-          Some(expected_output_index) -> {
-            expect Some(carrier_index) = carrier_input_index
-            let carrier_input = input_at(tx.inputs, carrier_index)
-            and {
-              carrier_input.output_reference.transaction_id == thread_input_reference.transaction_id,
-              carrier_input.output_reference.output_index == expected_output_index,
-            }
+      let carrier_reference_is_valid = when latest_carrier_output_index is {
+        None -> carrier_input_index == None
+        Some(expected_output_index) -> {
+          expect Some(carrier_index) = carrier_input_index
+          let carrier_input = input_at(tx.inputs, carrier_index)
+          and {
+            carrier_input.output_reference.transaction_id == thread_input_reference.transaction_id,
+            carrier_input.output_reference.output_index == expected_output_index,
           }
         }
-      expect Some(carrier_lovelace) =
-        timeout_carrier_lovelace(
-          tx.inputs,
-          own_policy_id,
-          commitment,
-          challenge_asset_name,
-          descriptor,
-          accumulator,
-          next_offset,
-          carrier_input_index,
-        )
-      let inclusive_lower_bound =
-        utils.get_inclusive_lower_bound_of_interval(tx.validity_range)
+      }
+      expect Some(carrier_lovelace) = timeout_carrier_lovelace(
+        tx.inputs,
+        own_policy_id,
+        commitment,
+        challenge_asset_name,
+        descriptor,
+        accumulator,
+        next_offset,
+        carrier_input_index,
+      )
+      let inclusive_lower_bound = utils.get_inclusive_lower_bound_of_interval(
+        tx.validity_range,
+      )
       if and {
         inclusive_lower_bound >= response_deadline,
         deployment_identity == commitment.deployment_identity,
@@ -599,56 +598,62 @@ pub fn validate_settle_tranche(
   carrier_input_index: Option<Int>,
 ) -> Bool {
   let bond_ref_input = input_at(tx.reference_inputs, bond_ref_input_index)
-  expect availability.ChallengedBond {
+  expect
+      availability.ChallengedBond {
+        commitment,
+        da_bond_asset_name,
+        challenge_asset_name,
+        challenger,
+        response_deadline,
+        ..
+      }: availability.BondDatumV1
+    = inline_datum(bond_ref_input.output)
+  let terminal_input = input_at(tx.inputs, terminal_accumulator_input_index)
+  expect terminal_datum: availability.TerminalAccumulatorDatumV1 = inline_datum(
+    terminal_input.output,
+  )
+  let descriptor_index = terminal_datum.next_tranche_index
+  expect Some(descriptor) = list.at(
+    commitment.tranche_descriptors,
+    descriptor_index,
+  )
+  let tranche_input = input_at(tx.inputs, tranche_input_index)
+  expect thread_datum: availability.TrancheDatumV1 = inline_datum(
+    tranche_input.output,
+  )
+  expect Some((status, timed_out, carrier_lovelace)) = validate_settlement_status(
+    tx,
+    own_policy_id,
     commitment,
-    da_bond_asset_name,
     challenge_asset_name,
     challenger,
     response_deadline,
-    ..
-  }: availability.BondDatumV1 = inline_datum(bond_ref_input.output)
-  let terminal_input = input_at(tx.inputs, terminal_accumulator_input_index)
-  expect terminal_datum: availability.TerminalAccumulatorDatumV1 =
-    inline_datum(terminal_input.output)
-  let descriptor_index = terminal_datum.next_tranche_index
-  expect Some(descriptor) =
-    list.at(commitment.tranche_descriptors, descriptor_index)
-  let tranche_input = input_at(tx.inputs, tranche_input_index)
-  expect thread_datum: availability.TrancheDatumV1 =
-    inline_datum(tranche_input.output)
-  expect Some((status, timed_out, carrier_lovelace)) =
-    validate_settlement_status(
-      tx,
-      own_policy_id,
-      commitment,
-      challenge_asset_name,
-      challenger,
-      response_deadline,
-      descriptor,
-      tranche_input.output_reference,
-      thread_datum,
-      carrier_input_index,
-    )
-  let terminal_asset_name =
-    availability.terminal_accumulator_asset_name_v1(challenge_asset_name)
-  let tranche_asset_name =
-    availability.tranche_asset_name_v1(challenge_asset_name, descriptor_index)
-  let output_lovelace =
-    terminal_datum.remaining_challenger_lovelace + assets.lovelace_of(
-      tranche_input.output.value,
-    ) + carrier_lovelace - tx.fee
-  let expected_output_datum: availability.TerminalAccumulatorDatumV1 =
-    availability.TerminalAccumulatorDatumV1 {
-      ..terminal_datum,
-      next_tranche_index: descriptor_index + 1,
-      folded_terminal_accumulator: availability.fold_terminal_accumulator_v1(
-        terminal_datum.folded_terminal_accumulator,
-        descriptor_index,
-        status,
-      ),
-      has_timed_out_tranche: terminal_datum.has_timed_out_tranche || timed_out,
-      remaining_challenger_lovelace: output_lovelace,
-    }
+    descriptor,
+    tranche_input.output_reference,
+    thread_datum,
+    carrier_input_index,
+  )
+  let terminal_asset_name = availability.terminal_accumulator_asset_name_v1(
+    challenge_asset_name,
+  )
+  let tranche_asset_name = availability.tranche_asset_name_v1(
+    challenge_asset_name,
+    descriptor_index,
+  )
+  let output_lovelace = terminal_datum.remaining_challenger_lovelace + assets.lovelace_of(
+    tranche_input.output.value,
+  ) + carrier_lovelace - tx.fee
+  let expected_output_datum: availability.TerminalAccumulatorDatumV1 = availability.TerminalAccumulatorDatumV1 {
+    ..terminal_datum,
+    next_tranche_index: descriptor_index + 1,
+    folded_terminal_accumulator: availability.fold_terminal_accumulator_v1(
+      terminal_datum.folded_terminal_accumulator,
+      descriptor_index,
+      status,
+    ),
+    has_timed_out_tranche: terminal_datum.has_timed_out_tranche || timed_out,
+    remaining_challenger_lovelace: output_lovelace,
+  }
   let expected_output_datum_data: Data = expected_output_datum
   let output = output_at(tx.outputs, terminal_accumulator_output_index)
   and {
@@ -718,31 +723,33 @@ pub fn validate_close_challenge(
   da_refund_output_index: Int,
   challenger_refund_output_index: Int,
 ) -> Bool {
-  let hub_datum =
-    hub.get_datum(
-      tx.reference_inputs,
-      hub_oracle_policy_id,
-      hub_oracle_ref_input_index,
-    )
+  let hub_datum = hub.get_datum(
+    tx.reference_inputs,
+    hub_oracle_policy_id,
+    hub_oracle_ref_input_index,
+  )
   let bond_input = input_at(tx.inputs, bond_input_index)
-  expect availability.ChallengedBond {
-    commitment,
-    da_bond_asset_name,
-    challenge_asset_name,
-    challenger,
-    ..
-  }: availability.BondDatumV1 = inline_datum(bond_input.output)
+  expect
+      availability.ChallengedBond {
+        commitment,
+        da_bond_asset_name,
+        challenge_asset_name,
+        challenger,
+        ..
+      }: availability.BondDatumV1
+    = inline_datum(bond_input.output)
   let terminal_input = input_at(tx.inputs, terminal_accumulator_input_index)
-  expect terminal_datum: availability.TerminalAccumulatorDatumV1 =
-    inline_datum(terminal_input.output)
-  let terminal_asset_name =
-    availability.terminal_accumulator_asset_name_v1(challenge_asset_name)
-  let expected_burn_pairs =
-    [
-      Pair(da_bond_asset_name, -1),
-      Pair(challenge_asset_name, -1),
-      Pair(terminal_asset_name, -1),
-    ]
+  expect terminal_datum: availability.TerminalAccumulatorDatumV1 = inline_datum(
+    terminal_input.output,
+  )
+  let terminal_asset_name = availability.terminal_accumulator_asset_name_v1(
+    challenge_asset_name,
+  )
+  let expected_burn_pairs = [
+    Pair(da_bond_asset_name, -1),
+    Pair(challenge_asset_name, -1),
+    Pair(terminal_asset_name, -1),
+  ]
   and {
     availability.commitment_is_canonical_v1(commitment, parameters),
     commitment.deployment_identity == hub_oracle_policy_id,
@@ -848,8 +855,9 @@ fn timeout_carrier_lovelace(
       }
     Some(carrier_input_index) -> {
       let carrier_input = input_at(inputs, carrier_input_index)
-      expect publication: availability.PublicationDatumV1 =
-        inline_datum(carrier_input.output)
+      expect publication: availability.PublicationDatumV1 = inline_datum(
+        carrier_input.output,
+      )
       if and {
         carrier_input.output.address == from_script(own_policy_id),
         carrier_input.output.reference_script == None,
@@ -893,78 +901,75 @@ fn validate_timeout_tranche_inputs(
       }
     [descriptor, ..rest_descriptors] -> {
       expect [thread_input_index, ..rest_thread_indices] = tranche_input_indices
-      expect [m_carrier_input_index, ..rest_carrier_indices] =
-        carrier_input_indices
+      expect [m_carrier_input_index, ..rest_carrier_indices] = carrier_input_indices
       let thread_input = input_at(inputs, thread_input_index)
-      let tranche_asset_name =
-        availability.tranche_asset_name_v1(
-          challenge_asset_name,
-          descriptor_index,
-        )
-      expect thread_datum: availability.TrancheDatumV1 =
-        inline_datum(thread_input.output)
-      let (thread_identity_is_valid, expected_accumulator, expected_next_offset) =
-        when thread_datum is {
-          availability.Active {
-            deployment_identity,
-            header_hash,
-            challenge_asset_name: thread_challenge_asset_name,
-            descriptor: thread_descriptor,
-            next_offset,
-            accumulator,
-            latest_carrier_output_index: _,
-            response_deadline: thread_response_deadline,
-            challenger: thread_challenger,
-          } -> (and {
-                deployment_identity == commitment.deployment_identity,
-                header_hash == commitment.header_hash,
-                thread_challenge_asset_name == challenge_asset_name,
-                thread_descriptor == descriptor,
-                thread_response_deadline == response_deadline,
-                thread_challenger == challenger,
-              }, accumulator, next_offset)
-          availability.Receipt {
-            deployment_identity,
-            header_hash,
-            challenge_asset_name: thread_challenge_asset_name,
-            descriptor: thread_descriptor,
-            terminal_accumulator,
-            terminal_carrier_output_index: _,
-            challenger: thread_challenger,
-          } -> (and {
-                deployment_identity == commitment.deployment_identity,
-                header_hash == commitment.header_hash,
-                thread_challenge_asset_name == challenge_asset_name,
-                thread_descriptor == descriptor,
-                terminal_accumulator == descriptor.terminal_accumulator,
-                thread_challenger == challenger,
-                m_carrier_input_index != None,
-              }, terminal_accumulator, descriptor.start_offset + descriptor.byte_length)
-        }
-      expect Some(carrier_lovelace) =
-        timeout_carrier_lovelace(
-          inputs,
-          own_policy_id,
-          commitment,
-          challenge_asset_name,
-          descriptor,
-          expected_accumulator,
-          expected_next_offset,
-          m_carrier_input_index,
-        )
-      expect Some(rest_lovelace) =
-        validate_timeout_tranche_inputs(
-          inputs,
-          own_policy_id,
-          commitment,
-          challenge_asset_name,
-          challenger,
-          response_deadline,
-          descriptor_index + 1,
-          rest_descriptors,
-          rest_thread_indices,
-          rest_carrier_indices,
-        )
+      let tranche_asset_name = availability.tranche_asset_name_v1(
+        challenge_asset_name,
+        descriptor_index,
+      )
+      expect thread_datum: availability.TrancheDatumV1 = inline_datum(
+        thread_input.output,
+      )
+      let (thread_identity_is_valid, expected_accumulator, expected_next_offset)
+        = when thread_datum is {
+        availability.Active {
+          deployment_identity,
+          header_hash,
+          challenge_asset_name: thread_challenge_asset_name,
+          descriptor: thread_descriptor,
+          next_offset,
+          accumulator,
+          latest_carrier_output_index: _,
+          response_deadline: thread_response_deadline,
+          challenger: thread_challenger,
+        } -> (and {
+              deployment_identity == commitment.deployment_identity,
+              header_hash == commitment.header_hash,
+              thread_challenge_asset_name == challenge_asset_name,
+              thread_descriptor == descriptor,
+              thread_response_deadline == response_deadline,
+              thread_challenger == challenger,
+            }, accumulator, next_offset)
+        availability.Receipt {
+          deployment_identity,
+          header_hash,
+          challenge_asset_name: thread_challenge_asset_name,
+          descriptor: thread_descriptor,
+          terminal_accumulator,
+          terminal_carrier_output_index: _,
+          challenger: thread_challenger,
+        } -> (and {
+              deployment_identity == commitment.deployment_identity,
+              header_hash == commitment.header_hash,
+              thread_challenge_asset_name == challenge_asset_name,
+              thread_descriptor == descriptor,
+              terminal_accumulator == descriptor.terminal_accumulator,
+              thread_challenger == challenger,
+              m_carrier_input_index != None,
+            }, terminal_accumulator, descriptor.start_offset + descriptor.byte_length)
+      }
+      expect Some(carrier_lovelace) = timeout_carrier_lovelace(
+        inputs,
+        own_policy_id,
+        commitment,
+        challenge_asset_name,
+        descriptor,
+        expected_accumulator,
+        expected_next_offset,
+        m_carrier_input_index,
+      )
+      expect Some(rest_lovelace) = validate_timeout_tranche_inputs(
+        inputs,
+        own_policy_id,
+        commitment,
+        challenge_asset_name,
+        challenger,
+        response_deadline,
+        descriptor_index + 1,
+        rest_descriptors,
+        rest_thread_indices,
+        rest_carrier_indices,
+      )
       if and {
         descriptor.tranche_index == descriptor_index,
         thread_identity_is_valid,
@@ -993,17 +998,18 @@ fn validate_state_queue_timeout_binding(
   header_hash: ByteArray,
   challenge_asset_name: AssetName,
 ) -> Bool {
-  let redeemer_data =
-    tx.redeemers
-      |> utils.get_redeemer_at(
-          Mint(state_queue_policy_id),
-          state_queue_mint_redeemer_index,
-        )
-  expect state_queue.RemoveUnavailableBlockAfterTimeout {
-    unavailable_header_hash,
-    challenge_asset_name: bound_challenge_asset_name,
-    ..
-  }: state_queue.MintRedeemer = redeemer_data
+  let redeemer_data = tx.redeemers
+    |> utils.get_redeemer_at(
+        Mint(state_queue_policy_id),
+        state_queue_mint_redeemer_index,
+      )
+  expect
+      state_queue.RemoveUnavailableBlockAfterTimeout {
+        unavailable_header_hash,
+        challenge_asset_name: bound_challenge_asset_name,
+        ..
+      }: state_queue.MintRedeemer
+    = redeemer_data
   and {
     unavailable_header_hash == header_hash,
     bound_challenge_asset_name == challenge_asset_name,
@@ -1022,40 +1028,42 @@ pub fn validate_timeout_challenge(
   da_slash_output_index: Int,
   challenger_refund_output_index: Int,
 ) -> Bool {
-  let hub_datum =
-    hub.get_datum(
-      tx.reference_inputs,
-      hub_oracle_policy_id,
-      hub_oracle_ref_input_index,
-    )
+  let hub_datum = hub.get_datum(
+    tx.reference_inputs,
+    hub_oracle_policy_id,
+    hub_oracle_ref_input_index,
+  )
   let bond_input = input_at(tx.inputs, bond_input_index)
-  expect availability.ChallengedBond {
-    commitment,
-    da_bond_asset_name,
-    challenge_asset_name,
-    challenger,
-    response_deadline,
-    ..
-  }: availability.BondDatumV1 = inline_datum(bond_input.output)
+  expect
+      availability.ChallengedBond {
+        commitment,
+        da_bond_asset_name,
+        challenge_asset_name,
+        challenger,
+        response_deadline,
+        ..
+      }: availability.BondDatumV1
+    = inline_datum(bond_input.output)
   let terminal_input = input_at(tx.inputs, terminal_accumulator_input_index)
-  expect terminal_datum: availability.TerminalAccumulatorDatumV1 =
-    inline_datum(terminal_input.output)
-  let terminal_asset_name =
-    availability.terminal_accumulator_asset_name_v1(challenge_asset_name)
-  let expected_burn_pairs =
-    [
-      Pair(da_bond_asset_name, -1),
-      Pair(challenge_asset_name, -1),
-      Pair(terminal_asset_name, -1),
-    ]
-  let inclusive_lower_bound =
-    utils.get_inclusive_lower_bound_of_interval(tx.validity_range)
-  let challenger_output_count =
-    tx.outputs
-      |> list.filter(
-          fn(output) { output.address == from_verification_key(challenger) },
-        )
-      |> list.length
+  expect terminal_datum: availability.TerminalAccumulatorDatumV1 = inline_datum(
+    terminal_input.output,
+  )
+  let terminal_asset_name = availability.terminal_accumulator_asset_name_v1(
+    challenge_asset_name,
+  )
+  let expected_burn_pairs = [
+    Pair(da_bond_asset_name, -1),
+    Pair(challenge_asset_name, -1),
+    Pair(terminal_asset_name, -1),
+  ]
+  let inclusive_lower_bound = utils.get_inclusive_lower_bound_of_interval(
+    tx.validity_range,
+  )
+  let challenger_output_count = tx.outputs
+    |> list.filter(
+        fn(output) { output.address == from_verification_key(challenger) },
+      )
+    |> list.length
   and {
     availability.commitment_is_canonical_v1(commitment, parameters),
     commitment.deployment_identity == hub_oracle_policy_id,
@@ -1121,22 +1129,23 @@ pub fn validate_advance_tranche(
   m_previous_carrier_input_index: Option<Int>,
   tx: Transaction,
 ) -> Bool {
-  expect availability.Active {
-    deployment_identity,
-    header_hash,
+  expect
+      availability.Active {
+        deployment_identity,
+        header_hash,
+        challenge_asset_name,
+        descriptor,
+        next_offset,
+        accumulator,
+        latest_carrier_output_index,
+        response_deadline,
+        challenger,
+      }
+    = current_datum
+  let tranche_asset_name = availability.tranche_asset_name_v1(
     challenge_asset_name,
-    descriptor,
-    next_offset,
-    accumulator,
-    latest_carrier_output_index,
-    response_deadline,
-    challenger,
-  } = current_datum
-  let tranche_asset_name =
-    availability.tranche_asset_name_v1(
-      challenge_asset_name,
-      descriptor.tranche_index,
-    )
+    descriptor.tranche_index,
+  )
   expect
     quantity_of(own_input.output.value, own_policy_id, tranche_asset_name) == 1
   expect
@@ -1147,56 +1156,56 @@ pub fn validate_advance_tranche(
     )
   let thread_output = output_at(tx.outputs, thread_output_index)
   let carrier_output = output_at(tx.outputs, carrier_output_index)
-  expect publication: availability.PublicationDatumV1 =
-    inline_datum(carrier_output)
-  expect Some(expected_next_datum) =
-    availability.publication_advances_active_tranche_v1(
-      current_datum,
-      publication,
-      parameters.response_geometry.chunk_byte_length,
-      carrier_output_index,
-    )
+  expect publication: availability.PublicationDatumV1 = inline_datum(
+    carrier_output,
+  )
+  expect Some(expected_next_datum) = availability.publication_advances_active_tranche_v1(
+    current_datum,
+    publication,
+    parameters.response_geometry.chunk_byte_length,
+    carrier_output_index,
+  )
   expect next_datum: availability.TrancheDatumV1 = inline_datum(thread_output)
-  let previous_carrier_lovelace =
-    when m_previous_carrier_input_index is {
-      None -> {
-        expect latest_carrier_output_index == None
-        expect next_offset == descriptor.start_offset
-        expect
-          accumulator == availability.tranche_start_accumulator_v1(
-            deployment_identity,
-            header_hash,
-            descriptor,
-          )
-        0
-      }
-      Some(previous_carrier_input_index) -> {
-        expect Some(expected_previous_carrier_output_index) =
-          latest_carrier_output_index
-        let previous_carrier = input_at(tx.inputs, previous_carrier_input_index)
-        expect previous_carrier.output_reference != own_input.output_reference
-        expect
-          previous_carrier.output_reference.transaction_id == own_input.output_reference.transaction_id
-        expect
-          previous_carrier.output_reference.output_index == expected_previous_carrier_output_index
-        expect previous_publication: availability.PublicationDatumV1 =
-          inline_datum(previous_carrier.output)
-        expect previous_carrier.output.address == from_script(own_policy_id)
-        expect
-          assets.without_lovelace(previous_carrier.output.value) == assets.zero
-        expect previous_carrier.output.reference_script == None
-        expect previous_publication.deployment_identity == deployment_identity
-        expect previous_publication.header_hash == header_hash
-        expect previous_publication.challenge_asset_name == challenge_asset_name
-        expect previous_publication.tranche_index == descriptor.tranche_index
-        expect previous_publication.next_accumulator == accumulator
-        expect
-          previous_publication.chunk_offset + previous_publication.chunk_byte_length == next_offset
-        assets.lovelace_of(previous_carrier.output.value)
-      }
+  let previous_carrier_lovelace = when m_previous_carrier_input_index is {
+    None -> {
+      expect latest_carrier_output_index == None
+      expect next_offset == descriptor.start_offset
+      expect
+        accumulator == availability.tranche_start_accumulator_v1(
+          deployment_identity,
+          header_hash,
+          descriptor,
+        )
+      0
     }
-  let (_, inclusive_upper_bound) =
-    utils.get_inclusive_bounds_of_a_short_validity_range(tx.validity_range)
+    Some(previous_carrier_input_index) -> {
+      expect Some(expected_previous_carrier_output_index) = latest_carrier_output_index
+      let previous_carrier = input_at(tx.inputs, previous_carrier_input_index)
+      expect previous_carrier.output_reference != own_input.output_reference
+      expect
+        previous_carrier.output_reference.transaction_id == own_input.output_reference.transaction_id
+      expect
+        previous_carrier.output_reference.output_index == expected_previous_carrier_output_index
+      expect previous_publication: availability.PublicationDatumV1 = inline_datum(
+        previous_carrier.output,
+      )
+      expect previous_carrier.output.address == from_script(own_policy_id)
+      expect
+        assets.without_lovelace(previous_carrier.output.value) == assets.zero
+      expect previous_carrier.output.reference_script == None
+      expect previous_publication.deployment_identity == deployment_identity
+      expect previous_publication.header_hash == header_hash
+      expect previous_publication.challenge_asset_name == challenge_asset_name
+      expect previous_publication.tranche_index == descriptor.tranche_index
+      expect previous_publication.next_accumulator == accumulator
+      expect
+        previous_publication.chunk_offset + previous_publication.chunk_byte_length == next_offset
+      assets.lovelace_of(previous_carrier.output.value)
+    }
+  }
+  let (_, inclusive_upper_bound) = utils.get_inclusive_bounds_of_a_short_validity_range(
+    tx.validity_range,
+  )
   and {
     tx.mint == assets.zero,
     tx.fee > 0,
@@ -1233,16 +1242,17 @@ pub fn validate_consume_carrier(
   tx: Transaction,
 ) -> Bool {
   let thread_input = input_at(tx.inputs, thread_input_index)
-  let thread_redeemer_data =
-    tx.redeemers
-      |> utils.get_redeemer_at(
-          Spend(thread_input.output_reference),
-          thread_spend_redeemer_index,
-        )
-  expect availability.AdvanceTranche {
-    m_previous_carrier_input_index: Some(previous_carrier_input_index),
-    ..
-  }: availability.SpendRedeemerV1 = thread_redeemer_data
+  let thread_redeemer_data = tx.redeemers
+    |> utils.get_redeemer_at(
+        Spend(thread_input.output_reference),
+        thread_spend_redeemer_index,
+      )
+  expect
+      availability.AdvanceTranche {
+        m_previous_carrier_input_index: Some(previous_carrier_input_index),
+        ..
+      }: availability.SpendRedeemerV1
+    = thread_redeemer_data
   expect previous_carrier = input_at(tx.inputs, previous_carrier_input_index)
   previous_carrier.output_reference == own_ref
 }
@@ -1253,9 +1263,8 @@ pub fn validate_coordinate_spend(
   mint_redeemer_index: Int,
   tx: Transaction,
 ) -> Bool {
-  let redeemer_data =
-    tx.redeemers
-      |> utils.get_redeemer_at(Mint(own_policy_id), mint_redeemer_index)
+  let redeemer_data = tx.redeemers
+    |> utils.get_redeemer_at(Mint(own_policy_id), mint_redeemer_index)
   expect redeemer: availability.MintRedeemerV1 = redeemer_data
   when redeemer is {
     availability.OpenChallenge { bond_input_index, .. } ->

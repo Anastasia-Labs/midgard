@@ -202,7 +202,7 @@ fn pass_transaction_claim(
   expect None = m_input_state_data
   // Network rules only affect an accepted transaction. A rejected leaf is an
   // honest no-op and must never produce a permanent proof token.
-  expect bad_tx_view.tx_compact.validity_code == 0
+  expect bad_tx_view.tx_compact.validity_code == Some(0)
   expect output_script_hash == step_02_validator_script_hash
   let expected_output_state: Data = step_02.State {
     bad_tx_id,

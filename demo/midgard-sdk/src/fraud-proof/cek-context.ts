@@ -3,12 +3,14 @@ import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import { hashCekCoreWitness } from "./cek-core.js";
+import { ValidationMachineSourceKindSchema } from "./validation-dispute.js";
 
 export const CekContextBoundSchema = Data.Object({
   prepared: Data.Any(),
   control: Data.Any(),
   auxiliary_hash: Data.Bytes(),
   transaction_id: Data.Bytes(),
+  source_kind: ValidationMachineSourceKindSchema,
 });
 export type CekContextBound = Data.Static<typeof CekContextBoundSchema>;
 export const CekContextBound = asDataType<CekContextBound>(
@@ -56,6 +58,7 @@ const record = (fields: Data[]) => new Constr(0, fields);
 export const deriveCekContextBinding = (input: {
   readonly prepared: Data;
   readonly transactionId: string;
+  readonly sourceKind: "Normal" | "Forced";
   readonly workWitnessCbor: string;
   readonly auxiliary: Data;
 }) => {
@@ -73,6 +76,12 @@ export const deriveCekContextBinding = (input: {
     control,
     hashCekCoreWitness(input.auxiliary),
     input.transactionId,
+    Data.from(
+      Data.to(
+        input.sourceKind,
+        asDataType<"Normal" | "Forced">(ValidationMachineSourceKindSchema),
+      ),
+    ),
   ]);
   const contextFields = cborArray(cek[1]!, 25);
   for (const index of [12, 13, 14, 15, 17, 22, 23])

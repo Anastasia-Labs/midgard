@@ -691,9 +691,10 @@ export const createManifestBoundNoReferenceInputWorkflow = async (
             config.signer.paymentKeyHash,
           ),
           compactCbor:
-            prepared.forcedSource.membership.value.source.compact_cbor,
+            prepared.forcedSource.membership.value.submitted_source
+              .compact_cbor,
           witnessSetCompactCbor:
-            prepared.forcedSource.membership.value.source
+            prepared.forcedSource.membership.value.submitted_source
               .witness_set_compact_cbor,
           certificate: {
             policyId: certificate.policyId,

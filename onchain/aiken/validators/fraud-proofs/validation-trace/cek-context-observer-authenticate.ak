@@ -6,7 +6,7 @@ use midgard/cek_context_chain as chain
 use midgard/cek_context_observer as observer
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
+use midgard/fraud_proofs/native_tx/compact.{verify_tx_proof_source_v1}
 use midgard/native_tx_field_access_v1.{FieldCarriageV1, empty_field_commitment}
 use midgard/validation_machine_field_door_v1 as door
 
@@ -38,7 +38,8 @@ validator main(
         expect chain.auxiliary_is_bound(staged.bound, action.auxiliary)
         let native = staged.native
         let context = staged.context
-        let Pair(source, witness_set) = verify_native_tx_proof_source_v1(
+        let Pair(source, witness_set) = verify_tx_proof_source_v1(
+          staged.bound.source_kind,
           staged.bound.transaction_id,
           native.compact_cbor,
           native.witness_set_compact_cbor,

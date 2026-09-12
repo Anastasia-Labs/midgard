@@ -1,11 +1,11 @@
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeHash28,
   computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSource,
-  encodeMidgardNativeTxCanonical,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
+import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -52,14 +52,13 @@ const fixture = async (present: boolean, index: bigint, consumed = false) => {
     transactions: [],
     utxos: present ? [{ key, value: output }] : [],
   });
-  const native = adjudicateMidgardNativeTxFullValidity(
+  const native = materializeMidgardForcedTxFromCanonical(
     makeNativeTx({ spendInputCbors: [], referenceInputCbors: [key], fee: 0n }),
-    "TxIsInvalid",
   );
-  const proofSource = deriveMidgardNativeTxProofSource(native);
+  const proofSource = deriveMidgardForcedTxProofSource(native);
   const leaf = {
     tx_id: computeMidgardNativeTxId(native).toString("hex"),
-    source: {
+    submitted_source: {
       compact_cbor: proofSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:
         proofSource.witnessSetCompactCbor.toString("hex"),
@@ -81,8 +80,8 @@ const fixture = async (present: boolean, index: bigint, consumed = false) => {
   const preimages: SDK.DaPayloadEntry[] = [
     [
       sourceKey,
-      encodeMidgardNativeTxCanonical(
-        adjudicateMidgardNativeTxFullValidity(native, "TxIsValid"),
+      encodeMidgardForcedTxCanonical(
+        materializeMidgardForcedTxFromCanonical(native),
       ).toString("hex"),
     ],
   ];
@@ -113,7 +112,9 @@ const fixture = async (present: boolean, index: bigint, consumed = false) => {
   ];
   if (consumed) {
     const priorNative = makeNativeTx({ spendInputCbors: [key], fee: 1n });
-    const priorSource = deriveMidgardNativeTxProofSource(priorNative);
+    const priorSource = deriveMidgardForcedTxProofSource(
+      materializeMidgardForcedTxFromCanonical(priorNative),
+    );
     const priorKey = { transactionId: "aa".repeat(32), outputIndex: 0n };
     const priorEvent: SDK.EventKey = {
       ForcedTransactionEventKey: { tx_order_id: priorKey },
@@ -124,7 +125,7 @@ const fixture = async (present: boolean, index: bigint, consumed = false) => {
       Data.to(
         {
           tx_id: computeMidgardNativeTxId(priorNative).toString("hex"),
-          source: {
+          submitted_source: {
             compact_cbor: priorSource.compactCbor.toString("hex"),
             witness_set_compact_cbor:
               priorSource.witnessSetCompactCbor.toString("hex"),
@@ -138,7 +139,7 @@ const fixture = async (present: boolean, index: bigint, consumed = false) => {
     ]);
     preimages.unshift([
       priorKeyCbor,
-      encodeMidgardNativeTxCanonical(priorNative).toString("hex"),
+      encodeMidgardForcedTxCanonical(priorNative).toString("hex"),
     ]);
     traces.unshift([
       Data.to(0n),

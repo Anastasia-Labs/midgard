@@ -1993,13 +1993,12 @@ fn golden_straddle_chunks(preimage: ByteArray) -> List<ByteArray> {
 test golden_straddle_read_matches_typescript() {
   let preimage = golden_straddle_preimage()
   let chunks = golden_straddle_chunks(preimage)
-  let view =
-    Chunked {
-      chunks,
-      chunk_digests: list.map(chunks, blake2b_256),
-      count: 400,
-      stride: 40,
-    }
+  let view = Chunked {
+    chunks,
+    chunk_digests: list.map(chunks, blake2b_256),
+    count: 400,
+    stride: 40,
+  }
   and {
     bytearray.length(preimage) == 16003,
     field_commitment(preimage) == golden_straddle_commitment,

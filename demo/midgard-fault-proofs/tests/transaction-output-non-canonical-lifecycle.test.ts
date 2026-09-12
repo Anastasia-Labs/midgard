@@ -1126,9 +1126,9 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
           signer: harness.proverSigner,
           threadOutRef: bound.result.nextThreadOutRef,
           evidence,
-          nativeTxCompactCbor: forced.transaction.source.compact_cbor,
+          nativeTxCompactCbor: forced.transaction.submitted_source.compact_cbor,
           witnessSetCompactCbor:
-            forced.transaction.source.witness_set_compact_cbor,
+            forced.transaction.submitted_source.witness_set_compact_cbor,
           referenceScriptUtxo: references[1]!,
           certificateReferenceScriptUtxo: certificateReference,
         }),
@@ -1144,8 +1144,9 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
       evidence,
       rederive: () => evidenceOf(subject, forced.nativeTx, 0),
       label: "forced-step03",
-      nativeTxCompactCbor: forced.transaction.source.compact_cbor,
-      witnessSetCompactCbor: forced.transaction.source.witness_set_compact_cbor,
+      nativeTxCompactCbor: forced.transaction.submitted_source.compact_cbor,
+      witnessSetCompactCbor:
+        forced.transaction.submitted_source.witness_set_compact_cbor,
     });
     expect(scanned.scans).toBe(evidence.scanControls.length - 1);
     const minted = await captureEmulatorSubmission(harness.emulator, () =>
@@ -1229,8 +1230,9 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
       signer: harness.proverSigner,
       threadOutRef: bound.nextThreadOutRef,
       evidence,
-      nativeTxCompactCbor: forced.transaction.source.compact_cbor,
-      witnessSetCompactCbor: forced.transaction.source.witness_set_compact_cbor,
+      nativeTxCompactCbor: forced.transaction.submitted_source.compact_cbor,
+      witnessSetCompactCbor:
+        forced.transaction.submitted_source.witness_set_compact_cbor,
       referenceScriptUtxo: references[1]!,
     });
     const scanned = await submitTransactionOutputNonCanonicalStep03({
@@ -1240,8 +1242,9 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
       signer: harness.proverSigner,
       threadOutRef: authenticated.nextThreadOutRef,
       evidence,
-      nativeTxCompactCbor: forced.transaction.source.compact_cbor,
-      witnessSetCompactCbor: forced.transaction.source.witness_set_compact_cbor,
+      nativeTxCompactCbor: forced.transaction.submitted_source.compact_cbor,
+      witnessSetCompactCbor:
+        forced.transaction.submitted_source.witness_set_compact_cbor,
       referenceScriptUtxo: references[2]!,
     });
     expect(scanned.terminal).toBe(true);

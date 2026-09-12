@@ -125,6 +125,7 @@ const spendFieldPlan = (
   owner: string,
 ) =>
   planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: admitted.evidence.badTxInclusion.nativeTxId,
     nativeTxCompactCbor: admitted.evidence.badTxInclusion.nativeTxCompactCbor,
@@ -141,6 +142,7 @@ const outputFieldPlan = (
   owner: string,
 ) =>
   planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     anchorTxId: admitted.evidence.producingTxInclusion.nativeTxId,
     nativeTxCompactCbor:
@@ -156,6 +158,7 @@ const scriptFieldPlan = (
   owner: string,
 ) =>
   planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.scriptWitnesses,
     anchorTxId: admitted.evidence.badTxInclusion.nativeTxId,
     nativeTxCompactCbor: admitted.evidence.badTxInclusion.nativeTxCompactCbor,

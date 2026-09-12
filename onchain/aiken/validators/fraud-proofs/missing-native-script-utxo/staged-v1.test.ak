@@ -149,6 +149,7 @@ fn grammar_after(subject: fixture.NativeBlockFixtureV1, count: Int, budget: Int)
     WitnessAnchor {
       tx_id: subject.tx_id,
       witness_set_hash: subject.compact.witness_set_hash,
+      source_kind: 0,
     },
     script_witnesses_field_index,
     carriage_reference_inputs(subject, count),
@@ -501,6 +502,7 @@ fn resume_grammar_once(
     WitnessAnchor {
       tx_id: subject.tx_id,
       witness_set_hash: subject.compact.witness_set_hash,
+      source_kind: 0,
     },
     script_witnesses_field_index,
     field_grammar_checkpoint_hash(first),
@@ -583,6 +585,7 @@ fn semantic_after(
     WitnessAnchor {
       tx_id: subject.tx_id,
       witness_set_hash: subject.compact.witness_set_hash,
+      source_kind: 0,
     },
     script_witnesses_field_index,
     field_grammar_checkpoint_hash(terminal_grammar),

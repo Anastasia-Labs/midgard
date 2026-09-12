@@ -349,6 +349,7 @@ export const publishMissingSignatureField07Certificate = async ({
   readonly scenario: MissingSignatureScenario;
 }): Promise<UTxO> => {
   const planned = planMissingSignatureAddressWitnessesOpening({
+    anchorSourceKind: 0n,
     anchorTxId: scenario.block.nativeTxId,
     nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
     addrTxWits: scenario.subject.addrTxWits,
@@ -389,6 +390,7 @@ export const publishMissingSignatureField07Certificate = async ({
   }).toString("hex");
   const unsigned = await Effect.runPromise(
     SDK.buildUnsignedFieldPreimageCertificationProgram(harness.proverLucid, {
+      sourceKind: 0n,
       plan: planned.plan,
       certificatePolicyId: certificate.policyId,
       certificateAddress: certificate.spendingScriptAddress,
@@ -445,6 +447,7 @@ export const submitRawMissingSignatureStep04 = async ({
     stepIndex: 3,
   });
   const planned = planMissingSignatureAddressWitnessesOpening({
+    anchorSourceKind: 0n,
     anchorTxId: state.verified_tx_id,
     nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
     addrTxWits: scenario.subject.addrTxWits,

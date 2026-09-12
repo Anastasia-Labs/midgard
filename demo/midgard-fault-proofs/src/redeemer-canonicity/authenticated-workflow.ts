@@ -3,6 +3,7 @@ import {
   deriveMidgardNativeTxFaultEvidenceMaterial,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   type AuthenticatedStateQueueHeaderObservation,
@@ -79,7 +80,7 @@ export const detectRedeemerCanonicityFromCanonicalBlock = (
       const redeemerIndex = Number(
         verdict.ForcedTxInvalid.reason.RedeemerMalformed.redeemer_index,
       );
-      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+      const material = deriveMidgardForcedTxFaultEvidenceMaterial(
         transaction.fullTransactionCbor,
       );
       const field = material.fieldPreimages[REDEEMER_CANONICITY_FIELD_INDEX];

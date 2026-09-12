@@ -76,7 +76,7 @@ use midgard/fraud_proofs/native_tx/components.{
 use midgard/fraud_proofs/native_tx/types.{
   MidgardTxInput, MidgardVersionedScript, NativeCardanoScript,
   NativeTxBodyCompact, NativeTxCompact, NativeTxWitnessSetCompact,
-  PlutusV3Script, VerifiedMidgardNativeTxCompact, native_tx_version_v1,
+  PlutusV3Script, TxCompactView, VerifiedTxSourceView, native_tx_version_v1,
 }
 use midgard/native_tx_fault_statement_v1.{
   FaultStatementV1, MintUnitSweepV1, OutputUnitSweepV1, accumulate_output_unit,
@@ -126,7 +126,7 @@ fn source(
   tx_id: ByteArray,
   field_index: Int,
   preimage: ByteArray,
-) -> Pair<VerifiedMidgardNativeTxCompact, NativeTxWitnessSetCompact> {
+) -> Pair<VerifiedTxSourceView, NativeTxWitnessSetCompact> {
   let committed = field_commitment(preimage)
   let slot = fn(index: Int) -> ByteArray {
     if index == field_index {
@@ -155,15 +155,15 @@ fn source(
     network_id: 255,
   }
   Pair(
-    VerifiedMidgardNativeTxCompact {
+    VerifiedTxSourceView {
       tx_id,
       version: native_tx_version_v1,
-      tx_compact: NativeTxCompact {
+      tx_compact: TxCompactView {
         body,
         witness_set_hash: blake2b_256(
           encode_native_tx_witness_set_compact(witness_set),
         ),
-        validity_code: 0,
+        validity_code: Some(0),
       },
     },
     witness_set,
@@ -229,7 +229,7 @@ fn open_inline(
 /// address. Taken from committed structures the caller already holds, so that a
 /// second open pays for the door and not for rebuilding the fixture.
 fn open_raw_utxo_from(
-  committed: Pair<VerifiedMidgardNativeTxCompact, NativeTxWitnessSetCompact>,
+  committed: Pair<VerifiedTxSourceView, NativeTxWitnessSetCompact>,
   field_index: Int,
   preimage: ByteArray,
 ) -> Pair<FieldViewV1, FieldWalkCheckpointV1> {

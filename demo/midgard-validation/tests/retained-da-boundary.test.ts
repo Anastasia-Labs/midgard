@@ -70,17 +70,21 @@ describe("canonical V1 retained-DA boundary harness", () => {
     // digests are compared rather than the sizes.
     for (const classification of [measurement.normal, measurement.forced]) {
       expect(classification.retainedPreimageBytes).toBe(
-        sizeBalancedFixture.sizes.fullTxCborBytes,
+        sizeBalancedFixture.sizes.fullTxCborBytes -
+          (classification.sourceKind === "forced" ? 1 : 0),
       );
       expect(classification.reconstructedCanonicalDigestHex).toBe(
         classification.retainedPreimageDigestHex,
       );
       expect(classification.reconstructedCanonicalBytes).toBe(
-        sizeBalancedFixture.sizes.fullTxCborBytes,
+        sizeBalancedFixture.sizes.fullTxCborBytes -
+          (classification.sourceKind === "forced" ? 1 : 0),
       );
       expect(classification.transactionIdHex).toBe(sizeBalancedFixture.txIdHex);
       expect(classification.transactionCommitmentHex).toBe(
-        measurement.transactionCommitmentHex,
+        classification.sourceKind === "forced"
+          ? measurement.forcedTransactionCommitmentHex
+          : measurement.transactionCommitmentHex,
       );
       // The reveal count is decided against the reference model above, not
       // against the other classification or a recorded number.
@@ -88,9 +92,9 @@ describe("canonical V1 retained-DA boundary harness", () => {
         expectedRevealStepCount(canonicalTransactionCbor),
       );
     }
-    // Normal and forced retention are two encodings of one transaction: they
-    // must reconstruct to the identical preimage, not merely to equal sizes.
-    expect(measurement.forced.reconstructedCanonicalDigestHex).toBe(
+    // Distinct committed encodings retain one body ID. Their wire digests
+    // differ because the forced source contains no validity scalar.
+    expect(measurement.forced.reconstructedCanonicalDigestHex).not.toBe(
       measurement.normal.reconstructedCanonicalDigestHex,
     );
 

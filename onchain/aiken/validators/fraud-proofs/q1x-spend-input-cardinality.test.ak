@@ -632,6 +632,7 @@ fn missing_signature_step_04_at(count: Int) -> Bool {
       WitnessAnchor {
         tx_id: block.tx_id,
         witness_set_hash: block.compact.witness_set_hash,
+        source_kind: 0,
       },
       address_witnesses_field_index,
       [],

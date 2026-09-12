@@ -76,7 +76,7 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
       midgardMeasurement.nativeCanonicalBytes,
     );
     expect(retainedDa.forced.reconstructedCanonicalBytes).toBe(
-      midgardMeasurement.nativeCanonicalBytes,
+      midgardMeasurement.nativeCanonicalBytes - 1,
     );
     expect(retainedDa.normal.revealStepCount).toBe(
       midgardMeasurement.completeFoldStepCount,

@@ -61,6 +61,7 @@ validator main(
           WitnessAnchor {
             tx_id: protected.transaction_id,
             witness_set_hash: protected.witness_set_hash,
+            source_kind: protected.subject.source_kind,
           },
           address_witnesses_field_index,
           reference_inputs,
@@ -146,6 +147,7 @@ fn scan_state_of(
     WitnessAnchor {
       tx_id: protected.transaction_id,
       witness_set_hash: protected.witness_set_hash,
+      source_kind: protected.subject.source_kind,
     },
     address_witnesses_field_index,
     reference_inputs,
@@ -356,6 +358,7 @@ test protected_output_step_03_refuses_a_prefilled_frontier() fail {
     WitnessAnchor {
       tx_id: protected.transaction_id,
       witness_set_hash: protected.witness_set_hash,
+      source_kind: protected.subject.source_kind,
     },
     address_witnesses_field_index,
     [],

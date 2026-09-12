@@ -1,9 +1,8 @@
 import {
   decodeMidgardFieldPreimage,
-  deriveMidgardNativeTxFaultEvidenceMaterial,
   deriveMidgardNativeTxWitnessSetCompact,
-  encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   forcedVerdictSubject,
   type MinFeeStep02State,
@@ -11,7 +10,7 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "./evidence/canonical-block-evidence.js";
-import { nativeTxFromCoreCompact } from "./submit-step-01.js";
+import { forcedTxFromCoreCompact } from "./submit-step-01.js";
 import { buildForcedTransactionLeafMembershipProof } from "./transition-trace/witnesses.js";
 
 export const detectMinFeeForcedReplay = (block: CanonicalBlockEvidence) => {
@@ -23,16 +22,10 @@ export const detectMinFeeForcedReplay = (block: CanonicalBlockEvidence) => {
         verdict.ForcedTxInvalid.reason !== "FeeBelowMinimum"
       )
         return [];
-      const submitted = deriveMidgardNativeTxFaultEvidenceMaterial(
+      const material = deriveMidgardForcedTxFaultEvidenceMaterial(
         transaction.fullTransactionCbor,
       );
-      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-        encodeMidgardNativeTxCanonical({
-          ...submitted.canonical,
-          validity: "TxIsInvalid",
-        }),
-      );
-      const source = transaction.value.source;
+      const source = transaction.value.submitted_source;
       if (
         material.transactionId.toString("hex") !== transaction.value.tx_id ||
         material.proofSource.compactCbor.toString("hex") !==
@@ -46,6 +39,7 @@ export const detectMinFeeForcedReplay = (block: CanonicalBlockEvidence) => {
           "minFee: forced preimage differs from authenticated leaf",
         );
       const boundary = minimumFeeFromProofSource({
+        sourceKind: "forced",
         source: material.proofSource,
         minFeeA: block.header.minFeeA,
         minFeeB: block.header.minFeeB,
@@ -57,7 +51,7 @@ export const detectMinFeeForcedReplay = (block: CanonicalBlockEvidence) => {
           sourceKey: transaction.key,
           rejectionReason: "FeeBelowMinimum",
         }),
-        bad_tx: nativeTxFromCoreCompact(material.compact),
+        bad_tx: forcedTxFromCoreCompact(material.compact),
         bad_tx_body_fee: material.canonical.body.fee,
         bad_tx_id: transaction.value.tx_id,
         min_fee_a: block.header.minFeeA,

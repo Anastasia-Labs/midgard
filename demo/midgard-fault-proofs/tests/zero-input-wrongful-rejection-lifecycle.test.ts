@@ -1,13 +1,13 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSource,
   encodeMidgardFieldPreimage,
   encodeMidgardNativeTxCompact,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   AddressData,
@@ -142,6 +142,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
       committedFieldHashHex: midgardFieldCommitment(inputField).toString("hex"),
     });
     const planned = planFaultProofFieldOpening({
+      anchorSourceKind: 0n,
       fieldIndex: 0,
       anchorTxId: transactionId,
       nativeTxCompactCbor: compact.toString("hex"),
@@ -308,15 +309,12 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
     });
     const inputField = encodeMidgardFieldPreimage([inputItem]);
     const submitted = makeNativeTx({ spendInputCbors: [inputItem], fee: 0n });
-    const invalid = adjudicateMidgardNativeTxFullValidity(
-      submitted,
-      "TxIsInvalid",
-    );
+    const invalid = materializeMidgardForcedTxFromCanonical(submitted);
     const transactionId = computeMidgardNativeTxId(invalid).toString("hex");
-    const proofSource = deriveMidgardNativeTxProofSource(invalid);
+    const proofSource = deriveMidgardForcedTxProofSource(invalid);
     const forcedTransaction = {
       tx_id: transactionId,
-      source: {
+      submitted_source: {
         compact_cbor: proofSource.compactCbor.toString("hex"),
         witness_set_compact_cbor:
           proofSource.witnessSetCompactCbor.toString("hex"),
@@ -369,6 +367,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
       committedFieldHashHex: midgardFieldCommitment(inputField).toString("hex"),
     });
     const planned = planFaultProofFieldOpening({
+      anchorSourceKind: 1n,
       fieldIndex: 0,
       anchorTxId: transactionId,
       nativeTxCompactCbor: proofSource.compactCbor.toString("hex"),

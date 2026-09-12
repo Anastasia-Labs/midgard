@@ -50,7 +50,7 @@ validator main(
         )
         expect None = m_input_state_data
         // Missing-script rules apply only to an operator-accepted transaction.
-        expect bad_tx_view.tx_compact.validity_code == 0
+        expect bad_tx_view.tx_compact.validity_code == Some(0)
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
           bad_tx_id,

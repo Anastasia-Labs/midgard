@@ -70,7 +70,7 @@ validator main(
           tx,
         )
 
-        expect bad_tx_view.tx_compact.validity_code == 0
+        expect bad_tx_view.tx_compact.validity_code == Some(0)
 
         // 2. The UTxO must be produced at next step's script hash carrying the
         //    verified bad transaction's id, so step-02 can re-open its field-1

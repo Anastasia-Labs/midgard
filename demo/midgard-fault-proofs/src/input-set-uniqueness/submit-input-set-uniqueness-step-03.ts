@@ -97,6 +97,7 @@ export const submitInputSetUniquenessStep03 = async ({
     });
   const plan = (fieldIndex: number, items: readonly string[]) =>
     planFaultProofFieldOpening({
+      anchorSourceKind: bound.subject.source_kind === 1n ? 1n : 0n,
       fieldIndex,
       anchorTxId: bound.subject.transaction_id,
       nativeTxCompactCbor,

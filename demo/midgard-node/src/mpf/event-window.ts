@@ -8,9 +8,9 @@ import {
   type MidgardCekProgramEnvelope,
 } from "@al-ft/midgard-core/cek-proof";
 import {
-  computeMidgardNativeTxProofCommitment,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxProofSource,
+  computeMidgardForcedTxProofCommitment,
+  decodeMidgardForcedTxFullFromCanonicalCbor,
+  deriveMidgardForcedTxProofSource,
 } from "@al-ft/midgard-core/codec";
 import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import {
@@ -501,7 +501,7 @@ export const classifyForcedTransactions = <R>({
       }
       const txId = entry[ForcedTransactionsDB.Columns.TX_ID];
       const canonicalTx = yield* Effect.try({
-        try: () => decodeMidgardNativeTxFullFromCanonicalCbor(nativeTxCbor),
+        try: () => decodeMidgardForcedTxFullFromCanonicalCbor(nativeTxCbor),
         catch: (cause) =>
           new DatabaseError({
             table: ForcedTransactionsDB.tableName,
@@ -526,6 +526,7 @@ export const classifyForcedTransactions = <R>({
           {
             txId,
             txCbor: nativeTxCbor,
+            sourceKind: "forced",
             arrivalSeq,
             createdAt: entry[ForcedTransactionsDB.Columns.INCLUSION_TIME],
             programMaterialSidecarCbor,
@@ -646,14 +647,9 @@ export const classifyForcedTransactions = <R>({
         verdict,
         consensusProfile,
       });
-      // The row's tx_compact / transaction_commitment columns are the
-      // SUBMITTED identity written at ingest (admission requires TxIsValid),
-      // while `encoded` carries the operator-adjudicated leaf whose validity
-      // scalar is stamped from the verdict. Identity is therefore checked
-      // against a fresh derivation from the canonical bytes; `tx_id` hashes
-      // the body only and is invariant under adjudication.
+      // Classification must preserve the submission identity authenticated at ingest.
       const submittedSource = yield* Effect.try({
-        try: () => deriveMidgardNativeTxProofSource(canonicalTx),
+        try: () => deriveMidgardForcedTxProofSource(canonicalTx),
         catch: (cause) =>
           new DatabaseError({
             table: ForcedTransactionsDB.tableName,
@@ -664,7 +660,7 @@ export const classifyForcedTransactions = <R>({
       });
       if (
         !encoded.txId.equals(txId) ||
-        !computeMidgardNativeTxProofCommitment(submittedSource).equals(
+        !computeMidgardForcedTxProofCommitment(submittedSource).equals(
           transactionCommitment,
         ) ||
         !submittedSource.compactCbor.equals(
@@ -685,8 +681,6 @@ export const classifyForcedTransactions = <R>({
       classified.push({
         entry: {
           ...entry,
-          [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]:
-            ForcedTransactionsDB.midgardTxValidityOfVerdict(verdict),
           [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]: encoded.value,
           [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]:
             programMaterialSidecarCbor,

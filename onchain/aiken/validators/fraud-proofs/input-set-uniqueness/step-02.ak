@@ -102,7 +102,7 @@ validator main(
         //    indices refuse inside `field_item_at`.
         let spend_inputs_view = opened_field_view(
           spend_inputs_opening,
-          BodyAnchor { tx_id: bad_tx_id },
+          BodyAnchor { tx_id: bad_tx_id, source_kind: 0 },
           spend_inputs_field_index,
           reference_inputs,
           field_preimage_certificate_policy_id,
@@ -155,7 +155,7 @@ validator main(
         //    out-ref.
         let reference_inputs_view = opened_field_view(
           reference_inputs_opening,
-          BodyAnchor { tx_id: bad_tx_id },
+          BodyAnchor { tx_id: bad_tx_id, source_kind: 0 },
           reference_inputs_field_index,
           reference_inputs,
           field_preimage_certificate_policy_id,
@@ -212,7 +212,7 @@ validator main(
         //    redeemer type.
         let anchored = anchored_native_tx(
           BodyTxOpening { native_tx_compact_cbor },
-          BodyAnchor { tx_id: bad_tx_id },
+          BodyAnchor { tx_id: bad_tx_id, source_kind: 0 },
         )
         let spend_inputs_view = anchored_field_view(
           anchored,

@@ -217,7 +217,7 @@ bench golden_core_verify_native_tx_compact_reencode_bench(
     compact,
     compact_cbor,
   )
-  verified.tx_compact.validity_code == 0
+  verified.tx_compact.validity_code == Some(0)
 }
 
 bench golden_core_verify_native_tx_compact_cbor_bench(
@@ -227,7 +227,7 @@ bench golden_core_verify_native_tx_compact_cbor_bench(
     golden_core_native_tx_id,
     compact_cbor,
   )
-  verified.tx_compact.validity_code == 0
+  verified.tx_compact.validity_code == Some(0)
 }
 
 bench golden_core_decode_then_verify_native_tx_compact_reencode_bench(
@@ -239,7 +239,7 @@ bench golden_core_decode_then_verify_native_tx_compact_reencode_bench(
     compact,
     compact_cbor,
   )
-  verified.tx_compact.validity_code == 0
+  verified.tx_compact.validity_code == Some(0)
 }
 
 bench golden_core_decode_spend_inputs_preimage_bench(
@@ -318,7 +318,7 @@ test encode_native_tx_compact_matches_node_cbor_shape() {
     encode_native_tx_compact_v1(compact) == compact_cbor,
     view.tx_id == tx_id,
     view.tx_compact.body.spend_inputs_hash == #"0101010101010101010101010101010101010101010101010101010101010101",
-    encode_native_tx_compact_v1(view.tx_compact) == compact_cbor,
+    encode_native_tx_compact_v1(decode_native_tx_compact_v1(compact_cbor)) == compact_cbor,
   }
 }
 
@@ -666,7 +666,7 @@ test golden_midgard_core_native_compact_tx_decodes() {
 
   and {
     verified_from_cbor == verified,
-    verified.tx_compact.validity_code == 0,
+    verified.tx_compact.validity_code == Some(0),
     verified.tx_compact.body.spend_inputs_hash == golden_core_spend_inputs_hash,
     verified.tx_compact.body.reference_inputs_hash == golden_core_reference_inputs_hash,
     verified.tx_compact.body.outputs_hash == golden_core_outputs_hash,

@@ -1,4 +1,4 @@
-import { encodeMidgardNativeTxCanonical } from "@al-ft/midgard-core";
+import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
@@ -18,14 +18,14 @@ const forcedBlock = (forged = false) => {
           key: { transactionId: "05".repeat(32), outputIndex: 0n },
           value: {
             tx_id: tx.transactionId,
-            source: tx.source,
+            submitted_source: tx.source,
             verdict: {
               ForcedTxInvalid: {
                 reason: { RequiredSignerUnsigned: { signer_index: 0n } },
               },
             },
           },
-          fullTransactionCbor: encodeMidgardNativeTxCanonical(tx.transaction),
+          fullTransactionCbor: encodeMidgardForcedTxCanonical(tx.transaction),
         },
       ],
     },
@@ -54,7 +54,7 @@ describe("missingSignature authenticated wrongful rejection evidence", () => {
     const block = forcedBlock();
     const leaf = block.reconstruction.forcedTransactions[0]!;
     if (field === "tx_id") leaf.value.tx_id = "ff".repeat(32);
-    else leaf.value.source[field] = "80";
+    else leaf.value.submitted_source[field] = "80";
     expect(() => detect(block)).toThrow(/differs from/u);
   });
   it("refuses a subject whose reason coordinate differs from its evidence", () => {

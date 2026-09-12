@@ -78,7 +78,9 @@ const assertSourceFields = (
   entry: GoldenEntry,
 ) => {
   expect(decoded.tx_id).toBe(entry.txIdHex);
-  expect(decoded.source).toEqual({
+  expect(
+    "verdict" in decoded ? decoded.submitted_source : decoded.source,
+  ).toEqual({
     compact_cbor: entry.compactCborHex,
     witness_set_compact_cbor: entry.witnessSetCompactCborHex,
     field_preimage_lengths_cbor: entry.fieldPreimageLengthsCborHex,

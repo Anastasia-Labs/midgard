@@ -425,6 +425,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     );
     // The plan the submitter itself will make, from exactly its own inputs.
     const plannedField01 = planFaultProofFieldOpening({
+      anchorSourceKind: 0n,
       fieldIndex: MIDGARD_FIELD_INDEX.referenceInputs,
       anchorTxId: fixture.badTxId,
       nativeTxCompactCbor: fixture.badTxInclusion.nativeTxCompactCbor,
@@ -608,6 +609,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
       fixture.producingTxOutputsHash,
     );
     const plannedField02 = planFaultProofFieldOpening({
+      anchorSourceKind: 0n,
       fieldIndex: MIDGARD_FIELD_INDEX.outputs,
       anchorTxId: fixture.producingTxId,
       nativeTxCompactCbor: fixture.producingTxInclusion.nativeTxCompactCbor,

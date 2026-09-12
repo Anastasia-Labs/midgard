@@ -394,6 +394,7 @@ await import(${JSON.stringify(new URL("../support/native-chain-sync-fixture.mjs"
     }
     close(): void {
       this.closed = true;
+      queueMicrotask(() => this.dispatchEvent(new Event("close")));
     }
   }
   vi.stubGlobal("WebSocket", BoundarySocket);
@@ -489,7 +490,7 @@ await import(${JSON.stringify(new URL("../support/native-chain-sync-fixture.mjs"
             {
               headers: {
                 "X-Most-Recent-Checkpoint": "159845207",
-                ETag: `"${head}"`,
+                ETag: head,
               },
             },
           );
@@ -539,7 +540,7 @@ await import(${JSON.stringify(new URL("../support/native-chain-sync-fixture.mjs"
         {
           headers: {
             "X-Most-Recent-Checkpoint": "159845207",
-            ETag: `"${head}"`,
+            ETag: head,
           },
         },
       );

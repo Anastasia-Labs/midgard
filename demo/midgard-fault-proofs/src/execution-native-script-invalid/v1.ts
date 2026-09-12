@@ -6,10 +6,13 @@ import {
   decodeMidgardVersionedScript,
   deriveMidgardNativeTxFaultEvidenceMaterial,
   deriveMidgardNativeTxWitnessSetCompact,
-  encodeMidgardNativeTxCompact,
   hashMidgardInlineScriptSourceLeaf,
   hashMidgardReferenceScriptSourceLeaf,
 } from "@al-ft/midgard-core";
+import {
+  decodeMidgardForcedTxFullFromCanonicalCbor,
+  deriveMidgardForcedTxFaultEvidenceMaterial,
+} from "@al-ft/midgard-core/codec/forced";
 import {
   forcedVerdictSubject,
   FraudProofComputationThreadStepDatum,
@@ -617,10 +620,16 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow =
         throw new Error(
           "executionNativeScriptInvalid selected transaction disappeared",
         );
-      const tx = decodeMidgardNativeTxFullFromCanonicalCbor(txCbor);
-      const compactCbor = encodeMidgardNativeTxCompact(tx.compact).toString(
-        "hex",
-      );
+      const tx = (
+        forcedEntry === undefined
+          ? decodeMidgardNativeTxFullFromCanonicalCbor
+          : decodeMidgardForcedTxFullFromCanonicalCbor
+      )(txCbor);
+      const compactCbor = (
+        forcedEntry === undefined
+          ? deriveMidgardNativeTxFaultEvidenceMaterial
+          : deriveMidgardForcedTxFaultEvidenceMaterial
+      )(txCbor).proofSource.compactCbor.toString("hex");
       const compactWitness = deriveMidgardNativeTxWitnessSetCompact(
         tx.witnessSet,
       );
@@ -652,6 +661,7 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow =
         ]),
       );
       const reconstruction = reconstructExecutionNativeScriptPurposes({
+        sourceKind: forcedEntry === undefined ? "normal" : "forced",
         canonicalTransactionCbor: txCbor,
         resolvedOutputsByOutRef: priorOutputs,
       });

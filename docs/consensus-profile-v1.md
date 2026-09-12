@@ -115,15 +115,15 @@ L2TransactionSourceV1 {
 ```
 
 The map key is the 32-byte `tx_id`, and duplicate keys are rejected. A
-V1 transaction-order payload commits the same source and its derived proof
-commitment. The operator adds a typed verdict in the forced-inclusion leaf.
+V1 transaction-order payload commits a distinct validity-free forced source
+and its forced-domain proof commitment. The operator adds a typed verdict in the forced-inclusion leaf.
 The forced-transactions source root maps
 the serialized L1 order output reference (not the L2 transaction ID) to:
 
 ```text
 ForcedInclusionTxV1 {
   tx_id,
-  source: NativeTxProofSourceV1 {
+  submitted_source: ForcedTxProofSourceV1 {
     compact_cbor,
     witness_set_compact_cbor,
     field_preimage_lengths_cbor,
@@ -131,6 +131,21 @@ ForcedInclusionTxV1 {
   verdict: ForcedTxValid | ForcedTxInvalid { reason: RejectionReasonV1 },
 }
 ```
+
+The submitted full encoding is `[1, body, witness_set]`, and its compact has
+`[1, compact_body, witness_set_hash]`. Neither contains validity. The verdict
+is the only operator decision; changing it preserves the original source and
+body-derived ID. The forced commitment uses `MidgardForcedTxProofSourceV1`.
+Normal transactions retain their four-element encoding and native hash domain.
+Forced ledger size is submitted byte length plus one; transport uses actual bytes.
+
+The hashed profile requires
+`forcedTransactionSourceEncoding: "midgard-forced-submission-v1"`.
+This pre-launch replacement changes deployment identity even though the V1
+profile name remains. Old profile, validator, DA and journal identities cannot
+attach to the new deployment. Validators and dependent identities must be
+regenerated together. Existing persistent deployments are not reset or migrated
+implicitly; a fresh deployment requires its own explicit lifecycle decision.
 
 The same L2 transaction may therefore occur under multiple order keys, and
 each forced value preserves the exact operator verdict constructor. The

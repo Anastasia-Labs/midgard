@@ -10,6 +10,10 @@ import {
   planMidgardFieldCarriage,
 } from "@al-ft/midgard-core";
 import {
+  decodeMidgardForcedTxCompact,
+  encodeMidgardForcedTxCompact,
+} from "@al-ft/midgard-core/codec/forced";
+import {
   buildUnsignedFieldPreimagePublicationProgram,
   deriveFieldPreimageCertification,
   FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
@@ -75,6 +79,7 @@ const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 
 export type RawCommittedFieldCarriagePlan = Readonly<{
   kind: "raw_committed_preimage_v1";
+  sourceKind: 0n | 1n;
   fieldIndex: number;
   nativeTxId: string;
   preimage: Buffer;
@@ -84,6 +89,7 @@ export type RawCommittedFieldCarriagePlan = Readonly<{
 
 /** Plans raw committed bytes without pretending they decoded into §5.1 items. */
 export const createRawCommittedFieldCarriagePlan = ({
+  sourceKind,
   owner,
   nativeTxId,
   fieldIndex,
@@ -91,6 +97,7 @@ export const createRawCommittedFieldCarriagePlan = ({
 }: {
   readonly owner: string;
   readonly nativeTxId: string;
+  readonly sourceKind: 0n | 1n;
   readonly fieldIndex: number;
   readonly preimage: Uint8Array;
 }): RawCommittedFieldCarriagePlan => {
@@ -106,6 +113,7 @@ export const createRawCommittedFieldCarriagePlan = ({
   });
   return Object.freeze({
     kind: "raw_committed_preimage_v1",
+    sourceKind,
     fieldIndex: plan.fieldIndex,
     nativeTxId: plan.txId.toString("hex"),
     preimage: bytes,
@@ -261,11 +269,19 @@ const requirementIdentity = (
   }
   const { planned } = requirement;
   const normalizedCompactCbor = requirement.compactCbor.toLowerCase();
-  let decodedCompact: ReturnType<typeof decodeMidgardNativeTxCompact>;
+  let decodedCompact: ReturnType<typeof decodeMidgardForcedTxCompact>;
+  let canonicalCompactCbor: Buffer;
   try {
-    decodedCompact = decodeMidgardNativeTxCompact(
-      Buffer.from(normalizedCompactCbor, "hex"),
-    );
+    const bytes = Buffer.from(normalizedCompactCbor, "hex");
+    if (planned.sourceKind === 1n) {
+      const forced = decodeMidgardForcedTxCompact(bytes);
+      decodedCompact = forced;
+      canonicalCompactCbor = encodeMidgardForcedTxCompact(forced);
+    } else {
+      const normal = decodeMidgardNativeTxCompact(bytes);
+      decodedCompact = normal;
+      canonicalCompactCbor = encodeMidgardNativeTxCompact(normal);
+    }
   } catch (cause) {
     throw new Error(
       `field carriage compact CBOR does not decode: ${String(cause)}`,
@@ -284,8 +300,7 @@ const requirementIdentity = (
   });
   if (
     !/^(?:[0-9a-f]{2})+$/u.test(requirement.compactCbor) ||
-    encodeMidgardNativeTxCompact(decodedCompact).toString("hex") !==
-      normalizedCompactCbor ||
+    canonicalCompactCbor.toString("hex") !== normalizedCompactCbor ||
     computeMidgardNativeTxId(decodedCompact).toString("hex") !==
       planned.nativeTxId ||
     planned.plan.txId.toString("hex") !== planned.nativeTxId ||
@@ -327,6 +342,7 @@ const requirementIdentity = (
       : `${requirement.certificate.policyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`;
   const identitySha256 = sha256(
     JSON.stringify({
+      sourceKind: planned.sourceKind.toString(),
       fieldIndex: planned.fieldIndex,
       nativeTxId: planned.nativeTxId,
       nativeTxCompactCbor: requirement.compactCbor,

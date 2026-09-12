@@ -239,7 +239,7 @@ describe("Q35 network-id forced-door wire twins", () => {
             key: { transactionId: orderKeyTransactionId, outputIndex: 0n },
             value: {
               tx_id: badTxId,
-              source: {
+              submitted_source: {
                 compact_cbor: "80",
                 witness_set_compact_cbor: "81",
                 field_preimage_lengths_cbor: "82",

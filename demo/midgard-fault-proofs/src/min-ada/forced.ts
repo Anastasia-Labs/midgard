@@ -1,8 +1,5 @@
-import {
-  decodeMidgardFieldPreimage,
-  deriveMidgardNativeTxFaultEvidenceMaterial,
-  encodeMidgardNativeTxCanonical,
-} from "@al-ft/midgard-core";
+import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
 import {
   buildCanonicalMidgardLedgerOutputMaterial,
@@ -25,16 +22,10 @@ export const detectMinAdaForcedReplay = (block: CanonicalBlockEvidence) =>
         return [];
       const reason = verdict.ForcedTxInvalid.reason;
       const outputIndex = reason.OutputBelowMinAda.output_index;
-      const submitted = deriveMidgardNativeTxFaultEvidenceMaterial(
+      const material = deriveMidgardForcedTxFaultEvidenceMaterial(
         transaction.fullTransactionCbor,
       );
-      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-        encodeMidgardNativeTxCanonical({
-          ...submitted.canonical,
-          validity: "TxIsInvalid",
-        }),
-      );
-      const source = transaction.value.source;
+      const source = transaction.value.submitted_source;
       if (
         material.transactionId.toString("hex") !== transaction.value.tx_id ||
         material.proofSource.compactCbor.toString("hex") !==

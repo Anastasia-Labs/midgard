@@ -15,18 +15,14 @@
  * building; a lifecycle refusal has to come from the validator, so these
  * bypass exactly those off-chain guards and nothing else.
  */
-
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
   decodeMidgardFieldPreimage,
-  deriveMidgardNativeTxProofSource,
   deriveMidgardNativeTxWitnessSetCompact,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCanonical,
   encodeMidgardNativeTxCompact,
   encodeMidgardNativeTxWitnessSetCompact,
   materializeMidgardNativeTxFromCanonical,
@@ -34,6 +30,12 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
+import {
+  encodeMidgardForcedTxCanonical,
+  encodeMidgardForcedTxCompact,
+} from "@al-ft/midgard-core/codec/forced";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   DA_PAYLOAD_VERSION,
@@ -273,8 +275,13 @@ export const nonEmptyMintItemShape = (nativeTx = mintFieldTx()): WidthShape =>
     false,
   );
 
-export const compactCborHex = (nativeTx: MidgardNativeTxFull): string =>
-  encodeMidgardNativeTxCompact(nativeTx.compact).toString("hex");
+export const compactCborHex = (
+  nativeTx: MidgardNativeTxFull,
+  sourceKind: bigint,
+): string =>
+  (sourceKind === 1n
+    ? encodeMidgardForcedTxCompact
+    : encodeMidgardNativeTxCompact)(nativeTx.compact).toString("hex");
 
 export const witnessSetCompactCborHex = (
   nativeTx: MidgardNativeTxFull,
@@ -313,7 +320,7 @@ export const buildAcceptedWidthInclusions = async (
     inclusions.push({
       nativeTxId: ids[index]!,
       nativeTx: nativeTxFromCoreCompact(nativeTx.compact),
-      nativeTxCompactCbor: compactCborHex(nativeTx),
+      nativeTxCompactCbor: compactCborHex(nativeTx, 0n),
       l2TransactionSourceCbor: l2TransactionSourceCbor(nativeTx),
       transactionsPhasRoot: transactionsRoot,
       txMembershipProof: Data.from(proof.toCBOR().toString("hex"), Proof),
@@ -368,12 +375,12 @@ export const buildWidthForcedFixture = async ({
   const finalRoot = await keyValuePhasRootWithCount([
     { key: Buffer.from(finalUtxo[0], "hex"), value: descriptor },
   ]);
-  const source = deriveMidgardNativeTxProofSource(
-    adjudicateMidgardNativeTxFullValidity(nativeTx, "TxIsInvalid"),
+  const source = deriveMidgardForcedTxProofSource(
+    materializeMidgardForcedTxFromCanonical(nativeTx),
   );
   const transaction = {
     tx_id: computeMidgardNativeTxId(nativeTx).toString("hex"),
-    source: {
+    submitted_source: {
       compact_cbor: source.compactCbor.toString("hex"),
       witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
       field_preimage_lengths_cbor: (
@@ -487,7 +494,7 @@ export const buildWidthForcedFixture = async ({
         forced_transaction_preimages: sortedDaEntries([
           transitionTraceRawEntry(
             forcedEntries[0]![0],
-            encodeMidgardNativeTxCanonical(nativeTx).toString("hex"),
+            encodeMidgardForcedTxCanonical(nativeTx).toString("hex"),
           ),
         ]),
         cek_program_material: [],
@@ -583,6 +590,7 @@ export const submitWidthStep02Raw = async ({
     Buffer.from(evidence.fieldPreimageHex, "hex"),
   );
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: evidence.fieldIndex,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,

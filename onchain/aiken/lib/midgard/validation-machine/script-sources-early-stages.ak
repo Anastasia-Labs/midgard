@@ -9,8 +9,8 @@ use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_bytes,
 }
 use midgard/fraud_proofs/native_tx/compact.{
-  decode_native_tx_witness_set_compact, native_tx_proof_commitment_v1,
-  verify_native_tx_proof_source_v1,
+  decode_native_tx_witness_set_compact, tx_proof_commitment_v1,
+  verify_tx_proof_source_v1,
 }
 use midgard/native_script_scan_v1
 use midgard/native_tx_field_access_v1
@@ -119,7 +119,8 @@ fn script_sources_stage_zero_control_is_bound(
   }
   and {
     control.stage == 0,
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,
@@ -692,7 +693,8 @@ pub fn script_sources_stage_zero(
   control: ScriptSourcesControlV1,
   door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -1020,7 +1022,8 @@ pub fn verify_script_sources_stage_one_begin_raw_semantics(
     )
   expect
     bytearray.length(builtin.un_b_data(resolution_schedule_hash_data)) == 32
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     frame.compact_cbor,
     frame.witness_set_compact_cbor,
@@ -1075,7 +1078,8 @@ pub fn script_sources_stage_one(
   control: ScriptSourcesControlV1,
   door: field_door.MachineFieldDoorV1,
 ) -> Bool {
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,

@@ -72,7 +72,7 @@ validator main(
         //    inside the door, item located by §5.3 arithmetic.
         let spend_inputs_view = opened_field_view(
           spend_inputs_opening,
-          BodyAnchor { tx_id: bad_tx_id },
+          BodyAnchor { tx_id: bad_tx_id, source_kind: 0 },
           spend_inputs_field_index,
           reference_inputs,
           field_preimage_certificate_policy_id,

@@ -5,7 +5,9 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{
   cancel, continue, pass_native_tx_to_next_step_carried,
 }
-use midgard/fraud_proofs/native_tx/compact.{decode_native_tx_compact_v1}
+use midgard/fraud_proofs/native_tx/compact.{
+  decode_forced_tx_compact_v1, decode_native_tx_compact_v1,
+}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/fraud_proofs/spend_input_signer_missing/rule.{bind_spend_input_v1}
 use midgard/fraud_proofs/spend_input_signer_missing/step_01.{
@@ -85,7 +87,9 @@ validator main(
           subject,
           input_index,
           header.prev_utxos_root,
-          decode_native_tx_compact_v1(membership.value.source.compact_cbor).witness_set_hash,
+          decode_forced_tx_compact_v1(
+            membership.value.submitted_source.compact_cbor,
+          ).witness_set_hash,
         )
         let expected: Data = state
         and {

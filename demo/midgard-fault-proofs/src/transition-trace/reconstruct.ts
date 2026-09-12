@@ -1,10 +1,8 @@
 import {
-  adjudicateMidgardNativeTxFullValidity,
-  computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxFaultEvidenceMaterial,
-  deriveMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core/codec";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
@@ -576,22 +574,15 @@ const authenticateForcedTransactionPreimages = (
       );
     }
     try {
-      const full = decodeMidgardNativeTxFullFromCanonicalCbor(
+      // Authenticate the immutable envelope and field commitments without
+      // discarding malformed inner material needed for a fault proof.
+      const raw = deriveMidgardForcedTxFaultEvidenceMaterial(
         canonicalTransactionCbor,
       );
-      // The committed forced leaf carries the operator-adjudicated validity
-      // scalar (§2.4.3(e)), not the submitted admission claim, so the
-      // expected source is adjudicated by the leaf's own verdict before
-      // derivation. `tx_id` hashes the body only and is invariant.
-      const source = deriveMidgardNativeTxProofSource(
-        adjudicateMidgardNativeTxFullValidity(
-          full,
-          entry.value.verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid",
-        ),
-      );
+      const source = raw.proofSource;
       const expected: SDK.ForcedInclusionTxV1 = {
-        tx_id: computeMidgardNativeTxId(full).toString("hex"),
-        source: {
+        tx_id: raw.transactionId.toString("hex"),
+        submitted_source: {
           compact_cbor: source.compactCbor.toString("hex"),
           witness_set_compact_cbor:
             source.witnessSetCompactCbor.toString("hex"),

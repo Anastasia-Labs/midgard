@@ -51,7 +51,7 @@ validator main(
           tx,
         )
 
-        expect producing_tx_view.tx_compact.validity_code == 0
+        expect producing_tx_view.tx_compact.validity_code == Some(0)
 
         expect
             Some(State {

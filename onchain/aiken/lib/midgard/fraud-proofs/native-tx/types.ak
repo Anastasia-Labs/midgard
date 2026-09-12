@@ -191,10 +191,10 @@ pub type NativeTxProofSourceCborV1 {
   field_preimage_lengths_cbor: ByteArray,
 }
 
-pub type VerifiedMidgardNativeTxCompact {
+pub type VerifiedTxSourceView {
   tx_id: ByteArray,
   version: Int,
-  tx_compact: NativeTxCompact,
+  tx_compact: TxCompactView,
 }
 
 pub type VerifiedMidgardTransaction {
@@ -202,4 +202,24 @@ pub type VerifiedMidgardTransaction {
   transaction: MidgardTransaction,
   compact: NativeTxCompact,
   compact_cbor: ByteArray,
+}
+
+/// Immutable forced-submission material has no validity claim.
+pub type SubmittedForcedTransaction {
+  version: Int,
+  body: MidgardTransactionBody,
+  witness_set: MidgardTransactionWitnessSet,
+}
+
+pub type ForcedTxCompact {
+  body: NativeTxBodyCompact,
+  witness_set_hash: ByteArray,
+}
+
+/// Normal sources expose their authenticated scalar; forced sources expose None.
+/// This view has no encoder and is not a committed transaction representation.
+pub type TxCompactView {
+  body: NativeTxBodyCompact,
+  witness_set_hash: ByteArray,
+  validity_code: Option<Int>,
 }

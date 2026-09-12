@@ -1,4 +1,5 @@
 import { decodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
+import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
@@ -73,9 +74,14 @@ export type BoundScriptIntegrityHashMissingActuatorConfig = Readonly<{
   lease: StateQueueMutationLeaseCoordinator;
 }>;
 
-const txWitnessSetHash = (compactCbor: string): string =>
+const txWitnessSetHash = (
+  compactCbor: string,
+  source: "normal" | "forced",
+): string =>
   Buffer.from(
-    decodeMidgardNativeTxCompact(Buffer.from(compactCbor, "hex"))
+    (source === "forced"
+      ? decodeMidgardForcedTxCompact
+      : decodeMidgardNativeTxCompact)(Buffer.from(compactCbor, "hex"))
       .transactionWitnessSetHash,
   ).toString("hex");
 
@@ -187,7 +193,10 @@ export const createScriptIntegrityHashMissingTransactionPort = (
         { fraud_prover: config.signer.paymentKeyHash, data } as never,
         ScriptIntegrityStepDatums[index] as never,
       );
-    const witnessHash = txWitnessSetHash(admitted.evidence.nativeTxCompactCbor);
+    const witnessHash = txWitnessSetHash(
+      admitted.evidence.nativeTxCompactCbor,
+      admitted.evidence.finding.source === "forced" ? "forced" : "normal",
+    );
     const witnessSet = scriptIntegrityHashMissingWitnessSet(
       admitted.evidence.witnessSetCompactCbor,
     );

@@ -35,7 +35,6 @@
  * have to carry the bytes — and it changes which transaction pays, never what
  * the door authenticates.
  */
-
 import {
   computeHash32,
   computeMidgardNativeTxId,
@@ -47,6 +46,7 @@ import {
   midgardFieldCommitment,
   planMidgardFieldCarriage,
 } from "@al-ft/midgard-core";
+import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
 import {
   buildUnsignedFieldPreimageCertificationProgram,
   buildUnsignedFieldPreimagePublicationProgram,
@@ -118,6 +118,7 @@ export const parseNativeTxCompactCbor = (
  * have no way to act on it.
  */
 export type FaultProofFieldOpeningPlan = {
+  readonly sourceKind: 0n | 1n;
   readonly fieldIndex: number;
   /** The §2.5 anchor these bytes were checked against. */
   readonly nativeTxId: string;
@@ -161,7 +162,9 @@ const committedFieldCommitment = ({
   witnessSet,
 }: {
   readonly fieldIndex: number;
-  readonly compact: ReturnType<typeof decodeMidgardNativeTxCompact>;
+  readonly compact:
+    | ReturnType<typeof decodeMidgardNativeTxCompact>
+    | ReturnType<typeof decodeMidgardForcedTxCompact>;
   readonly witnessSet?: NativeTxWitnessSetCompact;
 }): string => {
   if (isMidgardWitnessSetField(fieldIndex)) {
@@ -217,6 +220,7 @@ const committedFieldCommitment = ({
  * re-hashed.
  */
 export const planFaultProofFieldOpening = ({
+  anchorSourceKind,
   fieldIndex,
   anchorTxId,
   nativeTxCompactCbor,
@@ -229,6 +233,7 @@ export const planFaultProofFieldOpening = ({
 }: {
   readonly fieldIndex: number;
   readonly anchorTxId: string;
+  readonly anchorSourceKind: 0n | 1n;
   readonly nativeTxCompactCbor: string;
   readonly itemCbors: readonly Uint8Array[];
   /** §8.6 min-Ada reclaim authority; no consuming step reads it. */
@@ -258,7 +263,11 @@ export const planFaultProofFieldOpening = ({
   // 1. `verify_native_tx_compact_cbor_v1`: the bytes the redeemer will carry
   //    must be the transaction the thread anchored, not a second transaction
   //    with a convenient field.
-  const compact = decodeMidgardNativeTxCompact(compactBytes);
+  const compact = (
+    anchorSourceKind === 1n
+      ? decodeMidgardForcedTxCompact
+      : decodeMidgardNativeTxCompact
+  )(compactBytes);
   // The id is derived from the compact structure alone (§3), which is why the
   // door can make this check from the same bytes the prover supplies.
   const derivedTxId = computeMidgardNativeTxId(compact).toString("hex");
@@ -338,6 +347,7 @@ export const planFaultProofFieldOpening = ({
   return {
     fieldIndex,
     nativeTxId: anchoredTxId,
+    sourceKind: anchorSourceKind,
     nativeTxCompactCbor: compactCbor,
     preimage,
     itemCount: itemCbors.length,
@@ -716,7 +726,10 @@ export const certifyFaultProofFieldCarriage = async ({
   readonly lucid: LucidEvolution;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
-  readonly planned: Readonly<{ readonly plan: MidgardFieldCarriagePlan }>;
+  readonly planned: Readonly<{
+    readonly plan: MidgardFieldCarriagePlan;
+    readonly sourceKind: 0n | 1n;
+  }>;
   readonly certificatePolicyId: string;
   readonly certificateMintingScript: MintingPolicy;
   readonly certificateReferenceScriptUtxo: UTxO;
@@ -737,6 +750,7 @@ export const certifyFaultProofFieldCarriage = async ({
   signer.selectWallet(lucid);
   const unsigned = await Effect.runPromise(
     buildUnsignedFieldPreimageCertificationProgram(lucid, {
+      sourceKind: planned.sourceKind,
       plan: planned.plan,
       certificatePolicyId,
       certificateAddress,

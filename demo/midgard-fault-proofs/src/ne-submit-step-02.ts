@@ -232,6 +232,7 @@ export const neSubmitStep02 = async ({
   // list that does not open the disputed transaction's field 0 is refused here
   // rather than at a validator that has already been paid for.
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: inputDatum.data.bad_tx_id,
     nativeTxCompactCbor,

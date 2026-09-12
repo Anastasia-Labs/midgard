@@ -34,10 +34,11 @@ formatting changes.
 - Source scans for forbidden imports or APIs: a syntax-aware dependency rule
   may be more accurate, but it must cover the same files and run in the
   appropriate CI lane before the old guard is removed.
-- [The public export snapshot](../../demo/lucid-midgard/tests/api-export-snapshot.test.ts)
-  checks built declarations and the exported name set. This is a public API
-  contract, not automatically a source-layout smell. Preserve detection of
-  removed or unintentionally added exports when improving its parser.
+- The historical `lucid-midgard/tests/api-export-snapshot.test.ts` is absent
+  from the current tree. Its original built-declaration and export-set checks
+  represented a public API contract. A replacement must preserve detection of
+  removed or unintentionally added exports; source-layout criticism alone
+  does not establish equivalent coverage.
 - `local-validation-shared.test.ts`, cited in the original audit, is absent
   from the current tracked suite. It is not remaining deletion work.
 

@@ -4,7 +4,7 @@ use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/codec.{encode_definite_bytes}
-use midgard/fraud_proofs/native_tx/compact.{native_tx_proof_commitment_v1}
+use midgard/fraud_proofs/native_tx/compact.{tx_proof_commitment_v1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state
 use midgard/rejection_reason_v1.{ScriptSourceMissing}
@@ -212,7 +212,8 @@ pub fn authenticate_purpose_control_v1(
     discovery.source_cursor + 1
   }
   expect and {
-      machine_state.transaction_commitment == native_tx_proof_commitment_v1(
+      machine_state.transaction_commitment == tx_proof_commitment_v1(
+        machine_state.source_kind,
         control.compact_cbor,
         control.witness_set_compact_cbor,
         control.field_preimage_lengths_cbor,

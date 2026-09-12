@@ -395,6 +395,12 @@ pub type NativeTxProofSourceV1 {
   field_preimage_lengths_cbor: ByteArray,
 }
 
+pub type ForcedTxProofSourceV1 {
+  compact_cbor: ByteArray,
+  witness_set_compact_cbor: ByteArray,
+  field_preimage_lengths_cbor: ByteArray,
+}
+
 /// Permissionless, immutable L1 publication of one content-addressed CEK
 /// program node. The root authenticates `(kind, preimage)` under the
 /// canonical V1 domain; the enclosing validator deliberately has no spend path so
@@ -432,7 +438,7 @@ pub type CekProgramMaterialDatumV1 {
 pub type TxOrderPayloadV1 {
   tx_id: ByteArray,
   transaction_commitment: ByteArray,
-  source: NativeTxProofSourceV1,
+  submitted_source: ForcedTxProofSourceV1,
 }
 
 pub type TxOrderEventV1 {
@@ -546,7 +552,7 @@ pub type L2TransactionSourceV1 {
 /// commitment the fault-proof threads bind to.
 pub type ForcedInclusionTxV1 {
   tx_id: ByteArray,
-  source: NativeTxProofSourceV1,
+  submitted_source: ForcedTxProofSourceV1,
   verdict: OperatorVerdictV1,
 }
 

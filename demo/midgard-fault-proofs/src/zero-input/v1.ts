@@ -39,7 +39,7 @@ export const prepareZeroInputForcedPlan = async ({
     headerHash: block.headerHash,
     finding: Object.freeze({ subject: detection.evidence.subject }),
     evidence: detection.evidence,
-    nativeTxCompactCbor: transaction.value.source.compact_cbor,
+    nativeTxCompactCbor: transaction.value.submitted_source.compact_cbor,
     forcedSource: Object.freeze({
       header: block.header,
       membership,

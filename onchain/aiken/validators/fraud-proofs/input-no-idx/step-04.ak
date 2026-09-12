@@ -75,7 +75,7 @@ validator main(
         //    `producing_tx_id` binds.
         let outputs_view = opened_field_view(
           outputs_opening,
-          BodyAnchor { tx_id: producing_tx_id },
+          BodyAnchor { tx_id: producing_tx_id, source_kind: 0 },
           outputs_field_index,
           reference_inputs,
           field_preimage_certificate_policy_id,

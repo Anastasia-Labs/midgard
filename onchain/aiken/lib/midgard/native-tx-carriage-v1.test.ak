@@ -45,8 +45,8 @@ use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_witness_set_compact, native_tx_id_for_version,
 }
 use midgard/fraud_proofs/native_tx/types.{
-  NativeTxBodyCompact, NativeTxCompact, NativeTxWitnessSetCompact,
-  VerifiedMidgardNativeTxCompact, native_tx_version_v1,
+  NativeTxBodyCompact, NativeTxCompact, NativeTxWitnessSetCompact, TxCompactView,
+  VerifiedTxSourceView, native_tx_version_v1,
 }
 use midgard/native_tx_carriage_v1.{
   field_preimage_certificate_v1, field_preimage_chunk_digests,
@@ -193,6 +193,7 @@ fn certify_against(
 ) -> Bool {
   let (tx_id, compact_cbor, witness_set_compact_cbor) = fixture
   verify_field_preimage_certificate_v1(
+    0,
     field_preimage_certificate_v1(owner_hash, tx_id, field_index, preimage),
     compact_cbor,
     witness_set_compact_cbor,
@@ -381,6 +382,7 @@ test certification_rejects_a_certificate_for_another_transaction() fail {
   let (_tx_id, compact_cbor, witness_set_compact_cbor) = nine_field_fixture()
   let preimage = field_preimage(0)
   verify_field_preimage_certificate_v1(
+    0,
     field_preimage_certificate_v1(
       owner_hash,
       blake2b_256(#"6e6f742074686973207472616e73616374696f6e"),
@@ -401,6 +403,7 @@ test certification_rejects_other_content() fail {
   let (tx_id, compact_cbor, witness_set_compact_cbor) = nine_field_fixture()
   let other = marked_bytes(#"ff", smallest_tier3_bytes)
   verify_field_preimage_certificate_v1(
+    0,
     field_preimage_certificate_v1(owner_hash, tx_id, 0, other),
     compact_cbor,
     witness_set_compact_cbor,
@@ -432,6 +435,7 @@ test certification_rejects_a_reordered_chunk_vector() fail {
   )
   expect [chunk_0, chunk_1] = split_field_preimage(preimage)
   verify_field_preimage_certificate_v1(
+    0,
     FieldPreimageCertificateV1 {
       owner: owner_hash,
       tx_id: tx_id_of(body),
@@ -461,6 +465,7 @@ test certification_rejects_a_tampered_chunk_digest() fail {
   )
   expect [_first, second] = certificate.chunk_digests
   verify_field_preimage_certificate_v1(
+    0,
     FieldPreimageCertificateV1 {
       ..certificate,
       chunk_digests: [zero_hash32, second],
@@ -488,6 +493,7 @@ test certification_rejects_a_mismatched_field_hash() fail {
     preimage,
   )
   verify_field_preimage_certificate_v1(
+    0,
     FieldPreimageCertificateV1 { ..certificate, field_hash: zero_hash32 },
     compact_cbor,
     witness_set_compact_cbor,
@@ -518,6 +524,7 @@ test certification_rejects_a_wrong_total_length() fail {
     preimage,
   )
   verify_field_preimage_certificate_v1(
+    0,
     FieldPreimageCertificateV1 {
       ..certificate,
       total_length: smallest_tier3_bytes + 1,
@@ -549,6 +556,7 @@ test certification_rejects_a_preimage_that_fits_tier_two() fail {
     nine_field_witness_set(),
   )
   verify_field_preimage_certificate_v1(
+    0,
     FieldPreimageCertificateV1 {
       owner: owner_hash,
       tx_id: tx_id_of(body),
@@ -589,6 +597,7 @@ test certification_rejects_a_lopsided_split() fail {
   let head = bytearray.take(preimage, chunk_bytes_k - 100)
   let tail = bytearray.drop(preimage, chunk_bytes_k - 100)
   verify_field_preimage_certificate_v1(
+    0,
     FieldPreimageCertificateV1 {
       owner: owner_hash,
       tx_id,
@@ -659,6 +668,7 @@ test certification_rejects_a_total_length_above_the_aggregate_cap() fail {
     nine_field_witness_set(),
   )
   verify_field_preimage_certificate_v1(
+    0,
     FieldPreimageCertificateV1 {
       owner: owner_hash,
       tx_id: tx_id_of(body),
@@ -688,6 +698,7 @@ test certification_rejects_an_owner_that_is_not_a_key_hash() fail {
     preimage,
   )
   verify_field_preimage_certificate_v1(
+    0,
     FieldPreimageCertificateV1 {
       ..certificate,
       owner: bytearray.take(owner_hash, 27),
@@ -719,6 +730,7 @@ test certification_rejects_a_substituted_witness_set() fail {
   let (tx_id, compact_cbor, _witness_set_compact_cbor) = nine_field_fixture()
   let preimage = field_preimage(6)
   verify_field_preimage_certificate_v1(
+    0,
     field_preimage_certificate_v1(owner_hash, tx_id, 6, preimage),
     compact_cbor,
     encode_native_tx_witness_set_compact(
@@ -769,12 +781,14 @@ test republished_carriage_is_byte_identical_and_certifies() {
     original.tx_id == healed.tx_id,
     original.field_index == healed.field_index,
     verify_field_preimage_certificate_v1(
+      0,
       original,
       compact_cbor,
       witness_set_compact_cbor,
       republished_chunks(preimage),
     ),
     verify_field_preimage_certificate_v1(
+      0,
       healed,
       compact_cbor,
       witness_set_compact_cbor,
@@ -859,15 +873,15 @@ test certified_carriage_opens_through_the_access_door() {
     input_of(2, key_output(builtin.b_data(chunk_1))),
   ]
   let view = authenticated_field_view(
-    VerifiedMidgardNativeTxCompact {
+    VerifiedTxSourceView {
       tx_id,
       version: native_tx_version_v1,
-      tx_compact: NativeTxCompact {
+      tx_compact: TxCompactView {
         body,
         witness_set_hash: blake2b_256(
           encode_native_tx_witness_set_compact(witness_set),
         ),
-        validity_code: 0,
+        validity_code: Some(0),
       },
     },
     witness_set,
@@ -991,7 +1005,7 @@ fn door_corner_body() -> NativeTxBodyCompact {
 /// stop, which is what makes the door open itself an attributable difference
 /// rather than a figure dominated by a 32 KB fixture.
 fn corner_step_inputs() -> (
-  VerifiedMidgardNativeTxCompact,
+  VerifiedTxSourceView,
   NativeTxWitnessSetCompact,
   List<Input>,
 ) {
@@ -1003,15 +1017,15 @@ fn corner_step_inputs() -> (
   let body = door_corner_body()
   let tx_id = tx_id_of(body)
   (
-    VerifiedMidgardNativeTxCompact {
+    VerifiedTxSourceView {
       tx_id,
       version: native_tx_version_v1,
-      tx_compact: NativeTxCompact {
+      tx_compact: TxCompactView {
         body,
         witness_set_hash: blake2b_256(
           encode_native_tx_witness_set_compact(witness_set),
         ),
-        validity_code: 0,
+        validity_code: Some(0),
       },
     },
     witness_set,

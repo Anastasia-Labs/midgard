@@ -8,6 +8,7 @@ import {
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
+import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   buildSpendInputSignerMissingFaultProofContracts,
@@ -178,7 +179,7 @@ describe("spendInputSignerMissing V1", () => {
         rejectionReason: { SpendInputSignerMissing: { input_index: 0n } },
       }),
       inputIndex: 0,
-      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(valid),
+      canonicalTransactionCbor: encodeMidgardForcedTxCanonical(valid),
       resolved,
     });
     expect(forced.signerMissing).toBe(false);
@@ -248,7 +249,7 @@ describe("spendInputSignerMissing V1", () => {
     const transaction = transactionWithSignature("empty");
     const txId = computeMidgardNativeTxId(transaction).toString("hex");
     const canonicalTransactionCbor =
-      encodeMidgardNativeTxCanonical(transaction);
+      encodeMidgardForcedTxCanonical(transaction);
     const scriptOutput = encodeMidgardTxOutput({
       address: Buffer.concat([
         Buffer.from([0x70]),
@@ -317,7 +318,7 @@ describe("spendInputSignerMissing V1", () => {
       prepareSpendInputSignerMissingEvidence({
         subject: acceptedVerdictSubject(txId),
         inputIndex: 0,
-        canonicalTransactionCbor,
+        canonicalTransactionCbor: encodeMidgardNativeTxCanonical(transaction),
         resolved: scriptResolved,
       }),
     ).toThrow(/not key locked/u);
@@ -325,7 +326,7 @@ describe("spendInputSignerMissing V1", () => {
       prepareSpendInputSignerMissingEvidence({
         subject: acceptedVerdictSubject(txId),
         inputIndex: 1,
-        canonicalTransactionCbor,
+        canonicalTransactionCbor: encodeMidgardNativeTxCanonical(transaction),
         priorRoot,
       }),
     ).toThrow(/out of range/u);
@@ -333,7 +334,7 @@ describe("spendInputSignerMissing V1", () => {
     const scan = prepareSpendInputSignerMissingEvidence({
       subject: acceptedVerdictSubject(txId),
       inputIndex: 0,
-      canonicalTransactionCbor,
+      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(transaction),
       resolved,
     });
     expect(scan.route).toBe("witness_scan");

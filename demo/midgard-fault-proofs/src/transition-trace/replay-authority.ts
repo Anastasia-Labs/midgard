@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import {
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxCompact,
+  decodeMidgardForcedTxCompact,
 } from "@al-ft/midgard-core";
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -82,8 +82,8 @@ const readTransitionTraceEventCoverage = ({
       outsideItem = { ...omittedItem, validityOverride: validity };
     } else {
       const datum = Data.from(entry.utxo.datum!, SDK.TxOrderDatum);
-      const compact = decodeMidgardNativeTxCompact(
-        Buffer.from(datum.event.tx.source.compact_cbor, "hex"),
+      const compact = decodeMidgardForcedTxCompact(
+        Buffer.from(datum.event.tx.submitted_source.compact_cbor, "hex"),
       );
       if (
         computeMidgardNativeTxId(compact).toString("hex") !==

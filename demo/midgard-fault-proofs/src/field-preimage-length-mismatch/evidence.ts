@@ -1,13 +1,11 @@
 import { createHash } from "node:crypto";
 
 import {
-  adjudicateMidgardNativeTxFullValidity,
   decodeMidgardFieldPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardNativeTxProofFieldLengths,
   deriveMidgardNativeTxFaultEvidenceMaterial,
-  encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
@@ -58,19 +56,15 @@ export const detectFieldPreimageLengthCompleteReplay = (
       continue;
     }
     const fieldIndex = Number(reason.FieldPreimageLengthMismatch.field_index);
-    const adjudicated = adjudicateMidgardNativeTxFullValidity(
-      decodeMidgardNativeTxFullFromCanonicalCbor(forced.fullTransactionCbor),
-      "TxIsInvalid",
-    );
-    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-      encodeMidgardNativeTxCanonical(adjudicated),
+    const material = deriveMidgardForcedTxFaultEvidenceMaterial(
+      forced.fullTransactionCbor,
     );
     if (
       material.transactionId.toString("hex") !== forced.value.tx_id ||
       material.proofSource.compactCbor.toString("hex") !==
-        forced.value.source.compact_cbor ||
+        forced.value.submitted_source.compact_cbor ||
       material.proofSource.witnessSetCompactCbor.toString("hex") !==
-        forced.value.source.witness_set_compact_cbor
+        forced.value.submitted_source.witness_set_compact_cbor
     ) {
       throw new Error(
         "fieldPreimageLengthMismatch forced preimage differs from its committed leaf",
@@ -83,7 +77,10 @@ export const detectFieldPreimageLengthCompleteReplay = (
       );
     }
     const declaredLength = decodeMidgardNativeTxProofFieldLengths(
-      Buffer.from(forced.value.source.field_preimage_lengths_cbor, "hex"),
+      Buffer.from(
+        forced.value.submitted_source.field_preimage_lengths_cbor,
+        "hex",
+      ),
     )[fieldIndex]!;
     // A truthful forced rejection is healthy for this family. Only equality
     // contradicts the operator's exact mismatch reason.
@@ -304,19 +301,15 @@ const exactForcedFinding = async (
       continue;
     }
     const fieldIndex = Number(reason.FieldPreimageLengthMismatch.field_index);
-    const adjudicated = adjudicateMidgardNativeTxFullValidity(
-      decodeMidgardNativeTxFullFromCanonicalCbor(forced.fullTransactionCbor),
-      "TxIsInvalid",
-    );
-    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-      encodeMidgardNativeTxCanonical(adjudicated),
+    const material = deriveMidgardForcedTxFaultEvidenceMaterial(
+      forced.fullTransactionCbor,
     );
     if (
       material.transactionId.toString("hex") !== forced.value.tx_id ||
       material.proofSource.compactCbor.toString("hex") !==
-        forced.value.source.compact_cbor ||
+        forced.value.submitted_source.compact_cbor ||
       material.proofSource.witnessSetCompactCbor.toString("hex") !==
-        forced.value.source.witness_set_compact_cbor
+        forced.value.submitted_source.witness_set_compact_cbor
     ) {
       throw new Error(
         "fieldPreimageLengthMismatch forced preimage differs from its committed leaf",
@@ -334,7 +327,7 @@ const exactForcedFinding = async (
       direction: "wrongfulRejection",
       fieldIndex,
       fieldPreimageLengthsCbor: Buffer.from(
-        forced.value.source.field_preimage_lengths_cbor,
+        forced.value.submitted_source.field_preimage_lengths_cbor,
         "hex",
       ),
       fieldPreimage: preimage,

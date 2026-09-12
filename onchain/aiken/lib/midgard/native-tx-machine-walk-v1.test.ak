@@ -65,7 +65,7 @@ use midgard/fraud_proofs/native_tx/components.{
 use midgard/fraud_proofs/native_tx/types.{
   MidgardTxInput, MidgardVersionedScript, NativeCardanoScript,
   NativeTxBodyCompact, NativeTxCompact, NativeTxWitnessSetCompact,
-  PlutusV3Script, VerifiedMidgardNativeTxCompact, native_tx_version_v1,
+  PlutusV3Script, TxCompactView, VerifiedTxSourceView, native_tx_version_v1,
 }
 use midgard/native_tx_field_access_v1.{
   Certified, FieldCarriageV1, FieldPreimageCertificateV1, FieldViewV1, Inline,
@@ -193,7 +193,7 @@ fn source(
   tx_id: ByteArray,
   field_index: Int,
   preimage: ByteArray,
-) -> Pair<VerifiedMidgardNativeTxCompact, NativeTxWitnessSetCompact> {
+) -> Pair<VerifiedTxSourceView, NativeTxWitnessSetCompact> {
   let committed = field_commitment(preimage)
   let slot = fn(index: Int) -> ByteArray {
     if index == field_index {
@@ -222,15 +222,15 @@ fn source(
     network_id: 255,
   }
   Pair(
-    VerifiedMidgardNativeTxCompact {
+    VerifiedTxSourceView {
       tx_id,
       version: native_tx_version_v1,
-      tx_compact: NativeTxCompact {
+      tx_compact: TxCompactView {
         body,
         witness_set_hash: blake2b_256(
           encode_native_tx_witness_set_compact(witness_set),
         ),
-        validity_code: 0,
+        validity_code: Some(0),
       },
     },
     witness_set,
@@ -323,7 +323,7 @@ fn open_inline(
 /// Here the only thing a second open pays for is the door's own
 /// full-preimage `blake2b_256`, which is exactly the cost under test.
 fn open_inline_from(
-  committed: Pair<VerifiedMidgardNativeTxCompact, NativeTxWitnessSetCompact>,
+  committed: Pair<VerifiedTxSourceView, NativeTxWitnessSetCompact>,
   field_index: Int,
   preimage: ByteArray,
 ) -> Pair<FieldViewV1, FieldWalkCheckpointV1> {
@@ -1137,7 +1137,7 @@ test authenticate_once_reopen_per_item_costs_more() {
 }
 
 fn reopen_each(
-  committed: Pair<VerifiedMidgardNativeTxCompact, NativeTxWitnessSetCompact>,
+  committed: Pair<VerifiedTxSourceView, NativeTxWitnessSetCompact>,
   preimage: ByteArray,
   index: Int,
   state: Int,

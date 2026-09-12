@@ -3,15 +3,15 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output}
 use midgard/common/utils
 use midgard/fraud_proofs/native_tx/compact.{
-  decode_native_tx_field_preimage_lengths_v1, native_tx_proof_commitment_v1,
-  verify_native_tx_proof_source_v1,
+  decode_native_tx_field_preimage_lengths_v1, forced_tx_proof_commitment_v1,
+  verify_forced_tx_proof_source_v1,
 }
 use midgard/fraud_proofs/native_tx/types.{
   NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact,
-  VerifiedMidgardNativeTxCompact,
+  VerifiedTxSourceView,
 }
 use midgard/ledger_state.{
-  ForcedInclusionTxV1, NativeTxProofSourceV1, TxOrderEventV1, TxOrderId,
+  ForcedInclusionTxV1, ForcedTxProofSourceV1, TxOrderEventV1, TxOrderId,
   TxOrderPayloadV1, unsafe_event_to_key_value_pair,
 }
 use midgard/native_tx_field_access_v1.{FieldCarriageV1}
@@ -110,7 +110,7 @@ fn field_length(
 /// extracts each field's expected commitment from — and a four-way `Pair` nest
 /// at every recursion step would hide which of them the walk is reading.
 type OrderMaterialDirectoryV1 {
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   commitments: List<ByteArray>,
   lengths: NativeTxFieldPreimageLengthsV1,
@@ -119,16 +119,16 @@ type OrderMaterialDirectoryV1 {
 fn material_directory(
   transaction_id: ByteArray,
   transaction_commitment: ByteArray,
-  source: NativeTxProofSourceV1,
+  source: ForcedTxProofSourceV1,
 ) -> OrderMaterialDirectoryV1 {
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_forced_tx_proof_source_v1(
     transaction_id,
     source.compact_cbor,
     source.witness_set_compact_cbor,
     source.field_preimage_lengths_cbor,
   )
   expect
-    native_tx_proof_commitment_v1(
+    forced_tx_proof_commitment_v1(
       source.compact_cbor,
       source.witness_set_compact_cbor,
       source.field_preimage_lengths_cbor,
@@ -310,7 +310,7 @@ pub fn verify_order_material(
     material_directory(
       payload.tx_id,
       payload.transaction_commitment,
-      payload.source,
+      payload.submitted_source,
     ),
     0,
     material_carriage,
@@ -335,7 +335,7 @@ pub fn forced_inclusion_key_value(
     tx_order_id,
     ForcedInclusionTxV1 {
       tx_id: tx_order_payload.tx_id,
-      source: tx_order_payload.source,
+      submitted_source: tx_order_payload.submitted_source,
       verdict: validity_override,
     },
   )

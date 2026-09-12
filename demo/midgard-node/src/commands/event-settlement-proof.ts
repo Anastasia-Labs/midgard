@@ -373,7 +373,7 @@ export const resolveEventSettlementProofProgram = (
       proof,
       proofCbor: LucidData.to(proof, SDK.RawRootMembershipProof),
       status: entry[ForcedTransactionsDB.Columns.STATUS],
-      validity: entry[ForcedTransactionsDB.Columns.OPERATOR_VALIDITY],
+      validity: ForcedTransactionsDB.operatorValidityOfEntry(entry),
       entry,
     };
   });

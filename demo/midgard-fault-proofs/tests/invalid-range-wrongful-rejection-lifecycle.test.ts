@@ -1,9 +1,7 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import {
-  adjudicateMidgardNativeTxFullValidity,
-  computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSource,
-} from "@al-ft/midgard-core";
+import { computeMidgardNativeTxId } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   ForcedInclusionTxV1Schema,
   forcedVerdictSubject,
@@ -23,7 +21,7 @@ import {
 } from "../src/invalid-range/submit.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { submitInit } from "../src/submit-init.js";
-import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
+import { forcedTxFromCoreCompact } from "../src/submit-step-01.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
   admitNativeInclusionTwoStepArtifact,
@@ -92,20 +90,19 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
           harness.emulator.now() + 120_000,
         ) - 1,
     });
-    const invalid = adjudicateMidgardNativeTxFullValidity(
+    const invalid = materializeMidgardForcedTxFromCanonical(
       makeNativeTx({
         spendInputCbors: [],
         fee: 0n,
         validityIntervalStart: 5n,
         validityIntervalEnd: 20n,
       }),
-      "TxIsInvalid",
     );
     const transactionId = computeMidgardNativeTxId(invalid).toString("hex");
-    const source = deriveMidgardNativeTxProofSource(invalid);
+    const source = deriveMidgardForcedTxProofSource(invalid);
     const leaf = {
       tx_id: transactionId,
-      source: {
+      submitted_source: {
         compact_cbor: source.compactCbor.toString("hex"),
         witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
         field_preimage_lengths_cbor:
@@ -158,7 +155,7 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
         rejectionReason: "ValidityIntervalExcludesBlockSlot",
       }),
       blockSlot: header.blockSlot,
-      txBody: nativeTxFromCoreCompact(invalid.compact).body,
+      txBody: forcedTxFromCoreCompact(invalid.compact).body,
     });
     const admitted = admitNativeInclusionTwoStepArtifact({
       schemaVersion: NATIVE_INCLUSION_TWO_STEP_ARTIFACT,
@@ -169,9 +166,9 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
       blockSlot: header.blockSlot.toString(),
       violationReason: "ValidityIntervalExcludesBlockSlot",
       nativeTxId: transactionId,
-      nativeTxCompactCbor: leaf.source.compact_cbor,
+      nativeTxCompactCbor: leaf.submitted_source.compact_cbor,
       l2TransactionSourceCbor: Data.to(
-        { tx_id: transactionId, source: leaf.source } as never,
+        { tx_id: transactionId, source: leaf.submitted_source } as never,
         SDK.L2TransactionSource as never,
       ),
       transactionsPhasRoot: "00".repeat(32),

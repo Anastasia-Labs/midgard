@@ -244,6 +244,7 @@ export const admitWithdrawnReferenceInputArtifact = async (
     throw new Error("withdrawn-reference-input detection identity changed");
   }
   const referencePlan = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.referenceInputs,
     anchorTxId: tx.artifact.nativeTxId,
     nativeTxCompactCbor: tx.artifact.nativeTxCompactCbor,

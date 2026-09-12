@@ -1,9 +1,8 @@
 import {
-  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardForcedTxProofCommitment,
   computeMidgardNativeTxId,
-  computeMidgardNativeTxProofCommitment,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxProofSource,
+  decodeMidgardForcedTxFullFromCanonicalCbor,
+  deriveMidgardForcedTxProofSource,
 } from "@al-ft/midgard-core/codec";
 import {
   asArray,
@@ -19,7 +18,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE_ID,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
-import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
+import { validateMidgardConsensusForcedTxCbor } from "@al-ft/midgard-core/consensus-validation";
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
@@ -53,7 +52,6 @@ export enum Columns {
   TX_ID = "tx_id",
   TX_COMPACT = "tx_compact",
   FORCED_INCLUSION_VALUE = "forced_inclusion_value",
-  OPERATOR_VALIDITY = "operator_validity",
   CONSENSUS_PROFILE_ID = "consensus_profile_id",
   NATIVE_TX_CBOR = "native_tx_cbor",
   TRANSACTION_COMMITMENT = "transaction_commitment",
@@ -81,12 +79,6 @@ export type Entry = {
   [Columns.TX_ID]: Buffer;
   [Columns.TX_COMPACT]: Buffer;
   [Columns.FORCED_INCLUSION_VALUE]: Buffer;
-  /**
-   * The verdict's two-valued projection — see
-   * {@link midgardTxValidityOfVerdict}. The verdict itself is carried, arm
-   * and coordinates, by {@link Columns.FORCED_INCLUSION_VALUE}.
-   */
-  [Columns.OPERATOR_VALIDITY]: SDK.MidgardTxValidity;
   [Columns.CONSENSUS_PROFILE_ID]: typeof MIDGARD_CONSENSUS_PROFILE_ID;
   [Columns.NATIVE_TX_CBOR]: Buffer;
   [Columns.TRANSACTION_COMMITMENT]: Buffer;
@@ -103,20 +95,17 @@ export type ForcedInclusionValueV1Input = {
   readonly consensusProfile: MidgardConsensusProfile;
 };
 
-/**
- * The two-valued projection of an {@link SDK.OperatorVerdict} onto the
- * compact leaf's validity scalar, as the #640 forced-arm authoritativeness
- * predicate binds them: `ForcedTxValid` ⇔ validity code 0 (`TxIsValid`),
- * `ForcedTxInvalid { _ }` ⇔ validity code 1 (`TxIsInvalid`).
- *
- * `operator_validity` persists exactly this bit; the full verdict — arm and
- * subject coordinates — lives in `forced_inclusion_value`, the byte-exact
- * `ForcedInclusionTxV1` leaf the roots commit to.
- */
-export const midgardTxValidityOfVerdict = (
-  verdict: SDK.OperatorVerdict,
-): SDK.MidgardTxValidity =>
-  verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid";
+export const operatorVerdictOfEntry = (entry: Entry): SDK.OperatorVerdict =>
+  LucidData.from(
+    entry[Columns.FORCED_INCLUSION_VALUE].toString("hex"),
+    SDK.ForcedInclusionTxV1,
+  ).verdict;
+
+/** Operational classification is derived from the single stored verdict. */
+export const operatorValidityOfEntry = (entry: Entry): SDK.MidgardTxValidity =>
+  operatorVerdictOfEntry(entry) === "ForcedTxValid"
+    ? "TxIsValid"
+    : "TxIsInvalid";
 
 export const FORCED_TRANSACTION_JOURNAL_MEMBER_VERSION = 1n;
 if (
@@ -325,7 +314,7 @@ export const encodeForcedInclusionValueV1 = ({
     readonly txId: Buffer;
     readonly txCompact: Buffer;
     readonly transactionCommitment: Buffer;
-    readonly source: ReturnType<typeof deriveMidgardNativeTxProofSource>;
+    readonly source: ReturnType<typeof deriveMidgardForcedTxProofSource>;
     readonly value: Buffer;
   },
   DatabaseError
@@ -343,29 +332,18 @@ export const encodeForcedInclusionValueV1 = ({
     }
     const material = yield* Effect.try({
       try: () => {
-        // Admission runs on the user's bytes: submitted preimages must claim
-        // TxIsValid (E_IS_VALID_FALSE_FORBIDDEN).
-        const violation = validateMidgardConsensusTxCbor(nativeTxCbor);
+        const violation = validateMidgardConsensusForcedTxCbor(nativeTxCbor);
         if (violation !== null) {
           throw new Error(
             `${violation.code} ${violation.featureId}: ${violation.detail}`,
           );
         }
         const nativeTx =
-          decodeMidgardNativeTxFullFromCanonicalCbor(nativeTxCbor);
-        // The committed leaf's validity scalar is the operator's adjudication,
-        // stamped from the verdict so the #640 forced-arm predicate
-        // (`ForcedTxValid` ⇔ code 0, `ForcedTxInvalid { _ }` ⇔ code 1) holds
-        // for every leaf this encoder can produce. `tx_id` hashes the body
-        // only, so stamping never moves the transaction's identity.
-        const adjudicatedTx = adjudicateMidgardNativeTxFullValidity(
-          nativeTx,
-          verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid",
-        );
-        const txId = computeMidgardNativeTxId(adjudicatedTx);
-        const source = deriveMidgardNativeTxProofSource(adjudicatedTx);
+          decodeMidgardForcedTxFullFromCanonicalCbor(nativeTxCbor);
+        const txId = computeMidgardNativeTxId(nativeTx.compact);
+        const source = deriveMidgardForcedTxProofSource(nativeTx);
         const transactionCommitment =
-          computeMidgardNativeTxProofCommitment(source);
+          computeMidgardForcedTxProofCommitment(source);
         return {
           txId,
           source,
@@ -382,7 +360,7 @@ export const encodeForcedInclusionValueV1 = ({
     });
     const forcedInclusionTx: SDK.ForcedInclusionTxV1 = {
       tx_id: material.txId.toString("hex"),
-      source: {
+      submitted_source: {
         compact_cbor: material.source.compactCbor.toString("hex"),
         witness_set_compact_cbor:
           material.source.witnessSetCompactCbor.toString("hex"),
@@ -423,10 +401,6 @@ export const createTable: Effect.Effect<void, DatabaseError, Database> =
           ${sql(Columns.TX_ID)} BYTEA NOT NULL CHECK (octet_length(${sql(Columns.TX_ID)}) = 32),
           ${sql(Columns.TX_COMPACT)} BYTEA NOT NULL,
           ${sql(Columns.FORCED_INCLUSION_VALUE)} BYTEA NOT NULL,
-	          ${sql(Columns.OPERATOR_VALIDITY)} TEXT NOT NULL CHECK (${sql(Columns.OPERATOR_VALIDITY)} IN (
-            'TxIsValid',
-            'TxIsInvalid'
-	          )),
 	          ${sql(Columns.CONSENSUS_PROFILE_ID)} TEXT NOT NULL CHECK (${sql(Columns.CONSENSUS_PROFILE_ID)} = ${MIDGARD_CONSENSUS_PROFILE_ID}),
 	          ${sql(Columns.NATIVE_TX_CBOR)} BYTEA NOT NULL CHECK (octet_length(${sql(Columns.NATIVE_TX_CBOR)}) <= 295041),
 	          ${sql(Columns.TRANSACTION_COMMITMENT)} BYTEA NOT NULL CHECK (octet_length(${sql(Columns.TRANSACTION_COMMITMENT)}) = 32),
@@ -529,8 +503,7 @@ export const insertEntries = (
 export const setProofClassifications = (
   classifications: readonly {
     readonly txOrderId: Buffer;
-    readonly operatorValidity: SDK.MidgardTxValidity;
-    readonly forcedInclusionValue: Buffer;
+    readonly verdict: SDK.OperatorVerdict;
     readonly programMaterialSidecarCbor: Buffer;
   }[],
 ): Effect.Effect<void, DatabaseError, Database> =>
@@ -543,31 +516,55 @@ export const setProofClassifications = (
       Effect.forEach(
         classifications,
         (classification) =>
-          sql`
-            UPDATE ${sql(tableName)}
-            SET
-              ${sql(Columns.OPERATOR_VALIDITY)} = ${classification.operatorValidity},
-              ${sql(Columns.FORCED_INCLUSION_VALUE)} = ${classification.forcedInclusionValue},
+          Effect.gen(function* () {
+            const rows = yield* sql<Entry>`SELECT * FROM ${sql(tableName)}
+            WHERE ${sql(Columns.TX_ORDER_ID)} = ${classification.txOrderId}
+              AND ${sql(Columns.CONSENSUS_PROFILE_ID)} = ${MIDGARD_CONSENSUS_PROFILE_ID}
+            FOR UPDATE`;
+            const row = rows[0];
+            if (row === undefined) {
+              return yield* Effect.fail(
+                new DatabaseError({
+                  table: tableName,
+                  message:
+                    "Failed to persist exact V1 forced transaction classification",
+                  cause: `tx_order_id=${classification.txOrderId.toString("hex")},updated=0`,
+                }),
+              );
+            }
+            // Classification may write only the verdict. Reuse the persisted
+            // immutable source so this API cannot substitute a different order payload.
+            const value = yield* Effect.try({
+              try: () =>
+                Buffer.from(
+                  aikenSerialisedPlutusDataCbor(
+                    LucidData.to(
+                      {
+                        ...LucidData.from(
+                          row[Columns.FORCED_INCLUSION_VALUE].toString("hex"),
+                          SDK.ForcedInclusionTxV1,
+                        ),
+                        verdict: classification.verdict,
+                      },
+                      SDK.ForcedInclusionTxV1,
+                    ),
+                  ),
+                  "hex",
+                ),
+              catch: (cause) =>
+                new DatabaseError({
+                  table: tableName,
+                  message: "Failed to encode forced verdict",
+                  cause,
+                }),
+            });
+            yield* sql`UPDATE ${sql(tableName)} SET
+              ${sql(Columns.FORCED_INCLUSION_VALUE)} = ${value},
               ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)} = ${classification.programMaterialSidecarCbor},
               ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)} = ${sha256(classification.programMaterialSidecarCbor)},
               updated_at = NOW()
-            WHERE ${sql(Columns.TX_ORDER_ID)} = ${classification.txOrderId}
-              AND ${sql(Columns.CONSENSUS_PROFILE_ID)} = ${MIDGARD_CONSENSUS_PROFILE_ID}
-            RETURNING ${sql(Columns.TX_ORDER_ID)}
-          `.pipe(
-            Effect.flatMap((rows) =>
-              rows.length === 1
-                ? Effect.void
-                : Effect.fail(
-                    new DatabaseError({
-                      table: tableName,
-                      message:
-                        "Failed to persist exact V1 forced transaction classification",
-                      cause: `tx_order_id=${classification.txOrderId.toString("hex")},updated=${rows.length.toString()}`,
-                    }),
-                  ),
-            ),
-          ),
+            WHERE ${sql(Columns.TX_ORDER_ID)} = ${classification.txOrderId}`;
+          }),
         { discard: true },
       ),
     );

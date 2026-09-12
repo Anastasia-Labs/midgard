@@ -1,6 +1,15 @@
 import { decodeMidgardCekProgramEnvelope } from "./cek-proof.js";
 import { asArray, asBytes, asMap, decodeSingleCbor } from "./codec/cbor.js";
 import {
+  computeMidgardForcedTxProofCommitment,
+  decodeMidgardForcedTxCompact,
+  decodeMidgardForcedTxFullFromCanonicalCbor,
+  deriveMidgardForcedTxProofSourceFromCanonicalCbor,
+  encodeMidgardForcedTxCanonical,
+  type MidgardForcedTxFull,
+  verifyMidgardForcedTxProofSource,
+} from "./codec/forced.js";
+import {
   computeMidgardNativeTxProofCommitment,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxCompact,
@@ -90,8 +99,13 @@ export type MidgardTxFieldPreimage = {
  */
 export const midgardTxFieldCommitmentsFromSource = (
   source: MidgardNativeTxProofSource,
+  sourceKind: "normal" | "forced" = "normal",
 ): readonly Buffer[] => {
-  const compact = decodeMidgardNativeTxCompact(source.compactCbor);
+  const compact = (
+    sourceKind === "forced"
+      ? decodeMidgardForcedTxCompact
+      : decodeMidgardNativeTxCompact
+  )(source.compactCbor);
   const witnessSet = decodeMidgardNativeTxWitnessSetCompact(
     source.witnessSetCompactCbor,
   );
@@ -110,13 +124,18 @@ export const midgardTxFieldCommitmentsFromSource = (
 
 export const deriveMidgardTxFieldPreimages = (
   canonicalTransactionCbor: Uint8Array,
+  sourceKind: "normal" | "forced" = "normal",
 ): readonly MidgardTxFieldPreimage[] => {
-  const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
-    canonicalTransactionCbor,
-  );
-  const source = deriveMidgardNativeTxProofSourceFromCanonicalCbor(
-    canonicalTransactionCbor,
-  );
+  const tx = (
+    sourceKind === "forced"
+      ? decodeMidgardForcedTxFullFromCanonicalCbor
+      : decodeMidgardNativeTxFullFromCanonicalCbor
+  )(canonicalTransactionCbor);
+  const source = (
+    sourceKind === "forced"
+      ? deriveMidgardForcedTxProofSourceFromCanonicalCbor
+      : deriveMidgardNativeTxProofSourceFromCanonicalCbor
+  )(canonicalTransactionCbor);
   const preimages = [
     tx.body.spendInputsPreimageCbor,
     tx.body.referenceInputsPreimageCbor,
@@ -128,7 +147,7 @@ export const deriveMidgardTxFieldPreimages = (
     tx.witnessSet.addrTxWitsPreimageCbor,
     tx.witnessSet.redeemerTxWitsPreimageCbor,
   ] as const;
-  const hashes = midgardTxFieldCommitmentsFromSource(source);
+  const hashes = midgardTxFieldCommitmentsFromSource(source, sourceKind);
   return preimages.map((preimageCbor, fieldIndex) => ({
     fieldIndex,
     fieldName: MIDGARD_TX_FIELD_NAMES[fieldIndex]!,
@@ -141,12 +160,14 @@ export const verifyMidgardTxFieldPreimage = ({
   transactionId,
   transactionCommitment,
   source,
+  sourceKind = "normal",
   fieldIndex,
   preimageCbor,
 }: {
   readonly transactionId: Uint8Array;
   readonly transactionCommitment: Uint8Array;
   readonly source: MidgardNativeTxProofSource;
+  readonly sourceKind?: "normal" | "forced";
   readonly fieldIndex: number;
   readonly preimageCbor: Uint8Array;
 }): MidgardTxFieldPreimage => {
@@ -157,14 +178,20 @@ export const verifyMidgardTxFieldPreimage = ({
   ) {
     throw new Error(`unknown V1 transaction field index ${fieldIndex}`);
   }
-  verifyMidgardNativeTxProofSource({ transactionId, source });
-  const computedCommitment = computeMidgardNativeTxProofCommitment(source);
+  (sourceKind === "forced"
+    ? verifyMidgardForcedTxProofSource
+    : verifyMidgardNativeTxProofSource)({ transactionId, source });
+  const computedCommitment = (
+    sourceKind === "forced"
+      ? computeMidgardForcedTxProofCommitment
+      : computeMidgardNativeTxProofCommitment
+  )(source);
   if (!computedCommitment.equals(Buffer.from(transactionCommitment))) {
     throw new Error(
       "V1 transaction field source does not match transaction commitment",
     );
   }
-  const hashes = midgardTxFieldCommitmentsFromSource(source);
+  const hashes = midgardTxFieldCommitmentsFromSource(source, sourceKind);
   const committedLength = decodeMidgardNativeTxProofFieldLengths(
     source.fieldPreimageLengthsCbor,
   )[fieldIndex]!;
@@ -191,11 +218,13 @@ export const reconstructMidgardTransaction = ({
   transactionId,
   transactionCommitment,
   source,
+  sourceKind = "normal",
   fieldPreimages,
 }: {
   readonly transactionId: Uint8Array;
   readonly transactionCommitment: Uint8Array;
   readonly source: MidgardNativeTxProofSource;
+  readonly sourceKind?: "normal" | "forced";
   readonly fieldPreimages: readonly Uint8Array[];
 }): Buffer => {
   if (fieldPreimages.length !== MIDGARD_TX_FIELD_NAMES.length) {
@@ -208,17 +237,18 @@ export const reconstructMidgardTransaction = ({
       transactionId,
       transactionCommitment,
       source,
+      sourceKind,
       fieldIndex,
       preimageCbor,
     }),
   );
-  const compact = verifyMidgardNativeTxProofSource({
-    transactionId,
-    source,
-  });
-  return encodeMidgardNativeTxCanonical({
+  const compact = (
+    sourceKind === "forced"
+      ? verifyMidgardForcedTxProofSource
+      : verifyMidgardNativeTxProofSource
+  )({ transactionId, source });
+  const material = {
     version: compact.version,
-    validity: compact.validity,
     body: {
       spendInputsPreimageCbor: verified[0]!.preimageCbor,
       referenceInputsPreimageCbor: verified[1]!.preimageCbor,
@@ -240,7 +270,13 @@ export const reconstructMidgardTransaction = ({
       scriptTxWitsPreimageCbor: verified[6]!.preimageCbor,
       redeemerTxWitsPreimageCbor: verified[8]!.preimageCbor,
     },
-  });
+  };
+  return sourceKind === "forced"
+    ? encodeMidgardForcedTxCanonical(material)
+    : encodeMidgardNativeTxCanonical({
+        ...material,
+        validity: decodeMidgardNativeTxCompact(source.compactCbor).validity,
+      });
 };
 
 const violation = (
@@ -349,7 +385,7 @@ const nativeScriptBoundViolation = (
  * Semantic validity remains the responsibility of ValidationMachineV1.
  */
 export const validateMidgardConsensusTx = (
-  tx: MidgardNativeTxFull,
+  tx: MidgardNativeTxFull | MidgardForcedTxFull,
   canonicalCborByteLength: number,
 ): MidgardConsensusViolation | null => {
   const limits = MIDGARD_CONSENSUS_LIMITS;
@@ -367,7 +403,7 @@ export const validateMidgardConsensusTx = (
       `${canonicalCborByteLength.toString()} > ${limits.maxTxCanonicalCborBytes.toString()}`,
     );
   }
-  if (tx.validity !== "TxIsValid") {
+  if ("validity" in tx && tx.validity !== "TxIsValid") {
     return violation(
       "E_IS_VALID_FALSE_FORBIDDEN",
       "transaction_validity",
@@ -614,4 +650,12 @@ export const validateMidgardConsensusTxCbor = (
   validateMidgardConsensusTx(
     decodeMidgardNativeTxFullFromCanonicalCbor(txCbor),
     txCbor.length,
+  );
+
+export const validateMidgardConsensusForcedTxCbor = (
+  txCbor: Uint8Array,
+): MidgardConsensusViolation | null =>
+  validateMidgardConsensusTx(
+    decodeMidgardForcedTxFullFromCanonicalCbor(txCbor),
+    txCbor.length + 1,
   );

@@ -60,14 +60,12 @@ use fraud_proofs/validation_trace/value_and_mint_replay_input_semantic_v1 as rep
 use fraud_proofs/validation_trace/value_and_mint_v1 as prepare_validator
 use midgard/cek_data_v1
 use midgard/computation_thread as ct
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_body_compact, native_tx_id_for_version,
 }
-use midgard/fraud_proofs/native_tx/transaction.{
-  midgard_transaction_proof_commitment_v1, midgard_transaction_proof_source_v1,
-  midgard_transaction_to_compact,
-}
+use midgard/fraud_proofs/native_tx/transaction.{midgard_transaction_to_compact}
 use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionBody, MidgardTransactionWitnessSet,
   TxIsValid, native_tx_version_v1,
@@ -169,7 +167,7 @@ fn empty_v1_transaction() -> MidgardTransaction {
 /// The native control of a witness-free transaction with nothing to
 /// resolve, spend, mint or execute.
 fn empty_native_control(tx: MidgardTransaction) -> NativeScriptsControlV1 {
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = forced_fixture.from_native_transaction(tx)
   let empty = validation_merkle_v1.build_frontier([])
   NativeScriptsControlV1 {
     compact_cbor: proof_source.compact_cbor,
@@ -250,7 +248,9 @@ fn state_of(
       machine_version: validation_trace_v1.machine_version,
       event_key_hash: h_a,
       transaction_id: tx_id,
-      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      transaction_commitment: forced_fixture.commitment_of_native_transaction(
+        tx,
+      ),
       validation_context_hash: validation_trace_v1.hash_validation_context(
         validation_context_cbor,
       ),

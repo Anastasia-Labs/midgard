@@ -1,3 +1,8 @@
+import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core";
+import {
+  deriveMidgardForcedTxProofSourceFromCanonicalCbor,
+  encodeMidgardForcedTxCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -117,9 +122,20 @@ const buildEventBlock = async ({
     spendInputs: [outRefCbor(0x31, 0n)],
     fee: 2_000_000n,
   });
+  const forcedCbor = encodeMidgardForcedTxCanonical(
+    decodeMidgardNativeTxFullFromCanonicalCbor(forcedTx.canonicalCbor),
+  );
+  const forcedSource =
+    deriveMidgardForcedTxProofSourceFromCanonicalCbor(forcedCbor);
   const forcedValue: SDK.ForcedInclusionTxV1 = {
     tx_id: forcedTx.txId,
-    source: forcedTx.source.source,
+    submitted_source: {
+      compact_cbor: forcedSource.compactCbor.toString("hex"),
+      witness_set_compact_cbor:
+        forcedSource.witnessSetCompactCbor.toString("hex"),
+      field_preimage_lengths_cbor:
+        forcedSource.fieldPreimageLengthsCbor.toString("hex"),
+    },
     verdict: "ForcedTxValid",
   };
   const keyBytes = encodeData(eventKey, SDK.OutputReference as never);
@@ -223,7 +239,7 @@ const buildEventBlock = async ({
       forced_transactions: kind === "forced-transaction" ? eventEntries : [],
       forced_transaction_preimages:
         kind === "forced-transaction"
-          ? [[keyBytes.toString("hex"), forcedTx.canonicalCbor.toString("hex")]]
+          ? [[keyBytes.toString("hex"), forcedCbor.toString("hex")]]
           : [],
       event_to_step: eventToStep,
       validation_traces: validationTraces,

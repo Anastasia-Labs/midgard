@@ -4,16 +4,16 @@ import { fileURLToPath } from "node:url";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSource,
   deriveMidgardNativeTxWitnessSetCompact,
   encodeMidgardFieldPreimage,
+  encodeMidgardForcedTxCanonical,
   encodeMidgardNativeScript,
-  encodeMidgardNativeTxCanonical,
   encodeMidgardVersionedScript,
   materializeMidgardNativeTxFromCanonical,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { afterAll, describe, expect, it } from "vitest";
@@ -224,9 +224,9 @@ const setup = async ({
       ),
     },
   });
-  const tx = adjudicateMidgardNativeTxFullValidity(submitted, "TxIsInvalid");
+  const tx = materializeMidgardForcedTxFromCanonical(submitted);
   const txId = computeMidgardNativeTxId(tx).toString("hex");
-  const proofSource = deriveMidgardNativeTxProofSource(tx);
+  const proofSource = deriveMidgardForcedTxProofSource(tx);
   const credential = getAddressDetails(
     await h.funderLucid.wallet().address(),
   ).paymentCredential!;
@@ -245,7 +245,7 @@ const setup = async ({
     : { WitnessNativeScriptFalse: { script_index: scriptIndex } };
   const value = {
     tx_id: txId,
-    source: {
+    submitted_source: {
       compact_cbor: proofSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:
         proofSource.witnessSetCompactCbor.toString("hex"),
@@ -358,7 +358,7 @@ const setup = async ({
       SDK.NativeScriptInvalidForcedSourcePayloadSchema as never,
     ),
     fullTransactionCbor:
-      encodeMidgardNativeTxCanonical(submitted).toString("hex"),
+      encodeMidgardForcedTxCanonical(submitted).toString("hex"),
   };
   const init = () =>
     submitNativeScriptInvalidInit({
@@ -385,7 +385,7 @@ const setup = async ({
       value,
       keyBytes,
       valueBytes,
-      fullTransactionCbor: encodeMidgardNativeTxCanonical(submitted),
+      fullTransactionCbor: encodeMidgardForcedTxCanonical(submitted),
     };
     const eventKey = { ForcedTransactionEventKey: { tx_order_id: key } };
     const fingerprint = eventKeyFingerprint(eventKey);
@@ -482,6 +482,7 @@ const run = async (
     items: readonly Uint8Array[],
   ) => {
     const planned = planFaultProofFieldOpening({
+      anchorSourceKind: 1n,
       fieldIndex,
       anchorTxId: f.state.bad_tx_id,
       nativeTxCompactCbor: f.common.nativeTxCompactCbor,

@@ -83,7 +83,7 @@ validator main(
         //    `field_commitment_from_items` re-hash of a reproduced list lived.
         let reference_inputs_view = opened_field_view(
           reference_inputs_opening,
-          BodyAnchor { tx_id: verified_tx_id },
+          BodyAnchor { tx_id: verified_tx_id, source_kind: 0 },
           reference_inputs_field_index,
           reference_inputs,
           field_preimage_certificate_policy_id,

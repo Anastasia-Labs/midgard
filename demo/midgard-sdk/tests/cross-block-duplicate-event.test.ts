@@ -84,7 +84,7 @@ const forcedTransactionProof = (
       key,
       value: {
         tx_id: "4c".repeat(32),
-        source: {
+        submitted_source: {
           compact_cbor: "80",
           witness_set_compact_cbor: "80",
           field_preimage_lengths_cbor: "80",

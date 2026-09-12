@@ -55,6 +55,7 @@ describe("prepare-min-fee", () => {
       tx.canonicalCbor,
     );
     const boundary = SDK.minimumFeeFromProofSource({
+      sourceKind: "normal",
       source,
       minFeeA: 2n,
       minFeeB: 7n,
@@ -97,6 +98,7 @@ describe("prepare-min-fee", () => {
     }
     expect(
       SDK.minimumFeeFromProofSource({
+        sourceKind: "normal",
         source,
         minFeeA: 0n,
         minFeeB: boundary,
@@ -149,7 +151,10 @@ describe("prepare-min-fee", () => {
       });
       const state: SDK.MinFeeStep02State = {
         subject: SDK.acceptedVerdictSubject(output.tx.nodeTxId),
-        bad_tx: output.tx.nativeTx,
+        bad_tx: {
+          body: output.tx.nativeTx.body,
+          witness_set_hash: output.tx.nativeTx.witness_set_hash,
+        },
         bad_tx_body_fee: output.tx.fee,
         bad_tx_id: output.tx.nodeTxId,
         min_fee_a: output.minFeeA,
@@ -157,7 +162,10 @@ describe("prepare-min-fee", () => {
       };
       const manualStateSchema = Data.Object({
         subject: SDK.MinFeeVerdictSubjectSchema,
-        bad_tx: SDK.NativeTxCompactSchema,
+        bad_tx: Data.Object({
+          body: SDK.NativeTxBodyCompactSchema,
+          witness_set_hash: SDK.H32Schema,
+        }),
         bad_tx_body_fee: Data.Integer(),
         bad_tx_id: SDK.H32Schema,
         min_fee_a: Data.Integer(),

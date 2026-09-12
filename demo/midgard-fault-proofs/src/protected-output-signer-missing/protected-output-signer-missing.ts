@@ -6,6 +6,7 @@ import {
   deriveMidgardNativeTxFaultEvidenceMaterial,
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
@@ -163,9 +164,11 @@ export const prepareProtectedOutputSignerMissingEvidence = ({
   readonly canonicalTransactionCbor: Uint8Array;
 }): ProtectedOutputSignerMissingEvidence => {
   classifyProtectedOutputSignerMissingFinding({ subject, outputIndex });
-  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-    canonicalTransactionCbor,
-  );
+  const material = (
+    subject.source_kind === 1n
+      ? deriveMidgardForcedTxFaultEvidenceMaterial
+      : deriveMidgardNativeTxFaultEvidenceMaterial
+  )(canonicalTransactionCbor);
   if (material.transactionId.toString("hex") !== subject.transaction_id)
     return fail("transaction identity was substituted");
   const outputItems = decodeMidgardFieldPreimage(material.fieldPreimages[2]!);

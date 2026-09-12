@@ -28,9 +28,10 @@ Catalogue identity comes from its explicit ID map, not array position.
   an evidence-identity contract. **Preserve exactness.** Converting it to a
   ratchet would accept different evidence and is outside routine cleanup;
   it requires an explicit change to the verifier's acceptance contract.
-- [The API export snapshot](../../demo/lucid-midgard/tests/api-export-snapshot.test.ts)
-  protects an intentional exported set. Do not delete it merely because it
-  lists names or because another assertion checks the declaration file exists.
+- The historical `lucid-midgard/tests/api-export-snapshot.test.ts`, now absent
+  from the tree, protected an intentional exported set. Listing names is not
+  itself a reason to remove that contract, and checking that a declaration
+  file exists does not provide equivalent coverage.
 - [Reference-script roster checks](../../demo/midgard-node/tests/reference-scripts.test.ts)
   using `toContain` detect removal of each named target; they do not reject
   unexpected extras. Use exact set equality only if excluding extras is the

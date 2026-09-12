@@ -60,6 +60,7 @@ const plan = (
 ) => {
   const { inputs, anchorTxId, compactCbor } = fixture();
   return planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId,
     nativeTxCompactCbor: compactCbor,

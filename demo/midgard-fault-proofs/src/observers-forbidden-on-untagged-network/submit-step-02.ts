@@ -75,6 +75,7 @@ export const submitObserversForbiddenStep02 = async ({
   if (state.network_id !== BigInt(evidence.networkId))
     throw new Error("observersForbidden: bound network scalar changed");
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: 3,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,

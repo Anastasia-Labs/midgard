@@ -1,3 +1,4 @@
+import { materializeMidgardNativeTxFromCanonical } from "@al-ft/midgard-core";
 import {
   computeMidgardNativeTxId,
   deriveMidgardNativeTxBodyCompact,
@@ -8,6 +9,10 @@ import {
   decodeMidgardNativeTxProofFieldLengths,
   encodeMidgardNativeTxProofFieldLengths,
 } from "@al-ft/midgard-core/codec";
+import {
+  decodeMidgardForcedTxFullFromCanonicalCbor,
+  encodeMidgardForcedTxCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   decodeRetainedValidationWitnessKey,
@@ -174,7 +179,7 @@ describe("ordinary retained classification polarities", () => {
       expect(
         decodeMidgardNativeTxProofFieldLengths(
           Buffer.from(
-            fixture.transaction.source.field_preimage_lengths_cbor,
+            fixture.transaction.submitted_source.field_preimage_lengths_cbor,
             "hex",
           ),
         )[0],
@@ -451,16 +456,16 @@ describe("ordinary retained classification polarities", () => {
             "hex",
           ),
           sourceKind: direction === "accepted" ? "normal" : "forced",
-          ...(direction === "accepted"
-            ? {}
-            : { committedForcedVerdict: "rejected" as const }),
           blockEndTimeMs: 1_800_000_000_000,
           expectedNetworkId: 0n,
           minFeeA: 0n,
           minFeeB: 0n,
           blockSlot: 100n,
           transactionId: transaction.txId,
-          canonicalTransactionCbor: transaction.txCbor,
+          canonicalTransactionCbor:
+            direction === "accepted"
+              ? transaction.txCbor
+              : encodeMidgardForcedTxCanonical(transaction.tx),
           priorUtxosRoot: priorLedgerRoot,
           postUtxosRoot: mismatch
             ? priorLedgerRoot
@@ -526,9 +531,12 @@ describe("ordinary retained classification polarities", () => {
           : { item: Buffer.from("8200428109", "hex") }),
       });
       const source = retained.evidence.reconstruction.forcedTransactions[0]!;
-      const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(
-        source.fullTransactionCbor,
-      );
+      const nativeTx = materializeMidgardNativeTxFromCanonical({
+        ...decodeMidgardForcedTxFullFromCanonicalCbor(
+          source.fullTransactionCbor,
+        ),
+        validity: "TxIsValid",
+      });
       const fixture = await buildRetainedValidationBlockFixture({
         subject:
           direction === "accepted"

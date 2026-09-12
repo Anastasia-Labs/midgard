@@ -101,6 +101,7 @@ export const isMidgardWitnessSetField = (fieldIndex: number): boolean =>
 /** Fields 0–5. 32 bytes of thread state. */
 export const BodyAnchorSchema = Data.Object({
   tx_id: H32Schema,
+  source_kind: Data.Integer({ minimum: 0, maximum: 1 }),
 });
 export type BodyAnchorV1 = Data.Static<typeof BodyAnchorSchema>;
 export const BodyAnchorV1 = asDataType<BodyAnchorV1>(BodyAnchorSchema);
@@ -113,6 +114,7 @@ export const BodyAnchorV1 = asDataType<BodyAnchorV1>(BodyAnchorSchema);
 export const WitnessAnchorSchema = Data.Object({
   tx_id: H32Schema,
   witness_set_hash: H32Schema,
+  source_kind: Data.Integer({ minimum: 0, maximum: 1 }),
 });
 export type WitnessAnchorV1 = Data.Static<typeof WitnessAnchorSchema>;
 export const WitnessAnchorV1 = asDataType<WitnessAnchorV1>(WitnessAnchorSchema);
@@ -231,6 +233,7 @@ const exactFieldIndex = (fieldIndex: number): number => {
  * that silently does nothing.
  */
 export const nativeTxAnchorForField = ({
+  sourceKind,
   fieldIndex,
   txId,
   witnessSetHash,
@@ -238,6 +241,7 @@ export const nativeTxAnchorForField = ({
   readonly fieldIndex: number;
   readonly txId: string;
   readonly witnessSetHash?: string;
+  readonly sourceKind: 0n | 1n;
 }): NativeTxAnchor => {
   const field = exactFieldIndex(fieldIndex);
   if (isMidgardWitnessSetField(field)) {
@@ -247,7 +251,13 @@ export const nativeTxAnchorForField = ({
         `field_index=${field}`,
       );
     }
-    return { WitnessAnchor: { tx_id: txId, witness_set_hash: witnessSetHash } };
+    return {
+      WitnessAnchor: {
+        tx_id: txId,
+        witness_set_hash: witnessSetHash,
+        source_kind: sourceKind,
+      },
+    };
   }
   if (witnessSetHash !== undefined) {
     throw new MidgardFieldOpeningError(
@@ -255,7 +265,7 @@ export const nativeTxAnchorForField = ({
       `field_index=${field}`,
     );
   }
-  return { BodyAnchor: { tx_id: txId } };
+  return { BodyAnchor: { tx_id: txId, source_kind: sourceKind } };
 };
 
 /**

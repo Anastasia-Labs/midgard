@@ -1,8 +1,8 @@
-import { decodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
+import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { nativeTxFromCoreCompact } from "../submit-step-01.js";
+import { forcedTxFromCoreCompact } from "../submit-step-01.js";
 import {
   invalidRangeEvidenceCloses,
   prepareInvalidRangeEvidence,
@@ -19,8 +19,8 @@ export const detectInvalidRangeForcedReplay = (block: CanonicalBlockEvidence) =>
         reason !== "ValidityIntervalExcludesBlockSlot"
       )
         return [];
-      const compact = decodeMidgardNativeTxCompact(
-        Buffer.from(transaction.value.source.compact_cbor, "hex"),
+      const compact = decodeMidgardForcedTxCompact(
+        Buffer.from(transaction.value.submitted_source.compact_cbor, "hex"),
       );
       const evidence = prepareInvalidRangeEvidence({
         subject: SDK.forcedVerdictSubject({
@@ -29,7 +29,7 @@ export const detectInvalidRangeForcedReplay = (block: CanonicalBlockEvidence) =>
           rejectionReason: reason,
         }),
         blockSlot: block.header.blockSlot,
-        txBody: nativeTxFromCoreCompact(compact).body,
+        txBody: forcedTxFromCoreCompact(compact).body,
       });
       return invalidRangeEvidenceCloses(evidence)
         ? [

@@ -14,6 +14,7 @@ import {
   type ScriptLanguageName,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
+import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import {
   collectMidgardAttachedProgramEnvelopes,
@@ -278,9 +279,11 @@ const resolveReferenceInputs = (
   if (sidecar !== null) {
     try {
       const material = decodeMidgardCekProgramMaterialSidecar(sidecar);
-      const canonicalTx = decodeMidgardNativeTxFullFromCanonicalCbor(
-        node.candidate.submission.txCbor,
-      );
+      const canonicalTx = (
+        node.candidate.submission.sourceKind === "forced"
+          ? decodeMidgardForcedTxFullFromCanonicalCbor
+          : decodeMidgardNativeTxFullFromCanonicalCbor
+      )(node.candidate.submission.txCbor);
       const envelopes = [
         ...collectMidgardAttachedProgramEnvelopes(canonicalTx),
       ];

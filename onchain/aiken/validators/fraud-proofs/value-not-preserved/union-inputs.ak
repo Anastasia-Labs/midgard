@@ -5,6 +5,7 @@ use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{
   BodyAnchor, FieldOpeningV1, opened_field_view,
 }
+use midgard/fraud_proofs/value_not_preserved/union as conservation
 use midgard/fraud_proofs/value_not_preserved/union.{FoldState}
 use midgard/fraud_proofs/value_not_preserved/union_state.{
   FieldGrammar, Inputs, SelectedInput,
@@ -54,7 +55,14 @@ validator main(
         expect cursor: Inputs = state.continuation
         let view = opened_field_view(
           args.opening,
-          BodyAnchor { tx_id: state.balance.transaction_id },
+          BodyAnchor {
+            tx_id: state.balance.transaction_id,
+            source_kind: if state.balance.claim == conservation.ForcedConservation {
+              1
+            } else {
+              0
+            },
+          },
           0,
           tx.reference_inputs,
           field_certificate_policy_id,

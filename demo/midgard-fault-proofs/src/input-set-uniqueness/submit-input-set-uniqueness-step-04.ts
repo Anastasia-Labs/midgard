@@ -123,6 +123,7 @@ export const submitInputSetUniquenessStep04Advance = async ({
     previousItem = item;
   }
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: state.bound.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: readingSpend
       ? MIDGARD_FIELD_INDEX.spendInputs
       : MIDGARD_FIELD_INDEX.referenceInputs,

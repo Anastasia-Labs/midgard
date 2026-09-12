@@ -208,7 +208,7 @@ export const submitExecutionNativeScriptInvalidStep01Forced = async ({
         header,
         executionIndex,
         accusedClass: -1n,
-        compactCbor: membership.value.source.compact_cbor,
+        compactCbor: membership.value.submitted_source.compact_cbor,
       }),
     } as never,
     ExecutionNativeScriptInvalidStep02DatumSchema as never,

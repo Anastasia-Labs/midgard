@@ -18,7 +18,7 @@ const evidence = (verdict: SDK.OperatorVerdict): ForcedLeafEvidence =>
     eventKeyFingerprint: "forced-fixture",
     leaf: {
       tx_id: "02".repeat(32),
-      source: {
+      submitted_source: {
         compact_cbor: "00",
         witness_set_compact_cbor: "00",
         field_preimage_lengths_cbor: "00",

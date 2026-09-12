@@ -39,6 +39,11 @@ import {
   readCborBytes,
   readCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
+import {
+  decodeMidgardForcedTxFullFromCanonicalCbor,
+  deriveMidgardForcedTxFaultEvidenceMaterial,
+  type MidgardForcedTxFull,
+} from "@al-ft/midgard-core/codec/forced";
 import { CML } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
@@ -113,9 +118,11 @@ export type MidgardProjectedRawScriptWitness = Readonly<{
 }>;
 
 export type MidgardRawEnvelopePhaseAProjection = Readonly<{
-  canonical: ReturnType<
-    typeof deriveMidgardNativeTxFaultEvidenceMaterial
-  >["canonical"];
+  canonical:
+    | ReturnType<typeof deriveMidgardNativeTxFaultEvidenceMaterial>["canonical"]
+    | ReturnType<
+        typeof deriveMidgardForcedTxFaultEvidenceMaterial
+      >["canonical"];
   transactionId: Buffer;
   scriptWitnesses: readonly MidgardProjectedRawScriptWitness[];
   ledgerTx: Omit<
@@ -207,8 +214,8 @@ const assertBufferArrayEquals = (
 };
 
 const copyNativeTxCompact = (
-  compact: MidgardNativeTxFull["compact"],
-): MidgardNativeTxFull["compact"] => ({
+  compact: MidgardNativeTxFull["compact"] | MidgardForcedTxFull["compact"],
+): MidgardSubmittedTx["commitments"]["transactionCompact"] => ({
   version: compact.version,
   transactionBody: {
     spendInputsHash: copyBuffer(compact.transactionBody.spendInputsHash),
@@ -233,7 +240,7 @@ const copyNativeTxCompact = (
     networkId: compact.transactionBody.networkId,
   },
   transactionWitnessSetHash: copyBuffer(compact.transactionWitnessSetHash),
-  validity: compact.validity,
+  ...("validity" in compact ? { validity: compact.validity } : {}),
 });
 
 const copyNativeWitnessSetCompact = (
@@ -747,6 +754,10 @@ const assertRequiresPlutusEvaluation = (tx: MidgardLedgerTx): void => {
 };
 
 const toNativeTx = (tx: MidgardLedgerTx): MidgardNativeTxFull => {
+  if (tx.validity === undefined)
+    throw new Error(
+      "A forced execution view cannot be encoded as a normal transaction",
+    );
   assertRequiresPlutusEvaluation(tx);
   const body: MidgardNativeTxBodyCanonical = {
     spendInputsPreimageCbor: encodeOutRefList(tx.spendInputs, "spendInputs"),
@@ -792,7 +803,7 @@ const toNativeTx = (tx: MidgardLedgerTx): MidgardNativeTxFull => {
 };
 
 const decodeMidgardLedgerTxFromNativeTx = (
-  nativeTx: MidgardNativeTxFull,
+  nativeTx: MidgardNativeTxFull | MidgardForcedTxFull,
 ): MidgardLedgerTx => {
   const vkeyWitnesses = decodeVKeyWitnesses(
     nativeTx.witnessSet.addrTxWitsPreimageCbor,
@@ -804,8 +815,8 @@ const decodeMidgardLedgerTxFromNativeTx = (
     nativeTx.witnessSet.redeemerTxWitsPreimageCbor,
   );
   const tx: MidgardLedgerTx = {
-    txId: computeMidgardNativeTxId(nativeTx) as MidgardTxId,
-    validity: nativeTx.validity,
+    txId: computeMidgardNativeTxId(nativeTx.compact) as MidgardTxId,
+    ...("validity" in nativeTx ? { validity: nativeTx.validity } : {}),
     fee: nativeTx.body.fee,
     networkId: optionalNetworkId(nativeTx.body.networkId),
     validityIntervalStart: optionalPosixTime(
@@ -847,14 +858,16 @@ const decodeMidgardLedgerTxFromNativeTx = (
 };
 
 const envelopeFromNativeTx = (
-  nativeTx: MidgardNativeTxFull,
+  nativeTx: MidgardNativeTxFull | MidgardForcedTxFull,
   txCbor: Uint8Array,
+  sourceKind: "normal" | "forced",
 ): MidgardSubmittedTx => {
   const witnessSetCompact = copyNativeWitnessSetCompact(
     deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
   );
   return {
     txCbor: Buffer.from(txCbor),
+    sourceKind,
     ledgerTx: decodeMidgardLedgerTxFromNativeTx(nativeTx),
     commitments: {
       transactionCompact: copyNativeTxCompact(nativeTx.compact),
@@ -866,16 +879,21 @@ const envelopeFromNativeTx = (
 
 export const decodeMidgardSubmittedTxFromCanonicalCbor = (
   txCbor: Uint8Array,
+  sourceKind: "normal" | "forced" = "normal",
 ): MidgardSubmittedTx => {
-  let nativeTx: MidgardNativeTxFull;
+  let nativeTx: MidgardNativeTxFull | MidgardForcedTxFull;
   try {
-    nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(txCbor);
+    nativeTx = (
+      sourceKind === "forced"
+        ? decodeMidgardForcedTxFullFromCanonicalCbor
+        : decodeMidgardNativeTxFullFromCanonicalCbor
+    )(txCbor);
   } catch (e) {
     throw new MidgardLedgerTxDecodeError("canonical-cbor", e);
   }
 
   try {
-    return envelopeFromNativeTx(nativeTx, txCbor);
+    return envelopeFromNativeTx(nativeTx, txCbor, sourceKind);
   } catch (e) {
     throw new MidgardLedgerTxDecodeError(
       "ledger",
@@ -932,9 +950,7 @@ const projectRawScriptWitnesses = (
   });
 
 const validateRawProjectionNonScriptFields = (
-  canonical: ReturnType<
-    typeof deriveMidgardNativeTxFaultEvidenceMaterial
-  >["canonical"],
+  canonical: MidgardRawEnvelopePhaseAProjection["canonical"],
 ): void => {
   decodeOutRefList(
     canonical.body.spendInputsPreimageCbor,
@@ -962,8 +978,13 @@ const validateRawProjectionNonScriptFields = (
  */
 export const projectMidgardRawEnvelopeForPhaseAV1 = (
   txCbor: Uint8Array,
+  sourceKind: "normal" | "forced" = "normal",
 ): MidgardRawEnvelopePhaseAProjection => {
-  const material = deriveMidgardNativeTxFaultEvidenceMaterial(txCbor);
+  const material = (
+    sourceKind === "forced"
+      ? deriveMidgardForcedTxFaultEvidenceMaterial
+      : deriveMidgardNativeTxFaultEvidenceMaterial
+  )(txCbor);
   try {
     validateRawProjectionNonScriptFields(material.canonical);
     const scriptWitnesses = projectRawScriptWitnesses(
@@ -971,7 +992,10 @@ export const projectMidgardRawEnvelopeForPhaseAV1 = (
     );
     let canonicalSubmittedTx: MidgardSubmittedTx | null = null;
     try {
-      canonicalSubmittedTx = decodeMidgardSubmittedTxFromCanonicalCbor(txCbor);
+      canonicalSubmittedTx = decodeMidgardSubmittedTxFromCanonicalCbor(
+        txCbor,
+        sourceKind,
+      );
     } catch (error) {
       const cause =
         error instanceof MidgardLedgerTxDecodeError
@@ -1015,7 +1039,9 @@ export const projectMidgardRawEnvelopeForPhaseAV1 = (
     );
     const ledgerTx: MidgardRawEnvelopePhaseAProjection["ledgerTx"] = {
       txId: Buffer.from(material.transactionId) as MidgardTxId,
-      validity: material.canonical.validity,
+      ...("validity" in material.canonical
+        ? { validity: material.canonical.validity }
+        : {}),
       fee: material.canonical.body.fee,
       networkId: optionalNetworkId(material.canonical.body.networkId),
       validityIntervalStart: optionalPosixTime(
@@ -1081,8 +1107,9 @@ export const decodeMidgardTxCommitmentsFromCanonicalCbor = (
 
 export const decodeMidgardLedgerTxFromCanonicalCbor = (
   txCbor: Uint8Array,
+  sourceKind: "normal" | "forced" = "normal",
 ): MidgardLedgerTx =>
-  decodeMidgardSubmittedTxFromCanonicalCbor(txCbor).ledgerTx;
+  decodeMidgardSubmittedTxFromCanonicalCbor(txCbor, sourceKind).ledgerTx;
 
 export const encodeMidgardLedgerTxToCanonicalCbor = (
   tx: MidgardLedgerTx,

@@ -1,8 +1,8 @@
 import {
   computeMidgardNativeTxId,
-  encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
+import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
 import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
 import {
   Data,
@@ -186,7 +186,7 @@ describe("outputReferenceScriptDecoding production workflow", () => {
         },
       }),
       outputIndex: 0,
-      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(transaction),
+      canonicalTransactionCbor: encodeMidgardForcedTxCanonical(transaction),
     });
     const controlCbor = (index: number) =>
       Data.to(

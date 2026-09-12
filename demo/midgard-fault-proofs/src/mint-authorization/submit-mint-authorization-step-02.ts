@@ -199,6 +199,7 @@ export const submitMintAuthorizationStep02 = async ({
   // re-commits them against the anchored transaction), then let the planner
   // pick the carriage tier from the resulting preimage's own byte length.
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.mint,
     anchorTxId: anchorState.bad_tx_id,
     nativeTxCompactCbor,

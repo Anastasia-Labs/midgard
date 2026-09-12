@@ -64,6 +64,7 @@ validator main(
           WitnessAnchor {
             tx_id: authenticated.transaction_id,
             witness_set_hash: authenticated.witness_set_hash,
+            source_kind: authenticated.subject.source_kind,
           },
           address_witnesses_field_index,
           reference_inputs,
@@ -152,6 +153,7 @@ fn scan_state_of(
     WitnessAnchor {
       tx_id: authenticated.transaction_id,
       witness_set_hash: authenticated.witness_set_hash,
+      source_kind: authenticated.subject.source_kind,
     },
     address_witnesses_field_index,
     reference_inputs,

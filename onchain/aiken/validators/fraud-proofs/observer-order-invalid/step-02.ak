@@ -50,7 +50,10 @@ validator main(
         expect Some(Bound { bound }) = input_state
         let Pair(view, start) = opened_field_walk(
           opening,
-          BodyAnchor { tx_id: bound.subject.transaction_id },
+          BodyAnchor {
+            tx_id: bound.subject.transaction_id,
+            source_kind: bound.subject.source_kind,
+          },
           observer_field_index,
           reference_inputs,
           field_preimage_certificate_policy_id,

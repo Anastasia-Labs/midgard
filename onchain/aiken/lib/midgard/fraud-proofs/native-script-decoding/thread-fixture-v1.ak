@@ -14,6 +14,7 @@ use midgard/bounded_item_v1
 use midgard/cek_data_v1
 use midgard/common/utils
 use midgard/computation_thread as ct
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
@@ -222,7 +223,7 @@ pub fn forced_leaf_v1(
 ) -> ledger_state.ForcedInclusionTxV1 {
   ledger_state.ForcedInclusionTxV1 {
     tx_id: native_tx_id_of_v1(tx),
-    source: proof_source_of_v1(tx),
+    submitted_source: forced_fixture.from_native_source(proof_source_of_v1(tx)),
     verdict,
   }
 }

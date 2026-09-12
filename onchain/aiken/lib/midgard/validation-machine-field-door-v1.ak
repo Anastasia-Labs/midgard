@@ -132,7 +132,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{Input}
 use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/types.{
-  NativeTxWitnessSetCompact, VerifiedMidgardNativeTxCompact,
+  NativeTxWitnessSetCompact, VerifiedTxSourceView,
 }
 use midgard/native_tx_field_access_v1.{
   FieldCarriageV1, FieldViewV1, authenticated_whole_field_view,
@@ -184,7 +184,7 @@ pub type MachineFieldItemV1 {
 /// the same payload is refused rather than opened (§6.1).
 pub fn open_machine_field_item(
   door: MachineFieldDoorV1,
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   field_index: Int,
   item_index: Int,
@@ -243,7 +243,7 @@ pub fn open_machine_field_item_by_commitment(
 /// re-derived from the previous step's authenticated read.
 pub fn open_machine_field_item_at(
   door: MachineFieldDoorV1,
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   field_index: Int,
   item_index: Int,
@@ -273,7 +273,7 @@ pub fn open_machine_field_item_at(
 /// already-opened item.
 pub fn machine_field_count(
   door: MachineFieldDoorV1,
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   field_index: Int,
   carriage: FieldCarriageV1,
@@ -403,7 +403,7 @@ pub fn machine_field_item_bytes_match(
 /// `open_machine_field_item` for a §5.3 fixed-stride field.
 pub fn open_machine_fixed_field_item(
   door: MachineFieldDoorV1,
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   field_index: Int,
   item_index: Int,

@@ -2,6 +2,7 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
+import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import { EventKeySchema, forcedVerdictSubject } from "@al-ft/midgard-sdk";
 import { buildDeterministicValidationMachineTrace } from "@al-ft/midgard-validation";
@@ -45,6 +46,9 @@ const retainedRejection = async (redeemerIndex: 0 | 1 = 1) => {
     UnusedRedeemer: { redeemer_index: BigInt(redeemerIndex) },
   } as const;
   const priorLedgerRoot = "00".repeat(32);
+  const forcedTransactionCbor = encodeMidgardForcedTxCanonical(
+    source.transaction.tx,
+  );
   const trace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
@@ -53,14 +57,14 @@ const retainedRejection = async (redeemerIndex: 0 | 1 = 1) => {
         "hex",
       ),
       sourceKind: "forced",
-      committedForcedVerdict: "rejected",
+
       blockEndTimeMs: 1_800_000_000_000,
       expectedNetworkId: 0n,
       minFeeA: 0n,
       minFeeB: 0n,
       blockSlot: 100n,
       transactionId: source.transaction.txId,
-      canonicalTransactionCbor: source.transaction.txCbor,
+      canonicalTransactionCbor: forcedTransactionCbor,
       programMaterialSidecarCbor: Buffer.from(
         "82018282582072c078cab22fca41a65b75e6dfcff21d6258a743068e190836bd227ad35dd99d47830100438200008258207d068efad94d2953eefe63951671327af75e08c963cd1f232b08966e6026bf5e582983010058248202582072c078cab22fca41a65b75e6dfcff21d6258a743068e190836bd227ad35dd99d",
         "hex",
@@ -113,7 +117,7 @@ const retainedRejection = async (redeemerIndex: 0 | 1 = 1) => {
       grade: "security",
     },
   });
-  return { source, block, reason, committed: fixture };
+  return { source, block, reason, committed: fixture, forcedTransactionCbor };
 };
 
 describe("unused-redeemer authenticated observation", () => {
@@ -131,7 +135,7 @@ describe("unused-redeemer authenticated observation", () => {
           transactionId:
             fixture.block.reconstruction.forcedTransactions[0]!.value.tx_id,
           redeemerIndex,
-          txCbor: fixture.source.transaction.txCbor,
+          txCbor: fixture.forcedTransactionCbor,
         });
       expect(observation.unused).toBe(redeemerIndex === 1);
       expect(base.selectedBit).toBe(redeemerIndex === 0 ? 1n : 0n);
@@ -201,7 +205,7 @@ describe("unused-redeemer authenticated observation", () => {
           rejectionReason: fixture.reason,
         }),
         redeemerIndex: 1,
-        txCbor: fixture.source.transaction.txCbor,
+        txCbor: fixture.forcedTransactionCbor,
       }),
     ).rejects.toThrow("selection frontier contradicts proof direction");
   });

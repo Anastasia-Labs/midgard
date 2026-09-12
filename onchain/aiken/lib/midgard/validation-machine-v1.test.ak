@@ -19,12 +19,13 @@ use midgard/cek_data_scan_v1
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
 use midgard/cek_proof_v1
+use midgard/forced_submission_fixture
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_compact_v1, decode_native_tx_field_preimage_lengths_v1,
   decode_native_tx_witness_set_compact, encode_native_tx_body_compact,
-  encode_native_tx_field_preimage_lengths_v1, native_tx_canonical_size_v1,
-  native_tx_id_for_version, native_tx_proof_commitment_v1,
-  verify_native_tx_proof_source_v1,
+  encode_native_tx_field_preimage_lengths_v1, forced_tx_proof_commitment_v1,
+  native_tx_canonical_size_v1, native_tx_id_for_version,
+  native_tx_proof_commitment_v1, verify_forced_tx_proof_source_v1,
 }
 use midgard/fraud_proofs/native_tx/components.{
   encode_midgard_address_witness, encode_midgard_redeemer_witness,
@@ -35,10 +36,8 @@ use midgard/fraud_proofs/native_tx/preimages.{
   decode_midgard_tx_byte_list_preimage_cbor,
   decode_midgard_tx_mint_preimage_cbor,
 }
-use midgard/fraud_proofs/native_tx/transaction.{
-  midgard_transaction_proof_commitment_v1, midgard_transaction_proof_source_v1,
-  midgard_transaction_to_compact,
-}
+use midgard/fraud_proofs/native_tx/transaction as native_transaction
+use midgard/fraud_proofs/native_tx/transaction.{midgard_transaction_to_compact}
 use midgard/fraud_proofs/native_tx/types.{
   MidgardAddress, MidgardAddressWitness, MidgardExecutionUnits,
   MidgardRedeemerWitness, MidgardTransaction, MidgardTransactionBody,
@@ -50,6 +49,7 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_v1
+use midgard/ledger_state.{ForcedTxProofSourceV1, NativeTxProofSourceV1}
 use midgard/mpf_proof_fold_v1
 use midgard/native_script_scan_v1
 use midgard/native_tx_field_access_v1
@@ -78,6 +78,29 @@ use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_field_door_v1 as field_door
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
+
+/// These hand-written machine scenarios adjudicate forced submissions. Existing
+/// native transaction builders supply body/witness fixture data only; the proof
+/// source removes their validity before it is committed or placed in a witness.
+fn submitted_source(tx: MidgardTransaction) -> ForcedTxProofSourceV1 {
+  let source = native_transaction.midgard_transaction_proof_source_v1(tx)
+  forced_submission_fixture.from_native_source(
+    NativeTxProofSourceV1 {
+      compact_cbor: source.compact_cbor,
+      witness_set_compact_cbor: source.witness_set_compact_cbor,
+      field_preimage_lengths_cbor: source.field_preimage_lengths_cbor,
+    },
+  )
+}
+
+fn submitted_commitment(tx: MidgardTransaction) -> ByteArray {
+  let source = submitted_source(tx)
+  forced_tx_proof_commitment_v1(
+    source.compact_cbor,
+    source.witness_set_compact_cbor,
+    source.field_preimage_lengths_cbor,
+  )
+}
 
 const h_a = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -312,7 +335,7 @@ fn signatures_scan_witness(
   signer_frontier: validation_merkle_v1.BuiltFrontier,
   invalid_signature_seen: Int,
 ) -> ByteArray {
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   vm_witness.encode_signatures_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
@@ -373,7 +396,7 @@ fn signatures_step_fixture(
       machine_version: validation_trace_v1.machine_version,
       event_key_hash: h_a,
       transaction_id: tx_id,
-      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      transaction_commitment: submitted_commitment(tx),
       validation_context_hash: validation_trace_v1.hash_validation_context(
         validation_context_cbor,
       ),
@@ -404,7 +427,7 @@ fn phase_a_native_step_fixture(
     tx,
     ledger_delta_root,
   )
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let script_count = if tx.witness_set.script_tx_wits == [] {
     0
@@ -464,7 +487,7 @@ fn phase_a_native_scan_witness(
   node_count: Int,
   result: Int,
 ) -> ByteArray {
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   vm_witness.encode_phase_a_native_scripts_scan_witness(
     proof_source.compact_cbor,
@@ -604,7 +627,7 @@ fn input_sets_scan_witness(
   previous_key: ByteArray,
   schedule_hash: ByteArray,
 ) -> ByteArray {
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   vm_witness.encode_input_sets_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
@@ -633,7 +656,7 @@ fn input_sets_pre(
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: submitted_commitment(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
@@ -716,7 +739,7 @@ fn phase_a_script_preconditions_fixture(
     tx,
     ledger_delta_root,
   )
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let work_witness_cbor = vm_witness.encode_phase_a_script_preconditions_witness(
     proof_source.compact_cbor,
@@ -846,7 +869,7 @@ fn resolve_inputs_step_fixture(
   accumulator: ByteArray,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
@@ -880,7 +903,7 @@ fn resolve_inputs_step_fixture(
       machine_version: validation_trace_v1.machine_version,
       event_key_hash: h_a,
       transaction_id: tx_id,
-      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      transaction_commitment: submitted_commitment(tx),
       validation_context_hash: validation_trace_v1.hash_validation_context(
         validation_context_cbor,
       ),
@@ -925,7 +948,7 @@ fn script_sources_output_step_fixture_with_resolved_items(
   observer_scan: vm_machine_types.ObserverPurposeScanControlV1,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
@@ -991,7 +1014,7 @@ fn script_sources_output_step_fixture_with_resolved_items(
       machine_version: validation_trace_v1.machine_version,
       event_key_hash: h_a,
       transaction_id: tx_id,
-      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      transaction_commitment: submitted_commitment(tx),
       validation_context_hash: validation_trace_v1.hash_validation_context(
         validation_context_cbor,
       ),
@@ -1079,7 +1102,7 @@ fn script_sources_mint_fold_fixture(
   stage: Int,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
@@ -1130,7 +1153,7 @@ fn script_sources_mint_fold_fixture(
       machine_version: validation_trace_v1.machine_version,
       event_key_hash: h_a,
       transaction_id: tx_id,
-      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      transaction_commitment: submitted_commitment(tx),
       validation_context_hash: validation_trace_v1.hash_validation_context(
         validation_context_cbor,
       ),
@@ -1293,7 +1316,7 @@ fn script_sources_active_output_proof_fixture(
   output_proof: ledger_output_proof_v1.LedgerOutputProofControlV1,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
@@ -1350,7 +1373,7 @@ fn script_sources_active_output_proof_fixture(
       machine_version: validation_trace_v1.machine_version,
       event_key_hash: h_a,
       transaction_id: tx_id,
-      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      transaction_commitment: submitted_commitment(tx),
       validation_context_hash: validation_trace_v1.hash_validation_context(
         validation_context_cbor,
       ),
@@ -1483,7 +1506,7 @@ fn script_sources_pending_redeemer_item_fixture(
   redeemer_item_control_hash: ByteArray,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
@@ -1541,7 +1564,7 @@ fn script_sources_pending_redeemer_item_fixture(
       machine_version: validation_trace_v1.machine_version,
       event_key_hash: h_a,
       transaction_id: tx_id,
-      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      transaction_commitment: submitted_commitment(tx),
       validation_context_hash: validation_trace_v1.hash_validation_context(
         validation_context_cbor,
       ),
@@ -1576,7 +1599,7 @@ fn script_discovery_step_fixture_with_output_frontier(
   discovery: vm_machine_types.ScriptDiscoveryControlV1,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
@@ -1640,7 +1663,7 @@ fn script_discovery_step_fixture_with_output_frontier(
       machine_version: validation_trace_v1.machine_version,
       event_key_hash: h_a,
       transaction_id: tx_id,
-      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      transaction_commitment: submitted_commitment(tx),
       validation_context_hash: validation_trace_v1.hash_validation_context(
         validation_context_cbor,
       ),
@@ -1696,7 +1719,7 @@ fn native_scripts_step_fixture(
   language_bitmap: Int,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
@@ -1743,7 +1766,7 @@ fn native_scripts_step_fixture(
       machine_version: validation_trace_v1.machine_version,
       event_key_hash: h_a,
       transaction_id: tx_id,
-      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      transaction_commitment: submitted_commitment(tx),
       validation_context_hash: validation_trace_v1.hash_validation_context(
         validation_context_cbor,
       ),
@@ -1769,7 +1792,7 @@ fn native_scripts_step_fixture(
 fn empty_native_control_fixture(
   tx: MidgardTransaction,
 ) -> vm_machine_types.NativeScriptsControlV1 {
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   vm_machine_types.NativeScriptsControlV1 {
     compact_cbor: proof_source.compact_cbor,
@@ -1840,7 +1863,7 @@ fn cek_state_fixture(
       machine_version: validation_trace_v1.machine_version,
       event_key_hash: h_a,
       transaction_id: tx_id,
-      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      transaction_commitment: submitted_commitment(tx),
       validation_context_hash: validation_trace_v1.hash_validation_context(
         validation_context_cbor,
       ),
@@ -1972,11 +1995,13 @@ fn verify_cek_context_source_transition_fixture(
   )
   let pre = validation_trace_v1.ValidationMachineStateV1 {
     ..base_pre,
+    source_kind: validation_trace_v1.Normal,
     transaction_id,
     transaction_commitment,
   }
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..base_post,
+    source_kind: validation_trace_v1.Normal,
     transaction_id,
     transaction_commitment,
   }
@@ -2004,6 +2029,7 @@ fn verify_cek_context_source_transition_fixture(
         control: empty,
         auxiliary_hash: #"",
         transaction_id,
+        source_kind: pre.source_kind,
       },
       context: context_control,
       native: bounded_context.native_facts(native_control),
@@ -2093,7 +2119,7 @@ fn canonical_step_fixture() -> Pair<
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   // A field scan that has not yet counted the field's items carries the
   // `item_count == -1` sentinel; `verify_canonical_decode_empty` requires it.
   let work_witness_cbor = vm_witness.encode_transaction_field_scan_witness(
@@ -2111,7 +2137,7 @@ fn canonical_step_fixture() -> Pair<
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: submitted_commitment(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       context_cbor,
     ),
@@ -2189,7 +2215,7 @@ test canonical_decode_authenticates_one_bounded_script_item() {
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let item_cbor = encode_midgard_versioned_script(script)
   let work_witness_cbor = vm_witness.encode_transaction_field_scan_witness(
     proof_source.compact_cbor,
@@ -2206,7 +2232,7 @@ test canonical_decode_authenticates_one_bounded_script_item() {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: submitted_commitment(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
@@ -2284,7 +2310,7 @@ test canonical_decode_rejects_a_legacy_field_seven_script_proof() {
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let item_cbor = encode_midgard_versioned_script(script)
   let work_witness_cbor = vm_witness.encode_transaction_field_scan_witness(
     proof_source.compact_cbor,
@@ -2301,7 +2327,7 @@ test canonical_decode_rejects_a_legacy_field_seven_script_proof() {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: submitted_commitment(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
@@ -2444,7 +2470,7 @@ test canonical_decode_rejects_a_wrong_claimed_successor() {
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let item_cbor = encode_midgard_versioned_script(script)
   let work_witness_cbor = vm_witness.encode_transaction_field_scan_witness(
     proof_source.compact_cbor,
@@ -2461,7 +2487,7 @@ test canonical_decode_rejects_a_wrong_claimed_successor() {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: submitted_commitment(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
@@ -2580,8 +2606,8 @@ test compact_binding_is_independently_verified_on_l1() {
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let transaction_commitment = midgard_transaction_proof_commitment_v1(tx)
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let transaction_commitment = submitted_commitment(tx)
+  let proof_source = submitted_source(tx)
   let context_cbor = validation_context_cbor
   let compact_witness_cbor = vm_witness.encode_compact_binding_witness(
     tx_id,
@@ -2642,7 +2668,7 @@ test compact_binding_is_independently_verified_on_l1() {
 test static_rules_accept_the_exact_proof_context_and_advance_to_input_sets() {
   let tx = empty_v1_transaction()
   let compact = midgard_transaction_to_compact(tx)
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let tx_id = native_tx_id_for_version(
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
@@ -2657,7 +2683,7 @@ test static_rules_accept_the_exact_proof_context_and_advance_to_input_sets() {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: submitted_commitment(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
@@ -2716,7 +2742,7 @@ test static_rules_prove_a_network_mismatch_is_an_exact_no_op() {
     body: MidgardTransactionBody { ..base.body, network_id: 1 },
   }
   let compact = midgard_transaction_to_compact(tx)
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let tx_id = native_tx_id_for_version(
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
@@ -2732,7 +2758,7 @@ test static_rules_prove_a_network_mismatch_is_an_exact_no_op() {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: submitted_commitment(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
@@ -2794,7 +2820,7 @@ fn static_rules_delta_root_fixture(
     }
   }
   let compact = midgard_transaction_to_compact(tx)
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let tx_id = native_tx_id_for_version(
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
@@ -2810,7 +2836,7 @@ fn static_rules_delta_root_fixture(
       machine_version: validation_trace_v1.machine_version,
       event_key_hash: h_a,
       transaction_id: tx_id,
-      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      transaction_commitment: submitted_commitment(tx),
       validation_context_hash: validation_trace_v1.hash_validation_context(
         validation_context_cbor,
       ),
@@ -3232,7 +3258,7 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
     },
   }
   let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx, h_a)
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = validation_merkle_v1.build_frontier([])
   let required_witness_cbor = signatures_scan_witness(
     tx,
@@ -3356,7 +3382,7 @@ fn signatures_handoff_with_claimed_result(result: Int) -> Bool {
     },
   }
   let Pair(pre, _work_witness_cbor) = signatures_step_fixture(tx, h_a)
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = validation_merkle_v1.build_frontier([])
   let handoff_witness_cbor = signatures_scan_witness(
     tx,
@@ -3656,7 +3682,7 @@ test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
     payload_pre,
     finalize_work_witness_cbor,
   )
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let next_work_witness_cbor = vm_witness.encode_phase_a_script_preconditions_witness(
     proof_source.compact_cbor,
@@ -4074,7 +4100,7 @@ test phase_a_script_preconditions_advances_an_empty_bundle_to_resolution() {
     tx,
     h_a,
   )
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -4141,7 +4167,7 @@ test phase_a_script_preconditions_proves_duplicate_observers_are_a_no_op() {
     tx,
     validation_trace_v1.hash_ledger_delta(#"80"),
   )
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let next_work_witness_cbor = vm_witness.encode_phase_a_script_preconditions_witness(
     proof_source.compact_cbor,
@@ -4291,7 +4317,7 @@ test resolve_inputs_checks_validity_before_ledger_lookups() {
     accumulator,
     7,
   )
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let resolution_schedule_hash = vm_witness.transaction_resolution_schedule_hash(
     tx.body.inputs,
@@ -4355,7 +4381,7 @@ fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool {
     accumulator,
     8,
   )
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let empty_schedule_hash = vm_witness.empty_resolution_schedule_hash()
   let signer_frontier_commitment = validation_merkle_v1.frontier_commitment(
@@ -4669,7 +4695,7 @@ test resolve_inputs_finalizes_into_script_source_resolution() {
     accumulator,
     8,
   )
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -5373,7 +5399,7 @@ fn resolution_schedule_terminal_state(
       machine_version: validation_trace_v1.machine_version,
       event_key_hash: h_a,
       transaction_id,
-      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      transaction_commitment: submitted_commitment(tx),
       validation_context_hash: validation_trace_v1.hash_validation_context(
         validation_context_cbor,
       ),
@@ -7195,7 +7221,7 @@ fn script_sources_state_for_work_witness(
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: submitted_commitment(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
@@ -7664,7 +7690,7 @@ test script_sources_stage_one_finish_raw_binds_canonical_successor_encoding() {
   and {
     // The witness carries a bytestring past the 64-byte `serialiseData`
     // chunking threshold, which is what made the rebuilt prefix unmatchable.
-    bytearray.length(midgard_transaction_proof_source_v1(tx).compact_cbor) > 64,
+    bytearray.length(submitted_source(tx).compact_cbor) > 64,
     vm_script_sources_early_stages.verify_script_sources_stage_one_finish_raw_semantics_v1(
       pre,
       vm_machine_types.ValidationOneStepWitnessV1 {
@@ -9020,7 +9046,7 @@ fn late_phase_a_native_scan_witness(
   node_count: Int,
   result: Int,
 ) -> ByteArray {
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   vm_witness.encode_phase_a_native_scripts_scan_witness(
     proof_source.compact_cbor,
@@ -9261,7 +9287,7 @@ test script_integrity_is_recomputed_before_cek() {
     },
   }
   let valid_control = empty_native_control_fixture(valid_tx)
-  let valid_source = midgard_transaction_proof_source_v1(valid_tx)
+  let valid_source = submitted_source(valid_tx)
   let valid_compact = midgard_transaction_to_compact(valid_tx)
   let valid_witness_set = decode_native_tx_witness_set_compact(
     valid_source.witness_set_compact_cbor,
@@ -9277,7 +9303,7 @@ test script_integrity_is_recomputed_before_cek() {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(valid_tx),
+    transaction_commitment: submitted_commitment(valid_tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
@@ -9379,7 +9405,7 @@ test script_integrity_is_recomputed_before_cek() {
     body: MidgardTransactionBody { ..base.body, script_integrity_hash: zero },
   }
   let invalid_control = empty_native_control_fixture(invalid_tx)
-  let invalid_source = midgard_transaction_proof_source_v1(invalid_tx)
+  let invalid_source = submitted_source(invalid_tx)
   let invalid_witness_set = decode_native_tx_witness_set_compact(
     invalid_source.witness_set_compact_cbor,
   )
@@ -9396,7 +9422,7 @@ test script_integrity_is_recomputed_before_cek() {
   let invalid_pre = validation_trace_v1.ValidationMachineStateV1 {
     ..authentication_pre,
     transaction_id: invalid_tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(invalid_tx),
+    transaction_commitment: submitted_commitment(invalid_tx),
     program_counter: 40,
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.ScriptIntegrity,
@@ -11086,7 +11112,8 @@ fn terminal_fixture_pre_state(
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
-    source_kind: validation_trace_v1.Forced,
+    // These cross-language vectors commit the normal native wire format.
+    source_kind: validation_trace_v1.Normal,
     prior_ledger_root: fixture.transaction_commitment,
     phase: validation_trace_v1.CanonicalDecode,
     program_counter: 40,
@@ -13029,7 +13056,7 @@ fn cek_active_core_step_fixture() -> Pair<
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: submitted_commitment(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
@@ -13737,7 +13764,7 @@ test value_and_mint_final_equation_is_enforced_on_l1() {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: submitted_commitment(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
@@ -13885,7 +13912,7 @@ test value_and_mint_uses_authenticated_native_mint_frontier() {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: submitted_commitment(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
@@ -14010,7 +14037,7 @@ test value_and_mint_replays_signed_burn_leaf_on_l1() {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: submitted_commitment(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
@@ -14213,7 +14240,7 @@ fn value_output_descriptor_fixture_at(
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: submitted_commitment(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
@@ -14341,7 +14368,7 @@ fn target_snapshot_canonical_size(fee: Int) -> Int {
     body: MidgardTransactionBody { ..base.body, fee },
   }
   let compact = midgard_transaction_to_compact(tx)
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   native_tx_canonical_size_v1(
     compact,
     decode_native_tx_field_preimage_lengths_v1(
@@ -14366,7 +14393,7 @@ fn target_snapshot_min_fee_step_is_provable(
     body: MidgardTransactionBody { ..base.body, fee },
   }
   let compact = midgard_transaction_to_compact(tx)
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let tx_id = native_tx_id_for_version(
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
@@ -14381,7 +14408,7 @@ fn target_snapshot_min_fee_step_is_provable(
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: submitted_commitment(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       target_snapshot_validation_context_cbor,
     ),
@@ -14920,7 +14947,7 @@ fn conservation_mint_step_is_exact(
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: submitted_commitment(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
@@ -15022,7 +15049,7 @@ fn conservation_final_step_is_provable(
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: submitted_commitment(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
@@ -15181,7 +15208,7 @@ fn mint_authorization_step_is_provable(
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: submitted_commitment(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
@@ -15355,7 +15382,7 @@ test value_asset_output_instruction_evidence_is_bounded() {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: submitted_commitment(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
@@ -15486,7 +15513,7 @@ test maximum_script_program_instruction_evidence_is_bounded() {
     vm_witness.empty_script_discovery_control(),
     52,
   )
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let dense_frontier_four = validation_merkle_v1.build_frontier(
     list.repeat(h_a, 15),
   )
@@ -15594,7 +15621,7 @@ fn stage_zero_script_sources_control(
   source_total_count: Int,
   pending_source_cbor: ByteArray,
 ) -> vm_machine_types.ScriptSourcesControlV1 {
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   vm_machine_types.ScriptSourcesControlV1 {
     compact_cbor: proof_source.compact_cbor,
@@ -15698,7 +15725,7 @@ fn stage_zero_script_sources_state(
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: submitted_commitment(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       validation_context_cbor,
     ),
@@ -17668,7 +17695,7 @@ fn value_and_mint_state_fixture(
       machine_version: validation_trace_v1.machine_version,
       event_key_hash: h_a,
       transaction_id: tx_id,
-      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      transaction_commitment: submitted_commitment(tx),
       validation_context_hash: validation_trace_v1.hash_validation_context(
         validation_context_cbor,
       ),
@@ -18413,7 +18440,7 @@ test phase_a_payload_binding_matches_full_binding(
     work_witness_cbor,
     claimed_successor: pre,
   }
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_forced_tx_proof_source_v1(
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -18701,7 +18728,13 @@ fn verify_bounded_context_parity(
         8 -> bounded_context.next_mint_item(context, native, auxiliary)
         11 ->
           bounded_context.next_assemble(context, pre.transaction_id, auxiliary)
-        12 -> bounded_context.next_tx_info(context, native, auxiliary)
+        12 ->
+          bounded_context.next_tx_info(
+            pre.source_kind,
+            context,
+            native,
+            auxiliary,
+          )
         _ -> fail
       }
       vm_witness.encode_cek_witness_v1(

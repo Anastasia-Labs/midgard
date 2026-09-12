@@ -119,13 +119,18 @@ const uniqueInOrder = (values: readonly string[]): string[] => {
  * fold.
  */
 export const reconstructExecutionNativeScriptPurposes = ({
+  sourceKind = "normal",
   canonicalTransactionCbor,
   resolvedOutputsByOutRef,
 }: {
   canonicalTransactionCbor: Uint8Array;
+  sourceKind?: "normal" | "forced";
   resolvedOutputsByOutRef: ReadonlyMap<string, Uint8Array>;
 }): ExecutionNativeScriptCanonicalReconstruction => {
-  const tx = decodeMidgardLedgerTxFromCanonicalCbor(canonicalTransactionCbor);
+  const tx = decodeMidgardLedgerTxFromCanonicalCbor(
+    canonicalTransactionCbor,
+    sourceKind,
+  );
   const sources: ExecutionNativeScriptCanonicalSource[] =
     tx.scriptWitnesses.map((witness) =>
       canonicalSource({

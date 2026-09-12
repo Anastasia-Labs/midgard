@@ -699,6 +699,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
   ) => {
     const tx = proofStage === "step_03" ? artifact.tx1 : artifact.tx2;
     return planFaultProofFieldOpening({
+      anchorSourceKind: 0n,
       fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
       anchorTxId: tx.nativeTxId,
       nativeTxCompactCbor: tx.nativeTxCompactCbor,

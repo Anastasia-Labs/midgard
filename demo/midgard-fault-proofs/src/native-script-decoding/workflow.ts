@@ -107,6 +107,8 @@ type Prepared = Awaited<
   ReturnType<typeof admitNativeScriptDecodingWorkflowArtifact>
 >;
 const sourceInclusion = async (a: Prepared) => {
+  if (a.coordinate.sourceKind !== 0 || !("validity" in a.material.compact))
+    throw new Error("normal inclusion requires a normal source");
   const entry = a.current.transactions[a.coordinate.sourceIndex]!;
   return parseSubmitStep01TxInclusion({
     nativeTxId: a.txId,
@@ -129,6 +131,7 @@ const sourceInclusion = async (a: Prepared) => {
 };
 const subjectPlan = (a: Prepared, owner: string) =>
   planFaultProofFieldOpening({
+    anchorSourceKind: a.coordinate.sourceKind === 1 ? 1n : 0n,
     fieldIndex: Number(a.coordinate.outpointSourceKind),
     anchorTxId: a.txId,
     nativeTxCompactCbor: a.material.proofSource.compactCbor.toString("hex"),

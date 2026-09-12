@@ -7,13 +7,15 @@
  */
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeHash28,
   computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSource,
-  encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
+import {
+  deriveMidgardForcedTxProofSource,
+  encodeMidgardForcedTxCanonical,
+} from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   encodeHeaderCbor,
   fieldPreimagePublicationDatumCbor,
@@ -129,20 +131,19 @@ const forcedPrepared = async ({
   readonly outputNetworkIds?: readonly number[];
   readonly reason?: "NetworkIdMismatch" | "EmptyInputs";
 } = {}): Promise<PreparedNetworkIdWrongfulRejection> => {
-  const invalid = adjudicateMidgardNativeTxFullValidity(
+  const invalid = materializeMidgardForcedTxFromCanonical(
     makeNativeTx({
       spendInputCbors: [outRefCbor(0x11, 0n)],
       fee: 0n,
       outputCbors: outputNetworkIds.map(output),
     }),
-    "TxIsInvalid",
   );
   const txId = computeMidgardNativeTxId(invalid).toString("hex");
-  const proofSource = deriveMidgardNativeTxProofSource(invalid);
+  const proofSource = deriveMidgardForcedTxProofSource(invalid);
   const key = { transactionId: h32(0x05), outputIndex: 0n };
   const leaf = {
     tx_id: txId,
-    source: {
+    submitted_source: {
       compact_cbor: proofSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:
         proofSource.witnessSetCompactCbor.toString("hex"),
@@ -178,7 +179,7 @@ const forcedPrepared = async ({
         {
           key,
           value: leaf,
-          fullTransactionCbor: encodeMidgardNativeTxCanonical(invalid),
+          fullTransactionCbor: encodeMidgardForcedTxCanonical(invalid),
         },
       ],
     },
@@ -194,7 +195,7 @@ const forcedPrepared = async ({
     headerHash,
     expectedNetworkId: 0n,
     badTxId: txId,
-    nativeTxCompactCbor: leaf.source.compact_cbor,
+    nativeTxCompactCbor: leaf.submitted_source.compact_cbor,
     outputsItemCbors: detection.evidence.outputsItemCbors,
     faultClaim: { kind: "forced-network-mismatch" },
     fault: "ForcedNetworkIdMismatch" as NetworkIdFault,

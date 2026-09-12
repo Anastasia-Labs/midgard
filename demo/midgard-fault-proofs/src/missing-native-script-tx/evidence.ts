@@ -97,6 +97,7 @@ export const buildMissingNativeScriptTxEvidence = ({
     );
   }
   planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: badTxInclusion.nativeTxId,
     nativeTxCompactCbor: badTxInclusion.nativeTxCompactCbor,
@@ -105,6 +106,7 @@ export const buildMissingNativeScriptTxEvidence = ({
     label: "missing-native-script-tx evidence spend inputs",
   });
   planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     anchorTxId: producingTxInclusion.nativeTxId,
     nativeTxCompactCbor: producingTxInclusion.nativeTxCompactCbor,
@@ -113,6 +115,7 @@ export const buildMissingNativeScriptTxEvidence = ({
     label: "missing-native-script-tx evidence producing outputs",
   });
   planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.scriptWitnesses,
     anchorTxId: badTxInclusion.nativeTxId,
     nativeTxCompactCbor: badTxInclusion.nativeTxCompactCbor,

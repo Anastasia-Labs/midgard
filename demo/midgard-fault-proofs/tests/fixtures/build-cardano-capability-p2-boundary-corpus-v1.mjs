@@ -36,7 +36,7 @@ const resolvedReferenceUtxoLabels = new Set(["maximum-reference-inputs"]);
 const baseKeys = [
   "canonicalCborHex",
   "label",
-  "admission",
+  "productionAdmission",
   "transactionCommitmentHex",
   "transactionIdHex",
 ];
@@ -87,7 +87,7 @@ for (const entry of entries) {
       : "required";
   if (
     JSON.stringify(actualKeys) !== JSON.stringify(expectedKeys) ||
-    entry.admission !== expectedProductionAdmission ||
+    entry.productionAdmission !== expectedProductionAdmission ||
     !canonicalHex(entry.canonicalCborHex) ||
     !/^[0-9a-f]{64}$/.test(entry.transactionIdHex) ||
     !/^[0-9a-f]{64}$/.test(entry.transactionCommitmentHex) ||

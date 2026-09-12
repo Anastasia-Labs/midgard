@@ -4,13 +4,15 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils
 use midgard/computation_thread as ct
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/common.{
   cancel, continue, pass_native_tx_to_next_step_carried,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_script_decoding/thread_fixture_v1 as tf
 use midgard/fraud_proofs/native_tx/compact.{
-  verify_native_tx_compact_cbor_v1, verify_native_tx_proof_source_v1,
+  verify_forced_tx_proof_source_v1, verify_native_tx_compact_cbor_v1,
+  verify_native_tx_proof_source_v1,
 }
 use midgard/fraud_proofs/native_tx/types.{
   MidgardAddress, MidgardTransaction, MidgardTransactionBody, MidgardTxOutput,
@@ -109,11 +111,11 @@ validator main(
           membership,
           direction,
         )
-        let Pair(verified, _witness_set) = verify_native_tx_proof_source_v1(
+        let Pair(verified, _witness_set) = verify_forced_tx_proof_source_v1(
           membership.value.tx_id,
-          membership.value.source.compact_cbor,
-          membership.value.source.witness_set_compact_cbor,
-          membership.value.source.field_preimage_lengths_cbor,
+          membership.value.submitted_source.compact_cbor,
+          membership.value.submitted_source.witness_set_compact_cbor,
+          membership.value.submitted_source.field_preimage_lengths_cbor,
         )
         let expected: Data = step_02.State {
           bound: bind_output_v1(subject, output_index),
@@ -301,11 +303,11 @@ fn expected_forced_state(
   output_index: Int,
 ) -> Data {
   let leaf = membership.value
-  let Pair(verified, _) = verify_native_tx_proof_source_v1(
+  let Pair(verified, _) = verify_forced_tx_proof_source_v1(
     leaf.tx_id,
-    leaf.source.compact_cbor,
-    leaf.source.witness_set_compact_cbor,
-    leaf.source.field_preimage_lengths_cbor,
+    leaf.submitted_source.compact_cbor,
+    leaf.submitted_source.witness_set_compact_cbor,
+    leaf.submitted_source.field_preimage_lengths_cbor,
   )
   let state: Data = step_02.State {
     bound: bind_output_v1(
@@ -524,7 +526,7 @@ test protected_output_step_01_refuses_a_substituted_leaf_source() fail {
   )
   let substituted = ledger_state.ForcedInclusionTxV1 {
     ..honest,
-    source: foreign.source,
+    submitted_source: foreign.submitted_source,
   }
   let membership = forced_membership(substituted)
   let header = forced_header(membership.root, 1)

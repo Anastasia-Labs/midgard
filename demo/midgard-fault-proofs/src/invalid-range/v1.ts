@@ -21,7 +21,7 @@ export const prepareInvalidRangeForcedPlan = async ({
     detectionId: detection.detectionId,
     headerHash: block.headerHash,
     evidence: detection.evidence,
-    nativeTxCompactCbor: transaction.value.source.compact_cbor,
+    nativeTxCompactCbor: transaction.value.submitted_source.compact_cbor,
     forcedSource: Object.freeze({
       header: block.header,
       membership,

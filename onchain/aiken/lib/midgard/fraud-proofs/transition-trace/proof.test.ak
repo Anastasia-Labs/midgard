@@ -8,6 +8,7 @@ use cardano/assets
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference}
 use env
 use midgard/common/utils
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/native_tx/compact as native_compact
 use midgard/fraud_proofs/native_tx/components as native_components
 use midgard/fraud_proofs/native_tx/preimages as native_preimages
@@ -528,7 +529,7 @@ fn forced_tx(
 ) -> ledger_state.ForcedInclusionTxV1 {
   ledger_state.ForcedInclusionTxV1 {
     tx_id: h32_a,
-    source: ledger_state.NativeTxProofSourceV1 {
+    submitted_source: ledger_state.ForcedTxProofSourceV1 {
       compact_cbor,
       witness_set_compact_cbor: #"",
       field_preimage_lengths_cbor: #"",
@@ -582,32 +583,27 @@ fn authenticated_forced_tx(
   )
   ledger_state.ForcedInclusionTxV1 {
     tx_id,
-    source: ledger_state.NativeTxProofSourceV1 {
-      compact_cbor: proof_source.compact_cbor,
-      witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
-      field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
-    },
+    submitted_source: forced_fixture.from_native_source(
+      ledger_state.NativeTxProofSourceV1 {
+        compact_cbor: proof_source.compact_cbor,
+        witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
+        field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
+      },
+    ),
     verdict,
   }
 }
 
 fn authenticated_tx_order_payload() -> ledger_state.TxOrderPayloadV1 {
-  let tx = empty_native_transaction()
-  let compact = native_transaction.midgard_transaction_to_compact(tx)
-  let proof_source = native_transaction.midgard_transaction_proof_source_v1(tx)
+  let leaf = authenticated_forced_tx(rejection_reason_v1.ForcedTxValid)
   ledger_state.TxOrderPayloadV1 {
-    tx_id: native_compact.native_tx_id_for_version(
-      native_types.native_tx_version_v1,
-      native_compact.encode_native_tx_body_compact(compact.body),
+    tx_id: leaf.tx_id,
+    transaction_commitment: native_compact.forced_tx_proof_commitment_v1(
+      leaf.submitted_source.compact_cbor,
+      leaf.submitted_source.witness_set_compact_cbor,
+      leaf.submitted_source.field_preimage_lengths_cbor,
     ),
-    transaction_commitment: native_transaction.midgard_transaction_proof_commitment_v1(
-      tx,
-    ),
-    source: ledger_state.NativeTxProofSourceV1 {
-      compact_cbor: proof_source.compact_cbor,
-      witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
-      field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
-    },
+    submitted_source: leaf.submitted_source,
   }
 }
 
@@ -683,9 +679,9 @@ fn accepted_forced_transition_case(
     validation_context_cbor,
   )
   let initial_work_witness = vm_witness.encode_transaction_field_scan_witness(
-    source.source.compact_cbor,
-    source.source.witness_set_compact_cbor,
-    source.source.field_preimage_lengths_cbor,
+    source.submitted_source.compact_cbor,
+    source.submitted_source.witness_set_compact_cbor,
+    source.submitted_source.field_preimage_lengths_cbor,
     validation_context_cbor,
     0,
     0,
@@ -706,10 +702,10 @@ fn accepted_forced_transition_case(
     // the transaction `authenticated_forced_tx` happens to build them out of, so
     // the fixture keeps agreeing with the claim if a caller ever passes a source
     // assembled some other way.
-    transaction_commitment: native_compact.native_tx_proof_commitment_v1(
-      source.source.compact_cbor,
-      source.source.witness_set_compact_cbor,
-      source.source.field_preimage_lengths_cbor,
+    transaction_commitment: native_compact.forced_tx_proof_commitment_v1(
+      source.submitted_source.compact_cbor,
+      source.submitted_source.witness_set_compact_cbor,
+      source.submitted_source.field_preimage_lengths_cbor,
     ),
     validation_context_hash,
     source_kind: validation_trace_v1.Forced,
@@ -2729,24 +2725,16 @@ fn late_rejected_forced_source_is_valid(
   mutate_reason: Bool,
 ) -> Bool {
   let original = authenticated_forced_tx(verdict_plutus_failed())
-  let invalid_tx = native_types.MidgardTransaction {
-    ..empty_native_transaction(),
-    validity: native_types.TxIsInvalid,
-  }
-  let rejected = native_transaction.midgard_transaction_proof_source_v1(
-    invalid_tx,
-  )
   let source_membership = forced_source_membership(
     out_ref(0),
     ledger_state.ForcedInclusionTxV1 {
       ..original,
-      source: ledger_state.NativeTxProofSourceV1 {
-        ..original.source,
-        compact_cbor: rejected.compact_cbor,
+      submitted_source: ledger_state.ForcedTxProofSourceV1 {
+        ..original.submitted_source,
         witness_set_compact_cbor: if mutate_witness {
           #"80"
         } else {
-          rejected.witness_set_compact_cbor
+          original.submitted_source.witness_set_compact_cbor
         },
       },
     },

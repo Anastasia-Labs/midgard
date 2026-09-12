@@ -8,6 +8,10 @@ import {
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   type MidgardNativeScript,
 } from "@al-ft/midgard-core";
+import {
+  encodeMidgardForcedTxCanonical as forcedTraceBytes,
+  materializeMidgardForcedTxFromCanonical as forcedTraceView,
+} from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildDeterministicValidationMachineTrace,
@@ -266,15 +270,17 @@ export const buildUnusedScriptWitnessFixture = async (
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor,
       sourceKind: spec.direction === "forced" ? "forced" : "normal",
-      committedForcedVerdict:
-        spec.direction === "forced" ? spec.claimedVerdict : undefined,
+
       blockEndTimeMs: 1_750_000_001_000,
       expectedNetworkId: 0n,
       minFeeA: 0n,
       minFeeB: 0n,
       blockSlot: 0n,
       transactionId: transaction.txId,
-      canonicalTransactionCbor: transaction.txCbor,
+      canonicalTransactionCbor:
+        spec.direction === "forced"
+          ? forcedTraceBytes(forcedTraceView(transaction.tx))
+          : transaction.txCbor,
       priorUtxosRoot: mutations[0]!.preRoot.toString("hex"),
       postUtxosRoot: machineAccepts
         ? mutations.at(-1)!.postRoot.toString("hex")

@@ -51,6 +51,7 @@ validator main(
           WitnessAnchor {
             tx_id: bound.subject.transaction_id,
             witness_set_hash: bound.witness_set_hash,
+            source_kind: bound.subject.source_kind,
           },
           redeemer_field_index,
           reference_inputs,

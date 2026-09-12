@@ -8,7 +8,7 @@ import {
   midgardCekProgramMaterialKindFromTag,
   MidgardCekProgramMaterialMissingRootError,
 } from "@al-ft/midgard-core/cek-proof";
-import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec";
+import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec";
 import {
   authenticatedMidgardFieldView,
   encodeMidgardFieldArrayHeader,
@@ -153,17 +153,20 @@ export const publishedProgramMaterialSnapshotError = (
  * may not depend on the watcher package.
  */
 const forcedOrderMaterialFieldCount = (payload: TxOrderPayload): number =>
-  midgardTxFieldCommitmentsFromSource({
-    compactCbor: Buffer.from(payload.source.compact_cbor, "hex"),
-    witnessSetCompactCbor: Buffer.from(
-      payload.source.witness_set_compact_cbor,
-      "hex",
-    ),
-    fieldPreimageLengthsCbor: Buffer.from(
-      payload.source.field_preimage_lengths_cbor,
-      "hex",
-    ),
-  }).filter((commitment) => !commitment.equals(MIDGARD_EMPTY_FIELD_COMMITMENT))
+  midgardTxFieldCommitmentsFromSource(
+    {
+      compactCbor: Buffer.from(payload.submitted_source.compact_cbor, "hex"),
+      witnessSetCompactCbor: Buffer.from(
+        payload.submitted_source.witness_set_compact_cbor,
+        "hex",
+      ),
+      fieldPreimageLengthsCbor: Buffer.from(
+        payload.submitted_source.field_preimage_lengths_cbor,
+        "hex",
+      ),
+    },
+    "forced",
+  ).filter((commitment) => !commitment.equals(MIDGARD_EMPTY_FIELD_COMMITMENT))
     .length;
 
 /**
@@ -237,18 +240,18 @@ export const reconstructTxOrderMaterial = ({
     try: () => {
       const transactionId = Buffer.from(payload.tx_id, "hex");
       const source = {
-        compactCbor: Buffer.from(payload.source.compact_cbor, "hex"),
+        compactCbor: Buffer.from(payload.submitted_source.compact_cbor, "hex"),
         witnessSetCompactCbor: Buffer.from(
-          payload.source.witness_set_compact_cbor,
+          payload.submitted_source.witness_set_compact_cbor,
           "hex",
         ),
         fieldPreimageLengthsCbor: Buffer.from(
-          payload.source.field_preimage_lengths_cbor,
+          payload.submitted_source.field_preimage_lengths_cbor,
           "hex",
         ),
       };
       const emptyFieldPreimage = encodeMidgardFieldArrayHeader(0);
-      const commitments = midgardTxFieldCommitmentsFromSource(source);
+      const commitments = midgardTxFieldCommitmentsFromSource(source, "forced");
       const referenceInputs = material?.referenceInputs ?? [];
       const unconsumed = [...(material?.carriage ?? [])];
       const fieldPreimages = commitments.map((commitment, fieldIndex) => {
@@ -288,6 +291,7 @@ export const reconstructTxOrderMaterial = ({
         );
       }
       return reconstructMidgardTransaction({
+        sourceKind: "forced",
         transactionId,
         transactionCommitment: Buffer.from(
           payload.transaction_commitment,
@@ -397,7 +401,7 @@ const txOrderUTxOToEntry = (
       payload,
       material,
     });
-    const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(nativeTxCbor);
+    const decoded = decodeMidgardForcedTxFullFromCanonicalCbor(nativeTxCbor);
     const attachedProgramEnvelopes = yield* Effect.try({
       try: () => collectMidgardAttachedProgramEnvelopes(decoded),
       catch: (cause) =>
@@ -500,8 +504,6 @@ const txOrderUTxOToEntry = (
       [ForcedTransactionsDB.Columns.TX_ID]: encoded.txId,
       [ForcedTransactionsDB.Columns.TX_COMPACT]: encoded.txCompact,
       [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]: encoded.value,
-      [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]:
-        ForcedTransactionsDB.midgardTxValidityOfVerdict("ForcedTxValid"),
       [ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID]:
         consensusProfile.profileId,
       [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]: nativeTxCbor,

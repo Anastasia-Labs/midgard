@@ -2,6 +2,7 @@ import {
   decodeMidgardFieldPreimage,
   deriveMidgardNativeTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   type FieldOpening,
   requireInputIndex,
@@ -106,14 +107,17 @@ export const submitResolvedOutputNonCanonicalStep02 = async ({
     throw new Error(
       "resolved-output-non-canonical: opening coordinate differs from thread",
     );
-  const txMaterial = deriveMidgardNativeTxFaultEvidenceMaterial(
-    Buffer.from(evidence.canonicalTransactionCborHex, "hex"),
-  );
+  const txMaterial = (
+    evidence.subject.source_kind === 1n
+      ? deriveMidgardForcedTxFaultEvidenceMaterial
+      : deriveMidgardNativeTxFaultEvidenceMaterial
+  )(Buffer.from(evidence.canonicalTransactionCborHex, "hex"));
   const fieldIndex = evidence.coordinate.sourceKind;
   const items = decodeMidgardFieldPreimage(
     txMaterial.fieldPreimages[fieldIndex]!,
   );
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,

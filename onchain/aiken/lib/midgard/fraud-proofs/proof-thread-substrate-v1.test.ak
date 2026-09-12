@@ -4,9 +4,11 @@
 use aiken/cbor
 use aiken/primitive/bytearray
 use cardano/transaction
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_script_decoding/thread_fixture_v1 as tf
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
+use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1} as native_compact
+use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state
@@ -16,13 +18,19 @@ use midgard/transition_trace
 const prior_root =
   #"5555555555555555555555555555555555555555555555555555555555555555"
 
-fn accepted_verified_v1() -> native_types.VerifiedMidgardNativeTxCompact {
-  let leaf = tf.forced_leaf_v1(fixture.valid_native_tx_v1(), ForcedTxValid)
+fn accepted_verified_v1() -> native_types.VerifiedTxSourceView {
+  let tx = fixture.valid_native_tx_v1()
+  let source = native_transaction.midgard_transaction_proof_source_v1(tx)
+  let compact = native_transaction.midgard_transaction_to_compact(tx)
+  let tx_id = native_compact.native_tx_id_for_version(
+    1,
+    native_compact.encode_native_tx_body_compact(compact.body),
+  )
   let Pair(verified, _witness_set) = verify_native_tx_proof_source_v1(
-    leaf.tx_id,
-    leaf.source.compact_cbor,
-    leaf.source.witness_set_compact_cbor,
-    leaf.source.field_preimage_lengths_cbor,
+    tx_id,
+    source.compact_cbor,
+    source.witness_set_compact_cbor,
+    source.field_preimage_lengths_cbor,
   )
   verified
 }
@@ -99,11 +107,11 @@ test proof_thread_subject_binds_an_accepted_transaction() {
 
 test proof_thread_subject_rejects_an_accepted_transaction_with_invalid_scalar() fail {
   substrate.bind_accepted_subject_v1(
-    native_types.VerifiedMidgardNativeTxCompact {
+    native_types.VerifiedTxSourceView {
       ..accepted_verified_v1(),
-      tx_compact: native_types.NativeTxCompact {
+      tx_compact: native_types.TxCompactView {
         ..accepted_verified_v1().tx_compact,
-        validity_code: 1,
+        validity_code: Some(1),
       },
     },
   ) == substrate.bind_accepted_subject_v1(accepted_verified_v1())
@@ -148,8 +156,18 @@ test proof_thread_subject_rejects_wrongful_acceptance_on_a_rejecting_leaf() fail
   ) == forced_rejected_subject_v1()
 }
 
-test proof_thread_subject_rejects_forced_valid_with_an_invalid_scalar() fail {
-  let leaf = tf.forced_leaf_v1(rejected_transaction_v1(), ForcedTxValid)
+test proof_thread_subject_rejects_forced_valid_with_an_obsolete_four_field_source() fail {
+  let original = tf.forced_leaf_v1(rejected_transaction_v1(), ForcedTxValid)
+  let obsolete = native_transaction.midgard_transaction_proof_source_v1(
+    rejected_transaction_v1(),
+  )
+  let leaf = ledger_state.ForcedInclusionTxV1 {
+    ..original,
+    submitted_source: ledger_state.ForcedTxProofSourceV1 {
+      ..original.submitted_source,
+      compact_cbor: obsolete.compact_cbor,
+    },
+  }
   let (header, membership) = forced_claim_v1(leaf)
   substrate.bind_forced_subject_v1(
     header,
@@ -158,11 +176,21 @@ test proof_thread_subject_rejects_forced_valid_with_an_invalid_scalar() fail {
   ) == forced_accepted_subject_v1()
 }
 
-test proof_thread_subject_rejects_forced_invalid_with_a_valid_scalar() fail {
-  let leaf = tf.forced_leaf_v1(
+test proof_thread_subject_rejects_forced_invalid_with_an_obsolete_four_field_source() fail {
+  let original = tf.forced_leaf_v1(
     fixture.valid_native_tx_v1(),
     ForcedTxInvalid { reason: input_not_found_reason_v1() },
   )
+  let obsolete = native_transaction.midgard_transaction_proof_source_v1(
+    fixture.valid_native_tx_v1(),
+  )
+  let leaf = ledger_state.ForcedInclusionTxV1 {
+    ..original,
+    submitted_source: ledger_state.ForcedTxProofSourceV1 {
+      ..original.submitted_source,
+      compact_cbor: obsolete.compact_cbor,
+    },
+  }
   let (header, membership) = forced_claim_v1(leaf)
   substrate.bind_forced_subject_v1(
     header,
@@ -217,9 +245,9 @@ test proof_thread_subject_rejects_substituted_forced_source_bytes() fail {
   let (header, membership) = forced_claim_v1(leaf)
   let substituted_leaf = ledger_state.ForcedInclusionTxV1 {
     ..leaf,
-    source: ledger_state.NativeTxProofSourceV1 {
-      ..leaf.source,
-      compact_cbor: bytearray.concat(leaf.source.compact_cbor, #"00"),
+    submitted_source: ledger_state.ForcedTxProofSourceV1 {
+      ..leaf.submitted_source,
+      compact_cbor: bytearray.concat(leaf.submitted_source.compact_cbor, #"00"),
     },
   }
   substrate.bind_forced_subject_v1(

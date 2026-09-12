@@ -149,6 +149,7 @@ export const preparePhaseAItemCarriage = async ({
   });
   const unsigned = await Effect.runPromise(
     buildUnsignedFieldPreimageCertificationProgram(lucid, {
+      sourceKind: trace.states[stateIndex]!.sourceKind === "forced" ? 1n : 0n,
       plan,
       certificatePolicyId: certificate.policyId,
       certificateAddress: certificate.spendingScriptAddress,

@@ -448,7 +448,7 @@ pub fn duplicated_withdrawal_info_v1() -> ledger_state.WithdrawalInfo {
 pub fn duplicated_forced_transaction_v1() -> ledger_state.ForcedInclusionTxV1 {
   ledger_state.ForcedInclusionTxV1 {
     tx_id: #"1111111111111111111111111111111111111111111111111111111111111111",
-    source: ledger_state.NativeTxProofSourceV1 {
+    submitted_source: ledger_state.ForcedTxProofSourceV1 {
       compact_cbor: #"80",
       witness_set_compact_cbor: #"80",
       field_preimage_lengths_cbor: #"80",

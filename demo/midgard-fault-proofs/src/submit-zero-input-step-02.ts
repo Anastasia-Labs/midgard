@@ -343,6 +343,7 @@ export const submitZeroInputStep02V1 = async ({
   // `badTxId` *and* the empty preimage matches the commitment that transaction
   // carries at field 0 specifically.
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: inputDatum.data.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: badTxId,
     nativeTxCompactCbor,

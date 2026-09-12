@@ -7,6 +7,10 @@ import {
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   type MidgardVersionedScript,
 } from "@al-ft/midgard-core";
+import {
+  encodeMidgardForcedTxCanonical as forcedTraceBytes,
+  materializeMidgardForcedTxFromCanonical as forcedTraceView,
+} from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildDeterministicValidationMachineTrace,
@@ -284,16 +288,16 @@ export const buildMissingRedeemerFixture = async (
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor,
       sourceKind: shape.direction === "accepted" ? "normal" : "forced",
-      ...(shape.direction === "forced"
-        ? { committedForcedVerdict: "rejected" as const }
-        : {}),
       blockEndTimeMs: 1_800_000_000_000,
       expectedNetworkId: 0n,
       minFeeA: 0n,
       minFeeB: 0n,
       blockSlot: 100n,
       transactionId: transaction.txId,
-      canonicalTransactionCbor: transaction.txCbor,
+      canonicalTransactionCbor:
+        shape.direction === "forced"
+          ? forcedTraceBytes(forcedTraceView(transaction.tx))
+          : transaction.txCbor,
       programMaterialSidecarCbor: PROGRAM_MATERIAL_SIDECAR,
       priorUtxosRoot: "00".repeat(32),
       postUtxosRoot: "00".repeat(32),
@@ -398,7 +402,10 @@ export const buildMissingRedeemerFixture = async (
     subject,
     purposeKind: shape.purposeKind,
     purposeIndex: 0,
-    txCbor: transaction.txCbor,
+    txCbor:
+      shape.direction === "forced"
+        ? forcedTraceBytes(forcedTraceView(transaction.tx))
+        : transaction.txCbor,
     authenticatedValidationTraceEntries: descriptorEntries,
     retainedValidationWitnessEntries: retainedEntries,
     expectedValidationTracesRoot: root.root,

@@ -427,6 +427,7 @@ export const submitInvalidSignatureStep02 = async ({
   // anchored `witness_set_hash`, and the supplied witness list is the §5.1
   // preimage that witness set commits at field 7.
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: inputDatum.data.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
     anchorTxId: badTxId,
     nativeTxCompactCbor,

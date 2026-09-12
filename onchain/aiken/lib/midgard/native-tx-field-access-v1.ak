@@ -65,8 +65,8 @@ use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_witness_set_compact,
 }
 use midgard/fraud_proofs/native_tx/types.{
-  NativeTxBodyCompact, NativeTxCompact, NativeTxWitnessSetCompact,
-  VerifiedMidgardNativeTxCompact,
+  NativeTxBodyCompact, NativeTxWitnessSetCompact, TxCompactView,
+  VerifiedTxSourceView,
 }
 
 // ---------------------------------------------------------------------------
@@ -434,7 +434,7 @@ fn field_commitment_at(
 /// mint-welded `field_hash` are then matched against authenticated values
 /// (#606).
 pub fn authenticated_field_view(
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   field_index: Int,
   carriage: FieldCarriageV1,
@@ -462,7 +462,7 @@ pub fn authenticated_field_view(
 /// view. Ordinary consumers use `authenticated_field_view` and never receive
 /// it.
 pub fn authenticated_field_view_with_commitment(
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   field_index: Int,
   carriage: FieldCarriageV1,
@@ -504,7 +504,7 @@ pub fn authenticated_field_view_with_commitment(
 /// and is certified incrementally. Fixed-stride fields retain the arithmetic
 /// whole-view check, while tier 3 retains its certificate/chunk checks.
 pub fn authenticated_resumable_field_view_with_commitment(
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   field_index: Int,
   carriage: FieldCarriageV1,
@@ -557,12 +557,12 @@ pub fn authenticated_resumable_field_view_with_commitment(
 /// and does not reach it. §2.5 pairs the two structures; nothing here assumes the
 /// pairing, it proves it.
 fn field_door_prologue(
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   field_index: Int,
 ) -> Pair<ByteArray, Int> {
   expect _field_index = expect_field_index(field_index)
-  let NativeTxCompact { body, witness_set_hash, .. } = verified.tx_compact
+  let TxCompactView { body, witness_set_hash, .. } = verified.tx_compact
   expect or {
       field_index < 6,
       blake2b_256(encode_native_tx_witness_set_compact(witness_set)) == witness_set_hash,
@@ -787,7 +787,7 @@ fn certified_chunks(
 /// instead. §12.5 already prices the tier-2 per-step full-preimage re-hash;
 /// this is the same row, reached from the other tier.
 pub fn authenticated_whole_field_view(
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   field_index: Int,
   carriage: FieldCarriageV1,
@@ -897,7 +897,7 @@ pub fn authenticated_whole_field_view_by_commitment(
 /// through `authenticated_field_view` or `authenticated_whole_field_view`; use
 /// this one to *decide about* the bytes and nothing else.
 pub fn authenticated_committed_preimage(
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   field_index: Int,
   carriage: FieldCarriageV1,
@@ -1401,7 +1401,7 @@ pub fn fixed_whole_view(
 /// because `field_stride` is a total function of the *literal* field index the
 /// call site pins.
 pub fn authenticated_whole_fixed_field_view(
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   field_index: Int,
   carriage: FieldCarriageV1,

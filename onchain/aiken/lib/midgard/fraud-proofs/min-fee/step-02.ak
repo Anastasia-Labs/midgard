@@ -1,7 +1,7 @@
 use cardano/assets.{Lovelace}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/native_tx/types.{
-  NativeTxCompact, NativeTxWitnessSetCompact,
+  ForcedTxCompact, NativeTxWitnessSetCompact,
 }
 use midgard/fraud_proofs/proof_thread_substrate_v1.{VerdictSubjectV1}
 use midgard/ledger_state.{MidgardTxId}
@@ -12,7 +12,7 @@ use midgard/native_tx_field_access_v1.{FieldCarriageV1}
 ///
 /// `bad_tx` is the verified compact structure itself — the canonical-size
 /// formula reads its scalar fields (`fee`, validity interval, `network_id`,
-/// `validity_code`) and its `witness_set_hash` is the second half of the §2.5
+/// fixed fields) and its `witness_set_hash` is the second half of the §2.5
 /// anchor: §3's transaction id commits the body alone, so without the
 /// thread-anchored hash a prover could authenticate an invented witness set
 /// and carry inflated witness-field preimages to overstate the canonical size
@@ -25,7 +25,7 @@ use midgard/native_tx_field_access_v1.{FieldCarriageV1}
 /// `pass_native_tx_to_next_step` authenticated against the state queue.
 pub type State {
   subject: VerdictSubjectV1,
-  bad_tx: NativeTxCompact,
+  bad_tx: ForcedTxCompact,
   bad_tx_body_fee: Lovelace,
   bad_tx_id: MidgardTxId,
   min_fee_a: Int,

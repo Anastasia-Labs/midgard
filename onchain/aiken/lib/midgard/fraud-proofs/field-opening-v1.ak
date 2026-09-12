@@ -81,9 +81,9 @@
 
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Input}
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor_v1}
+use midgard/fraud_proofs/native_tx/compact.{verify_tx_compact_cbor_v1}
 use midgard/fraud_proofs/native_tx/types.{
-  NativeTxWitnessSetCompact, VerifiedMidgardNativeTxCompact,
+  NativeTxWitnessSetCompact, VerifiedTxSourceView,
 }
 use midgard/native_tx_field_access_v1.{
   FieldCarriageV1, FieldViewV1, authenticated_committed_preimage,
@@ -96,6 +96,7 @@ use midgard/native_tx_machine_walk_v1.{
   resume_field_grammar_certification_from_commitment,
   resume_field_walk_from_commitment, walk_fold, walk_is_complete,
 }
+use midgard/validation_trace_v1.{Forced, Normal, ValidationSourceKind}
 
 // §2.5's positional field table, named. Call sites pass one of these literals
 // rather than a redeemer argument, so which slot a step reads is a property of
@@ -198,11 +199,15 @@ pub type NativeTxOpeningV1 {
 /// Constr 1.
 pub type NativeTxAnchorV1 {
   /// Fields 0–5. 32 bytes of thread state.
-  BodyAnchor { tx_id: ByteArray }
+  BodyAnchor { tx_id: ByteArray, source_kind: Int }
   /// Fields 6–8. 64 bytes of thread state — the same width the retired
   /// per-collection-hash idiom cost, spent on a value that covers all three
   /// witness-set fields instead of one.
-  WitnessAnchor { tx_id: ByteArray, witness_set_hash: ByteArray }
+  WitnessAnchor {
+    tx_id: ByteArray,
+    witness_set_hash: ByteArray,
+    source_kind: Int,
+  }
 }
 
 /// The witness set handed to the door for a body field.
@@ -235,7 +240,7 @@ fn unread_witness_set() -> NativeTxWitnessSetCompact {
 /// field 6 — otherwise the multi-field form would be a way around the very
 /// pairing the single-field form enforces.
 pub opaque type AnchoredNativeTxV1 {
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   opens_witness_set_fields: Bool,
 }
@@ -270,9 +275,10 @@ pub fn anchored_native_tx(
       //    the family's own step-01 recorded a witness-set anchor and this step
       //    is opening it without the witness set that anchor names, so the two
       //    §2.5 halves have to agree before any byte is read.
-      expect BodyAnchor { tx_id } = anchor
+      expect BodyAnchor { tx_id, source_kind } = anchor
       AnchoredNativeTxV1 {
-        verified: verify_native_tx_compact_cbor_v1(
+        verified: verify_tx_compact_cbor_v1(
+          source_kind_of_anchor(source_kind),
           tx_id,
           native_tx_compact_cbor,
         ),
@@ -285,8 +291,9 @@ pub fn anchored_native_tx(
       //    `witness_set_hash`, so there would be nothing for check 2 to
       //    authenticate the supplied witness set against — the two §2.5 halves
       //    have to agree before any byte is read.
-      expect WitnessAnchor { tx_id, witness_set_hash } = anchor
-      let verified = verify_native_tx_compact_cbor_v1(
+      expect WitnessAnchor { tx_id, witness_set_hash, source_kind } = anchor
+      let verified = verify_tx_compact_cbor_v1(
+        source_kind_of_anchor(source_kind),
         tx_id,
         native_tx_compact_cbor,
       )
@@ -335,7 +342,7 @@ pub fn anchored_native_tx_version(anchored: AnchoredNativeTxV1) -> Int {
 /// It is exposed anyway, and narrowly, because the transition-trace family's
 /// `validity_code == 0` read predates the handle and is unchanged by it — the
 /// alternative to naming the limit here was leaving that call site to obtain the
-/// whole `VerifiedMidgardNativeTxCompact` and take the value off it silently.
+/// whole `VerifiedTxSourceView` and take the value off it silently.
 /// That call site is sound for a reason this handle knows nothing about: its
 /// compact bytes come out of a `transactions_root` leaf whose exact bytes it
 /// re-checks, so the value is committed by the *root*, not by the anchor. Any new
@@ -351,7 +358,8 @@ pub fn anchored_native_tx_version(anchored: AnchoredNativeTxV1) -> Int {
 /// anchored. Reading a witness-set field goes through `anchored_field_view` or
 /// `anchored_field_walk`, which is where the §2.5 pairing lives.
 pub fn unanchored_validity_code_of(anchored: AnchoredNativeTxV1) -> Int {
-  anchored.verified.tx_compact.validity_code
+  expect Some(code) = anchored.verified.tx_compact.validity_code
+  code
 }
 
 /// Authenticate field `field_index` of an already-anchored transaction and hand
@@ -723,4 +731,12 @@ pub fn fold_opened_field(
   )
   expect walk_is_complete(final_checkpoint)
   folded
+}
+
+pub fn source_kind_of_anchor(kind: Int) -> ValidationSourceKind {
+  when kind is {
+    0 -> Normal
+    1 -> Forced
+    _ -> fail @"unknown transaction source kind"
+  }
 }

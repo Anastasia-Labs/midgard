@@ -7,6 +7,10 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
 } from "@al-ft/midgard-core";
+import {
+  encodeMidgardForcedTxCanonical as forcedTraceBytes,
+  materializeMidgardForcedTxFromCanonical as forcedTraceView,
+} from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildDeterministicValidationMachineTrace,
@@ -235,15 +239,17 @@ export const buildReceivePurposeFixture = async (
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor,
       sourceKind: spec.direction === "forced" ? "forced" : "normal",
-      committedForcedVerdict:
-        spec.direction === "forced" ? spec.claimedVerdict : undefined,
+
       blockEndTimeMs: 1_750_000_001_000,
       expectedNetworkId: 0n,
       minFeeA: 0n,
       minFeeB: 0n,
       blockSlot: 0n,
       transactionId: transaction.txId,
-      canonicalTransactionCbor: transaction.txCbor,
+      canonicalTransactionCbor:
+        spec.direction === "forced"
+          ? forcedTraceBytes(forcedTraceView(transaction.tx))
+          : transaction.txCbor,
       ...(spec.language === "plutusV3"
         ? { programMaterialSidecarCbor: PLUTUS_V3_RECEIVE_SIDECAR }
         : {}),

@@ -8,10 +8,8 @@
  */
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
   decodeMidgardFieldPreimage,
-  deriveMidgardNativeTxProofSource,
   deriveMidgardNativeTxWitnessSetCompact,
   encodeMidgardFieldPreimage,
   encodeMidgardNativeTxCompact,
@@ -19,6 +17,8 @@ import {
   materializeMidgardNativeTxFromCanonical,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   type FieldOpening,
   ForcedInclusionTxV1Schema,
@@ -214,15 +214,12 @@ export const buildForcedObserverLeaf = async ({
   readonly sourceKey: { transactionId: string; outputIndex: bigint };
   readonly rejectionReason: RejectionReason;
 }) => {
-  const invalid = adjudicateMidgardNativeTxFullValidity(
-    shape.nativeTx,
-    "TxIsInvalid",
-  );
+  const invalid = materializeMidgardForcedTxFromCanonical(shape.nativeTx);
   const transactionId = computeMidgardNativeTxId(invalid).toString("hex");
-  const proofSource = deriveMidgardNativeTxProofSource(invalid);
+  const proofSource = deriveMidgardForcedTxProofSource(invalid);
   const transaction = {
     tx_id: transactionId,
-    source: {
+    submitted_source: {
       compact_cbor: proofSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:
         proofSource.witnessSetCompactCbor.toString("hex"),
@@ -295,6 +292,7 @@ const resolveObserverOpening = async ({
   readonly label: string;
 }) => {
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: 3,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,

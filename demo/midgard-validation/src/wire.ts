@@ -83,6 +83,7 @@ type WireLedgerTx = {
 export type WirePhaseACandidateV1 = {
   readonly ledgerTx: WireLedgerTx;
   readonly submission: {
+    readonly sourceKind: "normal" | "forced";
     readonly txCbor: Bytes;
     readonly programMaterialSidecarCbor: Bytes | null;
     readonly arrivalSeq: bigint;
@@ -299,6 +300,7 @@ export const serializePhaseACandidate = (
       requiresPlutusEvaluation: tx.requiresPlutusEvaluation,
     },
     submission: {
+      sourceKind: candidate.submission.sourceKind,
       txCbor: bytesView(candidate.submission.txCbor),
       programMaterialSidecarCbor:
         candidate.submission.programMaterialSidecarCbor === null
@@ -378,6 +380,7 @@ export const deserializePhaseACandidate = (
     requiresPlutusEvaluation: candidate.ledgerTx.requiresPlutusEvaluation,
   },
   submission: {
+    sourceKind: candidate.submission.sourceKind,
     txCbor: bufferView(candidate.submission.txCbor),
     programMaterialSidecarCbor:
       candidate.submission.programMaterialSidecarCbor === null

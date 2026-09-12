@@ -178,6 +178,7 @@ fn open_or_resume_witness_walk(
   let anchor = WitnessAnchor {
     tx_id: state.verified_tx_id,
     witness_set_hash: state.verified_witness_set_hash,
+    source_kind: 0,
   }
   if state.field_walk_checkpoint_hash == #"" {
     expect None = checkpoint_cbor
@@ -364,6 +365,7 @@ fn checkpoint_after_one_batch(
     WitnessAnchor {
       tx_id: block.tx_id,
       witness_set_hash: block.compact.witness_set_hash,
+      source_kind: 0,
     },
     address_witnesses_field_index,
     [],

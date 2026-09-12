@@ -2,7 +2,8 @@ use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use midgard/fraud_proofs/native_tx/compact.{
-  native_tx_proof_commitment_v1, verify_native_tx_proof_source_v1,
+  forced_tx_proof_commitment_v1, native_tx_proof_commitment_v1,
+  verify_forced_tx_proof_source_v1, verify_native_tx_proof_source_v1,
 }
 use midgard/ledger_state
 use midgard/rejection_reason_v1.{ForcedTxInvalid, ForcedTxValid}
@@ -99,9 +100,9 @@ fn initial_work_root_is_exact(
   let first_work_witness = when source is {
     ForcedValidationSource { membership } ->
       vm_witness.encode_transaction_field_scan_witness(
-        membership.value.source.compact_cbor,
-        membership.value.source.witness_set_compact_cbor,
-        membership.value.source.field_preimage_lengths_cbor,
+        membership.value.submitted_source.compact_cbor,
+        membership.value.submitted_source.witness_set_compact_cbor,
+        membership.value.submitted_source.field_preimage_lengths_cbor,
         context_cbor,
         0,
         0,
@@ -233,11 +234,11 @@ fn verify_source_authentication(
   when source is {
     ForcedValidationSource { membership } -> {
       expect ledger_state.ForcedTransactionEventKey { tx_order_id } = event_key
-      let Pair(verified, _witness_set) = verify_native_tx_proof_source_v1(
+      let Pair(verified, _witness_set) = verify_forced_tx_proof_source_v1(
         membership.value.tx_id,
-        membership.value.source.compact_cbor,
-        membership.value.source.witness_set_compact_cbor,
-        membership.value.source.field_preimage_lengths_cbor,
+        membership.value.submitted_source.compact_cbor,
+        membership.value.submitted_source.witness_set_compact_cbor,
+        membership.value.submitted_source.field_preimage_lengths_cbor,
       )
       and {
         transition_trace.verify_root_membership_with_bytes(
@@ -250,16 +251,9 @@ fn verify_source_authentication(
         ),
         membership.key == tx_order_id,
         verified.version == 1,
-        // §2.4.3(e) Forced-source authoritativeness, leaf-internal: the
-        // leaf's verdict must agree with the embedded validity scalar of the
-        // same leaf's own compact bytes (post-wave bit equality; never a
-        // cross-root opening).
-        when membership.value.verdict is {
-          ForcedTxValid -> verified.tx_compact.validity_code == 0
-          ForcedTxInvalid { .. } -> verified.tx_compact.validity_code == 1
-        },
       }
     }
+
     NormalValidationSource { membership } -> {
       expect ledger_state.L2TransactionEventKey { tx_id } = event_key
       let Pair(verified, _witness_set) = verify_native_tx_proof_source_v1(
@@ -283,7 +277,7 @@ fn verify_source_authentication(
         // §2.4.3(d) Normal-source authoritativeness: a Normal leaf under
         // `transactions_root` IS an acceptance verdict — its embedded
         // validity scalar must claim `TxIsValid` (0).
-        verified.tx_compact.validity_code == 0,
+        verified.tx_compact.validity_code == Some(0),
       }
     }
   }
@@ -326,7 +320,7 @@ fn source_binding_is_exact(
   when source is {
     ForcedValidationSource { membership } -> and {
         membership.value.tx_id == initial_state.transaction_id,
-        source_proof_commitment(membership.value.source) == initial_state.transaction_commitment,
+        forced_source_proof_commitment(membership.value.submitted_source) == initial_state.transaction_commitment,
         initial_state.source_kind == validation_trace_v1.Forced,
         forced_verdict_matches(membership.value.verdict, descriptor),
       }
@@ -465,4 +459,14 @@ pub fn committed_claim_is_valid(
     committed_claim_source_is_authenticated(header, witness),
     committed_claim_endpoints_and_source_are_valid(header, witness),
   }
+}
+
+fn forced_source_proof_commitment(
+  source: ledger_state.ForcedTxProofSourceV1,
+) -> ByteArray {
+  forced_tx_proof_commitment_v1(
+    source.compact_cbor,
+    source.witness_set_compact_cbor,
+    source.field_preimage_lengths_cbor,
+  )
 }

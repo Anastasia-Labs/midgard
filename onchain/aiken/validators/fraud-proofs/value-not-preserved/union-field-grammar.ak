@@ -6,6 +6,7 @@ use midgard/fraud_proofs/field_opening_v1.{
   BodyAnchor, FieldOpeningV1, opened_certified_field_walk_from_grammar,
   opened_field_grammar_certification, resume_opened_field_grammar_certification,
 }
+use midgard/fraud_proofs/value_not_preserved/union as conservation
 use midgard/fraud_proofs/value_not_preserved/union.{FoldState}
 use midgard/fraud_proofs/value_not_preserved/union_state.{
   FieldCursor, FieldGrammar, MintCursor,
@@ -59,7 +60,14 @@ validator main(
         expect Some(state) = input_state
         expect grammar: FieldGrammar = state.continuation
         expect grammar.field_index == 2 || grammar.field_index == 5
-        let anchor = BodyAnchor { tx_id: state.balance.transaction_id }
+        let anchor = BodyAnchor {
+          tx_id: state.balance.transaction_id,
+          source_kind: if state.balance.claim == conservation.ForcedConservation {
+            1
+          } else {
+            0
+          },
+        }
         let Pair(view, checkpoint) = when grammar.checkpoint_hash is {
           None -> {
             expect args.checkpoint_bytes == #""

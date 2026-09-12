@@ -107,7 +107,7 @@ validator main(
         //    collection fails the read.
         let reference_inputs_view = opened_field_view(
           reference_inputs_opening,
-          BodyAnchor { tx_id: bad_tx_id },
+          BodyAnchor { tx_id: bad_tx_id, source_kind: 0 },
           reference_inputs_field_index,
           reference_inputs,
           field_preimage_certificate_policy_id,
@@ -192,7 +192,7 @@ validator main(
         //    machine-consulted source surface is exhausted.
         let reference_inputs_view = opened_field_view(
           reference_inputs_opening,
-          BodyAnchor { tx_id: bad_tx_id },
+          BodyAnchor { tx_id: bad_tx_id, source_kind: 0 },
           reference_inputs_field_index,
           reference_inputs,
           field_preimage_certificate_policy_id,

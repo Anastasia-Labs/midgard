@@ -117,6 +117,7 @@ export const submitMintDeclaredAssetLimitStep03Raw = async ({
     Buffer.from(evidence.fieldPreimageHex, "hex"),
   );
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: 5,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,

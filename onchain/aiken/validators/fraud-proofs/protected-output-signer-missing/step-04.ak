@@ -4,6 +4,7 @@ use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{
   FieldOpeningV1, WitnessAnchor, opened_field_walk, resume_opened_field_walk,
@@ -141,6 +142,7 @@ validator main(
           WitnessAnchor {
             tx_id: protected.transaction_id,
             witness_set_hash: protected.witness_set_hash,
+            source_kind: protected.subject.source_kind,
           },
           address_witnesses_field_index,
           state.checkpoint_hash,
@@ -286,6 +288,7 @@ fn walk_at(
     WitnessAnchor {
       tx_id: block.tx_id,
       witness_set_hash: block.compact.witness_set_hash,
+      source_kind: 0,
     },
     address_witnesses_field_index,
     [],
@@ -332,6 +335,11 @@ fn run_step_04(
   checkpoint_cbor: ByteArray,
   tx: Transaction,
 ) -> Bool {
+  let opening = if scan.protected.subject.source_kind == 1 {
+    forced_fixture.from_native_opening(opening)
+  } else {
+    opening
+  }
   main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,

@@ -74,7 +74,7 @@ fn summary_from_data(data: Data) -> cek_data_v1.DataSummaryV1 {
     cbor_length: builtin.un_i_data(cbor_length_data),
     memory: builtin.un_i_data(memory_data),
   }
-  expect summary_is_well_formed(summary)
+  // decode validates all three summaries with the complete descriptor below.
   summary
 }
 
@@ -139,25 +139,34 @@ pub fn descriptor_is_well_formed(descriptor: LedgerOutputCommitmentV1) -> Bool {
 
 pub fn encode(descriptor: LedgerOutputCommitmentV1) -> ByteArray {
   expect descriptor_is_well_formed(descriptor)
+  // All byte strings here are at most 57 bytes (the address bound above),
+  // so serialise_data emits their same definite byte strings. The scalar
+  // prefix has no nested list; remove only its indefinite list wrapper and
+  // put it under the descriptor's existing definite 16-element header.
+  // This shares one scalar encoder instead of thirteen concatenation calls.
+  let scalar_fields: List<Data> = [
+    builtin.i_data(version),
+    builtin.i_data(descriptor.output_index),
+    builtin.i_data(descriptor.total_length),
+    builtin.b_data(descriptor.item_commitment),
+    builtin.b_data(descriptor.address),
+    builtin.i_data(descriptor.lovelace),
+    builtin.i_data(descriptor.asset_count),
+    builtin.b_data(descriptor.asset_frontier_commitment),
+    builtin.i_data(descriptor.cardano_value_size),
+    builtin.i_data(descriptor.reference_script_language),
+    builtin.b_data(descriptor.reference_script_hash),
+    builtin.i_data(descriptor.reference_script_total_length),
+    builtin.b_data(descriptor.reference_script_item_commitment),
+  ]
+  let scalar_bytes = cbor.serialise(scalar_fields)
   encode_definite_array_header(16)
-    |> bytearray.concat(cbor.serialise(version))
-    |> bytearray.concat(cbor.serialise(descriptor.output_index))
-    |> bytearray.concat(cbor.serialise(descriptor.total_length))
-    |> bytearray.concat(encode_definite_bytes(descriptor.item_commitment))
-    |> bytearray.concat(encode_definite_bytes(descriptor.address))
-    |> bytearray.concat(cbor.serialise(descriptor.lovelace))
-    |> bytearray.concat(cbor.serialise(descriptor.asset_count))
     |> bytearray.concat(
-        encode_definite_bytes(descriptor.asset_frontier_commitment),
-      )
-    |> bytearray.concat(cbor.serialise(descriptor.cardano_value_size))
-    |> bytearray.concat(cbor.serialise(descriptor.reference_script_language))
-    |> bytearray.concat(encode_definite_bytes(descriptor.reference_script_hash))
-    |> bytearray.concat(
-        cbor.serialise(descriptor.reference_script_total_length),
-      )
-    |> bytearray.concat(
-        encode_definite_bytes(descriptor.reference_script_item_commitment),
+        builtin.slice_bytearray(
+          1,
+          bytearray.length(scalar_bytes) - 2,
+          scalar_bytes,
+        ),
       )
     |> bytearray.concat(encode_summary(descriptor.cardano_tx_out))
     |> bytearray.concat(encode_summary(descriptor.midgard_tx_out))
@@ -199,7 +208,7 @@ pub fn decode(descriptor_cbor: ByteArray) -> LedgerOutputCommitmentV1 {
     midgard_tx_out: summary_from_data(midgard_tx_out_data),
     cardano_spend_datum: summary_from_data(cardano_spend_datum_data),
   }
-  expect descriptor_is_well_formed(descriptor)
+  // encode enforces the descriptor domain and the exact definite wire form.
   expect encode(descriptor) == descriptor_cbor
   descriptor
 }

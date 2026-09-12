@@ -111,6 +111,7 @@ export const submitMissingNativeScriptUtxoStep02 = async ({
     throw new Error(`${label}: bad input index is outside the field`);
   }
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor,

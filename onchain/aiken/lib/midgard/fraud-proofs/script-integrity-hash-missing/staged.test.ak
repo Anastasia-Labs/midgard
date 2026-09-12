@@ -101,6 +101,7 @@ test maximum_certified_script_and_redeemer_fields_reach_authenticated_terminals(
   let anchor = WitnessAnchor {
     tx_id: block.tx_id,
     witness_set_hash: block.compact.witness_set_hash,
+    source_kind: 0,
   }
   let Pair(script_view, script_grammar_start) = opened_field_grammar_certification(
     script_opening,
@@ -209,6 +210,7 @@ fn anchor_of(block: fixture.NativeBlockFixtureV1) -> NativeTxAnchorV1 {
   WitnessAnchor {
     tx_id: block.tx_id,
     witness_set_hash: block.compact.witness_set_hash,
+    source_kind: 0,
   }
 }
 

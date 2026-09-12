@@ -166,6 +166,7 @@ export const submitMissingSignatureForcedAction = async (
   const planned =
     stage === "forcedSigner"
       ? planMissingSignatureRequiredSignersOpening({
+          anchorSourceKind: 1n,
           anchorTxId: bound.verified_tx_id,
           nativeTxCompactCbor: prepared.nativeTxCompactCbor,
           requiredSignerHashes: prepared.evidence.requiredSignerHashes,
@@ -174,6 +175,7 @@ export const submitMissingSignatureForcedAction = async (
         })
       : stage === "forcedWitness" && witnessState.required_signer_hash !== null
         ? planMissingSignatureAddressWitnessesOpening({
+            anchorSourceKind: 1n,
             anchorTxId: bound.verified_tx_id,
             nativeTxCompactCbor: prepared.nativeTxCompactCbor,
             addrTxWits: prepared.evidence.addrTxWits,

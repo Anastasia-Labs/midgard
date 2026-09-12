@@ -3,10 +3,8 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import {
-  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardForcedTxProofCommitment,
   computeMidgardNativeTxId,
-  computeMidgardNativeTxProofCommitment,
-  deriveMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
 /**
  * Transition-trace representation audit for fault variants that previously
@@ -15,6 +13,8 @@ import {
  * mints the permanent fraud-proof token, and removes the condemned block.
  */
 import { outRefLabel } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -466,7 +466,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
   }, 180_000);
 
   it.each([false, true])(
-    "authenticates a late rejected order from submitted-valid bytes (wrong reason %s)",
+    "authenticates a late rejected order from immutable submitted bytes (wrong reason %s)",
     async (wrongReason) => {
       const original = Emulator.prototype.submitTx;
       let index = 0;
@@ -483,7 +483,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
             ).some((output) => output.script_ref() !== undefined)
               ? "publication"
               : "lifecycle",
-            maximumShape: "submitted-valid-adjudicated-invalid",
+            maximumShape: "immutable-submission-rejected-verdict",
             signedBytes: m.completeSignedBytes,
             memoryUnits: m.executionMemory,
             cpuUnits: m.executionSteps,
@@ -501,25 +501,27 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
           outputCbors: [],
           fee: 0n,
         });
-        const rawSource = deriveMidgardNativeTxProofSource(submitted);
-        const rejectedSource = deriveMidgardNativeTxProofSource(
-          adjudicateMidgardNativeTxFullValidity(submitted, "TxIsInvalid"),
+        const rawSource = deriveMidgardForcedTxProofSource(
+          materializeMidgardForcedTxFromCanonical(submitted),
+        );
+        const rejectedSource = deriveMidgardForcedTxProofSource(
+          materializeMidgardForcedTxFromCanonical(submitted),
         );
         const sourceData = (
           source: typeof rawSource,
-        ): SDK.NativeTxProofSource => ({
+        ): SDK.ForcedTxProofSource => ({
           compact_cbor: source.compactCbor.toString("hex"),
           witness_set_compact_cbor:
             source.witnessSetCompactCbor.toString("hex"),
           field_preimage_lengths_cbor:
             source.fieldPreimageLengthsCbor.toString("hex"),
         });
-        expect(sourceData(rawSource).compact_cbor).not.toBe(
+        expect(sourceData(rawSource).compact_cbor).toBe(
           sourceData(rejectedSource).compact_cbor,
         );
         const committed: SDK.ForcedInclusionTxV1 = {
           tx_id: computeMidgardNativeTxId(submitted).toString("hex"),
-          source: sourceData(rejectedSource),
+          submitted_source: sourceData(rejectedSource),
           verdict: {
             ForcedTxInvalid: {
               reason: { PlutusExecutionFailed: { execution_index: 0n } },
@@ -562,9 +564,9 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
             id,
             tx: {
               tx_id: committed.tx_id,
-              source: sourceData(rawSource),
+              submitted_source: sourceData(rawSource),
               transaction_commitment: Buffer.from(
-                computeMidgardNativeTxProofCommitment(rawSource),
+                computeMidgardForcedTxProofCommitment(rawSource),
               ).toString("hex"),
             },
           },

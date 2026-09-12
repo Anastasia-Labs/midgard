@@ -95,6 +95,7 @@ export const deriveCekContextPlan = ({
   const binding = SDK.deriveCekContextBinding({
     prepared,
     transactionId: base.resolution.pre_state.transaction_id,
+    sourceKind: base.resolution.pre_state.source_kind,
     workWitnessCbor: witness.work_witness_cbor,
     auxiliary,
   });
@@ -109,6 +110,7 @@ export const deriveCekContextPlan = ({
     const nextBinding = SDK.deriveCekContextBinding({
       prepared,
       transactionId: base.resolution.pre_state.transaction_id,
+      sourceKind: base.resolution.pre_state.source_kind,
       workWitnessCbor: successorWorkWitnessCbor,
       auxiliary,
     });

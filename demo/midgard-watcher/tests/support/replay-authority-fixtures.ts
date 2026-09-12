@@ -1,8 +1,3 @@
-import {
-  adjudicateMidgardNativeTxFullValidity,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxProofSource,
-} from "@al-ft/midgard-core/codec/native";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { buildCountedRoot, encodeData } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -171,6 +166,7 @@ const publicEventFromAuthority = (
   authority: UserEventAcceptedAuthorityScenario,
   canonicalNativeTxCbor: Buffer | null,
   withdrawalValidity?: SDK.WithdrawalValidity,
+  forcedVerdict?: SDK.OperatorVerdict,
 ): GenuineReplayPublicEvent => {
   const event = authority.event;
   if (event.kind === "withdrawal") {
@@ -204,27 +200,17 @@ const publicEventFromAuthority = (
     readonly tx: {
       readonly tx_id: string;
       readonly transaction_commitment: string;
-      readonly source: SDK.L2TransactionSource["source"];
+      readonly submitted_source: SDK.ForcedTxProofSource;
     };
   };
   const verdict =
-    "terminalClassification" in event &&
+    forcedVerdict ??
+    ("terminalClassification" in event &&
     event.terminalClassification !== undefined
       ? userEventForcedOperatorVerdictForClassification(
           event.terminalClassification.operatorValidity,
         )
-      : ("ForcedTxValid" as const);
-  // The ORDER event binds the SUBMITTED source, but the committed DA leaf
-  // carries the operator-ADJUDICATED one (§2.4.3(e)) — the payload
-  // reconstruction authenticates exactly that. Re-derive through the single
-  // stamping helper by the leaf's verdict rather than copying the event's
-  // submitted triple.
-  const adjudicatedSource = deriveMidgardNativeTxProofSource(
-    adjudicateMidgardNativeTxFullValidity(
-      decodeMidgardNativeTxFullFromCanonicalCbor(canonicalNativeTxCbor),
-      verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid",
-    ),
-  );
+      : ("ForcedTxValid" as const));
   return Object.freeze({
     eventKey: {
       ForcedTransactionEventKey: {
@@ -241,12 +227,12 @@ const publicEventFromAuthority = (
       dataHex(
         {
           tx_id: decoded.tx.tx_id,
-          source: {
-            compact_cbor: adjudicatedSource.compactCbor.toString("hex"),
+          submitted_source: {
+            compact_cbor: decoded.tx.submitted_source.compact_cbor,
             witness_set_compact_cbor:
-              adjudicatedSource.witnessSetCompactCbor.toString("hex"),
+              decoded.tx.submitted_source.witness_set_compact_cbor,
             field_preimage_lengths_cbor:
-              adjudicatedSource.fieldPreimageLengthsCbor.toString("hex"),
+              decoded.tx.submitted_source.field_preimage_lengths_cbor,
           },
           verdict,
         },
@@ -349,12 +335,14 @@ export const makeGenuineReplayPublicReplayFixture = async (input: {
   readonly postState: readonly WatcherBlockReplayPriorUtxo[];
   readonly minFeeB?: bigint;
   readonly withdrawalValidity?: SDK.WithdrawalValidity;
+  readonly forcedVerdict?: SDK.OperatorVerdict;
 }): Promise<GenuineReplayPublicReplayFixture> => {
   const canonicalNativeTxCbor = input.canonicalNativeTxCbor ?? null;
   const publicEvent = publicEventFromAuthority(
     input.userEvent,
     canonicalNativeTxCbor,
     input.withdrawalValidity,
+    input.forcedVerdict,
   );
   const prior = await watcherBlockReplayPriorState(input.priorState);
   const operations: ValidationMachineLedgerOp[] =

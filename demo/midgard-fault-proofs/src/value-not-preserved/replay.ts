@@ -6,6 +6,7 @@ import {
   decodeMidgardTxOutput,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
+import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
@@ -101,9 +102,11 @@ const eventLedger = async (
           ? event.entry.value.verdict === "ForcedTxValid"
           : event.entry.validity === "TxIsValid";
       if (valid) {
-        const transaction = decodeMidgardNativeTxFullFromCanonicalCbor(
-          event.entry.fullTransactionCbor,
-        );
+        const transaction = (
+          event.phase === "ForcedTransaction"
+            ? decodeMidgardForcedTxFullFromCanonicalCbor
+            : decodeMidgardNativeTxFullFromCanonicalCbor
+        )(event.entry.fullTransactionCbor);
         for (const input of decodeMidgardFieldPreimage(
           transaction.body.spendInputsPreimageCbor,
         ))
@@ -174,10 +177,11 @@ export const prepareValueConservationArtifact = async ({
     block.reconstruction.transactions[sourceIndex]!.validity !== "TxIsValid"
   )
     return null;
-  const transaction = decodeMidgardNativeTxFullFromCanonicalCbor(
-    source.fullTransactionCbor,
-  );
-  if (transaction.validity !== "TxIsValid") return null;
+  const transaction = forced
+    ? decodeMidgardForcedTxFullFromCanonicalCbor(source.fullTransactionCbor)
+    : decodeMidgardNativeTxFullFromCanonicalCbor(source.fullTransactionCbor);
+  if ("validity" in transaction && transaction.validity !== "TxIsValid")
+    return null;
   const event = await buildEventToStepMembershipProof({
     reconstruction: block.reconstruction,
     eventKey,

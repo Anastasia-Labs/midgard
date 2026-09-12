@@ -515,6 +515,7 @@ export const submitRawReferenceInputNoIdxStep02 = async ({
     throw new Error("raw step-02 thread carries no §2.5 anchor");
   }
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.referenceInputs,
     anchorTxId: inputDatum.data.verified_tx_id,
     nativeTxCompactCbor,
@@ -662,6 +663,7 @@ export const submitRawReferenceInputNoIdxStep04 = async ({
     throw new Error("raw step-04 thread carries no producing-tx anchor");
   }
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     anchorTxId: inputDatum.data.producing_tx_id,
     nativeTxCompactCbor,

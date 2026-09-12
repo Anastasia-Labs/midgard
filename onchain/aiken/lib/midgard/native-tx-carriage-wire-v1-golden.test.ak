@@ -260,10 +260,11 @@ test golden_certificate_three_chunk_corner_round_trips() {
 }
 
 const mint_redeemer_certify_chunked_arguments_cbor: ByteArray =
-  #"d8799f5f5840141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cd5824d4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9ff5f5840434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc46030a11181f26ff9f010203ff00ff"
+  #"d8799f005f5840141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cd5824d4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9ff5f5840434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc46030a11181f26ff9f010203ff00ff"
 
 fn mint_redeemer_certify_chunked_arguments_value() -> FieldPreimageCertificateMintRedeemerV1 {
   Certify {
+    source_kind: 0,
     compact_cbor: #"141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9",
     witness_set_compact_cbor: #"434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a11181f26",
     chunk_ref_input_indices: [1, 2, 3],
@@ -286,10 +287,11 @@ test golden_mint_redeemer_certify_chunked_arguments_round_trips() {
 }
 
 const mint_redeemer_certify_short_arguments_cbor: ByteArray =
-  #"d8799f43a1020342b2049f0001ff02ff"
+  #"d8799f0043a1020342b2049f0001ff02ff"
 
 fn mint_redeemer_certify_short_arguments_value() -> FieldPreimageCertificateMintRedeemerV1 {
   Certify {
+    source_kind: 0,
     compact_cbor: #"a10203",
     witness_set_compact_cbor: #"b204",
     chunk_ref_input_indices: [0, 1],
@@ -596,7 +598,7 @@ test golden_mint_redeemer_constructor_index_out_of_range_rejects() fail {
 }
 
 const mint_redeemer_certify_indices_as_bytes_cbor: ByteArray =
-  #"d8799f43a1020342b2044301020302ff"
+  #"d8799f0043a1020342b2044301020302ff"
 
 /// `mint_redeemer_certify_indices_as_bytes` is well-formed CBOR. This is
 /// what keeps the `fail` test below honest: its refusal has to come from
@@ -619,7 +621,7 @@ test golden_mint_redeemer_certify_indices_as_bytes_rejects() fail {
 }
 
 const mint_redeemer_certify_missing_output_index_cbor: ByteArray =
-  #"d8799f43a1020342b2049f0001ffff"
+  #"d8799f0043a1020342b2049f0001ffff"
 
 /// `mint_redeemer_certify_missing_output_index` is well-formed CBOR. This
 /// is what keeps the `fail` test below honest: its refusal has to come
@@ -630,7 +632,7 @@ test golden_mint_redeemer_certify_missing_output_index_parses_as_cbor() {
 }
 
 /// FieldPreimageCertificateMintRedeemerV1 /
-/// `mint_redeemer_certify_missing_output_index`: `Certify` has arity 4;
+/// `mint_redeemer_certify_missing_output_index`: `Certify` has arity 5;
 /// without `output_index` the policy has no named output to check.
 test golden_mint_redeemer_certify_missing_output_index_rejects() fail {
   expect Some(decoded_data) = cbor.deserialise(

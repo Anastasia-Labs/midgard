@@ -10,7 +10,9 @@ use midgard/fraud_proofs/invalid_signature/step_01.{
 }
 use midgard/fraud_proofs/invalid_signature/step_02
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
+use midgard/fraud_proofs/native_tx/compact.{
+  verify_forced_tx_proof_source_v1, verify_native_tx_proof_source_v1,
+}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 
 validator main(
@@ -57,7 +59,7 @@ validator main(
         )
 
         expect None = m_input_state_data
-        expect bad_tx_view.tx_compact.validity_code == 0
+        expect bad_tx_view.tx_compact.validity_code == Some(0)
 
         // 2. The UTxO must be produced at next step's script hash with the bad
         //    transaction's §2.5 anchor: its verified native id *and* the
@@ -104,11 +106,11 @@ validator main(
           direction,
         )
         let leaf = membership.value
-        let Pair(verified, _) = verify_native_tx_proof_source_v1(
+        let Pair(verified, _) = verify_forced_tx_proof_source_v1(
           leaf.tx_id,
-          leaf.source.compact_cbor,
-          leaf.source.witness_set_compact_cbor,
-          leaf.source.field_preimage_lengths_cbor,
+          leaf.submitted_source.compact_cbor,
+          leaf.submitted_source.witness_set_compact_cbor,
+          leaf.submitted_source.field_preimage_lengths_cbor,
         )
         let expected: Data = step_02.State {
           subject,

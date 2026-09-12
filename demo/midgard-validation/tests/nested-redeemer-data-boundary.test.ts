@@ -447,7 +447,7 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
       nativeCanonical.length,
     );
     expect(retained.forced.reconstructedCanonicalBytes).toBe(
-      nativeCanonical.length,
+      nativeCanonical.length - 1,
     );
     expect(retained.normal.revealStepCount).toBe(
       redeemerField.completeFoldStepCount,
@@ -472,7 +472,7 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
       retainedProjection.canonicalTransactionCbor.length,
     );
     expect(productionRetained.forced.reconstructedCanonicalBytes).toBe(
-      retainedProjection.canonicalTransactionCbor.length,
+      retainedProjection.canonicalTransactionCbor.length - 1,
     );
 
     const reconstructed = measureCollateralizedPlutusFeasibilityCandidate(

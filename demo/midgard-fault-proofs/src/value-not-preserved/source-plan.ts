@@ -1,10 +1,8 @@
+import { computeHash28, computeMidgardNativeTxId } from "@al-ft/midgard-core";
 import {
-  adjudicateMidgardNativeTxFullValidity,
-  computeHash28,
-  computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxProofSource,
-} from "@al-ft/midgard-core";
+  decodeMidgardForcedTxFullFromCanonicalCbor,
+  deriveMidgardForcedTxProofSource,
+} from "@al-ft/midgard-core/codec/forced";
 import {
   encodeHeaderCbor,
   type ForcedTransactionSourceMembershipProof,
@@ -19,7 +17,7 @@ import {
   ConservationSource,
 } from "./union-schemas.js";
 
-/** Submitted-valid DA is retained verbatim; only its source twin is adjudicated. */
+/** Submitted DA is retained verbatim; the authenticated leaf supplies its verdict. */
 export const conservationForcedSource = ({
   header,
   membership,
@@ -29,23 +27,23 @@ export const conservationForcedSource = ({
   readonly membership: ForcedTransactionSourceMembershipProof;
   readonly transactionCbor: string;
 }) => {
-  const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
+  const tx = decodeMidgardForcedTxFullFromCanonicalCbor(
     Buffer.from(transactionCbor, "hex"),
   );
   if (
-    tx.validity !== "TxIsValid" ||
     membership.value.verdict === "ForcedTxValid" ||
     membership.value.verdict.ForcedTxInvalid.reason !== "ValueNotPreserved"
   )
     throw new Error(
       "value conservation: wrong forced verdict or submitted validity",
     );
-  if (computeMidgardNativeTxId(tx).toString("hex") !== membership.value.tx_id)
+  if (
+    computeMidgardNativeTxId(tx.compact).toString("hex") !==
+    membership.value.tx_id
+  )
     throw new Error("value conservation: forced transaction identity differs");
-  const expected = deriveMidgardNativeTxProofSource(
-    adjudicateMidgardNativeTxFullValidity(tx, "TxIsInvalid"),
-  );
-  const actual = membership.value.source;
+  const expected = deriveMidgardForcedTxProofSource(tx);
+  const actual = membership.value.submitted_source;
   if (
     actual.compact_cbor !== expected.compactCbor.toString("hex") ||
     actual.witness_set_compact_cbor !==

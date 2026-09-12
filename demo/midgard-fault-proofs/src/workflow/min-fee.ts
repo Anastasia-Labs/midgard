@@ -399,6 +399,7 @@ export const admitMinFeeArtifact = (
   const parsed = parseArtifact(value);
   const fieldPlans = parsed.fieldItemCbors.map((items, fieldIndex) =>
     planFaultProofFieldOpening({
+      anchorSourceKind: 0n,
       fieldIndex,
       anchorTxId: parsed.artifact.nativeTxId,
       nativeTxCompactCbor: parsed.artifact.nativeTxCompactCbor,
@@ -415,6 +416,7 @@ export const admitMinFeeArtifact = (
     }),
   );
   const boundary = minimumFeeFromProofSource({
+    sourceKind: "normal",
     source: {
       compactCbor: Buffer.from(parsed.artifact.nativeTxCompactCbor, "hex"),
       witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
@@ -464,6 +466,7 @@ const admitWorkflowArtifact = async (
     },
     fieldPlans: fieldItemCbors.map((items, fieldIndex) =>
       planFaultProofFieldOpening({
+        anchorSourceKind: 1n,
         fieldIndex,
         anchorTxId: forced.transactionId,
         nativeTxCompactCbor: evidence.nativeTxCompactCbor,

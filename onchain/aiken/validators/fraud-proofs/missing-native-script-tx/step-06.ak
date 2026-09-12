@@ -171,6 +171,7 @@ fn anchor_of(state: State) -> NativeTxAnchorV1 {
   WitnessAnchor {
     tx_id: state.bad_tx_id,
     witness_set_hash: state.bad_tx_witness_set_hash,
+    source_kind: 0,
   }
 }
 

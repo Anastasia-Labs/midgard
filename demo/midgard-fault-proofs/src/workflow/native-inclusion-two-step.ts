@@ -5,6 +5,7 @@ import {
   deriveMidgardNativeTxFaultEvidenceMaterial,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
+import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   FraudProofComputationThreadStepDatum,
@@ -41,6 +42,7 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
 import { submitInvalidRangeStep01 } from "../submit-invalid-range-step-01.js";
 import {
+  forcedTxFromCoreCompact,
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
@@ -341,14 +343,20 @@ export const admitNativeInclusionTwoStepArtifact = (
   forcedSource: Readonly<Record<string, unknown>> | null;
 }> => {
   const artifact = parseArtifact(value);
-  const compact = decodeMidgardNativeTxCompact(
-    Buffer.from(artifact.nativeTxCompactCbor, "hex"),
-  );
+  const compact = (
+    artifact.sourceKind === "forced"
+      ? decodeMidgardForcedTxCompact
+      : decodeMidgardNativeTxCompact
+  )(Buffer.from(artifact.nativeTxCompactCbor, "hex"));
   const inclusion =
     artifact.sourceKind === "accepted"
       ? parseSubmitStep01TxInclusion({
           nativeTxId: artifact.nativeTxId,
-          nativeTx: nativeTxFromCoreCompact(compact),
+          nativeTx: nativeTxFromCoreCompact(
+            decodeMidgardNativeTxCompact(
+              Buffer.from(artifact.nativeTxCompactCbor, "hex"),
+            ),
+          ),
           nativeTxCompactCbor: artifact.nativeTxCompactCbor,
           l2TransactionSourceCbor: artifact.l2TransactionSourceCbor,
           transactionsPhasRoot: artifact.transactionsPhasRoot,
@@ -472,9 +480,9 @@ export const admitNativeInclusionTwoStepArtifact = (
         source.membership.root !== source.header.forcedTransactionsRoot ||
         source.membership.count !== source.header.forcedTransactionCount ||
         leaf.tx_id !== artifact.nativeTxId ||
-        leaf.source.compact_cbor !== artifact.nativeTxCompactCbor ||
+        leaf.submitted_source.compact_cbor !== artifact.nativeTxCompactCbor ||
         Data.to(
-          { tx_id: leaf.tx_id, source: leaf.source } as never,
+          { tx_id: leaf.tx_id, source: leaf.submitted_source } as never,
           SDK.L2TransactionSource as never,
         ) !== artifact.l2TransactionSourceCbor ||
         leaf.verdict === "ForcedTxValid" ||
@@ -542,9 +550,9 @@ export const admitNativeInclusionTwoStepArtifact = (
       source.membership.root !== source.header.forcedTransactionsRoot ||
       source.membership.count !== source.header.forcedTransactionCount ||
       leaf.tx_id !== artifact.nativeTxId ||
-      leaf.source.compact_cbor !== artifact.nativeTxCompactCbor ||
+      leaf.submitted_source.compact_cbor !== artifact.nativeTxCompactCbor ||
       Data.to(
-        { tx_id: leaf.tx_id, source: leaf.source } as never,
+        { tx_id: leaf.tx_id, source: leaf.submitted_source } as never,
         SDK.L2TransactionSource as never,
       ) !== artifact.l2TransactionSourceCbor ||
       artifact.txMembershipProofCbor !== "" ||
@@ -597,7 +605,7 @@ export const admitNativeInclusionTwoStepArtifact = (
     invalidRangeEvidence = prepareInvalidRangeEvidence({
       subject,
       blockSlot: source.header.blockSlot,
-      txBody: nativeTxFromCoreCompact(compact).body,
+      txBody: forcedTxFromCoreCompact(compact).body,
     });
     if (
       !invalidRangeEvidenceCloses(invalidRangeEvidence) ||
@@ -703,7 +711,7 @@ export const prepareNativeInclusionTwoStepArtifact = async <
   const txId = selectedTxId(classification);
   let preparedHeaderHash: string;
   let preparedNodeTxId: string;
-  let preparedInclusion: PreparedTxInclusionJson;
+  let preparedInclusion: Omit<PreparedTxInclusionJson, "nativeTx">;
   let violationReason: string | null;
   let blockSlot: string | null;
   let sourceKind: "accepted" | "forced" = "accepted";
@@ -750,16 +758,11 @@ export const prepareNativeInclusionTwoStepArtifact = async <
     preparedNodeTxId = txId;
     preparedInclusion = {
       nativeTxId: txId,
-      nativeTx: nativeTxFromCoreCompact(
-        decodeMidgardNativeTxCompact(
-          Buffer.from(forced.nativeTxCompactCbor, "hex"),
-        ),
-      ),
       nativeTxCompactCbor: forced.nativeTxCompactCbor,
       l2TransactionSourceCbor: Data.to(
         {
           tx_id: transaction.value.tx_id,
-          source: transaction.value.source,
+          source: transaction.value.submitted_source,
         } as never,
         SDK.L2TransactionSource as never,
       ),
@@ -834,16 +837,11 @@ export const prepareNativeInclusionTwoStepArtifact = async <
     preparedNodeTxId = forced.evidence.subject.transaction_id;
     preparedInclusion = {
       nativeTxId: preparedNodeTxId,
-      nativeTx: nativeTxFromCoreCompact(
-        decodeMidgardNativeTxCompact(
-          Buffer.from(forced.nativeTxCompactCbor, "hex"),
-        ),
-      ),
       nativeTxCompactCbor: forced.nativeTxCompactCbor,
       l2TransactionSourceCbor: Data.to(
         {
           tx_id: transaction.value.tx_id,
-          source: transaction.value.source,
+          source: transaction.value.submitted_source,
         } as never,
         SDK.L2TransactionSource as never,
       ),

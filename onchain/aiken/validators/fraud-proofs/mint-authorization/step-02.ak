@@ -137,7 +137,7 @@ validator main(
         }
         let bytes = opened_committed_preimage(
           prepared.mint_opening,
-          BodyAnchor { tx_id: bad_tx_id },
+          BodyAnchor { tx_id: bad_tx_id, source_kind: 0 },
           mint_field_index,
           tx.reference_inputs,
           field_preimage_certificate_policy_id,

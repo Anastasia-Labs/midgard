@@ -18,7 +18,7 @@ use midgard/fraud_proofs/native_tx/compact.{
 use midgard/fraud_proofs/native_tx/preimages as native_preimages
 use midgard/fraud_proofs/native_tx/types.{
   NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact,
-  VerifiedMidgardNativeTxCompact,
+  VerifiedTxSourceView,
 }
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/native_tx_field_access_v1 as field_access
@@ -57,7 +57,7 @@ fn lengths_cbor(lengths: NativeTxFieldPreimageLengthsV1) -> ByteArray {
 fn verified_source(
   b: fixture.NativeBlockFixtureV1,
   lengths: ByteArray,
-) -> VerifiedMidgardNativeTxCompact {
+) -> VerifiedTxSourceView {
   let Pair(verified, _) = verify_native_tx_proof_source_v1(
     b.tx_id,
     b.compact_cbor,

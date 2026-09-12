@@ -1,8 +1,6 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSource,
   deriveMidgardNativeTxWitnessSetCompact,
   encodeMidgardFieldPreimage,
   encodeMidgardMintPolicyItem,
@@ -12,6 +10,8 @@ import {
   midgardFieldCommitment,
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   AddressData,
@@ -324,8 +324,10 @@ const publishCarriage = async (
     Partial<Pick<MintTx, "witnessSetCompactCbor">>,
   items: readonly Buffer[],
   label: string,
+  sourceKind: 0n | 1n,
 ) => {
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: sourceKind,
     fieldIndex: 5,
     anchorTxId: tx.id,
     nativeTxCompactCbor: tx.compactCbor,
@@ -539,6 +541,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       x,
       xStaged.items,
       "mint declared maximum",
+      0n,
     );
     expect(xCarriage.carriage.measurements).toHaveLength(3);
     for (const [
@@ -556,6 +559,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       y,
       yStaged.items,
       "mint declared honest",
+      0n,
     );
     rows.push(["raw-carriage-honest", yCarriage.carriage.measurement]);
     const zCarriage = await publishCarriage(
@@ -564,6 +568,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       z,
       zItems,
       "mint declared boundary",
+      0n,
     );
     rows.push(["raw-carriage-boundary", zCarriage.carriage.measurement]);
 
@@ -1283,11 +1288,8 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
         witnessSet: valid.witnessSet,
       });
       const id = computeMidgardNativeTxId(nativeTx).toString("hex");
-      const adjudicated = adjudicateMidgardNativeTxFullValidity(
-        nativeTx,
-        "TxIsInvalid",
-      );
-      const source = deriveMidgardNativeTxProofSource(adjudicated);
+      const adjudicated = materializeMidgardForcedTxFromCanonical(nativeTx);
+      const source = deriveMidgardForcedTxProofSource(adjudicated);
       expect(computeMidgardNativeTxId(adjudicated).toString("hex")).toBe(id);
       const reason = { MintDeclaredAssetLimit: { policy_index: 0n } } as const;
       return {
@@ -1297,7 +1299,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
         reason,
         leaf: {
           tx_id: id,
-          source: {
+          submitted_source: {
             compact_cbor: source.compactCbor.toString("hex"),
             witness_set_compact_cbor:
               source.witnessSetCompactCbor.toString("hex"),
@@ -1409,6 +1411,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       a,
       aStaged.items,
       "mint declared forced",
+      1n,
     );
     rows.push(["raw-carriage-publication", aCarriage.carriage.measurement]);
     const bCarriage = await publishCarriage(
@@ -1417,6 +1420,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       b,
       bStaged.items,
       "mint declared honest rejection",
+      1n,
     );
     rows.push([
       "raw-carriage-honest-rejection",

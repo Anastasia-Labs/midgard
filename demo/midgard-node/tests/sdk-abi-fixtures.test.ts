@@ -171,7 +171,7 @@ const headerFixture: SDK.Header = {
 
 const forcedInclusionTxFixture: SDK.ForcedInclusionTxV1 = {
   tx_id: h32,
-  source: {
+  submitted_source: {
     compact_cbor: "80",
     witness_set_compact_cbor: "81",
     field_preimage_lengths_cbor: "82",
@@ -1375,7 +1375,7 @@ describe("SDK canonical ABI fixtures", () => {
     expectRoundTrip(forcedInclusionTx, SDK.ForcedInclusionTxV1);
     expect(
       Object.keys(roundTrip(forcedInclusionTx, SDK.ForcedInclusionTxV1)),
-    ).toEqual(["tx_id", "source", "verdict"]);
+    ).toEqual(["tx_id", "submitted_source", "verdict"]);
     for (const phase of transitionPhases) {
       expectRoundTrip(phase, SDK.TransitionPhase);
       expectRoundTrip({ step_index: 1n, phase }, SDK.EventToStepValue);

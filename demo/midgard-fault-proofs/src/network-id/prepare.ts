@@ -359,6 +359,8 @@ export const planNetworkIdOutputsOpening = ({
     );
   }
   return planFaultProofFieldOpening({
+    anchorSourceKind:
+      prepared.faultClaim.kind === "forced-network-mismatch" ? 1n : 0n,
     fieldIndex: 2,
     anchorTxId: prepared.badTxId,
     nativeTxCompactCbor: prepared.nativeTxCompactCbor,

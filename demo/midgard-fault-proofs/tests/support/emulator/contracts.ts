@@ -23,6 +23,7 @@ import {
   buildMinFeeFaultProofContracts,
   buildMintAuthorizationFaultProofContracts,
   buildMintDeclaredAssetLimitFaultProofContracts,
+  buildMintItemNonCanonicalFaultProofContracts,
   buildMissingNativeScriptTxFaultProofContracts,
   buildMissingNativeScriptUtxoFaultProofContracts,
   buildMissingSignatureFaultProofContracts,
@@ -41,8 +42,8 @@ import {
   buildScriptIntegrityHashMissingFaultProofContracts,
   buildSpendInputSignerMissingFaultProofContracts,
   buildTransactionOutputNonCanonicalFaultProofContracts,
-  buildMintItemNonCanonicalFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
+  buildTxOrderValidators,
   buildValidationTraceDisputeFaultProofContracts,
   buildValueNotPreservedFaultProofContracts,
   buildWithdrawalMistagFaultProofContracts,
@@ -1171,6 +1172,7 @@ export const buildMinimalFaultProofContracts = async (
     realDoubleWithdraw = false,
     realCrossBlockDuplicateEvent = false,
     realSettlement = false,
+    realTxOrder = false,
     realL2TxMistag = false,
     realWithdrawnInput = false,
     realWithdrawalMistag = false,
@@ -1223,6 +1225,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realDoubleWithdraw?: boolean;
     readonly realCrossBlockDuplicateEvent?: boolean;
     readonly realSettlement?: boolean;
+    readonly realTxOrder?: boolean;
     readonly realL2TxMistag?: boolean;
     readonly realWithdrawnInput?: boolean;
     readonly realWithdrawalMistag?: boolean;
@@ -1307,6 +1310,13 @@ export const buildMinimalFaultProofContracts = async (
   const withHubOracle = {
     ...base,
     hubOracle: hubOracleAuth,
+    ...(realTxOrder
+      ? buildTxOrderValidators({
+          blueprint: parseFaultProofBlueprint(realBlueprint),
+          network,
+          hubOraclePolicyId: hubOracle.policyId,
+        })
+      : {}),
     ...(realSettlement
       ? {
           settlement: {

@@ -76,7 +76,7 @@ validator main(
         //    acceptance verdict only when its own embedded validity scalar
         //    claims `TxIsValid`. Direction A's accusation is against exactly
         //    that acceptance.
-        expect bad_tx_view.tx_compact.validity_code == 0
+        expect bad_tx_view.tx_compact.validity_code == Some(0)
 
         // 3. The thread advances to step-02 carrying the bound subject.
         expect output_script_hash == step_02_validator_script_hash

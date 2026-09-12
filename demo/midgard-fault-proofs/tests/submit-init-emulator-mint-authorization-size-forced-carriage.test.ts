@@ -75,6 +75,7 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
 
     // The planner selects the tier purely from the mint field's own length.
     const plannedMint = planFaultProofFieldOpening({
+      anchorSourceKind: 0n,
       fieldIndex: MIDGARD_FIELD_INDEX.mint,
       anchorTxId: block.nativeTxId,
       nativeTxCompactCbor: block.nativeTxCompactCbor,
@@ -254,6 +255,7 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
 
     // The field-7 door's tier follows the address-witness field's own length.
     const plannedField07 = planFaultProofFieldOpening({
+      anchorSourceKind: 0n,
       fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
       anchorTxId: block.nativeTxId,
       nativeTxCompactCbor: block.nativeTxCompactCbor,

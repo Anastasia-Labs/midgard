@@ -17,10 +17,15 @@ import {
   verifyMidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
 import {
-  adjudicateMidgardNativeTxFullValidity,
   decodeSingleCbor,
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
+import {
+  computeMidgardForcedTxProofCommitment,
+  deriveMidgardForcedTxProofSource,
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES } from "@al-ft/midgard-core/codec/native-tx-field-access";
 import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
@@ -2297,7 +2302,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ...context,
         sourceKind: "forced",
         transactionId: transaction.txId,
-        canonicalTransactionCbor: transaction.txCbor,
+        canonicalTransactionCbor: encodeMidgardForcedTxCanonical(
+          materializeMidgardForcedTxFromCanonical(transaction.tx),
+        ),
         priorUtxosRoot: root(3),
         postUtxosRoot: root(3),
         ledgerWitnessEntries: [{ outRef: spent, output }],
@@ -2398,7 +2405,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ...context,
         sourceKind: "forced",
         transactionId: transaction.txId,
-        canonicalTransactionCbor: transaction.txCbor,
+        canonicalTransactionCbor: encodeMidgardForcedTxCanonical(
+          materializeMidgardForcedTxFromCanonical(transaction.tx),
+        ),
         priorUtxosRoot: root(3),
         postUtxosRoot: root(3),
         ledgerWitnessEntries: [{ outRef: spent, output }],
@@ -2487,7 +2496,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
           ...context,
           sourceKind: "forced",
           transactionId: transaction.txId,
-          canonicalTransactionCbor: transaction.txCbor,
+          canonicalTransactionCbor: encodeMidgardForcedTxCanonical(
+            materializeMidgardForcedTxFromCanonical(transaction.tx),
+          ),
           priorUtxosRoot: root(3),
           postUtxosRoot: root(3),
           ledgerWitnessEntries: [],
@@ -2542,7 +2553,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ...context,
         sourceKind: "forced",
         transactionId: transaction.txId,
-        canonicalTransactionCbor: transaction.txCbor,
+        canonicalTransactionCbor: encodeMidgardForcedTxCanonical(
+          materializeMidgardForcedTxFromCanonical(transaction.tx),
+        ),
         priorUtxosRoot: root(3),
         postUtxosRoot: root(3),
         ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
@@ -2708,7 +2721,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
           ...context,
           sourceKind: "forced",
           transactionId: transaction.txId,
-          canonicalTransactionCbor: transaction.txCbor,
+          canonicalTransactionCbor: encodeMidgardForcedTxCanonical(
+            materializeMidgardForcedTxFromCanonical(transaction.tx),
+          ),
           priorUtxosRoot: unchangedRoot,
           postUtxosRoot: unchangedRoot,
           ledgerWitnessEntries: [
@@ -2820,13 +2835,12 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
   it("reaches one byte-identical canonical decode terminal from normal and forced retained sources", async () => {
     const fixture = buildMaximumRetainedCanonicalSource();
 
-    // Both retained DA classifications carry the same canonical bytes, and
-    // each independently folds back to them.
+    // Each source kind retains and reconstructs its own canonical envelope.
     const retained = await exerciseMidgardRetainedDaCanonicalBoundary({
       canonicalTransactionCbor: fixture.transaction.txCbor,
     });
     expect(retained.normal.retainedPreimageBytes).toBeGreaterThan(8 * 1024);
-    expect(retained.normal.retainedPreimageDigestHex).toBe(
+    expect(retained.normal.retainedPreimageDigestHex).not.toBe(
       retained.forced.retainedPreimageDigestHex,
     );
     for (const measurement of [retained.normal, retained.forced]) {
@@ -2838,7 +2852,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       );
       expect(measurement.transactionIdHex).toBe(retained.transactionIdHex);
       expect(measurement.transactionCommitmentHex).toBe(
-        retained.transactionCommitmentHex,
+        measurement.sourceKind === "forced"
+          ? retained.forcedTransactionCommitmentHex
+          : retained.transactionCommitmentHex,
       );
     }
     expect(retained.normal.revealStepCount).toBe(
@@ -2846,10 +2862,8 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     expect(retained.normal.revealStepCount).toBeGreaterThan(0);
 
-    // The decode work transcript is a function of the BOUND source bytes, not
-    // of the source kind. A normal replay binds the submitted bytes; a forced
-    // replay binds the operator-adjudicated leaf (§2.4.3(e)), which for this
-    // rejected fixture carries validity `TxIsInvalid`.
+    // Both sources bind the same immutable body and witnesses. Their outer
+    // encodings and commitment domains differ by authenticated source kind.
     const [normalTrace, forcedTrace] = await Promise.all([
       Effect.runPromise(
         buildDeterministicValidationMachineTrace({
@@ -2860,6 +2874,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       Effect.runPromise(
         buildDeterministicValidationMachineTrace({
           ...fixture.replayBase,
+          canonicalTransactionCbor: encodeMidgardForcedTxCanonical(
+            materializeMidgardForcedTxFromCanonical(fixture.transaction.tx),
+          ),
           sourceKind: "forced",
         }),
       ),
@@ -2868,9 +2885,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const forcedTranscript = canonicalDecodeWorkTranscript(forcedTrace);
     expect(normalTranscript.length).toBeGreaterThan(fixture.outputCount);
     expect(forcedTranscript.length).toBe(normalTranscript.length);
-    // The bound bytes differ by exactly the adjudicated scalar, so the two
-    // transcripts must NOT be byte-identical here — the forced trace reveals
-    // and hashes the adjudicated compact.
+    // The transcript authenticates each source encoding.
     expect(forcedTranscript).not.toEqual(normalTranscript);
     // The machine's WORK is nonetheless identical: same step structure, same
     // per-step positions, same verdict and rejection code, and byte-identical
@@ -2894,15 +2909,13 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(normalTrace.validationContextCbor.toString("hex")).toBe(
       forcedTrace.validationContextCbor.toString("hex"),
     );
-    const adjudicatedTx = adjudicateMidgardNativeTxFullValidity(
+    const adjudicatedTx = materializeMidgardForcedTxFromCanonical(
       decodeMidgardNativeTxFullFromCanonicalCbor(fixture.transaction.txCbor),
-      "TxIsInvalid",
     );
-    // The forced states bind the adjudicated triple's commitment; the normal
-    // states bind the submitted one.
+    // Each state binds its source-specific commitment domain.
     expect(forcedTrace.states[0]!.transactionCommitment.toString("hex")).toBe(
-      computeMidgardNativeTxProofCommitment(
-        deriveMidgardNativeTxProofSource(adjudicatedTx),
+      computeMidgardForcedTxProofCommitment(
+        deriveMidgardForcedTxProofSource(adjudicatedTx),
       ).toString("hex"),
     );
     expect(normalTrace.states[0]!.transactionCommitment.toString("hex")).toBe(
@@ -3044,6 +3057,8 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       // The three narrow total rules adjudicating the committed field-8
       // redeemer collection share one `head_at_v1` total header decode over
       // complete items delivered by batched §8 carriage.
+      "lib/midgard/fraud-proofs/mint-item-non-canonical/field-scan.ak",
+      "lib/midgard/fraud-proofs/mint-item-non-canonical/scan.ak",
       "lib/midgard/fraud-proofs/missing-redeemer/rule.ak",
       "lib/midgard/fraud-proofs/redeemer-canonicity/rule.ak",
       "lib/midgard/fraud-proofs/unused-redeemer/rule.ak",

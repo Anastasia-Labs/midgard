@@ -440,7 +440,7 @@ describe("canonical V1 nested Cardano Value boundary", () => {
       acceptedCanonical.length,
     );
     expect(retained.forced.reconstructedCanonicalBytes).toBe(
-      acceptedCanonical.length,
+      acceptedCanonical.length - 1,
     );
     expect(retained.normal.revealStepCount).toBe(midgard.completeFoldStepCount);
     expect(retained.forced.revealStepCount).toBe(midgard.completeFoldStepCount);

@@ -53,21 +53,22 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(FoldInput(FoldArgs {
-        input_index,
-        output_index,
-        spend_inputs_opening,
-        value_witness,
-      })) -> {
-        let Transaction { inputs, outputs, reference_inputs, .. } = tx
-
+      ct.Continue(args) -> {
+        let (input_index, output_index, spend_inputs_opening) = when args is {
+          FoldInput(FoldArgs {
+            input_index,
+            output_index,
+            spend_inputs_opening,
+            ..
+          }) -> (input_index, output_index, spend_inputs_opening)
+          FinishInputs { input_index, output_index, spend_inputs_opening } ->
+            (input_index, output_index, spend_inputs_opening)
+        }
         expect Some(step_datum) = datum
-
-        // 1. Specified input must be authentic and properly reproduced.
         let
             own_script_hash,
-            _computation_thread_token_asset_name,
-            _fraud_prover,
+            _,
+            _,
             m_input_state_data,
             output_script_hash,
             output_state_data
@@ -77,102 +78,57 @@ validator main(
           input_index,
           output_index,
           own_out_ref,
-          inputs,
-          outputs,
+          tx.inputs,
+          tx.outputs,
         )
-
         expect Some(state) = m_input_state_data
-
-        // 2. The spend input at the cursor is read out of the challenged
-        //    transaction's field-0 preimage through the §8.8 door.
+        // Both continuations authenticate the same thread and field. Sharing
+        // that work keeps the applied script publishable with the L1 reserve;
+        // the branch-specific cursor and successor checks remain below.
         let spend_inputs_view = opened_field_view(
           spend_inputs_opening,
-          BodyAnchor { tx_id: state.bad_tx_id },
+          BodyAnchor { tx_id: state.bad_tx_id, source_kind: 0 },
           spend_inputs_field_index,
-          reference_inputs,
+          tx.reference_inputs,
           field_preimage_certificate_policy_id,
         )
-        let spend_input = spend_input_at(spend_inputs_view, state.input_cursor)
-
-        // 3. The input's pre-state value is authenticated against the frozen
-        //    `prev_utxos_root` and the claimed asset's quantity extracted —
-        //    the machine's stage-two contribution restricted to one unit.
-        let claimed_quantity = spent_input_claimed_quantity_v1(
-          state.prev_utxos_root,
-          spend_input,
-          value_witness,
-          state.claimed_asset,
-        )
-
-        // 4. The thread self-loops with the cursor advanced and the inflow
-        //    accumulated; everything else is carried unchanged.
-        expect output_script_hash == own_script_hash
-        let expected_output_state: Data = State {
-          ..state,
-          input_cursor: state.input_cursor + 1,
-          claimed_delta: state.claimed_delta + claimed_quantity,
+        when args is {
+          FoldInput(FoldArgs { value_witness, .. }) -> {
+            let spend_input = spend_input_at(
+              spend_inputs_view,
+              state.input_cursor,
+            )
+            let claimed_quantity = spent_input_claimed_quantity_v1(
+              state.prev_utxos_root,
+              spend_input,
+              value_witness,
+              state.claimed_asset,
+            )
+            let expected: Data = State {
+              ..state,
+              input_cursor: state.input_cursor + 1,
+              claimed_delta: state.claimed_delta + claimed_quantity,
+            }
+            and {
+              output_script_hash == own_script_hash,
+              output_state_data == expected,
+            }
+          }
+          FinishInputs { .. } -> {
+            expect state.input_cursor == spend_input_count(spend_inputs_view)
+            let expected: Data = step_03.State {
+              bad_tx_id: state.bad_tx_id,
+              claimed_asset: state.claimed_asset,
+              claimed_direction: state.claimed_direction,
+              committed_fee: state.committed_fee,
+              claimed_delta: state.claimed_delta,
+            }
+            and {
+              output_script_hash == step_03_validator_script_hash,
+              output_state_data == expected,
+            }
+          }
         }
-        expect output_state_data == expected_output_state
-
-        // Done.
-        True
-      }
-      ct.Continue(FinishInputs {
-        input_index,
-        output_index,
-        spend_inputs_opening,
-      }) -> {
-        let Transaction { inputs, outputs, reference_inputs, .. } = tx
-
-        expect Some(step_datum) = datum
-
-        // 1. Specified input must be authentic and properly reproduced.
-        let
-            _own_script_hash,
-            _computation_thread_token_asset_name,
-            _fraud_prover,
-            m_input_state_data,
-            output_script_hash,
-            output_state_data
-          <- continue(
-          computation_thread_token_policy_id,
-          step_datum,
-          input_index,
-          output_index,
-          own_out_ref,
-          inputs,
-          outputs,
-        )
-
-        expect Some(state) = m_input_state_data
-
-        // 2. Every spend input must have been folded: the cursor equals the
-        //    field's **authenticated** item count, read through the door —
-        //    not a prover assertion. A premature finish would hide inflow;
-        //    an overshot cursor is unreachable because `spend_input_at`
-        //    aborts past the count.
-        let spend_inputs_view = opened_field_view(
-          spend_inputs_opening,
-          BodyAnchor { tx_id: state.bad_tx_id },
-          spend_inputs_field_index,
-          reference_inputs,
-          field_preimage_certificate_policy_id,
-        )
-        expect state.input_cursor == spend_input_count(spend_inputs_view)
-
-        // 3. The accumulated inflow moves to step-03.
-        expect output_script_hash == step_03_validator_script_hash
-        let expected_output_state: Data = step_03.State {
-          bad_tx_id: state.bad_tx_id,
-          claimed_asset: state.claimed_asset,
-          claimed_direction: state.claimed_direction,
-          committed_fee: state.committed_fee,
-          claimed_delta: state.claimed_delta,
-        }
-        expect output_state_data == expected_output_state
-
-        // Done.
-        True
       }
     }
   }
@@ -346,6 +302,22 @@ test value_not_preserved_step_02_rejects_a_truncated_asset_walk() fail {
     block,
     tf.claimed_token_v1(),
     SpentInputValueWitnessV1 { ..genuine, asset_openings: [first_opening] },
+    40,
+  )
+}
+
+/// Exhausting all real leaves cannot authorize one further duplicated opening.
+test value_not_preserved_step_02_rejects_an_excess_asset_opening() fail {
+  let block = token_block()
+  let genuine = tf.spent_input_value_witness_v1(block, tf.claimed_token_v1())
+  expect [first_opening, ..] = genuine.asset_openings
+  run_fold(
+    block,
+    tf.claimed_token_v1(),
+    SpentInputValueWitnessV1 {
+      ..genuine,
+      asset_openings: list.concat(genuine.asset_openings, [first_opening]),
+    },
     40,
   )
 }

@@ -86,7 +86,7 @@ validator main(
         //    reproduction of the whole collection.
         let spend_inputs_view = opened_field_view(
           spend_inputs_opening,
-          BodyAnchor { tx_id: bad_tx_id },
+          BodyAnchor { tx_id: bad_tx_id, source_kind: 0 },
           spend_inputs_field_index,
           reference_inputs,
           field_preimage_certificate_policy_id,
@@ -138,7 +138,10 @@ validator main(
         expect source_kind == 0
         let view = opened_field_view(
           spend_inputs_opening,
-          BodyAnchor { tx_id: subject.transaction_id },
+          BodyAnchor {
+            tx_id: subject.transaction_id,
+            source_kind: subject.source_kind,
+          },
           spend_inputs_field_index,
           tx.reference_inputs,
           field_preimage_certificate_policy_id,

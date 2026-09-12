@@ -1,10 +1,12 @@
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSource,
-  encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
+import {
+  deriveMidgardForcedTxProofSource,
+  encodeMidgardForcedTxCanonical,
+} from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
@@ -34,12 +36,9 @@ const forcedBlock = (
     fee: 0n,
     outputCbors: outputNetworkIds.map(output),
   });
-  const invalid = adjudicateMidgardNativeTxFullValidity(
-    submitted,
-    "TxIsInvalid",
-  );
+  const invalid = materializeMidgardForcedTxFromCanonical(submitted);
   const txId = computeMidgardNativeTxId(invalid).toString("hex");
-  const source = deriveMidgardNativeTxProofSource(invalid);
+  const source = deriveMidgardForcedTxProofSource(invalid);
   return {
     headerHash: "04".repeat(28),
     header: { expectedNetworkId: 0n },
@@ -49,7 +48,7 @@ const forcedBlock = (
           key: { transactionId: "05".repeat(32), outputIndex: 0n },
           value: {
             tx_id: txId,
-            source: {
+            submitted_source: {
               compact_cbor: source.compactCbor.toString("hex"),
               witness_set_compact_cbor:
                 source.witnessSetCompactCbor.toString("hex"),
@@ -58,7 +57,7 @@ const forcedBlock = (
             },
             verdict: { ForcedTxInvalid: { reason } },
           },
-          fullTransactionCbor: encodeMidgardNativeTxCanonical(invalid),
+          fullTransactionCbor: encodeMidgardForcedTxCanonical(invalid),
         },
       ],
     },

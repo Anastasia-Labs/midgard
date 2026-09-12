@@ -74,7 +74,7 @@ validator main(
         //    family's domain. The scalar is the root-committed leaf's own
         //    (see the module header for why this read is sound at this step
         //    and at no later one).
-        expect bad_tx_view.tx_compact.validity_code == 0
+        expect bad_tx_view.tx_compact.validity_code == Some(0)
 
         // 3. The UTxO must be produced at next step's script hash carrying
         //    the §2.5 anchors and the committed validity interval.

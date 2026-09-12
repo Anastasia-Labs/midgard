@@ -7,14 +7,12 @@
  */
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullValidity,
   buildMidgardBoundedItem,
   computeMidgardNativeTxId,
   decodeMidgardDatum,
   decodeMidgardFieldPreimage,
   decodeMidgardLedgerOutputCommitment,
   deriveMidgardNativeTxFaultEvidenceMaterial,
-  deriveMidgardNativeTxProofSource,
   deriveMidgardNativeTxWitnessSetCompact,
   encodeCbor,
   encodeMidgardLedgerOutputCommitment,
@@ -26,6 +24,12 @@ import {
   materializeMidgardNativeTxFromCanonical,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
+import {
+  deriveMidgardForcedTxFaultEvidenceMaterial,
+  encodeMidgardForcedTxCanonical,
+} from "@al-ft/midgard-core/codec/forced";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   AddressData,
@@ -431,7 +435,7 @@ export type CommittedBlock = Readonly<{
   nativeTx: MidgardNativeTxFull;
   nativeTxId: string;
   canonicalCbor: Buffer;
-  /** Compact bytes step 02 anchors on (adjudicated for a forced leaf). */
+  /** Exact source-kind compact bytes step 02 anchors on. */
   compactCborHex: string;
   witnessSetCompactCborHex: string;
   accepted?: {
@@ -470,7 +474,11 @@ export const commitBlock = async ({
 }): Promise<CommittedBlock> => {
   const { harness, catalogue } = context;
   const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
-  const canonicalCbor = encodeMidgardNativeTxCanonical(nativeTx);
+  const canonicalCbor = (
+    reason === undefined
+      ? encodeMidgardNativeTxCanonical
+      : encodeMidgardForcedTxCanonical
+  )(nativeTx);
   const witnessSetCompactCborHex = encodeMidgardNativeTxWitnessSetCompact(
     deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
   ).toString("hex");
@@ -536,12 +544,12 @@ export const commitBlock = async ({
       prevUtxosRoot: priorRoot,
     };
   } else {
-    const source = deriveMidgardNativeTxProofSource(
-      adjudicateMidgardNativeTxFullValidity(nativeTx, "TxIsInvalid"),
+    const source = deriveMidgardForcedTxProofSource(
+      materializeMidgardForcedTxFromCanonical(nativeTx),
     );
     const leaf: ForcedInclusionTxV1 = {
       tx_id: nativeTxId,
-      source: {
+      submitted_source: {
         compact_cbor: source.compactCbor.toString("hex"),
         witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
         field_preimage_lengths_cbor:
@@ -549,7 +557,7 @@ export const commitBlock = async ({
       },
       verdict: { ForcedTxInvalid: { reason } },
     };
-    compactCborHex = leaf.source.compact_cbor;
+    compactCborHex = leaf.submitted_source.compact_cbor;
     const key = transitionTraceOutRef("f1");
     const keyBytes = Buffer.from(Data.to(key, OutputReference), "hex");
     const valueBytes = Buffer.from(
@@ -729,10 +737,16 @@ export const resolvedOutputEvidence = ({
   const prepared = prepareResolvedOutputNonCanonicalEvidence({
     subject: contradicting,
     coordinate,
-    canonicalTransactionCbor: block.canonicalCbor,
+    canonicalTransactionCbor: (contradicting.source_kind === 1n
+      ? encodeMidgardForcedTxCanonical
+      : encodeMidgardNativeTxCanonical)(block.nativeTx),
     resolved,
   });
-  return Object.freeze({ ...prepared, subject });
+  return Object.freeze({
+    ...prepared,
+    subject,
+    canonicalTransactionCborHex: block.canonicalCbor.toString("hex"),
+  });
 };
 
 export const forcedSourceOf = (
@@ -968,10 +982,13 @@ export const makeResolvedOutputStages = async (
     readonly otherCertificate: UTxO;
   }) => {
     const fieldIndex = evidence.coordinate.sourceKind;
-    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-      block.canonicalCbor,
-    );
+    const material = (
+      block.forced === undefined
+        ? deriveMidgardNativeTxFaultEvidenceMaterial
+        : deriveMidgardForcedTxFaultEvidenceMaterial
+    )(block.canonicalCbor);
     const planned = planFaultProofFieldOpening({
+      anchorSourceKind: block.forced === undefined ? 0n : 1n,
       fieldIndex,
       anchorTxId: block.nativeTxId,
       nativeTxCompactCbor: block.compactCborHex,
@@ -1319,10 +1336,13 @@ export const makeResolvedOutputStages = async (
    * reaches the validator with a genuine certificate for the wrong field.
    */
   const certifyField = async (fieldIndex: 0 | 1) => {
-    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-      block.canonicalCbor,
-    );
+    const material = (
+      block.forced === undefined
+        ? deriveMidgardNativeTxFaultEvidenceMaterial
+        : deriveMidgardForcedTxFaultEvidenceMaterial
+    )(block.canonicalCbor);
     const planned = planFaultProofFieldOpening({
+      anchorSourceKind: block.forced === undefined ? 0n : 1n,
       fieldIndex,
       anchorTxId: block.nativeTxId,
       nativeTxCompactCbor: block.compactCborHex,

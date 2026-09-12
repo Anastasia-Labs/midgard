@@ -1,10 +1,8 @@
+import { deriveMidgardNativeTxWitnessSetCompact } from "@al-ft/midgard-core";
 import {
-  adjudicateMidgardNativeTxFullValidity,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxFaultEvidenceMaterial,
-  deriveMidgardNativeTxWitnessSetCompact,
-  encodeMidgardNativeTxCanonical,
-} from "@al-ft/midgard-core";
+  decodeMidgardForcedTxFullFromCanonicalCbor,
+  deriveMidgardForcedTxFaultEvidenceMaterial,
+} from "@al-ft/midgard-core/codec/forced";
 import {
   decodeAddressWitnessPreimage,
   forcedVerdictSubject,
@@ -45,25 +43,20 @@ export const invalidSignatureEvidenceFromForcedSource = (
     !("AddressWitnessSignatureInvalid" in reason)
   )
     return null;
-  const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(
+  const decoded = decodeMidgardForcedTxFullFromCanonicalCbor(
     forced.fullTransactionCbor,
   );
-  // Retained DA preserves the submitted validity scalar; the forced leaf
-  // commits the operator-adjudicated rejected source. Reproduce that source
-  // without replacing the retained transaction bytes.
-  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-    encodeMidgardNativeTxCanonical(
-      adjudicateMidgardNativeTxFullValidity(decoded, "TxIsInvalid"),
-    ),
+  const material = deriveMidgardForcedTxFaultEvidenceMaterial(
+    forced.fullTransactionCbor,
   );
   if (
     material.transactionId.toString("hex") !== forced.value.tx_id ||
     material.proofSource.compactCbor.toString("hex") !==
-      forced.value.source.compact_cbor ||
+      forced.value.submitted_source.compact_cbor ||
     material.proofSource.witnessSetCompactCbor.toString("hex") !==
-      forced.value.source.witness_set_compact_cbor ||
+      forced.value.submitted_source.witness_set_compact_cbor ||
     material.proofSource.fieldPreimageLengthsCbor.toString("hex") !==
-      forced.value.source.field_preimage_lengths_cbor
+      forced.value.submitted_source.field_preimage_lengths_cbor
   )
     throw new Error(
       "invalidSignature: forced preimage differs from authenticated leaf",
@@ -85,7 +78,7 @@ export const invalidSignatureEvidenceFromForcedSource = (
     addressWitnesses: Object.freeze(
       decodeAddressWitnessPreimage(decoded.witnessSet.addrTxWitsPreimageCbor),
     ),
-    nativeTxCompactCbor: forced.value.source.compact_cbor,
+    nativeTxCompactCbor: forced.value.submitted_source.compact_cbor,
   });
 };
 export const detectInvalidSignatureWrongfulRejections = ({

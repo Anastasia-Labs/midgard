@@ -1,9 +1,7 @@
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
   computeMidgardNativeTxProofCommitment,
   decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxProofSource,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
@@ -20,6 +18,12 @@ import {
   encodeCborBytes,
   encodeCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
+import {
+  computeMidgardForcedTxProofCommitment,
+  encodeMidgardForcedTxCanonical,
+} from "@al-ft/midgard-core/codec/forced";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -103,16 +107,6 @@ const withdrawalInfo = (
  */
 const canonicalPreimageByCommitment = new Map<string, Buffer>();
 
-const proofSourceCommitment = (source: SDK.NativeTxProofSource): string =>
-  computeMidgardNativeTxProofCommitment({
-    compactCbor: Buffer.from(source.compact_cbor, "hex"),
-    witnessSetCompactCbor: Buffer.from(source.witness_set_compact_cbor, "hex"),
-    fieldPreimageLengthsCbor: Buffer.from(
-      source.field_preimage_lengths_cbor,
-      "hex",
-    ),
-  }).toString("hex");
-
 const nativeMaterial = (byte: number) => {
   const canonical: MidgardNativeTxCanonical = {
     version: MIDGARD_NATIVE_TX_VERSION,
@@ -174,30 +168,22 @@ const forcedTx = (
   verdict: SDK.OperatorVerdict,
 ): SDK.ForcedInclusionTxV1 => {
   const material = nativeMaterial(byte);
-  if (verdict === "ForcedTxValid") {
-    return {
-      tx_id: material.txId,
-      source: material.source,
-      verdict,
-    };
-  }
-  // A rejected forced leaf commits the operator-adjudicated source
-  // (§2.4.3(e)): the fixture bytes stay `TxIsValid` as submitted, while the
-  // leaf's triple carries the stamped `TxIsInvalid` scalar. The DA preimage
-  // registered for the leaf remains the submitted canonical bytes.
-  const adjudicated = deriveMidgardNativeTxProofSource(
-    adjudicateMidgardNativeTxFullValidity(
+  const adjudicated = deriveMidgardForcedTxProofSource(
+    materializeMidgardForcedTxFromCanonical(
       decodeMidgardNativeTxFullFromCanonicalCbor(material.canonicalCbor),
-      "TxIsInvalid",
     ),
   );
   canonicalPreimageByCommitment.set(
-    computeMidgardNativeTxProofCommitment(adjudicated).toString("hex"),
-    material.canonicalCbor,
+    computeMidgardForcedTxProofCommitment(adjudicated).toString("hex"),
+    encodeMidgardForcedTxCanonical(
+      materializeMidgardForcedTxFromCanonical(
+        decodeMidgardNativeTxFullFromCanonicalCbor(material.canonicalCbor),
+      ),
+    ),
   );
   return {
     tx_id: material.txId,
-    source: {
+    submitted_source: {
       compact_cbor: adjudicated.compactCbor.toString("hex"),
       witness_set_compact_cbor:
         adjudicated.witnessSetCompactCbor.toString("hex"),
@@ -320,7 +306,17 @@ const buildPayloadFixture = async ({
         SDK.ForcedInclusionTxV1,
       ) as SDK.ForcedInclusionTxV1;
       const preimage = canonicalPreimageByCommitment.get(
-        proofSourceCommitment(forced.source),
+        computeMidgardForcedTxProofCommitment({
+          compactCbor: Buffer.from(forced.submitted_source.compact_cbor, "hex"),
+          witnessSetCompactCbor: Buffer.from(
+            forced.submitted_source.witness_set_compact_cbor,
+            "hex",
+          ),
+          fieldPreimageLengthsCbor: Buffer.from(
+            forced.submitted_source.field_preimage_lengths_cbor,
+            "hex",
+          ),
+        }).toString("hex"),
       );
       if (preimage === undefined) {
         throw new Error(
@@ -574,7 +570,7 @@ const buildAcceptedTransactionTransitionMismatchEvidence = (): {
   };
   const dummyForcedInclusionTx: SDK.ForcedInclusionTxV1 = {
     tx_id: h32(689),
-    source: {
+    submitted_source: {
       compact_cbor: "",
       witness_set_compact_cbor: "",
       field_preimage_lengths_cbor: "",

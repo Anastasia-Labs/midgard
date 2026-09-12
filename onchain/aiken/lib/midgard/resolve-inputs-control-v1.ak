@@ -2,7 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/codec.{encode_definite_bytes}
-use midgard/fraud_proofs/native_tx/compact.{native_tx_proof_commitment_v1}
+use midgard/fraud_proofs/native_tx/compact.{tx_proof_commitment_v1}
 use midgard/fraud_proofs/native_tx/components.{decode_midgard_tx_input_cbor}
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_raw
@@ -96,7 +96,8 @@ pub fn control_no_pending_is_bound(
 ) -> Bool {
   and {
     control.pending_cbor == #"00",
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,
@@ -201,7 +202,8 @@ pub fn control_raw_is_bound_with_descriptor(
   let input = decode_midgard_tx_input_cbor(pending.key)
   and {
     control.pending_cbor == encode_pending(pending),
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,

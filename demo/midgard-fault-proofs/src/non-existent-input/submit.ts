@@ -46,10 +46,11 @@ export const nonExistentInputForcedFieldPlan = (
   owner: string,
 ) =>
   planFaultProofFieldOpening({
+    anchorSourceKind: prepared.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: 0,
     anchorTxId: prepared.subject.transaction_id,
     nativeTxCompactCbor:
-      prepared.forcedSource.membership.value.source.compact_cbor,
+      prepared.forcedSource.membership.value.submitted_source.compact_cbor,
     itemCbors: prepared.inputItems,
     owner,
     label: "nonExistentInput forced field zero",

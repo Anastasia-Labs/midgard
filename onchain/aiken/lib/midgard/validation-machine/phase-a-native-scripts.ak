@@ -1,6 +1,6 @@
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
+use midgard/fraud_proofs/native_tx/compact.{verify_tx_proof_source_v1}
 use midgard/native_script_scan_v1
 use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1.{
@@ -143,7 +143,8 @@ fn verify_phase_a_native_advance_scan(
   witness: ValidationOneStepWitnessV1,
   control: PhaseANativeScriptsControlV1,
 ) -> Bool {
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -184,7 +185,8 @@ fn verify_phase_a_native_item_scan(
   item_index: Int,
   carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -270,7 +272,8 @@ pub fn verify_phase_a_native_item_dispatch_v1(
   item_index: Int,
 ) -> Bool {
   let control = phase_a_native_control_from_witness(witness.work_witness_cbor)
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -298,7 +301,8 @@ pub fn verify_phase_a_native_item_native_payload_v1(
   carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   let control = phase_a_native_control_from_witness(witness.work_witness_cbor)
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -363,7 +367,8 @@ pub fn verify_phase_a_native_item_foreign_payload_v1(
   carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   let control = phase_a_native_control_from_witness(witness.work_witness_cbor)
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -507,7 +512,8 @@ fn verify_phase_a_native_token_scan(
   signer_proof: SignerSetProofV1,
   token_mode: Int,
 ) -> Bool {
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -668,7 +674,8 @@ fn verify_phase_a_native_frame_scan(
   control: PhaseANativeScriptsControlV1,
   frame: native_script_scan_v1.NativeScriptFrameV1,
 ) -> Bool {
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -723,7 +730,8 @@ fn verify_phase_a_native_finalize_scan(
   witness: ValidationOneStepWitnessV1,
   control: PhaseANativeScriptsControlV1,
 ) -> Bool {
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -954,7 +962,8 @@ fn authenticated_phase_a_native_window_v1(
   chunk_proof: bounded_item_v1.ChunkProofV1,
   next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
 ) -> Option<AuthenticatedNativeScriptWindowV1> {
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,

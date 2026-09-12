@@ -177,7 +177,7 @@ describe("canonical V1 observer/native-script Cardano boundary", () => {
       observerField.nativeCanonicalBytes,
     );
     expect(retainedDa.forced.reconstructedCanonicalBytes).toBe(
-      observerField.nativeCanonicalBytes,
+      observerField.nativeCanonicalBytes - 1,
     );
     expect(retainedDa.normal.revealStepCount).toBe(
       observerField.completeFoldStepCount,

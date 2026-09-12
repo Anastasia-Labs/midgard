@@ -1,15 +1,18 @@
 import {
-  decodeMidgardNativeTxCompact,
+  decodeMidgardForcedTxCompact,
   deriveMidgardNativeTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core";
-import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
+import {
+  encodeProofThreadForcedSourceKey,
+  FraudProofComputationThreadStepDatum,
+} from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
   type CanonicalBlockEvidence,
   fetchCanonicalBlockEvidence,
 } from "../evidence/canonical-block-evidence.js";
-import { deriveRejectedTransactionFaultEvidenceMaterial } from "../evidence/rejected-transaction.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import { buildTrieView, requireProof } from "../prepare-double-spend.js";
 import {
@@ -332,13 +335,13 @@ const createConcreteActuator = ({
     }
     const tx = block.reconstruction.forcedTransactions.find(
       (value) =>
-        value.value.tx_id === detection.evidence.subject.transaction_id,
+        value.value.tx_id === detection.evidence.subject.transaction_id &&
+        encodeProofThreadForcedSourceKey(value.key).toString("hex") ===
+          detection.evidence.subject.source_key,
     );
     if (tx === undefined)
       throw new Error("redeemerCanonicity forced source disappeared");
-    return deriveRejectedTransactionFaultEvidenceMaterial(
-      tx.fullTransactionCbor,
-    );
+    return deriveMidgardForcedTxFaultEvidenceMaterial(tx.fullTransactionCbor);
   };
   return Object.freeze({
     observe: async () => await observed(),
@@ -373,6 +376,8 @@ const createConcreteActuator = ({
           if (transaction === undefined)
             throw new Error("redeemerCanonicity accepted source disappeared");
           const txMaterial = material();
+          if (!("validity" in txMaterial.compact))
+            throw new Error("normal inclusion requires a normal source");
           const trie = await buildTrieView(
             block.transactions.map((value) => ({
               key: Buffer.from(value.nodeTxId, "hex"),
@@ -417,7 +422,10 @@ const createConcreteActuator = ({
           });
         } else {
           const forced = block.reconstruction.forcedTransactions.find(
-            (value) => value.value.tx_id === evidence.subject.transaction_id,
+            (value) =>
+              value.value.tx_id === evidence.subject.transaction_id &&
+              encodeProofThreadForcedSourceKey(value.key).toString("hex") ===
+                evidence.subject.source_key,
           );
           if (forced === undefined)
             throw new Error("redeemerCanonicity forced source disappeared");
@@ -427,8 +435,8 @@ const createConcreteActuator = ({
               ForcedTransactionEventKey: { tx_order_id: forced.key },
             },
           });
-          const compact = decodeMidgardNativeTxCompact(
-            Buffer.from(forced.value.source.compact_cbor, "hex"),
+          const compact = decodeMidgardForcedTxCompact(
+            Buffer.from(forced.value.submitted_source.compact_cbor, "hex"),
           );
           await submitRedeemerCanonicityStep01Forced({
             lucid: workflow.lucid,

@@ -728,6 +728,7 @@ export const createManifestBoundCanonicalDecodabilityWorkflow = async (
       const admitted = await admitCanonicalDecodabilityArtifact(artifact);
       return Object.freeze({
         planned: createRawCommittedFieldCarriagePlan({
+          sourceKind: 0n,
           owner: config.signer.paymentKeyHash,
           nativeTxId: admitted.txInclusion.nativeTxId,
           fieldIndex: admitted.artifact.selectedFieldIndex,

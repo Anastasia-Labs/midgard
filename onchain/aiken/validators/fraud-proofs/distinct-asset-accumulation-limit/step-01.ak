@@ -11,7 +11,6 @@ use midgard/fraud_proofs/distinct_asset_accumulation_limit/rule.{
 use midgard/fraud_proofs/distinct_asset_accumulation_limit/step_01.{
   AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
 }
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 
 validator main(
@@ -82,14 +81,7 @@ validator main(
           membership,
           direction,
         )
-        let leaf = membership.value
-        let Pair(verified, _) = verify_native_tx_proof_source_v1(
-          leaf.tx_id,
-          leaf.source.compact_cbor,
-          leaf.source.witness_set_compact_cbor,
-          leaf.source.field_preimage_lengths_cbor,
-        )
-        expect verified.tx_id == subject.transaction_id
+        // The substrate already verified the immutable source and its body ID.
         let expected: Data = bind_coordinate_v1(
           subject,
           header.validation_traces_root,

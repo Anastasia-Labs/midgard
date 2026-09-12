@@ -1,6 +1,6 @@
 # Immutable forced submissions with one operator verdict
 
-Status: Accepted design for implementation; not implemented or deployed.
+Status: Accepted; implementation and verification in progress, not deployed.
 Recorded: 2026-09-10.
 Scope: replacement of the undeployed forced-submission format under canonical V1.
 
@@ -19,14 +19,13 @@ nested compact and full encodings. Keep `OperatorVerdictV1` as the sole committe
 operator decision. Construct the block leaf from the unchanged submission and
 that verdict. Keep the existing L1 order key and transaction-ID derivation.
 
-The exact pending encoding, domain-separated commitment, integration rules, and
-acceptance matrix are fixed in the [Task 1 handoff](../../exec-plans/forced-inclusion-verdict/01-protocol-design.md#resolved-protocol-design).
-Task 2 will transfer those format definitions into `docs/spec/midgard-tx.md` and
-update this reference; this ADR owns the rationale. The existing component and
-technical specifications continue to describe the old implementation until that
-coordinated change lands. This decision supersedes their forced-source
-bit-equality requirement for the implementation assigned by this task series;
-it does not change normal transaction admission.
+The canonical encoding, domain-separated commitment and source-kind rules are
+specified in [the transaction specification](../../spec/midgard-tx.md).
+The [Task 1 handoff](../../exec-plans/forced-inclusion-verdict/01-protocol-design.md)
+retains the integration inventory and acceptance matrix; this ADR owns the
+rationale. The coordinated Task 2 change updates the component and technical
+specifications alongside implementation. This decision supersedes the former
+forced-source bit-equality requirement without changing normal admission.
 
 ## Domain terms
 

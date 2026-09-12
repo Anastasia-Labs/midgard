@@ -207,7 +207,9 @@ export type ValidationMachineFieldCarriagePlanInput = {
 /** Every field's chunk steps, field-major — the whole-transaction walk order. */
 export const countedMachineTransactionChunkSteps = (
   canonicalTransactionCbor: Uint8Array,
+  sourceKind: "normal" | "forced" = "normal",
 ): readonly MachineFieldChunkStep[] =>
-  deriveMidgardTxFieldPreimages(canonicalTransactionCbor).flatMap((field) =>
-    countedMachineFieldChunkSteps(field.fieldIndex, field.preimageCbor),
+  deriveMidgardTxFieldPreimages(canonicalTransactionCbor, sourceKind).flatMap(
+    (field) =>
+      countedMachineFieldChunkSteps(field.fieldIndex, field.preimageCbor),
   );

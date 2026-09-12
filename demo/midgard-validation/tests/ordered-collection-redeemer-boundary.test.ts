@@ -426,7 +426,7 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
       redeemerField.nativeCanonicalBytes,
     );
     expect(retainedDa.forced.reconstructedCanonicalBytes).toBe(
-      redeemerField.nativeCanonicalBytes,
+      redeemerField.nativeCanonicalBytes - 1,
     );
     expect(retainedDa.normal.revealStepCount).toBe(
       redeemerField.completeFoldStepCount,
@@ -451,7 +451,7 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
       retainedProjection.canonicalTransactionCbor.length,
     );
     expect(productionRetainedDa.forced.reconstructedCanonicalBytes).toBe(
-      retainedProjection.canonicalTransactionCbor.length,
+      retainedProjection.canonicalTransactionCbor.length - 1,
     );
     expect({
       fieldCommitmentHex: redeemerField.fieldCommitmentHex,

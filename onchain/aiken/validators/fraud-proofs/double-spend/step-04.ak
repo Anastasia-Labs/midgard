@@ -85,7 +85,7 @@ validator main(
         //    longer scales with how many inputs tx2 spends.
         let tx2_spend_inputs_view = opened_field_view(
           tx2_spend_inputs_opening,
-          BodyAnchor { tx_id: verified_tx2_id },
+          BodyAnchor { tx_id: verified_tx2_id, source_kind: 0 },
           spend_inputs_field_index,
           reference_inputs,
           field_preimage_certificate_policy_id,

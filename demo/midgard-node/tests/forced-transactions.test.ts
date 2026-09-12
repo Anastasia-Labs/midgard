@@ -12,8 +12,9 @@ import {
   deriveMidgardNativeTxCompact,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeMidgardNativeTxCanonical,
+  encodeMidgardForcedTxCanonical,
   encodeMidgardTxOutput,
+  materializeMidgardForcedTxFromCanonical,
   materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_VERSION,
@@ -84,8 +85,8 @@ const canonicalTransaction = (
 });
 
 const encodedTransaction = (version?: bigint): Buffer =>
-  encodeMidgardNativeTxCanonical(
-    materializeMidgardNativeTxFromCanonical(canonicalTransaction(version)),
+  encodeMidgardForcedTxCanonical(
+    materializeMidgardForcedTxFromCanonical(canonicalTransaction(version)),
   );
 
 const TEST_PRIVATE_KEY = CML.PrivateKey.generate_ed25519();
@@ -170,7 +171,9 @@ const makeSignedEffectfulTransaction = (
   return {
     transaction,
     transactionId: computeMidgardNativeTxId(transaction),
-    canonicalCbor: encodeMidgardNativeTxCanonical(transaction),
+    canonicalCbor: encodeMidgardForcedTxCanonical(
+      materializeMidgardForcedTxFromCanonical(transaction),
+    ),
   };
 };
 
@@ -183,8 +186,7 @@ const forcedEntry = async ({
 }): Promise<ForcedTransactionsDB.Entry> => {
   // Mirrors ingest: the row is written with the provisional `ForcedTxValid`
   // verdict, so its identity columns carry the SUBMITTED bytes. Adjudication
-  // happens at classification, which overwrites the leaf value and the
-  // validity projection but never the submitted identity.
+  // happens at classification, which changes only the verdict in the leaf.
   const encoded = await Effect.runPromise(
     ForcedTransactionsDB.encodeForcedInclusionValueV1({
       nativeTxCbor: transaction.canonicalCbor,
@@ -209,7 +211,7 @@ const forcedEntry = async ({
     [ForcedTransactionsDB.Columns.TX_ID]: encoded.txId,
     [ForcedTransactionsDB.Columns.TX_COMPACT]: encoded.txCompact,
     [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]: encoded.value,
-    [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]: "TxIsValid",
+
     [ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID]:
       MIDGARD_CONSENSUS_PROFILE.profileId,
     [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]: transaction.canonicalCbor,
@@ -258,7 +260,7 @@ describe("V1 forced transaction material", () => {
     expect(decoded.malformedCount).toBe(2);
   });
 
-  it("binds the transaction's body identity while stamping the leaf's validity scalar from the verdict", async () => {
+  it("keeps the submitted source and identity identical across operator verdicts", async () => {
     const nativeTxCbor = encodedTransaction();
     const accepted = await Effect.runPromise(
       ForcedTransactionsDB.encodeForcedInclusionValueV1({
@@ -279,25 +281,17 @@ describe("V1 forced transaction material", () => {
       SDK.ForcedInclusionTxV1,
     ) as SDK.ForcedInclusionTxV1;
 
-    // `tx_id` hashes the body only, so the operator's adjudication never
-    // moves the transaction's identity …
     expect(accepted.txId).toEqual(rejected.txId);
-    // … but the committed compact carries the verdict's validity scalar
-    // (#640 forced-arm predicate: `ForcedTxValid` ⇔ code 0,
-    // `ForcedTxInvalid { _ }` ⇔ code 1), stamped as its trailing byte, so the
-    // compact and everything hashing it diverge by exactly that adjudication.
-    expect(accepted.txCompact.subarray(0, -1)).toEqual(
-      rejected.txCompact.subarray(0, -1),
-    );
-    expect(accepted.txCompact.at(-1)).toBe(0);
-    expect(rejected.txCompact.at(-1)).toBe(1);
-    expect(accepted.transactionCommitment).not.toEqual(
+    expect(accepted.txCompact).toEqual(rejected.txCompact);
+    expect(accepted.source).toEqual(rejected.source);
+    expect(accepted.transactionCommitment).toEqual(
       rejected.transactionCommitment,
     );
+    expect(decodeSingleCbor(accepted.txCompact)).toHaveLength(3);
     expect(accepted.value).not.toEqual(rejected.value);
     expect(decoded).toEqual({
       tx_id: accepted.txId.toString("hex"),
-      source: {
+      submitted_source: {
         compact_cbor: accepted.source.compactCbor.toString("hex"),
         witness_set_compact_cbor:
           accepted.source.witnessSetCompactCbor.toString("hex"),
@@ -760,7 +754,9 @@ describe("V1 forced transaction material", () => {
           {
             eventKey,
             transactionId: malformed.txId,
-            canonicalTransactionCbor: malformed.txCbor,
+            canonicalTransactionCbor: encodeCbor(
+              (decodeSingleCbor(malformed.txCbor) as unknown[]).slice(0, 3),
+            ),
             programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
               [],
             ),
@@ -901,7 +897,7 @@ describe("V1 forced transaction material", () => {
     expect(resolverCalls).toEqual([[], []]);
     expect(classified).toHaveLength(2);
     for (const result of classified) {
-      expect(result.entry[ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]).toBe(
+      expect(ForcedTransactionsDB.operatorValidityOfEntry(result.entry)).toBe(
         "TxIsValid",
       );
       expect(result.rejectionCode).toBeNull();
@@ -1075,10 +1071,9 @@ describe("V1 forced transaction material", () => {
     );
 
     expect(
-      classified!.entry[ForcedTransactionsDB.Columns.OPERATOR_VALIDITY],
+      ForcedTransactionsDB.operatorValidityOfEntry(classified!.entry),
     ).toBe("TxIsInvalid");
-    // The column carries only the two-valued projection; the reason and its
-    // subject coordinates live in the leaf the roots commit to.
+    // Polarity is derived from the committed verdict, including its reason and subject.
     expect(
       (
         Data.from(

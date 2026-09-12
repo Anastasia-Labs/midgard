@@ -136,6 +136,7 @@ export const submitPublishedInitialization = async ({
   signedCbor,
   onPrepared,
   synchronize,
+  now = Date.now,
   waitForRetry = async (milliseconds) => {
     await pause(milliseconds);
   },
@@ -145,6 +146,7 @@ export const submitPublishedInitialization = async ({
   signedCbor: string;
   onPrepared: (signedCbor: string) => void | Promise<void>;
   synchronize: () => Promise<number>;
+  now?: () => number;
   waitForRetry?: (milliseconds: number) => Promise<void>;
 }>): Promise<string> => {
   const body = CML.Transaction.from_cbor_hex(signedCbor).body();
@@ -173,7 +175,7 @@ export const submitPublishedInitialization = async ({
     if (status.status === "confirmed") return txHash;
     if (
       ttl !== undefined &&
-      (canonicalSlot >= ttl || Date.now() >= lucid.slotToUnixTime(ttl))
+      (canonicalSlot >= ttl || now() >= lucid.slotToUnixTime(ttl))
     )
       throw new Error(
         "The recorded initialization validity interval expired before confirmation; reconcile before constructing a replacement",
@@ -452,6 +454,7 @@ export const publishWorkflowDeploymentOnChain = async ({
     signedCbor: initCbor,
     onPrepared: onInitialization,
     synchronize: publicationSynchronize,
+    now: chain.now,
   });
   if ((await operatorLucid.utxosByOutRef([nonce])).length !== 0) {
     throw new Error("Initialization did not consume the deployment nonce");

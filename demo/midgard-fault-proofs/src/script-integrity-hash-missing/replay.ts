@@ -1,10 +1,13 @@
 import {
-  adjudicateMidgardNativeTxFullValidity,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardVersionedScript,
-  deriveMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
+import {
+  decodeMidgardForcedTxFullFromCanonicalCbor,
+  deriveMidgardForcedTxProofSourceFromCanonicalCbor,
+  type MidgardForcedTxFull,
+} from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
@@ -61,14 +64,23 @@ export type ScriptIntegrityHashMissingAuthenticatedSource = Readonly<{
 }>;
 
 type Semantics = Readonly<{
-  full: ReturnType<typeof decodeMidgardNativeTxFullFromCanonicalCbor>;
+  full:
+    | ReturnType<typeof decodeMidgardNativeTxFullFromCanonicalCbor>
+    | MidgardForcedTxFull;
   scriptLanguages: readonly (0 | 3 | 128)[];
   redeemerCount: number;
   faultHolds: boolean;
 }>;
 
-const decodeSemantics = (canonicalTxCbor: Uint8Array): Semantics | null => {
-  const full = decodeMidgardNativeTxFullFromCanonicalCbor(canonicalTxCbor);
+const decodeSemantics = (
+  canonicalTxCbor: Uint8Array,
+  sourceKind: "normal" | "forced",
+): Semantics | null => {
+  const full = (
+    sourceKind === "forced"
+      ? decodeMidgardForcedTxFullFromCanonicalCbor
+      : decodeMidgardNativeTxFullFromCanonicalCbor
+  )(canonicalTxCbor);
   try {
     const scriptLanguages = decodeMidgardNativeByteListPreimage(
       full.witnessSet.scriptTxWitsPreimageCbor,
@@ -129,9 +141,13 @@ export const detectScriptIntegrityHashMissingFromReconstruction = ({
 }): readonly ScriptIntegrityHashMissingReplayDetection[] => {
   const detections: ScriptIntegrityHashMissingReplayDetection[] = [];
   reconstruction.transactions.forEach((transaction, transactionIndex) => {
-    const semantics = decodeSemantics(transaction.fullTransactionCbor);
+    const semantics = decodeSemantics(
+      transaction.fullTransactionCbor,
+      "normal",
+    );
     if (
       semantics !== null &&
+      "validity" in semantics.full &&
       semantics.full.validity === "TxIsValid" &&
       semantics.faultHolds
     ) {
@@ -152,7 +168,10 @@ export const detectScriptIntegrityHashMissingFromReconstruction = ({
     }
   });
   reconstruction.forcedTransactions.forEach((transaction, forcedIndex) => {
-    const semantics = decodeSemantics(transaction.fullTransactionCbor);
+    const semantics = decodeSemantics(
+      transaction.fullTransactionCbor,
+      "forced",
+    );
     if (semantics === null) return;
     const verdict = transaction.value.verdict;
     const rejected = verdict !== "ForcedTxValid";
@@ -229,7 +248,10 @@ export const reconstructScriptIntegrityHashMissingEvidence = async ({
     );
     if (transaction === undefined)
       throw new Error("authenticated accepted transaction disappeared");
-    const semantics = decodeSemantics(transaction.fullTransactionCbor);
+    const semantics = decodeSemantics(
+      transaction.fullTransactionCbor,
+      "normal",
+    );
     if (semantics === null)
       throw new Error("authenticated accepted semantics became undecodable");
     return prepareScriptIntegrityHashMissingEvidence({
@@ -267,22 +289,21 @@ export const reconstructScriptIntegrityHashMissingEvidence = async ({
       ForcedTransactionEventKey: { tx_order_id: forced.key },
     },
   });
-  const adjudicated = adjudicateMidgardNativeTxFullValidity(
-    decodeMidgardNativeTxFullFromCanonicalCbor(forced.fullTransactionCbor),
-    forced.value.verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid",
-  );
-  const semantics = decodeSemantics(forced.fullTransactionCbor);
+  const semantics = decodeSemantics(forced.fullTransactionCbor, "forced");
   if (semantics === null)
     throw new Error("authenticated forced semantics became undecodable");
   // Re-derive once more here so package-owned reconstruction checks the exact
   // retained leaf source rather than copying it without verification.
-  const source = deriveMidgardNativeTxProofSource(adjudicated);
+  const source = deriveMidgardForcedTxProofSourceFromCanonicalCbor(
+    forced.fullTransactionCbor,
+  );
   if (
-    source.compactCbor.toString("hex") !== forced.value.source.compact_cbor ||
+    source.compactCbor.toString("hex") !==
+      forced.value.submitted_source.compact_cbor ||
     source.witnessSetCompactCbor.toString("hex") !==
-      forced.value.source.witness_set_compact_cbor ||
+      forced.value.submitted_source.witness_set_compact_cbor ||
     source.fieldPreimageLengthsCbor.toString("hex") !==
-      forced.value.source.field_preimage_lengths_cbor
+      forced.value.submitted_source.field_preimage_lengths_cbor
   ) {
     throw new Error(
       "authenticated forced proof source changed during reconstruction",

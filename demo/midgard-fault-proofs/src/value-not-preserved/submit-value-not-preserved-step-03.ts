@@ -233,6 +233,7 @@ export const submitValueNotPreservedStep03 = async ({
   // The tier is a pure function of the preimage's length — nothing here
   // forces one.
   const outputsPlan = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor,
@@ -244,6 +245,7 @@ export const submitValueNotPreservedStep03 = async ({
     mintItems === null
       ? null
       : planFaultProofFieldOpening({
+          anchorSourceKind: 0n,
           fieldIndex: MIDGARD_FIELD_INDEX.mint,
           anchorTxId: state.bad_tx_id,
           nativeTxCompactCbor,

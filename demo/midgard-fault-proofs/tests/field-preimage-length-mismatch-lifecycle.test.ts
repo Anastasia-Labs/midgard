@@ -650,6 +650,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
     });
     expect(plan.tier).toBe("Certified");
     const planned = {
+      sourceKind: 0n,
       fieldIndex: fixture.scenario.fieldIndex,
       nativeTxId: fixture.scenario.nativeTxId,
       nativeTxCompactCbor: fixture.scenario.inclusion.nativeTxCompactCbor,
@@ -1160,8 +1161,8 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
       ...membership,
       value: {
         ...membership.value,
-        source: {
-          ...membership.value.source,
+        submitted_source: {
+          ...membership.value.submitted_source,
           field_preimage_lengths_cbor: encodeMidgardNativeTxProofFieldLengths([
             preimage.length + 1,
             ...fixture.scenario.honestLengths.slice(1),

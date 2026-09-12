@@ -138,6 +138,7 @@ const prepareStep04 = async (shared: Step04Shared) => {
   // length pick the tier — a scan over a large committed reference-input list
   // publishes tier-2 carriage rather than forcing it.
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.referenceInputs,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor: shared.nativeTxCompactCbor,

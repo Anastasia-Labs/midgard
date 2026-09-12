@@ -105,7 +105,7 @@ describe("canonical V1 coupled signer/witness Cardano boundary", () => {
       signerField.nativeCanonicalBytes,
     );
     expect(retainedDa.forced.reconstructedCanonicalBytes).toBe(
-      signerField.nativeCanonicalBytes,
+      signerField.nativeCanonicalBytes - 1,
     );
     expect(retainedDa.normal.revealStepCount).toBe(
       signerField.completeFoldStepCount,

@@ -3,7 +3,7 @@ use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry as mpf
 use cardano/transaction.{OutputReference}
 use midgard/fraud_proofs/missing_redeemer/rule
-use midgard/fraud_proofs/native_tx/compact.{native_tx_proof_commitment_v1}
+use midgard/fraud_proofs/native_tx/compact.{tx_proof_commitment_v1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state
 use midgard/rejection_reason_v1.{RedeemerMissing, rejection_code_of}
@@ -273,7 +273,12 @@ fn stage_ten_authentication(
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: blake2b_256(cbor.serialise(event_key)),
     transaction_id: zero,
-    transaction_commitment: native_tx_proof_commitment_v1(#"", #"", #""),
+    transaction_commitment: tx_proof_commitment_v1(
+      expected_source_kind,
+      #"",
+      #"",
+      #"",
+    ),
     validation_context_hash: validation_trace_v1.hash_validation_context(#""),
     source_kind: if wrong_machine_source_kind {
       validation_trace_v1.Forced

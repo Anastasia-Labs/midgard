@@ -6,7 +6,7 @@ Last reviewed: 2026-09-07 (source inventory and installation scope).
 
 ## Source inventory
 
-The 55 source catalogue categories and 55 watcher installations are listed
+The 55 source catalogue categories and all 55 watcher installations are listed
 below. This is source coverage, not a claim that a particular network has these
 contracts deployed or that every acceptance suite passed on this revision.
 

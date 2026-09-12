@@ -1,8 +1,6 @@
-import {
-  adjudicateMidgardNativeTxFullValidity,
-  computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSource,
-} from "@al-ft/midgard-core";
+import { computeMidgardNativeTxId } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
@@ -87,17 +85,16 @@ describe("invalidRange wrongful rejection V1", () => {
     expectTypeOf<keyof InvalidRangeForcedInput>().toEqualTypeOf<"block">());
 
   it("discovers authenticated wrongful rejections through complete replay", async () => {
-    const invalid = adjudicateMidgardNativeTxFullValidity(
+    const invalid = materializeMidgardForcedTxFromCanonical(
       makeNativeTx({
         spendInputCbors: [],
         fee: 0n,
         validityIntervalStart: 5n,
         validityIntervalEnd: 20n,
       }),
-      "TxIsInvalid",
     );
     const transactionId = computeMidgardNativeTxId(invalid).toString("hex");
-    const source = deriveMidgardNativeTxProofSource(invalid);
+    const source = deriveMidgardForcedTxProofSource(invalid);
     const block = {
       headerHash: "33".repeat(32),
       payloadEnvelopeSha256: "44".repeat(32),
@@ -110,7 +107,7 @@ describe("invalidRange wrongful rejection V1", () => {
             key: { transactionId: "22".repeat(32), outputIndex: 0n },
             value: {
               tx_id: transactionId,
-              source: {
+              submitted_source: {
                 compact_cbor: source.compactCbor.toString("hex"),
                 witness_set_compact_cbor:
                   source.witnessSetCompactCbor.toString("hex"),

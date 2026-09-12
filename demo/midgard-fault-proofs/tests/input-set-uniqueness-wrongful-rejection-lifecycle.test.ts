@@ -82,7 +82,7 @@ const exerciseForcedLifecycle = async ({
   const sourceKey = base.eventKey.ForcedTransactionEventKey.tx_order_id;
   const forcedTransaction = {
     tx_id: fixture.nativeTxId,
-    source: fixture.forcedSource,
+    submitted_source: fixture.forcedSource,
     verdict: {
       ForcedTxInvalid: {
         reason: {
@@ -138,9 +138,10 @@ const exerciseForcedLifecycle = async ({
   console.info("[isu-frontier] references");
   const plan = (fieldIndex: number, itemCbors: readonly string[]) =>
     planFaultProofFieldOpening({
+      anchorSourceKind: 1n,
       fieldIndex,
       anchorTxId: fixture.nativeTxId,
-      nativeTxCompactCbor: fixture.nativeTxCompactCbor,
+      nativeTxCompactCbor: fixture.forcedSource.compact_cbor,
       itemCbors: itemCbors.map((item) => Buffer.from(item, "hex")),
       owner: harness.proverSigner.paymentKeyHash,
       label: `input-set-uniqueness frontier field ${fieldIndex.toString()}`,
@@ -195,7 +196,7 @@ const exerciseForcedLifecycle = async ({
           harness.contracts.fieldPreimageCertificate.mintingScript,
         certificateReferenceScriptUtxo: certificateReference,
         chunkUtxos: chunks,
-        compactCbor: fixture.nativeTxCompactCbor,
+        compactCbor: fixture.forcedSource.compact_cbor,
         witnessSetCompactCbor: fixture.forcedSource.witness_set_compact_cbor,
       }),
     );
@@ -260,7 +261,7 @@ const exerciseForcedLifecycle = async ({
         categoryId: harness.category.categoryId,
         signer: harness.proverSigner,
         threadOutRef,
-        nativeTxCompactCbor: fixture.nativeTxCompactCbor,
+        nativeTxCompactCbor: fixture.forcedSource.compact_cbor,
         spendInputItemCbors: fixture.spendInputItemCbors,
         referenceInputItemCbors: fixture.referenceInputItemCbors,
         publishedSpendCarriageUtxos: spendPublication.result,
@@ -285,7 +286,7 @@ const exerciseForcedLifecycle = async ({
         categoryId: harness.category.categoryId,
         signer: harness.proverSigner,
         threadOutRef,
-        nativeTxCompactCbor: fixture.nativeTxCompactCbor,
+        nativeTxCompactCbor: fixture.forcedSource.compact_cbor,
         spendInputItemCbors: fixture.spendInputItemCbors,
         referenceInputItemCbors: fixture.referenceInputItemCbors,
         publishedCarriageUtxos: readingSpend
@@ -335,7 +336,7 @@ const exerciseForcedLifecycle = async ({
         categoryId: harness.category.categoryId,
         signer: harness.proverSigner,
         threadOutRef: substitutionThread,
-        nativeTxCompactCbor: fixture.nativeTxCompactCbor,
+        nativeTxCompactCbor: fixture.forcedSource.compact_cbor,
         spendInputItemCbors: fixture.spendInputItemCbors,
         referenceInputItemCbors: fixture.referenceInputItemCbors,
         referenceScriptUtxo: references[0],

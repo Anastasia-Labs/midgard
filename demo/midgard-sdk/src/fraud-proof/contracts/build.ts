@@ -30,6 +30,7 @@ import {
 import { buildMinFeeChain } from "./families/min-fee.js";
 import { buildMintAuthorizationChain } from "./families/mint-authorization.js";
 import { buildMintDeclaredAssetLimitChain } from "./families/mint-declared-asset-limit.js";
+import { buildMintItemNonCanonicalChain } from "./families/mint-item-non-canonical.js";
 import { buildMissingNativeScriptTxChain } from "./families/missing-native-script-tx.js";
 import { buildMissingNativeScriptUtxoChain } from "./families/missing-native-script-utxo.js";
 import { buildMissingRedeemerChain } from "./families/missing-redeemer.js";
@@ -52,7 +53,6 @@ import { buildScriptIntegrityHashMismatchChain } from "./families/script-integri
 import { buildScriptIntegrityHashMissingChain } from "./families/script-integrity-hash-missing.js";
 import { buildSpendInputSignerMissingChain } from "./families/spend-input-signer-missing.js";
 import { buildTransactionOutputNonCanonicalChain } from "./families/transaction-output-non-canonical.js";
-import { buildMintItemNonCanonicalChain } from "./families/mint-item-non-canonical.js";
 import { buildTransitionTraceChain } from "./families/transition-trace.js";
 import { buildUnusedRedeemerChain } from "./families/unused-redeemer.js";
 import { buildUnusedScriptWitnessChain } from "./families/unused-script-witness.js";

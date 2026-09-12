@@ -3,6 +3,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils
 use midgard/computation_thread as ct
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{
   BodyAnchor, opened_field_view, required_signers_field_index,
@@ -65,7 +66,7 @@ validator main(
         //    no reproduction of the signer list, and no re-hash of it.
         let required_signers_view = opened_field_view(
           required_signers_opening,
-          BodyAnchor { tx_id: state.verified_tx_id },
+          BodyAnchor { tx_id: state.verified_tx_id, source_kind: 1 },
           required_signers_field_index,
           reference_inputs,
           field_preimage_certificate_policy_id,
@@ -130,7 +131,7 @@ fn run_signer(index: Int, expected_hash: Option<ByteArray>) -> Bool {
         input_index: 0,
         output_index: 0,
         required_signers_opening: fixture.inline_body_opening(
-          block.compact_cbor,
+          forced_fixture.from_native_compact(block.compact_cbor),
           block.tx.body.required_signers,
         ),
       },

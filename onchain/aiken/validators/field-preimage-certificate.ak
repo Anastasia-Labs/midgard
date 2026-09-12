@@ -60,6 +60,7 @@ validator field_preimage_certificate {
   ) {
     when redeemer is {
       Certify {
+        source_kind,
         compact_cbor,
         witness_set_compact_cbor,
         chunk_ref_input_indices,
@@ -173,6 +174,7 @@ validator field_preimage_certificate {
         //     binding, the split shape, the digest vector, the reconstruction
         //     against the positionally-extracted field commitment.
         verify_field_preimage_certificate_v1(
+          source_kind,
           certificate,
           compact_cbor,
           witness_set_compact_cbor,

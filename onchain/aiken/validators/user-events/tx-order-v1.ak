@@ -61,7 +61,13 @@ validator spend(hub_oracle: ScriptHash) {
       = tx_order_datum
 
     expect
-        user_events.BurnEventNFT { nonce_asset_name: burn_asset_name, .. }: user_events.MintRedeemer
+        MintRedeemer {
+          event: user_events.BurnEventNFT {
+            nonce_asset_name: burn_asset_name,
+            ..
+          },
+          ..
+        }: MintRedeemer
       = utils.get_redeemer_at(
       redeemers,
       Mint(tx_order_policy_id),

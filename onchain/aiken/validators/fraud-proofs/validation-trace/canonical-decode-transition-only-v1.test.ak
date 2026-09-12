@@ -36,15 +36,13 @@ use fraud_proofs/validation_trace/canonical_decode_item_semantic_v1 as authentic
 use fraud_proofs/validation_trace/canonical_decode_v1 as prepare_validator
 use midgard/canonical_decode_item_staging_v1 as staging
 use midgard/computation_thread as ct
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_body_compact, native_tx_id_for_version,
 }
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_versioned_script}
-use midgard/fraud_proofs/native_tx/transaction.{
-  midgard_transaction_proof_commitment_v1, midgard_transaction_proof_source_v1,
-  midgard_transaction_to_compact,
-} as native_tx_transaction
+use midgard/fraud_proofs/native_tx/transaction.{midgard_transaction_to_compact} as native_tx_transaction
 use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionWitnessSet, MidgardVersionedScript,
   PlutusV3Script, native_tx_version_v1,
@@ -136,7 +134,7 @@ fn step_fixture(script_bytes: ByteArray) -> OptionBStepFixtureV1 {
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = forced_fixture.from_native_transaction(tx)
   let work_witness_cbor = encode_transaction_field_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
@@ -152,7 +150,7 @@ fn step_fixture(script_bytes: ByteArray) -> OptionBStepFixtureV1 {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_c,
     transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    transaction_commitment: forced_fixture.commitment_of_native_transaction(tx),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       context_cbor,
     ),

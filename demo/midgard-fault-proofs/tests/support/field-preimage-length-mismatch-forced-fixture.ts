@@ -9,12 +9,12 @@
  * with the membership proof opened against the L1 header's counted root.
  */
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
   decodeMidgardNativeTxProofFieldLengths,
-  deriveMidgardNativeTxProofSource,
   encodeMidgardNativeTxProofFieldLengths,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   EMPTY_MERKLE_TREE_ROOT,
   EventKeySchema,
@@ -94,7 +94,7 @@ export const buildFieldPreimageLengthForcedFixture = async ({
   const finalUtxosRoot = await keyValuePhasRootWithCount([
     { key: Buffer.from(finalUtxo[0], "hex"), value: finalDescriptor },
   ]);
-  const nativeTx = adjudicateMidgardNativeTxFullValidity(
+  const nativeTx = materializeMidgardForcedTxFromCanonical(
     makeNativeTx({
       spendInputCbors: [],
       fee: 0n,
@@ -102,15 +102,14 @@ export const buildFieldPreimageLengthForcedFixture = async ({
       outputByte: "b2",
       witnessByte: "b8",
     }),
-    verdict === "valid" ? "TxIsValid" : "TxIsInvalid",
   );
-  const source = deriveMidgardNativeTxProofSource(nativeTx);
+  const source = deriveMidgardForcedTxProofSource(nativeTx);
   const lengths = lengthsMutation([
     ...decodeMidgardNativeTxProofFieldLengths(source.fieldPreimageLengthsCbor),
   ]);
   const forcedTransaction: ForcedInclusionTxV1 = {
     tx_id: computeMidgardNativeTxId(nativeTx).toString("hex"),
-    source: {
+    submitted_source: {
       compact_cbor: source.compactCbor.toString("hex"),
       witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
       field_preimage_lengths_cbor:

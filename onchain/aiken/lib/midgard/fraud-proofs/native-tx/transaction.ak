@@ -29,16 +29,16 @@ use midgard/fraud_proofs/native_tx/preimages.{
   verify_canonical_mint_preimage_cbor,
 }
 use midgard/fraud_proofs/native_tx/types.{
-  MidgardAddressWitness, MidgardRedeemerWitness, MidgardScriptWitness,
-  MidgardTransaction, MidgardTransactionBody,
+  ForcedTxCompact, MidgardAddressWitness, MidgardRedeemerWitness,
+  MidgardScriptWitness, MidgardTransaction, MidgardTransactionBody,
   MidgardTransactionBodyPartialPreimages, MidgardTransactionBodyPartialView,
   MidgardTransactionPartialView, MidgardTransactionWitnessSet,
   MidgardTransactionWitnessSetPartialPreimages,
   MidgardTransactionWitnessSetPartialView, MidgardTxInput, MidgardTxOutput,
   NativeTxBodyCompact, NativeTxCompact, NativeTxFieldPreimageLengthsV1,
   NativeTxProofSourceCborV1, NativeTxWitnessSetCompact,
-  VerifiedMidgardNativeTxCompact, VerifiedMidgardTransaction,
-  native_tx_version_v1,
+  SubmittedForcedTransaction, TxCompactView, VerifiedMidgardTransaction,
+  VerifiedTxSourceView, native_tx_version_v1,
 }
 use midgard/native_tx_field_access_v1.{field_commitment}
 
@@ -299,13 +299,13 @@ pub fn midgard_transaction_proof_commitment_v1(
 }
 
 fn verify_midgard_transaction_field_preimage_against_source_v1(
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   field_lengths: NativeTxFieldPreimageLengthsV1,
   field_index: Int,
   preimage_cbor: ByteArray,
 ) -> Bool {
-  let NativeTxCompact { body, .. } = verified.tx_compact
+  let body = verified.tx_compact.body
 
   when field_index is {
     0 -> {
@@ -440,11 +440,11 @@ pub fn verify_midgard_transaction_field_preimage_v1(
 /// extraction now lives behind `authenticated_field_view`'s door and is
 /// deliberately not exported from anywhere.
 fn retired_counted_field_commitment_v1(
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
   field_index: Int,
 ) -> ByteArray {
-  let NativeTxCompact { body, .. } = verified.tx_compact
+  let body = verified.tx_compact.body
   when field_index is {
     0 -> body.spend_inputs_hash
     1 -> body.reference_inputs_hash
@@ -916,12 +916,15 @@ pub fn verify_midgard_transaction_v1(
 }
 
 pub fn partial_view_from_compact(
-  compact: VerifiedMidgardNativeTxCompact,
+  compact: VerifiedTxSourceView,
 ) -> MidgardTransactionPartialView {
-  let NativeTxCompact { body, validity_code, .. } = compact.tx_compact
+  let TxCompactView { body, validity_code, .. } = compact.tx_compact
   MidgardTransactionPartialView {
     version: Some(compact.version),
-    validity: Some(validity_code |> validity_from_code),
+    validity: when validity_code is {
+      Some(code) -> Some(validity_from_code(code))
+      None -> None
+    },
     body: Some(
       MidgardTransactionBodyPartialView {
         inputs: None,
@@ -1090,14 +1093,14 @@ pub fn partial_witness_set_view_from_compact_and_preimages(
 }
 
 pub fn partial_view_from_compact_and_preimages(
-  compact: VerifiedMidgardNativeTxCompact,
+  compact: VerifiedTxSourceView,
   body_preimages: MidgardTransactionBodyPartialPreimages,
   witness_set: Option<NativeTxWitnessSetCompact>,
   witness_set_preimages: MidgardTransactionWitnessSetPartialPreimages,
 ) -> MidgardTransactionPartialView {
   let witness_set_view = when witness_set is {
     Some(witness_set) -> {
-      let NativeTxCompact { witness_set_hash, .. } = compact.tx_compact
+      let witness_set_hash = compact.tx_compact.witness_set_hash
       expect
         blake2b_256(encode_native_tx_witness_set_compact(witness_set)) == witness_set_hash
       Some(
@@ -1109,14 +1112,59 @@ pub fn partial_view_from_compact_and_preimages(
     }
     None -> None
   }
-  let NativeTxCompact { body, validity_code, .. } = compact.tx_compact
+  let TxCompactView { body, validity_code, .. } = compact.tx_compact
 
   MidgardTransactionPartialView {
     version: Some(compact.version),
-    validity: Some(validity_code |> validity_from_code),
+    validity: when validity_code is {
+      Some(code) -> Some(validity_from_code(code))
+      None -> None
+    },
     body: Some(
       partial_body_view_from_compact_and_preimages(body, body_preimages),
     ),
     witness_set: witness_set_view,
+  }
+}
+
+pub fn encode_submitted_forced_transaction_v1(
+  tx: SubmittedForcedTransaction,
+) -> ByteArray {
+  expect tx.version == 1
+  #"8301"
+    |> bytearray.concat(encode_midgard_transaction_body_full(tx.body))
+    |> bytearray.concat(
+        encode_midgard_transaction_witness_set_full(tx.witness_set),
+      )
+}
+
+pub fn decode_submitted_forced_transaction_v1(
+  tx_cbor: ByteArray,
+) -> SubmittedForcedTransaction {
+  let Pair(offset, count) = decode_definite_array_header_at(tx_cbor, 0)
+  expect count == 3
+  let Pair(offset, version) = decode_canonical_uint_at(tx_cbor, offset)
+  expect version == 1
+  let Pair(offset, body) = decode_midgard_transaction_body_at(tx_cbor, offset)
+  let Pair(offset, witness_set) = decode_midgard_transaction_witness_set_at(
+    tx_cbor,
+    offset,
+  )
+  expect offset == bytearray.length(tx_cbor)
+  let tx = SubmittedForcedTransaction { version, body, witness_set }
+  expect encode_submitted_forced_transaction_v1(tx) == tx_cbor
+  tx
+}
+
+pub fn submitted_forced_transaction_to_compact(
+  tx: SubmittedForcedTransaction,
+) -> ForcedTxCompact {
+  expect tx.version == 1
+  ForcedTxCompact {
+    body: midgard_transaction_body_to_compact(tx.body),
+    witness_set_hash: tx.witness_set
+      |> midgard_transaction_witness_set_to_compact
+      |> encode_native_tx_witness_set_compact
+      |> blake2b_256,
   }
 }

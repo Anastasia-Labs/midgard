@@ -5,7 +5,7 @@ use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/compact.{
-  native_tx_proof_commitment_v1, verify_native_tx_proof_source_v1,
+  tx_proof_commitment_v1, verify_tx_proof_source_v1,
 }
 use midgard/native_script_scan_v1
 use midgard/script_proof_v1
@@ -222,7 +222,8 @@ pub fn verify_native_scripts(
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
   let control = native_scripts_control_from_witness(witness.work_witness_cbor)
-  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
+  let Pair(verified_source, _) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -230,7 +231,8 @@ pub fn verify_native_scripts(
   )
   and {
     verified_source.version == 1,
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,
@@ -388,7 +390,8 @@ fn native_scripts_source_is_bound(
   witness: ValidationOneStepWitnessV1,
   control: NativeScriptsControlV1,
 ) -> Bool {
-  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
+  let Pair(verified_source, _) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -396,7 +399,8 @@ fn native_scripts_source_is_bound(
   )
   and {
     verified_source.version == 1,
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,

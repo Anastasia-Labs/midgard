@@ -8,9 +8,9 @@ use midgard/cek_machine_v1
 use midgard/cek_proof_v1
 use midgard/fraud_proofs/native_tx/codec.{encode_definite_bytes}
 use midgard/fraud_proofs/native_tx/types.{
-  MidgardAddress, MidgardCredential, NativeTxBodyCompact, NativeTxCompact,
+  MidgardAddress, MidgardCredential, NativeTxBodyCompact,
   NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact, PubKeyCredential,
-  ScriptCredential,
+  ScriptCredential, TxCompactView,
 }
 use midgard/mpf_proof_fold_v1
 use midgard/script_proof_v1
@@ -194,11 +194,11 @@ pub fn transaction_field_preimage_length(
 }
 
 pub fn transaction_field_commitment(
-  compact: NativeTxCompact,
+  compact: TxCompactView,
   witness_set: NativeTxWitnessSetCompact,
   field_index: Int,
 ) -> ByteArray {
-  let NativeTxCompact { body, .. } = compact
+  let TxCompactView { body, .. } = compact
   when field_index is {
     0 -> body.spend_inputs_hash
     1 -> body.reference_inputs_hash

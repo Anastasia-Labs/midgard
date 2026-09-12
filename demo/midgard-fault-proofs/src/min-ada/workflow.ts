@@ -2,6 +2,7 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
+import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import {
   FraudProofComputationThreadStepDatum,
   MIDGARD_FIELD_INDEX,
@@ -128,7 +129,9 @@ const isForced = (
 
 const witnessSet = (admitted: AdmittedTx) => {
   const compact = deriveMidgardNativeTxWitnessSetCompact(
-    decodeMidgardNativeTxFullFromCanonicalCbor(
+    (isForced(admitted)
+      ? decodeMidgardForcedTxFullFromCanonicalCbor
+      : decodeMidgardNativeTxFullFromCanonicalCbor)(
       Buffer.from(admitted.prepared.nativeTxCanonicalCbor, "hex"),
     ).witnessSet,
   );
@@ -143,6 +146,7 @@ const witnessSet = (admitted: AdmittedTx) => {
 
 const txFieldPlan = (admitted: AdmittedTx, owner: string) =>
   planFaultProofFieldOpening({
+    anchorSourceKind: isForced(admitted) ? 1n : 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     anchorTxId: admitted.prepared.badTxId,
     nativeTxCompactCbor: admitted.prepared.nativeTxCompactCbor,

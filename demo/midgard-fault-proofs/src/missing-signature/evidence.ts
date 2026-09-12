@@ -85,12 +85,14 @@ export const selectMissingSignatureAccusation = ({
  */
 export const planMissingSignatureRequiredSignersOpening = ({
   anchorTxId,
+  anchorSourceKind,
   nativeTxCompactCbor,
   requiredSignerHashes,
   owner,
   publish,
 }: {
   readonly anchorTxId: string;
+  readonly anchorSourceKind: 0n | 1n;
   readonly nativeTxCompactCbor: string;
   readonly requiredSignerHashes: readonly string[];
   readonly owner: string;
@@ -99,6 +101,7 @@ export const planMissingSignatureRequiredSignersOpening = ({
   planFaultProofFieldOpening({
     fieldIndex: MIDGARD_FIELD_INDEX.requiredSigners,
     anchorTxId,
+    anchorSourceKind,
     nativeTxCompactCbor,
     itemCbors: requiredSignerHashes.map((hash) => {
       if (!/^[0-9a-f]{56}$/u.test(hash)) {
@@ -124,6 +127,7 @@ export const planMissingSignatureRequiredSignersOpening = ({
  */
 export const planMissingSignatureAddressWitnessesOpening = ({
   anchorTxId,
+  anchorSourceKind,
   nativeTxCompactCbor,
   addrTxWits,
   witnessSet,
@@ -132,6 +136,7 @@ export const planMissingSignatureAddressWitnessesOpening = ({
   publish,
 }: {
   readonly anchorTxId: string;
+  readonly anchorSourceKind: 0n | 1n;
   readonly nativeTxCompactCbor: string;
   readonly addrTxWits: readonly MidgardAddressWitness[];
   readonly witnessSet: NativeTxWitnessSetCompact;
@@ -143,6 +148,7 @@ export const planMissingSignatureAddressWitnessesOpening = ({
   planFaultProofFieldOpening({
     fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
     anchorTxId,
+    anchorSourceKind,
     nativeTxCompactCbor,
     itemCbors: addrTxWits.map(encodeMidgardAddressWitnessCanonical),
     owner,

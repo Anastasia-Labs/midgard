@@ -1,12 +1,12 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
-  deriveMidgardNativeTxFaultEvidenceMaterial,
-  encodeMidgardNativeTxCanonical,
   encodeMidgardSpendInputItem,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
+import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -176,18 +176,17 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
       txId: Buffer.from("71".repeat(32), "hex"),
       outputIndex: 0,
     });
-    const invalid = adjudicateMidgardNativeTxFullValidity(
+    const invalid = materializeMidgardForcedTxFromCanonical(
       makeNativeTx({ spendInputCbors: [input], fee: 0n }),
-      "TxIsInvalid",
     );
-    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-      encodeMidgardNativeTxCanonical(invalid),
+    const material = deriveMidgardForcedTxFaultEvidenceMaterial(
+      encodeMidgardForcedTxCanonical(invalid),
     );
     const transactionId = computeMidgardNativeTxId(invalid).toString("hex");
     const key = { transactionId: "72".repeat(32), outputIndex: 0n };
     const leaf = {
       tx_id: transactionId,
-      source: {
+      submitted_source: {
         compact_cbor: material.proofSource.compactCbor.toString("hex"),
         witness_set_compact_cbor:
           material.proofSource.witnessSetCompactCbor.toString("hex"),
@@ -250,9 +249,9 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
       blockSlot: null,
       violationReason: null,
       nativeTxId: transactionId,
-      nativeTxCompactCbor: leaf.source.compact_cbor,
+      nativeTxCompactCbor: leaf.submitted_source.compact_cbor,
       l2TransactionSourceCbor: Data.to(
-        { tx_id: transactionId, source: leaf.source } as never,
+        { tx_id: transactionId, source: leaf.submitted_source } as never,
         SDK.L2TransactionSource as never,
       ),
       transactionsPhasRoot: "00".repeat(32),
@@ -336,7 +335,7 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
       value: leaf,
       keyBytes,
       valueBytes,
-      fullTransactionCbor: encodeMidgardNativeTxCanonical(invalid),
+      fullTransactionCbor: encodeMidgardForcedTxCanonical(invalid),
     };
     const block = {
       ...canonical,

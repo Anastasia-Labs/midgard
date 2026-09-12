@@ -6,7 +6,7 @@ use aiken/primitive/bytearray
 use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/codec.{encode_definite_bytes}
 use midgard/fraud_proofs/native_tx/compact.{
-  decode_native_tx_compact_v1, verify_native_tx_proof_source_v1,
+  decode_tx_compact_view_v1, verify_tx_proof_source_v1,
 }
 use midgard/native_tx_field_access_v1
 use midgard/script_sources_raw_frame_v1 as raw
@@ -143,7 +143,7 @@ pub fn stage_four_finish(
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
   let frame = raw.open_frame_v1(pre, witness, 30, 4)
-  let compact = decode_native_tx_compact_v1(frame.compact_cbor)
+  let compact = decode_tx_compact_view_v1(pre.source_kind, frame.compact_cbor)
   let control = base_control(frame)
   let empty = compact.body.outputs_hash == native_tx_field_access_v1.empty_field_commitment
   and {
@@ -171,7 +171,8 @@ pub fn stage_six_begin(
   carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
   let frame = raw.open_frame_v1(pre, witness, 30, 6)
-  let Pair(verified, ws) = verify_native_tx_proof_source_v1(
+  let Pair(verified, ws) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     frame.compact_cbor,
     frame.witness_set_compact_cbor,
@@ -249,7 +250,7 @@ pub fn stage_six_finish(
   let frame = raw.open_frame_v1(pre, witness, 30, 6)
   let control = base_control(frame)
   let fold = control.mint_fold
-  let compact = decode_native_tx_compact_v1(frame.compact_cbor)
+  let compact = decode_tx_compact_view_v1(pre.source_kind, frame.compact_cbor)
   let empty = fold.policy_count == -1 && compact.body.mint_hash == native_tx_field_access_v1.empty_field_commitment
   let next_fold = if empty {
     MintFoldControlV1 { ..fold, policy_count: 0 }

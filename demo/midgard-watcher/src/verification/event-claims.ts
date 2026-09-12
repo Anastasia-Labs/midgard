@@ -1,10 +1,8 @@
 import {
-  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardForcedTxProofCommitment,
   computeMidgardNativeTxId,
-  computeMidgardNativeTxProofCommitment,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxProofSource,
-  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
+  decodeMidgardForcedTxFullFromCanonicalCbor,
+  deriveMidgardForcedTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 import {
   committedDepositValueBytes,
@@ -78,33 +76,29 @@ export const bindWatcherOriginEventClaim = (
     const origin = Data.from(event.eventCborHex, TxOrderEvent);
     const committed = Data.from(claim.valueCborHex, ForcedInclusionTxV1);
     const bytes = Buffer.from(claim.canonicalNativeTxCborHex, "hex");
-    const native = decodeMidgardNativeTxFullFromCanonicalCbor(bytes);
-    const submitted = deriveMidgardNativeTxProofSourceFromCanonicalCbor(bytes);
+    const native = decodeMidgardForcedTxFullFromCanonicalCbor(bytes);
+    const submitted = deriveMidgardForcedTxProofSourceFromCanonicalCbor(bytes);
     const operatorValidity = watcherForcedOperatorVerdict(committed.verdict);
-    const adjudicated = deriveMidgardNativeTxProofSource(
-      adjudicateMidgardNativeTxFullValidity(
-        native,
-        committed.verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid",
-      ),
-    );
     if (
       Data.to(origin.id, OutputReference) !== claim.eventIdCborHex ||
       operatorValidity === null ||
-      origin.tx.tx_id !== computeMidgardNativeTxId(native).toString("hex") ||
+      origin.tx.tx_id !==
+        computeMidgardNativeTxId(native.compact).toString("hex") ||
       committed.tx_id !== origin.tx.tx_id ||
       origin.tx.transaction_commitment !==
-        computeMidgardNativeTxProofCommitment(submitted).toString("hex") ||
-      origin.tx.source.compact_cbor !== submitted.compactCbor.toString("hex") ||
-      origin.tx.source.witness_set_compact_cbor !==
+        computeMidgardForcedTxProofCommitment(submitted).toString("hex") ||
+      origin.tx.submitted_source.compact_cbor !==
+        submitted.compactCbor.toString("hex") ||
+      origin.tx.submitted_source.witness_set_compact_cbor !==
         submitted.witnessSetCompactCbor.toString("hex") ||
-      origin.tx.source.field_preimage_lengths_cbor !==
+      origin.tx.submitted_source.field_preimage_lengths_cbor !==
         submitted.fieldPreimageLengthsCbor.toString("hex") ||
-      committed.source.compact_cbor !==
-        adjudicated.compactCbor.toString("hex") ||
-      committed.source.witness_set_compact_cbor !==
-        adjudicated.witnessSetCompactCbor.toString("hex") ||
-      committed.source.field_preimage_lengths_cbor !==
-        adjudicated.fieldPreimageLengthsCbor.toString("hex")
+      committed.submitted_source.compact_cbor !==
+        submitted.compactCbor.toString("hex") ||
+      committed.submitted_source.witness_set_compact_cbor !==
+        submitted.witnessSetCompactCbor.toString("hex") ||
+      committed.submitted_source.field_preimage_lengths_cbor !==
+        submitted.fieldPreimageLengthsCbor.toString("hex")
     ) {
       throw new Error(
         "committed forced source differs from its originating order",

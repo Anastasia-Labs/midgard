@@ -44,7 +44,7 @@ validator l2_open(dispatcher: ScriptHash) {
     expect source: ledger_state.L2TransactionSourceV1 = source_data
     let anchored = anchored_native_tx(
       BodyTxOpening { native_tx_compact_cbor: source.source.compact_cbor },
-      BodyAnchor { tx_id: source_membership.key },
+      BodyAnchor { tx_id: source_membership.key, source_kind: 0 },
     )
     expect unanchored_validity_code_of(anchored) == 0
     let inputs = proof.door_body_field_items(

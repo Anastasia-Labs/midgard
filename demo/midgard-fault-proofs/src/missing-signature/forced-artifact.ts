@@ -2,7 +2,7 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import {
   computeHash28,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardForcedTxFullFromCanonicalCbor,
   deriveMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
 import {
@@ -126,7 +126,7 @@ export const admitMissingSignatureForcedArtifact = async (
     throw new Error(
       "missingSignature: artifact is not a wrongful RequiredSignerUnsigned rejection",
     );
-  const transaction = decodeMidgardNativeTxFullFromCanonicalCbor(
+  const transaction = decodeMidgardForcedTxFullFromCanonicalCbor(
     Buffer.from(transactionCbor, "hex"),
   );
   const witnessSet = deriveMidgardNativeTxWitnessSetCompact(
@@ -134,7 +134,7 @@ export const admitMissingSignatureForcedArtifact = async (
   );
   return {
     ...found,
-    nativeTxCompactCbor: membership.value.source.compact_cbor,
+    nativeTxCompactCbor: membership.value.submitted_source.compact_cbor,
     verifiedWitnessSetHash:
       transaction.compact.transactionWitnessSetHash.toString("hex"),
     witnessSetCompact: {

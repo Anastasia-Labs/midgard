@@ -13,9 +13,11 @@ use midgard/fraud_proof_catalogue
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
 }
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
+use midgard/fraud_proofs/native_tx/compact.{
+  verify_forced_tx_proof_source_v1, verify_native_tx_proof_source_v1,
+}
 use midgard/fraud_proofs/native_tx/types.{
-  VerifiedMidgardNativeTxCompact, native_tx_version_v1,
+  VerifiedTxSourceView, native_tx_version_v1,
 }
 use midgard/ledger_state
 use midgard/rejection_reason_v1.{
@@ -119,12 +121,12 @@ pub fn encode_verdict_subject_v1(subject: VerdictSubjectV1) -> ByteArray {
 /// header's counted `transactions_root`; this seam additionally enforces the
 /// leaf-is-acceptance validity scalar before constructing canonical state.
 pub fn bind_accepted_subject_v1(
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
 ) -> VerdictSubjectV1 {
   expect and {
       verified.version == native_tx_version_v1,
       is_h32(verified.tx_id),
-      verified.tx_compact.validity_code == 0,
+      verified.tx_compact.validity_code == Some(0),
     }
   VerdictSubjectV1 {
     version,
@@ -137,7 +139,7 @@ pub fn bind_accepted_subject_v1(
 }
 
 /// Opens a forced leaf against the challenged header, re-verifies its exact
-/// native proof source and tx id, checks verdict/embedded-validity coherence,
+/// validity-free proof source and tx id, authenticates the sole verdict,
 /// and fixes the direction's reason polarity. No prover-supplied reason or
 /// coordinate enters the returned state.
 pub fn bind_forced_subject_v1(
@@ -149,11 +151,11 @@ pub fn bind_forced_subject_v1(
   direction: Int,
 ) -> VerdictSubjectV1 {
   let leaf = membership.value
-  let Pair(verified, _witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified, _witness_set) = verify_forced_tx_proof_source_v1(
     leaf.tx_id,
-    leaf.source.compact_cbor,
-    leaf.source.witness_set_compact_cbor,
-    leaf.source.field_preimage_lengths_cbor,
+    leaf.submitted_source.compact_cbor,
+    leaf.submitted_source.witness_set_compact_cbor,
+    leaf.submitted_source.field_preimage_lengths_cbor,
   )
   expect and {
       header.protocol_version == ledger_state.protocol_version_v1,
@@ -171,12 +173,10 @@ pub fn bind_forced_subject_v1(
   let rejection_reason = when leaf.verdict is {
     ForcedTxValid -> {
       expect direction == direction_wrongful_acceptance
-      expect verified.tx_compact.validity_code == 0
       None
     }
     ForcedTxInvalid { reason } -> {
       expect direction == direction_wrongful_rejection
-      expect verified.tx_compact.validity_code == 1
       Some(reason)
     }
   }

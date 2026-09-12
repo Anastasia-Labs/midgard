@@ -534,6 +534,10 @@ export const createManifestBoundValueConservationWorkflow = async (
                 ? undefined
                 : {
                     planned: planFaultProofFieldOpening({
+                      anchorSourceKind:
+                        admitted.source.claim === "ForcedConservation"
+                          ? 1n
+                          : 0n,
                       fieldIndex,
                       anchorTxId: admitted.source.transaction_id,
                       nativeTxCompactCbor: admitted.nativeTxCompactCbor,

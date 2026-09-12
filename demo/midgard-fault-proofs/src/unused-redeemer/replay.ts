@@ -9,6 +9,7 @@ import {
   hashMidgardScriptPurposeLeaf,
   hashMidgardValidationEventKey,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   type EventKey,
@@ -157,7 +158,10 @@ export const buildUnusedRedeemerObservationFromRetainedDa = async ({
     retainedValidationWitnessEntries: witnesses,
     expectedValidationTracesRoot: block.header.validationTracesRoot,
   });
-  projectMidgardRawEnvelopeForPhaseAV1(txCbor);
+  projectMidgardRawEnvelopeForPhaseAV1(
+    txCbor,
+    "ForcedTransactionEventKey" in eventKey ? "forced" : "normal",
+  );
   const selections = base.executions
     .map((execution) => {
       const frontierIndex = exactIndex(
@@ -273,7 +277,11 @@ export const buildUnusedRedeemerObservationFromRetainedDa = async ({
       ),
     )
     .digest("hex");
-  const nativeMaterial = deriveMidgardNativeTxFaultEvidenceMaterial(txCbor);
+  const nativeMaterial = (
+    "ForcedTransactionEventKey" in eventKey
+      ? deriveMidgardForcedTxFaultEvidenceMaterial
+      : deriveMidgardNativeTxFaultEvidenceMaterial
+  )(txCbor);
   const fieldPreimage = nativeMaterial.fieldPreimages[8];
   if (fieldPreimage === undefined)
     throw new Error("unusedRedeemer transaction omitted field 8");

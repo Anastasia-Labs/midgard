@@ -6,16 +6,16 @@ import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
 import { promisify } from "node:util";
 
-import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import {
+  computeMidgardForcedTxProofCommitment,
   computeMidgardNativeTxId,
-  computeMidgardNativeTxProofCommitment,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxProofSource,
-  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
-  materializeMidgardNativeTxFromCanonical,
-  type MidgardNativeTxCanonical,
-} from "@al-ft/midgard-core/codec/native";
+  decodeMidgardForcedTxFullFromCanonicalCbor,
+  deriveMidgardForcedTxProofSource,
+  deriveMidgardForcedTxProofSourceFromCanonicalCbor,
+  materializeMidgardForcedTxFromCanonical,
+  type MidgardForcedTxCanonical,
+} from "@al-ft/midgard-core/codec";
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
@@ -323,9 +323,8 @@ let deploymentAuthority = {
   result: deploymentAuthorityFixture.result,
 };
 
-const emptyNativeTxCanonical: MidgardNativeTxCanonical = {
+const emptyNativeTxCanonical: MidgardForcedTxCanonical = {
   version: MIDGARD_NATIVE_TX_VERSION,
-  validity: "TxIsValid",
   body: {
     spendInputsPreimageCbor: EMPTY_CBOR_LIST,
     referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -346,15 +345,15 @@ const emptyNativeTxCanonical: MidgardNativeTxCanonical = {
     redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
   },
 };
-const emptyNativeTx = materializeMidgardNativeTxFromCanonical(
+const emptyNativeTx = materializeMidgardForcedTxFromCanonical(
   emptyNativeTxCanonical,
 );
-const emptyNativeSource = deriveMidgardNativeTxProofSource(emptyNativeTx);
+const emptyNativeSource = deriveMidgardForcedTxProofSource(emptyNativeTx);
 const emptyNativePayload = {
   tx_id: computeMidgardNativeTxId(emptyNativeTx).toString("hex"),
   transaction_commitment:
-    computeMidgardNativeTxProofCommitment(emptyNativeSource).toString("hex"),
-  source: {
+    computeMidgardForcedTxProofCommitment(emptyNativeSource).toString("hex"),
+  submitted_source: {
     compact_cbor: emptyNativeSource.compactCbor.toString("hex"),
     witness_set_compact_cbor:
       emptyNativeSource.witnessSetCompactCbor.toString("hex"),
@@ -793,7 +792,7 @@ type EventFixture = Readonly<{
 export type GenuineUserEventForcedPayload = Readonly<{
   tx_id: string;
   transaction_commitment: string;
-  source: Readonly<{
+  submitted_source: Readonly<{
     compact_cbor: string;
     witness_set_compact_cbor: string;
     field_preimage_lengths_cbor: string;
@@ -805,7 +804,7 @@ export type GenuineUserEventForcedPayload = Readonly<{
 const forcedDatumPayload = (payload: GenuineUserEventForcedPayload) => ({
   tx_id: payload.tx_id,
   transaction_commitment: payload.transaction_commitment,
-  source: payload.source,
+  submitted_source: payload.submitted_source,
 });
 
 /**
@@ -821,21 +820,21 @@ export const genuineUserEventForcedPayloadForCanonicalTx = (
   canonicalTxCbor: Uint8Array,
 ): GenuineUserEventForcedPayload => {
   const source =
-    deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalTxCbor);
+    deriveMidgardForcedTxProofSourceFromCanonicalCbor(canonicalTxCbor);
   return Object.freeze({
     tx_id: computeMidgardNativeTxId(
-      decodeMidgardNativeTxFullFromCanonicalCbor(canonicalTxCbor),
+      decodeMidgardForcedTxFullFromCanonicalCbor(canonicalTxCbor),
     ).toString("hex"),
     transaction_commitment:
-      computeMidgardNativeTxProofCommitment(source).toString("hex"),
-    source: Object.freeze({
+      computeMidgardForcedTxProofCommitment(source).toString("hex"),
+    submitted_source: Object.freeze({
       compact_cbor: source.compactCbor.toString("hex"),
       witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
       field_preimage_lengths_cbor:
         source.fieldPreimageLengthsCbor.toString("hex"),
     }),
     carriage: Object.freeze(
-      deriveMidgardTxFieldPreimages(canonicalTxCbor)
+      deriveMidgardTxFieldPreimages(canonicalTxCbor, "forced")
         .filter(
           (field) => !field.expectedHash.equals(MIDGARD_EMPTY_FIELD_COMMITMENT),
         )
@@ -2034,7 +2033,7 @@ const nonDepositSpendBundle = (
       tx?: {
         tx_id: string;
         transaction_commitment: string;
-        source: typeof emptyNativePayload.source;
+        submitted_source: typeof emptyNativePayload.submitted_source;
       };
     };
   };
@@ -2045,7 +2044,7 @@ const nonDepositSpendBundle = (
       : Data.to(
           {
             tx_id: datum.event.tx!.tx_id,
-            source: datum.event.tx!.source,
+            submitted_source: datum.event.tx!.submitted_source,
             verdict: validity,
           },
           ForcedInclusionTxV1,

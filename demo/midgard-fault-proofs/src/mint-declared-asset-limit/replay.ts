@@ -1,19 +1,16 @@
 import {
-  adjudicateMidgardNativeTxFullValidity,
   decodeMidgardFieldPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxFaultEvidenceMaterial,
-  encodeMidgardNativeTxCanonical,
   midgardFieldCommitment,
   type MidgardNativeTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { deriveRejectedTransactionFaultEvidenceMaterial } from "../evidence/rejected-transaction.js";
 import { daHashPreimageBlockEvidenceFromVerifiedPayload } from "../prepare-da-hash-preimage.js";
 import {
   buildTrieView,
@@ -263,17 +260,17 @@ export const detectMintDeclaredAssetLimitForcedReplay = (
       if (typeof reason === "string" || !("MintDeclaredAssetLimit" in reason))
         return;
       const policyIndex = Number(reason.MintDeclaredAssetLimit.policy_index);
-      const material = deriveRejectedTransactionFaultEvidenceMaterial(
+      const material = deriveMidgardForcedTxFaultEvidenceMaterial(
         transaction.fullTransactionCbor,
       );
       if (
         material.transactionId.toString("hex") !== transaction.value.tx_id ||
         material.proofSource.compactCbor.toString("hex") !==
-          transaction.value.source.compact_cbor ||
+          transaction.value.submitted_source.compact_cbor ||
         material.proofSource.witnessSetCompactCbor.toString("hex") !==
-          transaction.value.source.witness_set_compact_cbor ||
+          transaction.value.submitted_source.witness_set_compact_cbor ||
         material.proofSource.fieldPreimageLengthsCbor.toString("hex") !==
-          transaction.value.source.field_preimage_lengths_cbor
+          transaction.value.submitted_source.field_preimage_lengths_cbor
       )
         throw new Error(
           "mintDeclaredAssetLimit forced transaction differs from its authenticated leaf",
@@ -407,15 +404,8 @@ export const prepareMintDeclaredAssetLimitForcedArtifact = async (
   const verdict = transaction.value.verdict;
   if (verdict === "ForcedTxValid")
     throw new Error("mintDeclaredAssetLimit forced rejection changed verdict");
-  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-    encodeMidgardNativeTxCanonical(
-      adjudicateMidgardNativeTxFullValidity(
-        decodeMidgardNativeTxFullFromCanonicalCbor(
-          transaction.fullTransactionCbor,
-        ),
-        "TxIsInvalid",
-      ),
-    ),
+  const material = deriveMidgardForcedTxFaultEvidenceMaterial(
+    transaction.fullTransactionCbor,
   );
   const field = material.fieldPreimages[MINT_DECLARED_ASSET_LIMIT_FIELD_INDEX];
   if (field === undefined)
@@ -455,7 +445,7 @@ export const prepareMintDeclaredAssetLimitForcedArtifact = async (
     l2TransactionSourceCbor: Data.to(
       {
         tx_id: transaction.value.tx_id,
-        source: transaction.value.source,
+        source: transaction.value.submitted_source,
       } as never,
       SDK.L2TransactionSource as never,
     ),

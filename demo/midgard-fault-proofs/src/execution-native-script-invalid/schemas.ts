@@ -159,6 +159,7 @@ export const ExecutionNativeScriptInvalidStep03RedeemerSchema =
 
 const identity = {
   direction: Data.Integer(),
+  source_kind: Data.Integer({ minimum: 0, maximum: 1 }),
   execution_index: Data.Integer(),
   source_index: Data.Integer(),
   origin_kind: Data.Integer(),

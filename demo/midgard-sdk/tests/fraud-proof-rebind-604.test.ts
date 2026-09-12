@@ -184,7 +184,11 @@ describe("#604 per-family mutation negatives", () => {
     ).toThrow(SDK.MidgardFieldOpeningError);
     // And a witness anchor with no anchored witness_set_hash to check against.
     expect(() =>
-      SDK.nativeTxAnchorForField({ fieldIndex: 7, txId: h32("11") }),
+      SDK.nativeTxAnchorForField({
+        sourceKind: 0n,
+        fieldIndex: 7,
+        txId: h32("11"),
+      }),
     ).toThrow(SDK.MidgardFieldOpeningError);
   });
 });

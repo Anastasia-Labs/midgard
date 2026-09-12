@@ -14,6 +14,7 @@ import {
   computeHash32,
   decodeMidgardFieldPreimage,
   deriveMidgardNativeTxFaultEvidenceMaterial,
+  encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core";
 import {
   acceptedVerdictSubject,
@@ -125,8 +126,9 @@ const scanStateOf = async (
     })
   ).state;
 const forcedSourceOf = (leaf: ForcedLeaf) => ({
-  compactCborHex: leaf.transaction.source.compact_cbor,
-  witnessSetCompactCborHex: leaf.transaction.source.witness_set_compact_cbor,
+  compactCborHex: leaf.transaction.submitted_source.compact_cbor,
+  witnessSetCompactCborHex:
+    leaf.transaction.submitted_source.witness_set_compact_cbor,
 });
 
 describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
@@ -693,7 +695,7 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
     const s4 = await stages.step04(
       s3.threadOutRef,
       evidence,
-      accused.transaction.source.compact_cbor,
+      accused.transaction.submitted_source.compact_cbor,
       s2.result,
     );
     record("forced-step04-certified-reference-bind", s4.measurement);
@@ -792,7 +794,7 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
     const h4 = await stages.step04(
       h3.threadOutRef,
       lying,
-      honestLeaf.transaction.source.compact_cbor,
+      honestLeaf.transaction.submitted_source.compact_cbor,
       h2.result,
     );
     const honestState = await scanStateOf(context, h4.result.nextThreadOutRef);
@@ -888,7 +890,7 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
     const s4 = await stages.step04(
       s3.threadOutRef,
       evidence,
-      leaf.transaction.source.compact_cbor,
+      leaf.transaction.submitted_source.compact_cbor,
       s2.result,
     );
     record("forced-depth-step04", s4.measurement, small);
@@ -940,7 +942,7 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
       prepareOutputReferenceScriptDecodingEvidence({
         subject: acceptedVerdictSubject(leaf.transaction.tx_id),
         outputIndex: 0,
-        canonicalTransactionCbor: leaf.canonicalCbor,
+        canonicalTransactionCbor: encodeMidgardNativeTxCanonical(leaf.nativeTx),
       }),
     ).toThrow(/agrees with operator verdict/u);
     expect(() =>
@@ -976,7 +978,7 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
     const s4 = await stages.step04(
       s3.threadOutRef,
       evidence,
-      leaf.transaction.source.compact_cbor,
+      leaf.transaction.submitted_source.compact_cbor,
       s2.result,
     );
     record("forced-sig-step04", s4.measurement, small);

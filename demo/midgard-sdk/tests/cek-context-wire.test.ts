@@ -1,20 +1,7 @@
-/**
- * `deriveCekContextBinding` decodes the authenticated CEK context wire into the
- * Aiken records the context-step validator binds, and `encodeCekContextRedeemer`
- * pins that validator's redeemer arity.
- *
- * **Oracle, and its known limit.** `tests/fixtures/cek-context-binding.json`
- * carries one context vector together with the `bound` and `staged` records the
- * Aiken binder is claimed to produce for it. That claim is the cross-language
- * half of the oracle and this suite cannot execute the Aiken side, so the
- * fixture comparison alone would rest on provenance the repository does not
- * currently record (there is no generator for this fixture, unlike the
- * package's three `fixtures:*:check` channels). The perturbation cases below
- * therefore carry the discriminating weight: they state the binding rules as
- * observable cause and effect -- change one input, and exactly the slot that
- * input feeds must change -- so an implementation that drops, transposes or
- * ignores an argument fails here regardless of what the fixture's provenance
- * turns out to be.
+/** Cross-language vectors pin the Aiken bound and staged records for normal
+ * and forced sources. The Aiken cek-split fixture separately pins the forced
+ * vector hash; the SDK derives its records independently below. Perturbation
+ * cases check that each authenticated input changes the intended bound slot.
  */
 import { readFileSync } from "node:fs";
 
@@ -28,7 +15,7 @@ import {
 } from "../src/fraud-proof/cek-context.js";
 import { hashCekCoreWitness } from "../src/fraud-proof/cek-core.js";
 
-const golden: { vectorCbor: string; blake2b256: string } = JSON.parse(
+const normalGolden: { vectorCbor: string; blake2b256: string } = JSON.parse(
   readFileSync(
     new URL("./fixtures/cek-context-binding.json", import.meta.url),
     "utf8",
@@ -39,12 +26,16 @@ type Vector = {
   readonly prepared: Data;
   readonly workWitnessCbor: string;
   readonly transactionId: string;
+  readonly sourceKind: "Normal" | "Forced";
   readonly auxiliary: Data;
   readonly bound: Data;
   readonly staged: Data;
 };
 
-const readVector = (): Vector => {
+const readVector = (
+  golden: { vectorCbor: string },
+  sourceKind: Vector["sourceKind"],
+): Vector => {
   const vector = Data.from(golden.vectorCbor);
   if (
     !(vector instanceof Constr) ||
@@ -60,6 +51,7 @@ const readVector = (): Vector => {
     prepared: prepared!,
     workWitnessCbor,
     transactionId,
+    sourceKind,
     auxiliary: auxiliary!,
     bound: bound!,
     staged: staged!,
@@ -83,9 +75,18 @@ const constrFields = (value: Data, label: string): readonly Data[] => {
   return value.fields;
 };
 
-describe("CEK context Aiken wire golden", () => {
+const forcedGolden: { vectorCbor: string; blake2b256: string } = JSON.parse(
+  readFileSync(
+    new URL("./fixtures/cek-context-binding-forced.json", import.meta.url),
+    "utf8",
+  ),
+);
+describe.each([
+  { sourceKind: "Normal" as const, golden: normalGolden },
+  { sourceKind: "Forced" as const, golden: forcedGolden },
+])("CEK context Aiken wire golden ($sourceKind)", ({ sourceKind, golden }) => {
   it("matches the Aiken binder and staged native/context projection", () => {
-    const vector = readVector();
+    const vector = readVector(golden, sourceKind);
     // The fixture bytes are canonical Plutus data: re-encoding what we decoded
     // reproduces them exactly, so a hand-edit that is not canonical fails here
     // rather than silently changing what the rest of the file compares against.
@@ -97,10 +98,10 @@ describe("CEK context Aiken wire golden", () => {
   });
 
   it("binds the auxiliary witness only through its §4 hash slot", () => {
-    const vector = readVector();
+    const vector = readVector(golden, sourceKind);
     const base = deriveCekContextBinding(vector);
     const baseFields = constrFields(base.bound, "bound");
-    expect(baseFields).toHaveLength(4);
+    expect(baseFields).toHaveLength(5);
     expect(baseFields[2]).toBe(hashCekCoreWitness(vector.auxiliary));
 
     // A different auxiliary witness must move the hash slot -- and nothing
@@ -121,7 +122,7 @@ describe("CEK context Aiken wire golden", () => {
   });
 
   it("binds the disputed transaction id and re-commits the bound record in the staged projection", () => {
-    const vector = readVector();
+    const vector = readVector(golden, sourceKind);
     const base = deriveCekContextBinding(vector);
     expect(constrFields(base.bound, "bound")[3]).toBe(vector.transactionId);
 
@@ -150,8 +151,21 @@ describe("CEK context Aiken wire golden", () => {
     expect(stagedFields[3]).toEqual(constrFields(base.staged, "staged")[3]);
   });
 
+  it("binds the authenticated source kind into both the bound and staged record", () => {
+    const vector = readVector(golden, sourceKind);
+    const normal = deriveCekContextBinding({ ...vector, sourceKind: "Normal" });
+    const forced = deriveCekContextBinding({ ...vector, sourceKind: "Forced" });
+    const normalFields = constrFields(normal.bound, "normal");
+    const forcedFields = constrFields(forced.bound, "forced");
+    expect(normalFields[4]).toEqual(new Constr(0, []));
+    expect(forcedFields[4]).toEqual(new Constr(1, []));
+    expect(forcedFields.slice(0, 4)).toEqual(normalFields.slice(0, 4));
+    expect(constrFields(forced.staged, "staged")[0]).toEqual(forced.bound);
+    expect(Data.to(forced.staged)).not.toBe(Data.to(normal.staged));
+  });
+
   it("refuses a work witness whose arity or frontier-peak shape is wrong", () => {
-    const vector = readVector();
+    const vector = readVector(golden, sourceKind);
     const fields = decodeWorkWitness(vector.workWitnessCbor);
 
     // Baseline: the unmodified re-encoding is accepted, so each refusal below

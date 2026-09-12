@@ -127,8 +127,10 @@ validator main(
         attach_roles,
         yield_ref_input_indices,
       }) -> {
-        let auxiliary =
-          LedgerOutputProofFinalizeWitness { descriptor_cbor, signer_proof }
+        let auxiliary = LedgerOutputProofFinalizeWitness {
+          descriptor_cbor,
+          signer_proof,
+        }
         let auxiliary_data: Data = auxiliary
         continue_winning(
           ScriptSources,
@@ -177,8 +179,12 @@ fn output_proof_finalize_dispatch(
   reference_script_auth_policy_id: PolicyId,
   tx: Transaction,
 ) -> Bool {
-  let frame =
-    raw.open_frame_v1(pre, transition, frame_item_count, output_proof_stage)
+  let frame = raw.open_frame_v1(
+    pre,
+    transition,
+    frame_item_count,
+    output_proof_stage,
+  )
   let control = lop_raw.open(control_cbor)
   if attach_roles != [] {
     // A fact-attachment step: the group's descriptor yields attest their
@@ -265,8 +271,9 @@ fn output_proof_terminal_dispatch(
     // the yields authenticated the descriptor for.
     descriptor.output_index == output_cursor,
     {
-      expect Some(address) =
-        ledger_output_v1.decode_canonical_address_bytes(descriptor.address)
+      expect Some(address) = ledger_output_v1.decode_canonical_address_bytes(
+        descriptor.address,
+      )
       let context = decode_validation_context(frame.context_cbor)
       if address.network_id != context.expected_network_id {
         rejected_successor_is_exact(
@@ -292,47 +299,46 @@ fn output_proof_terminal_dispatch(
           InputSignerProofMalformed -> False
           InputSignerAuthorized -> {
             expect Some(scan_item) = list.at(frame.items, receive_scan_index)
-            expect [
-              source_count_data, source_peaks_data, receive_count_data,
-              previous_hash_data, candidate_hash_data, descriptor_peaks_data,
-            ] = builtin.un_list_data(scan_item)
-            let scan =
-              ReceivePurposeScanControlV1 {
-                source_count: builtin.un_i_data(source_count_data),
-                source_peaks: decode_frontier_peaks(source_peaks_data),
-                receive_count: builtin.un_i_data(receive_count_data),
-                previous_hash: builtin.un_b_data(previous_hash_data),
-                candidate_hash: builtin.un_b_data(candidate_hash_data),
-                descriptor_peaks: validation_merkle_v1.append_leaf(
+            expect
+                [
+                  source_count_data, source_peaks_data, receive_count_data,
+                  previous_hash_data, candidate_hash_data, descriptor_peaks_data,
+                ]
+              = builtin.un_list_data(scan_item)
+            let scan = ReceivePurposeScanControlV1 {
+              source_count: builtin.un_i_data(source_count_data),
+              source_peaks: decode_frontier_peaks(source_peaks_data),
+              receive_count: builtin.un_i_data(receive_count_data),
+              previous_hash: builtin.un_b_data(previous_hash_data),
+              candidate_hash: builtin.un_b_data(candidate_hash_data),
+              descriptor_peaks: validation_merkle_v1.append_leaf(
+                output_cursor,
+                decode_frontier_peaks(descriptor_peaks_data),
+                script_proof_v1.output_descriptor_leaf_hash(
                   output_cursor,
-                  decode_frontier_peaks(descriptor_peaks_data),
-                  script_proof_v1.output_descriptor_leaf_hash(
-                    output_cursor,
-                    descriptor_cbor,
-                  ),
+                  descriptor_cbor,
                 ),
-              }
+              ),
+            }
             // Splice the higher-index item first: `replace_items_v1` targets
             // offsets of the pre frame, and the item-24 replacement leaves
             // item 20's offset intact while the reverse order would not.
-            let scan_spliced =
-              raw.replace_items_v1(
-                frame,
-                transition.work_witness_cbor,
-                receive_scan_index,
-                1,
-                encode_receive_purpose_scan_control(
-                  receive_source_successor(scan, address),
-                ),
-              )
-            let cursor_spliced =
-              raw.replace_items_v1(
-                frame,
-                scan_spliced,
-                output_cursor_index,
-                1,
-                cbor.serialise(output_cursor + 1),
-              )
+            let scan_spliced = raw.replace_items_v1(
+              frame,
+              transition.work_witness_cbor,
+              receive_scan_index,
+              1,
+              encode_receive_purpose_scan_control(
+                receive_source_successor(scan, address),
+              ),
+            )
+            let cursor_spliced = raw.replace_items_v1(
+              frame,
+              scan_spliced,
+              output_cursor_index,
+              1,
+              cbor.serialise(output_cursor + 1),
+            )
             raw.successor_is_exact_v1(
               pre,
               transition,

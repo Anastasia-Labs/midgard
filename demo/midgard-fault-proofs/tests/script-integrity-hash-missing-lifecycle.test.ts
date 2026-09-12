@@ -305,9 +305,7 @@ const makeScenario = async ({
         })
       ).utxo,
     );
-  const compactCbor = encodeMidgardNativeTxCompact(nativeTx.compact).toString(
-    "hex",
-  );
+  const compactCbor = block.nativeTxCompactCbor;
   const derived = deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet);
   const witnessSet: SDK.NativeTxWitnessSetCompact = {
     addr_tx_wits_hash: Buffer.from(derived.addrTxWitsHash).toString("hex"),
@@ -1037,9 +1035,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         rejectionReason: "ScriptIntegrityHashMissing",
       },
       subject,
-      nativeTxCompactCbor: encodeMidgardNativeTxCompact(
-        nativeTx.compact,
-      ).toString("hex"),
+      nativeTxCompactCbor: block.nativeTxCompactCbor,
       witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact({
         addrTxWitsHash: Buffer.from(witnessSet.addr_tx_wits_hash, "hex"),
         scriptTxWitsHash: Buffer.from(witnessSet.script_tx_wits_hash, "hex"),
@@ -1322,6 +1318,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     const owner = harness.proverSigner.paymentKeyHash;
     const plan = (fieldIndex: 6 | 8, items: readonly Buffer[]) =>
       planFaultProofFieldOpening({
+        anchorSourceKind: 0n,
         fieldIndex,
         anchorTxId: block.nativeTxId,
         nativeTxCompactCbor: compactCbor,
@@ -2190,6 +2187,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     });
     const plan = (fieldIndex: 6 | 8, items: readonly Buffer[]) =>
       planFaultProofFieldOpening({
+        anchorSourceKind: 0n,
         fieldIndex,
         anchorTxId: s.block.nativeTxId,
         nativeTxCompactCbor: s.compactCbor,

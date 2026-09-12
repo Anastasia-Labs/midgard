@@ -232,6 +232,7 @@ fn certify_redeemer(
   output_index: Int,
 ) -> FieldPreimageCertificateMintRedeemerV1 {
   Certify {
+    source_kind: 0,
     compact_cbor: compact_cbor(),
     witness_set_compact_cbor: witness_set_compact_cbor(),
     chunk_ref_input_indices,
@@ -864,6 +865,7 @@ fn corner_chunk_inputs() -> List<Input> {
 
 fn corner_certify_redeemer() -> FieldPreimageCertificateMintRedeemerV1 {
   Certify {
+    source_kind: 0,
     compact_cbor: corner_compact_cbor(),
     witness_set_compact_cbor: witness_set_compact_cbor(),
     chunk_ref_input_indices: [0, 1, 2],

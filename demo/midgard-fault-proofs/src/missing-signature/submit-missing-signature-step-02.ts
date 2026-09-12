@@ -136,6 +136,7 @@ export const submitMissingSignatureStep02 = async ({
 
   // The §8.8 door: plan, publish whatever the tier demands, open.
   const planned = planMissingSignatureRequiredSignersOpening({
+    anchorSourceKind: 0n,
     anchorTxId: state.verified_tx_id,
     nativeTxCompactCbor,
     requiredSignerHashes,

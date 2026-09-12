@@ -99,6 +99,7 @@ export const submitMissingNativeScriptUtxoStep05 = async ({
     throw new Error(`${FAMILY}: accused script is present in field 6`);
   }
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.scriptWitnesses,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor,

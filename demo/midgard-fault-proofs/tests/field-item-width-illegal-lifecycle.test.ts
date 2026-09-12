@@ -364,7 +364,10 @@ const makeHarness = async () => {
         signer: harness.proverSigner,
         threadOutRef,
         evidence,
-        nativeTxCompactCbor: compactCborHex(shape.nativeTx),
+        nativeTxCompactCbor: compactCborHex(
+          shape.nativeTx,
+          evidence.subject.source_kind,
+        ),
         witnessSetCompactCbor: witnessSetCompactCborHex(shape.nativeTx),
         referenceScriptUtxo: references[1]!,
         certificateReferenceScriptUtxo: requireCertificateReference(),
@@ -389,7 +392,10 @@ const makeHarness = async () => {
       signer: harness.proverSigner,
       threadOutRef,
       evidence,
-      nativeTxCompactCbor: compactCborHex(shape.nativeTx),
+      nativeTxCompactCbor: compactCborHex(
+        shape.nativeTx,
+        evidence.subject.source_kind,
+      ),
       witnessSetCompactCbor: witnessSetCompactCborHex(shape.nativeTx),
       referenceScriptUtxo: references[1]!,
       certificateReferenceScriptUtxo: requireCertificateReference(),
@@ -737,7 +743,7 @@ describe("fieldItemWidthIllegal registered-chain lifecycle", () => {
         setup.fraudulentBlockOutRef,
       )
     ).result.nextThreadOutRef;
-    const otherCompact = compactCborHex(legal.nativeTx);
+    const otherCompact = compactCborHex(legal.nativeTx, 0n);
     await expectOnchainRefusal(() =>
       h.step02Raw(seamThread, evidence, maximum, {
         mutateOpening: (opening) => {

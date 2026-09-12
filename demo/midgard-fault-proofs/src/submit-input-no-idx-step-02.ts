@@ -305,6 +305,7 @@ export const submitInputNoIdxStep02 = async ({
   // must re-derive to the anchor the thread carries, and this list must be the
   // §5.1 preimage that transaction commits at field 0 specifically.
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: verifiedTxId,
     nativeTxCompactCbor,

@@ -1,3 +1,7 @@
+import {
+  encodeMidgardNativeTxCanonical,
+  materializeMidgardNativeTxFromCanonical,
+} from "@al-ft/midgard-core/codec";
 /**
  * W25 Phase-B/block-replay evidence.
  *
@@ -8,12 +12,11 @@
  * roots, ordering, and exact canonical rejection attribution.
  */
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxProofSource,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
+import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { buildCountedRoot, encodeData } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -93,6 +96,7 @@ import {
   makeWatcherCanonicalRuleBundle,
   type WatcherRuleBundle,
 } from "../../src/verification/rule-bundle.js";
+import { makeForcedTxFixture } from "../support/forced-submission-fixture.js";
 import {
   createGenuineSettlementAuthorities,
   type GenuineSettlementAuthorityFixtureSet,
@@ -135,7 +139,7 @@ const WITHDRAWAL_FLOW_NATIVE = makeNativeTx({
   privateKey: FIXED_KEY,
 });
 const FORCED_FLOW_INPUT = outRefFromByte(0x71);
-const FORCED_FLOW_NATIVE = makeNativeTx({
+const FORCED_FLOW_NATIVE = makeForcedTxFixture({
   spendInputs: [FORCED_FLOW_INPUT],
   outputs: [FLOW_OUTPUT],
   privateKey: FIXED_KEY,
@@ -143,7 +147,7 @@ const FORCED_FLOW_NATIVE = makeNativeTx({
 const FORCED_INVALID_CASES = Object.freeze({
   InputNotFound: Object.freeze({
     input: outRefFromByte(0x72),
-    native: makeNativeTx({
+    native: makeForcedTxFixture({
       spendInputs: [outRefFromByte(0x72)],
       outputs: [FLOW_OUTPUT],
       privateKey: FIXED_KEY,
@@ -152,7 +156,7 @@ const FORCED_INVALID_CASES = Object.freeze({
   }),
   AddressWitnessSignatureInvalid: Object.freeze({
     input: outRefFromByte(0x73),
-    native: makeNativeTx({
+    native: makeForcedTxFixture({
       spendInputs: [outRefFromByte(0x73)],
       outputs: [FLOW_OUTPUT],
       privateKey: FIXED_KEY,
@@ -162,7 +166,7 @@ const FORCED_INVALID_CASES = Object.freeze({
   }),
   WitnessNativeScriptFalse: Object.freeze({
     input: outRefFromByte(0x74),
-    native: makeNativeTx({
+    native: makeForcedTxFixture({
       spendInputs: [outRefFromByte(0x74)],
       outputs: [FLOW_OUTPUT],
       privateKey: FIXED_KEY,
@@ -177,7 +181,7 @@ const FORCED_INVALID_CASES = Object.freeze({
   }),
   FeeBelowMinimum: Object.freeze({
     input: outRefFromByte(0x75),
-    native: makeNativeTx({
+    native: makeForcedTxFixture({
       spendInputs: [outRefFromByte(0x75)],
       outputs: [FLOW_OUTPUT],
       privateKey: FIXED_KEY,
@@ -187,7 +191,7 @@ const FORCED_INVALID_CASES = Object.freeze({
   }),
   ValueNotPreserved: Object.freeze({
     input: outRefFromByte(0x76),
-    native: makeNativeTx({
+    native: makeForcedTxFixture({
       spendInputs: [outRefFromByte(0x76)],
       outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE - 1n, FIXED_ADDRESS)],
       privateKey: FIXED_KEY,
@@ -200,8 +204,9 @@ const FORCED_INVALID_CASES = Object.freeze({
 // travels with the §8 carriage vector its mint redeemer supplies (#594), and two
 // hand-rolled copies of that pairing would be two chances to get the vector wrong
 // in a way the fixture cannot detect.
-const forcedPayloadForNative = (native: ReturnType<typeof makeNativeTx>) =>
-  genuineUserEventForcedPayloadForCanonicalTx(native.txCbor);
+const forcedPayloadForNative = (
+  native: ReturnType<typeof makeForcedTxFixture>,
+) => genuineUserEventForcedPayloadForCanonicalTx(native.txCbor);
 
 let genuineW15: GenuineUserEventAuthorityFixtureSet;
 let genuineW16: GenuineSettlementAuthorityFixtureSet;
@@ -672,7 +677,7 @@ const depositEvent = (byte: number): PublicFixtureEvent => {
 
 const publicEventFromW15 = (
   authority: UserEventAcceptedAuthorityScenario,
-  forcedNative?: ReturnType<typeof makeNativeTx>,
+  forcedNative?: ReturnType<typeof makeForcedTxFixture>,
   withdrawalValidity?: SDK.WithdrawalValidity,
 ): PublicFixtureEvent => {
   const event = authority.event;
@@ -728,7 +733,7 @@ const publicEventFromW15 = (
     readonly tx: {
       readonly tx_id: string;
       readonly transaction_commitment: string;
-      readonly source: SDK.L2TransactionSource["source"];
+      readonly submitted_source: SDK.ForcedTxProofSource;
     };
   };
   const verdict =
@@ -738,17 +743,6 @@ const publicEventFromW15 = (
           event.terminalClassification.operatorValidity,
         )
       : ("ForcedTxValid" as const);
-  // The ORDER event binds the SUBMITTED source, but the committed DA leaf
-  // carries the operator-ADJUDICATED one (§2.4.3(e)) — the payload
-  // reconstruction authenticates exactly that. Re-derive through the single
-  // stamping helper by the leaf's verdict rather than copying the event's
-  // submitted triple.
-  const adjudicatedSource = deriveMidgardNativeTxProofSource(
-    adjudicateMidgardNativeTxFullValidity(
-      decodeMidgardNativeTxFullFromCanonicalCbor(forcedNative.txCbor),
-      verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid",
-    ),
-  );
   return Object.freeze({
     eventKey: {
       ForcedTransactionEventKey: {
@@ -765,12 +759,12 @@ const publicEventFromW15 = (
       dataHex(
         {
           tx_id: decoded.tx.tx_id,
-          source: {
-            compact_cbor: adjudicatedSource.compactCbor.toString("hex"),
+          submitted_source: {
+            compact_cbor: decoded.tx.submitted_source.compact_cbor,
             witness_set_compact_cbor:
-              adjudicatedSource.witnessSetCompactCbor.toString("hex"),
+              decoded.tx.submitted_source.witness_set_compact_cbor,
             field_preimage_lengths_cbor:
-              adjudicatedSource.fieldPreimageLengthsCbor.toString("hex"),
+              decoded.tx.submitted_source.field_preimage_lengths_cbor,
           },
           verdict,
         },
@@ -862,7 +856,7 @@ const withdrawalEffectFromW15 = (
 
 const nativeEffect = (input: {
   readonly spent: readonly Buffer[];
-  readonly native: ReturnType<typeof makeNativeTx>;
+  readonly native: Pick<ReturnType<typeof makeNativeTx>, "txId" | "txCbor">;
   readonly outputs: readonly Buffer[];
 }): CanonicalTransitionEffect =>
   buildCanonicalTransitionEffect([
@@ -934,7 +928,7 @@ const eventAuthority = (input: {
   readonly event: PublicFixtureEvent;
   readonly userEvent: UserEventAcceptedAuthorityScenario;
   readonly effect: CanonicalTransitionEffect;
-  readonly forcedNative?: ReturnType<typeof makeNativeTx>;
+  readonly forcedNative?: ReturnType<typeof makeForcedTxFixture>;
 }): WatcherBlockReplayEventAuthority => {
   const common = {
     eventKey: input.event.eventKey,
@@ -1953,9 +1947,8 @@ describe("W25 roots and deterministic replay", () => {
       (typeof FORCED_INVALID_CASES)[keyof typeof FORCED_INVALID_CASES],
     ][]) {
       expect(
-        decodeMidgardNativeTxFullFromCanonicalCbor(invalidCase.native.txCbor)
-          .validity,
-      ).toBe("TxIsValid");
+        decodeMidgardForcedTxFullFromCanonicalCbor(invalidCase.native.txCbor),
+      ).not.toHaveProperty("validity");
       const invalidUserEvent = genuineW15.forcedVariants[category]!;
       const invalidEvent = publicEventFromW15(
         invalidUserEvent,
@@ -2095,7 +2088,16 @@ describe("W25 roots and deterministic replay", () => {
       mismatchResult.priorStateRoot,
     );
 
-    const rejectedNormalNative = FORCED_INVALID_CASES.ValueNotPreserved.native;
+    const forcedRejected = FORCED_INVALID_CASES.ValueNotPreserved.native;
+    const rejectedNormalNative = {
+      ...forcedRejected,
+      txCbor: encodeMidgardNativeTxCanonical(
+        materializeMidgardNativeTxFromCanonical({
+          ...forcedRejected.tx,
+          validity: "TxIsValid",
+        }),
+      ),
+    };
     const rejectedNormalId = rejectedNormalNative.txId.toString("hex");
     const rejectedNormalFixture = await buildPublicReplayFixture({
       txCbors: [rejectedNormalNative.txCbor],

@@ -2,15 +2,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { type Server } from "node:net";
 import { join } from "node:path";
 
+import {
+  computeMidgardForcedTxProofCommitment,
+  computeMidgardNativeTxId,
+  deriveMidgardForcedTxProofSource,
+  materializeMidgardForcedTxFromCanonical,
+  type MidgardForcedTxCanonical,
+} from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
-import {
-  computeMidgardNativeTxId,
-  computeMidgardNativeTxProofCommitment,
-  deriveMidgardNativeTxProofSource,
-  materializeMidgardNativeTxFromCanonical,
-  type MidgardNativeTxCanonical,
-} from "@al-ft/midgard-core/codec/native";
 import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
@@ -359,9 +359,8 @@ const deploymentAuthority = {
   result: deploymentAuthorityFixture.result,
 };
 
-const emptyNativeTxCanonical: MidgardNativeTxCanonical = {
+const emptyNativeTxCanonical: MidgardForcedTxCanonical = {
   version: MIDGARD_NATIVE_TX_VERSION,
-  validity: "TxIsValid",
   body: {
     spendInputsPreimageCbor: EMPTY_CBOR_LIST,
     referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -382,15 +381,15 @@ const emptyNativeTxCanonical: MidgardNativeTxCanonical = {
     redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
   },
 };
-const emptyNativeTx = materializeMidgardNativeTxFromCanonical(
+const emptyNativeTx = materializeMidgardForcedTxFromCanonical(
   emptyNativeTxCanonical,
 );
-const emptyNativeSource = deriveMidgardNativeTxProofSource(emptyNativeTx);
+const emptyNativeSource = deriveMidgardForcedTxProofSource(emptyNativeTx);
 const emptyNativePayload = {
   tx_id: computeMidgardNativeTxId(emptyNativeTx).toString("hex"),
   transaction_commitment:
-    computeMidgardNativeTxProofCommitment(emptyNativeSource).toString("hex"),
-  source: {
+    computeMidgardForcedTxProofCommitment(emptyNativeSource).toString("hex"),
+  submitted_source: {
     compact_cbor: emptyNativeSource.compactCbor.toString("hex"),
     witness_set_compact_cbor:
       emptyNativeSource.witnessSetCompactCbor.toString("hex"),
@@ -398,22 +397,22 @@ const emptyNativePayload = {
       emptyNativeSource.fieldPreimageLengthsCbor.toString("hex"),
   },
 };
-const nonEmptyNativeCanonical: MidgardNativeTxCanonical = {
+const nonEmptyNativeCanonical: MidgardForcedTxCanonical = {
   ...emptyNativeTxCanonical,
   body: {
     ...emptyNativeTxCanonical.body,
     requiredSignersPreimageCbor: encodeCbor([Buffer.alloc(28, 0x77)]),
   },
 };
-const nonEmptyNativeTx = materializeMidgardNativeTxFromCanonical(
+const nonEmptyNativeTx = materializeMidgardForcedTxFromCanonical(
   nonEmptyNativeCanonical,
 );
-const nonEmptyNativeSource = deriveMidgardNativeTxProofSource(nonEmptyNativeTx);
+const nonEmptyNativeSource = deriveMidgardForcedTxProofSource(nonEmptyNativeTx);
 const nonEmptyNativePayload = {
   tx_id: computeMidgardNativeTxId(nonEmptyNativeTx).toString("hex"),
   transaction_commitment:
-    computeMidgardNativeTxProofCommitment(nonEmptyNativeSource).toString("hex"),
-  source: {
+    computeMidgardForcedTxProofCommitment(nonEmptyNativeSource).toString("hex"),
+  submitted_source: {
     compact_cbor: nonEmptyNativeSource.compactCbor.toString("hex"),
     witness_set_compact_cbor:
       nonEmptyNativeSource.witnessSetCompactCbor.toString("hex"),
@@ -803,7 +802,7 @@ const makeEventFixture = (
   forcedPayloadOverride?: Readonly<{
     tx_id: string;
     transaction_commitment: string;
-    source: Readonly<{
+    submitted_source: Readonly<{
       compact_cbor: string;
       witness_set_compact_cbor: string;
       field_preimage_lengths_cbor: string;
@@ -1738,7 +1737,7 @@ const nonDepositSpendBundle = (
       tx?: {
         tx_id: string;
         transaction_commitment: string;
-        source: typeof emptyNativePayload.source;
+        submitted_source: typeof emptyNativePayload.submitted_source;
       };
     };
   };
@@ -1749,7 +1748,7 @@ const nonDepositSpendBundle = (
       : Data.to(
           {
             tx_id: datum.event.tx!.tx_id,
-            source: datum.event.tx!.source,
+            submitted_source: datum.event.tx!.submitted_source,
             verdict: validity,
           },
           ForcedInclusionTxV1,

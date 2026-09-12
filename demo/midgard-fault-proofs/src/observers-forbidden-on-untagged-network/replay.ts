@@ -1,15 +1,9 @@
-import {
-  adjudicateMidgardNativeTxFullValidity,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxFaultEvidenceMaterial,
-  encodeMidgardNativeTxCanonical,
-  midgardFieldCommitment,
-} from "@al-ft/midgard-core";
+import { midgardFieldCommitment } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { deriveRejectedTransactionFaultEvidenceMaterial } from "../evidence/rejected-transaction.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import {
   buildObserversForbiddenArtifact,
@@ -122,17 +116,17 @@ export const detectObserversForbiddenForcedReplay = (
         verdict.ForcedTxInvalid.reason !== "ObserversForbiddenOnUntaggedNetwork"
       )
         return;
-      const material = deriveRejectedTransactionFaultEvidenceMaterial(
+      const material = deriveMidgardForcedTxFaultEvidenceMaterial(
         transaction.fullTransactionCbor,
       );
       if (
         material.transactionId.toString("hex") !== transaction.value.tx_id ||
         material.proofSource.compactCbor.toString("hex") !==
-          transaction.value.source.compact_cbor ||
+          transaction.value.submitted_source.compact_cbor ||
         material.proofSource.witnessSetCompactCbor.toString("hex") !==
-          transaction.value.source.witness_set_compact_cbor ||
+          transaction.value.submitted_source.witness_set_compact_cbor ||
         material.proofSource.fieldPreimageLengthsCbor.toString("hex") !==
-          transaction.value.source.field_preimage_lengths_cbor
+          transaction.value.submitted_source.field_preimage_lengths_cbor
       )
         throw new Error(
           "observersForbidden forced transaction differs from authenticated leaf",
@@ -256,15 +250,8 @@ export const prepareObserversForbiddenForcedArtifact = async (
       "observersForbidden selected forced transaction disappeared",
     );
   const reason = transaction.value.verdict.ForcedTxInvalid.reason;
-  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-    encodeMidgardNativeTxCanonical(
-      adjudicateMidgardNativeTxFullValidity(
-        decodeMidgardNativeTxFullFromCanonicalCbor(
-          transaction.fullTransactionCbor,
-        ),
-        "TxIsInvalid",
-      ),
-    ),
+  const material = deriveMidgardForcedTxFaultEvidenceMaterial(
+    transaction.fullTransactionCbor,
   );
   const field =
     material.fieldPreimages[
@@ -311,7 +298,7 @@ export const prepareObserversForbiddenForcedArtifact = async (
     l2TransactionSourceCbor: Data.to(
       {
         tx_id: transaction.value.tx_id,
-        source: transaction.value.source,
+        source: transaction.value.submitted_source,
       } as never,
       SDK.L2TransactionSource as never,
     ),

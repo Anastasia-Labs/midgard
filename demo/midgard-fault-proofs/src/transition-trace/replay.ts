@@ -1,5 +1,6 @@
 import {
   decodeMidgardFieldPreimage,
+  decodeMidgardForcedTxFullFromCanonicalCbor,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
@@ -143,9 +144,14 @@ export const deriveTransitionTraceReplayEvidence = async ({
           ? source.entry.validity === "TxIsValid"
           : source.entry.value.verdict === "ForcedTxValid";
       if (valid) {
-        const full = decodeMidgardNativeTxFullFromCanonicalCbor(
-          source.entry.fullTransactionCbor,
-        );
+        const full =
+          source.phase === "ForcedTransaction"
+            ? decodeMidgardForcedTxFullFromCanonicalCbor(
+                source.entry.fullTransactionCbor,
+              )
+            : decodeMidgardNativeTxFullFromCanonicalCbor(
+                source.entry.fullTransactionCbor,
+              );
         const spentUtxos: SDK.LedgerDeleteWitness[] = [];
         const producedUtxos: SDK.LedgerInsertWitness[] = [];
         for (const key of decodeMidgardFieldPreimage(

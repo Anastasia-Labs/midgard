@@ -91,7 +91,11 @@ export const deriveWatcherLocalEventReplayAuthority = async (
     // so W25 can adjudicate the forced-invalid outcome itself.
     const queued = watcherPhaseAQueuedTxs({
       transactions: [
-        { txId: bound.origin.tx.tx_id, txCbor: canonicalNativeTxCbor },
+        {
+          txId: bound.origin.tx.tx_id,
+          txCbor: canonicalNativeTxCbor,
+          sourceKind: "forced",
+        },
       ],
       programMaterial,
     })[0]!;

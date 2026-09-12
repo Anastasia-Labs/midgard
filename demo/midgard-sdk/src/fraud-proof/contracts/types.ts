@@ -32,6 +32,7 @@ import { type MinAdaFaultProofContracts } from "./families/min-ada.js";
 import { type MinFeeFaultProofContracts } from "./families/min-fee.js";
 import { type MintAuthorizationFaultProofContracts } from "./families/mint-authorization.js";
 import { type MintDeclaredAssetLimitFaultProofContracts } from "./families/mint-declared-asset-limit.js";
+import { type MintItemNonCanonicalFaultProofContracts } from "./families/mint-item-non-canonical.js";
 import { type MissingNativeScriptTxFaultProofContracts } from "./families/missing-native-script-tx.js";
 import { type MissingNativeScriptUtxoFaultProofContracts } from "./families/missing-native-script-utxo.js";
 import { type MissingRedeemerFaultProofContracts } from "./families/missing-redeemer.js";
@@ -54,7 +55,6 @@ import { type ScriptIntegrityHashMismatchFaultProofContracts } from "./families/
 import { type ScriptIntegrityHashMissingFaultProofContracts } from "./families/script-integrity-hash-missing.js";
 import { type SpendInputSignerMissingFaultProofContracts } from "./families/spend-input-signer-missing.js";
 import { type TransactionOutputNonCanonicalFaultProofContracts } from "./families/transaction-output-non-canonical.js";
-import { type MintItemNonCanonicalFaultProofContracts } from "./families/mint-item-non-canonical.js";
 import { type TransitionTraceFaultProofContracts } from "./families/transition-trace.js";
 import { type UnusedRedeemerFaultProofContracts } from "./families/unused-redeemer.js";
 import { type UnusedScriptWitnessFaultProofContracts } from "./families/unused-script-witness.js";

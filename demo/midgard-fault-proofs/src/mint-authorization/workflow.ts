@@ -166,6 +166,7 @@ export const planMintAuthorizationWorkflowField = (
           ? admitted.addrWitnessItemCbors
           : admitted.referenceInputItemCbors;
   return planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex,
     anchorTxId: admitted.txInclusion.nativeTxId,
     nativeTxCompactCbor: admitted.nativeTxCompactCbor,

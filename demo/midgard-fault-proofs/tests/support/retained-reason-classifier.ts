@@ -3,10 +3,10 @@ import { join } from "node:path";
 
 import {
   buildMidgardValidationTraceTree,
-  computeMidgardNativeTxProofCommitment,
+  computeMidgardForcedTxProofCommitment,
   computeScriptIntegrityHashForLanguages,
   decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxProofSource,
+  deriveMidgardForcedTxProofSource,
   encodeMidgardCekProgramMaterialDaValue,
   encodeMidgardCekProgramMaterialSidecar,
   encodeMidgardFieldPreimage,
@@ -22,6 +22,10 @@ import {
   MidgardValidationPhase,
   protectMidgardAddress,
 } from "@al-ft/midgard-core";
+import {
+  encodeMidgardForcedTxCanonical as forcedTraceBytes,
+  materializeMidgardForcedTxFromCanonical as forcedTraceView,
+} from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { asDataType, asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import type { AuthenticatedStateQueueHeaderObservation } from "@al-ft/midgard-sdk";
@@ -459,14 +463,22 @@ const buildRetainedPlutusFixture = async (
         Data.to(eventKey, asLucidSchema(EventKeySchema)),
         "hex",
       ),
-      canonicalTransactionCbor: transaction.canonicalCbor,
+      canonicalTransactionCbor:
+        sourceKind === "forced"
+          ? forcedTraceBytes(
+              forcedTraceView(
+                decodeMidgardNativeTxFullFromCanonicalCbor(
+                  transaction.canonicalCbor,
+                ),
+              ),
+            )
+          : transaction.canonicalCbor,
       programMaterialSidecarCbor:
         encodeMidgardCekProgramMaterialSidecar(material),
       ...(sourceKind === "normal"
         ? { sourceKind: "normal" as const }
         : {
             sourceKind: "forced" as const,
-            committedForcedVerdict: claim.verdict,
           }),
       ledgerWitnessEntries: [{ outRef: spent, output: inputOutput }],
       priorUtxosRoot: predecessor.header.utxosRoot,
@@ -586,7 +598,7 @@ export const captureRetainedPlutusIdentityOrigins = async (
     payout_addr: addressData(dummy),
     reserve_observer: dummy,
   };
-  const submitted = deriveMidgardNativeTxProofSource(
+  const submitted = deriveMidgardForcedTxProofSource(
     decodeMidgardNativeTxFullFromCanonicalCbor(
       fixture.transaction.canonicalCbor,
     ),
@@ -597,8 +609,8 @@ export const captureRetainedPlutusIdentityOrigins = async (
       tx: {
         tx_id: fixture.transaction.txId,
         transaction_commitment:
-          computeMidgardNativeTxProofCommitment(submitted).toString("hex"),
-        source: {
+          computeMidgardForcedTxProofCommitment(submitted).toString("hex"),
+        submitted_source: {
           compact_cbor: submitted.compactCbor.toString("hex"),
           witness_set_compact_cbor:
             submitted.witnessSetCompactCbor.toString("hex"),

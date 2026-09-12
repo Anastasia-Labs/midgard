@@ -7,6 +7,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use env
 use midgard/common/utils
 use midgard/computation_thread as ct
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proof_catalogue
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/missing_signature/forced_signer.{State}
@@ -14,6 +15,7 @@ use midgard/fraud_proofs/missing_signature/forced_step.{
   Args, Datum, SpendRedeemer,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/fraud_proofs/native_tx/compact.{verify_forced_tx_proof_source_v1}
 use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1} as native_compact
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
@@ -81,13 +83,12 @@ validator main(
           }
         expect ForcedTxInvalid{reason: RequiredSignerUnsigned { signer_index }}
           = leaf.verdict
-        let Pair(verified, _) = verify_native_tx_proof_source_v1(
+        let Pair(verified, _) = verify_forced_tx_proof_source_v1(
           leaf.tx_id,
-          leaf.source.compact_cbor,
-          leaf.source.witness_set_compact_cbor,
-          leaf.source.field_preimage_lengths_cbor,
+          leaf.submitted_source.compact_cbor,
+          leaf.submitted_source.witness_set_compact_cbor,
+          leaf.submitted_source.field_preimage_lengths_cbor,
         )
-        expect verified.tx_compact.validity_code == 1
         let expected: Data = State {
           verified_tx_id: leaf.tx_id,
           verified_witness_set_hash: verified.tx_compact.witness_set_hash,
@@ -157,7 +158,7 @@ fn forced_leaf(
 ) -> ledger_state.ForcedInclusionTxV1 {
   ledger_state.ForcedInclusionTxV1 {
     tx_id: fixture.native_block_fixture_v1(tx).tx_id,
-    source: proof_source_of(tx),
+    submitted_source: forced_fixture.from_native_source(proof_source_of(tx)),
     verdict,
   }
 }
@@ -210,11 +211,11 @@ fn expected_forced_state(
   key: ledger_state.TxOrderId,
   _network: Int,
 ) -> State {
-  let Pair(verified, _) = verify_native_tx_proof_source_v1(
+  let Pair(verified, _) = verify_forced_tx_proof_source_v1(
     leaf.tx_id,
-    leaf.source.compact_cbor,
-    leaf.source.witness_set_compact_cbor,
-    leaf.source.field_preimage_lengths_cbor,
+    leaf.submitted_source.compact_cbor,
+    leaf.submitted_source.witness_set_compact_cbor,
+    leaf.submitted_source.field_preimage_lengths_cbor,
   )
   State {
     verified_tx_id: leaf.tx_id,
@@ -474,7 +475,9 @@ test missing_signature_forced_step_rejects_a_substituted_leaf_source() fail {
   )
   let leaf = ledger_state.ForcedInclusionTxV1 {
     ..base,
-    source: proof_source_of(rejected_forced_tx(1)),
+    submitted_source: forced_fixture.from_native_source(
+      proof_source_of(rejected_forced_tx(1)),
+    ),
   }
   let membership = forced_membership(key, leaf, 1)
   let header = forced_header(membership.root, 1)
@@ -503,8 +506,8 @@ test missing_signature_forced_step_rejects_substituted_witness_set_bytes() fail 
   )
   let leaf = ledger_state.ForcedInclusionTxV1 {
     ..base,
-    source: ledger_state.NativeTxProofSourceV1 {
-      ..base.source,
+    submitted_source: ledger_state.ForcedTxProofSourceV1 {
+      ..base.submitted_source,
       witness_set_compact_cbor: native_compact.encode_native_tx_witness_set_compact(
         fixture.empty_witness_set_compact(),
       ),
@@ -537,10 +540,10 @@ test missing_signature_forced_step_rejects_a_malformed_field_length_vector() fai
   )
   let leaf = ledger_state.ForcedInclusionTxV1 {
     ..base,
-    source: ledger_state.NativeTxProofSourceV1 {
-      ..base.source,
+    submitted_source: ledger_state.ForcedTxProofSourceV1 {
+      ..base.submitted_source,
       field_preimage_lengths_cbor: bytearray.concat(
-        base.source.field_preimage_lengths_cbor,
+        base.submitted_source.field_preimage_lengths_cbor,
         #"00",
       ),
     },
@@ -562,13 +565,20 @@ test missing_signature_forced_step_rejects_a_malformed_field_length_vector() fai
 }
 
 /// An accepted source (`validity_code == 0`) has no rejection to contradict.
-test missing_signature_forced_step_rejects_an_accepted_source_validity_code() fail {
+test missing_signature_forced_step_rejects_an_obsolete_four_element_source() fail {
   let tx = accepted_forced_tx(0)
   let key = forced_order_key()
   let leaf = forced_leaf(
     tx,
     ForcedTxInvalid { reason: RequiredSignerUnsigned { signer_index: 0 } },
   )
+  let leaf = ledger_state.ForcedInclusionTxV1 {
+    ..leaf,
+    submitted_source: ledger_state.ForcedTxProofSourceV1 {
+      ..leaf.submitted_source,
+      compact_cbor: native_transaction.midgard_transaction_proof_source_v1(tx).compact_cbor,
+    },
+  }
   let membership = forced_membership(key, leaf, 1)
   let header = forced_header(membership.root, 1)
   let state: Data = expected_forced_state(leaf, key, 0)

@@ -28,7 +28,7 @@ const forced: ValidationSourceMembership = {
       },
       value: {
         tx_id: h32(0x14),
-        source: {
+        submitted_source: {
           compact_cbor: "8101",
           witness_set_compact_cbor: "8102",
           field_preimage_lengths_cbor: "8103",

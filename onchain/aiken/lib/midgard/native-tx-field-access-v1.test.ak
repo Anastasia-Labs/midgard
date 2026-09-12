@@ -40,7 +40,7 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardRedeemerWitness, MidgardTxInput, MidgardTxOutput, MidgardValue,
   MidgardVersionedScript, NativeTxBodyCompact, NativeTxCompact,
   NativeTxWitnessSetCompact, PlutusV3Script, PubKeyCredential, SpendRedeemer,
-  VerifiedMidgardNativeTxCompact, native_tx_version_v1,
+  TxCompactView, VerifiedTxSourceView, native_tx_version_v1,
 }
 use midgard/native_tx_field_access_v1.{
   Certified, Chunked, FieldCarriageV1, FieldPreimageCertificateV1, FieldViewV1,
@@ -163,7 +163,7 @@ fn field_preimage(field_index: Int) -> ByteArray {
 fn source(
   field_index: Int,
   preimage: ByteArray,
-) -> Pair<VerifiedMidgardNativeTxCompact, NativeTxWitnessSetCompact> {
+) -> Pair<VerifiedTxSourceView, NativeTxWitnessSetCompact> {
   let committed = field_commitment(preimage)
   let slot = fn(index: Int) -> ByteArray {
     if index == field_index {
@@ -192,15 +192,15 @@ fn source(
     network_id: 255,
   }
   Pair(
-    VerifiedMidgardNativeTxCompact {
+    VerifiedTxSourceView {
       tx_id: sample_tx_id,
       version: native_tx_version_v1,
-      tx_compact: NativeTxCompact {
+      tx_compact: TxCompactView {
         body,
         witness_set_hash: blake2b_256(
           encode_native_tx_witness_set_compact(witness_set),
         ),
-        validity_code: 0,
+        validity_code: Some(0),
       },
     },
     witness_set,

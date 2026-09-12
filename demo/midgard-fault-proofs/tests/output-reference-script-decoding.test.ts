@@ -3,6 +3,7 @@ import {
   encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
+import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   buildOutputReferenceScriptDecodingFaultProofContracts,
@@ -158,7 +159,7 @@ describe("outputReferenceScriptDecoding V1", () => {
     const evidence = prepareOutputReferenceScriptDecodingEvidence({
       subject: forced("OutputReferenceScriptMalformed"),
       outputIndex: 0,
-      canonicalTransactionCbor: bytes,
+      canonicalTransactionCbor: encodeMidgardForcedTxCanonical(tx),
     });
     expect(evidence.resultClass).toBe(
       OutputReferenceScriptResultClasses.NoFault,
@@ -225,7 +226,7 @@ describe("outputReferenceScriptDecoding V1", () => {
         },
       }),
       outputIndex: 0,
-      canonicalTransactionCbor: bytes,
+      canonicalTransactionCbor: encodeMidgardForcedTxCanonical(tx),
     });
     expect(wrongArm.resultClass).toBe(
       OutputReferenceScriptResultClasses.Malformed,

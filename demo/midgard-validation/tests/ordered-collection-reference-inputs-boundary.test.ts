@@ -191,7 +191,7 @@ describe("canonical V1 reference-inputs Cardano boundary", () => {
       referenceInputField.nativeCanonicalBytes,
     );
     expect(retainedDa.forced.reconstructedCanonicalBytes).toBe(
-      referenceInputField.nativeCanonicalBytes,
+      referenceInputField.nativeCanonicalBytes - 1,
     );
     expect(retainedDa.normal.revealStepCount).toBe(
       referenceInputField.completeFoldStepCount,

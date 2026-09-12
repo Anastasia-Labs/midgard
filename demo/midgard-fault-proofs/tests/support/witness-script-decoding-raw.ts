@@ -1,3 +1,7 @@
+import {
+  decodeMidgardNativeTxCompact,
+  encodeMidgardForcedTxCompact,
+} from "@al-ft/midgard-core";
 /**
  * Shapes and raw submitters for the `witnessScriptDecoding` lifecycle. The
  * raw submitters skip the off-chain closure and state guards so an honest
@@ -483,7 +487,7 @@ export const submitWitnessScriptDecodingStep02Raw = async ({
     stepIndex,
     threadOutRef,
   });
-  requireLinearFaultStepState<WitnessScriptDecodingBound>({
+  const bound = requireLinearFaultStepState<WitnessScriptDecodingBound>({
     threadUtxo,
     signer,
     schema: WitnessScriptDecodingStep02DatumSchema as never,
@@ -491,9 +495,17 @@ export const submitWitnessScriptDecodingStep02Raw = async ({
     stepIndex,
   });
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: bound.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.scriptWitnesses,
     anchorTxId,
-    nativeTxCompactCbor: carriage.compactCbor,
+    nativeTxCompactCbor:
+      bound.subject.source_kind === 1n
+        ? encodeMidgardForcedTxCompact(
+            decodeMidgardNativeTxCompact(
+              Buffer.from(carriage.compactCbor, "hex"),
+            ),
+          ).toString("hex")
+        : carriage.compactCbor,
     itemCbors: scriptWitnessItems,
     owner: signer.paymentKeyHash,
     publish: carriageUtxos.length > 0,

@@ -91,6 +91,7 @@ fn execute(
         WitnessAnchor {
           tx_id: authenticated.bound.subject.transaction_id,
           witness_set_hash: authenticated.bound.witness_set_hash,
+          source_kind: authenticated.bound.subject.source_kind,
         },
         redeemer_field_index,
         reference_inputs,
@@ -118,6 +119,7 @@ fn execute(
         WitnessAnchor {
           tx_id: authenticated.bound.subject.transaction_id,
           witness_set_hash: authenticated.bound.witness_set_hash,
+          source_kind: authenticated.bound.subject.source_kind,
         },
         redeemer_field_index,
         reference_inputs,
@@ -144,6 +146,7 @@ fn execute(
         WitnessAnchor {
           tx_id: authenticated.bound.subject.transaction_id,
           witness_set_hash: authenticated.bound.witness_set_hash,
+          source_kind: authenticated.bound.subject.source_kind,
         },
         redeemer_field_index,
         checkpoint_hash,
@@ -172,6 +175,7 @@ fn execute(
         WitnessAnchor {
           tx_id: authenticated.bound.subject.transaction_id,
           witness_set_hash: authenticated.bound.witness_set_hash,
+          source_kind: authenticated.bound.subject.source_kind,
         },
         redeemer_field_index,
         checkpoint_hash,

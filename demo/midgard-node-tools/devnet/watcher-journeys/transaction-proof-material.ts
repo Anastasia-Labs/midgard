@@ -1,9 +1,9 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 
+import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core";
 import {
   decodeMidgardNativeTxCanonicalEnvelopeForFaultEvidence,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxCompact,
   encodeMidgardNativeTxCompact,
 } from "@al-ft/midgard-core";
@@ -265,7 +265,7 @@ export const prepareJourneyTransactionProof = async (input: {
       const forced = evidence.reconstruction.forcedTransactions[0];
       if (forced === undefined || forced.value.verdict === "ForcedTxValid")
         throw new Error("Forced length claim absent");
-      const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
+      const tx = decodeMidgardForcedTxFullFromCanonicalCbor(
         forced.fullTransactionCbor,
       );
       return Proofs.prepareFieldPreimageLengthWorkflow({
@@ -274,7 +274,7 @@ export const prepareJourneyTransactionProof = async (input: {
         direction: "wrongfulRejection",
         fieldIndex: 0,
         fieldPreimageLengthsCbor: Buffer.from(
-          forced.value.source.field_preimage_lengths_cbor,
+          forced.value.submitted_source.field_preimage_lengths_cbor,
           "hex",
         ),
         fieldPreimage: tx.body.spendInputsPreimageCbor,

@@ -219,7 +219,7 @@ bench high_cardinality_verify_native_tx_compact_reencode_bench(
     compact,
     compact_cbor,
   )
-  verified.tx_compact.validity_code == 0
+  verified.tx_compact.validity_code == Some(0)
 }
 
 bench high_cardinality_verify_native_tx_compact_cbor_bench(
@@ -229,7 +229,7 @@ bench high_cardinality_verify_native_tx_compact_cbor_bench(
     high_cardinality_tx_id,
     compact_cbor,
   )
-  verified.tx_compact.validity_code == 0
+  verified.tx_compact.validity_code == Some(0)
 }
 
 bench high_cardinality_decode_then_verify_native_tx_compact_reencode_bench(
@@ -241,7 +241,7 @@ bench high_cardinality_decode_then_verify_native_tx_compact_reencode_bench(
     compact,
     compact_cbor,
   )
-  verified.tx_compact.validity_code == 0
+  verified.tx_compact.validity_code == Some(0)
 }
 
 bench high_cardinality_decode_spend_inputs_preimage_bench(

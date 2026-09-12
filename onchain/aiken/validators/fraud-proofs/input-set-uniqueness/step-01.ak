@@ -83,7 +83,7 @@ validator main(
         //    bytes the counted root committed — the leaf this callback just
         //    re-checked — so the value is committed by the *root*, not merely
         //    the §3 anchor. An honestly-rejected no-op leaf refuses here.
-        expect bad_tx_view.tx_compact.validity_code == 0
+        expect bad_tx_view.tx_compact.validity_code == Some(0)
 
         // 3. The UTxO must be produced at next step's script hash carrying
         //    the bad transaction's §2.5 anchor. Step-02 opens fields 0/1

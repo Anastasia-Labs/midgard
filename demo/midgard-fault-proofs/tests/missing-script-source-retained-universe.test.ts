@@ -1,5 +1,6 @@
 import {
   buildMidgardValidationTraceTree,
+  encodeMidgardForcedTxCanonical,
   encodeMidgardTxOutput,
   hashMidgardValidationMachineState,
   hashMidgardValidationRejectionCode,
@@ -155,14 +156,17 @@ const retainedFixture = async (
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor,
       sourceKind: presentAt === null ? "normal" : "forced",
-      committedForcedVerdict: presentAt === null ? undefined : "rejected",
+
       blockEndTimeMs: 1_750_000_000_000,
       expectedNetworkId: 0n,
       minFeeA: 0n,
       minFeeB: 0n,
       blockSlot: 100n,
       transactionId: transaction.txId,
-      canonicalTransactionCbor: transaction.txCbor,
+      canonicalTransactionCbor:
+        presentAt === null
+          ? transaction.txCbor
+          : encodeMidgardForcedTxCanonical(transaction.tx),
       priorUtxosRoot: "33".repeat(32),
       postUtxosRoot: "33".repeat(32),
       ledgerWitnessEntries: [

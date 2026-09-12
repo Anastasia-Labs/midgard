@@ -1,9 +1,8 @@
 use aiken/builtin
 use aiken/cbor
 use midgard/fraud_proofs/native_tx/compact.{
-  decode_native_tx_field_preimage_lengths_v1, min_fee_lovelace_v1,
-  native_tx_canonical_size_v1, native_tx_proof_commitment_v1,
-  verify_native_tx_proof_source_v1,
+  decode_native_tx_field_preimage_lengths_v1, ledger_tx_size_v1,
+  min_fee_lovelace_v1, tx_proof_commitment_v1, verify_tx_proof_source_v1,
 }
 use midgard/fraud_proofs/native_tx/types.{NativeTxBodyCompact}
 use midgard/native_tx_field_access_v1
@@ -60,7 +59,8 @@ pub fn verify_static_rules(
     field_preimage_lengths_cbor_data,
   )
   let context_cbor = builtin.un_b_data(context_cbor_data)
-  let Pair(verified, _) = verify_native_tx_proof_source_v1(
+  let Pair(verified, _) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     compact_cbor,
     witness_set_compact_cbor,
@@ -71,7 +71,8 @@ pub fn verify_static_rules(
   )
   let context = decode_validation_context(context_cbor)
   and {
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       compact_cbor,
       witness_set_compact_cbor,
       field_preimage_lengths_cbor,
@@ -86,7 +87,7 @@ pub fn verify_static_rules(
     when
       static_rules_rejection(
         verified.tx_compact.body,
-        native_tx_canonical_size_v1(verified.tx_compact, field_lengths),
+        ledger_tx_size_v1(verified.tx_compact.body, field_lengths),
         context,
       )
     is {

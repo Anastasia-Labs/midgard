@@ -4,8 +4,10 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardCekProgramMaterialDaValue,
   encodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardForcedTxCanonical,
   encodeMidgardSpendInputItem,
   MIDGARD_CONSENSUS_PROFILE,
+  submittedForcedTransactionFromNative,
 } from "@al-ft/midgard-core";
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
@@ -63,7 +65,12 @@ export const retainedTransactionFixture = async (input: {
     replayValidationMachineEvent({
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: Buffer.from(Data.to(eventKey, SDK.EventKey), "hex"),
-      canonicalTransactionCbor: input.canonicalTransactionCbor,
+      canonicalTransactionCbor:
+        input.source === undefined
+          ? input.canonicalTransactionCbor
+          : encodeMidgardForcedTxCanonical(
+              submittedForcedTransactionFromNative(nativeTx),
+            ),
       programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
         input.programMaterial ?? [],
       ),
@@ -71,7 +78,6 @@ export const retainedTransactionFixture = async (input: {
         ? { sourceKind: "normal" as const }
         : {
             sourceKind: "forced" as const,
-            committedForcedVerdict: claim.verdict,
           }),
       ledgerWitnessEntries: input.ledgerEntries,
       priorUtxosRoot: prior.utxosRoot,

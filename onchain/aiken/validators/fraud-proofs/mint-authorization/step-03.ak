@@ -140,6 +140,7 @@ validator main(
           WitnessAnchor {
             tx_id: bad_tx_id,
             witness_set_hash: bad_tx_witness_set_hash,
+            source_kind: 0,
           },
           script_witnesses_field_index,
           reference_inputs,
@@ -207,6 +208,7 @@ validator main(
             WitnessAnchor {
               tx_id: state.bad_tx_id,
               witness_set_hash: state.bad_tx_witness_set_hash,
+              source_kind: 0,
             },
             script_witnesses_field_index,
             tx.reference_inputs,
@@ -272,6 +274,7 @@ validator main(
             WitnessAnchor {
               tx_id: state.bad_tx_id,
               witness_set_hash: state.bad_tx_witness_set_hash,
+              source_kind: 0,
             },
             address_witnesses_field_index,
             tx.reference_inputs,
@@ -363,6 +366,7 @@ validator main(
           WitnessAnchor {
             tx_id: bad_tx_id,
             witness_set_hash: bad_tx_witness_set_hash,
+            source_kind: 0,
           },
           address_witnesses_field_index,
           reference_inputs,

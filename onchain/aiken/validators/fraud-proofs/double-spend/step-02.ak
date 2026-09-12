@@ -55,7 +55,7 @@ validator main(
         )
 
         expect Some(State { verified_tx1_id }) = m_input_state_data
-        expect tx2_view.tx_compact.validity_code == 0
+        expect tx2_view.tx_compact.validity_code == Some(0)
 
         // 2. The two transactions must be different.
         expect verified_tx1_id != tx2_id

@@ -63,13 +63,13 @@
  * digest-bound with `watcherSha256CanonicalJson`, so two runs over the same
  * bytes produce the same `resultDigest`.
  */
-
 import {
   decodeMidgardCekProgramMaterialDaEntry,
   encodeMidgardCekProgramMaterialSidecar,
   type MidgardCekProgramMaterialEntry,
   verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core/cek-proof";
+import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/native";
 import {
   MIDGARD_CONSENSUS_PROFILE,
@@ -589,12 +589,17 @@ const EMPTY_SIDECAR = encodeMidgardCekProgramMaterialSidecar([]);
 const projectProgramMaterialSidecar = (
   txCbor: Buffer,
   blockMaterial: readonly MidgardCekProgramMaterialEntry[],
+  sourceKind: "normal" | "forced",
 ): Buffer => {
   if (blockMaterial.length === 0) {
     return EMPTY_SIDECAR;
   }
   try {
-    const canonicalTx = decodeMidgardNativeTxFullFromCanonicalCbor(txCbor);
+    const canonicalTx = (
+      sourceKind === "forced"
+        ? decodeMidgardForcedTxFullFromCanonicalCbor
+        : decodeMidgardNativeTxFullFromCanonicalCbor
+    )(txCbor);
     const envelopes = collectMidgardAttachedProgramEnvelopes(canonicalTx);
     const verifications = verifyMidgardCekProgramMaterialBundle(
       envelopes,
@@ -647,6 +652,7 @@ export type WatcherPhaseABlockTransaction = Readonly<{
   txId: string;
   /** Exact canonical transaction CBOR from `transaction_preimages`. */
   txCbor: Buffer;
+  sourceKind?: "normal" | "forced";
 }>;
 
 /**
@@ -673,9 +679,11 @@ export const watcherPhaseAQueuedTxs = (input: {
       return Object.freeze({
         txId: Buffer.from(transaction.txId, "hex"),
         txCbor: transaction.txCbor,
+        sourceKind: transaction.sourceKind ?? "normal",
         programMaterialSidecarCbor: projectProgramMaterialSidecar(
           transaction.txCbor,
           blockMaterial,
+          transaction.sourceKind ?? "normal",
         ),
         arrivalSeq: BigInt(index),
         createdAt: WATCHER_PHASE_A_CREATED_AT,

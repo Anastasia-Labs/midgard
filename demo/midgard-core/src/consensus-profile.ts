@@ -385,6 +385,7 @@ export const MIDGARD_CONSENSUS_PROFILE = Object.freeze({
   protocolVersion: MIDGARD_PROTOCOL_VERSION,
   nativeTransactionVersion: Number(MIDGARD_NATIVE_TX_VERSION) as 1,
   nativeTransactionProofSourceVersion: 1,
+  forcedTransactionSourceEncoding: "midgard-forced-submission-v1",
   transitionStepSchemaVersion: MIDGARD_TRANSITION_STEP_SCHEMA_VERSION,
   headerSchemaVersion: 1,
   stateQueueSchemaVersion: 1,

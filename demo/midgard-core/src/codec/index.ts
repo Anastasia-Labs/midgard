@@ -2,6 +2,7 @@ export * from "./address.js";
 export * from "./cbor.js";
 export * from "./datum.js";
 export * from "./errors.js";
+export * from "./forced.js";
 export * from "./hash.js";
 export * from "./native.js";
 export * from "./native-script.js";

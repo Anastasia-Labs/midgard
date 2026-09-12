@@ -13,6 +13,7 @@ import {
   MidgardLedgerOutputScanStages,
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   EMPTY_MERKLE_TREE_ROOT,
@@ -217,9 +218,11 @@ export const prepareResolvedOutputNonCanonicalEvidence = ({
   hex(resolved.priorRoot, 32, "prior root");
   hex(resolved.transactionId, 32, "resolved transaction id");
   index(resolved.outputIndex, "resolved output index");
-  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-    canonicalTransactionCbor,
-  );
+  const material = (
+    subject.source_kind === 1n
+      ? deriveMidgardForcedTxFaultEvidenceMaterial
+      : deriveMidgardNativeTxFaultEvidenceMaterial
+  )(canonicalTransactionCbor);
   if (material.transactionId.toString("hex") !== subject.transaction_id)
     return fail("transaction identity was substituted");
   const field = material.fieldPreimages[coordinate.sourceKind]!;
@@ -435,7 +438,11 @@ export const detectResolvedOutputNonCanonicalCompleteReplay = ({
     subject: VerdictSubject,
     coordinate: ResolvedOutputCoordinate,
   ): void => {
-    const material = deriveMidgardNativeTxFaultEvidenceMaterial(bytes);
+    const material = (
+      subject.source_kind === 1n
+        ? deriveMidgardForcedTxFaultEvidenceMaterial
+        : deriveMidgardNativeTxFaultEvidenceMaterial
+    )(bytes);
     const selected = decodeMidgardInputFieldPreimage(
       material.fieldPreimages[coordinate.sourceKind]!,
     )[coordinate.inputIndex];

@@ -1,8 +1,6 @@
-import {
-  adjudicateMidgardNativeTxFullValidity,
-  deriveMidgardNativeTxProofSource,
-  encodeMidgardNativeTxCanonical,
-} from "@al-ft/midgard-core";
+import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
@@ -99,18 +97,15 @@ describe("invalidSignature exact wrongful rejection", () => {
   });
   it.each(["TxIsValid", "TxIsInvalid"] as const)(
     "derives evidence from retained %s source and rejects source mutations",
-    async (submittedValidity) => {
+    async (_submittedValidity) => {
       const signed = await buildInvalidSignatureSubject({ accused: "honest" });
-      const invalid = adjudicateMidgardNativeTxFullValidity(
-        signed.nativeTx,
-        "TxIsInvalid",
-      );
-      const source = deriveMidgardNativeTxProofSource(invalid);
+      const invalid = materializeMidgardForcedTxFromCanonical(signed.nativeTx);
+      const source = deriveMidgardForcedTxProofSource(invalid);
       const forced = {
         key: { transactionId: "22".repeat(32), outputIndex: 0n },
         value: {
           tx_id: signed.nativeTxId,
-          source: {
+          submitted_source: {
             compact_cbor: source.compactCbor.toString("hex"),
             witness_set_compact_cbor:
               source.witnessSetCompactCbor.toString("hex"),
@@ -123,11 +118,8 @@ describe("invalidSignature exact wrongful rejection", () => {
             },
           },
         },
-        fullTransactionCbor: encodeMidgardNativeTxCanonical(
-          adjudicateMidgardNativeTxFullValidity(
-            signed.nativeTx,
-            submittedValidity,
-          ),
+        fullTransactionCbor: encodeMidgardForcedTxCanonical(
+          materializeMidgardForcedTxFromCanonical(signed.nativeTx),
         ),
       } as const;
       await expect(
@@ -154,7 +146,10 @@ describe("invalidSignature exact wrongful rejection", () => {
             ...forced,
             value: {
               ...forced.value,
-              source: { ...forced.value.source, [field]: "00" },
+              submitted_source: {
+                ...forced.value.submitted_source,
+                [field]: "00",
+              },
             },
           }),
         ).toThrow(/authenticated leaf/);

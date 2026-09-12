@@ -216,7 +216,7 @@ export type MidgardLedgerTx = {
   readonly txId: MidgardTxId;
 
   /** Submitted validity flag; Phase A currently admits only TxIsValid. */
-  readonly validity: MidgardTxValidity;
+  readonly validity?: MidgardTxValidity;
 
   /** Fee paid by the transaction in lovelace. */
   readonly fee: bigint;
@@ -289,6 +289,7 @@ export type MidgardLedgerTx = {
  * the lower-level canonical preimage object on its happy path.
  */
 export type MidgardSubmittedTx = {
+  readonly sourceKind?: "normal" | "forced";
   /** Canonical submitted transaction CBOR bytes retained for persistence. */
   readonly txCbor: Buffer;
 
@@ -298,7 +299,9 @@ export type MidgardSubmittedTx = {
   /** Hash commitments derived from the submitted canonical transaction. */
   readonly commitments: {
     /** Compact transaction commitment whose body hash is the transaction id. */
-    readonly transactionCompact: MidgardNativeTxCompact;
+    readonly transactionCompact: Omit<MidgardNativeTxCompact, "validity"> & {
+      readonly validity?: MidgardTxValidity;
+    };
 
     /** Compact witness-set roots derived from submitted witness preimages. */
     readonly witnessSetCompact: MidgardNativeTxWitnessSetCompact;

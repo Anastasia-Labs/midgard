@@ -10,7 +10,10 @@ use midgard/fraud_proofs/min_fee/step_01.{
 }
 use midgard/fraud_proofs/min_fee/step_02
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor_v1}
+use midgard/fraud_proofs/native_tx/compact.{
+  verify_forced_tx_compact_cbor_v1, verify_native_tx_compact_cbor_v1,
+}
+use midgard/fraud_proofs/native_tx/types.{ForcedTxCompact}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/rejection_reason_v1.{FeeBelowMinimum}
 
@@ -57,7 +60,7 @@ validator main(
           tx,
         )
 
-        expect bad_tx_view.tx_compact.validity_code == 0
+        expect bad_tx_view.tx_compact.validity_code == Some(0)
 
         // 2. The UTxO must be produced at next step's script hash with the
         //    verified native compact transaction, its inline body fee, the
@@ -72,7 +75,10 @@ validator main(
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
           subject: substrate.bind_accepted_subject_v1(bad_tx_view),
-          bad_tx: bad_tx_view.tx_compact,
+          bad_tx: ForcedTxCompact {
+            body: bad_tx_view.tx_compact.body,
+            witness_set_hash: bad_tx_view.tx_compact.witness_set_hash,
+          },
           bad_tx_body_fee: bad_tx_view.tx_compact.body.fee,
           bad_tx_id,
           min_fee_a: header.min_fee_a,
@@ -111,13 +117,16 @@ validator main(
           subject,
           FeeBelowMinimum,
         )
-        let verified = verify_native_tx_compact_cbor_v1(
+        let verified = verify_forced_tx_compact_cbor_v1(
           membership.value.tx_id,
-          membership.value.source.compact_cbor,
+          membership.value.submitted_source.compact_cbor,
         )
         let expected: Data = step_02.State {
           subject,
-          bad_tx: verified.tx_compact,
+          bad_tx: ForcedTxCompact {
+            body: verified.tx_compact.body,
+            witness_set_hash: verified.tx_compact.witness_set_hash,
+          },
           bad_tx_body_fee: verified.tx_compact.body.fee,
           bad_tx_id: verified.tx_id,
           min_fee_a: header.min_fee_a,
@@ -141,7 +150,10 @@ fn expected_state_for(block: fixture.NativeBlockFixtureV1) -> Data {
     subject: substrate.bind_accepted_subject_v1(
       verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
     ),
-    bad_tx: block.compact,
+    bad_tx: ForcedTxCompact {
+      body: block.compact.body,
+      witness_set_hash: block.compact.witness_set_hash,
+    },
     bad_tx_body_fee: block.compact.body.fee,
     bad_tx_id: block.tx_id,
     min_fee_a: block.header.min_fee_a,
@@ -220,7 +232,10 @@ test min_fee_step_01_rejects_a_forged_fee_schedule_in_state() fail {
     subject: substrate.bind_accepted_subject_v1(
       verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
     ),
-    bad_tx: block.compact,
+    bad_tx: ForcedTxCompact {
+      body: block.compact.body,
+      witness_set_hash: block.compact.witness_set_hash,
+    },
     bad_tx_body_fee: block.compact.body.fee,
     bad_tx_id: block.tx_id,
     min_fee_a: block.header.min_fee_a,

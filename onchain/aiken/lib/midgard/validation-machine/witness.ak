@@ -10,13 +10,13 @@ use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
 }
 use midgard/fraud_proofs/native_tx/compact.{
-  native_tx_proof_commitment_v1, verify_native_tx_proof_source_v1,
+  tx_proof_commitment_v1, verify_tx_proof_source_v1,
 }
 use midgard/fraud_proofs/native_tx/components.{
   decode_midgard_tx_input_cbor, encode_midgard_tx_input,
 }
 use midgard/fraud_proofs/native_tx/types.{
-  MidgardTxInput, NativeTxWitnessSetCompact, VerifiedMidgardNativeTxCompact,
+  MidgardTxInput, NativeTxWitnessSetCompact, VerifiedTxSourceView,
 }
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_v1
@@ -708,7 +708,7 @@ pub fn canonical_decode_control_is_bound(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: CanonicalDecodeControlV1,
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
 ) -> Bool {
   let exact_witness = encode_transaction_field_scan_witness(
     control.compact_cbor,
@@ -729,7 +729,8 @@ pub fn canonical_decode_control_is_bound(
     control.chunk_index >= 0,
     control.item_count >= -1,
     control.encoded_length >= 0,
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,
@@ -771,7 +772,7 @@ pub fn input_sets_control_is_bound(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: InputSetsControlV1,
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
 ) -> Bool {
   let body = verified.tx_compact.body
   let spend_is_empty = body.spend_inputs_hash == native_tx_field_access_v1.empty_field_commitment
@@ -779,7 +780,8 @@ pub fn input_sets_control_is_bound(
   let seen = control.spend_seen + control.reference_seen
   and {
     verified.version == 1,
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,
@@ -870,7 +872,7 @@ pub fn signatures_control_is_bound(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: SignaturesControlV1,
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
 ) -> Bool {
   let address_is_empty = witness_set.addr_tx_wits_hash == native_tx_field_access_v1.empty_field_commitment
@@ -885,7 +887,8 @@ pub fn signatures_control_is_bound(
   }
   and {
     verified.version == 1,
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,
@@ -1019,14 +1022,15 @@ pub fn phase_a_native_control_is_bound(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: PhaseANativeScriptsControlV1,
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
 ) -> Bool {
   let scripts_are_empty = witness_set.script_tx_wits_hash == native_tx_field_access_v1.empty_field_commitment
   let is_late_continuation = control.continuation_cbor != #""
   and {
     verified.version == 1,
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,
@@ -1151,14 +1155,15 @@ pub fn phase_a_native_control_is_bound_carried(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: PhaseANativeScriptsControlV1,
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
 ) -> Bool {
   let scripts_are_empty = witness_set.script_tx_wits_hash == native_tx_field_access_v1.empty_field_commitment
   let is_late_continuation = control.continuation_cbor != #""
   and {
     verified.version == 1,
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,
@@ -1266,7 +1271,8 @@ pub fn phase_a_native_payload_control_is_bound(
 ) -> Bool {
   let is_late_continuation = control.continuation_cbor != #""
   and {
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,
@@ -1399,7 +1405,8 @@ pub fn phase_a_script_preconditions_control_is_bound(
 ) -> Bool {
   let observers_are_empty = observer_commitment == native_tx_field_access_v1.empty_field_commitment
   and {
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,
@@ -1519,7 +1526,8 @@ pub fn resolve_inputs_control_is_bound(
     }
   }
   and {
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,
@@ -2774,7 +2782,8 @@ pub fn script_sources_control_is_bound(
   control: ScriptSourcesControlV1,
 ) -> Bool {
   and {
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,
@@ -4038,7 +4047,8 @@ pub fn cek_witness_is_well_formed_v1(
   cek: CekWitnessControlV1,
 ) -> Bool {
   let control = cek.control
-  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
+  let Pair(verified_source, _) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -4046,7 +4056,8 @@ pub fn cek_witness_is_well_formed_v1(
   )
   and {
     verified_source.version == 1,
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,

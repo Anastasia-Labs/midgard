@@ -7,6 +7,7 @@ import {
   encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
+import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   buildProtectedOutputSignerMissingFaultProofContracts,
@@ -173,7 +174,7 @@ describe("protectedOutputSignerMissing V1 binding", () => {
         },
       }),
       outputIndex: 0,
-      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(valid),
+      canonicalTransactionCbor: encodeMidgardForcedTxCanonical(valid),
     });
     expect(forced.signerPresent).toBe(true);
     expect(forced.validSignerHashes).toEqual([paymentCredential]);
@@ -190,7 +191,7 @@ describe("protectedOutputSignerMissing V1 binding", () => {
           },
         }),
         outputIndex: 0,
-        canonicalTransactionCbor: encodeMidgardNativeTxCanonical(missing),
+        canonicalTransactionCbor: encodeMidgardForcedTxCanonical(missing),
       }),
     ).toThrow(/agrees with the operator verdict/u);
   });
@@ -289,7 +290,9 @@ describe("protectedOutputSignerMissing V1 binding", () => {
               })
             : acceptedVerdictSubject(id),
         outputIndex,
-        canonicalTransactionCbor: encodeMidgardNativeTxCanonical(transaction),
+        canonicalTransactionCbor: (direction === "forced"
+          ? encodeMidgardForcedTxCanonical
+          : encodeMidgardNativeTxCanonical)(transaction),
       });
     };
     const unprotected = prepare(

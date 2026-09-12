@@ -199,6 +199,8 @@ export const buildDaDeploymentFixture = async (
   contracts.fraudProofCatalogueMint = {
     ...contracts.fraudProofCatalogueMint,
     fraudProofCatalogue: await buildCanonicalFraudProofCatalogueFixture({
+      mintItemNonCanonical: contracts.fraudProofMintItemNonCanonical!
+        .scriptHash as string,
       doubleSpend: contracts.fraudProofDoubleSpend!.scriptHash as string,
       nonExistentInput: contracts.fraudProofNonExistentInput!
         .scriptHash as string,

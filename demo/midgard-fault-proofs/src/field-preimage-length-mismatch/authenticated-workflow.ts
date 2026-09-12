@@ -2,6 +2,7 @@ import {
   decodeMidgardNativeTxCompact,
   decodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
+import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
 import { isMidgardWitnessSetField } from "@al-ft/midgard-sdk";
 
 import {
@@ -118,14 +119,18 @@ export const resolveFieldPreimageLengthCarriage = async ({
   readonly evidence: AuthenticatedFieldPreimageLengthEvidence;
   readonly journal: FieldPreimageLengthJournalPort;
 }) => {
-  const compact = decodeMidgardNativeTxCompact(
-    Buffer.from(evidence.fieldMaterial.nativeTxCompactCbor, "hex"),
-  );
+  const compact = (
+    evidence.prepared.direction === "wrongfulRejection"
+      ? decodeMidgardForcedTxCompact
+      : decodeMidgardNativeTxCompact
+  )(Buffer.from(evidence.fieldMaterial.nativeTxCompactCbor, "hex"));
   const witnessSet = decodeMidgardNativeTxWitnessSetCompact(
     Buffer.from(evidence.fieldMaterial.witnessSetCompactCbor, "hex"),
   );
   const witnessField = isMidgardWitnessSetField(evidence.prepared.fieldIndex);
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind:
+      evidence.prepared.direction === "wrongfulRejection" ? 1n : 0n,
     fieldIndex: evidence.prepared.fieldIndex,
     anchorTxId: evidence.prepared.transactionId,
     nativeTxCompactCbor: evidence.fieldMaterial.nativeTxCompactCbor,

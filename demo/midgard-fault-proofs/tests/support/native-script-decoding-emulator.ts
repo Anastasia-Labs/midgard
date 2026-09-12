@@ -41,10 +41,7 @@ import {
   type MidgardLedgerOutputReferenceScriptLanguage,
 } from "@al-ft/midgard-core";
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxProofSource,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
@@ -57,6 +54,12 @@ import {
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
+import {
+  encodeMidgardForcedTxCanonical,
+  encodeMidgardForcedTxCompact,
+} from "@al-ft/midgard-core/codec/forced";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -396,9 +399,16 @@ export const buildDecodingBlockFixture = async ({
   /** Caller-supplied normal transactions committed beside the subject. */
   readonly additionalTransactions?: readonly MidgardNativeTxFull[];
 }): Promise<DecodingBlockFixture> => {
-  const canonicalCbor = encodeMidgardNativeTxCanonical(subject.nativeTx);
+  const submitted = materializeMidgardForcedTxFromCanonical(subject.nativeTx);
+  const canonicalCbor =
+    subject.kind === "normal"
+      ? encodeMidgardNativeTxCanonical(subject.nativeTx)
+      : encodeMidgardForcedTxCanonical(submitted);
   const nativeTxId = computeMidgardNativeTxId(subject.nativeTx).toString("hex");
-  const compactCbor = encodeMidgardNativeTxCompact(subject.nativeTx.compact);
+  const compactCbor =
+    subject.kind === "normal"
+      ? encodeMidgardNativeTxCompact(subject.nativeTx.compact)
+      : encodeMidgardForcedTxCompact(submitted.compact);
 
   let transactions: SDK.DaPayloadEntry[] = [];
   let transactionPreimages: SDK.DaPayloadEntry[] = [];
@@ -434,22 +444,10 @@ export const buildDecodingBlockFixture = async ({
     transactionPreimages = [[nativeTxId, canonicalCbor.toString("hex")]];
     eventKey = { L2TransactionEventKey: { tx_id: nativeTxId } };
   } else {
-    // §2.4.3(e): a rejected forced leaf commits the operator-ADJUDICATED
-    // source, while the DA preimage stays the submitted canonical bytes. The
-    // adjudicated triple is what the thread's `verified_tx_id` and every
-    // downstream replay must key off — never the submitted one.
-    const source =
-      subject.verdict === "ForcedTxValid"
-        ? deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalCbor)
-        : deriveMidgardNativeTxProofSource(
-            adjudicateMidgardNativeTxFullValidity(
-              decodeMidgardNativeTxFullFromCanonicalCbor(canonicalCbor),
-              "TxIsInvalid",
-            ),
-          );
+    const source = deriveMidgardForcedTxProofSource(submitted);
     const leaf: SDK.ForcedInclusionTxV1 = {
       tx_id: nativeTxId,
-      source: {
+      submitted_source: {
         compact_cbor: source.compactCbor.toString("hex"),
         witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
         field_preimage_lengths_cbor:

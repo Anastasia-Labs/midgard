@@ -359,6 +359,7 @@ const admitAcceptedInputSetUniquenessArtifact = (
     items: readonly string[],
   ): FaultProofFieldOpeningPlan =>
     planFaultProofFieldOpening({
+      anchorSourceKind: 0n,
       fieldIndex,
       anchorTxId: tx.artifact.nativeTxId,
       nativeTxCompactCbor: tx.artifact.nativeTxCompactCbor,
@@ -472,7 +473,7 @@ export const admitInputSetUniquenessForcedArtifact = (
   const leaf = forcedSource.membership.value;
   if (
     leaf.tx_id !== transactionId ||
-    leaf.source.compact_cbor !== nativeTxCompactCbor ||
+    leaf.submitted_source.compact_cbor !== nativeTxCompactCbor ||
     leaf.verdict === "ForcedTxValid" ||
     Data.to(
       forcedVerdictSubject({
@@ -524,6 +525,7 @@ export const admitInputSetUniquenessForcedArtifact = (
   }
   const makePlan = (fieldIndex: number, items: readonly string[]) =>
     planFaultProofFieldOpening({
+      anchorSourceKind: 1n,
       fieldIndex,
       anchorTxId: transactionId,
       nativeTxCompactCbor,
@@ -653,7 +655,7 @@ export const prepareInputSetUniquenessArtifact = async ({
         detection.bound.subject as never,
         InputSetUniquenessVerdictSubjectSchema as never,
       ),
-      nativeTxCompactCbor: transaction.value.source.compact_cbor,
+      nativeTxCompactCbor: transaction.value.submitted_source.compact_cbor,
       spendInputItemCbors: detection.spendInputItemCbors,
       referenceInputItemCbors: detection.referenceInputItemCbors,
       forcedSourceCbor: Data.to(

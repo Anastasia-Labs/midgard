@@ -89,7 +89,10 @@ fn execute(
       expect Bound { bound } = state
       let Pair(view, start) = opened_field_walk(
         opening,
-        BodyAnchor { tx_id: bound.subject.transaction_id },
+        BodyAnchor {
+          tx_id: bound.subject.transaction_id,
+          source_kind: bound.subject.source_kind,
+        },
         mint_field_index,
         reference_inputs,
         certificate_policy,
@@ -110,7 +113,10 @@ fn execute(
       expect Bound { bound } = state
       let Pair(view, start) = opened_field_grammar_certification(
         opening,
-        BodyAnchor { tx_id: bound.subject.transaction_id },
+        BodyAnchor {
+          tx_id: bound.subject.transaction_id,
+          source_kind: bound.subject.source_kind,
+        },
         mint_field_index,
         reference_inputs,
         certificate_policy,
@@ -130,7 +136,10 @@ fn execute(
       expect Grammar { bound, checkpoint_hash } = state
       let Pair(view, resumed) = resume_opened_field_grammar_certification(
         opening,
-        BodyAnchor { tx_id: bound.subject.transaction_id },
+        BodyAnchor {
+          tx_id: bound.subject.transaction_id,
+          source_kind: bound.subject.source_kind,
+        },
         mint_field_index,
         checkpoint_hash,
         checkpoint_bytes,
@@ -152,7 +161,10 @@ fn execute(
       expect Grammar { bound, checkpoint_hash } = state
       let Pair(view, start) = opened_certified_field_walk_from_grammar(
         opening,
-        BodyAnchor { tx_id: bound.subject.transaction_id },
+        BodyAnchor {
+          tx_id: bound.subject.transaction_id,
+          source_kind: bound.subject.source_kind,
+        },
         mint_field_index,
         checkpoint_hash,
         checkpoint_bytes,

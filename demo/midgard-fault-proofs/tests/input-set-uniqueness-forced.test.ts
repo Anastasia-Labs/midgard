@@ -41,7 +41,7 @@ const makeArtifact = async () => {
   } as const;
   const leaf = {
     tx_id: fixture.nativeTxId,
-    source: fixture.forcedSource,
+    submitted_source: fixture.forcedSource,
     verdict: { ForcedTxInvalid: { reason } },
   } as const;
   const keyBytes = Buffer.from(Data.to(key, OutputReference), "hex");
@@ -77,7 +77,7 @@ const makeArtifact = async () => {
       subject as never,
       InputSetUniquenessVerdictSubjectSchema as never,
     ),
-    nativeTxCompactCbor: fixture.nativeTxCompactCbor,
+    nativeTxCompactCbor: fixture.forcedSource.compact_cbor,
     spendInputItemCbors: fixture.spendInputItemCbors,
     referenceInputItemCbors: fixture.referenceInputItemCbors,
     forcedSourceCbor: Data.to(

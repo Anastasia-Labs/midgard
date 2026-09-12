@@ -87,6 +87,7 @@ export const observersForbiddenFieldRequirement = ({
   const admitted = admitObserversForbiddenArtifact(artifact);
   return {
     planned: planFaultProofFieldOpening({
+      anchorSourceKind: admitted.artifact.sourceKind === "forced" ? 1n : 0n,
       fieldIndex: 3,
       anchorTxId: admitted.artifact.transactionId,
       nativeTxCompactCbor: admitted.artifact.nativeTxCompactCbor,

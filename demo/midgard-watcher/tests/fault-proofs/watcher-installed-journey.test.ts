@@ -274,7 +274,8 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
         native,
         recorder,
         initializationTxHash: deployment.initialization.txHash,
-        confirmationBlocksPerSubmission: 40,
+        confirmationBlocksPerSubmission:
+          native.watcherConfig.l1.finality.depth + 1,
       }),
     );
     nativeBlocksPath = join(
@@ -283,10 +284,10 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     );
     cleanup.push(chain.close);
     await chain.grow(40);
-    // Submission growth supplies real confirmation blocks. Background growth
-    // keeps independent observations fresh without generating a block per
-    // second while the watcher durably processes the proof's chain history.
-    chain.start({ intervalMs: 5_000, blocksPerTick: 1 });
+    // Submission growth supplies the configured finality depth plus one real
+    // block. Background growth matches the fixture's 20-second block interval
+    // so durable ingestion need not race a chain accelerated fourfold.
+    chain.start({ intervalMs: 20_000, blocksPerTick: 1 });
 
     const provider = deployment.emulator;
     transport.provider = provider;
@@ -443,7 +444,9 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
           launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
         })
       ).readAll();
-    const latestDiagnostics = (kind: "l1_source" | "verification") => {
+    const latestDiagnostics = (
+      kind: "l1_source" | "verification" | "da_fetch",
+    ) => {
       let page = watcher!.operations.api.diagnostics({ kind, limit: 100 });
       let records = page.records.slice(-5);
       while (page.nextCursor !== null) {
@@ -468,6 +471,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       metrics: watcher!.operations.api.metrics(),
       l1: latestDiagnostics("l1_source"),
       verification: latestDiagnostics("verification"),
+      da: latestDiagnostics("da_fetch"),
     });
     await stage("recorded invalid-block decision", async () => {
       for (;;) {

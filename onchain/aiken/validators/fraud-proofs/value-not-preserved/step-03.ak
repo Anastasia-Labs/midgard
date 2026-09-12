@@ -87,7 +87,7 @@ validator main(
         // 2. The §3 anchor is paid once; both fields open off the handle.
         let anchored = anchored_native_tx(
           BodyTxOpening { native_tx_compact_cbor },
-          BodyAnchor { tx_id: state.bad_tx_id },
+          BodyAnchor { tx_id: state.bad_tx_id, source_kind: 0 },
         )
 
         // 3. Stage three, restricted to the claimed unit: every output's

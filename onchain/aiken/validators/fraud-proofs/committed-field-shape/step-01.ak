@@ -97,7 +97,7 @@ validator main(
         )
 
         // Shape faults are ordered after the normal-leaf mistag fault.
-        expect verified.tx_compact.validity_code == 0
+        expect verified.tx_compact.validity_code == Some(0)
 
         // 2. The UTxO must be produced at the next step's script hash carrying
         //    the exact accusation. Both members of it are derived here — the

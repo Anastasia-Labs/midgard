@@ -273,6 +273,7 @@ describe("mint-authorization emulator adversarial polarity", () => {
     // The honest tier-2 mint preimage, tampered in its last content byte: the
     // published bytes still decode, but no longer re-hash to the committed slot.
     const plannedMint = planFaultProofFieldOpening({
+      anchorSourceKind: 0n,
       fieldIndex: MIDGARD_FIELD_INDEX.mint,
       anchorTxId: block.nativeTxId,
       nativeTxCompactCbor: block.nativeTxCompactCbor,

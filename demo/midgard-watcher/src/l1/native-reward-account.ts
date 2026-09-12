@@ -6,8 +6,8 @@ import { isAbsolute, normalize } from "node:path";
 import {
   CML,
   Kupmios,
-  stakeCredentialOf,
   type RewardAccountState,
+  stakeCredentialOf,
 } from "@lucid-evolution/lucid";
 
 import { parseWatcherStrictJsonValue } from "../runtime/config.js";
@@ -160,7 +160,8 @@ export const queryWatcherNativeRewardAccount = async (
         encoding: "utf8",
         env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
       },
-      (error, stdout) => (error === null ? resolve(stdout) : reject(error)),
+      (error: Error | null, stdout) =>
+        error === null ? resolve(stdout) : reject(error),
     );
     child.stdin!.on("error", reject);
     child.stdin!.end(`${watcherCanonicalJson(startup)}\n`, "utf8");

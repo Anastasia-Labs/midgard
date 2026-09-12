@@ -1,10 +1,8 @@
 import {
-  adjudicateMidgardNativeTxFullValidity,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxFaultEvidenceMaterial,
-  encodeMidgardNativeTxCanonical,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   decodeRetainedValidationWitness,
@@ -12,7 +10,6 @@ import {
   type EventKey,
   EventKeySchema,
   forcedVerdictSubject,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
   type VerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -304,24 +301,17 @@ export const replayMissingRedeemer = async (
             retainedValidationWitnessEntries: retainedEntries,
             expectedValidationTracesRoot: block.header.validationTracesRoot,
           });
-        const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-          encodeMidgardNativeTxCanonical(
-            adjudicateMidgardNativeTxFullValidity(
-              decodeMidgardNativeTxFullFromCanonicalCbor(
-                transaction.fullTransactionCbor,
-              ),
-              "TxIsInvalid",
-            ),
-          ),
+        const material = deriveMidgardForcedTxFaultEvidenceMaterial(
+          transaction.fullTransactionCbor,
         );
         if (
           material.transactionId.toString("hex") !== transaction.value.tx_id ||
           material.proofSource.compactCbor.toString("hex") !==
-            transaction.value.source.compact_cbor ||
+            transaction.value.submitted_source.compact_cbor ||
           material.proofSource.witnessSetCompactCbor.toString("hex") !==
-            transaction.value.source.witness_set_compact_cbor ||
+            transaction.value.submitted_source.witness_set_compact_cbor ||
           material.proofSource.fieldPreimageLengthsCbor.toString("hex") !==
-            transaction.value.source.field_preimage_lengths_cbor
+            transaction.value.submitted_source.field_preimage_lengths_cbor
         )
           throw new Error(
             "missingRedeemer forced transaction differs from authenticated source",
@@ -433,18 +423,11 @@ export const buildMissingRedeemerMaterialFromRetainedDa = async ({
       retainedValidationWitnessEntries,
       expectedValidationTracesRoot,
     });
-  // A rejected forced transaction is committed with its validity adjudicated
-  // to `TxIsInvalid`; only that bound scalar moves, never the field bytes.
-  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-    subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION
-      ? encodeMidgardNativeTxCanonical(
-          adjudicateMidgardNativeTxFullValidity(
-            decodeMidgardNativeTxFullFromCanonicalCbor(Buffer.from(txCbor)),
-            "TxIsInvalid",
-          ),
-        )
-      : Buffer.from(txCbor),
-  );
+  const material = (
+    subject.source_kind === 1n
+      ? deriveMidgardForcedTxFaultEvidenceMaterial
+      : deriveMidgardNativeTxFaultEvidenceMaterial
+  )(Buffer.from(txCbor));
   const witnessSetCompactCbor =
     material.proofSource.witnessSetCompactCbor.toString("hex");
   if (

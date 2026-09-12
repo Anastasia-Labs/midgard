@@ -245,6 +245,7 @@ export const submitStep03 = async ({
   // bytes re-derive to the anchor the thread carries, and these items are the
   // §5.1 preimage that transaction commits at field 0.
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: inputDatum.data.verified_tx1_id,
     nativeTxCompactCbor,

@@ -550,6 +550,7 @@ const publishCarriage = async ({
   }
   const unsigned = await Effect.runPromise(
     buildUnsignedFieldPreimageCertificationProgram(harness.lucid, {
+      sourceKind: 0n,
       plan,
       certificatePolicyId: policy.policyId,
       certificateAddress: policy.address,

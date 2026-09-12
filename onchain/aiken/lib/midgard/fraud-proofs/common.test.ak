@@ -12,6 +12,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proof
 use midgard/fraud_proofs/common
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/fraud_proofs/native_tx/compact.{native_tx_compact_view}
 use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionBody,
 }
@@ -354,7 +355,7 @@ fn run_native_binding(
   )
   expect header == block.header
   expect native_tx_id == block.tx_id
-  expect native_tx_view.tx_compact == block.compact
+  expect native_tx_view.tx_compact == native_tx_compact_view(block.compact)
   output_state_data == sample_state()
 }
 

@@ -10,10 +10,10 @@
  */
 
 import {
+  computeMidgardForcedTxProofCommitment,
   computeMidgardNativeTxId,
-  computeMidgardNativeTxProofCommitment,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
+  decodeMidgardForcedTxFullFromCanonicalCbor,
+  deriveMidgardForcedTxProofSourceFromCanonicalCbor,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
 import {
@@ -687,12 +687,12 @@ const forcedIntervalFor = (
         readonly transaction_commitment: string;
       };
     };
-    const full = decodeMidgardNativeTxFullFromCanonicalCbor(bytes);
-    const source = deriveMidgardNativeTxProofSourceFromCanonicalCbor(bytes);
+    const full = decodeMidgardForcedTxFullFromCanonicalCbor(bytes);
+    const source = deriveMidgardForcedTxProofSourceFromCanonicalCbor(bytes);
     if (
       computeMidgardNativeTxId(full).toString("hex") !==
         decodedEvent.tx.tx_id ||
-      computeMidgardNativeTxProofCommitment(source).toString("hex") !==
+      computeMidgardForcedTxProofCommitment(source).toString("hex") !==
         decodedEvent.tx.transaction_commitment
     )
       return null;

@@ -422,6 +422,7 @@ export const submitRawInvalidSignatureStep02 = async ({
     throw new Error("Raw step-02 thread UTxO carries no step state");
   }
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: datum.data.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: SDK.MIDGARD_FIELD_INDEX.addressWitnesses,
     anchorTxId: datum.data.subject.transaction_id,
     nativeTxCompactCbor: subject.nativeTxCompactCbor,

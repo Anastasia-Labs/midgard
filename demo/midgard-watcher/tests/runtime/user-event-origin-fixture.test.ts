@@ -21,11 +21,12 @@ const makeTransaction = (inputHashes: readonly string[] = [], fee = 1n) => {
   const datum = CML.PlutusData.from_cbor_hex("9f01ff");
   const datumHash = CML.hash_plutus_data(datum).to_hex();
   const inlineCbor = datum.to_cbor_hex();
-  const script = CML.Script.new_native(
-    CML.NativeScript.new_script_all(CML.NativeScriptList.new()),
+  const nativeScript = CML.NativeScript.new_script_all(
+    CML.NativeScriptList.new(),
   );
+  const script = CML.Script.new_native(nativeScript);
   const scriptHash = script.hash().to_hex();
-  const scriptCbor = script.to_canonical_cbor_hex();
+  const scriptCbor = nativeScript.to_cbor_hex();
   const outputs = CML.TransactionOutputList.new();
   outputs.add(
     CML.TransactionOutput.new(
@@ -156,7 +157,7 @@ describe("synthetic user-event origin query indexes", () => {
         },
         spent_at: null,
         datum: first.inlineCbor,
-        script: first.scriptCbor,
+        script: { language: "native", script: first.scriptCbor },
       };
       const decode = vi.spyOn(CML.Transaction, "from_cbor_hex");
       try {

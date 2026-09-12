@@ -8,6 +8,7 @@ pub const staged_signer_finalize_batch_limit: Int = 16
 
 pub type State {
   direction: Int,
+  source_kind: Int,
   execution_index: Int,
   source_index: Int,
   origin_kind: Int,

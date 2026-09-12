@@ -71,7 +71,7 @@ validator main(
         //    no reproduction of the signer list, and no re-hash of it.
         let required_signers_view = opened_field_view(
           required_signers_opening,
-          BodyAnchor { tx_id: verified_tx_id },
+          BodyAnchor { tx_id: verified_tx_id, source_kind: 0 },
           required_signers_field_index,
           reference_inputs,
           field_preimage_certificate_policy_id,

@@ -2,6 +2,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import {
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardForcedTxCanonical,
+} from "@al-ft/midgard-core";
+import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
   GENESIS_HEADER_HASH,
@@ -565,7 +569,11 @@ describe("installed catalogue retained classification", () => {
         },
         transactionId: fixture.transaction.txId,
         redeemerIndex: 0,
-        txCbor: fixture.transaction.canonicalCbor,
+        txCbor: encodeMidgardForcedTxCanonical(
+          decodeMidgardNativeTxFullFromCanonicalCbor(
+            fixture.transaction.canonicalCbor,
+          ),
+        ),
       });
     expect(observation.unused).toBe(false);
     expect(base.selectedBit).toBe(1n);
@@ -671,14 +679,18 @@ describe("installed catalogue retained classification", () => {
     },
   );
 
-  it("refuses an accepted descriptor whose terminal bytes are not an acceptance witness", async () => {
+  it("detects a false transition when an accepted descriptor carries a rejection terminal", async () => {
     const fixture = await buildRetainedPlutusUnboundVariableFixture({
       verdict: "accepted",
     });
     const { classifyInput } = await setup(fixture, "normal");
-    await expect(classifyHeader(classifyInput)).rejects.toThrow(
-      /Terminal acceptance witness has an unsupported version/u,
-    );
+    const decision = await classifyHeader(classifyInput);
+    expect(decision).toMatchObject({
+      decision: "fault_detected",
+      category: "transitionTrace",
+      detectionId: "transition-trace:0:invalidOneStepTransition",
+    });
+    expect(await headerDecisionCanonicalEvidence(decision)).toBeDefined();
   });
 
   it("refuses missing predecessor coverage without calling replay", async () => {

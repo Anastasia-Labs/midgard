@@ -56,6 +56,7 @@ validator main(
           control: control_data,
           auxiliary_hash: blake2b_256(cbor.serialise(action.auxiliary)),
           transaction_id: prepared.resolution.pre_state.transaction_id,
+          source_kind: prepared.resolution.pre_state.source_kind,
         }
         continue(
           computation_thread_policy_id,

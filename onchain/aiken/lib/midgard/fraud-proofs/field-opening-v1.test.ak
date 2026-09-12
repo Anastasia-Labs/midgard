@@ -76,13 +76,14 @@ fn forged_block() -> fixture.NativeBlockFixtureV1 {
 }
 
 fn body_anchor() -> NativeTxAnchorV1 {
-  BodyAnchor { tx_id: block().tx_id }
+  BodyAnchor { tx_id: block().tx_id, source_kind: 0 }
 }
 
 fn witness_anchor() -> NativeTxAnchorV1 {
   WitnessAnchor {
     tx_id: block().tx_id,
     witness_set_hash: block().compact.witness_set_hash,
+    source_kind: 0,
   }
 }
 
@@ -350,6 +351,7 @@ test forged_witness_set_and_compact_opens_under_its_own_anchor() {
     WitnessAnchor {
       tx_id: forged.tx_id,
       witness_set_hash: forged.compact.witness_set_hash,
+      source_kind: 0,
     },
     address_witnesses_field_index,
   ) == 0
@@ -503,6 +505,7 @@ test tier_three_certificate_over_a_witness_field_binds_to_nothing_committed() {
     verify_native_tx_compact_cbor_v1(honest.tx_id, forged.compact_cbor).tx_id == honest.tx_id,
     // … and the minting predicate signs off on the fabrication under it.
     verify_field_preimage_certificate_v1(
+      0,
       certificate,
       forged.compact_cbor,
       encode_native_tx_witness_set_compact(forged_witness_set),
@@ -525,6 +528,7 @@ test tier_three_certificate_over_a_body_field_is_bound_by_the_tx_id() fail {
   let honest = block()
   let preimage = forged_witness_preimage()
   verify_field_preimage_certificate_v1(
+    0,
     field_preimage_certificate_v1(
       certificate_owner(),
       honest.tx_id,
@@ -639,6 +643,7 @@ fn welded_witness_anchor(
   WitnessAnchor {
     tx_id: committed.tx_id,
     witness_set_hash: committed.compact.witness_set_hash,
+    source_kind: 0,
   }
 }
 
@@ -734,7 +739,7 @@ test certified_carriage_still_opens_on_a_body_field() {
   field_item_at(
     open_with_references(
       fixture.certified_body_opening(committed.compact_cbor, preimage),
-      BodyAnchor { tx_id: committed.tx_id },
+      BodyAnchor { tx_id: committed.tx_id, source_kind: 0 },
       mint_field_index,
       fixture.certified_reference_inputs_v1(
         committed.tx_id,
@@ -858,7 +863,7 @@ test one_anchor_still_opens_certified_carriage_on_a_body_field_second() {
   let committed = welded_preimage_block(mint_field_index)
   let anchored = anchored_native_tx(
     BodyTxOpening { native_tx_compact_cbor: committed.compact_cbor },
-    BodyAnchor { tx_id: committed.tx_id },
+    BodyAnchor { tx_id: committed.tx_id, source_kind: 0 },
   )
   expect [spend_item] = spend_input_items()
   and {

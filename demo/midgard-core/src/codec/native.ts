@@ -342,8 +342,8 @@ const hasDerivedCompact = (
  * to be a bare `deriveMidgardNativeTxCompact` call kept for its exceptions.
  * Under §4 nothing forces the split, so the check is stated rather than borrowed.
  */
-const validateMidgardNativeTxCanonical = (
-  tx: MidgardNativeTxCanonical,
+export const validateMidgardNativeTxCanonical = (
+  tx: Pick<MidgardNativeTxCanonical, "body" | "witnessSet">,
 ): void => {
   const fields: readonly (readonly [string, Uint8Array])[] = [
     ["spend_inputs", tx.body.spendInputsPreimageCbor],
@@ -451,7 +451,16 @@ export const decodeMidgardNativeTxFullFromCanonicalCbor = (
 };
 
 export const computeMidgardNativeTxId = (
-  tx: MidgardNativeTxFull | MidgardNativeTxCompact,
+  tx:
+    | MidgardNativeTxFull
+    | MidgardNativeTxCompact
+    | Pick<MidgardNativeTxCompact, "version" | "transactionBody">
+    | {
+        readonly compact: Pick<
+          MidgardNativeTxCompact,
+          "version" | "transactionBody"
+        >;
+      },
 ): Buffer => {
   const compact = "compact" in tx ? tx.compact : tx;
   const version = requireNativeTxVersion(
@@ -728,31 +737,6 @@ export const deriveMidgardNativeTxFaultEvidenceMaterial = (
     ]),
   });
 };
-
-/**
- * Stamps the operator's adjudicated validity onto a decoded transaction —
- * both the canonical scalar and its compact twin, so the result still
- * satisfies {@link verifyMidgardNativeTxFullConsistency}.
- *
- * A forced-inclusion leaf must carry the operator's verdict in its embedded
- * validity scalar (§2.4.3(e) bit equality), while admission requires every
- * submitted transaction to claim `TxIsValid`. Every producer or verifier of a
- * forced-source triple therefore adjudicates through this one helper before
- * deriving the proof source, so the committed bytes cannot drift between the
- * leaf, the validation-machine states, and DA reconstruction. `tx_id` hashes
- * the body only and is invariant under adjudication.
- */
-export const adjudicateMidgardNativeTxFullValidity = (
-  tx: MidgardNativeTxFull,
-  validity: MidgardTxValidity,
-): MidgardNativeTxFull =>
-  tx.validity === validity && tx.compact.validity === validity
-    ? tx
-    : {
-        ...tx,
-        validity,
-        compact: { ...tx.compact, validity },
-      };
 
 export const verifyMidgardNativeTxProofSource = ({
   transactionId,

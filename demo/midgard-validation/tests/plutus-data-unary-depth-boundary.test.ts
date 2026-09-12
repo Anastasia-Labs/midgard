@@ -22,6 +22,10 @@ import {
   validateMidgardConsensusTx,
 } from "@al-ft/midgard-core";
 import {
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
+import {
   applyDoubleCborEncoding,
   CML,
   Data,
@@ -404,7 +408,9 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     expect(retained.normal.sourceKind).toBe("normal");
     expect(retained.forced.sourceKind).toBe("forced");
     expect(retained.normal.reconstructedCanonicalBytes).toBe(canonical.length);
-    expect(retained.forced.reconstructedCanonicalBytes).toBe(canonical.length);
+    expect(retained.forced.reconstructedCanonicalBytes).toBe(
+      canonical.length - 1,
+    );
     expect(retained.normal.revealStepCount).toBe(
       outputField.completeFoldStepCount,
     );
@@ -537,15 +543,24 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     expect(retained.normal.sourceKind).toBe("normal");
     expect(retained.forced.sourceKind).toBe("forced");
     expect(retained.normal.retainedPreimageBytes).toBe(canonical.length);
-    expect(retained.forced.retainedPreimageBytes).toBe(canonical.length);
+    expect(retained.forced.retainedPreimageBytes).toBe(canonical.length - 1);
     expect(retained.normal.reconstructedCanonicalBytes).toBe(canonical.length);
-    expect(retained.forced.reconstructedCanonicalBytes).toBe(canonical.length);
+    expect(retained.forced.reconstructedCanonicalBytes).toBe(
+      canonical.length - 1,
+    );
     expect(retained.normal.revealStepCount).toBe(completeFoldStepCount);
     expect(retained.forced.revealStepCount).toBe(completeFoldStepCount);
     // Canonical maximum signed-byte and digest identity, not only byte counts:
-    // both retained classifications must store and rebuild the exact same
-    // canonical bytes, with the same transaction identity and commitment.
+    // Both source kinds rebuild their exact bytes. The body ID stays the
+    // same, while the encoding and source commitment are distinct.
     const canonicalDigestHex = computeHash32(canonical).toString("hex");
+    const forcedDigestHex = computeHash32(
+      encodeMidgardForcedTxCanonical(
+        materializeMidgardForcedTxFromCanonical(
+          decodeMidgardNativeTxFullFromCanonicalCbor(canonical),
+        ),
+      ),
+    ).toString("hex");
     expect({
       normalRetained: retained.normal.retainedPreimageDigestHex,
       normalReconstructed: retained.normal.reconstructedCanonicalDigestHex,
@@ -554,13 +569,13 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     }).toEqual({
       normalRetained: canonicalDigestHex,
       normalReconstructed: canonicalDigestHex,
-      forcedRetained: canonicalDigestHex,
-      forcedReconstructed: canonicalDigestHex,
+      forcedRetained: forcedDigestHex,
+      forcedReconstructed: forcedDigestHex,
     });
     expect(retained.normal.transactionIdHex).toBe(
       retained.forced.transactionIdHex,
     );
-    expect(retained.normal.transactionCommitmentHex).toBe(
+    expect(retained.normal.transactionCommitmentHex).not.toBe(
       retained.forced.transactionCommitmentHex,
     );
     expect(retained.normal.transactionIdHex).toBe(retained.transactionIdHex);
@@ -1061,12 +1076,21 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     expect(retained.normal.sourceKind).toBe("normal");
     expect(retained.forced.sourceKind).toBe("forced");
     expect(retained.normal.retainedPreimageBytes).toBe(projected.length);
-    expect(retained.forced.retainedPreimageBytes).toBe(projected.length);
+    expect(retained.forced.retainedPreimageBytes).toBe(projected.length - 1);
     expect(retained.normal.reconstructedCanonicalBytes).toBe(projected.length);
-    expect(retained.forced.reconstructedCanonicalBytes).toBe(projected.length);
+    expect(retained.forced.reconstructedCanonicalBytes).toBe(
+      projected.length - 1,
+    );
     expect(retained.normal.revealStepCount).toBe(completeChunks.length);
     expect(retained.forced.revealStepCount).toBe(completeChunks.length);
     const canonicalDigestHex = computeHash32(projected).toString("hex");
+    const forcedDigestHex = computeHash32(
+      encodeMidgardForcedTxCanonical(
+        materializeMidgardForcedTxFromCanonical(
+          decodeMidgardNativeTxFullFromCanonicalCbor(projected),
+        ),
+      ),
+    ).toString("hex");
     expect({
       normalRetained: retained.normal.retainedPreimageDigestHex,
       normalReconstructed: retained.normal.reconstructedCanonicalDigestHex,
@@ -1075,13 +1099,13 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     }).toEqual({
       normalRetained: canonicalDigestHex,
       normalReconstructed: canonicalDigestHex,
-      forcedRetained: canonicalDigestHex,
-      forcedReconstructed: canonicalDigestHex,
+      forcedRetained: forcedDigestHex,
+      forcedReconstructed: forcedDigestHex,
     });
     expect(retained.normal.transactionIdHex).toBe(
       retained.forced.transactionIdHex,
     );
-    expect(retained.normal.transactionCommitmentHex).toBe(
+    expect(retained.normal.transactionCommitmentHex).not.toBe(
       retained.forced.transactionCommitmentHex,
     );
     expect(retained.normal.transactionIdHex).toBe(retained.transactionIdHex);

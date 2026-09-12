@@ -55,7 +55,7 @@ validator main(
           tx,
         )
 
-        expect bad_tx_view.tx_compact.validity_code == 0
+        expect bad_tx_view.tx_compact.validity_code == Some(0)
 
         // 2. The UTxO must be produced at next step's script hash with the
         //    disputed transaction's id, plus the header's counted withdrawals

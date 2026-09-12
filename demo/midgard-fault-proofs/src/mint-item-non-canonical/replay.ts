@@ -3,11 +3,13 @@ import {
   deriveMidgardNativeTxFaultEvidenceMaterial,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
   MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL,
   midgardEnvelopeVerdict,
+  PROOF_THREAD_SOURCE_KIND_FORCED,
   type VerdictSubject,
 } from "@al-ft/midgard-sdk";
 
@@ -32,9 +34,11 @@ export const findMintItemNonCanonicalEvidence = (
   readonly evidence: MintItemEvidence;
 }[] =>
   transactions.flatMap((transaction, transactionIndex) => {
-    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-      Buffer.from(transaction.txCbor, "hex"),
-    );
+    const bytes = Buffer.from(transaction.txCbor, "hex");
+    const material =
+      transaction.subject?.source_kind === PROOF_THREAD_SOURCE_KIND_FORCED
+        ? deriveMidgardForcedTxFaultEvidenceMaterial(bytes)
+        : deriveMidgardNativeTxFaultEvidenceMaterial(bytes);
     const transactionId = material.transactionId.toString("hex");
     if (transaction.nodeTxId !== transactionId)
       throw new Error(
@@ -78,17 +82,17 @@ export const findMintItemNonCanonicalBlockEvidence = (
     ...block.transactions,
     ...block.reconstruction.forcedTransactions.flatMap((forced) => {
       if (forced.value.verdict !== "ForcedTxValid") return [];
-      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+      const material = deriveMidgardForcedTxFaultEvidenceMaterial(
         forced.fullTransactionCbor,
       );
       const source = material.proofSource;
       if (
         source.compactCbor.toString("hex") !==
-          forced.value.source.compact_cbor ||
+          forced.value.submitted_source.compact_cbor ||
         source.witnessSetCompactCbor.toString("hex") !==
-          forced.value.source.witness_set_compact_cbor ||
+          forced.value.submitted_source.witness_set_compact_cbor ||
         source.fieldPreimageLengthsCbor.toString("hex") !==
-          forced.value.source.field_preimage_lengths_cbor
+          forced.value.submitted_source.field_preimage_lengths_cbor
       )
         throw new Error(
           "mintItemNonCanonical forced source differs from retained bytes",

@@ -4,7 +4,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
-use midgard/fraud_proofs/native_tx/compact.{native_tx_proof_commitment_v1}
+use midgard/fraud_proofs/native_tx/compact.{tx_proof_commitment_v1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state
 use midgard/rejection_reason_v1.{UnusedScriptWitness}
@@ -278,7 +278,8 @@ pub fn authenticate_witness_v1(
         machine_state,
       ),
       validation_trace_v1.verify_trace_proof(descriptor, trace_proof),
-      machine_state.transaction_commitment == native_tx_proof_commitment_v1(
+      machine_state.transaction_commitment == tx_proof_commitment_v1(
+        machine_state.source_kind,
         control.compact_cbor,
         control.witness_set_compact_cbor,
         control.field_preimage_lengths_cbor,

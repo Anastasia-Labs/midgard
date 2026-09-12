@@ -134,6 +134,7 @@ export const submitExecutionNativeScriptInvalidStep04StartSignerScan = async ({
     );
   }
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: state.source_kind === 1n ? 1n : 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor,
@@ -182,6 +183,7 @@ export const submitExecutionNativeScriptInvalidStep04StartSignerScan = async ({
       fraud_prover: signer.paymentKeyHash,
       data: {
         direction: state.direction,
+        source_kind: state.source_kind,
         execution_index: state.execution_index,
         source_index: state.source_index,
         origin_kind: state.origin_kind,

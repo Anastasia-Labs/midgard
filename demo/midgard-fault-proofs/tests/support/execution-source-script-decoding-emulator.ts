@@ -25,6 +25,10 @@ import {
   type MidgardNativeScript,
 } from "@al-ft/midgard-core";
 import {
+  encodeMidgardForcedTxCanonical as forcedTraceBytes,
+  materializeMidgardForcedTxFromCanonical as forcedTraceView,
+} from "@al-ft/midgard-core/codec/forced";
+import {
   acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
@@ -502,14 +506,17 @@ export const buildSubjectFixture = async ({
       "hex",
     ),
     sourceKind: direction === "forced" ? "forced" : "normal",
-    committedForcedVerdict: direction === "forced" ? "rejected" : undefined,
+
     blockEndTimeMs: 1_750_000_001_000,
     expectedNetworkId: 0n,
     minFeeA: 0n,
     minFeeB: 0n,
     blockSlot: 0n,
     transactionId: transaction.txId,
-    canonicalTransactionCbor: transaction.txCbor,
+    canonicalTransactionCbor:
+      direction === "forced"
+        ? forcedTraceBytes(forcedTraceView(transaction.tx))
+        : transaction.txCbor,
     priorUtxosRoot: priorLedgerRoot,
     ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
     accepted: {

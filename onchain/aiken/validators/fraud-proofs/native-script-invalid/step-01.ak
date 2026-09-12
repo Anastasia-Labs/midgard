@@ -9,7 +9,9 @@ use midgard/fraud_proofs/native_script_invalid/step_01.{
   AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
 }
 use midgard/fraud_proofs/native_script_invalid/step_02
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor_v1}
+use midgard/fraud_proofs/native_tx/compact.{
+  verify_forced_tx_compact_cbor_v1, verify_native_tx_compact_cbor_v1,
+}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/rejection_reason_v1.{WitnessNativeScriptFalse}
 
@@ -54,7 +56,7 @@ validator main(
           tx,
         )
         expect None = m_input_state_data
-        expect bad_tx_view.tx_compact.validity_code == 0
+        expect bad_tx_view.tx_compact.validity_code == Some(0)
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
           grammar_checkpoint_hash: #"",
@@ -96,9 +98,9 @@ validator main(
         expect subject.direction == substrate.direction_wrongful_rejection
         expect Some(WitnessNativeScriptFalse { script_index }) = subject.rejection_reason
         expect script_index >= 0
-        let verified = verify_native_tx_compact_cbor_v1(
+        let verified = verify_forced_tx_compact_cbor_v1(
           subject.transaction_id,
-          membership.value.source.compact_cbor,
+          membership.value.submitted_source.compact_cbor,
         )
         let expected: Data = step_02.State {
           grammar_checkpoint_hash: #"",

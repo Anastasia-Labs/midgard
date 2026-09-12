@@ -5,6 +5,7 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core";
+import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
@@ -61,16 +62,23 @@ const priorOutputs = ({
 };
 
 const nativeResult = ({
+  sourceKind,
   txCbor,
   executionIndex,
   resolvedOutputs,
 }: {
   txCbor: Uint8Array;
+  sourceKind: "normal" | "forced";
   executionIndex: number;
   resolvedOutputs: ReadonlyMap<string, Uint8Array>;
 }): boolean | null => {
-  const transaction = decodeMidgardNativeTxFullFromCanonicalCbor(txCbor);
+  const transaction = (
+    sourceKind === "forced"
+      ? decodeMidgardForcedTxFullFromCanonicalCbor
+      : decodeMidgardNativeTxFullFromCanonicalCbor
+  )(txCbor);
   const purpose = reconstructExecutionNativeScriptPurposes({
+    sourceKind,
     canonicalTransactionCbor: txCbor,
     resolvedOutputsByOutRef: resolvedOutputs,
   }).purposes[executionIndex];
@@ -128,7 +136,12 @@ export const detectExecutionNativeScriptInvalidCanonicalViolations = ({
     reconstruction.purposes.forEach(({ executionIndex }) => {
       let result: boolean | null;
       try {
-        result = nativeResult({ txCbor, executionIndex, resolvedOutputs });
+        result = nativeResult({
+          txCbor,
+          executionIndex,
+          resolvedOutputs,
+          sourceKind: "normal",
+        });
       } catch {
         return;
       }
@@ -165,7 +178,12 @@ export const detectExecutionNativeScriptInvalidCanonicalViolations = ({
       const txCbor = Buffer.from(transaction.fullTransactionCbor);
       let result: boolean | null;
       try {
-        result = nativeResult({ txCbor, executionIndex, resolvedOutputs });
+        result = nativeResult({
+          txCbor,
+          executionIndex,
+          resolvedOutputs,
+          sourceKind: "forced",
+        });
       } catch {
         return;
       }

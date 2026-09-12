@@ -1,13 +1,15 @@
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
   decodeMidgardFieldPreimage,
-  deriveMidgardNativeTxFaultEvidenceMaterial,
   encodeMidgardFieldPreimage,
   encodeMidgardNativeTxCanonical,
   materializeMidgardNativeTxFromCanonical,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
+import {
+  deriveMidgardForcedTxFaultEvidenceMaterial,
+  encodeMidgardForcedTxCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 import {
   type Script,
@@ -316,12 +318,8 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
     const illegal = committedFieldShapeScenarioMaterial(
       "field-item-width-illegal",
     ).fullTx!;
-    const illegalCbor = encodeMidgardNativeTxCanonical(illegal);
-    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-      encodeMidgardNativeTxCanonical(
-        adjudicateMidgardNativeTxFullValidity(illegal, "TxIsInvalid"),
-      ),
-    );
+    const illegalCbor = encodeMidgardForcedTxCanonical(illegal);
+    const material = deriveMidgardForcedTxFaultEvidenceMaterial(illegalCbor);
     const original = forced.reconstruction.forcedTransactions[0]!;
     const honestEntry = {
       ...original,
@@ -329,7 +327,7 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
       value: {
         ...original.value,
         tx_id: material.transactionId.toString("hex"),
-        source: {
+        submitted_source: {
           compact_cbor: material.proofSource.compactCbor.toString("hex"),
           witness_set_compact_cbor:
             material.proofSource.witnessSetCompactCbor.toString("hex"),
@@ -359,9 +357,9 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
               ...honestEntry,
               value: {
                 ...honestEntry.value,
-                source: {
-                  ...honestEntry.value.source,
-                  compact_cbor: `00${honestEntry.value.source.compact_cbor.slice(2)}`,
+                submitted_source: {
+                  ...honestEntry.value.submitted_source,
+                  compact_cbor: `00${honestEntry.value.submitted_source.compact_cbor.slice(2)}`,
                 },
               },
             },

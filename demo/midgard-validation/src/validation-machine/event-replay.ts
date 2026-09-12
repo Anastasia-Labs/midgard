@@ -6,6 +6,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core";
+import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import { Effect } from "effect";
 
 import { validatePhaseASingle } from "../phase-a.js";
@@ -40,15 +41,8 @@ export type ValidationMachineEventReplayInput = Readonly<{
   minFeeA: bigint;
   minFeeB: bigint;
   blockSlot: bigint;
-}> &
-  (
-    | Readonly<{ sourceKind: "normal"; committedForcedVerdict?: never }>
-    | Readonly<{
-        sourceKind: "forced";
-        /** Source commitment only; this never selects the replay verdict. */
-        committedForcedVerdict: "accepted" | "rejected";
-      }>
-  );
+  sourceKind: "normal" | "forced";
+}>;
 
 export type ValidationMachineEventReplay = Readonly<{
   replayInput: ValidationMachineReplayInput;
@@ -70,14 +64,7 @@ export const replayValidationMachineEvent = (
       if (!isMidgardConsensusProfile(input.consensusProfile)) {
         throw new Error("event replay requires the compiled consensus profile");
       }
-      if (
-        (input.sourceKind !== "normal" && input.sourceKind !== "forced") ||
-        (input.sourceKind === "normal" &&
-          input.committedForcedVerdict !== undefined) ||
-        (input.sourceKind === "forced" &&
-          input.committedForcedVerdict !== "accepted" &&
-          input.committedForcedVerdict !== "rejected")
-      ) {
+      if (input.sourceKind !== "normal" && input.sourceKind !== "forced") {
         throw new Error("event replay requires an exact source commitment");
       }
       const ledgerWitnessEntries = input.ledgerWitnessEntries
@@ -100,7 +87,11 @@ export const replayValidationMachineEvent = (
       );
       const transactionId = Buffer.from(
         computeMidgardNativeTxId(
-          decodeMidgardNativeTxFullFromCanonicalCbor(canonicalTransactionCbor),
+          (input.sourceKind === "forced"
+            ? decodeMidgardForcedTxFullFromCanonicalCbor
+            : decodeMidgardNativeTxFullFromCanonicalCbor)(
+            canonicalTransactionCbor,
+          ).compact,
         ),
       );
       return {
@@ -120,9 +111,6 @@ export const replayValidationMachineEvent = (
         minFeeB: input.minFeeB,
         blockSlot: input.blockSlot,
         sourceKind: input.sourceKind,
-        ...(input.sourceKind === "forced"
-          ? { committedForcedVerdict: input.committedForcedVerdict }
-          : {}),
       };
     });
     const priorRoot = yield* Effect.tryPromise(() =>
@@ -136,6 +124,7 @@ export const replayValidationMachineEvent = (
       );
     }
     const queued: QueuedTx = {
+      sourceKind: snapshot.sourceKind,
       txId: snapshot.transactionId,
       txCbor: snapshot.canonicalTransactionCbor,
       programMaterialSidecarCbor: snapshot.programMaterialSidecarCbor,

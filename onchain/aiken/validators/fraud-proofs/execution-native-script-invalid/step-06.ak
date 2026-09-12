@@ -361,6 +361,7 @@ fn one_signer_peaks() -> List<validation_merkle_v1.FrontierPeak> {
 fn state_for(script_item_cbor: ByteArray, phase: PhaseV1) -> State {
   State {
     direction: 0,
+    source_kind: 0,
     execution_index: 0,
     source_index: 0,
     origin_kind: 0,

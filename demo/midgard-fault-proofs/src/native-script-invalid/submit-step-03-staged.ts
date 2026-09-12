@@ -128,6 +128,7 @@ export const submitNativeScriptInvalidStep03StartSignerScan = async ({
     );
   }
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: state.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor,

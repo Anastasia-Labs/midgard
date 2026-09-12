@@ -63,12 +63,12 @@ The generated initial committee terms obey the current maximum term length.
 
 Recovery scenarios follow the chain's actual behavior:
 
-| Scenario | Chain behavior | Required evidence |
-| --- | --- | --- |
-| Watcher/operator restart | Cardano continues producing blocks; preserve all workflow and transaction journals | Reconnect from the recorded point, replay the canonical suffix, reconcile submissions and process new blocks |
-| Indexer or follower outage | The canonical producer remains online | Recover from retained history or synchronize from a canonical peer; verify exact checkpoint and hash agreement before accepting observations |
-| Short local rollback (T1) | Restore a recent isolated fork and preserve the abandoned operator journal | Prove the abandoned header disappeared, the replacement canonical branch advanced, and no double spend or duplicate workflow occurred |
-| Frozen fork beyond forecast | No peer supplies missing history | Refuse isolated forging before restoring state; use peer synchronization or a fresh isolated chain |
+| Scenario                    | Chain behavior                                                                     | Required evidence                                                                                                                            |
+| --------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Watcher/operator restart    | Cardano continues producing blocks; preserve all workflow and transaction journals | Reconnect from the recorded point, replay the canonical suffix, reconcile submissions and process new blocks                                 |
+| Indexer or follower outage  | The canonical producer remains online                                              | Recover from retained history or synchronize from a canonical peer; verify exact checkpoint and hash agreement before accepting observations |
+| Short local rollback (T1)   | Restore a recent isolated fork and preserve the abandoned operator journal         | Prove the abandoned header disappeared, the replacement canonical branch advanced, and no double spend or duplicate workflow occurred        |
+| Frozen fork beyond forecast | No peer supplies missing history                                                   | Refuse isolated forging before restoring state; use peer synchronization or a fresh isolated chain                                           |
 
 The ledger forecast horizon with these parameters is `ceil(3k/f)=129600` slots
 (36 hours). This bounds how far a frozen isolated node can forecast; it is **not**

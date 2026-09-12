@@ -1,8 +1,6 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import {
-  computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSource,
-} from "@al-ft/midgard-core";
+import { computeMidgardNativeTxId } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
 import {
   ForcedInclusionTxV1Schema,
   forcedVerdictSubject,
@@ -49,11 +47,11 @@ it("authenticates a wrongly accepted forced mint and refuses a forged forced lea
     mintPreimageCbor: mintField(Buffer.from("8240a14005", "hex")),
   });
   const id = computeMidgardNativeTxId(tx).toString("hex");
-  const source = deriveMidgardNativeTxProofSource(tx);
+  const source = deriveMidgardForcedTxProofSource(tx);
   const key = { transactionId: "ab".repeat(32), outputIndex: 0n };
   const value = {
     tx_id: id,
-    source: {
+    submitted_source: {
       compact_cbor: source.compactCbor.toString("hex"),
       witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
       field_preimage_lengths_cbor:

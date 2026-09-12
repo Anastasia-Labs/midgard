@@ -2,7 +2,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
+use midgard/fraud_proofs/native_tx/compact.{verify_forced_tx_proof_source_v1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/fraud_proofs/value_not_preserved/union.{
   ConservationClaim, ForcedConservation,
@@ -62,8 +62,8 @@ validator main(
           1,
         )
         expect ValueNotPreserved = substrate.rejection_reason_of_v1(subject)
-        let source = args.membership.value.source
-        let Pair(verified, _) = verify_native_tx_proof_source_v1(
+        let source = args.membership.value.submitted_source
+        let Pair(verified, _) = verify_forced_tx_proof_source_v1(
           subject.transaction_id,
           source.compact_cbor,
           source.witness_set_compact_cbor,

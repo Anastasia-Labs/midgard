@@ -15,6 +15,10 @@ import {
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
+import {
+  encodeMidgardForcedTxCanonical as forcedTraceBytes,
+  materializeMidgardForcedTxFromCanonical as forcedTraceView,
+} from "@al-ft/midgard-core/codec/forced";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   EventKeySchema,
@@ -634,14 +638,20 @@ describe("typed reasons classified from committed retained DA", () => {
           "hex",
         ),
         sourceKind: "forced",
-        committedForcedVerdict: "rejected",
+
         blockEndTimeMs: 1_800_000_000_000,
         expectedNetworkId: 0n,
         minFeeA: 0n,
         minFeeB: 0n,
         blockSlot: 100n,
         transactionId: Buffer.from(transaction.txId, "hex"),
-        canonicalTransactionCbor: transaction.canonicalCbor,
+        canonicalTransactionCbor: forcedTraceBytes(
+          forcedTraceView(
+            decodeMidgardNativeTxFullFromCanonicalCbor(
+              transaction.canonicalCbor,
+            ),
+          ),
+        ),
         priorUtxosRoot: priorLedgerRoot,
         postUtxosRoot: mutations.at(-1)!.postRoot.toString("hex"),
         ledgerWitnessEntries,

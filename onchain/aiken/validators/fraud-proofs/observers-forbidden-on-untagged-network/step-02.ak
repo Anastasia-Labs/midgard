@@ -5,9 +5,9 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/field_opening_v1.{
   BodyAnchor, BodyFieldOpening, opened_field_view,
-  required_observers_field_index,
+  required_observers_field_index, source_kind_of_anchor,
 }
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor_v1}
+use midgard/fraud_proofs/native_tx/compact.{verify_tx_compact_cbor_v1}
 use midgard/fraud_proofs/observers_forbidden_on_untagged_network/rule.{
   terminal_contradiction_v1,
 }
@@ -61,14 +61,18 @@ validator main(
         )
         expect Some(state) = input_state
         expect BodyFieldOpening { native_tx_compact_cbor, .. } = observer_opening
-        let verified = verify_native_tx_compact_cbor_v1(
+        let verified = verify_tx_compact_cbor_v1(
+          source_kind_of_anchor(state.subject.source_kind),
           state.subject.transaction_id,
           native_tx_compact_cbor,
         )
         expect verified.tx_compact.body.network_id == state.network_id
         let view = opened_field_view(
           observer_opening,
-          BodyAnchor { tx_id: state.subject.transaction_id },
+          BodyAnchor {
+            tx_id: state.subject.transaction_id,
+            source_kind: state.subject.source_kind,
+          },
           required_observers_field_index,
           reference_inputs,
           field_preimage_certificate_policy_id,

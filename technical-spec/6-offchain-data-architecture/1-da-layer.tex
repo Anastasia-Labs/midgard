@@ -68,7 +68,13 @@ exact \code{Map(TxOrderId, ForcedInclusionTxV1)} projection committed by
 \code{forced\_transactions\_root}; its key is the serialized L1 output
 reference, even when several orders carry the same L2 transaction.  The
 corresponding preimage arrays use those same keys and contain the canonical
-native transaction bytes.  The machine-readable contract and cross-language
+transaction bytes: normal transactions use four elements, while forced
+submissions use exactly \code{[1, body, witness\_set]} with no validity scalar.
+The forced leaf carries the unchanged \code{submitted\_source} and the sole
+operator \code{verdict}. Forced logical ledger size adds one byte to submitted
+size; transport accounts for actual bytes only. Missing or substituted public
+preimages cannot be repaired by rewriting the source from its verdict.
+The machine-readable contract and cross-language
 golden are generated from
 \code{demo/midgard-node/tests/fixtures/transaction-root-v1.canonical.json}.
 

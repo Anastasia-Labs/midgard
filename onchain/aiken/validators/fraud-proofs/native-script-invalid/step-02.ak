@@ -68,6 +68,7 @@ validator main(
         let anchor = opening.WitnessAnchor {
           tx_id: state.bad_tx_id,
           witness_set_hash: state.bad_tx_witness_set_hash,
+          source_kind: state.subject.source_kind,
         }
         when action is {
           Args { script_index, script_tx_wits_opening, .. } -> {

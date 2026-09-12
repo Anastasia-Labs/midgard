@@ -41,7 +41,7 @@ validator main(
       }) -> {
         let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
-        let  
+        let
             own_script_hash,
             _thread_asset_name,
             _fraud_prover,

@@ -77,7 +77,7 @@ validator main(
         //    slot comes from the position, not from the number.
         let tx1_spend_inputs_view = opened_field_view(
           tx1_spend_inputs_opening,
-          BodyAnchor { tx_id: verified_tx1_id },
+          BodyAnchor { tx_id: verified_tx1_id, source_kind: 0 },
           spend_inputs_field_index,
           reference_inputs,
           field_preimage_certificate_policy_id,

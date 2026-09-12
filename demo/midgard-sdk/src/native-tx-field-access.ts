@@ -169,6 +169,7 @@ export const FieldPreimageCertificate = asDataType<FieldPreimageCertificate>(
  * all-chunks-positional and bounded at three by §8.3.
  */
 export const CertifyFieldPreimageCertificateMintRedeemerSchema = Data.Object({
+  source_kind: Data.Integer({ minimum: 0, maximum: 1 }),
   compact_cbor: Data.Bytes(),
   witness_set_compact_cbor: Data.Bytes(),
   chunk_ref_input_indices: Data.Array(Data.Integer()),

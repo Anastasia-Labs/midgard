@@ -20,7 +20,7 @@ use midgard/fraud_proof
 use midgard/fraud_proof_catalogue
 use midgard/fraud_proofs/chunked_inclusion_v1.{PublishedProofCarriage}
 use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
-use midgard/fraud_proofs/native_tx/types.{VerifiedMidgardNativeTxCompact} as native_tx_types
+use midgard/fraud_proofs/native_tx/types.{VerifiedTxSourceView} as native_tx_types
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{HeaderV1, L2TransactionSourceV1}
 use midgard/state_queue
@@ -212,7 +212,7 @@ pub fn pass_native_tx_to_next_step_carried(
     Data<output_state>,
     HeaderV1,
     ByteArray,
-    VerifiedMidgardNativeTxCompact,
+    VerifiedTxSourceView,
   ) ->
     Bool,
 ) -> Bool {
@@ -320,7 +320,7 @@ pub fn pass_native_tx_to_next_step(
     Data<output_state>,
     HeaderV1,
     ByteArray,
-    VerifiedMidgardNativeTxCompact,
+    VerifiedTxSourceView,
   ) ->
     Bool,
 ) -> Bool {
@@ -804,7 +804,7 @@ pub fn verify_native_tx_in_state_queue_node(
   inclusion_proof_script_withdraw_redeemer_index: Int,
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
-  return: fn(ByteArray, HeaderV1, VerifiedMidgardNativeTxCompact) -> result,
+  return: fn(ByteArray, HeaderV1, VerifiedTxSourceView) -> result,
 ) -> result {
   verify_native_tx_in_state_queue_node_with(
     native_tx_id,
@@ -849,7 +849,7 @@ pub fn verify_native_tx_in_state_queue_node_with(
   state_queue_node_ref_input_index: Int,
   reference_inputs: List<Input>,
   membership_check: fn(ByteArray, ByteArray, ByteArray) -> Bool,
-  return: fn(ByteArray, HeaderV1, VerifiedMidgardNativeTxCompact) -> result,
+  return: fn(ByteArray, HeaderV1, VerifiedTxSourceView) -> result,
 ) -> result {
   expect Some(source_data) = cbor.deserialise(l2_transaction_source_cbor)
   expect source: L2TransactionSourceV1 = source_data

@@ -10,10 +10,10 @@ import {
   verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core/cek-proof";
 import {
+  computeMidgardForcedTxProofCommitment,
   computeMidgardNativeTxId,
-  computeMidgardNativeTxProofCommitment,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxProofSource,
+  decodeMidgardForcedTxFullFromCanonicalCbor,
+  deriveMidgardForcedTxProofSource,
 } from "@al-ft/midgard-core/codec";
 import {
   type MidgardFieldCarriagePlan,
@@ -29,7 +29,7 @@ import {
 } from "@al-ft/midgard-core/consensus-profile";
 import {
   deriveMidgardTxFieldPreimages,
-  validateMidgardConsensusTxCbor,
+  validateMidgardConsensusForcedTxCbor,
 } from "@al-ft/midgard-core/consensus-validation";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
@@ -66,7 +66,7 @@ import {
   CardanoDatumSchema,
   CekProgramMaterialDatum,
   CekProgramMaterialDatumSchema,
-  NativeTxProofSource,
+  ForcedTxProofSource,
   TxOrderEventSchema,
 } from "../ledger-state.js";
 import {
@@ -298,7 +298,7 @@ export type SubmitTxOrderReferenceScripts = {
 
 export type SubmitTxOrderConfig = {
   /** Exact bounded canonical native-V1 transaction bytes. */
-  readonly nativeTxCbor: string;
+  readonly submittedTxCbor: string;
   /** Reserved while the order's §8 field carriage is prepared. */
   readonly nonceInput: UTxO;
   readonly refundAddress: TxOrderRefundAddress;
@@ -379,7 +379,7 @@ export type TxOrderFieldCarriage = {
 export type TxOrderMaterial = {
   readonly transactionId: string;
   readonly transactionCommitment: string;
-  readonly source: NativeTxProofSource;
+  readonly submitted_source: ForcedTxProofSource;
   /**
    * One entry per field whose §5.1 preimage is not the empty field `80`, in
    * ascending field index. Empty for a transaction with nine empty fields.
@@ -404,22 +404,22 @@ export type TxOrderMaterial = {
  * length question, and is answered by {@link planTxOrderMaterialCarriage}.
  */
 export const deriveTxOrderMaterial = ({
-  nativeTxCbor,
+  submittedTxCbor,
   owner,
 }: {
-  readonly nativeTxCbor: Uint8Array;
+  readonly submittedTxCbor: Uint8Array;
   readonly owner: Uint8Array;
 }): TxOrderMaterial => {
-  const violation = validateMidgardConsensusTxCbor(nativeTxCbor);
+  const violation = validateMidgardConsensusForcedTxCbor(submittedTxCbor);
   if (violation !== null) {
     throw new Error(
       `${violation.code} ${violation.featureId}: ${violation.detail}`,
     );
   }
-  const tx = decodeMidgardNativeTxFullFromCanonicalCbor(nativeTxCbor);
-  const transactionId = computeMidgardNativeTxId(tx);
-  const proofSource = deriveMidgardNativeTxProofSource(tx);
-  const source: NativeTxProofSource = {
+  const tx = decodeMidgardForcedTxFullFromCanonicalCbor(submittedTxCbor);
+  const transactionId = computeMidgardNativeTxId(tx.compact);
+  const proofSource = deriveMidgardForcedTxProofSource(tx);
+  const source: ForcedTxProofSource = {
     compact_cbor: proofSource.compactCbor.toString("hex"),
     witness_set_compact_cbor: proofSource.witnessSetCompactCbor.toString("hex"),
     field_preimage_lengths_cbor:
@@ -432,7 +432,10 @@ export const deriveTxOrderMaterial = ({
   // construction, and testing the bytes keeps this loop independent of whether a
   // payload's declared hashes are trustworthy yet.
   const emptyFieldPreimage = encodeMidgardFieldArrayHeader(0);
-  for (const field of deriveMidgardTxFieldPreimages(nativeTxCbor)) {
+  for (const field of deriveMidgardTxFieldPreimages(
+    submittedTxCbor,
+    "forced",
+  )) {
     if (field.preimageCbor.equals(emptyFieldPreimage)) {
       continue;
     }
@@ -461,8 +464,8 @@ export const deriveTxOrderMaterial = ({
   return {
     transactionId: transactionId.toString("hex"),
     transactionCommitment:
-      computeMidgardNativeTxProofCommitment(proofSource).toString("hex"),
-    source,
+      computeMidgardForcedTxProofCommitment(proofSource).toString("hex"),
+    submitted_source: source,
     carriage: Object.freeze(carriage),
   };
 };
@@ -1074,18 +1077,18 @@ export const buildUnsignedTxOrderTxWithMetadataProgram = (
   | UserEventBuildError
 > =>
   Effect.gen(function* () {
-    const nativeTxCbor = yield* Effect.try({
+    const submittedTxCbor = yield* Effect.try({
       try: () => {
         if (
-          config.nativeTxCbor.length === 0 ||
-          config.nativeTxCbor.length % 2 !== 0 ||
-          !/^[0-9a-f]+$/iu.test(config.nativeTxCbor)
+          config.submittedTxCbor.length === 0 ||
+          config.submittedTxCbor.length % 2 !== 0 ||
+          !/^[0-9a-f]+$/iu.test(config.submittedTxCbor)
         ) {
           throw new Error(
-            "nativeTxCbor must be non-empty, even-length hexadecimal",
+            "submittedTxCbor must be non-empty, even-length hexadecimal",
           );
         }
-        return Buffer.from(config.nativeTxCbor, "hex");
+        return Buffer.from(config.submittedTxCbor, "hex");
       },
       catch: (cause) =>
         new UserEventBuildError({
@@ -1121,7 +1124,7 @@ export const buildUnsignedTxOrderTxWithMetadataProgram = (
     const order = yield* Effect.try({
       try: () => {
         const material = deriveTxOrderMaterial({
-          nativeTxCbor,
+          submittedTxCbor,
           // §8.5/§8.7 under #594's ruling: reclaim is an ordinary key spend at
           // any time after the mint, so the min-Ada authority a tier-3
           // certificate records has to be a key the creator can sign with. The
@@ -1189,7 +1192,7 @@ export const buildUnsignedTxOrderTxWithMetadataProgram = (
         tx: {
           tx_id: material.transactionId,
           transaction_commitment: material.transactionCommitment,
-          source: material.source,
+          submitted_source: material.submitted_source,
         },
       },
       inclusion_time: BigInt(inclusionTime),

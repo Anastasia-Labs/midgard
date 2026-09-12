@@ -37,7 +37,7 @@ export const prepareInputSetUniquenessForcedPlan = async ({
     headerHash: block.headerHash,
     header: block.header,
     membership,
-    nativeTxCompactCbor: transaction.value.source.compact_cbor,
+    nativeTxCompactCbor: transaction.value.submitted_source.compact_cbor,
     spendInputItemCbors: detection.spendInputItemCbors,
     referenceInputItemCbors: detection.referenceInputItemCbors,
     bound: detection.bound,

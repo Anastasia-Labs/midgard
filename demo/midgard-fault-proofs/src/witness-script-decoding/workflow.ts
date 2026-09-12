@@ -1,13 +1,12 @@
 import {
-  adjudicateMidgardNativeTxFullValidity,
   decodeMidgardFieldPreimage,
   decodeMidgardNativeTxCompact,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardNativeTxWitnessSetCompact,
   deriveMidgardNativeTxFaultEvidenceMaterial,
-  encodeMidgardNativeTxCanonical,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
+import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   type ForcedInclusionTxV1,
@@ -349,7 +348,11 @@ export const deriveWitnessScriptDecodingEvidenceFromCanonicalBlock = (
     readonly subject: ReturnType<typeof acceptedVerdictSubject>;
     readonly forcedScriptIndex?: number;
   }) => {
-    const material = deriveMidgardNativeTxFaultEvidenceMaterial(canonicalCbor);
+    const material = (
+      subject.source_kind === 1n
+        ? deriveMidgardForcedTxFaultEvidenceMaterial
+        : deriveMidgardNativeTxFaultEvidenceMaterial
+    )(canonicalCbor);
     if (material.transactionId.toString("hex") !== subject.transaction_id)
       throw new Error(
         "witnessScriptDecoding retained-DA transaction identity changed",
@@ -368,7 +371,9 @@ export const deriveWitnessScriptDecodingEvidenceFromCanonicalBlock = (
       const prepared = prepareWitnessScriptDecodingEvidence({
         finding: {
           subject,
-          witnessSetHash: decodeMidgardNativeTxCompact(
+          witnessSetHash: (subject.source_kind === 1n
+            ? decodeMidgardForcedTxCompact
+            : decodeMidgardNativeTxCompact)(
             material.proofSource.compactCbor,
           ).transactionWitnessSetHash.toString("hex"),
           scriptIndex,
@@ -405,14 +410,7 @@ export const deriveWitnessScriptDecodingEvidenceFromCanonicalBlock = (
               : undefined;
     if (payload === undefined) continue;
     inspect({
-      canonicalCbor: encodeMidgardNativeTxCanonical(
-        adjudicateMidgardNativeTxFullValidity(
-          decodeMidgardNativeTxFullFromCanonicalCbor(
-            forced.fullTransactionCbor,
-          ),
-          "TxIsInvalid",
-        ),
-      ),
+      canonicalCbor: forced.fullTransactionCbor,
       subject: forcedVerdictSubject({
         transactionId: forced.value.tx_id,
         sourceKey: forced.key,
@@ -493,10 +491,7 @@ export const deriveWitnessScriptDecodingAuthenticatedSource = async ({
     ({ key, value }) =>
       value.tx_id === evidence.finding.subject.transaction_id &&
       Data.to(key as never, OutputReferenceSchema as never) ===
-        Data.to(
-          evidence.finding.subject.source_key as never,
-          OutputReferenceSchema as never,
-        ),
+        evidence.finding.subject.source_key,
   );
   if (forced === undefined || forced.value.verdict === "ForcedTxValid") {
     throw new Error(
@@ -516,21 +511,16 @@ export const deriveWitnessScriptDecodingAuthenticatedSource = async ({
       "witnessScriptDecoding forced reason differs from authenticated source",
     );
   }
-  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-    encodeMidgardNativeTxCanonical(
-      adjudicateMidgardNativeTxFullValidity(
-        decodeMidgardNativeTxFullFromCanonicalCbor(forced.fullTransactionCbor),
-        "TxIsInvalid",
-      ),
-    ),
+  const material = deriveMidgardForcedTxFaultEvidenceMaterial(
+    forced.fullTransactionCbor,
   );
   if (
     material.proofSource.compactCbor.toString("hex") !==
-      forced.value.source.compact_cbor ||
+      forced.value.submitted_source.compact_cbor ||
     material.proofSource.witnessSetCompactCbor.toString("hex") !==
-      forced.value.source.witness_set_compact_cbor ||
+      forced.value.submitted_source.witness_set_compact_cbor ||
     material.proofSource.fieldPreimageLengthsCbor.toString("hex") !==
-      forced.value.source.field_preimage_lengths_cbor
+      forced.value.submitted_source.field_preimage_lengths_cbor
   ) {
     throw new Error(
       "witnessScriptDecoding forced source material differs from authenticated leaf",
@@ -613,24 +603,17 @@ export const detectWitnessScriptDecodingCompleteReplay = (
               ? reason.WitnessNativeScriptDepthLimit
               : undefined;
     if (payload === undefined) continue;
-    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-      encodeMidgardNativeTxCanonical(
-        adjudicateMidgardNativeTxFullValidity(
-          decodeMidgardNativeTxFullFromCanonicalCbor(
-            transaction.fullTransactionCbor,
-          ),
-          "TxIsInvalid",
-        ),
-      ),
+    const material = deriveMidgardForcedTxFaultEvidenceMaterial(
+      transaction.fullTransactionCbor,
     );
     if (
       material.transactionId.toString("hex") !== transaction.value.tx_id ||
       material.proofSource.compactCbor.toString("hex") !==
-        transaction.value.source.compact_cbor ||
+        transaction.value.submitted_source.compact_cbor ||
       material.proofSource.witnessSetCompactCbor.toString("hex") !==
-        transaction.value.source.witness_set_compact_cbor ||
+        transaction.value.submitted_source.witness_set_compact_cbor ||
       material.proofSource.fieldPreimageLengthsCbor.toString("hex") !==
-        transaction.value.source.field_preimage_lengths_cbor
+        transaction.value.submitted_source.field_preimage_lengths_cbor
     )
       throw new Error(
         "witnessScriptDecoding forced transaction differs from its authenticated leaf",
@@ -645,7 +628,7 @@ export const detectWitnessScriptDecodingCompleteReplay = (
           sourceKey: transaction.key,
           rejectionReason: reason,
         }),
-        witnessSetHash: decodeMidgardNativeTxCompact(
+        witnessSetHash: decodeMidgardForcedTxCompact(
           material.proofSource.compactCbor,
         ).transactionWitnessSetHash.toString("hex"),
         scriptIndex,

@@ -64,15 +64,13 @@ use midgard/cek_proof_v1
 use midgard/cek_selection_yield as selection_yield
 use midgard/cek_semantic_chain as core_chain
 use midgard/computation_thread as ct
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_body_compact, native_tx_id_for_version,
 }
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_versioned_script}
-use midgard/fraud_proofs/native_tx/transaction.{
-  midgard_transaction_proof_commitment_v1, midgard_transaction_proof_source_v1,
-  midgard_transaction_to_compact,
-}
+use midgard/fraud_proofs/native_tx/transaction.{midgard_transaction_to_compact}
 use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionBody, MidgardTransactionWitnessSet,
   MidgardVersionedScript, NativeCardanoScript, PlutusV3Script, TxIsValid,
@@ -188,7 +186,7 @@ fn empty_v1_transaction() -> MidgardTransaction {
 /// spend, mint or execute (the twin of the lib test module's
 /// `empty_native_control_fixture`, restricted to witness-free transactions).
 fn empty_native_control(tx: MidgardTransaction) -> NativeScriptsControlV1 {
-  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let proof_source = forced_fixture.from_native_transaction(tx)
   let empty = validation_merkle_v1.build_frontier([])
   NativeScriptsControlV1 {
     compact_cbor: proof_source.compact_cbor,
@@ -262,7 +260,9 @@ fn cek_state(
       machine_version: validation_trace_v1.machine_version,
       event_key_hash: h_a,
       transaction_id: tx_id,
-      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      transaction_commitment: forced_fixture.commitment_of_native_transaction(
+        tx,
+      ),
       validation_context_hash: validation_trace_v1.hash_validation_context(
         validation_context_cbor,
       ),
@@ -2109,6 +2109,7 @@ fn context_staged_fixture(f: CekStepFixtureV1) -> context_chain.ContextStaged {
       control: control_data,
       auxiliary_hash: blake2b_256(cbor.serialise(auxiliary)),
       transaction_id: f.pre.transaction_id,
+      source_kind: f.pre.source_kind,
     },
     context: vm_witness.cek_context_control_from_cbor(cek.context_control_cbor),
     native: context_step.native_facts(cek.control),
@@ -2767,7 +2768,7 @@ test bounded_context_binding_wire_matches_sdk() {
       staged_data,
     ],
   )
-  blake2b_256(cbor.serialise(vector)) == #"9f1d1bd9bf12507c305a77bcc809bd592aacee87abea2b701393f7926e5bcd4e"
+  blake2b_256(cbor.serialise(vector)) == #"3683841371786bc1967f96e267e3ccf3f9bed29b09ae1e229f9311c5e9dac338"
 }
 
 fn ordered_mint_fixture() -> Pair<CekContextControlV1, CekMintHead> {

@@ -5,7 +5,9 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{
   cancel, continue, pass_native_tx_to_next_step_carried,
 }
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
+use midgard/fraud_proofs/native_tx/compact.{
+  verify_forced_tx_proof_source_v1, verify_native_tx_proof_source_v1,
+}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/fraud_proofs/witness_script_decoding/rule.{bind_subject_v1}
 use midgard/fraud_proofs/witness_script_decoding/step_01.{
@@ -98,11 +100,11 @@ validator main(
           direction,
         )
         let leaf = membership.value
-        let Pair(verified, _witness_set) = verify_native_tx_proof_source_v1(
+        let Pair(verified, _witness_set) = verify_forced_tx_proof_source_v1(
           leaf.tx_id,
-          leaf.source.compact_cbor,
-          leaf.source.witness_set_compact_cbor,
-          leaf.source.field_preimage_lengths_cbor,
+          leaf.submitted_source.compact_cbor,
+          leaf.submitted_source.witness_set_compact_cbor,
+          leaf.submitted_source.field_preimage_lengths_cbor,
         )
         let expected: Data = bind_subject_v1(
           subject,

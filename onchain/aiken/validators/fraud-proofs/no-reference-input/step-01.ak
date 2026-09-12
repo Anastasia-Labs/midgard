@@ -64,7 +64,7 @@ validator main(
           tx,
         )
 
-        expect bad_tx_view.tx_compact.validity_code == 0
+        expect bad_tx_view.tx_compact.validity_code == Some(0)
 
         let ledger_state.HeaderV1 { prev_utxos_root, .. } = header
 

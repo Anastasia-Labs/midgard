@@ -1,5 +1,5 @@
 use aiken/primitive/bytearray
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
+use midgard/fraud_proofs/native_tx/compact.{verify_tx_proof_source_v1}
 use midgard/ledger_output_proof_v1
 use midgard/redeemer_item_proof_v1
 use midgard/script_proof_v1
@@ -246,7 +246,8 @@ pub fn verify_script_sources_non_output_semantics_v1(
   let witness = evidence.transition
   let auxiliary = evidence.auxiliary
   let control = script_sources_control_from_witness(witness.work_witness_cbor)
-  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
+  let Pair(verified_source, _) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
@@ -656,7 +657,8 @@ pub fn verify_script_sources(
   door: field_door.MachineFieldDoorV1,
 ) -> Bool {
   let control = script_sources_control_from_witness(witness.work_witness_cbor)
-  let Pair(verified_source, dispatch_witness_set) = verify_native_tx_proof_source_v1(
+  let Pair(verified_source, dispatch_witness_set) = verify_tx_proof_source_v1(
+    pre.source_kind,
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,

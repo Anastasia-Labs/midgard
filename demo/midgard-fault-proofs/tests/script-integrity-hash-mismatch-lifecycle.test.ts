@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core";
 import {
   buildMidgardValidationTraceTree,
   computeMidgardNativeTxId,
@@ -13,6 +14,7 @@ import {
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   verifyMidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
+import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -292,16 +294,19 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
             "hex",
           ),
           sourceKind: direction === "accepted" ? "normal" : "forced",
-          ...(direction === "forced"
-            ? { committedForcedVerdict: "rejected" as const }
-            : {}),
+          ...(direction === "forced" ? {} : {}),
           blockEndTimeMs: 1_800_000_000_000,
           expectedNetworkId: 0n,
           minFeeA: 0n,
           minFeeB: 0n,
           blockSlot: 100n,
           transactionId: malformed.txId,
-          canonicalTransactionCbor: malformed.txCbor,
+          canonicalTransactionCbor:
+            direction === "forced"
+              ? encodeMidgardForcedTxCanonical(
+                  decodeMidgardNativeTxFullFromCanonicalCbor(malformed.txCbor),
+                )
+              : malformed.txCbor,
           programMaterialSidecarCbor:
             bitmap === 0
               ? undefined

@@ -8,12 +8,10 @@ import {
   type MidgardValidationMachineState,
 } from "@al-ft/midgard-core";
 import {
-  adjudicateMidgardNativeTxFullValidity,
   computeMidgardNativeTxId,
   computeMidgardNativeTxProofCommitment,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardNativeTxProofFieldLengths,
-  deriveMidgardNativeTxProofSource,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
@@ -27,6 +25,12 @@ import {
   type MidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
+import {
+  computeMidgardForcedTxProofCommitment,
+  encodeMidgardForcedTxCanonical,
+} from "@al-ft/midgard-core/codec/forced";
+import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
@@ -126,16 +130,6 @@ const withdrawalInfo = (
  */
 const canonicalPreimageByCommitment = new Map<string, Buffer>();
 
-const proofSourceCommitment = (source: SDK.NativeTxProofSource): string =>
-  computeMidgardNativeTxProofCommitment({
-    compactCbor: Buffer.from(source.compact_cbor, "hex"),
-    witnessSetCompactCbor: Buffer.from(source.witness_set_compact_cbor, "hex"),
-    fieldPreimageLengthsCbor: Buffer.from(
-      source.field_preimage_lengths_cbor,
-      "hex",
-    ),
-  }).toString("hex");
-
 const nativeMaterial = (
   byte: number,
   preimages: {
@@ -204,30 +198,22 @@ const forcedTx = (
   verdict: SDK.OperatorVerdict = forcedTxInvalidPlutus,
 ): SDK.ForcedInclusionTxV1 => {
   const material = nativeMaterial(byte);
-  if (verdict === "ForcedTxValid") {
-    return {
-      tx_id: material.txId,
-      source: material.source,
-      verdict,
-    };
-  }
-  // A rejected forced leaf commits the operator-adjudicated source
-  // (§2.4.3(e)): the fixture bytes stay `TxIsValid` as submitted, while the
-  // leaf's triple carries the stamped `TxIsInvalid` scalar. The DA preimage
-  // registered for the leaf remains the submitted canonical bytes.
-  const adjudicated = deriveMidgardNativeTxProofSource(
-    adjudicateMidgardNativeTxFullValidity(
+  const adjudicated = deriveMidgardForcedTxProofSource(
+    materializeMidgardForcedTxFromCanonical(
       decodeMidgardNativeTxFullFromCanonicalCbor(material.canonicalCbor),
-      "TxIsInvalid",
     ),
   );
   canonicalPreimageByCommitment.set(
-    computeMidgardNativeTxProofCommitment(adjudicated).toString("hex"),
-    material.canonicalCbor,
+    computeMidgardForcedTxProofCommitment(adjudicated).toString("hex"),
+    encodeMidgardForcedTxCanonical(
+      materializeMidgardForcedTxFromCanonical(
+        decodeMidgardNativeTxFullFromCanonicalCbor(material.canonicalCbor),
+      ),
+    ),
   );
   return {
     tx_id: material.txId,
-    source: {
+    submitted_source: {
       compact_cbor: adjudicated.compactCbor.toString("hex"),
       witness_set_compact_cbor:
         adjudicated.witnessSetCompactCbor.toString("hex"),
@@ -431,7 +417,17 @@ const buildPayloadFixture = async ({
         SDK.ForcedInclusionTxV1,
       ) as SDK.ForcedInclusionTxV1;
       const preimage = canonicalPreimageByCommitment.get(
-        proofSourceCommitment(forced.source),
+        computeMidgardForcedTxProofCommitment({
+          compactCbor: Buffer.from(forced.submitted_source.compact_cbor, "hex"),
+          witnessSetCompactCbor: Buffer.from(
+            forced.submitted_source.witness_set_compact_cbor,
+            "hex",
+          ),
+          fieldPreimageLengthsCbor: Buffer.from(
+            forced.submitted_source.field_preimage_lengths_cbor,
+            "hex",
+          ),
+        }).toString("hex"),
       );
       if (preimage === undefined) {
         throw new Error(
@@ -1353,12 +1349,12 @@ describe("transition-trace challenger tooling", () => {
       },
     });
     const lengths = decodeMidgardNativeTxProofFieldLengths(
-      Buffer.from(forced.source.field_preimage_lengths_cbor, "hex"),
+      Buffer.from(forced.submitted_source.field_preimage_lengths_cbor, "hex"),
     );
     const honestForced: SDK.ForcedInclusionTxV1 = {
       ...forced,
-      source: {
-        ...forced.source,
+      submitted_source: {
+        ...forced.submitted_source,
         field_preimage_lengths_cbor: encodeMidgardNativeTxProofFieldLengths([
           lengths[0]! + 1,
           ...lengths.slice(1),
@@ -2871,11 +2867,7 @@ describe("retained operator validation claims", () => {
         tx_id: material.txId,
         source: material.source,
       };
-      const forced: SDK.ForcedInclusionTxV1 = {
-        tx_id: material.txId,
-        source: material.source,
-        verdict: "ForcedTxValid",
-      };
+      const forced = forcedTx(88, "ForcedTxValid");
       const fixture = await buildPayloadFixture({
         transactions:
           kind === "normal"

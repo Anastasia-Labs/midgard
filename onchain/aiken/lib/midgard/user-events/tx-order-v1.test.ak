@@ -7,11 +7,12 @@ use cardano/address
 use cardano/assets.{PolicyId}
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference}
 use midgard/cek_proof_v1
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/native_tx/compact.{
-  encode_native_tx_body_compact, encode_native_tx_compact_v1,
+  encode_forced_tx_compact_v1, encode_native_tx_body_compact,
   encode_native_tx_field_preimage_lengths_v1,
-  encode_native_tx_witness_set_compact, native_tx_id_for_version,
-  native_tx_proof_commitment_v1,
+  encode_native_tx_witness_set_compact, forced_tx_proof_commitment_v1,
+  native_tx_id_for_version,
 }
 use midgard/fraud_proofs/native_tx/preimages.{
   encode_address_witness_preimage, encode_hash28_list_preimage,
@@ -19,13 +20,13 @@ use midgard/fraud_proofs/native_tx/preimages.{
 }
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types.{
-  MidgardAddressWitness, MidgardTransaction, MidgardTransactionBody,
-  MidgardTransactionWitnessSet, MidgardTxInput, NativeTxBodyCompact,
-  NativeTxCompact, NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact,
+  ForcedTxCompact, MidgardAddressWitness, MidgardTransaction,
+  MidgardTransactionBody, MidgardTransactionWitnessSet, MidgardTxInput,
+  NativeTxBodyCompact, NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact,
   TxIsValid, native_tx_version_v1,
 }
 use midgard/ledger_state.{
-  CekProgramMaterialDatumV1, ForcedInclusionTxV1, NativeTxProofSourceV1,
+  CekProgramMaterialDatumV1, ForcedInclusionTxV1, ForcedTxProofSourceV1,
   TxOrderEventV1, TxOrderPayloadV1,
 }
 use midgard/native_tx_field_access_v1.{
@@ -71,8 +72,8 @@ fn vector_order_id() -> OutputReference {
   }
 }
 
-fn vector_source() -> NativeTxProofSourceV1 {
-  NativeTxProofSourceV1 {
+fn vector_source() -> ForcedTxProofSourceV1 {
+  ForcedTxProofSourceV1 {
     compact_cbor: #"01",
     witness_set_compact_cbor: #"0203",
     field_preimage_lengths_cbor: #"04",
@@ -83,7 +84,7 @@ fn vector_payload() -> TxOrderPayloadV1 {
   TxOrderPayloadV1 {
     tx_id: order_transaction_id,
     transaction_commitment: commitment_transaction_id,
-    source: vector_source(),
+    submitted_source: vector_source(),
   }
 }
 
@@ -112,7 +113,7 @@ fn verdict_plutus_failed() -> rejection_reason_v1.OperatorVerdictV1 {
 fn vector_forced_inclusion() -> ForcedInclusionTxV1 {
   ForcedInclusionTxV1 {
     tx_id: order_transaction_id,
-    source: vector_source(),
+    submitted_source: vector_source(),
     verdict: verdict_plutus_failed(),
   }
 }
@@ -240,24 +241,31 @@ fn tx_id(tx: MidgardTransaction) -> ByteArray {
   )
 }
 
-fn source(tx: MidgardTransaction) -> NativeTxProofSourceV1 {
-  let proof_source = native_transaction.midgard_transaction_proof_source_v1(tx)
-  NativeTxProofSourceV1 {
-    compact_cbor: proof_source.compact_cbor,
-    witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
-    field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
-  }
+fn source(tx: MidgardTransaction) -> ForcedTxProofSourceV1 {
+  let native = native_transaction.midgard_transaction_proof_source_v1(tx)
+  forced_fixture.from_native_source(
+    ledger_state.NativeTxProofSourceV1 {
+      compact_cbor: native.compact_cbor,
+      witness_set_compact_cbor: native.witness_set_compact_cbor,
+      field_preimage_lengths_cbor: native.field_preimage_lengths_cbor,
+    },
+  )
 }
 
 fn commitment(tx: MidgardTransaction) -> ByteArray {
-  native_transaction.midgard_transaction_proof_commitment_v1(tx)
+  let submitted = source(tx)
+  forced_tx_proof_commitment_v1(
+    submitted.compact_cbor,
+    submitted.witness_set_compact_cbor,
+    submitted.field_preimage_lengths_cbor,
+  )
 }
 
 fn payload(tx: MidgardTransaction) -> TxOrderPayloadV1 {
   TxOrderPayloadV1 {
     tx_id: tx_id(tx),
     transaction_commitment: commitment(tx),
-    source: source(tx),
+    submitted_source: source(tx),
   }
 }
 
@@ -447,7 +455,7 @@ fn payload_with_declared_lengths(
   lengths: NativeTxFieldPreimageLengthsV1,
 ) -> TxOrderPayloadV1 {
   let honest = source(tx)
-  let substituted = NativeTxProofSourceV1 {
+  let substituted = ForcedTxProofSourceV1 {
     compact_cbor: honest.compact_cbor,
     witness_set_compact_cbor: honest.witness_set_compact_cbor,
     field_preimage_lengths_cbor: encode_native_tx_field_preimage_lengths_v1(
@@ -456,12 +464,12 @@ fn payload_with_declared_lengths(
   }
   TxOrderPayloadV1 {
     tx_id: tx_id(tx),
-    transaction_commitment: native_tx_proof_commitment_v1(
+    transaction_commitment: forced_tx_proof_commitment_v1(
       substituted.compact_cbor,
       substituted.witness_set_compact_cbor,
       substituted.field_preimage_lengths_cbor,
     ),
-    source: substituted,
+    submitted_source: substituted,
   }
 }
 
@@ -1089,11 +1097,10 @@ fn order_material_shape(
   let witness_set_compact_cbor = encode_native_tx_witness_set_compact(
     witness_set,
   )
-  let compact_cbor = encode_native_tx_compact_v1(
-    NativeTxCompact {
+  let compact_cbor = encode_forced_tx_compact_v1(
+    ForcedTxCompact {
       body,
       witness_set_hash: blake2b_256(witness_set_compact_cbor),
-      validity_code: 0,
     },
   )
   let field_preimage_lengths_cbor = encode_native_tx_field_preimage_lengths_v1(
@@ -1137,12 +1144,12 @@ fn order_material_shape(
   OrderMaterialShapeV1 {
     payload: TxOrderPayloadV1 {
       tx_id,
-      transaction_commitment: native_tx_proof_commitment_v1(
+      transaction_commitment: forced_tx_proof_commitment_v1(
         compact_cbor,
         witness_set_compact_cbor,
         field_preimage_lengths_cbor,
       ),
-      source: NativeTxProofSourceV1 {
+      submitted_source: ForcedTxProofSourceV1 {
         compact_cbor,
         witness_set_compact_cbor,
         field_preimage_lengths_cbor,
@@ -1279,6 +1286,32 @@ test tx_order_mint_material_at_two_hundred_fifty_variable_width_items() {
 /// reaches the §3.3 basis.
 test tx_order_mint_material_at_five_hundred_variable_width_items() {
   open_all_nine(variable_width_shape(upper_variable_width_item_count))
+}
+
+/// Capacity diagnostic: the nine non-empty fields sum to exactly 32,768
+/// bytes; field 8 holds 16,254 minimum-width opaque items. This is an
+/// admissible order source, including transactions that later fail ledger
+/// semantics. A passing predicate does not imply its execution fits L1.
+test tx_order_mint_variable_width_aggregate_maximum() {
+  let preimages = nine_field_preimages(8, variable_width_preimage(16254))
+  expect
+    list.foldl(
+      preimages,
+      0,
+      fn(bytes, total) { total + bytearray.length(bytes) },
+    ) == 32768
+  open_all_nine(order_material_shape(preimages, 8))
+}
+
+/// Adjacent field-envelope refusal is independent of the aggregate budget.
+/// 16,383 minimal items need 32,769 bytes in one field, beyond the door limit.
+test tx_order_mint_variable_width_field_adjacent_refused() fail {
+  open_all_nine(
+    order_material_shape(
+      nine_field_preimages(8, variable_width_preimage(16383)),
+      8,
+    ),
+  )
 }
 
 /// Each row measures the shape it says it does. Nine non-empty fields in both

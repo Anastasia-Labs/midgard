@@ -9,6 +9,12 @@ import {
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 import {
+  computeMidgardForcedTxProofCommitment,
+  deriveMidgardForcedTxProofSource,
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
+import {
   MIDGARD_VALIDATION_MACHINE_VERSION,
   MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
 } from "@al-ft/midgard-core/consensus-profile";
@@ -86,6 +92,7 @@ export type StrictRetainedDaPairFixture = {
   readonly headerHash: string;
   readonly transactionIdHex: string;
   readonly transactionCommitmentHex: string;
+  readonly forcedTransactionCommitmentHex: string;
   readonly forcedOrderIdHex: string;
 };
 
@@ -121,8 +128,17 @@ export const buildStrictRetainedDaPairFixture = async ({
     outputIndex: 0n,
   };
   const forcedOrderIdHex = Data.to(forcedOrder, SDK.OutputReference);
+  const forced = materializeMidgardForcedTxFromCanonical(transaction);
+  const forcedProofSource = deriveMidgardForcedTxProofSource(forced);
   const forcedSource: SDK.ForcedInclusionTxV1 = {
-    ...source,
+    tx_id: transactionIdHex,
+    submitted_source: {
+      compact_cbor: forcedProofSource.compactCbor.toString("hex"),
+      witness_set_compact_cbor:
+        forcedProofSource.witnessSetCompactCbor.toString("hex"),
+      field_preimage_lengths_cbor:
+        forcedProofSource.fieldPreimageLengthsCbor.toString("hex"),
+    },
     verdict: "ForcedTxValid",
   };
   const forcedEventKey: SDK.EventKey = {
@@ -283,7 +299,10 @@ export const buildStrictRetainedDaPairFixture = async ({
         [transactionIdHex, canonicalCbor.toString("hex")],
       ],
       forced_transaction_preimages: [
-        [forcedOrderIdHex, canonicalCbor.toString("hex")],
+        [
+          forcedOrderIdHex,
+          encodeMidgardForcedTxCanonical(forced).toString("hex"),
+        ],
       ],
       cek_program_material: cekProgramMaterial,
       deposits: [],
@@ -303,6 +322,8 @@ export const buildStrictRetainedDaPairFixture = async ({
     headerHash,
     transactionIdHex,
     transactionCommitmentHex,
+    forcedTransactionCommitmentHex:
+      computeMidgardForcedTxProofCommitment(forcedProofSource).toString("hex"),
     forcedOrderIdHex,
   };
 };

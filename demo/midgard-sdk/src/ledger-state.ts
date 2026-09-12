@@ -678,10 +678,20 @@ export const CekProgramMaterialDatum = asDataType<CekProgramMaterialDatum>(
  * carries the `field_carriage_availability` note that says what the mint checks
  * today and which issue owns the rest.
  */
+export const ForcedTxProofSourceSchema = Data.Object({
+  compact_cbor: Data.Bytes(),
+  witness_set_compact_cbor: Data.Bytes(),
+  field_preimage_lengths_cbor: Data.Bytes(),
+});
+export type ForcedTxProofSource = Data.Static<typeof ForcedTxProofSourceSchema>;
+export const ForcedTxProofSource = asDataType<ForcedTxProofSource>(
+  ForcedTxProofSourceSchema,
+);
+
 export const TxOrderPayloadSchema = Data.Object({
   tx_id: H32Schema,
   transaction_commitment: H32Schema,
-  source: NativeTxProofSourceSchema,
+  submitted_source: ForcedTxProofSourceSchema,
 });
 export type TxOrderPayload = Data.Static<typeof TxOrderPayloadSchema>;
 export const TxOrderPayload = asDataType<TxOrderPayload>(TxOrderPayloadSchema);
@@ -722,7 +732,7 @@ export const L2TransactionSource = asDataType<L2TransactionSource>(
  */
 export const ForcedInclusionTxV1Schema = Data.Object({
   tx_id: H32Schema,
-  source: NativeTxProofSourceSchema,
+  submitted_source: ForcedTxProofSourceSchema,
   verdict: OperatorVerdictSchema,
 });
 export type ForcedInclusionTxV1 = Data.Static<typeof ForcedInclusionTxV1Schema>;

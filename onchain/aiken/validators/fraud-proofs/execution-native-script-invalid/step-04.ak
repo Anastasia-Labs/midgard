@@ -169,6 +169,7 @@ validator main(
             expect output_script_hash == step_05_validator_script_hash
             let expected_output_state: Data = step_05.State {
               direction: state.direction,
+              source_kind: state.source_kind,
               execution_index: state.execution_index,
               source_index: state.source_index,
               origin_kind: state.origin_kind,
@@ -209,6 +210,7 @@ fn opened_address_witnesses(
     WitnessAnchor {
       tx_id: state.bad_tx_id,
       witness_set_hash: state.bad_tx_witness_set_hash,
+      source_kind: state.source_kind,
     },
     address_witnesses_field_index,
     reference_inputs,
@@ -285,6 +287,7 @@ fn run_native_verdict(script_bytes: ByteArray) -> Bool {
   let script_item_cbor = encode_midgard_versioned_script(script)
   let state = State {
     direction: 0,
+    source_kind: 0,
     execution_index: 0,
     source_index: 0,
     origin_kind: 0,

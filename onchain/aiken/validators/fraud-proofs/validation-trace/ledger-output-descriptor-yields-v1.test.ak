@@ -51,7 +51,7 @@ use midgard/cek_data_traverse_v1 as traverse
 use midgard/cek_data_v1 as summary
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
-use midgard/fraud_proofs/native_tx/compact.{native_tx_proof_commitment_v1}
+use midgard/fraud_proofs/native_tx/compact.{forced_tx_proof_commitment_v1}
 use midgard/ledger_output_commitment_v1 as commitment
 use midgard/ledger_output_proof_roles as roles
 use midgard/ledger_output_proof_v1 as proof
@@ -161,19 +161,17 @@ fn one_chunk_material(
   output_index: Int,
   output: ByteArray,
 ) -> Pair<ByteArray, bounded_item_v1.ChunkProofV1> {
-  let frontier =
-    merkle.append_leaf(
-      0,
-      merkle.empty_frontier(),
-      bounded_item_v1.hash_chunk(2, output_index, 0, output),
-    )
-  let item_commitment =
-    bounded_item_v1.commitment(
-      2,
-      output_index,
-      bytearray.length(output),
-      frontier,
-    )
+  let frontier = merkle.append_leaf(
+    0,
+    merkle.empty_frontier(),
+    bounded_item_v1.hash_chunk(2, output_index, 0, output),
+  )
+  let item_commitment = bounded_item_v1.commitment(
+    2,
+    output_index,
+    bytearray.length(output),
+    frontier,
+  )
   Pair(
     item_commitment,
     bounded_item_v1.ChunkProofV1 {
@@ -230,36 +228,32 @@ fn until_terminal(
       fuel - 1,
     )
   } else {
-    let witness =
-      if control.stage == proof.stage_datum_traversal {
-        expect Some(datum_control) = control.datum
-        if datum_control.stage == traverse.stage_head {
-          proof.LedgerOutputProofDatum {
-            action: traverse.HeadSequence { expected_children: 0 },
-            window: Some(output),
-          }
-        } else if datum_control.stage == traverse.stage_fold {
-          proof.LedgerOutputProofDatum {
-            action: traverse.FinalizeFrame {
-              frame: data_frame.initial_small_constr_frame_v1(0, #"", 0),
-              parent: None,
-            },
-            window: None,
-          }
-        } else {
-          expect datum_control.stage == traverse.stage_terminal
-          proof.LedgerOutputProofNoWitness
+    let witness = if control.stage == proof.stage_datum_traversal {
+      expect Some(datum_control) = control.datum
+      if datum_control.stage == traverse.stage_head {
+        proof.LedgerOutputProofDatum {
+          action: traverse.HeadSequence { expected_children: 0 },
+          window: Some(output),
+        }
+      } else if datum_control.stage == traverse.stage_fold {
+        proof.LedgerOutputProofDatum {
+          action: traverse.FinalizeFrame {
+            frame: data_frame.initial_small_constr_frame_v1(0, #"", 0),
+            parent: None,
+          },
+          window: None,
         }
       } else {
-        when proof.step_v1(control, proof.LedgerOutputProofNoWitness) is {
-          Some(_) -> proof.LedgerOutputProofNoWitness
-          None ->
-            proof.LedgerOutputProofChunks {
-              chunk_proof,
-              next_chunk_proof: None,
-            }
-        }
+        expect datum_control.stage == traverse.stage_terminal
+        proof.LedgerOutputProofNoWitness
       }
+    } else {
+      when proof.step_v1(control, proof.LedgerOutputProofNoWitness) is {
+        Some(_) -> proof.LedgerOutputProofNoWitness
+        None ->
+          proof.LedgerOutputProofChunks { chunk_proof, next_chunk_proof: None }
+      }
+    }
     until_terminal(
       advanced(proof.step_v1(control, witness)),
       chunk_proof,
@@ -301,8 +295,9 @@ fn honest_descriptor(
 ) -> commitment.LedgerOutputCommitmentV1 {
   expect Some(cardano_tx_out) = proof.cardano_tx_out_summary_v1(terminal)
   expect Some(midgard_tx_out) = proof.midgard_tx_out_summary_v1(terminal)
-  expect Some(cardano_spend_datum) =
-    proof.cardano_spend_datum_summary_v1(terminal)
+  expect Some(cardano_spend_datum) = proof.cardano_spend_datum_summary_v1(
+    terminal,
+  )
   let language = terminal.output_scan.reference_script_language
   commitment.LedgerOutputCommitmentV1 {
     version: commitment.version,
@@ -361,10 +356,9 @@ fn honest_datum(
 }
 
 fn address_of(output: ByteArray) {
-  expect Some(midgard_address) =
-    ledger_output_v1.decode_canonical_address_bytes(
-      terminal_of(output).output_scan.address,
-    )
+  expect Some(midgard_address) = ledger_output_v1.decode_canonical_address_bytes(
+    terminal_of(output).output_scan.address,
+  )
   midgard_address
 }
 
@@ -423,7 +417,7 @@ fn machine_pre(
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: h_a,
-    transaction_commitment: native_tx_proof_commitment_v1(#"80", #"80", #"80"),
+    transaction_commitment: forced_tx_proof_commitment_v1(#"80", #"80", #"80"),
     validation_context_hash: validation_trace_v1.hash_validation_context(
       context_cbor,
     ),
@@ -467,19 +461,17 @@ fn pre_of(
 ) -> FinalizeFixtureV1 {
   let terminal = terminal_of(output)
   let descriptor_cbor = commitment.encode(honest_descriptor(terminal))
-  let control_cbor =
-    proof.encode_control_v1(
-      with_fact_groups(terminal, descriptor_cbor, attached_groups),
-    )
-  let work_cbor =
-    ss_raw.append_extension_v1(
-      base_witness_cbor(
-        context_cbor,
-        0,
-        vm_witness.empty_receive_purpose_scan_control(),
-      ),
-      control_cbor,
-    )
+  let control_cbor = proof.encode_control_v1(
+    with_fact_groups(terminal, descriptor_cbor, attached_groups),
+  )
+  let work_cbor = ss_raw.append_extension_v1(
+    base_witness_cbor(
+      context_cbor,
+      0,
+      vm_witness.empty_receive_purpose_scan_control(),
+    ),
+    control_cbor,
+  )
   let pre = machine_pre(context_cbor, work_cbor)
   FinalizeFixtureV1 {
     pre,
@@ -556,10 +548,9 @@ fn accepting_fixture(output: ByteArray) -> FinalizeFixtureV1 {
 fn attach_fixture(output: ByteArray, group_index: Int) -> FinalizeFixtureV1 {
   let f = pre_of(output, context_network_zero, group_index)
   let terminal = terminal_of(output)
-  let next_cbor =
-    proof.encode_control_v1(
-      with_fact_groups(terminal, f.descriptor_cbor, group_index + 1),
-    )
+  let next_cbor = proof.encode_control_v1(
+    with_fact_groups(terminal, f.descriptor_cbor, group_index + 1),
+  )
   with_successor_cbor(
     f,
     ss_raw.append_extension_v1(
@@ -629,11 +620,10 @@ fn rejecting_fixture(
 // ---------------------------------------------------------------------------
 
 fn auxiliary_of(f: FinalizeFixtureV1) -> Data {
-  let auxiliary: Data =
-    LedgerOutputProofFinalizeWitness {
-      descriptor_cbor: f.descriptor_cbor,
-      signer_proof: f.signer_proof,
-    }
+  let auxiliary: Data = LedgerOutputProofFinalizeWitness {
+    descriptor_cbor: f.descriptor_cbor,
+    signer_proof: f.signer_proof,
+  }
   auxiliary
 }
 
@@ -868,36 +858,34 @@ fn golden_transition() -> ValidationOneStepWitnessV1 {
 /// order, wrapped in the shared `StepRedeemer` `Continue` arm.
 test output_proof_finalize_wire_layout_is_pinned() {
   let claim: Data = 0
-  let real: finalize_validator.SpendRedeemer =
-    ct.Continue(
-      finalize_validator.VerifyOutputProofFinalize {
-        input_index: 1,
-        output_index: 2,
-        transition: golden_transition(),
-        descriptor_cbor: #"11",
-        signer_proof: NoSignerSetProof,
-        control_cbor: #"22",
-        claimed_value_summary: claim,
-        claimed_datum_summary: claim,
-        attach_roles: [2, 3],
-        yield_ref_input_indices: [0, 1],
-      },
-    )
-  let mirror: ct.StepRedeemer<FinalizeWireMirrorV1> =
-    ct.Continue(
-      VerifyOutputProofFinalizeMirror {
-        input_index: 1,
-        output_index: 2,
-        transition: golden_transition(),
-        descriptor_cbor: #"11",
-        signer_proof: NoSignerSetProof,
-        control_cbor: #"22",
-        claimed_value_summary: claim,
-        claimed_datum_summary: claim,
-        attach_roles: [2, 3],
-        yield_ref_input_indices: [0, 1],
-      },
-    )
+  let real: finalize_validator.SpendRedeemer = ct.Continue(
+    finalize_validator.VerifyOutputProofFinalize {
+      input_index: 1,
+      output_index: 2,
+      transition: golden_transition(),
+      descriptor_cbor: #"11",
+      signer_proof: NoSignerSetProof,
+      control_cbor: #"22",
+      claimed_value_summary: claim,
+      claimed_datum_summary: claim,
+      attach_roles: [2, 3],
+      yield_ref_input_indices: [0, 1],
+    },
+  )
+  let mirror: ct.StepRedeemer<FinalizeWireMirrorV1> = ct.Continue(
+    VerifyOutputProofFinalizeMirror {
+      input_index: 1,
+      output_index: 2,
+      transition: golden_transition(),
+      descriptor_cbor: #"11",
+      signer_proof: NoSignerSetProof,
+      control_cbor: #"22",
+      claimed_value_summary: claim,
+      claimed_datum_summary: claim,
+      attach_roles: [2, 3],
+      yield_ref_input_indices: [0, 1],
+    },
+  )
   let mirror_data: Data = mirror
   expect decoded: finalize_validator.SpendRedeemer = mirror_data
   and {
@@ -926,13 +914,15 @@ fn group_with_slot(slot: Int) -> List<ByteArray> {
 /// hash the dispatcher recommits to.
 test prepare_routes_output_proof_finalize_to_slot_three() {
   let f = accepting_fixture(protected_script_datum_output)
-  let resolver_datum =
-    ct.StepDatum {
-      fraud_prover: fixture.fraud_prover_key_hash,
-      data: Some(resolution_of(f)),
-    }
-  let output: Data =
-    prepare_semantic_resolution(resolution_of(f), f.transition, auxiliary_of(f))
+  let resolver_datum = ct.StepDatum {
+    fraud_prover: fixture.fraud_prover_key_hash,
+    data: Some(resolution_of(f)),
+  }
+  let output: Data = prepare_semantic_resolution(
+    resolution_of(f),
+    f.transition,
+    auxiliary_of(f),
+  )
   let expected: Data = prepared_of(f)
   and {
     output == expected,
@@ -1009,8 +999,14 @@ test attach_refuses_missing_yield() fail {
   let f = attach_fixture(protected_script_datum_output, 0)
   let value_claim: Data = f.value_claim
   let datum_claim: Data = f.datum_claim
-  let redeemer =
-    finalize_redeemer(f, value_claim, datum_claim, f.control_cbor, [2, 3], [0])
+  let redeemer = finalize_redeemer(
+    f,
+    value_claim,
+    datum_claim,
+    f.control_cbor,
+    [2, 3],
+    [0],
+  )
   run_dispatcher(
     f,
     redeemer,
@@ -1025,15 +1021,14 @@ test attach_refuses_role_permutation() fail {
   let f = attach_fixture(protected_script_datum_output, 0)
   let value_claim: Data = f.value_claim
   let datum_claim: Data = f.datum_claim
-  let redeemer =
-    finalize_redeemer(
-      f,
-      value_claim,
-      datum_claim,
-      f.control_cbor,
-      [2, 3],
-      [1, 0],
-    )
+  let redeemer = finalize_redeemer(
+    f,
+    value_claim,
+    datum_claim,
+    f.control_cbor,
+    [2, 3],
+    [1, 0],
+  )
   run_dispatcher(f, redeemer, finalize_tx(f, redeemer, group_pairs(0), []))
 }
 
@@ -1043,15 +1038,14 @@ test attach_refuses_wrong_grouping() fail {
   let f = attach_fixture(protected_script_datum_output, 0)
   let value_claim: Data = f.value_claim
   let datum_claim: Data = f.datum_claim
-  let redeemer =
-    finalize_redeemer(
-      f,
-      value_claim,
-      datum_claim,
-      f.control_cbor,
-      [3, 2],
-      [1, 0],
-    )
+  let redeemer = finalize_redeemer(
+    f,
+    value_claim,
+    datum_claim,
+    f.control_cbor,
+    [3, 2],
+    [1, 0],
+  )
   run_dispatcher(f, redeemer, finalize_tx(f, redeemer, group_pairs(0), []))
 }
 
@@ -1061,15 +1055,14 @@ test attach_refuses_replayed_group() fail {
   let f = attach_fixture(protected_script_datum_output, 1)
   let value_claim: Data = f.value_claim
   let datum_claim: Data = f.datum_claim
-  let redeemer =
-    finalize_redeemer(
-      f,
-      value_claim,
-      datum_claim,
-      f.control_cbor,
-      [2, 3],
-      [0, 1],
-    )
+  let redeemer = finalize_redeemer(
+    f,
+    value_claim,
+    datum_claim,
+    f.control_cbor,
+    [2, 3],
+    [0, 1],
+  )
   run_dispatcher(f, redeemer, finalize_tx(f, redeemer, group_pairs(0), []))
 }
 
@@ -1081,15 +1074,14 @@ test attach_refuses_forged_leaf_summary() {
   let value_claim: Data = f.value_claim
   let forged_option: Option<summary.DataSummaryV1> = Some(f.value_claim)
   let forged_claim: Data = forged_option
-  let redeemer =
-    finalize_redeemer(
-      f,
-      value_claim,
-      forged_claim,
-      f.control_cbor,
-      [2, 3],
-      [0, 1],
-    )
+  let redeemer = finalize_redeemer(
+    f,
+    value_claim,
+    forged_claim,
+    f.control_cbor,
+    [2, 3],
+    [0, 1],
+  )
   let tx = finalize_tx(f, redeemer, group_pairs(0), [])
   and {
     run_value_summary_yield(tx),
@@ -1101,15 +1093,14 @@ test attach_refuses_forged_leaf_summary() {
 /// group recorded) is refused by the fact gate.
 test terminal_refuses_missing_fact() fail {
   let f = pre_of(protected_script_datum_output, context_network_zero, 1)
-  let terminal_fixture =
-    with_successor_cbor(
-      f,
-      base_witness_cbor(
-        context_network_zero,
-        1,
-        spliced_receive_scan(protected_script_datum_output, f.descriptor_cbor),
-      ),
-    )
+  let terminal_fixture = with_successor_cbor(
+    f,
+    base_witness_cbor(
+      context_network_zero,
+      1,
+      spliced_receive_scan(protected_script_datum_output, f.descriptor_cbor),
+    ),
+  )
   let redeemer = honest_redeemer(terminal_fixture)
   run_dispatcher(
     terminal_fixture,
@@ -1123,44 +1114,41 @@ test terminal_refuses_missing_fact() fail {
 test terminal_refuses_cross_output_facts() fail {
   let output = protected_script_datum_output
   let terminal = terminal_of(output)
-  let foreign_descriptor =
-    commitment.encode(
-      honest_descriptor(terminal_of(protected_script_plain_output)),
-    )
-  let forged_control_cbor =
-    proof.encode_control_v1(with_fact_groups(terminal, foreign_descriptor, 3))
-  let work_cbor =
-    ss_raw.append_extension_v1(
-      base_witness_cbor(
-        context_network_zero,
-        0,
-        vm_witness.empty_receive_purpose_scan_control(),
-      ),
-      forged_control_cbor,
-    )
+  let foreign_descriptor = commitment.encode(
+    honest_descriptor(terminal_of(protected_script_plain_output)),
+  )
+  let forged_control_cbor = proof.encode_control_v1(
+    with_fact_groups(terminal, foreign_descriptor, 3),
+  )
+  let work_cbor = ss_raw.append_extension_v1(
+    base_witness_cbor(
+      context_network_zero,
+      0,
+      vm_witness.empty_receive_purpose_scan_control(),
+    ),
+    forged_control_cbor,
+  )
   let pre = machine_pre(context_network_zero, work_cbor)
-  let f =
-    FinalizeFixtureV1 {
-      pre,
-      transition: ValidationOneStepWitnessV1 {
-        work_witness_cbor: work_cbor,
-        claimed_successor: pre,
-      },
-      descriptor_cbor: commitment.encode(honest_descriptor(terminal)),
-      signer_proof: NoSignerSetProof,
-      control_cbor: forged_control_cbor,
-      value_claim: honest_value(terminal),
-      datum_claim: honest_datum(terminal),
-    }
-  let terminal_fixture =
-    with_successor_cbor(
-      f,
-      base_witness_cbor(
-        context_network_zero,
-        1,
-        spliced_receive_scan(output, f.descriptor_cbor),
-      ),
-    )
+  let f = FinalizeFixtureV1 {
+    pre,
+    transition: ValidationOneStepWitnessV1 {
+      work_witness_cbor: work_cbor,
+      claimed_successor: pre,
+    },
+    descriptor_cbor: commitment.encode(honest_descriptor(terminal)),
+    signer_proof: NoSignerSetProof,
+    control_cbor: forged_control_cbor,
+    value_claim: honest_value(terminal),
+    datum_claim: honest_datum(terminal),
+  }
+  let terminal_fixture = with_successor_cbor(
+    f,
+    base_witness_cbor(
+      context_network_zero,
+      1,
+      spliced_receive_scan(output, f.descriptor_cbor),
+    ),
+  )
   let redeemer = honest_redeemer(terminal_fixture)
   run_dispatcher(
     terminal_fixture,
@@ -1173,12 +1161,19 @@ test terminal_refuses_cross_output_facts() fail {
 /// the frame's item-30 pin once the facts are recorded.
 test terminal_refuses_stale_control() fail {
   let f = accepting_fixture(protected_script_datum_output)
-  let stale_cbor =
-    proof.encode_control_v1(terminal_of(protected_script_datum_output))
+  let stale_cbor = proof.encode_control_v1(
+    terminal_of(protected_script_datum_output),
+  )
   let value_claim: Data = f.value_claim
   let datum_claim: Data = f.datum_claim
-  let redeemer =
-    finalize_redeemer(f, value_claim, datum_claim, stale_cbor, [], [])
+  let redeemer = finalize_redeemer(
+    f,
+    value_claim,
+    datum_claim,
+    stale_cbor,
+    [],
+    [],
+  )
   run_dispatcher(f, redeemer, finalize_tx(f, redeemer, [], []))
 }
 
@@ -1188,8 +1183,14 @@ test terminal_refuses_yield_indices() fail {
   let f = accepting_fixture(protected_script_datum_output)
   let value_claim: Data = f.value_claim
   let datum_claim: Data = f.datum_claim
-  let redeemer =
-    finalize_redeemer(f, value_claim, datum_claim, f.control_cbor, [], [0])
+  let redeemer = finalize_redeemer(
+    f,
+    value_claim,
+    datum_claim,
+    f.control_cbor,
+    [],
+    [0],
+  )
   run_dispatcher(f, redeemer, finalize_tx(f, redeemer, role_pairs(), []))
 }
 
@@ -1199,18 +1200,17 @@ test terminal_refuses_yield_indices() fail {
 test finalize_refuses_forged_receive_scan_splice() fail {
   let output = protected_script_datum_output
   let f = accepting_fixture(output)
-  let forged =
-    with_successor_cbor(
-      f,
-      base_witness_cbor(
-        context_network_zero,
-        1,
-        receive_source_successor(
-          vm_witness.empty_receive_purpose_scan_control(),
-          address_of(output),
-        ),
+  let forged = with_successor_cbor(
+    f,
+    base_witness_cbor(
+      context_network_zero,
+      1,
+      receive_source_successor(
+        vm_witness.empty_receive_purpose_scan_control(),
+        address_of(output),
       ),
-    )
+    ),
+  )
   let redeemer = honest_redeemer(forged)
   run_dispatcher(
     forged,
@@ -1223,13 +1223,12 @@ test finalize_refuses_forged_receive_scan_splice() fail {
 /// `reject_network_id_mismatch` terminal -- with the fact gate still running
 /// first over the recorded facts.
 test finalize_emits_network_id_terminal() {
-  let f =
-    rejecting_fixture(
-      protected_script_plain_output,
-      context_network_one,
-      NoSignerSetProof,
-      reject_network_id_mismatch,
-    )
+  let f = rejecting_fixture(
+    protected_script_plain_output,
+    context_network_one,
+    NoSignerSetProof,
+    reject_network_id_mismatch,
+  )
   let redeemer = honest_redeemer(f)
   run_dispatcher(f, redeemer, finalize_tx(f, redeemer, [], []))
 }
@@ -1238,13 +1237,12 @@ test finalize_emits_network_id_terminal() {
 /// (empty) signer set wins only the exact `reject_missing_required_witness`
 /// terminal.
 test finalize_emits_missing_witness_terminal() {
-  let f =
-    rejecting_fixture(
-      protected_pubkey_output,
-      context_network_zero,
-      EmptySignerSetProof { peaks: [] },
-      reject_missing_required_witness,
-    )
+  let f = rejecting_fixture(
+    protected_pubkey_output,
+    context_network_zero,
+    EmptySignerSetProof { peaks: [] },
+    reject_missing_required_witness,
+  )
   let redeemer = honest_redeemer(f)
   run_dispatcher(f, redeemer, finalize_tx(f, redeemer, [], []))
 }
@@ -1255,19 +1253,21 @@ test yield_refuses_non_terminal_control() fail {
   let output = protected_script_datum_output
   let f = attach_fixture(output, 1)
   let Pair(item_commitment, _chunk_proof) = one_chunk_material(0, output)
-  let initial =
-    proof.initial_control_v1(0, bytearray.length(output), item_commitment)
+  let initial = proof.initial_control_v1(
+    0,
+    bytearray.length(output),
+    item_commitment,
+  )
   let value_claim: Data = f.value_claim
   let datum_claim: Data = f.datum_claim
-  let redeemer =
-    finalize_redeemer(
-      f,
-      value_claim,
-      datum_claim,
-      proof.encode_control_v1(initial),
-      [0],
-      [0],
-    )
+  let redeemer = finalize_redeemer(
+    f,
+    value_claim,
+    datum_claim,
+    proof.encode_control_v1(initial),
+    [0],
+    [0],
+  )
   run_scan_facts_yield(finalize_tx(f, redeemer, group_pairs(1), []))
 }
 
@@ -1277,13 +1277,12 @@ test yield_refuses_two_dispatcher_inputs() fail {
   let f = attach_fixture(protected_script_datum_output, 1)
   let redeemer = honest_attach_redeemer(f, 1)
   let base = fixture.ct_thread_input(ct_asset)
-  let second =
-    l1.Input {
-      ..base,
-      output_reference: l1.OutputReference {
-        transaction_id: h_b,
-        output_index: 7,
-      },
-    }
+  let second = l1.Input {
+    ..base,
+    output_reference: l1.OutputReference {
+      transaction_id: h_b,
+      output_index: 7,
+    },
+  }
   run_scan_facts_yield(finalize_tx(f, redeemer, group_pairs(1), [second]))
 }

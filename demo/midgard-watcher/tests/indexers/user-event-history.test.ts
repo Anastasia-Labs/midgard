@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
+import {
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardForcedTxCanonical,
+} from "@al-ft/midgard-core";
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -2243,7 +2247,11 @@ const ordinaryLocalOrderCreation = (
     refund_address: address,
     refund_datum: "NoDatum" as const,
   };
-  const payload = genuineUserEventForcedPayloadForCanonicalTx(nativeCbor);
+  const payload = genuineUserEventForcedPayloadForCanonicalTx(
+    encodeMidgardForcedTxCanonical(
+      decodeMidgardNativeTxFullFromCanonicalCbor(nativeCbor),
+    ),
+  );
   const datum =
     kind === "withdrawal"
       ? Data.to(
@@ -2274,7 +2282,7 @@ const ordinaryLocalOrderCreation = (
               tx: {
                 tx_id: payload.tx_id,
                 transaction_commitment: payload.transaction_commitment,
-                source: payload.source,
+                submitted_source: payload.submitted_source,
               },
             },
           },
@@ -2485,18 +2493,19 @@ describe("local event replay authority derivation", () => {
             : [],
         );
       }
+      const submittedCbor = encodeMidgardForcedTxCanonical(native.tx);
       const forcedClaim: WatcherCommittedEventClaim = {
         phase: "ForcedTransaction",
         eventIdCborHex: forced.eventIdCborHex,
         valueCborHex: Data.to(
           {
             tx_id: forced.payload.tx_id,
-            source: forced.payload.source,
+            submitted_source: forced.payload.submitted_source,
             verdict: "ForcedTxValid",
           },
           ForcedInclusionTxV1,
         ),
-        canonicalNativeTxCborHex: native.txCbor.toString("hex"),
+        canonicalNativeTxCborHex: submittedCbor.toString("hex"),
       };
       const mutableForcedClaim = { ...forcedClaim };
       const material: [string, string][] = [];
@@ -2511,7 +2520,7 @@ describe("local event replay authority derivation", () => {
       const forcedAuthority = await pendingForced;
       expect(forcedAuthority).toMatchObject({
         phase: "ForcedTransaction",
-        canonicalNativeTxCbor: native.txCbor,
+        canonicalNativeTxCbor: submittedCbor,
         programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
       });
       expect("transitionEffect" in forcedAuthority).toBe(false);

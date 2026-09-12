@@ -1,6 +1,11 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
+import {
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardForcedTxCanonical,
+  submittedForcedTransactionFromNative,
+} from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -16,7 +21,7 @@ import {
 
 type ForcedOrderCheckpoint = {
   deploymentFingerprint: string;
-  nativeTxCbor: string;
+  submittedTxCbor: string;
   signedCbor: string;
   txHash: string;
   metadata: SDK.TxOrderBuildMetadata;
@@ -26,7 +31,7 @@ type ForcedOrderCheckpoint = {
 /** Stage the actual order consumed by a forced-verdict fixture and its control. */
 const publishJourneyForcedOrder = async (
   input: JourneyFaultPreparationInput,
-  nativeTxCbor: Buffer,
+  submittedTxCbor: Buffer,
 ): Promise<SDK.OutputReference> => {
   const { context, directory, onStage } = input;
   const { deployment, provider } = context;
@@ -38,10 +43,10 @@ const publishJourneyForcedOrder = async (
       await readJourneyArtifact<ForcedOrderCheckpoint>(checkpointPath);
     if (
       checkpoint.deploymentFingerprint !== deployment.manifest.manifestId ||
-      checkpoint.nativeTxCbor !== nativeTxCbor.toString("hex")
+      checkpoint.submittedTxCbor !== submittedTxCbor.toString("hex")
     )
       throw new Error(
-        "Forced order checkpoint changed deployment or exact native transaction bytes",
+        "Forced order checkpoint changed deployment or exact submitted transaction bytes",
       );
   } else {
     lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));
@@ -69,7 +74,7 @@ const publishJourneyForcedOrder = async (
     };
     const order = await Effect.runPromise(
       SDK.buildUnsignedTxOrderTxWithMetadataProgram(lucid, contracts, {
-        nativeTxCbor: nativeTxCbor.toString("hex"),
+        submittedTxCbor: submittedTxCbor.toString("hex"),
         nonceInput,
         refundAddress,
         referenceScripts: { txOrderMinting: mintingReference },
@@ -78,7 +83,7 @@ const publishJourneyForcedOrder = async (
     const signed = await order.tx.sign.withWallet().complete();
     checkpoint = {
       deploymentFingerprint: deployment.manifest.manifestId,
-      nativeTxCbor: nativeTxCbor.toString("hex"),
+      submittedTxCbor: submittedTxCbor.toString("hex"),
       signedCbor: signed.toCBOR(),
       txHash: signed.toHash(),
       metadata: order.metadata,
@@ -161,7 +166,13 @@ export const createForcedTransactionJourneyFixture = (
     const material = prepareMaterial(input);
     const orderKey = await publishJourneyForcedOrder(
       input,
-      material.transaction.canonicalCbor,
+      encodeMidgardForcedTxCanonical(
+        submittedForcedTransactionFromNative(
+          decodeMidgardNativeTxFullFromCanonicalCbor(
+            material.transaction.canonicalCbor,
+          ),
+        ),
+      ),
     );
     return {
       buildFault: (timed) => builders.buildFault({ ...timed, orderKey }),

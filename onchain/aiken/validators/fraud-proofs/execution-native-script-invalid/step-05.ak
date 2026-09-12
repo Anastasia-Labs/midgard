@@ -72,6 +72,7 @@ validator main(
           WitnessAnchor {
             tx_id: state.bad_tx_id,
             witness_set_hash: state.bad_tx_witness_set_hash,
+            source_kind: state.source_kind,
           },
           address_witnesses_field_index,
           state.signer_checkpoint_hash,
@@ -117,6 +118,7 @@ validator main(
             expect output_script_hash == step_06_validator_script_hash
             let expected_output_state: Data = step_06.State {
               direction: state.direction,
+              source_kind: state.source_kind,
               execution_index: state.execution_index,
               source_index: state.source_index,
               origin_kind: state.origin_kind,

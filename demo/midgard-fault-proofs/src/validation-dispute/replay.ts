@@ -2,10 +2,10 @@ import { createHash } from "node:crypto";
 
 import {
   collectMidgardAttachedProgramEnvelopes,
-  computeMidgardNativeTxProofCommitment,
+  computeMidgardForcedTxProofCommitment,
   decodeMidgardCekProgramMaterialDaEntry,
   decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxProofSource,
+  deriveMidgardForcedTxProofSource,
   encodeMidgardCekProgramMaterialSidecar,
   encodeMidgardSpendInputItem,
   hashMidgardValidationRejectionCode,
@@ -13,16 +13,17 @@ import {
   MIDGARD_PROTOCOL_VERSION,
   verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core";
+import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import {
   classifyWithdrawalFromLedger,
   DepositDatum,
   DepositInfo,
   EMPTY_MERKLE_TREE_ROOT,
   EventKey,
+  ForcedTxProofSource,
   GENESIS_HEADER_HASH,
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
-  NativeTxProofSource,
   OutputReference,
   type RejectionReason,
   TxOrderDatum,
@@ -517,8 +518,8 @@ export const admitValidationTraceReplayContext = async ({
     }
     if (source.phase === "ForcedTransaction") {
       const original = Data.from(origin!.event.datum!, TxOrderDatum).event;
-      const submitted = deriveMidgardNativeTxProofSource(
-        decodeMidgardNativeTxFullFromCanonicalCbor(
+      const submitted = deriveMidgardForcedTxProofSource(
+        decodeMidgardForcedTxFullFromCanonicalCbor(
           source.entry.fullTransactionCbor,
         ),
       );
@@ -532,9 +533,9 @@ export const admitValidationTraceReplayContext = async ({
       if (
         original.tx.tx_id !== source.entry.value.tx_id ||
         original.tx.transaction_commitment !==
-          computeMidgardNativeTxProofCommitment(submitted).toString("hex") ||
-        Data.to(original.tx.source, NativeTxProofSource) !==
-          Data.to(exactSource, NativeTxProofSource)
+          computeMidgardForcedTxProofCommitment(submitted).toString("hex") ||
+        Data.to(original.tx.submitted_source, ForcedTxProofSource) !==
+          Data.to(exactSource, ForcedTxProofSource)
       )
         throw new Error(
           "validation replay forced bytes differ from their originating commitment",
@@ -553,7 +554,9 @@ export const admitValidationTraceReplayContext = async ({
       );
     const transaction = source.entry.fullTransactionCbor;
     const envelopes = collectMidgardAttachedProgramEnvelopes(
-      decodeMidgardNativeTxFullFromCanonicalCbor(transaction),
+      (source.phase === "ForcedTransaction"
+        ? decodeMidgardForcedTxFullFromCanonicalCbor
+        : decodeMidgardNativeTxFullFromCanonicalCbor)(transaction),
     );
     const reachable = new Set(
       verifyMidgardCekProgramMaterialBundle(envelopes, blockMaterial, {
@@ -576,10 +579,6 @@ export const admitValidationTraceReplayContext = async ({
             ? { sourceKind: "normal" as const }
             : {
                 sourceKind: "forced" as const,
-                committedForcedVerdict:
-                  source.entry.value.verdict === "ForcedTxValid"
-                    ? ("accepted" as const)
-                    : ("rejected" as const),
               }),
           ledgerWitnessEntries: ledgerEntries(),
           priorUtxosRoot: priorRoot,

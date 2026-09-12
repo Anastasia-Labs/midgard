@@ -74,6 +74,7 @@ validator main(
           WitnessAnchor {
             tx_id: scan.authenticated.transaction_id,
             witness_set_hash: scan.authenticated.witness_set_hash,
+            source_kind: scan.authenticated.subject.source_kind,
           },
           address_witnesses_field_index,
           scan.checkpoint_hash,
@@ -283,6 +284,7 @@ fn walk_at(
     WitnessAnchor {
       tx_id: authenticated.transaction_id,
       witness_set_hash: authenticated.witness_set_hash,
+      source_kind: authenticated.subject.source_kind,
     },
     address_witnesses_field_index,
     [],
@@ -542,6 +544,7 @@ test step_04_refuses_an_adjacent_over_bound_witness_field() fail {
     WitnessAnchor {
       tx_id: authenticated.transaction_id,
       witness_set_hash: authenticated.witness_set_hash,
+      source_kind: authenticated.subject.source_kind,
     },
     address_witnesses_field_index,
     refs,

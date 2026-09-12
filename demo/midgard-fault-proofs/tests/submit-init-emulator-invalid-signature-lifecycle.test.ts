@@ -376,6 +376,7 @@ describe("invalid-signature emulator lifecycle", () => {
     // The same plan the submitter will make, from the same inputs: the tier is
     // read off it, never passed to it.
     const planned = planFaultProofFieldOpening({
+      anchorSourceKind: 0n,
       fieldIndex: SDK.MIDGARD_FIELD_INDEX.addressWitnesses,
       anchorTxId: subject.nativeTxId,
       nativeTxCompactCbor: subject.nativeTxCompactCbor,

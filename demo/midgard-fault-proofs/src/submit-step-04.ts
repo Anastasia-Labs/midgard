@@ -373,6 +373,7 @@ export const submitStep04 = async ({
   const inputDatum = requireStep04Datum({ threadUtxo, signer });
   // The door's own checks, run before a transaction is built.
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: inputDatum.data.verified_tx2_id,
     nativeTxCompactCbor,

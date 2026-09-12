@@ -160,6 +160,7 @@ export const submitWithdrawnReferenceInputStep02 = async ({
   // index named here — never the encoding — that stops a spend-inputs preimage
   // from opening this slot.
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.referenceInputs,
     anchorTxId: inputState.bad_tx_id,
     nativeTxCompactCbor,

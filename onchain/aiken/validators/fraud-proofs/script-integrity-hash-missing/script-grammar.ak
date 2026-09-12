@@ -141,6 +141,7 @@ fn anchor(state: StagedStateV1) -> NativeTxAnchorV1 {
   WitnessAnchor {
     tx_id: state.subject.transaction_id,
     witness_set_hash: state.witness_set_hash,
+    source_kind: state.subject.source_kind,
   }
 }
 

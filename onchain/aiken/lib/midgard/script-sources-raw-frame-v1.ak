@@ -9,7 +9,7 @@ use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
 }
-use midgard/fraud_proofs/native_tx/compact.{native_tx_proof_commitment_v1}
+use midgard/fraud_proofs/native_tx/compact.{tx_proof_commitment_v1}
 use midgard/ledger_output_scan_v1
 use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
 use midgard/validation_machine/witness.{decode_frontier_peaks}
@@ -89,7 +89,8 @@ pub fn open_frame_v1(
       witness.work_witness_cbor,
     ) == prefix
   expect
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       compact_cbor,
       witness_set_compact_cbor,
       field_preimage_lengths_cbor,

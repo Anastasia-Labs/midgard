@@ -1,15 +1,11 @@
-import {
-  parseWatcherCustomNetwork,
-  type WatcherCustomNetwork,
-} from "../runtime/custom-network.js";
 import { createHash } from "node:crypto";
 import { isProxy } from "node:util/types";
 
 import {
-  computeMidgardNativeTxProofCommitment,
+  computeMidgardForcedTxProofCommitment,
   decodeMidgardNativeTxProofFieldLengths,
-  verifyMidgardNativeTxProofSource,
-} from "@al-ft/midgard-core/codec/native";
+  verifyMidgardForcedTxProofSource,
+} from "@al-ft/midgard-core/codec";
 import { MIDGARD_EMPTY_FIELD_COMMITMENT } from "@al-ft/midgard-core/codec/native-tx-field-access";
 import { midgardTxFieldCommitmentsFromSource } from "@al-ft/midgard-core/consensus-validation";
 import {
@@ -83,6 +79,10 @@ import {
   type WatcherRollbackResult,
   type WatcherRollbackVerificationContext,
 } from "../l1/rollback-engine.js";
+import {
+  parseWatcherCustomNetwork,
+  type WatcherCustomNetwork,
+} from "../runtime/custom-network.js";
 import {
   readWatcherUserEventScriptBinding,
   type VerifiedWatcherDeploymentIdentity,
@@ -1115,7 +1115,7 @@ const decodeMintRedeemer = (
  * length must equal this count exactly. The nine commitments come out of the
  * payload's own compact structures positionally (§4 has no field-index domain
  * separation, so the slot has to come from the structure), and
- * `forcedPayloadMatchesNativeSource` has already bound those structures to the
+ * `forcedPayloadMatchesSubmittedSource` has already bound those structures to the
  * carried `tx_id` and commitment by the time this is consulted.
  *
  * Returns `null` when the payload is not a decodable §4 binding, so a caller
@@ -1123,33 +1123,38 @@ const decodeMintRedeemer = (
  */
 const forcedOrderMaterialFieldCount = (payload: unknown): number | null => {
   const candidate = payload as {
-    source?: {
+    submitted_source?: {
       compact_cbor?: unknown;
       witness_set_compact_cbor?: unknown;
       field_preimage_lengths_cbor?: unknown;
     };
   };
   if (
-    !isHexBytes(candidate.source?.compact_cbor) ||
-    !isHexBytes(candidate.source.witness_set_compact_cbor) ||
-    !isHexBytes(candidate.source.field_preimage_lengths_cbor)
+    !isHexBytes(candidate.submitted_source?.compact_cbor) ||
+    !isHexBytes(candidate.submitted_source.witness_set_compact_cbor) ||
+    !isHexBytes(candidate.submitted_source.field_preimage_lengths_cbor)
   ) {
     return null;
   }
   try {
-    return midgardTxFieldCommitmentsFromSource({
-      compactCbor: Buffer.from(candidate.source.compact_cbor, "hex"),
-      witnessSetCompactCbor: Buffer.from(
-        candidate.source.witness_set_compact_cbor,
-        "hex",
-      ),
-      fieldPreimageLengthsCbor: Buffer.from(
-        candidate.source.field_preimage_lengths_cbor,
-        "hex",
-      ),
-    }).filter(
-      (commitment) => !commitment.equals(MIDGARD_EMPTY_FIELD_COMMITMENT),
-    ).length;
+    return midgardTxFieldCommitmentsFromSource(
+      {
+        compactCbor: Buffer.from(
+          candidate.submitted_source.compact_cbor,
+          "hex",
+        ),
+        witnessSetCompactCbor: Buffer.from(
+          candidate.submitted_source.witness_set_compact_cbor,
+          "hex",
+        ),
+        fieldPreimageLengthsCbor: Buffer.from(
+          candidate.submitted_source.field_preimage_lengths_cbor,
+          "hex",
+        ),
+      },
+      "forced",
+    ).filter((commitment) => !commitment.equals(MIDGARD_EMPTY_FIELD_COMMITMENT))
+      .length;
   } catch {
     return null;
   }
@@ -1547,7 +1552,7 @@ const scanCreatedTransactionEvents = (
       (kind === "forced_order" &&
         (!isHex32(forcedEvent?.id?.transactionId) ||
           typeof forcedEvent.id.outputIndex !== "bigint" ||
-          !forcedPayloadMatchesNativeSource(forcedEvent.tx) ||
+          !forcedPayloadMatchesSubmittedSource(forcedEvent.tx) ||
           // #594's exhaustion rule, re-derived. The redeemer's carriage vector
           // is positional over the payload's non-empty slots, so its length
           // must equal their count exactly — a short vector leaves a field's
@@ -1556,7 +1561,7 @@ const scanCreatedTransactionEvents = (
           // out of the mint redeemer above and the count out of the payload
           // whose binding the previous clause just verified. The per-field
           // *hash* half is not reachable from this module — see
-          // `forcedPayloadMatchesNativeSource` — but this half is, so it is
+          // `forcedPayloadMatchesSubmittedSource` — but this half is, so it is
           // checked rather than deferred with it.
           decoded.materialCarriage === null ||
           decoded.materialCarriage.length !==
@@ -2037,11 +2042,11 @@ const authenticReferenceDatum = (
  * accepted, so no version of this predicate ever closed it. It closes when the
  * blueprint is regenerated, not by anything written in this module.
  */
-const forcedPayloadMatchesNativeSource = (payload: unknown): boolean => {
+const forcedPayloadMatchesSubmittedSource = (payload: unknown): boolean => {
   const candidate = payload as {
     tx_id?: unknown;
     transaction_commitment?: unknown;
-    source?: {
+    submitted_source?: {
       compact_cbor?: unknown;
       witness_set_compact_cbor?: unknown;
       field_preimage_lengths_cbor?: unknown;
@@ -2050,30 +2055,30 @@ const forcedPayloadMatchesNativeSource = (payload: unknown): boolean => {
   if (
     !isHex32(candidate.tx_id) ||
     !isHex32(candidate.transaction_commitment) ||
-    !isHexBytes(candidate.source?.compact_cbor) ||
-    !isHexBytes(candidate.source.witness_set_compact_cbor) ||
-    !isHexBytes(candidate.source.field_preimage_lengths_cbor)
+    !isHexBytes(candidate.submitted_source?.compact_cbor) ||
+    !isHexBytes(candidate.submitted_source.witness_set_compact_cbor) ||
+    !isHexBytes(candidate.submitted_source.field_preimage_lengths_cbor)
   ) {
     return false;
   }
   try {
     const source = {
-      compactCbor: Buffer.from(candidate.source.compact_cbor, "hex"),
+      compactCbor: Buffer.from(candidate.submitted_source.compact_cbor, "hex"),
       witnessSetCompactCbor: Buffer.from(
-        candidate.source.witness_set_compact_cbor,
+        candidate.submitted_source.witness_set_compact_cbor,
         "hex",
       ),
       fieldPreimageLengthsCbor: Buffer.from(
-        candidate.source.field_preimage_lengths_cbor,
+        candidate.submitted_source.field_preimage_lengths_cbor,
         "hex",
       ),
     };
-    verifyMidgardNativeTxProofSource({
+    verifyMidgardForcedTxProofSource({
       transactionId: Buffer.from(candidate.tx_id, "hex"),
       source,
     });
     if (
-      computeMidgardNativeTxProofCommitment(source).toString("hex") !==
+      computeMidgardForcedTxProofCommitment(source).toString("hex") !==
       candidate.transaction_commitment
     ) {
       return false;
@@ -2188,13 +2193,13 @@ const verifyTerminalSemantics = (
       ? (() => {
           const tx = eventPair.payload as {
             tx_id?: unknown;
-            source?: unknown;
+            submitted_source?: unknown;
           };
           try {
             return Data.to(
               {
                 tx_id: tx.tx_id,
-                source: tx.source,
+                submitted_source: tx.submitted_source,
                 verdict: spend.purpose,
               } as never,
               ForcedInclusionTxV1Schema as never,
@@ -2287,7 +2292,7 @@ const verifyTerminalSemantics = (
     return (
       isHex32(datum.event.id?.transactionId) &&
       typeof datum.event.id.outputIndex === "bigint" &&
-      forcedPayloadMatchesNativeSource(datum.event.tx) &&
+      forcedPayloadMatchesSubmittedSource(datum.event.tx) &&
       addressMatchesData(produced.address(), datum.refund_address) &&
       cardanoDatumMatches(produced, datum.refund_datum)
     );

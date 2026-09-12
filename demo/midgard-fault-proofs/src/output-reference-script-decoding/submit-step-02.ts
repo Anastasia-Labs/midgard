@@ -226,6 +226,7 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
     Buffer.from(evidence.outputFieldPreimageHex, "hex"),
   );
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: 2,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,

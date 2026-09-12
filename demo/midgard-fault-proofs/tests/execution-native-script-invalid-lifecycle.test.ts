@@ -18,6 +18,11 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   protectMidgardAddress,
 } from "@al-ft/midgard-core";
+import { encodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
+import {
+  encodeMidgardForcedTxCanonical as forcedTraceBytes,
+  materializeMidgardForcedTxFromCanonical as forcedTraceView,
+} from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   AddressData,
@@ -474,8 +479,10 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
         direction === "forced"
           ? decodeMidgardNativeTxFullFromCanonicalCbor(transaction.txCbor)
           : transaction.tx;
-      const nativeTxCompactCbor = encodeMidgardNativeTxCompact(
-        nativeTx.compact,
+      const nativeTxCompactCbor = (
+        direction === "forced"
+          ? encodeMidgardForcedTxCompact(forcedTraceView(nativeTx).compact)
+          : encodeMidgardNativeTxCompact(nativeTx.compact)
       ).toString("hex");
       const allOperations = [
         ...(direction === "forced" || acceptedPurpose === "spend"
@@ -517,14 +524,17 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
                   "hex",
                 ),
                 sourceKind: "forced",
-                committedForcedVerdict: "rejected",
+
                 blockEndTimeMs: 1_750_000_001_000,
                 expectedNetworkId: 0n,
                 minFeeA: 0n,
                 minFeeB: 0n,
                 blockSlot: 0n,
                 transactionId: transaction.txId,
-                canonicalTransactionCbor: transaction.txCbor,
+                canonicalTransactionCbor:
+                  direction === "forced"
+                    ? forcedTraceBytes(forcedTraceView(transaction.tx))
+                    : transaction.txCbor,
                 priorUtxosRoot: mutations[0]!.preRoot.toString("hex"),
                 postUtxosRoot: mutations.at(-1)!.postRoot.toString("hex"),
                 ledgerWitnessEntries: [
@@ -1281,6 +1291,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
       } = {};
       if (maximum) {
         const planned = planFaultProofFieldOpening({
+          anchorSourceKind: direction === "forced" ? 1n : 0n,
           fieldIndex: 7,
           anchorTxId: block.nativeTxId,
           nativeTxCompactCbor,

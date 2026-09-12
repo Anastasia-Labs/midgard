@@ -1287,6 +1287,7 @@ describe("§8.3 erratum E1 — the publishable frontier is enforced, at the real
  */
 const CERTIFY_REDEEMER_BYTES =
   certifyFieldPreimageRedeemer({
+    sourceKind: 0n,
     compactCbor: "ab".repeat(400),
     witnessSetCompactCbor: "cd".repeat(100),
     chunkRefInputIndices: [0, 1, 2],
@@ -1598,6 +1599,7 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
     // `resolveChunkReferenceIndices` — the positional chunk indices.
     const unsigned = await Effect.runPromise(
       buildUnsignedFieldPreimageCertificationProgram(harness.lucid, {
+        sourceKind: 0n,
         plan,
         certificatePolicyId: policyId,
         certificateAddress: address,

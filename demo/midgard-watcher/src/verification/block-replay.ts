@@ -95,7 +95,7 @@ import { createHash } from "node:crypto";
 
 import {
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardForcedTxFullFromCanonicalCbor,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
 import {
@@ -2116,12 +2116,13 @@ const replayForcedTransitionEffect = async (input: {
       "$.committedEventClaim.verdict",
     );
   }
-  const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(
+  const nativeTx = decodeMidgardForcedTxFullFromCanonicalCbor(
     input.authority.canonicalNativeTxCbor,
   );
   const queued: QueuedTx = {
     txId: Buffer.from(computeMidgardNativeTxId(nativeTx)),
     txCbor: Buffer.from(input.authority.canonicalNativeTxCbor),
+    sourceKind: "forced",
     programMaterialSidecarCbor: input.authority.programMaterialSidecarCbor,
     arrivalSeq: 0n,
     createdAt: new Date(0),

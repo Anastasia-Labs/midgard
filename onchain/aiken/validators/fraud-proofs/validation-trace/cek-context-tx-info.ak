@@ -32,6 +32,7 @@ validator main(
         expect staged.context.stage == 12
         expect chain.auxiliary_is_bound(staged.bound, action.auxiliary)
         let next_context = context.next_tx_info(
+          staged.bound.source_kind,
           staged.context,
           staged.native,
           action.auxiliary,

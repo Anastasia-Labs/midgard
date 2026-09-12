@@ -18,6 +18,10 @@ constructor table from source.
 - `ForcedTxValid`
 - `ForcedTxInvalid { reason: RejectionReason }`
 
+Forced submitted full and compact encodings contain no validity scalar. The
+verdict above is the sole committed decision. Any machine scalar is derived
+only temporarily; replay determines the actual result independently.
+
 Normal `transactions_root` leaves do not carry a rejection reason; they are
 acceptance claims and must use validity code zero. A malformed non-zero normal
 leaf is covered by `l2TxMistag`.

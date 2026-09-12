@@ -109,6 +109,7 @@ const planFields = ({
 }): readonly FaultProofFieldOpeningPlan[] =>
   fieldItemCbors.map((itemCbors, fieldIndex) =>
     planFaultProofFieldOpening({
+      anchorSourceKind: state.subject.source_kind === 1n ? 1n : 0n,
       fieldIndex,
       anchorTxId: state.bad_tx_id,
       nativeTxCompactCbor,
@@ -226,6 +227,7 @@ export const submitMinFeeStep02 = async ({
     ),
   };
   const boundary = minimumFeeFromProofSource({
+    sourceKind: state.subject.source_kind === 1n ? "forced" : "normal",
     source,
     minFeeA: state.min_fee_a,
     minFeeB: state.min_fee_b,

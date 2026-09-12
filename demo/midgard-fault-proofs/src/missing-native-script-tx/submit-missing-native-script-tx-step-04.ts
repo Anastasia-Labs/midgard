@@ -124,6 +124,7 @@ export const submitMissingNativeScriptTxStep04 = async ({
   }
   const expectedMissingScriptHash = credential.hash.toString("hex");
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     anchorTxId: state.producing_tx_id,
     nativeTxCompactCbor,

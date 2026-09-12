@@ -6,8 +6,8 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
   deriveMidgardNativeTxProofSource,
-  encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core";
+import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
@@ -180,16 +180,11 @@ export const admitValueConservationArtifact = async (
   const artifact = normalizeJournalJson(value) as ValueConservationArtifact;
   const header = decode(artifact.headerCbor, SDK.Header);
   const claim = decode(artifact.claimCbor, ConservationClaim);
-  const transaction = decodeMidgardNativeTxFullFromCanonicalCbor(
-    Buffer.from(artifact.transactionCbor, "hex"),
-  );
-  if (
-    encodeMidgardNativeTxCanonical(transaction).toString("hex") !==
-    artifact.transactionCbor
-  )
-    throw new Error(
-      "value conservation: changed retained transaction encoding",
-    );
+  const transaction = (
+    claim === "ForcedConservation"
+      ? decodeMidgardForcedTxFullFromCanonicalCbor
+      : decodeMidgardNativeTxFullFromCanonicalCbor
+  )(Buffer.from(artifact.transactionCbor, "hex"));
   const transactionId = computeMidgardNativeTxId(transaction).toString("hex");
   let accepted: ReturnType<typeof parseSubmitStep01TxInclusion> | undefined;
   let preparedSource: ReturnType<typeof conservationAcceptedSource>;
@@ -222,17 +217,20 @@ export const admitValueConservationArtifact = async (
     preparedSource = prepared;
     nativeTxCompactCbor = prepared.nativeTxCompactCbor;
   } else {
+    const nativeTransaction = decodeMidgardNativeTxFullFromCanonicalCbor(
+      Buffer.from(artifact.transactionCbor, "hex"),
+    );
     if (
       claim === "ForcedConservation" ||
       artifact.acceptedSourceCbor === null ||
       artifact.acceptedPhasRoot === null ||
       artifact.acceptedProofCbor === null ||
-      transaction.validity !== "TxIsValid"
+      nativeTransaction.validity !== "TxIsValid"
     )
       throw new Error("value conservation: malformed accepted direction");
     const leaf = decode(artifact.acceptedSourceCbor, SDK.L2TransactionSource);
     const proof = decode(artifact.acceptedProofCbor, SDK.Proof);
-    const expected = deriveMidgardNativeTxProofSource(transaction);
+    const expected = deriveMidgardNativeTxProofSource(nativeTransaction);
     if (
       header.l2TransactionCount <= 0n ||
       leaf.tx_id !== transactionId ||
@@ -257,7 +255,7 @@ export const admitValueConservationArtifact = async (
     nativeTxCompactCbor = leaf.source.compact_cbor;
     accepted = parseSubmitStep01TxInclusion({
       nativeTxId: transactionId,
-      nativeTx: nativeTxFromCoreCompact(transaction.compact),
+      nativeTx: nativeTxFromCoreCompact(nativeTransaction.compact),
       nativeTxCompactCbor,
       l2TransactionSourceCbor: artifact.acceptedSourceCbor,
       transactionsPhasRoot: artifact.acceptedPhasRoot,

@@ -15,7 +15,7 @@ use midgard/fraud_proofs/native_tx/compact.{
 }
 use midgard/fraud_proofs/native_tx/types.{
   NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact,
-  VerifiedMidgardNativeTxCompact,
+  VerifiedTxSourceView,
 }
 use midgard/native_tx_field_access_v1.{
   authenticated_committed_preimage, field_count,
@@ -59,7 +59,7 @@ pub fn field_preimage_length_at_v1(
 /// lengths. Item grammar is deliberately not a precondition: the canonical
 /// machine decides the declared-length mismatch before interpreting items.
 pub fn authenticated_length_evidence_v1(
-  verified: VerifiedMidgardNativeTxCompact,
+  verified: VerifiedTxSourceView,
   lengths_cbor: ByteArray,
   claim: CommittedFieldClaimV1,
   reference_inputs: List<Input>,

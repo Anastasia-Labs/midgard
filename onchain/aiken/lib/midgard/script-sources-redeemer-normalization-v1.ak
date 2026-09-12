@@ -7,7 +7,7 @@ use midgard/cek_data_traverse_v1
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
 }
-use midgard/fraud_proofs/native_tx/compact.{native_tx_proof_commitment_v1}
+use midgard/fraud_proofs/native_tx/compact.{tx_proof_commitment_v1}
 use midgard/redeemer_item_proof_v1.{RedeemerItemProofControlV1}
 use midgard/rejection_reason_v1.{reject_invalid_field_type}
 use midgard/script_proof_v1
@@ -557,7 +557,8 @@ pub fn verify_raw_envelope_v1(
     work_witness_cbor == expected_work_witness_cbor,
     action_family >= fold_map_family && action_family <= invalid_family,
     builtin.un_i_data(stage_data) == 1,
-    native_tx_proof_commitment_v1(
+    tx_proof_commitment_v1(
+      pre.source_kind,
       compact_cbor,
       witness_set_compact_cbor,
       field_preimage_lengths_cbor,

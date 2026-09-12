@@ -344,6 +344,7 @@ export const submitMintAuthorizationStep03WitnessAbsence = async ({
   // Witness field: the door pairs the compact witness set against the thread's
   // anchored `witness_set_hash`, so the plan carries both.
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.scriptWitnesses,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor: shared.nativeTxCompactCbor,
@@ -497,6 +498,7 @@ export const submitMintAuthorizationStep03EvaluateUnsatisfied = async ({
     );
   }
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor: shared.nativeTxCompactCbor,

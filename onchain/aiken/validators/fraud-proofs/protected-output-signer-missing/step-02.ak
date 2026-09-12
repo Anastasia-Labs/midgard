@@ -3,6 +3,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
+use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{
   BodyAnchor, FieldOpeningV1, opened_field_view,
@@ -68,7 +69,10 @@ validator main(
         expect Some(State { bound, witness_set_hash }) = prior
         let view = opened_field_view(
           opening,
-          BodyAnchor { tx_id: bound.subject.transaction_id },
+          BodyAnchor {
+            tx_id: bound.subject.transaction_id,
+            source_kind: bound.subject.source_kind,
+          },
           outputs_field_index,
           reference_inputs,
           certificate_policy,
@@ -250,6 +254,11 @@ fn run_step_02_with(
   coordinate_out_of_range: Bool,
   tx: Transaction,
 ) -> Bool {
+  let opening = if state.bound.subject.source_kind == 1 {
+    forced_fixture.from_native_opening(opening)
+  } else {
+    opening
+  }
   main.spend(
     step_03_hash,
     step_05_hash,

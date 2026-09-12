@@ -7,10 +7,11 @@ use midgard/fraud_proofs/native_tx/codec.{
   expect_validity_code, slice_len,
 }
 use midgard/fraud_proofs/native_tx/types.{
-  NativeTxBodyCompact, NativeTxCompact, NativeTxFieldPreimageLengthsV1,
-  NativeTxWitnessSetCompact, VerifiedMidgardNativeTxCompact,
-  native_tx_version_v1,
+  ForcedTxCompact, NativeTxBodyCompact, NativeTxCompact,
+  NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact, TxCompactView,
+  VerifiedTxSourceView, native_tx_version_v1,
 }
+use midgard/validation_trace_v1.{Forced, Normal, ValidationSourceKind}
 
 const native_tx_body_v1_domain: ByteArray =
   #"4d6964676172644e61746976655478426f64795631"
@@ -262,7 +263,13 @@ pub fn native_tx_canonical_size_v1(
   compact: NativeTxCompact,
   lengths: NativeTxFieldPreimageLengthsV1,
 ) -> Int {
-  let body = compact.body
+  ledger_tx_size_v1(compact.body, lengths)
+}
+
+pub fn ledger_tx_size_v1(
+  body: NativeTxBodyCompact,
+  lengths: NativeTxFieldPreimageLengthsV1,
+) -> Int {
   let body_size = 1 + definite_bytes_encoded_size(lengths.spend_inputs) + definite_bytes_encoded_size(
     lengths.reference_inputs,
   ) + definite_bytes_encoded_size(lengths.outputs) + bytearray.length(
@@ -279,9 +286,7 @@ pub fn native_tx_canonical_size_v1(
   ) + definite_bytes_encoded_size(lengths.script_witnesses) + definite_bytes_encoded_size(
     lengths.redeemers,
   )
-  1 + bytearray.length(cbor.serialise(native_tx_version_v1)) + body_size + witness_set_size + bytearray.length(
-    cbor.serialise(compact.validity_code),
-  )
+  1 + bytearray.length(cbor.serialise(native_tx_version_v1)) + body_size + witness_set_size + 1
 }
 
 /// The network minimum fee for a native-V1 transaction whose canonical full
@@ -416,7 +421,7 @@ fn verify_native_tx_compact_for_version(
   native_tx_id: ByteArray,
   native_tx: NativeTxCompact,
   native_tx_compact_cbor: ByteArray,
-) -> VerifiedMidgardNativeTxCompact {
+) -> VerifiedTxSourceView {
   let version = expect_supported_native_tx_version(version)
   let NativeTxCompact { body, witness_set_hash, validity_code } = native_tx
   let midgard_tx_body_cbor = encode_native_tx_body_compact(body)
@@ -434,10 +439,10 @@ fn verify_native_tx_compact_for_version(
 
   expect midgard_tx_compact_cbor == native_tx_compact_cbor
 
-  VerifiedMidgardNativeTxCompact {
+  VerifiedTxSourceView {
     tx_id: native_tx_id,
     version,
-    tx_compact: native_tx,
+    tx_compact: native_tx_compact_view(native_tx),
   }
 }
 
@@ -445,7 +450,7 @@ pub fn verify_native_tx_compact_v1(
   native_tx_id: ByteArray,
   native_tx: NativeTxCompact,
   native_tx_compact_cbor: ByteArray,
-) -> VerifiedMidgardNativeTxCompact {
+) -> VerifiedTxSourceView {
   verify_native_tx_compact_for_version(
     native_tx_version_v1,
     native_tx_id,
@@ -458,7 +463,7 @@ fn verify_native_tx_compact_cbor_for_version(
   version: Int,
   native_tx_id: ByteArray,
   native_tx_compact_cbor: ByteArray,
-) -> VerifiedMidgardNativeTxCompact {
+) -> VerifiedTxSourceView {
   let version = expect_supported_native_tx_version(version)
   let offset = expect_byte(native_tx_compact_cbor, 0, 132)
   let offset = expect_byte(native_tx_compact_cbor, offset, version)
@@ -484,13 +489,13 @@ fn verify_native_tx_compact_cbor_for_version(
   )
   expect offset == bytearray.length(native_tx_compact_cbor)
 
-  VerifiedMidgardNativeTxCompact {
+  VerifiedTxSourceView {
     tx_id: native_tx_id,
     version,
-    tx_compact: NativeTxCompact {
+    tx_compact: TxCompactView {
       body,
       witness_set_hash,
-      validity_code: expect_validity_code(validity_code),
+      validity_code: Some(expect_validity_code(validity_code)),
     },
   }
 }
@@ -498,7 +503,7 @@ fn verify_native_tx_compact_cbor_for_version(
 pub fn verify_native_tx_compact_cbor_v1(
   native_tx_id: ByteArray,
   native_tx_compact_cbor: ByteArray,
-) -> VerifiedMidgardNativeTxCompact {
+) -> VerifiedTxSourceView {
   verify_native_tx_compact_cbor_for_version(
     native_tx_version_v1,
     native_tx_id,
@@ -511,7 +516,7 @@ pub fn verify_native_tx_proof_source_v1(
   native_tx_compact_cbor: ByteArray,
   witness_set_compact_cbor: ByteArray,
   field_preimage_lengths_cbor: ByteArray,
-) -> Pair<VerifiedMidgardNativeTxCompact, NativeTxWitnessSetCompact> {
+) -> Pair<VerifiedTxSourceView, NativeTxWitnessSetCompact> {
   let compact = verify_native_tx_compact_cbor_v1(
     native_tx_id,
     native_tx_compact_cbor,
@@ -521,10 +526,185 @@ pub fn verify_native_tx_proof_source_v1(
   )
   expect
     blake2b_256(witness_set_compact_cbor) == compact.tx_compact.witness_set_hash
-  let field_lengths = decode_native_tx_field_preimage_lengths_v1(
-    field_preimage_lengths_cbor,
+  // The decoder requires exactly nine minimal unsigned integers and exact
+  // exhaustion. Force its checked result without linking a second encoder
+  // into every proof-source consumer merely to repeat canonicality.
+  expect
+    decode_native_tx_field_preimage_lengths_v1(field_preimage_lengths_cbor).spend_inputs >= 0
+  Pair(compact, witness_set)
+}
+
+/// Forced envelopes never accept the normal four-element compact encoding.
+pub fn decode_forced_tx_compact_v1(compact_cbor: ByteArray) -> ForcedTxCompact {
+  let offset = expect_byte(compact_cbor, 0, 131)
+  let offset = expect_byte(compact_cbor, offset, 1)
+  let Pair(offset, body) = decode_native_tx_body_compact_cbor_at(
+    compact_cbor,
+    offset,
+  )
+  let Pair(offset, witness_set_hash) = decode_hash32_at(compact_cbor, offset)
+  expect offset == bytearray.length(compact_cbor)
+  ForcedTxCompact { body, witness_set_hash }
+}
+
+pub fn encode_forced_tx_compact_v1(tx: ForcedTxCompact) -> ByteArray {
+  #"8301"
+    |> bytearray.concat(encode_native_tx_body_compact(tx.body))
+    |> bytearray.concat(encode_definite_bytes(expect_h32(tx.witness_set_hash)))
+}
+
+pub fn forced_tx_proof_commitment_v1(
+  compact_cbor: ByteArray,
+  witness_set_compact_cbor: ByteArray,
+  field_preimage_lengths_cbor: ByteArray,
+) -> ByteArray {
+  "MidgardForcedTxProofSourceV1"
+    |> bytearray.concat(#"01")
+    |> bytearray.concat(
+        encode_native_tx_proof_source_v1(
+          compact_cbor,
+          witness_set_compact_cbor,
+          field_preimage_lengths_cbor,
+        ),
+      )
+    |> blake2b_256
+}
+
+pub fn verify_forced_tx_compact_cbor_v1(
+  tx_id: ByteArray,
+  compact_cbor: ByteArray,
+) -> VerifiedTxSourceView {
+  let tx_compact = decode_forced_tx_compact_v1(compact_cbor)
+  // The strict decoder has authenticated every minimal CBOR head and exact
+  // exhaustion. The frozen envelope is two prefix bytes, the body, and the
+  // 34-byte hash field. Hash those original body bytes, as the normal-source
+  // verifier does, without linking a duplicate body encoder into each proof.
+  let body_cbor = slice_len(
+    compact_cbor,
+    2,
+    bytearray.length(compact_cbor) - 36,
+  )
+  expect native_tx_id_for_version(1, body_cbor) == tx_id
+  VerifiedTxSourceView {
+    tx_id,
+    version: 1,
+    tx_compact: TxCompactView {
+      body: tx_compact.body,
+      witness_set_hash: tx_compact.witness_set_hash,
+      validity_code: None,
+    },
+  }
+}
+
+pub fn verify_forced_tx_proof_source_v1(
+  tx_id: ByteArray,
+  compact_cbor: ByteArray,
+  witness_set_compact_cbor: ByteArray,
+  field_preimage_lengths_cbor: ByteArray,
+) -> Pair<VerifiedTxSourceView, NativeTxWitnessSetCompact> {
+  let verified = verify_forced_tx_compact_cbor_v1(tx_id, compact_cbor)
+  let witness_set = decode_native_tx_witness_set_compact(
+    witness_set_compact_cbor,
   )
   expect
-    encode_native_tx_field_preimage_lengths_v1(field_lengths) == field_preimage_lengths_cbor
-  Pair(compact, witness_set)
+    blake2b_256(witness_set_compact_cbor) == verified.tx_compact.witness_set_hash
+  // The decoder requires exactly nine minimal unsigned integers and exact
+  // exhaustion. Force its checked result without linking a second encoder
+  // into every proof-source consumer merely to repeat canonicality.
+  expect
+    decode_native_tx_field_preimage_lengths_v1(field_preimage_lengths_cbor).spend_inputs >= 0
+  Pair(verified, witness_set)
+}
+
+pub fn native_tx_compact_view(tx: NativeTxCompact) -> TxCompactView {
+  TxCompactView {
+    body: tx.body,
+    witness_set_hash: tx.witness_set_hash,
+    validity_code: Some(tx.validity_code),
+  }
+}
+
+/// Dispatch is selected by authenticated state, never inferred from the bytes.
+pub fn decode_tx_compact_view_v1(
+  source_kind: ValidationSourceKind,
+  compact_cbor: ByteArray,
+) -> TxCompactView {
+  when source_kind is {
+    Normal -> native_tx_compact_view(decode_native_tx_compact_v1(compact_cbor))
+    Forced -> {
+      let forced = decode_forced_tx_compact_v1(compact_cbor)
+      TxCompactView {
+        body: forced.body,
+        witness_set_hash: forced.witness_set_hash,
+        validity_code: None,
+      }
+    }
+  }
+}
+
+pub fn verify_tx_compact_cbor_v1(
+  source_kind: ValidationSourceKind,
+  tx_id: ByteArray,
+  compact_cbor: ByteArray,
+) -> VerifiedTxSourceView {
+  when source_kind is {
+    Normal -> verify_native_tx_compact_cbor_v1(tx_id, compact_cbor)
+    Forced -> verify_forced_tx_compact_cbor_v1(tx_id, compact_cbor)
+  }
+}
+
+pub fn verify_tx_proof_source_v1(
+  source_kind: ValidationSourceKind,
+  tx_id: ByteArray,
+  compact_cbor: ByteArray,
+  witness_set_compact_cbor: ByteArray,
+  field_preimage_lengths_cbor: ByteArray,
+) -> Pair<VerifiedTxSourceView, NativeTxWitnessSetCompact> {
+  when source_kind is {
+    Normal ->
+      verify_native_tx_proof_source_v1(
+        tx_id,
+        compact_cbor,
+        witness_set_compact_cbor,
+        field_preimage_lengths_cbor,
+      )
+    Forced ->
+      verify_forced_tx_proof_source_v1(
+        tx_id,
+        compact_cbor,
+        witness_set_compact_cbor,
+        field_preimage_lengths_cbor,
+      )
+  }
+}
+
+pub fn tx_proof_commitment_v1(
+  source_kind: ValidationSourceKind,
+  compact_cbor: ByteArray,
+  witness_set_compact_cbor: ByteArray,
+  field_preimage_lengths_cbor: ByteArray,
+) -> ByteArray {
+  when source_kind is {
+    Normal ->
+      native_tx_proof_commitment_v1(
+        compact_cbor,
+        witness_set_compact_cbor,
+        field_preimage_lengths_cbor,
+      )
+    Forced ->
+      forced_tx_proof_commitment_v1(
+        compact_cbor,
+        witness_set_compact_cbor,
+        field_preimage_lengths_cbor,
+      )
+  }
+}
+
+/// Select the wire format from an authenticated protocol source tag.
+pub fn validation_source_kind_v1(kind: Int) -> ValidationSourceKind {
+  when kind is {
+    0 -> Normal
+    1 -> Forced
+    _ -> fail @"unknown transaction source kind"
+  }
 }

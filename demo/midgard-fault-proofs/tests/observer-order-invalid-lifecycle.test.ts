@@ -4,6 +4,10 @@ import { fileURLToPath } from "node:url";
 
 import { midgardFieldCommitment } from "@al-ft/midgard-core";
 import {
+  encodeMidgardForcedTxCompact as forcedCompact,
+  materializeMidgardForcedTxFromCanonical as forcedView,
+} from "@al-ft/midgard-core/codec/forced";
+import {
   acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
@@ -406,6 +410,7 @@ const makeHarness = async () => {
    */
   const publishField = async (shape: ObserverFieldShape) => {
     const planned = planFaultProofFieldOpening({
+      anchorSourceKind: 0n,
       fieldIndex: 3,
       anchorTxId: transactionIdOf(shape),
       nativeTxCompactCbor: compactCborHex(shape.nativeTx),
@@ -590,7 +595,10 @@ const makeHarness = async () => {
         signer: harness.proverSigner,
         threadOutRef,
         evidence,
-        nativeTxCompactCbor: compactCborHex(shape.nativeTx),
+        nativeTxCompactCbor:
+          evidence.subject.source_kind === 1n
+            ? forcedCompact(forcedView(shape.nativeTx).compact).toString("hex")
+            : compactCborHex(shape.nativeTx),
         staged,
         action: { kind: "authenticate" },
         referenceScriptUtxo: references[1]!,
@@ -612,7 +620,10 @@ const makeHarness = async () => {
       signer: harness.proverSigner,
       threadOutRef,
       evidence,
-      nativeTxCompactCbor: compactCborHex(shape.nativeTx),
+      nativeTxCompactCbor:
+        evidence.subject.source_kind === 1n
+          ? forcedCompact(forcedView(shape.nativeTx).compact).toString("hex")
+          : compactCborHex(shape.nativeTx),
       staged,
       referenceScriptUtxo: references[1]!,
       mutateOpening,
@@ -632,7 +643,10 @@ const makeHarness = async () => {
         signer: harness.proverSigner,
         threadOutRef,
         evidence,
-        nativeTxCompactCbor: compactCborHex(shape.nativeTx),
+        nativeTxCompactCbor:
+          evidence.subject.source_kind === 1n
+            ? forcedCompact(forcedView(shape.nativeTx).compact).toString("hex")
+            : compactCborHex(shape.nativeTx),
         staged,
         walkOrdinal,
         referenceScriptUtxo: references[2]!,
@@ -666,7 +680,10 @@ const makeHarness = async () => {
       signer: harness.proverSigner,
       threadOutRef,
       evidence,
-      nativeTxCompactCbor: compactCborHex(shape.nativeTx),
+      nativeTxCompactCbor:
+        evidence.subject.source_kind === 1n
+          ? forcedCompact(forcedView(shape.nativeTx).compact).toString("hex")
+          : compactCborHex(shape.nativeTx),
       staged,
       walkOrdinal,
       referenceScriptUtxo: references[2]!,

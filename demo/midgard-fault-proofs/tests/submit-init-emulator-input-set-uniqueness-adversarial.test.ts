@@ -174,6 +174,7 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
     // refusal can only come from the decisive comparison itself.
     const planField = (fieldIndex: number, items: readonly string[]) =>
       planFaultProofFieldOpening({
+        anchorSourceKind: 0n,
         fieldIndex,
         anchorTxId: fixture.nativeTxId,
         nativeTxCompactCbor: fixture.nativeTxCompactCbor,

@@ -460,7 +460,7 @@ fn run_tx_step_02_with_successors(
   let block = fixture.native_block_fixture_v1(transaction_with_output(output))
   let Pair(view, initial) = field_opening.opened_field_grammar_certification(
     fixture.inline_body_opening(block.compact_cbor, [carried_output_cbor]),
-    field_opening.BodyAnchor { tx_id: block.tx_id },
+    field_opening.BodyAnchor { tx_id: block.tx_id, source_kind: 0 },
     2,
     [],
     fixture.test_certificate_policy_id,

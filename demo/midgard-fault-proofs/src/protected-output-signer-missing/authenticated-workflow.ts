@@ -1,9 +1,5 @@
-import {
-  adjudicateMidgardNativeTxFullValidity,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxFaultEvidenceMaterial,
-  encodeMidgardNativeTxCanonical,
-} from "@al-ft/midgard-core";
+import { deriveMidgardNativeTxFaultEvidenceMaterial } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   type ForcedInclusionTxV1,
   type FraudProofCatalogueCategoryName,
@@ -402,10 +398,7 @@ export const deriveProtectedOutputSignerMissingAuthenticatedSource = async ({
     ({ key, value }) =>
       value.tx_id === evidence.subject.transaction_id &&
       Data.to(key as never, OutputReferenceSchema as never) ===
-        Data.to(
-          evidence.subject.source_key as never,
-          OutputReferenceSchema as never,
-        ),
+        evidence.subject.source_key,
   );
   if (forced === undefined || forced.value.verdict === "ForcedTxValid") {
     throw new Error(
@@ -425,21 +418,16 @@ export const deriveProtectedOutputSignerMissingAuthenticatedSource = async ({
       "protectedOutputSignerMissing forced reason differs from authenticated source",
     );
   }
-  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-    encodeMidgardNativeTxCanonical(
-      adjudicateMidgardNativeTxFullValidity(
-        decodeMidgardNativeTxFullFromCanonicalCbor(forced.fullTransactionCbor),
-        "TxIsInvalid",
-      ),
-    ),
+  const material = deriveMidgardForcedTxFaultEvidenceMaterial(
+    forced.fullTransactionCbor,
   );
   if (
     material.proofSource.compactCbor.toString("hex") !==
-      forced.value.source.compact_cbor ||
+      forced.value.submitted_source.compact_cbor ||
     material.proofSource.witnessSetCompactCbor.toString("hex") !==
-      forced.value.source.witness_set_compact_cbor ||
+      forced.value.submitted_source.witness_set_compact_cbor ||
     material.proofSource.fieldPreimageLengthsCbor.toString("hex") !==
-      forced.value.source.field_preimage_lengths_cbor
+      forced.value.submitted_source.field_preimage_lengths_cbor
   ) {
     throw new Error(
       "protectedOutputSignerMissing forced source material differs from authenticated leaf",

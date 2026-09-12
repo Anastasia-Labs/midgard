@@ -71,6 +71,7 @@ export const submitZeroInputStep02V1 = async ({
   if (state.subject.transaction_id !== evidence.subject.transaction_id)
     throw new Error("zeroInput: bound transaction changed");
   const planned = planFaultProofFieldOpening({
+    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
     fieldIndex: 0,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,

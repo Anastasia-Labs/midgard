@@ -6,6 +6,7 @@ use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{
   BodyAnchor, FieldOpeningV1, resume_opened_field_walk,
 }
+use midgard/fraud_proofs/value_not_preserved/union as conservation
 use midgard/fraud_proofs/value_not_preserved/union.{
   FoldState, PendingContribution,
 }
@@ -63,7 +64,14 @@ validator main(
         expect cursor.field.field_index == 5
         let Pair(view, checkpoint) = resume_opened_field_walk(
           args.opening,
-          BodyAnchor { tx_id: state.balance.transaction_id },
+          BodyAnchor {
+            tx_id: state.balance.transaction_id,
+            source_kind: if state.balance.claim == conservation.ForcedConservation {
+              1
+            } else {
+              0
+            },
+          },
           5,
           cursor.field.checkpoint_hash,
           args.checkpoint_bytes,

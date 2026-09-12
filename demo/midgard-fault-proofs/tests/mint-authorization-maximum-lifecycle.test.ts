@@ -133,6 +133,7 @@ it.each(["signers", "native", "cancel"])(
         referenceScriptUtxo: refs[1],
       });
       const planned = planFaultProofFieldOpening({
+        anchorSourceKind: 0n,
         fieldIndex: SDK.MIDGARD_FIELD_INDEX.addressWitnesses,
         anchorTxId: block.nativeTxId,
         nativeTxCompactCbor: block.nativeTxCompactCbor,

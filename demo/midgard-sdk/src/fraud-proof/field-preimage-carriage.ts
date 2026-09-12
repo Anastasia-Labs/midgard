@@ -414,11 +414,13 @@ export const minimumLovelaceForFieldPreimageCertificate = ({
  */
 export const certifyFieldPreimageRedeemer = ({
   compactCbor,
+  sourceKind,
   witnessSetCompactCbor,
   chunkRefInputIndices,
   outputIndex,
 }: {
   readonly compactCbor: string;
+  readonly sourceKind: 0n | 1n;
   readonly witnessSetCompactCbor: string;
   readonly chunkRefInputIndices: readonly number[];
   readonly outputIndex: number;
@@ -436,6 +438,7 @@ export const certifyFieldPreimageRedeemer = ({
   return Data.to(
     {
       Certify: {
+        source_kind: sourceKind,
         compact_cbor: compactCbor,
         witness_set_compact_cbor: witnessSetCompactCbor,
         chunk_ref_input_indices: chunkRefInputIndices.map((index) =>
@@ -844,6 +847,7 @@ export const buildUnsignedFieldPreimageCertificationProgram = (
     certificateWitness,
     chunkUtxos,
     compactCbor,
+    sourceKind,
     witnessSetCompactCbor,
   }: {
     readonly plan: MidgardFieldCarriagePlan;
@@ -861,6 +865,7 @@ export const buildUnsignedFieldPreimageCertificationProgram = (
         };
     readonly chunkUtxos: readonly UTxO[];
     readonly compactCbor: string;
+    readonly sourceKind: 0n | 1n;
     readonly witnessSetCompactCbor: string;
   },
 ): Effect.Effect<TxSignBuilder, Error> =>
@@ -900,6 +905,7 @@ export const buildUnsignedFieldPreimageCertificationProgram = (
           { [unit]: 1n },
           certifyFieldPreimageRedeemer({
             compactCbor,
+            sourceKind,
             witnessSetCompactCbor,
             chunkRefInputIndices,
             outputIndex: 0,

@@ -1,9 +1,10 @@
 /** Authenticated RequiredSignerUnsigned contradiction and durable evidence. */
 import {
+  decodeMidgardForcedTxFullFromCanonicalCbor,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   decodeAddressWitnessPreimage,
   forcedVerdictSubject,
@@ -15,7 +16,6 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { deriveRejectedTransactionFaultEvidenceMaterial } from "../evidence/rejected-transaction.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 
 export const MISSING_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID =
@@ -69,17 +69,17 @@ export const detectMissingSignatureForcedTransaction = (
   const reason = forced.value.verdict.ForcedTxInvalid.reason;
   if (typeof reason !== "object" || !("RequiredSignerUnsigned" in reason))
     return [];
-  const material = deriveRejectedTransactionFaultEvidenceMaterial(
+  const material = deriveMidgardForcedTxFaultEvidenceMaterial(
     forced.fullTransactionCbor,
   );
   if (
     material.transactionId.toString("hex") !== forced.value.tx_id ||
     material.proofSource.compactCbor.toString("hex") !==
-      forced.value.source.compact_cbor ||
+      forced.value.submitted_source.compact_cbor ||
     material.proofSource.witnessSetCompactCbor.toString("hex") !==
-      forced.value.source.witness_set_compact_cbor ||
+      forced.value.submitted_source.witness_set_compact_cbor ||
     material.proofSource.fieldPreimageLengthsCbor.toString("hex") !==
-      forced.value.source.field_preimage_lengths_cbor
+      forced.value.submitted_source.field_preimage_lengths_cbor
   )
     throw new Error(
       "missingSignature: retained forced transaction differs from its authenticated leaf",
@@ -134,19 +134,19 @@ export const prepareMissingSignatureWrongfulRejection = async ({
     throw new Error("missingSignature: no authenticated wrongful rejection");
   const forced =
     block.reconstruction.forcedTransactions[detection.forcedIndex]!;
-  const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(
+  const decoded = decodeMidgardForcedTxFullFromCanonicalCbor(
     forced.fullTransactionCbor,
   );
   const witnessSet = deriveMidgardNativeTxWitnessSetCompact(decoded.witnessSet);
   return {
     ...detection,
-    nativeTxCompactCbor: forced.value.source.compact_cbor,
+    nativeTxCompactCbor: forced.value.submitted_source.compact_cbor,
     witnessSetCompact: {
       addr_tx_wits_hash: witnessSet.addrTxWitsHash.toString("hex"),
       script_tx_wits_hash: witnessSet.scriptTxWitsHash.toString("hex"),
       redeemer_tx_wits_hash: witnessSet.redeemerTxWitsHash.toString("hex"),
     },
-    verifiedWitnessSetHash: deriveRejectedTransactionFaultEvidenceMaterial(
+    verifiedWitnessSetHash: deriveMidgardForcedTxFaultEvidenceMaterial(
       forced.fullTransactionCbor,
     ).compact.transactionWitnessSetHash.toString("hex"),
     forcedSource: {

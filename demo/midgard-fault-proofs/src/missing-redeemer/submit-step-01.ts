@@ -204,7 +204,7 @@ export const submitMissingRedeemerStep01Forced = async ({
         header,
         Effect.runSync(
           hashHexWithBlake2b(
-            membership.value.source.witness_set_compact_cbor,
+            membership.value.submitted_source.witness_set_compact_cbor,
             32,
           ),
         ),

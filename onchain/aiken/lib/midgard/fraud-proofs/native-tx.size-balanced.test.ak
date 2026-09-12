@@ -1,3 +1,6 @@
+use aiken/builtin
+use aiken/collection/list
+use aiken/fuzz
 // The size-balanced (~15.5 kB) conformance fixture's Aiken twin.
 //
 // The constants below are GENERATED and every other line here is written by
@@ -12,13 +15,10 @@
 // and so on) are consequences of that construction's declared parameters, so a
 // parameter change turns these tests red rather than silently reshaping them.
 
-use aiken/builtin
-use aiken/collection/list
-use aiken/fuzz
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_compact_v1, encode_native_tx_body_compact,
-  encode_native_tx_compact_v1, native_tx_id_for_version,
+  encode_native_tx_compact_v1, native_tx_compact_view, native_tx_id_for_version,
   verify_native_tx_compact_cbor_v1, verify_native_tx_compact_v1,
 }
 use midgard/fraud_proofs/native_tx/preimages.{
@@ -222,7 +222,7 @@ bench size_balanced_verify_native_tx_compact_reencode_bench(
     compact,
     compact_cbor,
   )
-  verified.tx_compact.validity_code == 0
+  verified.tx_compact.validity_code == Some(0)
 }
 
 bench size_balanced_verify_native_tx_compact_cbor_bench(
@@ -232,7 +232,7 @@ bench size_balanced_verify_native_tx_compact_cbor_bench(
     size_balanced_tx_id,
     compact_cbor,
   )
-  verified.tx_compact.validity_code == 0
+  verified.tx_compact.validity_code == Some(0)
 }
 
 bench size_balanced_decode_spend_inputs_preimage_bench(
@@ -341,7 +341,7 @@ test size_balanced_lucid_midgard_native_tx_decodes() {
     size_balanced_full_tx_cbor_bytes <= size_balanced_target_tx_cbor_bytes + 256,
     verified_from_cbor == verified,
     compact == compact_from_cbor,
-    verified.tx_compact == compact_from_cbor,
+    verified.tx_compact == native_tx_compact_view(compact_from_cbor),
     encode_midgard_transaction_v1(decoded) == tx_cbor,
     encode_native_tx_compact_v1(compact) == compact_cbor,
     native_tx_id_for_version(

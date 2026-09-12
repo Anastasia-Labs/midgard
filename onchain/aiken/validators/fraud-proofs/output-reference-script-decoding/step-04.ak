@@ -49,7 +49,10 @@ validator main(
         expect state.outcome == output_canonical
         let view = opened_field_view(
           opening,
-          BodyAnchor { tx_id: state.bound.subject.transaction_id },
+          BodyAnchor {
+            tx_id: state.bound.subject.transaction_id,
+            source_kind: state.bound.subject.source_kind,
+          },
           outputs_field_index,
           reference_inputs,
           certificate_policy,

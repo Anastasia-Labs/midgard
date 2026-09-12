@@ -73,7 +73,10 @@ validator main(
         }
         let view = opened_field_view(
           field_opening,
-          BodyAnchor { tx_id: state.bound.subject.transaction_id },
+          BodyAnchor {
+            tx_id: state.bound.subject.transaction_id,
+            source_kind: state.bound.subject.source_kind,
+          },
           field_index,
           reference_inputs,
           field_certificate_policy,

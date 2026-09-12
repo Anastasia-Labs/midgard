@@ -4,12 +4,12 @@ import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-
 import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeMidgardNativeTxCanonical,
-  materializeMidgardNativeTxFromCanonical,
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxCanonical,
+  type MidgardForcedTxCanonical,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -43,9 +43,8 @@ const outputReference = (
 const outputReferenceCbor = (value: SDK.OutputReference): Buffer =>
   Buffer.from(Data.to(value, SDK.OutputReference), "hex");
 
-const canonicalTransaction = (): MidgardNativeTxCanonical => ({
+const canonicalTransaction = (): MidgardForcedTxCanonical => ({
   version: MIDGARD_NATIVE_TX_VERSION,
-  validity: "TxIsValid",
   body: {
     spendInputsPreimageCbor: EMPTY_CBOR_LIST,
     referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -79,8 +78,8 @@ const forcedEntry = ({
   readonly inclusionTime: Date;
 }): Effect.Effect<ForcedTransactionsDB.Entry, DatabaseError> =>
   Effect.gen(function* () {
-    const nativeTxCbor = encodeMidgardNativeTxCanonical(
-      materializeMidgardNativeTxFromCanonical(canonicalTransaction()),
+    const nativeTxCbor = encodeMidgardForcedTxCanonical(
+      materializeMidgardForcedTxFromCanonical(canonicalTransaction()),
     );
     const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValueV1({
       nativeTxCbor,
@@ -107,8 +106,7 @@ const forcedEntry = ({
       [ForcedTransactionsDB.Columns.TX_ID]: encoded.txId,
       [ForcedTransactionsDB.Columns.TX_COMPACT]: encoded.txCompact,
       [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]: encoded.value,
-      [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]:
-        ForcedTransactionsDB.midgardTxValidityOfVerdict(verdict),
+
       [ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID]:
         MIDGARD_CONSENSUS_PROFILE.profileId,
       [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]: nativeTxCbor,
@@ -208,7 +206,7 @@ describe("forced transaction source roots", () => {
           reason: { InputNotFound: { source_kind: 0n, input_index: 0n } },
         },
       });
-      expect(invalid[ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]).toBe(
+      expect(ForcedTransactionsDB.operatorValidityOfEntry(invalid)).toBe(
         "TxIsInvalid",
       );
       expect(decodedValue.tx_id).toBe(

@@ -15,17 +15,20 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   computeMidgardNativeTxId,
-  deriveMidgardNativeTxProofSource,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCanonical,
   encodeMidgardNativeTxCompact,
   materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
+import {
+  deriveMidgardForcedTxProofSource,
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import {
   encodeMidgardTxInputCanonical,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
@@ -127,7 +130,7 @@ export type InputSetUniquenessFixture = {
     readonly witness_set_compact_cbor: string;
     readonly field_preimage_lengths_cbor: string;
   };
-  readonly fullTransactionCbor: Buffer;
+  readonly forcedFullTransactionCbor: Buffer;
 };
 
 /**
@@ -193,7 +196,9 @@ export const buildInputSetUniquenessFixture = async ({
     encodeMidgardNativeTxCompact(badTx.compact),
   ).toString("hex");
   const badTxSourceCbor = l2TransactionSourceCborV1(badTx);
-  const forcedSource = deriveMidgardNativeTxProofSource(badTx);
+  const forcedSource = deriveMidgardForcedTxProofSource(
+    materializeMidgardForcedTxFromCanonical(badTx),
+  );
   const decoyTxSourceCbor = l2TransactionSourceCborV1(decoyTx);
   const decoyTxId = computeMidgardNativeTxId(decoyTx).toString("hex");
   if (decoyTxId === badTxId) {
@@ -235,7 +240,7 @@ export const buildInputSetUniquenessFixture = async ({
       field_preimage_lengths_cbor:
         forcedSource.fieldPreimageLengthsCbor.toString("hex"),
     },
-    fullTransactionCbor: encodeMidgardNativeTxCanonical(badTx),
+    forcedFullTransactionCbor: encodeMidgardForcedTxCanonical(badTx),
   };
 };
 

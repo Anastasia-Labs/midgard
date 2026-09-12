@@ -2,7 +2,11 @@ import {
   buildJourneyHistoryTransaction,
   JOURNEY_HISTORY_TRANSACTION_CATEGORIES,
 } from "./history-cases.js";
-import { createWithdrawalJourneyFixture, createWithdrawnInputJourneyFixture,fabricatedDepositJourneyFixture } from "./history-event-staging.js";
+import {
+  createWithdrawalJourneyFixture,
+  createWithdrawnInputJourneyFixture,
+  fabricatedDepositJourneyFixture,
+} from "./history-event-staging.js";
 import { crossBlockDuplicateEventJourneyFixture } from "./history-settlement.js";
 import { createTransactionJourneyFixture } from "./staging.js";
 

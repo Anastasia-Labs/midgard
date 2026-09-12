@@ -22,28 +22,26 @@ validator availability_challenge(
     _own_policy_id: PolicyId,
     tx: Transaction,
   ) {
-    let Pair(role, yield_to_ref_input_index) =
-      when redeemer is {
-        availability.MintBondFromAttestation { yield_to_ref_input_index, .. } ->
-          Pair(yielding.bond_role, yield_to_ref_input_index)
-        availability.OpenChallenge { yield_to_ref_input_index, .. } ->
-          Pair(yielding.open_role, yield_to_ref_input_index)
-        availability.SettleTranche { yield_to_ref_input_index, .. } ->
-          Pair(yielding.settle_role, yield_to_ref_input_index)
-        availability.CloseChallenge { yield_to_ref_input_index, .. } ->
-          Pair(yielding.close_role, yield_to_ref_input_index)
-        availability.TimeoutChallenge { yield_to_ref_input_index, .. } ->
-          Pair(yielding.timeout_role, yield_to_ref_input_index)
-      }
-    expect _yield_script_hash =
-      state_queue_yield.require_authenticated_zero_yield(
-        tx.reference_inputs,
-        tx.withdrawals,
-        tx.redeemers,
-        reference_script_auth_policy_id,
-        role,
-        yield_to_ref_input_index,
-      )
+    let Pair(role, yield_to_ref_input_index) = when redeemer is {
+      availability.MintBondFromAttestation { yield_to_ref_input_index, .. } ->
+        Pair(yielding.bond_role, yield_to_ref_input_index)
+      availability.OpenChallenge { yield_to_ref_input_index, .. } ->
+        Pair(yielding.open_role, yield_to_ref_input_index)
+      availability.SettleTranche { yield_to_ref_input_index, .. } ->
+        Pair(yielding.settle_role, yield_to_ref_input_index)
+      availability.CloseChallenge { yield_to_ref_input_index, .. } ->
+        Pair(yielding.close_role, yield_to_ref_input_index)
+      availability.TimeoutChallenge { yield_to_ref_input_index, .. } ->
+        Pair(yielding.timeout_role, yield_to_ref_input_index)
+    }
+    expect _yield_script_hash = state_queue_yield.require_authenticated_zero_yield(
+      tx.reference_inputs,
+      tx.withdrawals,
+      tx.redeemers,
+      reference_script_auth_policy_id,
+      role,
+      yield_to_ref_input_index,
+    )
     True
   }
 
@@ -53,11 +51,10 @@ validator availability_challenge(
     own_ref: OutputReference,
     tx: Transaction,
   ) {
-    expect Some(own_input) =
-      tx.inputs
-        |> list.find(
-            fn(Input { output_reference, .. }) { output_reference == own_ref },
-          )
+    expect Some(own_input) = tx.inputs
+      |> list.find(
+          fn(Input { output_reference, .. }) { output_reference == own_ref },
+        )
     when redeemer is {
       availability.AdvanceTranche {
         thread_output_index,

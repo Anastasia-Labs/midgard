@@ -159,9 +159,12 @@ type Step01Layout = {
 const bytesHex = (bytes: Uint8Array): string =>
   Buffer.from(bytes).toString("hex");
 
-export const nativeTxFromCoreCompact = (
-  tx: CoreNativeTxCompact,
-): NativeTxCompactData => ({
+export const forcedTxFromCoreCompact = (
+  tx: Pick<
+    CoreNativeTxCompact,
+    "transactionBody" | "transactionWitnessSetHash"
+  >,
+): Omit<NativeTxCompactData, "validity_code"> => ({
   body: {
     spend_inputs_hash: bytesHex(tx.transactionBody.spendInputsHash),
     reference_inputs_hash: bytesHex(tx.transactionBody.referenceInputsHash),
@@ -177,6 +180,12 @@ export const nativeTxFromCoreCompact = (
     network_id: tx.transactionBody.networkId,
   },
   witness_set_hash: bytesHex(tx.transactionWitnessSetHash),
+});
+
+export const nativeTxFromCoreCompact = (
+  tx: CoreNativeTxCompact,
+): NativeTxCompactData => ({
+  ...forcedTxFromCoreCompact(tx),
   validity_code: MidgardTxValidityCodes[tx.validity],
 });
 

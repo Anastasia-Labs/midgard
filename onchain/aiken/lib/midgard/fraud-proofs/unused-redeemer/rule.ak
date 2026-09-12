@@ -6,7 +6,7 @@ use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
 use midgard/canonical_cbor_scan_v1
-use midgard/fraud_proofs/native_tx/compact.{native_tx_proof_commitment_v1}
+use midgard/fraud_proofs/native_tx/compact.{tx_proof_commitment_v1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state
 use midgard/redeemer_item_proof_v1
@@ -243,7 +243,8 @@ pub fn authenticate_control_v1(
         authenticated.descriptor,
         trace_proof,
       ),
-      machine_state.transaction_commitment == native_tx_proof_commitment_v1(
+      machine_state.transaction_commitment == tx_proof_commitment_v1(
+        machine_state.source_kind,
         control.compact_cbor,
         control.witness_set_compact_cbor,
         control.field_preimage_lengths_cbor,
