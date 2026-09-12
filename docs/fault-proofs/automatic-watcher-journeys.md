@@ -271,9 +271,20 @@ transaction preparation, RPC, startup and successor allowances. This gives
 337.5 minutes for correction and 415.5 minutes for the complete retained journey
 under the captured configuration. These are finite test deadlines, not finality
 guarantees. They do not change transaction validity, consensus or confirmation
-depth. Other family timing plans remain separate work. Poll deadlines use a
-monotonic clock, and a resumed attempt preserves its entire pre-launch journal
-prefix while treating newly recorded failures as failures of the current attempt.
+depth.
+
+Every other automatic family uses the same cadence formula over a finite generic
+plan of twenty-four dependent transactions, which bounds the largest installed
+proof chain with margin; a family that needs more must publish an audited plan
+instead of widening the bound. Because that bound is loose, the correction stage
+also fails as soon as the workflow journal records no durable progress (anything
+other than a per-block reconciliation) for one transaction allowance: twice the
+expected confirmation time plus preparation and RPC. A stuck family therefore
+fails within one allowance while a long, progressing family is not cut off. The
+journey tolerates journaled stalls for the watcher's whole preflight retry budget
+plus one retry delay. Poll deadlines use a monotonic clock, and a resumed attempt
+preserves its entire pre-launch journal prefix while treating newly recorded
+failures as failures of the current attempt.
 
 Test the authority transition through the actual follower callbacks: history
 advance, authenticated queue removal, and subsequent workflow reconciliation.
