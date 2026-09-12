@@ -1,5 +1,5 @@
-import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, renameSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
@@ -28,6 +28,10 @@ import type {
   StagedJourney,
 } from "./fixture.js";
 import { JOURNEY_FINALITY_DEPTH } from "./live-context.js";
+import {
+  classifyStagedCheckpoint,
+  supersededCheckpointArchivePath,
+} from "./staged-checkpoint.js";
 
 export type JourneyRetainedBlock = JourneyBlock & { payload: SDK.DaPayload };
 
@@ -195,23 +199,28 @@ async function stageJourney(
     }
     return ` ${tail}`;
   };
-  const assertTail = async (block: JourneyBlock) => {
-    const output = await requireHeader(block.headerHash);
+  // The queue output holding this block, only while it is the exact tail.
+  const tailOutput = async (block: JourneyBlock) => {
+    const output = await headerOutput(block.headerHash);
+    if (output === undefined) return undefined;
     const node = await Effect.runPromise(
       SDK.getLinkedListNodeViewFromUTxO(output),
     );
     const header = await Effect.runPromise(
       SDK.getHeaderFromStateQueueDatum(node),
     );
-    if (
-      node.next !== "Empty" ||
-      SDK.encodeHeaderCbor(header).toString("hex") !==
+    return node.next === "Empty" &&
+      SDK.encodeHeaderCbor(header).toString("hex") ===
         SDK.encodeHeaderCbor(block.header).toString("hex")
-    ) {
+      ? output
+      : undefined;
+  };
+  const assertTail = async (block: JourneyBlock) => {
+    const output = await tailOutput(block);
+    if (output === undefined)
       throw new Error(
         `Retained healthy head ${block.headerHash} differs from the actual state queue tail${await describeQueueTail()}`,
       );
-    }
     return output;
   };
   const queueHead = async () => {
@@ -265,11 +274,32 @@ async function stageJourney(
     lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));
     return signed.txHash;
   };
-  const resume = existsSync(checkpointPath)
+  let resume = existsSync(checkpointPath)
     ? await readJourneyArtifact<StagingCheckpoint>(checkpointPath)
     : undefined;
   if (resume !== undefined && resume.deploymentFingerprint !== fingerprint)
     throw new Error("Journey checkpoint belongs to a different deployment");
+  if (
+    resume !== undefined &&
+    classifyStagedCheckpoint({
+      checkpoint: resume,
+      faultHeaderOnQueue:
+        (await headerOutput(resume.current.headerHash)) !== undefined,
+      predecessorIsTail: (await tailOutput(resume.predecessor)) !== undefined,
+    }) === "superseded"
+  ) {
+    // Another journey's correction appended a healthy successor after this
+    // fault was built and before it was published. The build binds the old
+    // predecessor and can never be committed; keep it aside and stage a
+    // fresh fault on the current head.
+    const archived = supersededCheckpointArchivePath(directory, new Date());
+    mkdirSync(dirname(archived), { recursive: true });
+    renameSync(checkpointPath, archived);
+    onStage(
+      `staged fault ${resume.current.headerHash} superseded: predecessor ${resume.predecessor.headerHash} is no longer the tail; archived to ${archived}`,
+    );
+    resume = undefined;
+  }
 
   let predecessor: JourneySuccessor;
   if (resume !== undefined) predecessor = resume.predecessor;
