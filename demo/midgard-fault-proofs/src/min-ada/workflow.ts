@@ -83,6 +83,7 @@ import {
   prepareMinAdaWorkflowArtifact as prepareMinAdaArtifact,
 } from "./workflow-artifact.js";
 type AdmittedMinAdaArtifact = Awaited<ReturnType<typeof admitMinAdaArtifact>>;
+import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import type { MinAdaContracts } from "./contracts.js";
 import { submitMinAdaInit } from "./submit-init.js";
 import {
@@ -701,7 +702,7 @@ export const runOrResumeManifestBoundMinAdaWorkflow = async ({
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
 }): Promise<FraudProofWorkflowRunResult> => {
-  const observation = await workflow.l1.observeHeader({
+  const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
     headerHash: workflow.binding.definition.headerHash,
   });
   const evidence = await fetchCanonicalBlockEvidence({

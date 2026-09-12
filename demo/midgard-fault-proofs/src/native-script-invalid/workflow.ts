@@ -48,6 +48,7 @@ import {
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
+import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import {
   createAuthenticatedFieldCarriagePrerequisitePort,
   type FieldCarriageRequirement,
@@ -671,7 +672,7 @@ export const runOrResumeManifestBoundNativeScriptInvalidWorkflow = async ({
 }): Promise<FraudProofWorkflowRunResult> =>
   await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation: await workflow.l1.observeHeader({
+    observation: await observeFraudProofWorkflowHeader(workflow.l1, {
       headerHash: workflow.binding.definition.headerHash,
     }),
     sources,

@@ -27,6 +27,7 @@ import {
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
+import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
   computeFraudProofWorkflowId,
@@ -627,7 +628,7 @@ export const createValidationTraceDisputeWorkflowRunnerSurface = ({
         // precise requirement.
         if (workflow.challenge !== undefined) {
           const block = await fetchCanonicalBlockEvidence({
-            observation: await workflow.l1.observeHeader({
+            observation: await observeFraudProofWorkflowHeader(workflow.l1, {
               headerHash: invocation.headerHash,
             }),
             sources: loaded.retainedDaSources,

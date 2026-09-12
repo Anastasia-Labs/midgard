@@ -61,6 +61,7 @@ import {
   createFraudProofFamilyAuthenticatedL1TerminalVerifier,
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
+import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import {
   createAuthenticatedFieldCarriagePrerequisitePort,
   withFieldCarriagePrerequisite,
@@ -727,7 +728,7 @@ export const executeManifestBoundRedeemerCanonicityWorkflow = async ({
       terminalVerifier: workflow.terminalVerifier,
       releaseFinalityAuthority: workflow.releaseFinalityAuthority,
     });
-  const observation = await workflow.l1.observeHeader({
+  const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
     headerHash: workflow.binding.definition.headerHash,
   });
   return await runFraudProofWorkflowFromRetainedDa({

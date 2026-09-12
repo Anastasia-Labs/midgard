@@ -21,6 +21,7 @@ import {
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
+import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
@@ -361,7 +362,10 @@ export const runOrResumeManifestBoundFieldPreimageLengthWorkflow =
       );
     }
     const headerHash = input.workflow.config.binding.definition.headerHash;
-    const observation = await input.workflow.l1.observeHeader({ headerHash });
+    const observation = await observeFraudProofWorkflowHeader(
+      input.workflow.l1,
+      { headerHash },
+    );
     const evidence = await detectAuthenticatedFieldPreimageLengthEvidence({
       observation,
       sources: input.sources,
@@ -385,7 +389,9 @@ export const executeManifestBoundFieldPreimageLengthWorkflow = async ({
 }): Promise<FieldPreimageLengthJournal> => {
   const headerHash = workflow.config.binding.definition.headerHash;
   const evidence = await detectAuthenticatedFieldPreimageLengthEvidence({
-    observation: await workflow.l1.observeHeader({ headerHash }),
+    observation: await observeFraudProofWorkflowHeader(workflow.l1, {
+      headerHash,
+    }),
     sources,
   });
   const central = createFieldPreimageLengthCentralJournalAdapter({

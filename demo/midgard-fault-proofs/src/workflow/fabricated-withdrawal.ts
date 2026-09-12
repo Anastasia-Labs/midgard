@@ -41,6 +41,7 @@ import {
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation.js";
+import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import {
   createLinearFamilyWorkflowAdapter,
@@ -488,7 +489,7 @@ export const runOrResumeManifestBoundFabricatedWithdrawalWorkflow = async ({
 }): Promise<FraudProofWorkflowRunResult> =>
   await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation: await workflow.l1.observeHeader({
+    observation: await observeFraudProofWorkflowHeader(workflow.l1, {
       headerHash: workflow.binding.definition.headerHash,
     }),
     sources,

@@ -31,6 +31,7 @@ import {
   createFraudProofFamilyAuthenticatedL1TerminalVerifier,
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
+import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { withFieldCarriagePrerequisite } from "../workflow/field-carriage-prerequisite.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import {
@@ -706,7 +707,7 @@ export const runOrResumeManifestBoundValueConservationWorkflow = async ({
 }) =>
   runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation: await workflow.l1.observeHeader({
+    observation: await observeFraudProofWorkflowHeader(workflow.l1, {
       headerHash: workflow.binding.definition.headerHash,
     }),
     sources,
