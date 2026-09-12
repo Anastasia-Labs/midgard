@@ -29,11 +29,57 @@ export const ensureRuntimeRewardAccountsRegisteredProgram = (
     for (const { withdrawalScript: script } of validators) {
       scripts.set(validatorToScriptHash(script), script);
     }
-    return yield* Effect.forEach(
+    const before = yield* Effect.forEach(
       [...scripts.values()],
-      (script) => ensureScriptRewardAccountRegisteredProgram(lucid, script),
+      (script) => queryScriptRewardRegistrationProgram(lucid, script),
       { concurrency: 1 },
     );
+    const results = new Map(
+      before
+        .filter(({ registered }) => registered)
+        .map((record) => [
+          record.scriptHash,
+          { ...record, txHash: null as string | null },
+        ]),
+    );
+    const missing = before.filter(({ registered }) => !registered);
+    // Registration certificates carry no Plutus witnesses. Bounded batches
+    // amortize confirmation and wallet reconciliation across independent roles;
+    // Lucid still enforces the live transaction-size and funding limits.
+    for (let offset = 0; offset < missing.length; offset += 32) {
+      const batch = missing.slice(offset, offset + 32);
+      const tx = yield* Effect.tryPromise({
+        try: () =>
+          batch
+            .reduce(
+              (builder, { rewardAddress }) =>
+                builder.register.Stake(rewardAddress),
+              lucid.newTx(),
+            )
+            .complete({ localUPLCEval: true }),
+        catch: (cause) =>
+          new SDK.LucidError({
+            message: "Failed to build runtime reward-account registrations",
+            cause,
+          }),
+      });
+      const txHash = yield* handleSignSubmit(lucid, tx);
+      for (const record of batch) {
+        const after = yield* queryScriptRewardRegistrationProgram(
+          lucid,
+          scripts.get(record.scriptHash)!,
+        );
+        if (!after.registered)
+          return yield* Effect.fail(
+            new SDK.LucidError({
+              message: "Confirmed runtime reward registration is not visible",
+              cause: `scriptHash=${record.scriptHash},txHash=${txHash}`,
+            }),
+          );
+        results.set(record.scriptHash, { ...after, txHash });
+      }
+    }
+    return before.map(({ scriptHash }) => results.get(scriptHash)!);
   });
 
 export const queryScriptRewardRegistrationProgram = (

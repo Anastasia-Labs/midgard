@@ -7,6 +7,7 @@ import {
 import { noise } from "@chainsafe/libp2p-noise";
 import { yamux } from "@chainsafe/libp2p-yamux";
 import { peerIdFromPrivateKey } from "@libp2p/peer-id";
+import { ping } from "@libp2p/ping";
 import { tcp } from "@libp2p/tcp";
 import { createLibp2p, type Libp2pOptions } from "libp2p";
 
@@ -163,10 +164,14 @@ export class PublicRetainedDaListener {
       connectionEncrypters: [noise()],
       streamMuxers: [
         yamux({
-          maxInboundStreams: this.config.limits.maxStreamsPerPeer,
+          // Ping permits two inbound streams for asynchronous close/open
+          // ordering. DA admission remains independently bounded below.
+          maxInboundStreams: this.config.limits.maxStreamsPerPeer + 2,
+          maxOutboundStreams: 1,
           maxMessageSize: DA_TRANSPORT_LIMITS.maxChunkBytes,
         }),
       ],
+      services: { ping: ping() },
       // Public input is accepted only after Noise authentication; outbound and
       // relayed paths are denied because this is a read-only listener.
       connectionGater: {
@@ -283,7 +288,12 @@ export class PublicRetainedDaListener {
       // map to actively admitted public work even under Sybil churn.
       const peerPermits =
         this.peerPermits.get(remotePeerId) ??
-        new AsyncPermitPool(this.config.limits.maxInflightRequestsPerPeer);
+        new AsyncPermitPool(
+          Math.min(
+            this.config.limits.maxStreamsPerPeer,
+            this.config.limits.maxInflightRequestsPerPeer,
+          ),
+        );
       this.peerPermits.set(remotePeerId, peerPermits);
       try {
         await peerPermits.run(async () =>

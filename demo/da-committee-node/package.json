@@ -8,6 +8,16 @@
     "midgard-public-retained-da": "./dist/public-retained-da.js"
   },
   "exports": {
+    "./store/postgres": {
+      "midgard-source": "./src/store/postgres.ts",
+      "types": "./dist/store/postgres.d.ts",
+      "import": "./dist/store/postgres.js"
+    },
+    "./store/public-retained-da": {
+      "midgard-source": "./src/store/public-retained-da.ts",
+      "types": "./dist/store/public-retained-da.d.ts",
+      "import": "./dist/store/public-retained-da.js"
+    },
     "./availability": {
       "midgard-source": "./src/availability/index.ts",
       "types": "./dist/availability/index.d.ts",
@@ -40,7 +50,7 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/public-retained-da.ts src/config.ts src/store.ts src/availability/index.ts src/da/libp2p/index.ts src/da/libp2p/DaStreamCodec.ts src/l1/state-queue-scanner.ts --format esm --dts --clean",
+    "build": "tsup src/index.ts src/public-retained-da.ts src/config.ts src/store.ts src/store/postgres.ts src/store/public-retained-da.ts src/availability/index.ts src/da/libp2p/index.ts src/da/libp2p/DaStreamCodec.ts src/l1/state-queue-scanner.ts --format esm --dts --clean",
     "guard:no-http-da-transport": "node scripts/check-no-http-da-transport.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -60,6 +70,7 @@
     "@libp2p/identify": "4.1.8",
     "@libp2p/interface": "3.2.4",
     "@libp2p/peer-id": "6.0.11",
+    "@libp2p/ping": "3.1.7",
     "@libp2p/tcp": "11.0.22",
     "@lucid-evolution/lucid": "0.6.4",
     "@lucid-evolution/scalus-uplc": "0.1.3",

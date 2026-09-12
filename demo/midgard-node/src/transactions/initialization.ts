@@ -172,6 +172,7 @@ export const buildFraudProofCatalogueDeploymentInfo = <
   });
 
 const DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS = 7n * 60n * 1000n;
+const DEFAULT_DEPLOYMENT_VALIDITY_BACKOFF_MS = 60_000;
 const DEPLOYMENT_VISIBILITY_REFRESH_MAX_RETRIES = 12;
 const DEPLOYMENT_VISIBILITY_REFRESH_DELAY = "2 seconds";
 
@@ -712,10 +713,18 @@ export const completeAndSubmit = (
  */
 const resolveDeploymentStartTime = (lucid?: LucidEvolution): bigint => {
   if (lucid === undefined) {
-    return BigInt(Date.now());
+    return BigInt(Date.now() - DEFAULT_DEPLOYMENT_VALIDITY_BACKOFF_MS);
   }
+  const currentTime = slotToUnixTimeForLucidOrEmulatorFallback(
+    lucid,
+    lucid.currentSlot(),
+  );
+  const firstSlotTime = slotToUnixTimeForLucidOrEmulatorFallback(lucid, 0);
   return BigInt(
-    slotToUnixTimeForLucidOrEmulatorFallback(lucid, lucid.currentSlot()),
+    Math.max(
+      firstSlotTime,
+      currentTime - DEFAULT_DEPLOYMENT_VALIDITY_BACKOFF_MS,
+    ),
   );
 };
 
