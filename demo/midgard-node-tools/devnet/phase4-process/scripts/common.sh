@@ -12,7 +12,7 @@ node_root=$(CDPATH= cd -- "$tools_root/../midgard-node" && pwd)
 # chain, index, or database is pinned to an official immutable digest.  Keep
 # these values in one place so helper containers and the compose graph cannot
 # silently drift apart.
-PHASE4_CARDANO_NODE_IMAGE="ghcr.io/intersectmbo/cardano-node:11.0.1@sha256:33378c806485729154e6652ffc6813748949ae049180788b94018a709f5a0400"
+PHASE4_CARDANO_NODE_IMAGE="ghcr.io/intersectmbo/cardano-node:11.1.0@sha256:7b36384afd9d78e787c02f9b9a0868ed74b28a04b7d447325a68b1f397ddb43a"
 PHASE4_OGMIOS_IMAGE="cardanosolutions/ogmios:v7.0.0@sha256:8892ef5f77b94f1c95427cf9f2b40e6235a32b27a8b1e378db02289f3991617f"
 PHASE4_KUPO_IMAGE="cardanosolutions/kupo:v2.11.0@sha256:0a8cd8b5e373103e9e0a68b162d82c69a6f76042bb073c31912724034e51ca9e"
 PHASE4_POSTGRES_IMAGE="postgres:15.15-alpine@sha256:d4c38e1c60871a1e8fe5d05b639980ac7827c9e6920a5df663a16f86f398aca6"
@@ -110,27 +110,12 @@ wait_http() {
 }
 
 parse_kupo_checkpoint() {
-  parsed_kupo_checkpoint=$(
-    awk '
-      BEGIN { samples = 0; invalid = 0 }
-      /^[[:space:]]*kupo_most_recent_checkpoint/ {
-        if ($0 !~ /^[[:space:]]*kupo_most_recent_checkpoint[[:space:]]+[0-9]+[[:space:]]*$/) {
-          invalid = 1
-          next
-        }
-        value = $0
-        sub(/^[[:space:]]*kupo_most_recent_checkpoint[[:space:]]+/, "", value)
-        sub(/[[:space:]]*$/, "", value)
-        samples += 1
-        checkpoint = value
-      }
-      END {
-        if (invalid || samples != 1) exit 1
-        print checkpoint
-      }
-    '
-  ) || die "Kupo health must contain exactly one unlabeled finite nonnegative integer kupo_most_recent_checkpoint sample"
-  printf '%s\n' "$parsed_kupo_checkpoint"
+  # Kupo 2.11 returns JSON from /health. A disconnected or unsynchronized
+  # service cannot attest a restoration checkpoint.
+  jq -er 'select(.connection_status == "connected")
+    | .most_recent_checkpoint
+    | select(type == "number" and . >= 0 and . == floor)' \
+    || die "Kupo health must report a connected nonnegative integer checkpoint"
 }
 
 grant_cardano_socket_access() {

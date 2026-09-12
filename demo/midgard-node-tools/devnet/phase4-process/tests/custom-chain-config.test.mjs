@@ -11,9 +11,9 @@ const validator = join(root, "scripts/validate-custom-chain-config.sh");
 
 const validGenesis = (override = {}) => ({
   slotLength: 1,
-  activeSlotsCoeff: 1,
-  securityParam: 90000,
-  epochLength: 900000,
+  activeSlotsCoeff: 0.05,
+  securityParam: 2160,
+  epochLength: 432000,
   protocolParams: { protocolVersion: { major: 11, minor: 0 } },
   ...override,
 });
@@ -51,7 +51,7 @@ const validate = ({
   }
 };
 
-test("custom Conway config accepts the pinned major and 75-hour horizon", () => {
+test("custom Conway config accepts the verified Preprod major and consensus timing", () => {
   const result = validate();
   assert.equal(result.status, 0, result.stderr);
 });
@@ -71,15 +71,15 @@ test("custom Conway config rejects the former five-minute forecast horizon", () 
     genesis: validGenesis({ securityParam: 100, epochLength: 1000 }),
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /securityParam must be 90000; found 100/);
+  assert.match(result.stderr, /securityParam must be 2160; found 100/);
 });
 
 for (const [label, override, expectedError] of [
   ["two-second slots", { slotLength: 2 }, /slotLength must be 1; found 2/],
   [
-    "partial slot activity",
-    { activeSlotsCoeff: 0.5 },
-    /activeSlotsCoeff must be 1; found 0.5/,
+    "artificial deterministic block production",
+    { activeSlotsCoeff: 1 },
+    /activeSlotsCoeff must be 0.05; found 1/,
   ],
 ]) {
   test(`custom Conway config rejects ${label}`, () => {
@@ -94,5 +94,13 @@ test("custom Conway config rejects epoch length drift from 10k/f", () => {
     genesis: validGenesis({ epochLength: 270000 }),
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /epochLength must be 900000; found 270000/);
+  assert.match(result.stderr, /epochLength must be 432000; found 270000/);
+});
+
+test("custom Conway config rejects the artificial multi-day snapshot consensus", () => {
+  const result = validate({
+    genesis: validGenesis({ securityParam: 90000, epochLength: 900000 }),
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /securityParam must be 2160; found 90000/);
 });

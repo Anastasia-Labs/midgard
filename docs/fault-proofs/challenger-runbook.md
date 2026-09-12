@@ -23,6 +23,9 @@ node demo/midgard-fault-proofs/dist/bin.js inspect-contracts \
 
 Completion: inspection succeeds and its catalogue root, script hashes, and
 network agree with the signed deployment manifest. Stop on any disagreement.
+Inspection reports offline identity comparisons and script sizes; it does not
+certify publication or readiness. Deployment verification and watcher startup
+check the required reference scripts, and proof execution checks them again.
 
 ## 2. Start public evidence authorities
 

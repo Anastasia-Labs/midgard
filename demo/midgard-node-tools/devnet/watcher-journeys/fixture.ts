@@ -1,0 +1,55 @@
+import type { HistoricalNativeScriptHistoryProviderIdentity } from "@al-ft/midgard-fault-proofs";
+import type * as SDK from "@al-ft/midgard-sdk";
+
+import type { loadJourneyContext } from "./live-context.js";
+
+export type JourneyCategory = Exclude<
+  SDK.FraudProofCatalogueCategoryName,
+  "validationTraceDispute"
+>;
+
+export type JourneyContext = Awaited<ReturnType<typeof loadJourneyContext>>;
+
+export type JourneyBlock = {
+  header: SDK.Header;
+  headerHash: string;
+  payloadEnvelopeCbor: Buffer;
+};
+
+export type JourneySuccessor = JourneyBlock & { commitTxHash: string };
+
+/** Successor progress persisted before signing, before submission, and after inclusion. */
+export type JourneySuccessorCheckpoint = {
+  block: JourneyBlock;
+  signedCommit?: { txHash: string; signedCbor: string };
+  commitTxHash?: string;
+};
+
+export type StagedJourney = {
+  predecessor: JourneyBlock;
+  current: JourneyBlock;
+  commitHonestSuccessor(options: {
+    beforeCommit(block: JourneyBlock): Promise<void>;
+    resume?: JourneySuccessorCheckpoint;
+    onCheckpoint?(checkpoint: JourneySuccessorCheckpoint): Promise<void>;
+  }): Promise<JourneySuccessor>;
+};
+
+export type JourneyFixtureStage = {
+  context: JourneyContext;
+  directory: string;
+  historicalNativeScriptProviders: readonly HistoricalNativeScriptHistoryProviderIdentity[];
+  /** Publish the retained payload and archive its real canonical L1 point. */
+  retain(block: JourneyBlock, commitTxHash: string): Promise<void>;
+  onStage(name: string): void;
+};
+
+/**
+ * Fixtures stage actual operator actions and preserve their own checkpoints.
+ * The category is an acceptance assertion only: it never enters the watcher
+ * configuration, classifier, proof application, or workflow submission.
+ */
+export type JourneyFixture = {
+  category: JourneyCategory;
+  stage(input: JourneyFixtureStage): Promise<StagedJourney>;
+};

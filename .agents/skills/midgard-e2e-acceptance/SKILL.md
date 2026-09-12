@@ -14,10 +14,11 @@ and a clean first-attempt run.
 Before any state-changing command, read:
 
 - root `AGENTS.md`;
+- `demo/AGENTS.md`;
 - `docs/agents/production-l2.md`;
 - `docs/agents/state-reset.md`;
 - `docs/agents/transaction-finalization.md`; and
-- `docs/agents/midgard-node.md`.
+- `demo/midgard-node/AGENTS.md`.
 
 Then run the skill currency check from the repository root:
 

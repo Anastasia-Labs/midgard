@@ -107,6 +107,7 @@ jq -e \
 
 # Only after every snapshot checksum and identity check succeeds may the
 # reset stop services or replace any durable state.
+node "$script_dir/check-recovery-window.mjs" "$MIDGARD_PHASE4_RUN_DIR/genesis/shelley-genesis.json" "$snapshot_dir/cardano-tip.json"
 compose_quiet stop kupo ogmios cardano-node postgres
 
 restore_dir() {
@@ -214,6 +215,7 @@ jq -e \
 # neither provider may continue against its pre-recreation connection. Do not
 # print the frozen identity attestation until the producer and Kupo have both
 # advanced strictly beyond the frozen checkpoint.
+node "$script_dir/check-recovery-window.mjs" "$MIDGARD_PHASE4_RUN_DIR/genesis/shelley-genesis.json" "$snapshot_dir/cardano-tip.json"
 MIDGARD_PHASE4_BLOCK_PRODUCER=true compose_quiet up --detach --force-recreate cardano-node
 grant_cardano_socket_access
 compose_quiet restart ogmios

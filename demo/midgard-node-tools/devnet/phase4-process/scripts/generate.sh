@@ -7,6 +7,7 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 require_command docker
 require_command jq
+require_command node
 require_command sha256sum
 
 : "${MIDGARD_PHASE4_RUN_DIR:?MIDGARD_PHASE4_RUN_DIR is required}"
@@ -48,31 +49,11 @@ docker run --rm --user "$(id -u):$(id -g)" \
   --total-supply 100000000000000 --delegated-supply 50000000000000 \
   --testnet-magic "$network_magic" --start-time "$genesis_start" --out-dir /run/genesis
 
-# Fast, deterministic local block production with a restart horizon long enough
-# for multi-day process acceptance. Shelley derives its stability/forecast
-# window as ceil(3k/f) slots. With k=90000, f=1, and one-second slots this is
-# 270000 seconds (75 hours), leaving three hours of headroom when a matched
-# snapshot is reused at the required 72-hour boundary. Keep the conventional
-# epoch length of 10k/f slots as an independently validated consensus invariant.
-jq '.slotLength=1 | .activeSlotsCoeff=1 | .securityParam=90000 | .epochLength=900000' \
-  "$MIDGARD_PHASE4_RUN_DIR/genesis/shelley-genesis.json" \
-  >"$MIDGARD_PHASE4_RUN_DIR/work/shelley-genesis.json"
-# The generated config enters Conway at epoch zero. Pin the target preprod
-# protocol major before hashing the genesis, then validate the exact
-# era/protocol invariant again after rendering config.json.
-jq --argjson protocol_major "$PHASE4_TARGET_PROTOCOL_MAJOR" \
-  '.protocolParams.protocolVersion.major=$protocol_major
-   | .protocolParams.protocolVersion.minor=0' \
-  "$MIDGARD_PHASE4_RUN_DIR/work/shelley-genesis.json" \
-  >"$MIDGARD_PHASE4_RUN_DIR/work/shelley-genesis-versioned.json"
-mv "$MIDGARD_PHASE4_RUN_DIR/work/shelley-genesis-versioned.json" \
-  "$MIDGARD_PHASE4_RUN_DIR/work/shelley-genesis.json"
-mv "$MIDGARD_PHASE4_RUN_DIR/work/shelley-genesis.json" "$MIDGARD_PHASE4_RUN_DIR/genesis/shelley-genesis.json"
-jq '.protocolConsts.k=90000' \
-  "$MIDGARD_PHASE4_RUN_DIR/genesis/byron-genesis.json" \
-  >"$MIDGARD_PHASE4_RUN_DIR/work/byron-genesis.json"
-mv "$MIDGARD_PHASE4_RUN_DIR/work/byron-genesis.json" "$MIDGARD_PHASE4_RUN_DIR/genesis/byron-genesis.json"
-jq -e '(.staking.pools | length) == 1 and (.staking.stake | length) == 1' \
+# Use the verified Preprod consensus and active ledger configuration. Local
+# identities and funded accounts belong to this isolated chain.
+node "$script_dir/../../preprod/apply-configuration.mjs" "$MIDGARD_PHASE4_RUN_DIR/genesis"
+cp "$script_dir/../../preprod/configuration.json" "$MIDGARD_PHASE4_RUN_DIR/config/preprod-configuration.json"
+jq -e '(.extraConfig.stakePools.data | length) == 1 and (.extraConfig.stakeCredentials.data | length) == 1' \
   "$MIDGARD_PHASE4_RUN_DIR/genesis/shelley-genesis.json" >/dev/null \
   || die "generated genesis must contain exactly one registered pool and stake delegation"
 
@@ -96,7 +77,7 @@ byron_hash=$(docker run --rm --user "$(id -u):$(id -g)" \
 jq -n \
   --arg byron "$byron_hash" --arg shelley "$shelley_hash" \
   --arg alonzo "$alonzo_hash" --arg conway "$conway_hash" --arg dijkstra "$dijkstra_hash" \
-  '{Protocol:"Cardano",RequiresNetworkMagic:"RequiresMagic",ByronGenesisFile:"/genesis/byron-genesis.json",ByronGenesisHash:$byron,ShelleyGenesisFile:"/genesis/shelley-genesis.json",ShelleyGenesisHash:$shelley,AlonzoGenesisFile:"/genesis/alonzo-genesis.json",AlonzoGenesisHash:$alonzo,ConwayGenesisFile:"/genesis/conway-genesis.json",ConwayGenesisHash:$conway,DijkstraGenesisFile:"/genesis/dijkstra-genesis.json",DijkstraGenesisHash:$dijkstra,"LastKnownBlockVersion-Major":2,"LastKnownBlockVersion-Minor":0,"LastKnownBlockVersion-Alt":0,TestShelleyHardForkAtEpoch:0,TestAllegraHardForkAtEpoch:0,TestMaryHardForkAtEpoch:0,TestAlonzoHardForkAtEpoch:0,TestBabbageHardForkAtEpoch:0,TestConwayHardForkAtEpoch:0,TestDijkstraHardForkAtEpoch:0,ExperimentalHardForksEnabled:true,TxSubmissionInitDelay:0,TurnOnLogging:true,TurnOnLogMetrics:true,UseTraceDispatcher:true,minSeverity:"Info",TraceOptions:{"":{severity:"Info",detail:"DNormal",backends:["Stdout MachineFormat"]}}}' \
+  '{Protocol:"Cardano",ConsensusMode:"PraosMode",RequiresNetworkMagic:"RequiresMagic",ByronGenesisFile:"/genesis/byron-genesis.json",ByronGenesisHash:$byron,ShelleyGenesisFile:"/genesis/shelley-genesis.json",ShelleyGenesisHash:$shelley,AlonzoGenesisFile:"/genesis/alonzo-genesis.json",AlonzoGenesisHash:$alonzo,ConwayGenesisFile:"/genesis/conway-genesis.json",ConwayGenesisHash:$conway,DijkstraGenesisFile:"/genesis/dijkstra-genesis.json",DijkstraGenesisHash:$dijkstra,"LastKnownBlockVersion-Major":2,"LastKnownBlockVersion-Minor":0,"LastKnownBlockVersion-Alt":0,TestShelleyHardForkAtEpoch:0,TestAllegraHardForkAtEpoch:0,TestMaryHardForkAtEpoch:0,TestAlonzoHardForkAtEpoch:0,TestBabbageHardForkAtEpoch:0,TestConwayHardForkAtEpoch:0,ExperimentalHardForksEnabled:true,TxSubmissionInitDelay:0,TraceOptions:{"":{severity:"Info",detail:"DNormal",backends:["Stdout MachineFormat"]}}}' \
   >"$MIDGARD_PHASE4_RUN_DIR/config/config.json"
 "$script_dir/validate-custom-chain-config.sh" \
   "$MIDGARD_PHASE4_RUN_DIR/genesis/shelley-genesis.json" \
