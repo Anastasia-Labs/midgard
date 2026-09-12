@@ -127,7 +127,10 @@ const fixture = async (
         fullTransactionCbor,
         keyBytes: SDK.encodeProofThreadForcedSourceKey(key),
         valueBytes: Buffer.from(
-          Data.to(value, SDK.ForcedInclusionTxV1Schema),
+          Data.to<SDK.ForcedInclusionTxV1>(
+            value,
+            SDK.ForcedInclusionTxV1Schema as never,
+          ),
           "hex",
         ),
       };

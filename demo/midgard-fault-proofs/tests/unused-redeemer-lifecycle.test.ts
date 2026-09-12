@@ -558,9 +558,10 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
           harness.emulator,
           operation,
         ).catch((cause: unknown) => {
-          throw new Error(`unused-redeemer lifecycle failed at ${label}`, {
-            cause,
-          });
+          throw Object.assign(
+            new Error(`unused-redeemer lifecycle failed at ${label}`),
+            { cause },
+          );
         });
         ledger.push({
           label,
