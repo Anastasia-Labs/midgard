@@ -2533,6 +2533,47 @@ it.each([
   },
 );
 
+it("restarts at most three complete boundary captures after typed head changes", async () => {
+  for (const changes of [1, 2, 3]) {
+    const fixture = sourceFixture();
+    const readBoundary = fixture.source.readBoundary.bind(fixture.source);
+    let remaining = changes;
+    const capture = vi
+      .spyOn(fixture.source, "readBoundary")
+      .mockImplementation(async () => {
+        if (remaining > 0) {
+          remaining -= 1;
+          throw new LocalKupmiosCheckpointChangedError(
+            "Kupo advanced or rolled back during raw snapshot capture: test",
+          );
+        }
+        return await readBoundary();
+      });
+    const result = readAdmittedLocalKupmiosBoundary({
+      source: fixture.source,
+    });
+    if (changes < 3)
+      await expect(result).resolves.toMatchObject({ confirmationDepth: 30 });
+    else
+      await expect(result).rejects.toBeInstanceOf(
+        LocalKupmiosCheckpointChangedError,
+      );
+    expect(capture).toHaveBeenCalledTimes(Math.min(changes + 1, 3));
+  }
+});
+
+it("propagates a boundary failure that is not a typed head change unchanged", async () => {
+  const fixture = sourceFixture();
+  const failure = new Error("ordinary boundary transport failure");
+  const capture = vi
+    .spyOn(fixture.source, "readBoundary")
+    .mockRejectedValue(failure);
+  await expect(
+    readAdmittedLocalKupmiosBoundary({ source: fixture.source }),
+  ).rejects.toBe(failure);
+  expect(capture).toHaveBeenCalledOnce();
+});
+
 it("restarts at most three complete signed-recovery captures after typed head changes", async () => {
   for (const changes of [2, 3]) {
     const fixture = await signedRecoveryFixture({

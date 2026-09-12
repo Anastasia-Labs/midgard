@@ -1379,6 +1379,32 @@ export const readAdmittedLocalKupmiosReferenceBodiesAtPoint = async ({
   );
 };
 
+/**
+ * A boundary capture pins Kupo's head at its first response. Kupo indexing a
+ * block while the finality bracket is still being searched changes that head,
+ * and the source reports the change as a typed checkpoint change instead of a
+ * boundary. That is ordinary chain progress, not divergence, and readBoundary
+ * discards every cache of the abandoned capture, so the read starts over on a
+ * fresh pin: at most this many complete captures, as signed recovery allows.
+ */
+const BOUNDARY_CAPTURE_ATTEMPTS = 3;
+
+const captureBoundary = async (
+  source: LocalKupmiosFraudProofRawSource,
+): Promise<Awaited<ReturnType<typeof source.readBoundary>>> => {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await source.readBoundary();
+    } catch (cause) {
+      if (
+        !(cause instanceof LocalKupmiosCheckpointChangedError) ||
+        attempt >= BOUNDARY_CAPTURE_ATTEMPTS
+      )
+        throw cause;
+    }
+  }
+};
+
 /** Establishes and re-admits the concrete source's fresh release-final point. */
 export const readAdmittedLocalKupmiosBoundary = async ({
   source,
@@ -1391,7 +1417,7 @@ export const readAdmittedLocalKupmiosBoundary = async ({
     );
   }
   const value = exactKeys(
-    await source.readBoundary(),
+    await captureBoundary(source),
     ["kupoCheckpoint", "ogmiosTip"],
     [],
     "local Kupmios release boundary",
