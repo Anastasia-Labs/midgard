@@ -17,9 +17,11 @@ import {
   splitProofIntoChunkDatums,
 } from "../publish-proof-chunks.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type {
-  FraudProofWorkflowJournalEntry,
-  JournalJsonObject,
+import {
+  type FraudProofWorkflowJournalEntry,
+  journalJsonDigest,
+  type JournalJsonObject,
+  normalizeJournalJson,
 } from "./journal.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
@@ -185,8 +187,11 @@ export const resolveDirectFirstProofChunks = async ({
   return chunks;
 };
 
+// The orchestrator hands back the journal-normalized (key-sorted) action, so
+// equality must be structural, not byte order.
 const sameJson = (left: unknown, right: unknown): boolean =>
-  JSON.stringify(left) === JSON.stringify(right);
+  journalJsonDigest(normalizeJournalJson(left)) ===
+  journalJsonDigest(normalizeJournalJson(right));
 
 const record = (
   value: unknown,

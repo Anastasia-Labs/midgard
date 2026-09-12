@@ -6,7 +6,10 @@ import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import { splitProofIntoChunkDatums } from "../src/publish-proof-chunks.js";
-import type { FraudProofWorkflowIdentity } from "../src/workflow/journal.js";
+import {
+  type FraudProofWorkflowIdentity,
+  normalizeJournalJson,
+} from "../src/workflow/journal.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -446,6 +449,34 @@ describe("production proof-chunk prerequisite V1", () => {
       }),
     ).resolves.toEqual({ kind: "submitted", txHash: "99".repeat(32) });
     expect(underlying.submit).toHaveBeenCalledOnce();
+  });
+
+  it("accepts the orchestrator's journal-normalized copy of the route action", async () => {
+    const underlying = base();
+    const publication = prerequisite();
+    const adapter = withProofChunkPrerequisite({
+      category: "invalidRange",
+      base: underlying,
+      prerequisite: publication,
+    });
+    const normalized = normalizeJournalJson(
+      publicationAction,
+      "action",
+    ) as unknown as FraudProofWorkflowAction;
+    expect(JSON.stringify(normalized)).not.toBe(
+      JSON.stringify(publicationAction),
+    );
+    const preflight = await adapter.preflight({
+      ...context,
+      action: normalized,
+    });
+    expect(preflight).toMatchObject({
+      actionId: publicationAction.actionId,
+      txHash: "99".repeat(32),
+    });
+    await expect(
+      adapter.submit({ ...context, action: normalized, preflight }),
+    ).resolves.toEqual({ kind: "submitted", txHash: "99".repeat(32) });
   });
 
   it("fails closed on a non-capacity direct preflight error", async () => {
