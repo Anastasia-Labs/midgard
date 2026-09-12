@@ -13,9 +13,13 @@ import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
 import { WatcherLocalKupmios } from "midgard-watcher";
 
+import { awaitLedgerTipSlot, readOgmiosTipSlot } from "./ledger-tip.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
 
 type Deployment = Awaited<ReturnType<typeof publishWorkflowDeploymentOnChain>>;
+
+/** Longest block gap the journeys tolerate while waiting for the ledger tip. */
+const LEDGER_TIP_WAIT_MS = 15 * 60_000;
 type PersistedDeployment = Omit<
   Deployment,
   "chain" | "operatorLucid" | "publisherLucid" | "references"
@@ -121,7 +125,16 @@ export const loadJourneyContext = async (runDirectory: string) => {
     chain: {
       now: () => operatorLucid.slotToUnixTime(operatorLucid.currentSlot()),
       awaitSlot: async (slots) => {
+        const targetSlot = operatorLucid.currentSlot() + slots;
         await pause(slots * customNetwork.slotConfig.slotLength);
+        // Lower validity bounds are checked against the ledger tip, so a
+        // block gap would otherwise reject a transaction due by the clock.
+        await awaitLedgerTipSlot({
+          targetSlot,
+          readTipSlot: () => readOgmiosTipSlot(ogmiosUrl),
+          timeoutMs: LEDGER_TIP_WAIT_MS,
+          pollMs: customNetwork.slotConfig.slotLength,
+        });
       },
       blockHeight: async () => {
         const response = await fetch(ogmiosUrl, {
