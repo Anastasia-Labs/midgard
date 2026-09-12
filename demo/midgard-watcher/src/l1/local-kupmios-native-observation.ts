@@ -1,5 +1,6 @@
 import {
   computeFraudProofRawL1PointId,
+  isLocalKupmiosPointBehindKupoHead,
   LocalKupmiosCheckpointChangedError,
   type LocalKupmiosFraudProofRawSource,
   localKupmiosHttpOgmiosRawSourceDetails,
@@ -127,6 +128,58 @@ const assertNativeKupmiosAgreement = (
 };
 
 /** Test-only direct exercise of the deterministic comparison above. */
+/** Kupo indexes a block a little after the native chain-sync delivers it. */
+const KUPO_LAG_BUDGET_MS = 180_000;
+const KUPO_LAG_POLL_MS = 2_000;
+
+/**
+ * Reads the exact native block from the local Kupo/Ogmios source. A moving
+ * provider head forces a fresh source (its pinned head belongs to the
+ * interrupted capture) for at most three attempts. Kupo lagging behind the
+ * native chain-sync is not a divergence: the read waits, within a bounded
+ * budget, for Kupo's checkpoint to reach the requested slot, and every wait
+ * starts a fresh source so its pinned head can move forward. A checkpoint that
+ * reached the slot and still differs fails closed at once.
+ */
+export const captureExactBlockWithKupoLag = async <T>({
+  read,
+  recreateSource,
+  isClosed,
+  lagBudgetMs,
+  pollMs = KUPO_LAG_POLL_MS,
+  sleep = (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+  now = () => Date.now(),
+}: {
+  read: () => Promise<T>;
+  recreateSource: () => void;
+  isClosed: () => boolean;
+  lagBudgetMs: number;
+  pollMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
+}): Promise<T> => {
+  const startedAt = now();
+  for (let headMoves = 0; ; ) {
+    if (isClosed()) throw new Error("local Kupo/Ogmios runtime is closed");
+    // One source serves every observation so immutable checkpoints and
+    // blocks stay cached.
+    try {
+      return await read();
+    } catch (error) {
+      if (error instanceof LocalKupmiosCheckpointChangedError) {
+        if (headMoves >= 2) throw error;
+        headMoves += 1;
+      } else if (isLocalKupmiosPointBehindKupoHead(error)) {
+        if (now() - startedAt + pollMs > lagBudgetMs) throw error;
+        await sleep(pollMs);
+      } else {
+        throw error;
+      }
+      recreateSource();
+    }
+  }
+};
+
 export const unsafeAssertNativeKupmiosAgreementForTest = (
   native: WatcherNativeBlockAdmission,
   raw: LocalKupmiosRawBlockAtPoint,
@@ -273,31 +326,22 @@ export const createWatcherLocalKupmiosNativeObservationRuntime = async (
             slot: block.slot,
           }),
         });
-        const capture = async (): Promise<LocalKupmiosRawBlockAtPoint> => {
-          for (let attempt = 0; ; attempt += 1) {
-            if (closed) throw new Error("local Kupo/Ogmios runtime is closed");
-            // One source serves every observation so immutable checkpoints and
-            // blocks stay cached. A moving provider head still forces a fresh
-            // source: its pinned head belongs to the interrupted capture.
-            try {
-              return await readAdmittedLocalKupmiosRawBlockAtPoint({
-                source: observationSource,
-                point,
-              });
-            } catch (error) {
-              if (
-                !(error instanceof LocalKupmiosCheckpointChangedError) ||
-                attempt >= 2
-              )
-                throw error;
-              observationSource = createWatcherLocalKupmiosRawSource({
-                watcherConfig,
-                deploymentIdentity: input.deploymentIdentity,
-              });
-            }
-          }
+        const recreateSource = () => {
+          observationSource = createWatcherLocalKupmiosRawSource({
+            watcherConfig,
+            deploymentIdentity: input.deploymentIdentity,
+          });
         };
-        const raw = await capture();
+        const raw = await captureExactBlockWithKupoLag({
+          read: () =>
+            readAdmittedLocalKupmiosRawBlockAtPoint({
+              source: observationSource,
+              point,
+            }),
+          recreateSource,
+          isClosed: () => closed,
+          lagBudgetMs: KUPO_LAG_BUDGET_MS,
+        });
         assertNativeKupmiosAgreement(block, raw);
         for (const [name, context] of [
           ["native", authorityContext],

@@ -20,9 +20,10 @@ import { unsafeCreateWatcherFaultDecisionBridgeForTest } from "../../src/fault-p
 import type { WatcherPersistedFaultDecisionRecord } from "../../src/fault-proofs/fault-decision-journal.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
 import type { WatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";
-import type {
-  WatcherAuthenticatedStateQueueObservation,
-  WatcherStateQueueHeaderObservation,
+import {
+  type WatcherAuthenticatedStateQueueObservation,
+  WatcherRetainedHeaderAttestationPendingError,
+  type WatcherStateQueueHeaderObservation,
 } from "../../src/indexers/authenticated-state-queue-observation.js";
 import {
   createWatcherOperationsObservability,
@@ -172,9 +173,9 @@ const harness = (input: {
   readonly nowMs?: () => bigint;
   readonly monotonicNowMs?: () => number;
   readonly pendingAvailabilityHeaders?: () => ReadonlySet<string>;
-  readonly resolvePredecessorOverride?: () => Promise<
-    WatcherStateQueueHeaderObservation | undefined
-  >;
+  readonly resolvePredecessorOverride?: (
+    header: WatcherStateQueueHeaderObservation,
+  ) => Promise<WatcherStateQueueHeaderObservation | undefined>;
   readonly classificationContextIdentity?: () => Promise<string>;
   readonly decisionUsesLocalEventHistory?: boolean;
   readonly permitAuthority?:
@@ -1032,6 +1033,65 @@ describe("production fault decision bridge", () => {
         rollbackGeneration: "1",
       }),
     ).toThrow("no current authenticated");
+  });
+
+  it("defers headers whose predecessor attestation is not yet release-final", async () => {
+    const current = observation([
+      headerFixture("01"),
+      headerFixture("02"),
+      headerFixture("03"),
+    ]);
+    const [first, second, third] = current.finalizedHeaders;
+    const currentHarness = harness({
+      current,
+      categoryByHeader: {
+        [first!.headerHash]: "doubleSpend",
+        [second!.headerHash]: "invalidRange",
+        [third!.headerHash]: "invalidRange",
+      },
+      resolvePredecessorOverride: async (header) => {
+        if (header.headerHash === second!.headerHash) {
+          throw new WatcherRetainedHeaderAttestationPendingError(
+            first!.headerHash,
+          );
+        }
+        return undefined;
+      },
+    });
+    const prepared = await currentHarness.bridge.prepareForRecovery(current);
+    expect(prepared.decisionDigests).toHaveLength(1);
+    expect(prepared.target).toMatchObject({
+      category: "doubleSpend",
+      headerHash: first!.headerHash,
+    });
+    expect(currentHarness.appended.map(({ headerHash }) => headerHash)).toEqual(
+      [first!.headerHash],
+    );
+  });
+
+  it("produces no target while the first header's predecessor attestation is pending", async () => {
+    const current = observation([headerFixture("01"), headerFixture("02")]);
+    const [first, second] = current.finalizedHeaders;
+    const currentHarness = harness({
+      current,
+      categoryByHeader: {
+        [first!.headerHash]: "doubleSpend",
+        [second!.headerHash]: "invalidRange",
+      },
+      resolvePredecessorOverride: async (header) => {
+        if (header.headerHash === first!.headerHash) {
+          throw new WatcherRetainedHeaderAttestationPendingError(
+            "ab".repeat(32),
+          );
+        }
+        return undefined;
+      },
+    });
+    const prepared = await currentHarness.bridge.prepareForRecovery(current);
+    expect(prepared.decisionDigests).toHaveLength(0);
+    expect(prepared.target).toBeNull();
+    expect(currentHarness.appended).toHaveLength(0);
+    expect(currentHarness.enqueued).toHaveLength(0);
   });
 
   it("resumes only the exact category-bound FraudProof lock target", async () => {

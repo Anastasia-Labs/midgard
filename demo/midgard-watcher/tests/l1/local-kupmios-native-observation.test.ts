@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import {
   computeFraudProofRawL1PointId,
   LOCAL_KUPMIOS_RAW_BLOCK_AT_POINT,
+  LocalKupmiosCheckpointChangedError,
+  LocalKupmiosExactPointNotCanonicalError,
   type LocalKupmiosRawBlockAtPoint,
   readAdmittedLocalKupmiosPredecessorPoint,
 } from "@al-ft/midgard-fault-proofs";
@@ -10,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   assertWatcherLocalKupmiosNativeObservation,
+  captureExactBlockWithKupoLag,
   unsafeAssertNativeKupmiosAgreementForTest,
   type WatcherLocalKupmiosNativeObservation,
 } from "../../src/l1/local-kupmios-native-observation.js";
@@ -324,4 +327,97 @@ describe("native Kupo/Ogmios agreement", () => {
       );
     },
   );
+});
+
+describe("exact block capture under Kupo indexing lag", () => {
+  const lag = () =>
+    new LocalKupmiosExactPointNotCanonicalError(
+      "Kupo exact checkpoint does not contain the requested block",
+      { requestedSlot: 1_000, checkpointSlot: 980, kupoHeadSlot: 980 },
+    );
+  const divergence = () =>
+    new LocalKupmiosExactPointNotCanonicalError(
+      "Kupo exact checkpoint does not contain the requested block",
+      { requestedSlot: 1_000, checkpointSlot: 990, kupoHeadSlot: 1_200 },
+    );
+
+  it("waits for Kupo to reach the requested slot with a fresh source each poll", async () => {
+    const outcomes = [lag(), lag(), "block"] as const;
+    let reads = 0;
+    const recreated: number[] = [];
+    const slept: number[] = [];
+    let clock = 0;
+    const raw = await captureExactBlockWithKupoLag({
+      read: async () => {
+        const outcome = outcomes[reads]!;
+        reads += 1;
+        if (outcome instanceof Error) throw outcome;
+        return outcome;
+      },
+      recreateSource: () => recreated.push(reads),
+      isClosed: () => false,
+      lagBudgetMs: 10_000,
+      pollMs: 2_000,
+      sleep: async (ms) => {
+        slept.push(ms);
+        clock += ms;
+      },
+      now: () => clock,
+    });
+    expect(raw).toBe("block");
+    expect(slept).toEqual([2_000, 2_000]);
+    expect(recreated).toEqual([1, 2]);
+  });
+
+  it("fails closed once the lag budget is spent or when Kupo is not behind", async () => {
+    let clock = 0;
+    await expect(
+      captureExactBlockWithKupoLag({
+        read: async () => {
+          throw lag();
+        },
+        recreateSource: () => undefined,
+        isClosed: () => false,
+        lagBudgetMs: 5_000,
+        pollMs: 2_000,
+        sleep: async (ms) => {
+          clock += ms;
+        },
+        now: () => clock,
+      }),
+    ).rejects.toBeInstanceOf(LocalKupmiosExactPointNotCanonicalError);
+    expect(clock).toBe(4_000);
+    const recreate = vi.fn();
+    await expect(
+      captureExactBlockWithKupoLag({
+        read: async () => {
+          throw divergence();
+        },
+        recreateSource: recreate,
+        isClosed: () => false,
+        lagBudgetMs: 60_000,
+        sleep: async () => {
+          throw new Error("must not wait on a divergence");
+        },
+      }),
+    ).rejects.toBeInstanceOf(LocalKupmiosExactPointNotCanonicalError);
+    expect(recreate).not.toHaveBeenCalled();
+  });
+
+  it("still bounds moving-head retries independently of lag waits", async () => {
+    let reads = 0;
+    await expect(
+      captureExactBlockWithKupoLag({
+        read: async () => {
+          reads += 1;
+          throw new LocalKupmiosCheckpointChangedError("head moved");
+        },
+        recreateSource: () => undefined,
+        isClosed: () => false,
+        lagBudgetMs: 60_000,
+        sleep: async () => undefined,
+      }),
+    ).rejects.toThrow("head moved");
+    expect(reads).toBe(3);
+  });
 });

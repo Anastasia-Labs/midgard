@@ -30,6 +30,7 @@ import {
   type FraudProofRawL1Fetch,
   type FraudProofRawL1Point,
   type FraudProofRawL1WebSocketLike,
+  isLocalKupmiosPointBehindKupoHead,
   LOCAL_KUPMIOS_REFERENCE_ACQUISITION_BOUNDS,
   LocalKupmiosCheckpointChangedError,
   LocalKupmiosExactPointNotCanonicalError,
@@ -1317,6 +1318,36 @@ describe("production local Kupmios raw source V1", () => {
         label: "transaction",
       }),
     ).toBe(transaction.to_canonical_cbor_hex());
+  });
+
+  it("reports whether a non-canonical exact point is merely ahead of Kupo's head", async () => {
+    const fixture = sourceFixture();
+    await fixture.source.readBoundary();
+    const lagging = await readAdmittedLocalKupmiosRawBlockAtPoint({
+      source: fixture.source,
+      point: chainPoint("1200", hash(0x21), "90"),
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(lagging).toBeInstanceOf(LocalKupmiosExactPointNotCanonicalError);
+    expect(
+      (lagging as LocalKupmiosExactPointNotCanonicalError).kupoLag,
+    ).toEqual({ requestedSlot: 1200, checkpointSlot: 400, kupoHeadSlot: 990 });
+    expect(isLocalKupmiosPointBehindKupoHead(lagging)).toBe(true);
+    const diverged = await readAdmittedLocalKupmiosRawBlockAtPoint({
+      source: fixture.source,
+      point: chainPoint("400", hash(0x22), "71"),
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(diverged).toBeInstanceOf(LocalKupmiosExactPointNotCanonicalError);
+    expect(
+      (diverged as LocalKupmiosExactPointNotCanonicalError).kupoLag,
+    ).toEqual({ requestedSlot: 400, checkpointSlot: 400, kupoHeadSlot: 990 });
+    expect(isLocalKupmiosPointBehindKupoHead(diverged)).toBe(false);
+    expect(isLocalKupmiosPointBehindKupoHead(new Error("other"))).toBe(false);
   });
 
   it("re-admits an exact ordered raw block only from the opaque concrete source", async () => {

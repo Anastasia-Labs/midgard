@@ -2063,6 +2063,23 @@ const snapshotObservationAtBoundary = async ({
   });
 };
 
+/**
+ * The retained HeaderV1 exists on L1 but none of its release-final queue
+ * outputs carries a public DA attachment yet. The committee attests a block
+ * after the operator commits it, so a successor can reach classification
+ * before its predecessor's attestation is release-final. This is a wait
+ * condition for the classifier, not a divergence, and it clears on its own
+ * once the attestation transaction reaches the finality depth.
+ */
+export class WatcherRetainedHeaderAttestationPendingError extends Error {
+  constructor(readonly headerHash: string) {
+    super(
+      "retained HeaderV1 lookup requires an authenticated public DA attachment",
+    );
+    this.name = "WatcherRetainedHeaderAttestationPendingError";
+  }
+}
+
 const resolveRetainedHeaderAtBoundary = async ({
   headerHash,
   authority,
@@ -2162,9 +2179,7 @@ const resolveRetainedHeaderAtBoundary = async ({
     })
     .at(-1);
   if (retained === undefined) {
-    throw new Error(
-      "retained HeaderV1 lookup requires an authenticated public DA attachment",
-    );
+    throw new WatcherRetainedHeaderAttestationPendingError(headerHash);
   }
   return retained;
 };

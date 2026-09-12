@@ -28,6 +28,7 @@ import {
   assertWatcherStateQueueObservation,
   type WatcherAuthenticatedStateQueueObservation,
   type WatcherCorrectionLockObservation,
+  WatcherRetainedHeaderAttestationPendingError,
   type WatcherStateQueueHeaderObservation,
   type WatcherStateQueueObservationSource,
 } from "../indexers/authenticated-state-queue-observation.js";
@@ -553,6 +554,7 @@ const createBridge = (input: {
       candidate.finalizedHeaders.length,
     );
     let nextHeaderIndex = 0;
+    let deferredFromIndex = candidate.finalizedHeaders.length;
     let classificationFailed = false;
     let classificationFailure: unknown;
     const classifyNext = async (): Promise<void> => {
@@ -601,8 +603,23 @@ const createBridge = (input: {
           verificationSubjectDigest = authenticatedObservationDigest;
           startedAtMs = nowMs().toString();
           startedMonotonicMs = monotonicNowMs();
-          const predecessor =
-            await input.dependencies.resolvePredecessorHeader?.(header);
+          let predecessor: WatcherStateQueueHeaderObservation | undefined;
+          try {
+            predecessor =
+              await input.dependencies.resolvePredecessorHeader?.(header);
+          } catch (error) {
+            if (
+              !(error instanceof WatcherRetainedHeaderAttestationPendingError)
+            )
+              throw error;
+            // The predecessor's public DA attachment is not release-final
+            // yet. Classification of this header and every later one waits
+            // for the next observation; earlier headers keep their decisions
+            // so target selection still runs over a fully classified prefix.
+            deferredFromIndex = Math.min(deferredFromIndex, index);
+            classifications[index] = null;
+            continue;
+          }
           if (token !== classificationEpoch) {
             throw new Error(
               "state-queue authority changed before fault classification",
@@ -735,6 +752,13 @@ const createBridge = (input: {
       ),
     );
     if (classificationFailed) throw classificationFailure;
+    for (
+      let index = deferredFromIndex;
+      index < classifications.length;
+      index += 1
+    ) {
+      classifications[index] = null;
+    }
     const decisions: HeaderDecision[] = [];
     for (let index = 0; index < classifications.length; index += 1) {
       const classification = classifications[index];
