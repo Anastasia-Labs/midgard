@@ -171,6 +171,7 @@ import {
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
+  workflowJournalIsReconciliationOnly,
 } from "./actuation-permit.js";
 import {
   type WorkflowAdapterReadinessInput,
@@ -280,6 +281,11 @@ import {
   type ManifestBoundNonExistentInputWorkflowConfig,
   runOrResumeManifestBoundNonExistentInputWorkflow,
 } from "./non-existent-input.js";
+import {
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowTerminalVerifier,
+  resumeRecordedFraudProofWorkflow,
+} from "./orchestrator.js";
 import { continuePendingWorkflow } from "./pending-continuation.js";
 import {
   createManifestBoundReferenceInputNoIdxWorkflow,
@@ -287,6 +293,7 @@ import {
   type ManifestBoundReferenceInputNoIdxWorkflowConfig,
   runOrResumeManifestBoundReferenceInputNoIdxWorkflow,
 } from "./reference-input-no-idx.js";
+import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
 import {
   createAdmittedWorkflowRunner,
   WORKFLOW_ADAPTER_RUNNER,
@@ -325,6 +332,9 @@ export type WorkflowRuntimeConfigLoader<Config> = (input: {
 type ManifestBoundWorkflowIdentity<
   Category extends FraudProofCatalogueCategoryName,
 > = {
+  readonly adapter?: FraudProofFamilyWorkflowAdapter;
+  readonly terminalVerifier?: FraudProofWorkflowTerminalVerifier;
+  readonly releaseFinalityAuthority?: FraudProofReleaseFinalityAuthority;
   readonly binding: {
     readonly deploymentFingerprint: string;
     readonly definition: {
@@ -431,7 +441,28 @@ const createManifestBoundWorkflowRunOrResume =
       return await continuePendingWorkflow({
         invocation,
         journal,
-        execute: (mode) => execute({ workflow, sources, journal, mode }),
+        execute: (mode) => {
+          if (workflowJournalIsReconciliationOnly(journal)) {
+            if (
+              workflow.adapter === undefined ||
+              workflow.terminalVerifier === undefined ||
+              workflow.releaseFinalityAuthority === undefined
+            )
+              throw new Error(
+                "manifest-bound workflow omitted its existing adapter recovery surface",
+              );
+            return resumeRecordedFraudProofWorkflow({
+              deploymentFingerprint: invocation.deploymentFingerprint,
+              category,
+              headerHash: invocation.headerHash,
+              journal,
+              adapter: workflow.adapter,
+              terminalVerifier: workflow.terminalVerifier,
+              releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+            });
+          }
+          return execute({ workflow, sources, journal, mode });
+        },
       });
     } finally {
       await loaded.close();

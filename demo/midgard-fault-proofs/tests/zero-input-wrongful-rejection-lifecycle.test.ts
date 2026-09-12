@@ -141,23 +141,8 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
       inputFieldPreimage: inputField,
       committedFieldHashHex: midgardFieldCommitment(inputField).toString("hex"),
     });
-    const planned = planFaultProofFieldOpening({
-      anchorSourceKind: 0n,
-      fieldIndex: 0,
-      anchorTxId: transactionId,
-      nativeTxCompactCbor: compact.toString("hex"),
-      itemCbors: [],
-      owner: harness.proverSigner.paymentKeyHash,
-      publish: true,
-      label: "zero input accepted field",
-    });
-    await publishFaultProofFieldCarriage({
-      lucid: harness.proverLucid,
-      signer: harness.proverSigner,
-      planned,
-      publisherAddress: harness.proverSigner.address,
-      label: "zero input accepted field",
-    });
+    // Nothing publishes a field carriage for the accepted case: the door reads
+    // the empty field inline, exactly as the production workflow submits it.
     const references: UTxO[] = [];
     for (const [index, step] of applied.entries())
       references.push(

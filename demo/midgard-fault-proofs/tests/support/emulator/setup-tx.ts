@@ -418,68 +418,115 @@ const nodeWithDatum = async ({
   };
 };
 
+/** The node whose key precedes `key` and whose link skips past it. */
+const orderedInsertionAnchor = (
+  nodes: readonly NodeWithDatum[],
+  key: string,
+  label: string,
+): NodeWithDatum => {
+  const anchor = nodes.find(
+    ({ datum }) =>
+      (datum.key === "Empty" || datum.key.Key.key < key) &&
+      (datum.next === "Empty" || datum.next.Key.key > key),
+  );
+  if (anchor === undefined)
+    throw new Error(`${label} has no insertion anchor for ${key}`);
+  return anchor;
+};
+
+const directoryNodes = async (
+  lucid: SetupLucid,
+  address: string,
+  policyId: string,
+  label: string,
+): Promise<NodeWithDatum[]> =>
+  Promise.all(
+    (await lucid.utxosAt(address))
+      .filter((utxo) =>
+        Object.entries(utxo.assets).some(
+          ([unit, quantity]) =>
+            unit !== "lovelace" && unit.startsWith(policyId) && quantity === 1n,
+        ),
+      )
+      .map((utxo) => nodeWithDatum({ utxo, policyId, label })),
+  );
+
 /**
- * Transactions 2 and 3: genuinely register the header's operator, then move
- * that authenticated node into the active-operators set.
+ * Genuinely register an operator from the selected wallet, then move that
+ * authenticated node into the active-operators set. The registration's
+ * validity ends `registrationSlots` ahead; activation becomes legal once the
+ * chain has moved past the derived activation time, which `awaitActivation`
+ * arranges for onboardings that join a non-empty active set.
  */
-const submitOperatorActivationTx = async ({
+export const onboardEmulatorOperator = async ({
   lucid,
   contracts,
-  header,
-  units,
+  operatorKeyHash,
+  registrationSlots = 120,
+  awaitActivation = () => {},
 }: {
   readonly lucid: SetupLucid;
   readonly contracts: SetupContracts;
-  readonly header: Header;
-  readonly units: SetupUnits;
-}): Promise<void> => {
-  const [hubOracleUtxo, activeRootUtxo, retiredRootUtxo, registeredRootUtxo] =
-    await Promise.all([
-      requireUtxoWithUnit(
-        lucid,
-        credentialToAddress(
-          network,
-          scriptHashToCredential(contracts.hubOracle.policyId),
-        ),
-        units.hubOracle,
-        "hub oracle after the setup mint",
-      ),
-      requireUtxoWithUnit(
-        lucid,
-        contracts.activeOperators.spendingScriptAddress,
-        units.activeOperatorsRoot,
-        "active-operators root after the setup mint",
-      ),
-      requireUtxoWithUnit(
-        lucid,
-        contracts.retiredOperators.spendingScriptAddress,
-        units.retiredOperatorsRoot,
-        "retired-operators root after the setup mint",
-      ),
-      requireUtxoWithUnit(
-        lucid,
-        contracts.registeredOperators.spendingScriptAddress,
-        units.registeredOperatorsRoot,
-        "registered-operators root after the setup mint",
-      ),
-    ]);
-  const [activeRoot, retiredRoot, registeredRoot] = await Promise.all([
-    nodeWithDatum({
-      utxo: activeRootUtxo,
-      policyId: contracts.activeOperators.policyId,
-      label: "active-operators root",
-    }),
-    nodeWithDatum({
-      utxo: retiredRootUtxo,
-      policyId: contracts.retiredOperators.policyId,
-      label: "retired-operators root",
-    }),
-    nodeWithDatum({
-      utxo: registeredRootUtxo,
-      policyId: contracts.registeredOperators.policyId,
-      label: "registered-operators root",
-    }),
+  readonly operatorKeyHash: string;
+  readonly registrationSlots?: number;
+  readonly awaitActivation?: (activationTime: bigint) => void | Promise<void>;
+}): Promise<{ registeredNodeUnit: string; activeNodeUnit: string }> => {
+  const hubOracleUnit = toUnit(
+    contracts.hubOracle.policyId,
+    HUB_ORACLE_ASSET_NAME,
+  );
+  const registeredRootUnit = toUnit(
+    contracts.registeredOperators.policyId,
+    REGISTERED_OPERATORS_ROOT_ASSET_NAME,
+  );
+  const activeNodeUnit = toUnit(
+    contracts.activeOperators.policyId,
+    ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + operatorKeyHash,
+  );
+  const hubOracleUtxo = await requireUtxoWithUnit(
+    lucid,
+    credentialToAddress(
+      network,
+      scriptHashToCredential(contracts.hubOracle.policyId),
+    ),
+    hubOracleUnit,
+    "hub oracle before operator onboarding",
+  );
+  const [activeNodes, retiredNodes, registeredRootUtxo] = await Promise.all([
+    directoryNodes(
+      lucid,
+      contracts.activeOperators.spendingScriptAddress,
+      contracts.activeOperators.policyId,
+      "active-operators node",
+    ),
+    directoryNodes(
+      lucid,
+      contracts.retiredOperators.spendingScriptAddress,
+      contracts.retiredOperators.policyId,
+      "retired-operators node",
+    ),
+    requireUtxoWithUnit(
+      lucid,
+      contracts.registeredOperators.spendingScriptAddress,
+      registeredRootUnit,
+      "registered-operators root before registration",
+    ),
   ]);
+  const activeNotMemberWitness = orderedInsertionAnchor(
+    activeNodes,
+    operatorKeyHash,
+    "active-operators set",
+  );
+  const retiredNotMemberWitness = orderedInsertionAnchor(
+    retiredNodes,
+    operatorKeyHash,
+    "retired-operators set",
+  );
+  const registeredRoot = await nodeWithDatum({
+    utxo: registeredRootUtxo,
+    policyId: contracts.registeredOperators.policyId,
+    label: "registered-operators root",
+  });
   const lifecycleReferences = contracts.operatorLifecycleReferenceScripts;
   if (lifecycleReferences === undefined) {
     throw new Error(
@@ -487,7 +534,7 @@ const submitOperatorActivationTx = async ({
     );
   }
   const registerValidTo = BigInt(
-    lucid.slotToUnixTime(lucid.currentSlot() + 120),
+    lucid.slotToUnixTime(lucid.currentSlot() + registrationSlots),
   );
   const activationTime = registerValidTo - 1n + REGISTRATION_DURATION_MS;
   const activationTimeHex = activationTime.toString(16);
@@ -502,10 +549,7 @@ const submitOperatorActivationTx = async ({
   const prependedNodeDatum = {
     key: { Key: { key: registrationNodeKey } },
     next: registeredRoot.datum.next,
-    data: Data.castTo(
-      { operator: header.operatorVkey },
-      RegisteredOperatorDatum,
-    ),
+    data: Data.castTo({ operator: operatorKeyHash }, RegisteredOperatorDatum),
   } as const;
   const updatedRegisteredRootDatum = {
     ...registeredRoot.datum,
@@ -519,11 +563,11 @@ const submitOperatorActivationTx = async ({
     buildRegisterOperatorTx({
       lucid,
       contracts,
-      operatorKeyHash: header.operatorVkey,
+      operatorKeyHash,
       registeredOperatorScriptRefs: lifecycleReferences.registered,
       hubOracleRefInput: hubOracleUtxo,
-      activeNotMemberWitness: activeRoot,
-      retiredNotMemberWitness: retiredRoot,
+      activeNotMemberWitness,
+      retiredNotMemberWitness,
       registeredRootNode: registeredRoot,
       registerFundingInputs: registrationFunding,
       registerMintAssets: { [registeredNodeUnit]: 1n },
@@ -564,6 +608,7 @@ const submitOperatorActivationTx = async ({
   await runEmulatorLifecycleStage("setup.operator-registration", async () =>
     lucid.awaitTx(await registrationSigned.submit()),
   );
+  await awaitActivation(activationTime);
 
   const [registeredNodeUtxo, continuedRegisteredRootUtxo] = await Promise.all([
     requireUtxoWithUnit(
@@ -575,7 +620,7 @@ const submitOperatorActivationTx = async ({
     requireUtxoWithUnit(
       lucid,
       contracts.registeredOperators.spendingScriptAddress,
-      units.registeredOperatorsRoot,
+      registeredRootUnit,
       "registered-operators root after registration",
     ),
   ]);
@@ -591,12 +636,28 @@ const submitOperatorActivationTx = async ({
       label: "continued registered-operators root",
     }),
   ]);
+  // The registered node sits at the list head, so the root is its anchor.
+  if (
+    continuedRegisteredRoot.datum.next === "Empty" ||
+    continuedRegisteredRoot.datum.next.Key.key !== registrationNodeKey
+  )
+    throw new Error("registered-operators root no longer links the new node");
+  const activeInsertionAnchor = orderedInsertionAnchor(
+    await directoryNodes(
+      lucid,
+      contracts.activeOperators.spendingScriptAddress,
+      contracts.activeOperators.policyId,
+      "active-operators node",
+    ),
+    operatorKeyHash,
+    "active-operators set",
+  );
   const activationFunding = [
     await largestWalletUtxo(lucid, "operator activation funding"),
   ];
   const transferredOperatorAssets = {
     ...registeredNode.utxo.assets,
-    [units.activeOperatorNode]: 1n,
+    [activeNodeUnit]: 1n,
   };
   delete transferredOperatorAssets[registeredNodeUnit];
   let activateLayout: Parameters<typeof buildActivateOperatorTx>[0]["layout"];
@@ -604,18 +665,18 @@ const submitOperatorActivationTx = async ({
     buildActivateOperatorTx({
       lucid,
       contracts,
-      operatorKeyHash: header.operatorVkey,
+      operatorKeyHash,
       registeredOperatorScriptRefs: lifecycleReferences.registered,
       activeOperatorScriptRefs: lifecycleReferences.active,
       hubOracleRefInput: hubOracleUtxo,
-      retiredNotMemberWitness: retiredRoot,
+      retiredNotMemberWitness,
       registeredNode,
       registeredAnchor: continuedRegisteredRoot,
-      activeAppendAnchor: activeRoot,
+      activeInsertionAnchor,
       activationFundingInputs: activationFunding,
       validFrom: BigInt(lucid.slotToUnixTime(lucid.currentSlot())),
       registeredNodeUnit,
-      activeNodeUnit: units.activeOperatorNode,
+      activeNodeUnit,
       transferredOperatorAssets,
       updatedRegisteredAnchorDatum: {
         ...continuedRegisteredRoot.datum,
@@ -658,6 +719,33 @@ const submitOperatorActivationTx = async ({
   await runEmulatorLifecycleStage("setup.operator-activation", async () =>
     lucid.awaitTx(await activationSigned.submit()),
   );
+  return { registeredNodeUnit, activeNodeUnit };
+};
+
+/**
+ * Transactions 2 and 3: genuinely register the header's operator, then move
+ * that authenticated node into the active-operators set.
+ */
+const submitOperatorActivationTx = async ({
+  lucid,
+  contracts,
+  header,
+  units,
+}: {
+  readonly lucid: SetupLucid;
+  readonly contracts: SetupContracts;
+  readonly header: Header;
+  readonly units: SetupUnits;
+}): Promise<void> => {
+  const onboarded = await onboardEmulatorOperator({
+    lucid,
+    contracts,
+    operatorKeyHash: header.operatorVkey,
+  });
+  if (onboarded.activeNodeUnit !== units.activeOperatorNode)
+    throw new Error(
+      "setup activated a different operator node than the header names",
+    );
 };
 
 /**

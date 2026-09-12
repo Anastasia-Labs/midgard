@@ -1,7 +1,6 @@
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
-import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
@@ -15,26 +14,44 @@ import {
   type WorkflowAdapterReadinessInput,
   type WorkflowAdapterRunner,
 } from "../workflow/adapters.js";
+import { UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import {
+  createCursorFamilyWorkflowAdapter,
+  CURSOR_FAMILY_TRANSACTION_PORT,
+} from "../workflow/cursor-family-adapter.js";
+import {
+  cursorFamilyActionInput,
+  cursorStringField,
+} from "../workflow/cursor-family-runtime.js";
+import type { CursorFamilySpec } from "../workflow/cursor-family-state.js";
 import {
   assertManifestBoundWorkflowSigner,
   bindFraudProofWorkflowDeployment,
   type FraudProofWorkflowDeploymentBinding,
+  releaseFinalityAuthorityFromDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
-import { createFraudProofFamilyLocalKupmiosL1ObservationPort } from "../workflow/family-l1-observation.js";
+import {
+  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+} from "../workflow/family-l1-observation.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
-  computeFraudProofWorkflowId,
   DirectoryFraudProofWorkflowJournalStore,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEvent,
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import {
+  createCanonicalFamilyArtifactPort,
+  executeManifestBoundFamilyRecovery,
+} from "../workflow/manifest-bound-family-recovery.js";
+import {
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowRunResult,
+  type FraudProofWorkflowTerminalVerifier,
+} from "../workflow/orchestrator.js";
 import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
-import { submitCapturedTransaction } from "../workflow/transaction-boundary.js";
+import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import {
   createUnusedScriptWitnessActuator,
   type UnusedScriptWitnessWorkflowReferences as ActuatorReferences,
@@ -74,6 +91,20 @@ export const UNUSED_SCRIPT_WITNESS_STEP_DATUM_SCHEMAS = Object.freeze([
   UnusedScriptStep06DatumSchema,
 ] as const);
 
+export const UNUSED_SCRIPT_WITNESS_CURSOR_SPEC: CursorFamilySpec<"unusedScriptWitness"> =
+  Object.freeze<CursorFamilySpec<"unusedScriptWitness">>({
+    category: "unusedScriptWitness",
+    stepCount: 6,
+    successors: {
+      1: [2],
+      2: [3],
+      3: [4],
+      4: [4, 5],
+      5: [5, 6],
+      6: ["proof_token"],
+    },
+  });
+
 export type UnusedScriptWitnessRemovalReferenceScripts = Readonly<{
   correctionLockSpend: UTxO;
   stateQueueSpend: UTxO;
@@ -106,6 +137,9 @@ export type ManifestBoundUnusedScriptWitnessWorkflowConfig = Readonly<{
 }>;
 
 export type ManifestBoundUnusedScriptWitnessWorkflow = Readonly<{
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   binding: FraudProofWorkflowDeploymentBinding<"unusedScriptWitness">;
   lucid: LucidEvolution;
   decisionDigest: string;
@@ -224,20 +258,93 @@ export const createManifestBoundUnusedScriptWitnessWorkflow = async (
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
   });
+  const actuator = createUnusedScriptWitnessActuator({
+    binding,
+    lucid: config.lucid,
+    signer: config.signer,
+    contracts: familyContracts,
+    references: { steps, witnesses },
+    stateQueueMutationLeaseCoordinator:
+      config.stateQueueMutationLeaseCoordinator,
+  });
+  const artifacts = createCanonicalFamilyArtifactPort(({ evidence }) =>
+    prepareUnusedScriptWitnessArtifact(evidence),
+  );
+  const adapter = createCursorFamilyWorkflowAdapter({
+    spec: UNUSED_SCRIPT_WITNESS_CURSOR_SPEC,
+    l1,
+    stateQueueMutationLeaseCoordinator:
+      config.stateQueueMutationLeaseCoordinator,
+    transactions: {
+      portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
+      category: "unusedScriptWitness",
+      prepare: artifacts.prepare,
+      validatePreparedArtifact: artifacts.validatePreparedArtifact,
+      capture: async ({ action, artifact }) => {
+        const input = cursorFamilyActionInput({
+          category: "unusedScriptWitness",
+          action,
+        });
+        const restored = artifacts.require(artifact);
+        if (input.stage === "init")
+          return actuator.capture({
+            artifact: restored,
+            action: {
+              stage: "init",
+              stateQueueBlockOutRef: cursorStringField(
+                input,
+                "stateQueueBlockOutRef",
+              ),
+            },
+          });
+        if (input.stage === "remove")
+          return actuator.capture({
+            artifact: restored,
+            action: {
+              stage: "remove",
+              nextRemovalOutRef: cursorStringField(input, "nextRemovalOutRef"),
+              fraudProofOutRef: cursorStringField(input, "fraudProofOutRef"),
+            },
+          });
+        const stages = [
+          "step_01",
+          "step_02",
+          "step_03",
+          "step_04",
+          "step_05",
+          "step_06",
+        ] as const;
+        const stage = stages[Number(input.ordinal) - 1];
+        if (stage === undefined)
+          throw new Error("unusedScriptWitness cursor ordinal changed");
+        const threadOutRef = cursorStringField(input, "threadOutRef");
+        return actuator.capture({
+          artifact: restored,
+          action:
+            stage === "step_01"
+              ? {
+                  stage,
+                  threadOutRef,
+                  stateQueueBlockOutRef: cursorStringField(
+                    input,
+                    "stateQueueBlockOutRef",
+                  ),
+                }
+              : { stage, threadOutRef },
+        });
+      },
+    },
+  });
   return Object.freeze({
     binding,
     lucid: config.lucid,
     decisionDigest: config.decisionDigest,
     l1,
-    actuator: createUnusedScriptWitnessActuator({
-      binding,
-      lucid: config.lucid,
-      signer: config.signer,
-      contracts: familyContracts,
-      references: { steps, witnesses },
-      stateQueueMutationLeaseCoordinator:
-        config.stateQueueMutationLeaseCoordinator,
-    }),
+    actuator,
+    adapter,
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
+    releaseFinalityAuthority:
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
   });
@@ -255,60 +362,6 @@ export type LoadUnusedScriptWitnessWorkflow = (input: {
   invocation: WorkflowAdapterReadinessInput;
 }) => Promise<LoadedUnusedScriptWitnessWorkflow>;
 
-const append = async (
-  journal: FraudProofWorkflowJournalStore,
-  workflowId: string,
-  identity: FraudProofWorkflowIdentity,
-  event: FraudProofWorkflowJournalEvent,
-) => {
-  const sequence = (await journal.load(workflowId)).length;
-  await journal.append(
-    {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-      workflowId,
-      identity,
-      sequence,
-      recordedAt: new Date().toISOString(),
-      event,
-    },
-    sequence,
-  );
-};
-
-const actionFor = async (
-  workflow: ManifestBoundUnusedScriptWitnessWorkflow,
-) => {
-  const stage = (
-    await workflow.l1.observe({
-      headerHash: workflow.binding.definition.headerHash,
-    })
-  ).stage;
-  if (stage.kind === "not_started")
-    return {
-      stage: "init" as const,
-      stateQueueBlockOutRef: stage.stateQueueBlockOutRef,
-    };
-  if (stage.kind === "proof_token")
-    return {
-      stage: "remove" as const,
-      nextRemovalOutRef: stage.nextRemovalOutRef,
-      fraudProofOutRef: stage.fraudProofOutRef,
-    };
-  if (stage.kind === "removed") return "removed" as const;
-  const selected = (
-    ["step_01", "step_02", "step_03", "step_04", "step_05", "step_06"] as const
-  )[stage.step - 1];
-  if (selected === undefined)
-    throw new Error("unusedScriptWitness observed impossible step");
-  return selected === "step_01"
-    ? {
-        stage: selected,
-        threadOutRef: stage.threadOutRef,
-        stateQueueBlockOutRef: stage.stateQueueBlockOutRef,
-      }
-    : { stage: selected, threadOutRef: stage.threadOutRef };
-};
-
 export const executeManifestBoundUnusedScriptWitnessWorkflow = async ({
   workflow,
   sources,
@@ -317,86 +370,15 @@ export const executeManifestBoundUnusedScriptWitnessWorkflow = async ({
   workflow: ManifestBoundUnusedScriptWitnessWorkflow;
   sources: readonly RetainedDaPayloadSource[];
   journal: FraudProofWorkflowJournalStore;
-}) => {
-  const headerHash = workflow.binding.definition.headerHash;
-  const block = await fetchCanonicalBlockEvidence({
-    observation: await workflow.l1.observeHeader({ headerHash }),
+}): Promise<FraudProofWorkflowRunResult> => {
+  return executeManifestBoundFamilyRecovery({
+    ...workflow,
     sources,
+    journal,
+    replayer: UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY,
   });
-  const artifact = await prepareUnusedScriptWitnessArtifact(block);
-  const identity: FraudProofWorkflowIdentity = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    category: "unusedScriptWitness",
-    target: { kind: "state_queue_header", headerHash },
-    decisionDigest: workflow.decisionDigest,
-  };
-  const workflowId = computeFraudProofWorkflowId(identity);
-  let entries = await journal.load(workflowId);
-  if (entries.length === 0) {
-    await append(journal, workflowId, identity, { kind: "started" });
-    entries = await journal.load(workflowId);
-  }
-  const pending = [...entries]
-    .reverse()
-    .find(({ event }) => event.kind === "submission_intent");
-  const intent =
-    pending?.event.kind === "submission_intent" ? pending.event : undefined;
-  if (
-    intent !== undefined &&
-    !entries.some(
-      ({ event }) =>
-        event.kind === "confirmed" && event.actionId === intent.actionId,
-    )
-  ) {
-    if (
-      !(await workflow.l1.transactionConfirmed({
-        headerHash,
-        txHash: intent.txHash,
-      }))
-    )
-      return { kind: "pending" as const, workflowId, txHash: intent.txHash };
-    await append(journal, workflowId, identity, {
-      kind: "confirmed",
-      actionId: intent.actionId,
-      txHash: intent.txHash,
-    });
-  }
-  const action = await actionFor(workflow);
-  if (action === "removed") return { kind: "completed" as const, workflowId };
-  const captured = await workflow.actuator.capture({ action, artifact });
-  const actionId = `unusedScriptWitness:${action.stage}`;
-  await append(journal, workflowId, identity, {
-    kind: "preflight_passed",
-    actionId,
-    txHash: captured.transaction.txHash,
-    localEvaluator: "lucid-evolution-local-uplc-v1",
-    referenceScripts: captured.transaction.referenceScripts,
-  });
-  await append(journal, workflowId, identity, {
-    kind: "submission_intent",
-    actionId,
-    actionInput: {
-      schemaVersion: "midgard-production-cursor-family-action-v1",
-      category: "unusedScriptWitness",
-      stage: action.stage,
-    },
-    attempt: 1,
-    txHash: captured.transaction.txHash,
-  });
-  const submitted = await submitCapturedTransaction(captured.transaction);
-  if (submitted !== captured.transaction.txHash)
-    throw new Error("unusedScriptWitness provider substituted transaction");
-  await append(journal, workflowId, identity, {
-    kind: "submitted",
-    actionId,
-    attempt: 1,
-    txHash: submitted,
-  });
-  return { kind: "pending" as const, workflowId, txHash: submitted };
 };
 
-/** Central-loader-compatible, callback-free production surface. */
 export const createUnusedScriptWitnessWorkflowRunnerSurface = ({
   loadRuntimeConfig,
 }: {

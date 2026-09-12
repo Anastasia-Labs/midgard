@@ -249,7 +249,7 @@ describe("spendInputSignerMissing central journal adapter", () => {
     expect(confirmedIndex(clean.entries, txHash)).toBeGreaterThanOrEqual(0);
   });
 
-  it("abandons an unconfirmed intent only when raw L1 still authenticates its source stage", async () => {
+  it("preserves an unconfirmed intent when a negative lookup cannot authenticate expiry", async () => {
     const memory = store();
     const bridge = adapter(memory.value, {
       transactionConfirmed: async () => false,
@@ -262,14 +262,30 @@ describe("spendInputSignerMissing central journal adapter", () => {
       "step03",
       "proven",
     )({ txHash, referenceScripts: [] } as never);
-    await bridge.reconcile("step03");
-    expect(memory.entries.at(-1)?.event).toEqual(
-      expect.objectContaining({ kind: "reconciled", outcome: "not_found" }),
+    await expect(bridge.reconcile("step03")).rejects.toThrow(
+      "authenticated signed-transaction expiry",
     );
+    expect(memory.entries.at(-1)?.event).toEqual(
+      expect.objectContaining({
+        kind: "reconciled",
+        outcome: "pending",
+        txHash,
+      }),
+    );
+    await expect(
+      adapter(memory.value, { transactionConfirmed: async () => false }).begin(
+        "submitStep03",
+        "family-evidence",
+        "step03",
+        "scanning",
+      ),
+    ).rejects.toThrow("unresolved submission");
+    expect(
+      memory.entries.filter(({ event }) => event.kind === "submission_intent"),
+    ).toHaveLength(1);
     expect(confirmedIndex(memory.entries, txHash)).toBe(-1);
 
-    // An unconfirmed transaction observed at neither the source nor the target
-    // stage is a substitution, not an abandonment.
+    // An unrelated observed stage remains a conflict; it cannot authorize replacement.
     const drifted = store();
     const driftedBridge = adapter(drifted.value, {
       transactionConfirmed: async () => false,

@@ -211,6 +211,10 @@ export const prepareJourneyTransactionProof = async (input: {
       );
     case "mintDeclaredAssetLimit":
       return Proofs.prepareMintDeclaredAssetLimitForcedArtifact(evidence);
+    case "mintItemNonCanonical":
+      return Proofs.deriveMintItemNonCanonicalEvidenceFromCanonicalBlock(
+        evidence,
+      );
     case "distinctAssetAccumulationLimit":
       return Proofs.prepareDistinctAssetAccumulationArtifact(evidence);
     case "mintAuthorization": {

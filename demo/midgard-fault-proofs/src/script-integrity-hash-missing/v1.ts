@@ -11,6 +11,7 @@ import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
   workflowActuationDecisionDigest,
+  workflowJournalIsReconciliationOnly,
 } from "../workflow/actuation-permit.js";
 import {
   WORKFLOW_ADAPTER_RUNNER,
@@ -51,6 +52,7 @@ import {
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowRunResult,
   type FraudProofWorkflowTerminalVerifier,
+  resumeRecordedFraudProofWorkflow,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
 import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
@@ -321,6 +323,16 @@ export const executeManifestBoundScriptIntegrityHashMissingWorkflow = async ({
     throw new Error(
       "scriptIntegrityHashMissing journal actuation permit changed decision digest",
     );
+  if (workflowJournalIsReconciliationOnly(journal))
+    return await resumeRecordedFraudProofWorkflow({
+      deploymentFingerprint: workflow.binding.deploymentFingerprint,
+      category: "scriptIntegrityHashMissing",
+      headerHash: workflow.binding.definition.headerHash,
+      journal,
+      adapter: workflow.adapter,
+      terminalVerifier: workflow.terminalVerifier,
+      releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+    });
   const observation = await workflow.l1.observeHeader({
     headerHash: workflow.binding.definition.headerHash,
   });

@@ -20,9 +20,25 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import {
   assertWorkflowActuationPermitIdentity,
   type WorkflowActuationPermit,
+  workflowActuationPermitIsReconciliationOnly,
 } from "./actuation-permit.js";
 import type { WorkflowAdapterRunner } from "./adapters.js";
-import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import {
+  computeFraudProofWorkflowId,
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalEntry,
+  type FraudProofWorkflowJournalEvent,
+  type FraudProofWorkflowJournalStore,
+  journalJsonDigest,
+  type JournalJsonObject,
+  normalizeFraudProofWorkflowIdentity,
+  normalizeJournalJson,
+  validateFraudProofWorkflowJournal,
+} from "./journal.js";
+import type {
+  FraudProofWorkflowAction,
+  FraudProofWorkflowPreflight,
+} from "./orchestrator.js";
 import {
   assertWorkflowRuntimeFundingPolicyRunner,
   readWorkflowRuntimeFundingPolicy,
@@ -74,6 +90,40 @@ export type WorkflowFundingPreparedTransition = Readonly<{
   producedInputs: readonly WorkflowFundingReservedInput[];
 }>;
 
+type WorkflowFundingJournalHandoff = Readonly<{
+  workflowId: string;
+  identity: FraudProofWorkflowIdentity;
+  preparedArtifactDigest: string;
+  expectedJournalSequence: number;
+}>;
+
+export type WorkflowFundingSubmissionHandoff = WorkflowFundingJournalHandoff &
+  Readonly<{
+    preflight: Extract<
+      FraudProofWorkflowJournalEvent,
+      { kind: "preflight_passed" }
+    >;
+    submissionIntent: Extract<
+      FraudProofWorkflowJournalEvent,
+      { kind: "submission_intent" }
+    >;
+  }>;
+
+export type WorkflowFundingCompletionHandoff = WorkflowFundingJournalHandoff &
+  Readonly<{
+    completion: Extract<FraudProofWorkflowJournalEvent, { kind: "completed" }>;
+  }>;
+
+export type WorkflowFundingAbandonmentHandoff = WorkflowFundingJournalHandoff &
+  Readonly<{
+    submissionIntent: WorkflowFundingSubmissionHandoff["submissionIntent"];
+    reconciliation: Extract<
+      FraudProofWorkflowJournalEvent,
+      { kind: "reconciled" }
+    > &
+      Readonly<{ outcome: "not_found"; txHash: string }>;
+  }>;
+
 /**
  * Durable watcher-owned authority. The production application supplies this
  * port from its authenticated SQLite reservation store and local-node UTxO
@@ -81,6 +131,10 @@ export type WorkflowFundingPreparedTransition = Readonly<{
  */
 export interface WorkflowFundingReservationPort {
   load(): Promise<unknown>;
+  readPendingTransition(): Promise<unknown>;
+  readPendingHandoff(): Promise<unknown>;
+  readCompletionHandoff(): Promise<unknown>;
+  readAbandonmentHandoff(): Promise<unknown>;
   resolveInputs(outRefs: readonly string[]): Promise<readonly UTxO[]>;
   /** Exact confirmed output from this reservation, or null if it has no lineage. */
   resolveConfirmedInput(input: { readonly outRef: string }): Promise<unknown>;
@@ -92,6 +146,7 @@ export interface WorkflowFundingReservationPort {
   prepare(input: {
     readonly expectedRevision: string;
     readonly transition: WorkflowFundingPreparedTransition;
+    readonly handoff: WorkflowFundingSubmissionHandoff;
   }): Promise<unknown>;
   confirm(input: {
     readonly expectedRevision: string;
@@ -100,12 +155,20 @@ export interface WorkflowFundingReservationPort {
   abandon(input: {
     readonly expectedRevision: string;
     readonly transactionHash: string;
+    readonly handoff: WorkflowFundingAbandonmentHandoff;
+  }): Promise<unknown>;
+  acknowledgeAbandonment(input: {
+    readonly expectedRevision: string;
+    readonly handoff: WorkflowFundingAbandonmentHandoff;
   }): Promise<unknown>;
   markConflict(input: {
     readonly expectedRevision: string;
     readonly code: "unexpected_spend" | "reservation_collision";
   }): Promise<unknown>;
-  release(input: { readonly expectedRevision: string }): Promise<unknown>;
+  release(input: {
+    readonly expectedRevision: string;
+    readonly handoff: WorkflowFundingCompletionHandoff;
+  }): Promise<unknown>;
 }
 
 export interface WorkflowFundingReservationPermit {
@@ -222,6 +285,559 @@ const reservedInput = (
     lovelace: record.lovelace,
     assets: Object.freeze(assets),
   });
+};
+
+export const parseWorkflowFundingPreparedTransition = (
+  value: unknown,
+): WorkflowFundingPreparedTransition => {
+  const record = exact(
+    value,
+    [
+      "actionKind",
+      "signedTransactionCborHex",
+      "transactionHash",
+      "transactionBodySha256",
+      "consumedOutRefs",
+      "producedInputs",
+    ],
+    "funding prepared transition",
+  );
+  if (
+    typeof record.actionKind !== "string" ||
+    !ACTION_KIND.test(record.actionKind) ||
+    typeof record.signedTransactionCborHex !== "string" ||
+    !/^(?:[0-9a-f]{2})+$/u.test(record.signedTransactionCborHex) ||
+    typeof record.transactionHash !== "string" ||
+    !DIGEST.test(record.transactionHash) ||
+    typeof record.transactionBodySha256 !== "string" ||
+    !DIGEST.test(record.transactionBodySha256) ||
+    !Array.isArray(record.consumedOutRefs) ||
+    record.consumedOutRefs.some((outRef) => typeof outRef !== "string") ||
+    !Array.isArray(record.producedInputs)
+  )
+    throw new Error("funding prepared transition is malformed");
+  const transaction = CML.Transaction.from_cbor_hex(
+    record.signedTransactionCborHex,
+  );
+  if (
+    CML.hash_transaction(transaction.body()).to_hex() !==
+      record.transactionHash ||
+    createHash("sha256")
+      .update(transaction.body().to_cbor_bytes())
+      .digest("hex") !== record.transactionBodySha256
+  )
+    throw new Error(
+      "funding prepared transaction bytes changed their identity",
+    );
+  const consumedOutRefs = canonicalOutRefs(
+    record.consumedOutRefs as string[],
+    "funding prepared consumed inputs",
+  );
+  const inputs = transaction.body().inputs();
+  const actual = new Set(
+    Array.from({ length: inputs.len() }, (_, index) => {
+      const input = inputs.get(index);
+      return `${input.transaction_id().to_hex()}#${input.index().toString()}`;
+    }),
+  );
+  if (consumedOutRefs.some((outRef) => !actual.has(outRef)))
+    throw new Error(
+      "funding prepared consumed input is outside the signed transaction",
+    );
+  const producedInputs = record.producedInputs.map((input, index) =>
+    reservedInput(input, `funding produced input ${index.toString()}`),
+  );
+  canonicalOutRefs(
+    producedInputs.map(({ outRef }) => outRef),
+    "funding prepared produced inputs",
+  );
+  const transactionHash = record.transactionHash;
+  const outputs = transaction.body().outputs();
+  for (const produced of producedInputs) {
+    const index = Number(produced.outRef.split("#")[1]);
+    if (
+      !produced.outRef.startsWith(`${transactionHash}#`) ||
+      !Number.isSafeInteger(index) ||
+      index >= outputs.len() ||
+      produced.role !== "funding"
+    )
+      throw new Error("funding produced input belongs to another transaction");
+    const decoded = coreToUtxo(
+      CML.TransactionUnspentOutput.new(
+        CML.TransactionInput.new(
+          CML.TransactionHash.from_hex(transactionHash),
+          BigInt(index),
+        ),
+        outputs.get(index),
+      ),
+    );
+    const assets = Object.entries(decoded.assets)
+      .filter(([unit]) => unit !== "lovelace")
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([unit, quantity]) => ({ unit, quantity: quantity.toString() }));
+    if (
+      decoded.assets.lovelace?.toString() !== produced.lovelace ||
+      journalJsonDigest(assets) !== journalJsonDigest(produced.assets)
+    )
+      throw new Error("funding produced input changed its signed output value");
+  }
+  return Object.freeze({
+    actionKind: record.actionKind,
+    signedTransactionCborHex: record.signedTransactionCborHex,
+    transactionHash: record.transactionHash,
+    transactionBodySha256: record.transactionBodySha256,
+    consumedOutRefs,
+    producedInputs: Object.freeze(producedInputs),
+  });
+};
+
+const parseHandoffIdentity = (
+  record: Readonly<Record<string, unknown>>,
+): WorkflowFundingJournalHandoff => {
+  const identity = normalizeFraudProofWorkflowIdentity(
+    record.identity as FraudProofWorkflowIdentity,
+  );
+  if (
+    record.workflowId !== computeFraudProofWorkflowId(identity) ||
+    typeof record.preparedArtifactDigest !== "string" ||
+    !DIGEST.test(record.preparedArtifactDigest) ||
+    typeof record.expectedJournalSequence !== "number" ||
+    !Number.isSafeInteger(record.expectedJournalSequence) ||
+    record.expectedJournalSequence < 2
+  )
+    throw new Error("funding journal handoff identity is malformed");
+  return Object.freeze({
+    workflowId: record.workflowId,
+    identity,
+    preparedArtifactDigest: record.preparedArtifactDigest,
+    expectedJournalSequence: record.expectedJournalSequence,
+  });
+};
+
+const handoffKeys = [
+  "workflowId",
+  "identity",
+  "preparedArtifactDigest",
+  "expectedJournalSequence",
+];
+
+export const parseWorkflowFundingSubmissionHandoff = (
+  value: unknown,
+): WorkflowFundingSubmissionHandoff => {
+  const record = exact(
+    value,
+    [...handoffKeys, "preflight", "submissionIntent"],
+    "funding submission handoff",
+  );
+  const identity = parseHandoffIdentity(record);
+  const preflight = exact(
+    record.preflight,
+    ["kind", "actionId", "txHash", "localEvaluator", "referenceScripts"],
+    "funding handoff preflight",
+  );
+  const intentKeys = ["kind", "actionId", "actionInput", "attempt", "txHash"];
+  if (
+    isPlainObject(record.submissionIntent) &&
+    "durableRecovery" in record.submissionIntent
+  )
+    intentKeys.push("durableRecovery");
+  const intent = exact(
+    record.submissionIntent,
+    intentKeys,
+    "funding handoff submission intent",
+  );
+  if (
+    preflight.kind !== "preflight_passed" ||
+    intent.kind !== "submission_intent" ||
+    typeof preflight.actionId !== "string" ||
+    preflight.actionId.length === 0 ||
+    preflight.actionId.trim() !== preflight.actionId ||
+    intent.actionId !== preflight.actionId ||
+    typeof preflight.txHash !== "string" ||
+    !DIGEST.test(preflight.txHash) ||
+    intent.txHash !== preflight.txHash ||
+    typeof preflight.localEvaluator !== "string" ||
+    preflight.localEvaluator.trim().length === 0 ||
+    !Array.isArray(preflight.referenceScripts) ||
+    typeof intent.attempt !== "number" ||
+    !Number.isSafeInteger(intent.attempt) ||
+    intent.attempt < 1 ||
+    !isPlainObject(intent.actionInput) ||
+    (intent.durableRecovery !== undefined &&
+      !isPlainObject(intent.durableRecovery))
+  )
+    throw new Error("funding handoff changed its evaluated action identity");
+  const roles = new Set<string>();
+  const referenceScripts = preflight.referenceScripts.map((value) => {
+    const reference = exact(
+      value,
+      ["role", "outRef", "scriptHash"],
+      "funding handoff reference",
+    );
+    if (
+      typeof reference.role !== "string" ||
+      reference.role.length === 0 ||
+      reference.role.trim() !== reference.role ||
+      roles.has(reference.role) ||
+      typeof reference.outRef !== "string" ||
+      !OUT_REF.test(reference.outRef) ||
+      typeof reference.scriptHash !== "string" ||
+      !/^[0-9a-f]{56}$/u.test(reference.scriptHash)
+    )
+      throw new Error("funding handoff reference identity is malformed");
+    roles.add(reference.role);
+    return Object.freeze({
+      role: reference.role,
+      outRef: reference.outRef,
+      scriptHash: reference.scriptHash,
+    });
+  });
+  return Object.freeze({
+    ...identity,
+    preflight: Object.freeze({
+      kind: "preflight_passed",
+      actionId: preflight.actionId,
+      txHash: preflight.txHash,
+      localEvaluator: preflight.localEvaluator,
+      referenceScripts: Object.freeze(referenceScripts),
+    }),
+    submissionIntent: Object.freeze({
+      kind: "submission_intent",
+      actionId: preflight.actionId,
+      txHash: preflight.txHash,
+      attempt: intent.attempt,
+      actionInput: normalizeJournalJson(
+        intent.actionInput,
+      ) as JournalJsonObject,
+      ...(intent.durableRecovery === undefined
+        ? {}
+        : {
+            durableRecovery: normalizeJournalJson(
+              intent.durableRecovery,
+            ) as JournalJsonObject,
+          }),
+    }),
+  });
+};
+
+export const createWorkflowFundingSubmissionHandoff = (input: {
+  readonly entries: readonly FraudProofWorkflowJournalEntry[];
+  readonly action: FraudProofWorkflowAction;
+  readonly preflight: FraudProofWorkflowPreflight;
+  readonly attempt: number;
+}): WorkflowFundingSubmissionHandoff => {
+  const first = input.entries[0];
+  const prepared = input.entries[1];
+  if (first === undefined || prepared?.event.kind !== "prepared")
+    throw new Error(
+      "funding submission requires its existing prepared journal",
+    );
+  return parseWorkflowFundingSubmissionHandoff({
+    workflowId: first.workflowId,
+    identity: first.identity,
+    preparedArtifactDigest: prepared.event.artifactDigest,
+    expectedJournalSequence: input.entries.length,
+    preflight: {
+      kind: "preflight_passed",
+      actionId: input.action.actionId,
+      txHash: input.preflight.txHash,
+      localEvaluator: input.preflight.localUplcEvaluation.evaluator,
+      referenceScripts: input.preflight.referenceScripts,
+    },
+    submissionIntent: {
+      kind: "submission_intent",
+      actionId: input.action.actionId,
+      actionInput: input.action.input,
+      txHash: input.preflight.txHash,
+      attempt: input.attempt,
+      ...(input.preflight.durableRecovery === undefined
+        ? {}
+        : { durableRecovery: input.preflight.durableRecovery }),
+    },
+  });
+};
+
+export const parseWorkflowFundingAbandonmentHandoff = (
+  value: unknown,
+): WorkflowFundingAbandonmentHandoff => {
+  const record = exact(
+    value,
+    [...handoffKeys, "submissionIntent", "reconciliation"],
+    "funding abandonment handoff",
+  );
+  const identity = parseHandoffIdentity(record);
+  const keys = ["kind", "actionId", "actionInput", "attempt", "txHash"];
+  if (
+    isPlainObject(record.submissionIntent) &&
+    "durableRecovery" in record.submissionIntent
+  )
+    keys.push("durableRecovery");
+  const intent = exact(
+    record.submissionIntent,
+    keys,
+    "funding abandoned submission intent",
+  );
+  const reconciliation = exact(
+    record.reconciliation,
+    ["kind", "actionId", "outcome", "txHash"],
+    "funding abandonment reconciliation",
+  );
+  if (
+    intent.kind !== "submission_intent" ||
+    typeof intent.actionId !== "string" ||
+    intent.actionId.length === 0 ||
+    intent.actionId.trim() !== intent.actionId ||
+    typeof intent.txHash !== "string" ||
+    !DIGEST.test(intent.txHash) ||
+    typeof intent.attempt !== "number" ||
+    !Number.isSafeInteger(intent.attempt) ||
+    intent.attempt < 1 ||
+    !isPlainObject(intent.actionInput) ||
+    (intent.durableRecovery !== undefined &&
+      !isPlainObject(intent.durableRecovery)) ||
+    reconciliation.kind !== "reconciled" ||
+    reconciliation.outcome !== "not_found" ||
+    reconciliation.actionId !== intent.actionId ||
+    reconciliation.txHash !== intent.txHash
+  )
+    throw new Error("funding abandonment changed its exact submission intent");
+  return Object.freeze({
+    ...identity,
+    submissionIntent: Object.freeze({
+      kind: "submission_intent",
+      actionId: intent.actionId,
+      txHash: intent.txHash,
+      attempt: intent.attempt,
+      actionInput: normalizeJournalJson(
+        intent.actionInput,
+      ) as JournalJsonObject,
+      ...(intent.durableRecovery === undefined
+        ? {}
+        : {
+            durableRecovery: normalizeJournalJson(
+              intent.durableRecovery,
+            ) as JournalJsonObject,
+          }),
+    }),
+    reconciliation: Object.freeze({
+      kind: "reconciled",
+      actionId: intent.actionId,
+      outcome: "not_found",
+      txHash: intent.txHash,
+    }),
+  });
+};
+
+export const createWorkflowFundingAbandonmentHandoff = (input: {
+  readonly entries: readonly FraudProofWorkflowJournalEntry[];
+  readonly transactionHash: string;
+}): WorkflowFundingAbandonmentHandoff => {
+  const first = input.entries[0],
+    prepared = input.entries[1];
+  const intent = [...input.entries]
+    .reverse()
+    .map(({ event }) => event)
+    .find(
+      (event) =>
+        event.kind === "submission_intent" &&
+        event.txHash === input.transactionHash,
+    );
+  if (
+    first === undefined ||
+    prepared?.event.kind !== "prepared" ||
+    intent?.kind !== "submission_intent"
+  )
+    throw new Error(
+      "funding abandonment requires its exact prepared execution and intent",
+    );
+  const handoff = parseWorkflowFundingAbandonmentHandoff({
+    workflowId: first.workflowId,
+    identity: first.identity,
+    preparedArtifactDigest: prepared.event.artifactDigest,
+    expectedJournalSequence: input.entries.length,
+    submissionIntent: intent,
+    reconciliation: {
+      kind: "reconciled",
+      actionId: intent.actionId,
+      outcome: "not_found",
+      txHash: intent.txHash,
+    },
+  });
+  assertWorkflowFundingAbandonmentHandoffJournal({
+    handoff,
+    entries: input.entries,
+  });
+  return handoff;
+};
+
+/** Returns whether the one intended outcome already reached the durable journal. */
+export const assertWorkflowFundingAbandonmentHandoffJournal = (input: {
+  readonly handoff: WorkflowFundingAbandonmentHandoff;
+  readonly entries: readonly FraudProofWorkflowJournalEntry[];
+}): boolean => {
+  const handoff = parseWorkflowFundingAbandonmentHandoff(input.handoff);
+  assertHandoffJournal(handoff, input.entries);
+  const prefix = input.entries.slice(0, handoff.expectedJournalSequence);
+  const latest = prefix
+    .map(({ event }) => event)
+    .reverse()
+    .find((event) => event.kind === "submission_intent");
+  if (
+    latest === undefined ||
+    journalJsonDigest(normalizeJournalJson(latest)) !==
+      journalJsonDigest(normalizeJournalJson(handoff.submissionIntent))
+  )
+    throw new Error(
+      "funding abandonment differs from its journaled signed intent",
+    );
+  const intentIndex =
+    prefix.length -
+    1 -
+    [...prefix]
+      .reverse()
+      .findIndex(({ event }) => event.kind === "submission_intent");
+  if (
+    prefix
+      .slice(intentIndex + 1)
+      .some(
+        ({ event }) =>
+          event.kind === "confirmed" ||
+          (event.kind === "reconciled" && event.outcome !== "pending"),
+      )
+  )
+    throw new Error(
+      "funding abandonment intent was already resolved before its handoff",
+    );
+  const tail = input.entries
+    .slice(handoff.expectedJournalSequence)
+    .filter(({ event }) => event.kind !== "stalled");
+  if (
+    tail.length > 1 ||
+    (tail[0] !== undefined &&
+      journalJsonDigest(normalizeJournalJson(tail[0].event)) !==
+        journalJsonDigest(normalizeJournalJson(handoff.reconciliation)))
+  )
+    throw new Error("funding abandonment has an unrelated journal suffix");
+  return tail.length === 1;
+};
+
+export const parseWorkflowFundingCompletionHandoff = (
+  value: unknown,
+): WorkflowFundingCompletionHandoff => {
+  const record = exact(
+    value,
+    [...handoffKeys, "completion"],
+    "funding completion handoff",
+  );
+  const identity = parseHandoffIdentity(record);
+  const completion = exact(
+    record.completion,
+    ["kind", "terminal", "terminalDigest"],
+    "funding completion event",
+  );
+  if (
+    completion.kind !== "completed" ||
+    !isPlainObject(completion.terminal) ||
+    typeof completion.terminalDigest !== "string" ||
+    !DIGEST.test(completion.terminalDigest) ||
+    journalJsonDigest(normalizeJournalJson(completion.terminal)) !==
+      completion.terminalDigest
+  )
+    throw new Error("funding completion handoff changed its terminal digest");
+  // Journal validation and independent native terminal verification are required
+  // before this event can be appended; the storage boundary admits only its bytes.
+  return Object.freeze({
+    ...identity,
+    completion: Object.freeze({
+      kind: "completed",
+      terminal: structuredClone(
+        completion.terminal,
+      ) as WorkflowFundingCompletionHandoff["completion"]["terminal"],
+      terminalDigest: completion.terminalDigest,
+    }),
+  });
+};
+
+const assertHandoffJournal = (
+  handoff: WorkflowFundingJournalHandoff,
+  entries: readonly FraudProofWorkflowJournalEntry[],
+): void => {
+  validateFraudProofWorkflowJournal({
+    workflowId: handoff.workflowId,
+    entries,
+    expectedIdentity: handoff.identity,
+  });
+  if (
+    entries.length < handoff.expectedJournalSequence ||
+    entries[1]?.event.kind !== "prepared" ||
+    entries[1].event.artifactDigest !== handoff.preparedArtifactDigest
+  )
+    throw new Error(
+      "funding handoff differs from its existing prepared workflow",
+    );
+};
+
+/** Validate the durable prefix and return only the lifecycle records lost in a crash. */
+export const reconcileWorkflowFundingSubmissionHandoff = (input: {
+  readonly handoff: WorkflowFundingSubmissionHandoff;
+  readonly entries: readonly FraudProofWorkflowJournalEntry[];
+}): readonly FraudProofWorkflowJournalEvent[] => {
+  const handoff = parseWorkflowFundingSubmissionHandoff(input.handoff);
+  assertHandoffJournal(handoff, input.entries);
+  const observed = input.entries
+    .slice(handoff.expectedJournalSequence)
+    .map(({ event }) => event)
+    .filter(({ kind }) => kind !== "stalled");
+  const expected = [handoff.preflight, handoff.submissionIntent];
+  for (
+    let index = 0;
+    index < Math.min(expected.length, observed.length);
+    index++
+  ) {
+    if (
+      journalJsonDigest(normalizeJournalJson(observed[index])) !==
+      journalJsonDigest(normalizeJournalJson(expected[index]))
+    )
+      throw new Error(
+        "funding handoff conflicts with an existing journal action",
+      );
+  }
+  for (const event of observed.slice(expected.length)) {
+    if (
+      !("actionId" in event) ||
+      event.actionId !== handoff.submissionIntent.actionId ||
+      !("txHash" in event) ||
+      event.txHash !== handoff.submissionIntent.txHash ||
+      (event.kind !== "submitted" &&
+        event.kind !== "submission_ambiguous" &&
+        event.kind !== "rebroadcast_intent" &&
+        !(event.kind === "reconciled" && event.outcome === "pending"))
+    )
+      throw new Error("funding handoff has an unrelated journal suffix");
+  }
+  return Object.freeze(
+    expected.slice(Math.min(expected.length, observed.length)),
+  );
+};
+
+export const assertWorkflowFundingCompletionHandoffJournal = (input: {
+  readonly handoff: WorkflowFundingCompletionHandoff;
+  readonly entries: readonly FraudProofWorkflowJournalEntry[];
+}): void => {
+  const handoff = parseWorkflowFundingCompletionHandoff(input.handoff);
+  assertHandoffJournal(handoff, input.entries);
+  const tail = input.entries
+    .slice(handoff.expectedJournalSequence)
+    .filter(({ event }) => event.kind !== "stalled");
+  if (
+    tail.length > 1 ||
+    (tail[0] !== undefined &&
+      journalJsonDigest(normalizeJournalJson(tail[0].event)) !==
+        journalJsonDigest(normalizeJournalJson(handoff.completion)))
+  )
+    throw new Error(
+      "funding completion handoff conflicts with its journal suffix",
+    );
 };
 
 const parseSnapshot = (value: unknown): WorkflowFundingReservationSnapshot => {
@@ -567,11 +1183,27 @@ export const createWorkflowFundingReservationPermit = async ({
     snapshot.rollbackGeneration !== rollbackGeneration ||
     snapshot.policyDigest !== funding.policyDigest ||
     snapshot.fundingPaymentKeyHash !== funding.fundingPaymentKeyHash ||
-    snapshot.state !== "active"
+    (snapshot.state !== "active" && snapshot.state !== "released")
   )
     throw new Error(
       "production funding reservation does not match its runner authority",
     );
+  if (snapshot.state === "released") {
+    const handoff = parseWorkflowFundingCompletionHandoff(
+      await port.readCompletionHandoff(),
+    );
+    if (
+      handoff.identity.deploymentFingerprint !==
+        snapshot.deploymentFingerprint ||
+      handoff.identity.decisionDigest !== snapshot.decisionDigest ||
+      handoff.identity.category !== category ||
+      handoff.identity.target.kind !== "state_queue_header" ||
+      handoff.identity.target.headerHash !== actuation.headerHash
+    )
+      throw new Error(
+        "released funding reservation has no exact terminal recovery identity",
+      );
+  }
   const address = CML.Address.from_bech32(
     snapshot.walletAddress,
   ).to_raw_bytes();
@@ -639,6 +1271,13 @@ export const bindWorkflowFundingReservationJournal = <Journal extends object>({
   return journal;
 };
 
+const assertFundingSubmissionAuthority = (state: PermitState): void => {
+  if (workflowActuationPermitIsReconciliationOnly(state.actuationPermit))
+    throw new Error(
+      "reconciliation-only funding authority cannot spend or sign",
+    );
+};
+
 export const beginWorkflowFundingReservationAction = async ({
   journal,
   action,
@@ -650,7 +1289,13 @@ export const beginWorkflowFundingReservationAction = async ({
   if (state === undefined) return;
   if (state.policy === undefined)
     throw new Error("test-only funding permit cannot build transactions");
+  assertFundingSubmissionAuthority(state);
+  if ((await state.port.readAbandonmentHandoff()) !== null)
+    throw new Error(
+      "funding abandonment outcome awaits journal acknowledgment",
+    );
   await refresh(state);
+  assertFundingSubmissionAuthority(state);
   if (state.snapshot.state !== "active")
     throw new Error("production funding reservation is not active");
   state.currentActionKind = actionKind(action);
@@ -1177,10 +1822,12 @@ export const prepareWorkflowFundingReservationTransaction = async ({
   journal,
   action,
   preflight,
+  handoff,
 }: {
   readonly journal: object;
   readonly action: FraudProofWorkflowAction;
   readonly preflight: object;
+  readonly handoff: WorkflowFundingSubmissionHandoff;
 }): Promise<void> => {
   const state = stateForJournal(journal);
   if (state === undefined) return;
@@ -1227,6 +1874,17 @@ export const prepareWorkflowFundingReservationTransaction = async ({
     collateralOutRefs,
   });
   const transactionHash = signed.toHash().toLowerCase();
+  const admittedHandoff = parseWorkflowFundingSubmissionHandoff(handoff);
+  if (
+    admittedHandoff.identity.deploymentFingerprint !==
+      state.snapshot.deploymentFingerprint ||
+    admittedHandoff.identity.decisionDigest !== state.snapshot.decisionDigest ||
+    admittedHandoff.submissionIntent.txHash !== transactionHash ||
+    admittedHandoff.submissionIntent.actionId !== action.actionId ||
+    journalJsonDigest(admittedHandoff.submissionIntent.actionInput) !==
+      journalJsonDigest(action.input)
+  )
+    throw new Error("funding handoff changed the evaluated workflow action");
   const transition = Object.freeze({
     actionKind: kind,
     signedTransactionCborHex: signed.toTransaction().to_cbor_hex(),
@@ -1243,6 +1901,7 @@ export const prepareWorkflowFundingReservationTransaction = async ({
     await state.port.prepare({
       expectedRevision: state.snapshot.revision,
       transition,
+      handoff: admittedHandoff,
     }),
   );
   state.pendingTransactionHash = transactionHash;
@@ -1261,6 +1920,11 @@ export const assertWorkflowFundingReservationReadyToSubmit = async ({
 }): Promise<void> => {
   const state = stateForJournal(journal);
   if (state === undefined) return;
+  assertFundingSubmissionAuthority(state);
+  if ((await state.port.readAbandonmentHandoff()) !== null)
+    throw new Error(
+      "funding abandonment outcome awaits journal acknowledgment",
+    );
   const expectedRevision = state.snapshot.revision;
   const expectedPending = state.pendingTransactionHash;
   await refresh(state);
@@ -1284,13 +1948,117 @@ export const assertWorkflowFundingReservationReadyToSubmit = async ({
   }
 };
 
+/** Read durable signed material without requiring its already-spent inputs to remain live. */
+export const readWorkflowFundingRecovery = async (
+  journal: object,
+): Promise<
+  Readonly<{
+    transition: WorkflowFundingPreparedTransition | null;
+    submissionHandoff: WorkflowFundingSubmissionHandoff | null;
+    completionHandoff: WorkflowFundingCompletionHandoff | null;
+    abandonmentHandoff: WorkflowFundingAbandonmentHandoff | null;
+  }>
+> => {
+  const state = stateForJournal(journal);
+  if (state === undefined)
+    return {
+      transition: null,
+      submissionHandoff: null,
+      completionHandoff: null,
+      abandonmentHandoff: null,
+    };
+  const rawTransition = await state.port.readPendingTransition();
+  let transition =
+    rawTransition === null
+      ? null
+      : parseWorkflowFundingPreparedTransition(rawTransition);
+  const rawSubmission = await state.port.readPendingHandoff();
+  let submissionHandoff: WorkflowFundingSubmissionHandoff | null = null;
+  if (rawSubmission !== null) {
+    const record = exact(
+      rawSubmission,
+      ["transition", "handoff"],
+      "funding pending handoff record",
+    );
+    const savedTransition = parseWorkflowFundingPreparedTransition(
+      record.transition,
+    );
+    if (
+      transition === null ||
+      computeDeploymentManifestJsonDigest(savedTransition) !==
+        computeDeploymentManifestJsonDigest(transition)
+    )
+      throw new Error(
+        "funding handoff differs from its pending signed transaction",
+      );
+    submissionHandoff = parseWorkflowFundingSubmissionHandoff(record.handoff);
+    if (
+      submissionHandoff.submissionIntent.txHash !== transition.transactionHash
+    )
+      throw new Error("funding handoff changed its transaction hash");
+  }
+  const rawAbandonment = await state.port.readAbandonmentHandoff();
+  let abandonmentHandoff: WorkflowFundingAbandonmentHandoff | null = null;
+  if (rawAbandonment !== null) {
+    if (transition !== null || submissionHandoff !== null)
+      throw new Error(
+        "funding recovery has both pending and abandoned transactions",
+      );
+    const record = exact(
+      rawAbandonment,
+      ["transition", "handoff"],
+      "funding abandonment record",
+    );
+    transition = parseWorkflowFundingPreparedTransition(record.transition);
+    abandonmentHandoff = parseWorkflowFundingAbandonmentHandoff(record.handoff);
+    if (
+      abandonmentHandoff.submissionIntent.txHash !== transition.transactionHash
+    )
+      throw new Error(
+        "funding abandonment changed its signed transaction hash",
+      );
+  }
+  const rawCompletion = await state.port.readCompletionHandoff();
+  const completionHandoff =
+    rawCompletion === null
+      ? null
+      : parseWorkflowFundingCompletionHandoff(rawCompletion);
+  for (const handoff of [
+    submissionHandoff,
+    completionHandoff,
+    abandonmentHandoff,
+  ]) {
+    if (
+      handoff !== null &&
+      (handoff.identity.deploymentFingerprint !==
+        state.snapshot.deploymentFingerprint ||
+        handoff.identity.decisionDigest !== state.snapshot.decisionDigest ||
+        handoff.identity.category !== state.category)
+    )
+      throw new Error(
+        "funding recovery handoff has a foreign workflow identity",
+      );
+  }
+  if (transition !== null && completionHandoff !== null)
+    throw new Error(
+      "released funding recovery retains an unresolved transaction",
+    );
+  state.pendingTransactionHash = transition?.transactionHash;
+  return Object.freeze({
+    transition,
+    submissionHandoff,
+    completionHandoff,
+    abandonmentHandoff,
+  });
+};
+
 const applyTransition = async ({
   journal,
   outcome,
   transactionHash,
 }: {
   readonly journal: object;
-  readonly outcome: "confirmed" | "not_found" | "conflict";
+  readonly outcome: "confirmed" | "conflict";
   readonly transactionHash: string;
 }): Promise<void> => {
   const state = stateForJournal(journal);
@@ -1309,15 +2077,10 @@ const applyTransition = async ({
           expectedRevision: state.snapshot.revision,
           transactionHash,
         })
-      : outcome === "not_found"
-        ? await state.port.abandon({
-            expectedRevision: state.snapshot.revision,
-            transactionHash,
-          })
-        : await state.port.markConflict({
-            expectedRevision: state.snapshot.revision,
-            code: "unexpected_spend",
-          });
+      : await state.port.markConflict({
+          expectedRevision: state.snapshot.revision,
+          code: "unexpected_spend",
+        });
   state.snapshot = parseStateSnapshot(state, next);
   state.pendingTransactionHash = undefined;
   state.preparedTransaction = undefined;
@@ -1335,7 +2098,61 @@ export const confirmWorkflowFundingReservationTransaction = async (input: {
 export const abandonWorkflowFundingReservationTransaction = async (input: {
   readonly journal: object;
   readonly transactionHash: string;
-}): Promise<void> => await applyTransition({ ...input, outcome: "not_found" });
+  readonly handoff: WorkflowFundingAbandonmentHandoff;
+}): Promise<void> => {
+  const state = stateForJournal(input.journal);
+  if (state === undefined) return;
+  const handoff = parseWorkflowFundingAbandonmentHandoff(input.handoff);
+  if (
+    handoff.submissionIntent.txHash !== input.transactionHash ||
+    (state.pendingTransactionHash !== undefined &&
+      state.pendingTransactionHash !== input.transactionHash)
+  )
+    throw new Error(
+      "funding abandonment changed its exact transaction identity",
+    );
+  state.snapshot = parseStateSnapshot(
+    state,
+    await state.port.abandon({
+      expectedRevision: state.snapshot.revision,
+      transactionHash: input.transactionHash,
+      handoff,
+    }),
+  );
+  state.preparedTransaction = undefined;
+  state.currentActionKind = undefined;
+  state.currentActionDigest = undefined;
+  state.currentFundingOutRefs = Object.freeze([]);
+  state.currentCollateralOutRefs = Object.freeze([]);
+  // The recorded bytes remain available until the exact journal outcome is acknowledged.
+  state.pendingTransactionHash = input.transactionHash;
+};
+
+export const acknowledgeWorkflowFundingAbandonment = async (input: {
+  readonly journal: FraudProofWorkflowJournalStore;
+  readonly handoff: WorkflowFundingAbandonmentHandoff;
+}): Promise<void> => {
+  const state = stateForJournal(input.journal);
+  if (state === undefined) return;
+  const handoff = parseWorkflowFundingAbandonmentHandoff(input.handoff);
+  if (
+    !assertWorkflowFundingAbandonmentHandoffJournal({
+      handoff,
+      entries: await input.journal.load(handoff.workflowId),
+    })
+  )
+    throw new Error(
+      "funding abandonment outcome is not durable in its journal",
+    );
+  state.snapshot = parseStateSnapshot(
+    state,
+    await state.port.acknowledgeAbandonment({
+      expectedRevision: state.snapshot.revision,
+      handoff,
+    }),
+  );
+  state.pendingTransactionHash = undefined;
+};
 
 export const conflictWorkflowFundingReservationTransaction = async (input: {
   readonly journal: object;
@@ -1344,14 +2161,19 @@ export const conflictWorkflowFundingReservationTransaction = async (input: {
 
 export const releaseWorkflowFundingReservation = async ({
   journal,
+  handoff,
 }: {
   readonly journal: object;
+  readonly handoff: WorkflowFundingCompletionHandoff;
 }): Promise<void> => {
   const state = stateForJournal(journal);
   if (state === undefined) return;
   state.snapshot = parseStateSnapshot(
     state,
-    await state.port.release({ expectedRevision: state.snapshot.revision }),
+    await state.port.release({
+      expectedRevision: state.snapshot.revision,
+      handoff: parseWorkflowFundingCompletionHandoff(handoff),
+    }),
   );
   state.currentActionKind = undefined;
   state.currentActionDigest = undefined;
@@ -1396,6 +2218,7 @@ export const restrictWorkflowFundingSigner = ({
   return Object.freeze({
     ...signer,
     selectWallet: (lucid: LucidEvolution): void => {
+      assertFundingSubmissionAuthority(state);
       if (state.currentActionKind === undefined) {
         throw new Error(
           "production signer used before a reserved action began",
@@ -1420,16 +2243,21 @@ export const restrictWorkflowFundingSigner = ({
         getUnusedAddresses: async () => [],
         getChangeAddress: async () => addressHex,
         getRewardAddresses: async () => [],
-        signTx: async (tx) =>
-          (
+        signTx: async (tx) => {
+          assertFundingSubmissionAuthority(state);
+          return (
             await original.signTx(CML.Transaction.from_cbor_hex(tx))
-          ).to_cbor_hex(),
+          ).to_cbor_hex();
+        },
         signData: async (address, payload) =>
           await original.signMessage(
             CML.Address.from_hex(address).to_bech32(),
             payload,
           ),
-        submitTx: async (tx) => await original.submitTx(tx),
+        submitTx: async (tx) => {
+          assertFundingSubmissionAuthority(state);
+          return await original.submitTx(tx);
+        },
         getCollateral: async () =>
           collateral.map((utxo) => utxoToCore(utxo).to_cbor_hex()),
         experimental: Object.freeze({
@@ -1490,6 +2318,11 @@ export const unsafeCreateWorkflowFundingReservationPermitForTest = ({
   });
   const port: WorkflowFundingReservationPort = Object.freeze({
     load: async () => snapshot,
+    readPendingTransition: async () => null,
+    readPendingHandoff: async () => null,
+    readCompletionHandoff: async () => null,
+    readAbandonmentHandoff: async () => null,
+    acknowledgeAbandonment: async () => snapshot,
     resolveInputs: async () => [],
     resolveConfirmedInput: async () => {
       throw new Error("unsafe test permit has no confirmed action lineage");

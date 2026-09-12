@@ -307,12 +307,38 @@ export const replayTransitionTraceFromRetainedHistory = async ({
 export const transitionTraceDetectionId = (index: number, kind: string) =>
   `transition-trace:${index}:${kind}`;
 
-/** Only semantic proofs authenticate the exact event whose ledger effect is false. */
+/** Only proofs that authenticate the exact event whose ledger effect is
+ * false: a semantic transition proof, or an out-of-window source event whose
+ * membership proof opens the committed leaf. */
 export const provenTransitionEventKeyCbor = (
   detection: TransitionTraceDetection,
 ): string | undefined => {
   if (!detection.buildable) return undefined;
   const fault = detection.fault;
+  if ("OutOfWindowSourceEvent" in fault) {
+    const witness = fault.OutOfWindowSourceEvent.witness;
+    const eventKey: SDK.EventKey =
+      "OutOfWindowDeposit" in witness
+        ? {
+            DepositEventKey: {
+              deposit_id: witness.OutOfWindowDeposit.source_membership.key,
+            },
+          }
+        : "OutOfWindowWithdrawal" in witness
+          ? {
+              WithdrawalEventKey: {
+                withdrawal_id:
+                  witness.OutOfWindowWithdrawal.source_membership.key,
+              },
+            }
+          : {
+              ForcedTransactionEventKey: {
+                tx_order_id:
+                  witness.OutOfWindowForcedTransaction.source_membership.key,
+              },
+            };
+    return Data.to(eventKey, SDK.EventKey);
+  }
   if ("AcceptedTransactionTransitionMismatch" in fault)
     return Data.to(
       fault.AcceptedTransactionTransitionMismatch.witness.claim

@@ -428,6 +428,57 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
     },
   );
 
+  it("reports exact native failures after ready and preserves bounded stderr diagnostics", async () => {
+    const events: WatcherNativeChainSyncEvent[] = [];
+    const runtime = await start("runtime_failure", async (event) => {
+      events.push(event);
+    });
+    try {
+      await expect(runtime.done).rejects.toThrow(
+        "native chain-sync runtime failed: chain_sync_failed",
+      );
+      await expect(runtime.done).rejects.toThrow(
+        "actual underlying socket failure",
+      );
+      await expect(runtime.done).rejects.toThrow("nativeLineSha256=");
+      expect(events).toHaveLength(0);
+      expect(
+        watcherNativeChainSyncAuthorityDetails(runtime.authority),
+      ).toBeNull();
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it("bounds retained stderr while keeping the terminal cause", async () => {
+    const runtime = await start("runtime_failure_large_stderr", async () => {});
+    try {
+      const failure = await runtime.done.catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(Error);
+      if (!(failure instanceof Error))
+        throw new Error("missing native failure");
+      expect(failure.message).toContain("actual underlying socket failure");
+      expect(failure.message).not.toContain("discarded stderr prefix");
+      expect(Buffer.byteLength(failure.message)).toBeLessThan(9_000);
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it("rejects extra fields on a post-ready native failure", async () => {
+    const runtime = await start("malformed_runtime_failure", async () => {
+      throw new Error("unexpected chain event");
+    });
+    try {
+      await expect(runtime.done).rejects.toThrow('unknown=["extra"]');
+      expect(
+        watcherNativeChainSyncAuthorityDetails(runtime.authority),
+      ).toBeNull();
+    } finally {
+      await runtime.close();
+    }
+  });
+
   it("revokes a delivered receipt when the callback fails", async () => {
     const receipts: WatcherNativeChainSyncEventReceipt[] = [];
     const runtime = await start("honest", async (event) => {

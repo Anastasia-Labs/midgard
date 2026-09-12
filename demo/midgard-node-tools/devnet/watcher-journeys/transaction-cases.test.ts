@@ -67,6 +67,8 @@ const replayers = {
     FaultProofs.FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY,
   mintDeclaredAssetLimit:
     FaultProofs.MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
+  mintItemNonCanonical:
+    FaultProofs.MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
   distinctAssetAccumulationLimit:
     FaultProofs.DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
 } satisfies Record<

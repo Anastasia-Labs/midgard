@@ -9,6 +9,7 @@ import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { retainedOutputReferenceScript } from "../evidence/retained-ledger-output.js";
+import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
 import { nativeScriptDecodingPriorLedger } from "../native-script-decoding/replay.js";
 import { decodeTransactionMaterial } from "../prepare-double-spend.js";
 import { keyValuePhasProof } from "../transition-trace/phas.js";
@@ -17,7 +18,10 @@ import {
   buildEventToStepMembershipProof,
   buildIndexedTraceProof,
 } from "../transition-trace/witnesses.js";
-import { collectReplayFindingBatches } from "../workflow/replay-prerequisite.js";
+import {
+  collectReplayFindingBatches,
+  replayPrerequisiteFailure,
+} from "../workflow/replay-prerequisite.js";
 import { scanMintAuthorization } from "./prover.js";
 
 export type MintAuthorizationCoordinate = Readonly<{
@@ -151,7 +155,15 @@ export const detectMintAuthorizationReplay = async ({
   predecessor?: CanonicalBlockEvidence;
 }) => {
   return collectReplayFindingBatches(
-    block.reconstruction.transactions.map(async (_, sourceIndex) => {
+    block.reconstruction.transactions.map(async (source, sourceIndex) => {
+      // A mint item outside the field-5 grammar has no authorization
+      // meaning; the direct mint-item proof owns that transaction.
+      if (transactionHasNonCanonicalMintItem(source.fullTransactionCbor))
+        throw replayPrerequisiteFailure(
+          block.headerHash,
+          { L2TransactionEventKey: { tx_id: source.txId } },
+          "representable_field_shape",
+        );
       const prepared = await prepareMintAuthorizationReplay({
         current: block.reconstruction,
         predecessor: predecessor?.reconstruction,

@@ -74,7 +74,7 @@ export const admitMissingRedeemerArtifact = (
     artifact === null ||
     artifact.schemaVersion !==
       "midgard-missing-redeemer-production-artifact-v1" ||
-    !/^[0-9a-f]{64}$/u.test(artifact.headerHash) ||
+    !/^[0-9a-f]{56}$/u.test(artifact.headerHash) ||
     artifact.header.validationTracesRoot !==
       artifact.authentication.validationTracesRoot ||
     artifact.header.validationTraceCount !==

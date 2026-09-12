@@ -92,6 +92,9 @@ importers:
       '@libp2p/peer-id':
         specifier: 6.0.11
         version: 6.0.11
+      '@libp2p/ping':
+        specifier: 3.1.7
+        version: 3.1.7
       '@libp2p/tcp':
         specifier: 11.0.22
         version: 11.0.22
@@ -811,6 +814,9 @@ importers:
       '@libp2p/peer-id':
         specifier: 6.0.11
         version: 6.0.11
+      '@libp2p/ping':
+        specifier: 3.1.7
+        version: 3.1.7
       '@libp2p/tcp':
         specifier: 11.0.22
         version: 11.0.22
@@ -1585,6 +1591,9 @@ packages:
 
   '@libp2p/peer-store@12.0.22':
     resolution: {integrity: sha512-LoBq4uZp5TvPVcU1DtEsuBEC8Fcq1sprgY+KBoIoecL2bsUpCaQsbPIqbByLR6hCfDgWPv5ChFvIoZwn3YCyDw==}
+
+  '@libp2p/ping@3.1.7':
+    resolution: {integrity: sha512-CJHX7BELM0iB16BayHYA/Tzi+BSrveAMKF5EkNMU0+XNIMgA5A/1G7Yh/VC11N5RUJmk07eYFZQBEQavfoCgNA==}
 
   '@libp2p/tcp@11.0.22':
     resolution: {integrity: sha512-q1jeWt0XMk6uZQrNOE9YBPciQPgGdNEroD3Wf/TOf2DvzRHpiG6nyMxS3HFdrlCOnuyxlvpMl4jfCh+YGjdxQw==}
@@ -4880,6 +4889,15 @@ snapshots:
       mortice: 3.3.1
       multiformats: 14.0.0
       protons-runtime: 7.0.0
+      uint8arraylist: 3.0.2
+      uint8arrays: 6.1.1
+
+  '@libp2p/ping@3.1.7':
+    dependencies:
+      '@libp2p/interface': 3.2.4
+      '@libp2p/interface-internal': 3.1.7
+      p-event: 7.1.0
+      race-signal: 2.0.0
       uint8arraylist: 3.0.2
       uint8arrays: 6.1.1
 

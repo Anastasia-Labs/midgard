@@ -1,3 +1,5 @@
+import type { WatcherAvailabilityStatusTransition } from "../availability/runtime.js";
+
 export const WATCHER_PACKAGE_NAME = "midgard-watcher";
 export const WATCHER_COMMAND_FAILURE_EXIT_CODE = 70;
 export type WatcherCommand = "authority" | "replay" | "start";
@@ -14,6 +16,9 @@ type WatcherCommandDependencies = Readonly<{
   runWatcher(
     configPath: string,
     onStartupProgress: (progress: WatcherStartupProgress) => void,
+    onAvailabilityStatusTransition: (
+      event: WatcherAvailabilityStatusTransition,
+    ) => void,
   ): Promise<
     Readonly<{
       done: Promise<void>;
@@ -63,7 +68,11 @@ const productionDependencies: WatcherCommandDependencies = Object.freeze({
         await loadWatcherTrustedHeadAuthorityProcessConfigFile(configPath),
     });
   },
-  runWatcher: async (configPath, onStartupProgress) => {
+  runWatcher: async (
+    configPath,
+    onStartupProgress,
+    onAvailabilityStatusTransition,
+  ) => {
     const [{ loadWatcherProcessConfigFile }, { createWatcherRuntime }] =
       await Promise.all([
         import("./process-config.js"),
@@ -72,6 +81,7 @@ const productionDependencies: WatcherCommandDependencies = Object.freeze({
     return await createWatcherRuntime({
       config: await loadWatcherProcessConfigFile(configPath),
       onStartupProgress,
+      onAvailabilityStatusTransition,
     });
   },
   waitForShutdown,
@@ -96,15 +106,26 @@ const execute = async (
     }
     return 0;
   }
-  const runtime = await dependencies.runWatcher(configPath, (progress) =>
-    io.writeError(
-      commandStatus({
-        command,
-        state: "starting",
-        productionReady: false,
-        ...progress,
-      }),
-    ),
+  const runtime = await dependencies.runWatcher(
+    configPath,
+    (progress) =>
+      io.writeError(
+        commandStatus({
+          command,
+          state: "starting",
+          productionReady: false,
+          ...progress,
+        }),
+      ),
+    (event) =>
+      io.writeError(
+        commandStatus({
+          command,
+          state: "availability_status",
+          productionReady: false,
+          ...event,
+        }),
+      ),
   );
   const supervisor = runtime.faultProofSupervisor.status();
   if (

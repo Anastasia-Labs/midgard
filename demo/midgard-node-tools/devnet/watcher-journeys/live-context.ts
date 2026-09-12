@@ -13,9 +13,13 @@ import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
 import { WatcherLocalKupmios } from "midgard-watcher";
 
+import { awaitLedgerTipSlot, readOgmiosTipSlot } from "./ledger-tip.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
 
 type Deployment = Awaited<ReturnType<typeof publishWorkflowDeploymentOnChain>>;
+
+/** Longest block gap the journeys tolerate while waiting for the ledger tip. */
+const LEDGER_TIP_WAIT_MS = 15 * 60_000;
 type PersistedDeployment = Omit<
   Deployment,
   "chain" | "operatorLucid" | "publisherLucid" | "references"
@@ -24,6 +28,9 @@ type PersistedDeployment = Omit<
 };
 
 /** Reopen run-owned artifacts and real providers after a stopped journey. */
+/** L1 depth the journey watcher requires before a block is finalized. */
+export const JOURNEY_FINALITY_DEPTH = 30;
+
 export const loadJourneyContext = async (runDirectory: string) => {
   if (!isAbsolute(runDirectory))
     throw new Error("Journey run directory must be absolute");
@@ -118,7 +125,31 @@ export const loadJourneyContext = async (runDirectory: string) => {
     chain: {
       now: () => operatorLucid.slotToUnixTime(operatorLucid.currentSlot()),
       awaitSlot: async (slots) => {
+        const targetSlot = operatorLucid.currentSlot() + slots;
         await pause(slots * customNetwork.slotConfig.slotLength);
+        // Lower validity bounds are checked against the ledger tip, so a
+        // block gap would otherwise reject a transaction due by the clock.
+        await awaitLedgerTipSlot({
+          targetSlot,
+          readTipSlot: () => readOgmiosTipSlot(ogmiosUrl),
+          timeoutMs: LEDGER_TIP_WAIT_MS,
+          pollMs: customNetwork.slotConfig.slotLength,
+        });
+      },
+      blockHeight: async () => {
+        const response = await fetch(ogmiosUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            method: "queryNetwork/blockHeight",
+            id: null,
+          }),
+        });
+        const { result } = (await response.json()) as { result?: unknown };
+        if (typeof result !== "number" || !Number.isSafeInteger(result))
+          throw new Error("Ogmios did not report a block height");
+        return result;
       },
     },
   };

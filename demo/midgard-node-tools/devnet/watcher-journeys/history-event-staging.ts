@@ -14,6 +14,7 @@ import {
   walletFromSeed,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import {
@@ -34,7 +35,7 @@ import {
   type JourneyFaultPreparationInput,
 } from "./staging.js";
 
-type EventMetadata = {
+export type EventMetadata = {
   address: string;
   unit: string;
   inclusionTime: number;
@@ -57,11 +58,7 @@ export type HistoryEventCheckpoint = {
  */
 const publishEvent = async (
   input: JourneyFaultPreparationInput,
-  request: {
-    name: string;
-    identity: string;
-    build(): Promise<{ tx: TxSignBuilder; metadata: EventMetadata }>;
-  },
+  request: JourneyEventPublicationRequest,
 ): Promise<StagedHistoryEvent> => {
   const { context, directory, onStage } = input;
   const { deployment, provider } = context;
@@ -178,24 +175,41 @@ const publishEvent = async (
   };
 };
 
-const ownerKey = (input: JourneyFaultPreparationInput) =>
+/** The retained ledger output owner, derived from its actual seed phrase. */
+export const journeyLedgerOwnerKey = (seedPhrase: string) =>
   CML.PrivateKey.from_bech32(
-    walletFromSeed(input.ledgerOwnerSeedPhrase, { network: "Custom" })
-      .paymentKey,
+    walletFromSeed(seedPhrase, { network: "Custom" }).paymentKey,
   );
 
-export const publishJourneyWithdrawal = (
-  input: JourneyFaultPreparationInput,
-  body: SDK.WithdrawalBody,
-  ordinal: number,
-) =>
-  publishEvent(input, {
+const ownerKey = (input: JourneyFaultPreparationInput) =>
+  journeyLedgerOwnerKey(input.ledgerOwnerSeedPhrase);
+
+/** Publication request shared by live staging and local event verification. */
+export type JourneyEventPublicationRequest = {
+  name: string;
+  identity: string;
+  build(): Promise<{ tx: TxSignBuilder; metadata: EventMetadata }>;
+};
+
+type EventDeployment = Pick<
+  Awaited<ReturnType<typeof publishWorkflowDeploymentOnChain>>,
+  "operatorLucid" | "contracts" | "references"
+>;
+
+/** The exact withdrawal the SDK publishes for this owner, body and ordinal. */
+export const journeyWithdrawalEventRequest = (input: {
+  deployment: EventDeployment;
+  ownerKey: CML.PrivateKey;
+  body: SDK.WithdrawalBody;
+  ordinal: number;
+}): JourneyEventPublicationRequest => {
+  const { deployment, body, ordinal } = input;
+  return {
     name: `withdrawal-${ordinal}`,
     identity: SDK.withdrawalBodyBytes(body),
     build: async () => {
-      const { deployment } = input.context;
       const lucid = deployment.operatorLucid;
-      const key = ownerKey(input);
+      const key = input.ownerKey;
       if (key.to_public().hash().to_hex() !== body.l2_owner)
         throw new Error("Withdrawal signer does not own the retained output");
       const reference = deployment.references.get("withdrawalMint");
@@ -225,18 +239,38 @@ export const publishJourneyWithdrawal = (
         },
       };
     },
-  });
+  };
+};
 
-export const publishJourneyDeposit = (input: JourneyFaultPreparationInput) => {
+export const publishJourneyWithdrawal = (
+  input: JourneyFaultPreparationInput,
+  body: SDK.WithdrawalBody,
+  ordinal: number,
+) =>
+  publishEvent(
+    input,
+    journeyWithdrawalEventRequest({
+      deployment: input.context.deployment,
+      ownerKey: ownerKey(input),
+      body,
+      ordinal,
+    }),
+  );
+
+/** The exact ordinary deposit the SDK publishes for this owner credential. */
+export const journeyDepositEventRequest = (input: {
+  deployment: EventDeployment;
+  ownerKey: CML.PrivateKey;
+}): JourneyEventPublicationRequest => {
+  const { deployment } = input;
   const address = credentialToAddress("Custom", {
     type: "Key",
-    hash: ownerKey(input).to_public().hash().to_hex(),
+    hash: input.ownerKey.to_public().hash().to_hex(),
   });
-  return publishEvent(input, {
+  return {
     name: "deposit",
     identity: `${address}/10000000/no-datum`,
     build: async () => {
-      const { deployment } = input.context;
       const reference = deployment.references.get("depositMint");
       if (reference === undefined)
         throw new Error("Missing published deposit minting reference");
@@ -263,8 +297,17 @@ export const publishJourneyDeposit = (input: JourneyFaultPreparationInput) => {
         },
       };
     },
-  });
+  };
 };
+
+export const publishJourneyDeposit = (input: JourneyFaultPreparationInput) =>
+  publishEvent(
+    input,
+    journeyDepositEventRequest({
+      deployment: input.context.deployment,
+      ownerKey: ownerKey(input),
+    }),
+  );
 
 export const fabricatedDepositJourneyFixture = createPreparedJourneyFixture(
   "fabricatedDeposit",

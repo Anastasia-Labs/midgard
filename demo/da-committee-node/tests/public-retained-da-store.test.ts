@@ -267,7 +267,10 @@ describe("PostgresPublicRetainedDaStore", () => {
  * actual roles and grants, and PostgreSQL itself decides the answers.
  *
  * This suite fails closed: with no reachable cluster it errors, it never
- * skips. CI provides one (midgard-node-ci `postgres` service, POSTGRES_*).
+ * skips. CI provides one (midgard-node-ci `postgres` service, POSTGRES_*), and
+ * locally the workspace test server does — `scripts/start-test-postgres.sh`
+ * on 127.0.0.1:5433, which is the default every other Postgres-touching suite
+ * discovers through the same POSTGRES_* variables.
  */
 describe("PostgresPublicRetainedDaStore against a real PostgreSQL cluster", () => {
   const suffix = randomBytes(6).toString("hex");
@@ -276,7 +279,7 @@ describe("PostgresPublicRetainedDaStore against a real PostgreSQL cluster", () =
   const readerPassword = `pw_${suffix}`;
   const admin = {
     host: process.env.POSTGRES_HOST ?? "127.0.0.1",
-    port: Number(process.env.POSTGRES_PORT ?? "5432"),
+    port: Number(process.env.POSTGRES_PORT ?? "5433"),
     user: process.env.POSTGRES_USER ?? "postgres",
     password: process.env.POSTGRES_PASSWORD ?? "postgres",
   };

@@ -14,6 +14,7 @@ import {
   Data,
   paymentCredentialOf,
   toUnit,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
@@ -54,6 +55,200 @@ export const verifyJourneyCorrectedTail = async (
   return matches[0]!;
 };
 
+/** Derive scheduler continuation from the removal's authenticated list inputs.
+ * The root/tail topology determines whether removal appoints a surviving actor;
+ * wall time and a later live scheduler state are not evidence for this result. */
+export const verifyJourneyCorrectedScheduler = async (
+  transaction: CML.Transaction,
+  expected: {
+    removedOperator: string;
+    activeOperators: { spendingScriptAddress: string; policyId: string };
+    scheduler: { spendingScriptAddress: string; policyId: string };
+    slotToUnixTime(slot: number): number;
+    resolveOutput(outRef: string): Promise<UTxO>;
+  },
+) => {
+  expect(transaction.is_valid()).toBe(true);
+  const resolve = async (inputs: CML.TransactionInputList | undefined) => {
+    if (inputs === undefined) return [];
+    return await Promise.all(
+      Array.from({ length: inputs.len() }, async (_, index) => {
+        const input = inputs.get(index);
+        const outRef = `${input.transaction_id().to_hex()}#${input.index()}`;
+        const output = await expected.resolveOutput(outRef);
+        expect(`${output.txHash}#${output.outputIndex}`).toBe(outRef);
+        return output;
+      }),
+    );
+  };
+  const inputs = await resolve(transaction.body().inputs());
+  const references = await resolve(transaction.body().reference_inputs());
+  const outputs = transactionOutputs(transaction);
+  const activeUnit = (key: SDK.LinkedListNodeView["key"]) =>
+    toUnit(
+      expected.activeOperators.policyId,
+      key === "Empty"
+        ? SDK.ACTIVE_OPERATORS_ROOT_ASSET_NAME
+        : SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + key.Key.key,
+    );
+  const activeNodes = async (values: readonly UTxO[]) =>
+    await Promise.all(
+      values
+        .filter(
+          (output) =>
+            output.address === expected.activeOperators.spendingScriptAddress &&
+            Object.keys(output.assets).some((unit) =>
+              unit.startsWith(expected.activeOperators.policyId),
+            ),
+        )
+        .map(async (output) => {
+          const node = await Effect.runPromise(
+            SDK.getLinkedListNodeViewFromUTxO(output),
+          );
+          expect(output.assets[activeUnit(node.key)]).toBe(1n);
+          return { output, node };
+        }),
+    );
+  const activeInputs = await activeNodes(inputs);
+  const removed = activeInputs.filter(
+    ({ node }) =>
+      node.key !== "Empty" && node.key.Key.key === expected.removedOperator,
+  );
+  expect(removed).toHaveLength(1);
+  const removedNode = removed[0]!.node;
+  const anchors = activeInputs.filter(
+    ({ node }) =>
+      node.next !== "Empty" && node.next.Key.key === expected.removedOperator,
+  );
+  expect(anchors).toHaveLength(1);
+  const anchor = anchors[0]!;
+  const continued = (await activeNodes(outputs)).filter(
+    ({ node }) => activeUnit(node.key) === activeUnit(anchor.node.key),
+  );
+  expect(continued).toHaveLength(1);
+  expect(continued[0]!.node).toEqual({
+    ...anchor.node,
+    next: removedNode.next,
+  });
+  expect(continued[0]!.output.assets).toEqual(anchor.output.assets);
+  expect(
+    outputs.every(
+      (output) => output.assets[activeUnit(removedNode.key)] === undefined,
+    ),
+  ).toBe(true);
+
+  const schedulerUnit = toUnit(
+    expected.scheduler.policyId,
+    SDK.SCHEDULER_ASSET_NAME,
+  );
+  const schedulers = (values: readonly UTxO[]) =>
+    values.filter(
+      (output) =>
+        output.address === expected.scheduler.spendingScriptAddress &&
+        output.assets[schedulerUnit] === 1n,
+    );
+  const prior = [...schedulers(inputs), ...schedulers(references)];
+  expect(prior).toHaveLength(1);
+  const priorDatum = Data.from(prior[0]!.datum!, SDK.SchedulerDatum);
+  expect(priorDatum).not.toBe("NoActiveOperators");
+  if (priorDatum === "NoActiveOperators")
+    throw new Error("Removal requires an appointed scheduler");
+  if (priorDatum.ActiveOperator.operator !== expected.removedOperator) {
+    expect(schedulers(inputs)).toHaveLength(0);
+    expect(schedulers(outputs)).toHaveLength(0);
+    return prior[0]!;
+  }
+  expect(schedulers(inputs)).toHaveLength(1);
+  const next = schedulers(outputs);
+  expect(next).toHaveLength(1);
+  expect(next[0]!.assets).toEqual(prior[0]!.assets);
+  let nextOperator: string | null;
+  if (anchor.node.key !== "Empty") nextOperator = anchor.node.key.Key.key;
+  else if (removedNode.next === "Empty") nextOperator = null;
+  else {
+    const tails = (await activeNodes(references)).filter(
+      ({ node }) => node.key !== "Empty" && node.next === "Empty",
+    );
+    expect(tails).toHaveLength(1);
+    const key = tails[0]!.node.key;
+    if (key === "Empty") throw new Error("Active tail has no operator key");
+    nextOperator = key.Key.key;
+  }
+  const nextDatum = Data.from(next[0]!.datum!, SDK.SchedulerDatum);
+  if (nextOperator === null) expect(nextDatum).toBe("NoActiveOperators");
+  else {
+    expect(nextOperator).not.toBe(expected.removedOperator);
+    const upperSlot = transaction.body().ttl();
+    expect(upperSlot).toBeDefined();
+    if (upperSlot === undefined || upperSlot > BigInt(Number.MAX_SAFE_INTEGER))
+      throw new Error("Removal has no exact ledger validity upper bound");
+    expect(nextDatum).toEqual({
+      ActiveOperator: {
+        operator: nextOperator,
+        start_time: BigInt(expected.slotToUnixTime(Number(upperSlot))) - 1n,
+      },
+    });
+  }
+  return next[0]!;
+};
+
+export const readJourneyWorkflowEntries = async ({
+  workflowJournalDirectory,
+  category,
+  headerHash,
+}: {
+  workflowJournalDirectory: string;
+  category: SDK.FraudProofCatalogueCategoryName;
+  headerHash: string;
+}): Promise<readonly FraudProofWorkflowJournalEntry[]> => {
+  const workflowDirectory = join(
+    workflowJournalDirectory,
+    `fault-proofs/${category}`,
+    headerHash,
+  );
+  const workflow = new DirectoryFraudProofWorkflowJournalStore(
+    workflowDirectory,
+  );
+
+  if (!existsSync(workflowDirectory)) return [];
+  const ids = (
+    await readdir(workflowDirectory, { withFileTypes: true })
+  ).filter(
+    (entry) => entry.isDirectory() && /^[0-9a-f]{64}$/u.test(entry.name),
+  );
+  expect(ids.length).toBeLessThanOrEqual(1);
+  return ids.length === 0 ? [] : await workflow.load(ids[0]!.name);
+};
+
+/** A retained failure is history; every new failure still stops the current attempt. */
+export const journeyWorkflowUpdates = (
+  records: readonly FraudProofWorkflowJournalEntry[],
+  baseline: readonly FraudProofWorkflowJournalEntry[],
+  reported = baseline.length - 1,
+) => {
+  expect(records.slice(0, baseline.length)).toEqual(baseline);
+  const updates = records.filter(({ sequence }) => sequence > reported);
+  const failure = updates.find(({ event }) => event.kind === "stalled")?.event;
+  if (failure?.kind === "stalled")
+    throw new Error(`Workflow stalled: ${failure.reason}`);
+  return updates;
+};
+
+/**
+ * Compare the exact transactions the workflow confirmed against the last
+ * intent journaled per action. An intent that expired before a restart is
+ * superseded by its replacement rather than left dangling.
+ */
+export const journeyLatestIntentsByAction = (
+  records: readonly FraudProofWorkflowJournalEntry[],
+) => {
+  const latest = new Map<string, string>();
+  for (const { event } of records)
+    if (event.kind === "submission_intent")
+      latest.set(event.actionId, event.txHash);
+  return [...latest.values()];
+};
+
 /** Shared acceptance assertions for every installed automatic workflow. */
 export const verifyJourneyCorrection = async ({
   context,
@@ -63,6 +258,8 @@ export const verifyJourneyCorrection = async ({
   category,
   headerHash,
   predecessorHeaderHash,
+  workflowBaseline,
+  correctionTimeoutMs = 1_800_000,
   operatorVkey,
   requireLive,
   poll,
@@ -75,6 +272,8 @@ export const verifyJourneyCorrection = async ({
   category: SDK.FraudProofCatalogueCategoryName;
   headerHash: string;
   predecessorHeaderHash: string;
+  workflowBaseline: readonly FraudProofWorkflowJournalEntry[];
+  correctionTimeoutMs?: number;
   operatorVkey: string;
   requireLive(): void;
   poll<T>(
@@ -85,47 +284,30 @@ export const verifyJourneyCorrection = async ({
   stage<T>(name: string, action: () => Promise<T>): Promise<T>;
 }) => {
   const { deployment, provider, accounts } = context;
-  const workflowDirectory = join(
-    workflowJournalDirectory,
-    `fault-proofs/${category}`,
-    headerHash,
-  );
-  const workflow = new DirectoryFraudProofWorkflowJournalStore(
-    workflowDirectory,
-  );
-  const entries = async (): Promise<
-    readonly FraudProofWorkflowJournalEntry[]
-  > => {
-    if (!existsSync(workflowDirectory)) return [];
-    const ids = (
-      await readdir(workflowDirectory, { withFileTypes: true })
-    ).filter(
-      (entry) => entry.isDirectory() && /^[0-9a-f]{64}$/u.test(entry.name),
-    );
-    expect(ids.length).toBeLessThanOrEqual(1);
-    return ids.length === 0 ? [] : await workflow.load(ids[0]!.name);
-  };
-  let reported = -1;
+  let reported = workflowBaseline.length - 1;
   const completion = await poll(
     "confirmed proof and correction",
     async () => {
       requireLive();
-      const records = await entries();
-      for (const { sequence, event } of records) {
-        if (sequence <= reported) continue;
+      const records = await readJourneyWorkflowEntries({
+        workflowJournalDirectory,
+        category,
+        headerHash,
+      });
+      for (const { sequence, event } of journeyWorkflowUpdates(
+        records,
+        workflowBaseline,
+        reported,
+      )) {
         if (event.kind === "submitted" || event.kind === "confirmed")
           console.info(`Live proof: ${event.kind} ${event.actionId}`);
-        if (event.kind === "stalled")
-          throw new Error(`Workflow stalled: ${event.reason}`);
         reported = sequence;
       }
       const terminal = records.find(
         ({ event }) => event.kind === "completed",
       )?.event;
       if (terminal?.kind !== "completed") return undefined;
-      const intents = records.flatMap(({ event }) =>
-        event.kind === "submission_intent" ? [event.txHash] : [],
-      );
+      const intents = journeyLatestIntentsByAction(records);
       const confirmed = records.flatMap(({ event }) =>
         event.kind === "confirmed" ? [event.txHash] : [],
       );
@@ -146,7 +328,7 @@ export const verifyJourneyCorrection = async ({
       );
       return terminal.terminal;
     },
-    1_800_000,
+    correctionTimeoutMs,
   );
   const { contracts } = deployment;
   const headerUnit = (hash: string) =>
@@ -249,19 +431,26 @@ export const verifyJourneyCorrection = async ({
         ({ assets }) => assets[headerUnit(headerHash)] === undefined,
       ),
     ).toBe(true);
-    const schedulerUnit = toUnit(
-      contracts.scheduler.policyId,
-      SDK.SCHEDULER_ASSET_NAME,
-    );
-    const schedulers = outputsAfterRemoval.filter(
-      ({ address, assets }) =>
-        address === contracts.scheduler.spendingScriptAddress &&
-        assets[schedulerUnit] === 1n,
-    );
-    expect(schedulers).toHaveLength(1);
-    expect(Data.from(schedulers[0]!.datum!, SDK.SchedulerDatum)).toBe(
-      "NoActiveOperators",
-    );
+    await verifyJourneyCorrectedScheduler(removal, {
+      removedOperator: operatorVkey,
+      activeOperators: contracts.activeOperators,
+      scheduler: contracts.scheduler,
+      slotToUnixTime: (slot) => deployment.operatorLucid.slotToUnixTime(slot),
+      resolveOutput: async (outRef) => {
+        const [txHash, index] = outRef.split("#");
+        const resolved = await readOutput(outRef);
+        expect(CML.hash_transaction(resolved.tx.body()).to_hex()).toBe(txHash);
+        return coreToUtxo(
+          CML.TransactionUnspentOutput.new(
+            CML.TransactionInput.new(
+              CML.TransactionHash.from_hex(txHash!),
+              BigInt(index!),
+            ),
+            resolved.output,
+          ),
+        );
+      },
+    });
     const predecessors = await provider.getUtxosWithUnit(
       contracts.stateQueue.spendingScriptAddress,
       headerUnit(predecessorHeaderHash),

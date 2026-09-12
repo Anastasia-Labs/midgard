@@ -199,6 +199,7 @@ import {
   VALIDATION_TRACE_DISPUTE_CONTROL_CONTRACT_NAMES,
   VALIDATION_TRACE_DISPUTE_REMOVAL_CONTRACT_NAMES,
   VALIDATION_TRACE_DISPUTE_WITNESS_CONTRACT_NAMES,
+  workflowActuationPermitIsReconciliationOnly,
   type WorkflowAdapterReadinessInput,
   type WorkflowAdapterRunner,
   type WorkflowAdapterRunnerInput,
@@ -249,7 +250,7 @@ import {
 } from "../runtime/user-event-runtime.js";
 import type { WatcherReplayTranscriptStore } from "../storage/replay-transcript-store.js";
 import {
-  createWatcherRetainedDaRuntime,
+  createWatcherRetainedDaRuntimeOwner,
   createWatcherWorkflowRuntimeLoader,
   type WatcherRetainedDaRuntimeOptions,
 } from "../storage/retained-da-runtime.js";
@@ -430,6 +431,7 @@ export type WatcherFaultProofApplication = Readonly<{
     invocation: WorkflowAdapterReadinessInput,
   ): Promise<WatcherFaultProofStartupReadiness>;
   runOrResume(invocation: WorkflowAdapterRunnerInput): Promise<unknown>;
+  close(): Promise<void>;
 }>;
 
 type TaggedWorkflowConfig =
@@ -2059,6 +2061,12 @@ const buildCommonInfrastructure = async ({
       : replayContexts.get(executionInvocation.decisionDigest);
   if (
     executionInvocation.decisionDigest !== undefined &&
+    !(
+      executionInvocation.actuationPermit !== undefined &&
+      workflowActuationPermitIsReconciliationOnly(
+        executionInvocation.actuationPermit,
+      )
+    ) &&
     (category === "nonExistentInput" ||
       category === "noReferenceInput" ||
       category === "nativeScriptDecoding" ||
@@ -4263,7 +4271,7 @@ const createApplication = ({
     string,
     Awaited<ReturnType<typeof captureWatcherValidationReplayTranscript>>
   >();
-  const loaderOptions = {
+  const retainedDaOptions = {
     deploymentIdentity,
     ...(options.unsafeTransportOptionsForTest === undefined
       ? {}
@@ -4276,6 +4284,9 @@ const createApplication = ({
           unsafeTransportFactoryForTest: options.unsafeTransportFactoryForTest,
         }),
   };
+  const retainedDaOwner =
+    createWatcherRetainedDaRuntimeOwner(retainedDaOptions);
+  const loaderOptions = { ...retainedDaOptions, runtimeOwner: retainedDaOwner };
   function makeTaggedLoader(
     category: "doubleSpend",
   ): TaggedWorkflowLoaderFor<"doubleSpend">;
@@ -5730,6 +5741,13 @@ const createApplication = ({
     return classifierPromise;
   };
   const application: WatcherFaultProofApplication = Object.freeze({
+    close: async () => {
+      admittedApplications.delete(application);
+      authorityGeneration += 1;
+      replayContexts.clear();
+      validationCaptures.clear();
+      await retainedDaOwner.close();
+    },
     schemaVersion: WATCHER_FAULT_PROOF_APPLICATION,
     deploymentFingerprint: deploymentIdentity.manifestId,
     installedCategories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
@@ -5791,10 +5809,7 @@ const createApplication = ({
       } catch {
         throw new Error("watcher runtime configuration is not JSON");
       }
-      const retainedDa = await createWatcherRetainedDaRuntime({
-        watcherConfig,
-        ...loaderOptions,
-      });
+      const retainedDa = await retainedDaOwner.createRuntime(watcherConfig);
       let completedDecision: HeaderDecision;
       let pendingCapture:
         | Awaited<ReturnType<typeof captureWatcherValidationReplayTranscript>>
@@ -5989,6 +6004,36 @@ export const createWatcherFaultProofApplication = (
     environment: process.env,
     allowExecution: true,
   });
+
+/** Bind installed production workflows without exposing execution or classification. */
+export const createWatcherFaultProofReadinessApplication = (
+  options: Pick<
+    WatcherFaultProofApplicationOptions,
+    | "deploymentAuthority"
+    | "infrastructure"
+    | "historicalNativeScriptCheckpointStore"
+    | "fundingProfileOverlay"
+  >,
+): Pick<
+  WatcherFaultProofApplication,
+  "installedCategories" | "assertStartupReady" | "close"
+> => {
+  assertWatcherVerifiedDeploymentAuthority(options.deploymentAuthority);
+  const application = createApplication({
+    options: {
+      ...options,
+      deploymentIdentity: options.deploymentAuthority.deploymentIdentity,
+    },
+    dependencies: productionDependencies,
+    environment: process.env,
+    allowExecution: false,
+  });
+  return Object.freeze({
+    installedCategories: application.installedCategories,
+    assertStartupReady: application.assertStartupReady,
+    close: application.close,
+  });
+};
 
 /** Narrow test-only dependency seam. It cannot execute transactions. */
 export const unsafeCreateWatcherFaultProofApplicationForTest = (

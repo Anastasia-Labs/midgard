@@ -5,7 +5,12 @@ import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "../src/workflow/family-l1-observation.js";
-import type { FraudProofWorkflowIdentity } from "../src/workflow/journal.js";
+import {
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowTerminal,
+  type JournalJsonObject,
+  normalizeJournalJson,
+} from "../src/workflow/journal.js";
 import {
   createLinearFamilyWorkflowAdapter,
   LINEAR_FAMILY_TRANSACTION_PORT,
@@ -118,6 +123,48 @@ const leaseCoordinator = {
   },
 };
 
+const terminal = ({
+  removalTxHash = txHash,
+  removedOutRef = outRef("33"),
+  proofOutRef = outRef("22"),
+}: {
+  readonly removalTxHash?: string;
+  readonly removedOutRef?: string;
+  readonly proofOutRef?: string;
+} = {}): FraudProofWorkflowTerminal => ({
+  schemaVersion: "midgard-fraud-proof-workflow-terminal-v1",
+  category: "daHashPreimage",
+  headerHash,
+  proofToken: {
+    unit: "11".repeat(28) + "22".repeat(28),
+    outRef: proofOutRef,
+    createdByTxHash: hash("22"),
+    retainedAtFinalState: true,
+  },
+  correction: {
+    removalTxHash,
+    removedStateQueueOutRef: removedOutRef,
+    fraudulentHeaderAbsent: true,
+    referencedProofTokenOutRef: proofOutRef,
+  },
+  economics: {
+    operatorCredential: "66".repeat(28),
+    proverCredential: "77".repeat(28),
+    operatorBondInputOutRef: outRef("88"),
+    operatorBondInputLovelace: "900000000",
+    slashedLovelace: "500000000",
+    proverRewardOutputOutRef: outRef("99"),
+    proverRewardLovelace: "100000000",
+    removalFeeLovelace: "500000000",
+    duplicateRewardAbsent: true,
+  },
+  observedAt: {
+    slot: "1000",
+    blockHash: hash("aa"),
+    confirmationDepth: 30,
+  },
+});
+
 const context = {
   identity,
   workflowId: hash("bb"),
@@ -166,6 +213,42 @@ describe("production linear family adapter V1", () => {
         preflight,
       }),
     ).resolves.toEqual({ kind: "submitted", txHash });
+    expect(capture).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts the orchestrator's journal-normalized copy of the required action", async () => {
+    const stage = {
+      value: {
+        kind: "not_started",
+        stateQueueBlockOutRef: outRef("10"),
+      } as const,
+    };
+    const capture = vi.fn(async () => ({ transaction: transaction() }));
+    const adapter = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(capture),
+      stateQueueMutationLeaseCoordinator: leaseCoordinator,
+    });
+    const observation = await adapter.observe(context);
+    if (observation.kind !== "action_required") {
+      throw new Error("expected action");
+    }
+    const normalized = {
+      actionId: observation.action.actionId,
+      input: normalizeJournalJson(
+        observation.action.input,
+        "action",
+      ) as JournalJsonObject,
+    };
+    expect(Object.keys(normalized.input)).not.toEqual(
+      Object.keys(observation.action.input),
+    );
+    const preflight = await adapter.preflight({
+      ...context,
+      action: normalized,
+    });
+    expect(preflight.actionId).toBe(observation.action.actionId);
     expect(capture).toHaveBeenCalledTimes(1);
   });
 
@@ -441,12 +524,46 @@ describe("production linear family adapter V1", () => {
         txHash,
         durableRecovery: preflight.durableRecovery,
       }),
-    ).resolves.toEqual({ kind: "pending", txHash });
+    ).resolves.toMatchObject({
+      kind: "unknown",
+      reason:
+        "Recorded signed bytes or canonical recovery source are unavailable",
+    });
     expect(resume).toHaveBeenCalledWith({
       token: lease.token,
       source: lease.source,
     });
     expect(resumedLease.renew).toHaveBeenCalledTimes(1);
+    stage.value = { kind: "removed", terminal: terminal() };
+
+    const expiredResume = vi.fn(async () => {
+      throw new Error("old mutation lease expired after confirmed removal");
+    });
+    const expired = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage, async () => true),
+      transactions: port(async () => {
+        throw new Error("must not rebuild");
+      }),
+      stateQueueMutationLeaseCoordinator: {
+        acquire: async () => {
+          throw new Error("must not acquire");
+        },
+        resume: expiredResume,
+      },
+    });
+    await expect(
+      expired.reconcile({
+        ...context,
+        action: required.action,
+        txHash,
+        durableRecovery: preflight.durableRecovery,
+        authorizeResubmission: async () => {
+          throw new Error("must not submit");
+        },
+      }),
+    ).resolves.toEqual({ kind: "confirmed", txHash });
+    expect(expiredResume).toHaveBeenCalledTimes(1);
   });
 
   it("rejects missing, surplus, or substituted mutation-lease authority", async () => {
@@ -487,7 +604,7 @@ describe("production linear family adapter V1", () => {
           },
         },
       }),
-    ).resolves.toMatchObject({ kind: "conflict" });
+    ).resolves.toMatchObject({ kind: "unknown" });
   });
 
   it("rejects category-substituted L1 or transaction ports", () => {

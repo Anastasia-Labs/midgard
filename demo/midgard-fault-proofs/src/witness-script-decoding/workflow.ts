@@ -9,12 +9,12 @@ import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
+  encodeProofThreadForcedSourceKey,
   type ForcedInclusionTxV1,
   forcedVerdictSubject,
   FraudProofComputationThreadStepDatum,
   type Header,
   type OutputReference,
-  OutputReferenceSchema,
   PROOF_THREAD_SOURCE_KIND_ACCEPTED,
   PROOF_THREAD_SOURCE_KIND_FORCED,
   RejectionReasonSchema,
@@ -29,6 +29,7 @@ import {
   type CanonicalBlockEvidence,
   fetchCanonicalBlockEvidence,
 } from "../evidence/canonical-block-evidence.js";
+import { planFaultProofFieldOpening } from "../field-opening.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import {
   buildTrieView,
@@ -59,23 +60,49 @@ import {
   type WorkflowAdapterRunner,
 } from "../workflow/adapters.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
+import { WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import {
+  createCursorFamilyWorkflowAdapter,
+  CURSOR_FAMILY_TRANSACTION_PORT,
+  type CursorFamilyTransactionPort,
+} from "../workflow/cursor-family-adapter.js";
+import {
+  captureCursorRemoval,
+  cursorFamilyActionInput,
+  cursorStringField,
+} from "../workflow/cursor-family-runtime.js";
+import { releaseFinalityAuthorityFromDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import {
   assertManifestBoundWorkflowSigner,
   bindFraudProofWorkflowDeployment,
   type FraudProofWorkflowDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
+import { createFraudProofFamilyAuthenticatedL1TerminalVerifier } from "../workflow/family-l1-observation.js";
 import {
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
+import {
+  createAuthenticatedFieldCarriagePrerequisitePort,
+  withFieldCarriagePrerequisite,
+} from "../workflow/field-carriage-prerequisite.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
   DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import {
+  createCanonicalFamilyArtifactPort,
+  executeManifestBoundFamilyRecovery,
+} from "../workflow/manifest-bound-family-recovery.js";
 import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
+import {
+  captureLocallyEvaluatedTransaction,
+  workflowTransactionInputOutRefs,
+} from "../workflow/transaction-boundary.js";
 import { createWitnessScriptDecodingCentralJournalAdapter } from "./central-journal.js";
 import type { WitnessScriptDecodingContracts } from "./contracts.js";
 import { submitWitnessScriptDecodingCancel } from "./submit-cancel.js";
@@ -96,6 +123,7 @@ import {
   WitnessScriptDecodingResultClasses,
   type WitnessScriptDecodingStage,
 } from "./witness-script-decoding.js";
+import { WITNESS_SCRIPT_DECODING_CURSOR_SPEC } from "./workflow-spec.js";
 
 type WitnessScriptDecodingJournal = Readonly<{
   load: (
@@ -490,7 +518,7 @@ export const deriveWitnessScriptDecodingAuthenticatedSource = async ({
   const forced = block.reconstruction.forcedTransactions.find(
     ({ key, value }) =>
       value.tx_id === evidence.finding.subject.transaction_id &&
-      Data.to(key as never, OutputReferenceSchema as never) ===
+      encodeProofThreadForcedSourceKey(key).toString("hex") ===
         evidence.finding.subject.source_key,
   );
   if (forced === undefined || forced.value.verdict === "ForcedTxValid") {
@@ -769,6 +797,7 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
   observe,
   resolveStage,
   centralJournal,
+  preSubmitBoundary,
   stateQueueMutationLeaseCoordinator,
 }: {
   readonly config: ManifestBoundWitnessScriptDecodingConfig;
@@ -781,6 +810,7 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
     >
   >;
   readonly resolveStage: WitnessScriptDecodingRuntimeLoader["resolveStage"];
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly centralJournal?: ReturnType<
     typeof createWitnessScriptDecodingCentralJournalAdapter
   >;
@@ -812,12 +842,14 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
         fixedTransition[1],
       );
     const stage = await resolveStage({ action, evidence });
-    const boundary = centralJournal?.boundary(
-      action,
-      familyIdentity,
-      fixedTransition[0],
-      fixedTransition[1],
-    );
+    const boundary =
+      preSubmitBoundary ??
+      centralJournal?.boundary(
+        action,
+        familyIdentity,
+        fixedTransition[0],
+        fixedTransition[1],
+      );
     if (action === "submitInit") {
       const result = await submitWitnessScriptDecodingInit({
         lucid: config.lucid,
@@ -925,18 +957,22 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
         certificateUtxo: stage.certificateUtxo,
         certificateReferenceScriptUtxo:
           config.referenceScripts.fieldPreimageCertificateMint,
-        publicationPreSubmitBoundary: centralJournal?.auxiliaryBoundary(
-          "publication",
-          familyIdentity,
-          "step02",
-          auxiliaryHashes,
-        ),
-        certificatePreSubmitBoundary: centralJournal?.auxiliaryBoundary(
-          "certificate",
-          familyIdentity,
-          "step02",
-          auxiliaryHashes,
-        ),
+        publicationPreSubmitBoundary:
+          preSubmitBoundary ??
+          centralJournal?.auxiliaryBoundary(
+            "publication",
+            familyIdentity,
+            "step02",
+            auxiliaryHashes,
+          ),
+        certificatePreSubmitBoundary:
+          preSubmitBoundary ??
+          centralJournal?.auxiliaryBoundary(
+            "certificate",
+            familyIdentity,
+            "step02",
+            auxiliaryHashes,
+          ),
         onCarriageReady:
           centralJournal === undefined
             ? undefined
@@ -964,23 +1000,25 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
         evidence,
         referenceScriptUtxo: config.referenceScripts.step03,
         preSubmitBoundaryForResult:
-          centralJournal === undefined
-            ? undefined
-            : async (closed) => {
-                const target = closed ? "step04" : "scan";
-                await centralJournal.begin(
-                  action,
-                  familyIdentity,
-                  "scan",
-                  target,
-                );
-                return centralJournal.boundary(
-                  action,
-                  familyIdentity,
-                  "scan",
-                  target,
-                );
-              },
+          preSubmitBoundary !== undefined
+            ? async () => preSubmitBoundary
+            : centralJournal === undefined
+              ? undefined
+              : async (closed) => {
+                  const target = closed ? "step04" : "scan";
+                  await centralJournal.begin(
+                    action,
+                    familyIdentity,
+                    "scan",
+                    target,
+                  );
+                  return centralJournal.boundary(
+                    action,
+                    familyIdentity,
+                    "scan",
+                    target,
+                  );
+                },
       });
       return {
         stage: result.closed ? ("step04" as const) : ("scan" as const),
@@ -1262,6 +1300,173 @@ export const runOrResumeManifestBoundWitnessScriptDecodingWorkflow =
     return await runtime.runOrResume(evidence);
   };
 
+/** Material re-derived from admitted canonical evidence before durable encoding. */
+export const prepareWitnessScriptDecodingRecoveryMaterial = async (
+  canonical: CanonicalBlockEvidence,
+  detectionId: string,
+) => {
+  const evidence =
+    deriveWitnessScriptDecodingEvidenceFromCanonicalBlock(canonical);
+  const source = await deriveWitnessScriptDecodingAuthenticatedSource({
+    block: canonical,
+    evidence,
+  });
+  return {
+    category: "witnessScriptDecoding" as const,
+    headerHash: canonical.headerHash,
+    detectionId,
+    evidence,
+    source,
+  };
+};
+
+export const createWitnessScriptDecodingRecoveryAdapter = (
+  workflow: ManifestBoundWitnessScriptDecodingWorkflow,
+) => {
+  const { config, binding, l1, stateQueueMutationLeaseCoordinator } = workflow;
+  const category = "witnessScriptDecoding";
+  const material = createCanonicalFamilyArtifactPort(
+    async ({ evidence, classification }) =>
+      await prepareWitnessScriptDecodingRecoveryMaterial(
+        evidence,
+        classification.selected.detectionId,
+      ),
+  );
+  const transactions: CursorFamilyTransactionPort<typeof category> = {
+    portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
+    category,
+    prepare: material.prepare,
+    validatePreparedArtifact: material.validatePreparedArtifact,
+    capture: async ({ action, artifact }) => {
+      const input = cursorFamilyActionInput({ category, action });
+      if (input.stage === "remove")
+        return await captureCursorRemoval({
+          category,
+          lucid: config.lucid,
+          blueprint: binding.blueprint,
+          deploymentInfo: binding.deploymentInfo,
+          network: binding.network,
+          signer: config.signer,
+          headerHash: binding.definition.headerHash,
+          input,
+          stateQueueMutationLeaseCoordinator,
+          fraudProverRewardLovelace: BigInt(
+            binding.releaseEconomics.policy.fraudProverRewardLovelace,
+          ),
+        });
+      const admitted = material.require(artifact);
+      const actions = {
+        init: "submitInit",
+        step_01: "submitStep01",
+        step_02: "submitStep02",
+        step_03: "submitScanOrResume",
+        step_04: "submitStep04",
+      } as const;
+      const familyAction = actions[input.stage as keyof typeof actions];
+      if (familyAction === undefined)
+        throw new Error(
+          `${category} cursor action is outside its exact topology`,
+        );
+      const transaction = await captureLocallyEvaluatedTransaction(
+        async (preSubmitBoundary) => {
+          const submission = createManifestBoundWitnessScriptDecodingSubmission(
+            {
+              config,
+              preSubmitBoundary,
+              observe: async () =>
+                witnessScriptDecodingObservationFromL1(
+                  (
+                    await l1.observe({
+                      headerHash: binding.definition.headerHash,
+                    })
+                  ).stage,
+                ),
+              resolveStage: createWitnessScriptDecodingRawL1StageResolver({
+                config,
+                l1,
+                source: admitted.source,
+              }),
+            },
+          );
+          await submission.submit(familyAction, admitted.evidence);
+        },
+      );
+      if (
+        input.stage !== "init" &&
+        !workflowTransactionInputOutRefs(transaction.signed).includes(
+          cursorStringField(input, "threadOutRef"),
+        )
+      )
+        throw new Error(
+          `${category} captured transaction changed its authenticated thread input`,
+        );
+      return { transaction };
+    },
+  };
+  const base = createCursorFamilyWorkflowAdapter({
+    spec: WITNESS_SCRIPT_DECODING_CURSOR_SPEC,
+    l1,
+    transactions,
+    stateQueueMutationLeaseCoordinator,
+  });
+  const adapter = withFieldCarriagePrerequisite({
+    category,
+    base,
+    prerequisite: createAuthenticatedFieldCarriagePrerequisitePort({
+      category,
+      lucid: config.lucid,
+      network: binding.network,
+      signer: config.signer,
+      publications: l1.publications,
+      transactionConfirmed: async ({ headerHash, txHash }) =>
+        await l1.transactionConfirmed({ headerHash, txHash }),
+      requirementForAction: ({ action, artifact }) => {
+        if (action.input.stage !== "step_02") return null;
+        const { evidence, source } = material.require(artifact);
+        const certificate = binding.fieldPreimageCertificate;
+        if (certificate === null)
+          throw new Error(`${category} omitted field certificate authority`);
+        return {
+          planned: planFaultProofFieldOpening({
+            anchorSourceKind:
+              evidence.finding.subject.source_kind === 1n ? 1n : 0n,
+            witnessSet: (() => {
+              const compact = decodeMidgardNativeTxWitnessSetCompact(
+                Buffer.from(source.witnessSetCompactCbor, "hex"),
+              );
+              return {
+                addr_tx_wits_hash: compact.addrTxWitsHash.toString("hex"),
+                script_tx_wits_hash: compact.scriptTxWitsHash.toString("hex"),
+                redeemer_tx_wits_hash:
+                  compact.redeemerTxWitsHash.toString("hex"),
+              };
+            })(),
+            anchorWitnessSetHash: evidence.finding.witnessSetHash,
+            fieldIndex: 6,
+            anchorTxId: evidence.finding.subject.transaction_id,
+            nativeTxCompactCbor: source.nativeTxCompactCbor,
+            itemCbors: decodeMidgardFieldPreimage(
+              Buffer.from(evidence.fieldPreimageHex, "hex"),
+            ),
+            owner: config.signer.paymentKeyHash,
+            publish: true,
+            label: `${category} field opening`,
+          }),
+          compactCbor: source.nativeTxCompactCbor,
+          witnessSetCompactCbor: source.witnessSetCompactCbor,
+          certificate: {
+            policyId: certificate.policyId,
+            mintingScript: certificate.mintingScript,
+            referenceScriptUtxo:
+              config.referenceScripts.fieldPreimageCertificateMint,
+          },
+        };
+      },
+    }),
+  });
+  return { adapter, transactions };
+};
+
 export const executeManifestBoundWitnessScriptDecodingWorkflow = async ({
   workflow,
   sources,
@@ -1270,44 +1475,20 @@ export const executeManifestBoundWitnessScriptDecodingWorkflow = async ({
   readonly workflow: ManifestBoundWitnessScriptDecodingWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<WitnessScriptDecodingStage> => {
-  const headerHash = workflow.binding.definition.headerHash;
-  const canonical = await fetchCanonicalBlockEvidence({
-    observation: await workflow.l1.observeHeader({ headerHash }),
+}) =>
+  await executeManifestBoundFamilyRecovery({
+    ...workflow,
     sources,
+    journal,
+    ...createWitnessScriptDecodingRecoveryAdapter(workflow),
+    replayer: WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(
+      workflow.l1,
+    ),
+    releaseFinalityAuthority: releaseFinalityAuthorityFromDeploymentBinding(
+      workflow.binding,
+    ),
   });
-  const evidence =
-    deriveWitnessScriptDecodingEvidenceFromCanonicalBlock(canonical);
-  const source = await deriveWitnessScriptDecodingAuthenticatedSource({
-    block: canonical,
-    evidence,
-  });
-  const centralJournal = createWitnessScriptDecodingCentralJournalAdapter({
-    store: journal,
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    headerHash,
-    decisionDigest: workflow.decisionDigest,
-    transactionConfirmed: async (txHash) =>
-      await workflow.l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  const runtime = createManifestBoundWitnessScriptDecodingRuntime({
-    config: workflow.config,
-    journal: centralJournal.familyJournal,
-    observe: async () =>
-      witnessScriptDecodingObservationFromL1(
-        (await workflow.l1.observe({ headerHash })).stage,
-      ),
-    resolveStage: createWitnessScriptDecodingRawL1StageResolver({
-      config: workflow.config,
-      l1: workflow.l1,
-      source,
-    }),
-    centralJournal,
-    stateQueueMutationLeaseCoordinator:
-      workflow.stateQueueMutationLeaseCoordinator,
-  });
-  return await runtime.runOrResume(evidence);
-};
 
 export type LoadedWitnessScriptDecodingWorkflow = Readonly<{
   schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";

@@ -1,4 +1,10 @@
-import { EventKey, type EventKey as EventKeyValue } from "@al-ft/midgard-sdk";
+import {
+  CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID,
+  DOUBLE_WITHDRAW_VIOLATION_ID,
+  EventKey,
+  type EventKey as EventKeyValue,
+  WITHDRAWAL_MISTAG_VIOLATION_ID,
+} from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
@@ -115,6 +121,29 @@ const directTransactionCategories = new Set<string>([
   "mintItemNonCanonical",
 ]);
 
+/** A payable withdrawal of an output the replayed ledger lacks is exactly what
+ * the same-block withdrawal families prove: a mistagged leaf, or the second
+ * payable leaf of a double withdrawal. Both address the committed leaf index. */
+const withdrawalPrerequisiteCovered = (
+  evidence: CanonicalBlockEvidence,
+  entry: CanonicalBlockEvidence["reconstruction"]["withdrawals"][number],
+  detections: readonly CanonicalViolationDetection[],
+): boolean => {
+  const leaf = evidence.reconstruction.withdrawals.indexOf(entry);
+  if (leaf < 0) return false;
+  return detections.some((detection) => {
+    if (detection.headerHash !== evidence.headerHash) return false;
+    if (detection.violationId === DOUBLE_WITHDRAW_VIOLATION_ID) {
+      const [, first, second] = detection.detectionId.split(":");
+      return first === leaf.toString() || second === leaf.toString();
+    }
+    return (
+      detection.violationId === WITHDRAWAL_MISTAG_VIOLATION_ID &&
+      detection.position === BigInt(leaf)
+    );
+  });
+};
+
 /** The union may discharge a proof-domain failure only with a direct finding
  * for its exact transaction. Positions in separate source frontiers must never
  * be mistaken for an event identity. */
@@ -140,6 +169,27 @@ export const assertReplayPrerequisiteCovered = (
       )
     )
       return;
+    // A deposit whose output the ledger already holds repeats a settled
+    // event; the cross-block finding at that source position names it.
+    if (
+      source?.phase === "Deposit" &&
+      detections.some(
+        (detection) =>
+          detection.headerHash === evidence.headerHash &&
+          detection.violationId === CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID &&
+          detection.position ===
+            BigInt(evidence.reconstruction.sourceEvents.indexOf(source)),
+      )
+    )
+      return;
+    throw new CanonicalReplayPrerequisiteError([failure]);
+  }
+  if (source?.phase === "Withdrawal") {
+    if (
+      failure.prerequisite === "present_spend_input" &&
+      withdrawalPrerequisiteCovered(evidence, source.entry, detections)
+    )
+      return;
     throw new CanonicalReplayPrerequisiteError([failure]);
   }
   if (source?.phase !== "L2Transaction")
@@ -158,7 +208,7 @@ export const assertReplayPrerequisiteCovered = (
           "withdrawnInput",
         ])
       : failure.prerequisite === "representable_field_shape"
-        ? new Set(["committedFieldShape"])
+        ? new Set(["committedFieldShape", "mintItemNonCanonical"])
         : failure.prerequisite === "representable_validity_flag"
           ? new Set(["l2TxMistag"])
           : directTransactionCategories;

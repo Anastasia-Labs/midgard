@@ -9,7 +9,13 @@ import {
   decodeDaCapabilitiesResponseCbor,
   encodeDaCapabilitiesRequestCbor,
 } from "@al-ft/midgard-core/da-transport";
+import { noise } from "@chainsafe/libp2p-noise";
+import { yamux } from "@chainsafe/libp2p-yamux";
+import type { Stream } from "@libp2p/interface";
+import { ping, PING_PROTOCOL } from "@libp2p/ping";
+import { tcp } from "@libp2p/tcp";
 import { multiaddr } from "@multiformats/multiaddr";
+import { createLibp2p, type Libp2p } from "libp2p";
 import { WatcherPublicDaLibp2pTransport } from "midgard-watcher";
 import { describe, expect, it, vi } from "vitest";
 
@@ -318,6 +324,129 @@ describe("DA libp2p protocol and topic allowlists", () => {
 });
 
 describe("public retained-DA listener", () => {
+  it("keeps bidirectional heartbeats alive beside eight held DA reads without admitting a ninth read", async () => {
+    const identity = await loadDaLibp2pIdentity(`seed:${"5e".repeat(32)}`);
+    let server: Libp2p | undefined;
+    const listener = new PublicRetainedDaListener({
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      config: {
+        ...publicRetainedDaConfig(identity.peerId),
+        limits: {
+          maxStreamsPerPeer: 8,
+          maxInflightRequests: 16,
+          maxInflightRequestsPerPeer: 16,
+          maxInflightProofRequests: 8,
+          requestTimeoutMs: 20_000,
+        },
+      },
+      privateKey: identity.privateKey,
+      store: {
+        getDaPayload: async () => undefined,
+        getStateQueueHeader: async () => undefined,
+      },
+      dataLimits: {
+        ...DA_TRANSPORT_LIMITS,
+        requestTimeoutMs: 20_000,
+      },
+      libp2pFactory: async (options) => {
+        server = await createLibp2p(options);
+        return server;
+      },
+    });
+    const client = await createLibp2p({
+      start: false,
+      transports: [tcp()],
+      connectionEncrypters: [noise()],
+      streamMuxers: [yamux({ maxInboundStreams: 2, maxOutboundStreams: 10 })],
+      services: { ping: ping() },
+    });
+    const held: Stream[] = [];
+    try {
+      await listener.start();
+      await client.start();
+      const address = listener.getMultiaddrs()[0];
+      if (address === undefined || server === undefined)
+        throw new Error("missing public DA listener");
+      const capabilities = daRequestResponseProtocolId(
+        DEPLOYMENT_FINGERPRINT,
+        DaRequestResponseProtocol.capabilities,
+      );
+      // Negotiated reads wait for their request frame while occupying all
+      // eight DA permits. The heartbeat must still negotiate in both directions.
+      for (let index = 0; index < 8; index += 1) {
+        held.push(
+          await client.dialProtocol(multiaddr(address), capabilities, {
+            negotiateFully: true,
+            signal: AbortSignal.timeout(2_000),
+          }),
+        );
+      }
+      const clientConnection = client.getConnections()[0];
+      const serverConnection = server.getConnections()[0];
+      expect(clientConnection).toBeDefined();
+      expect(serverConnection).toBeDefined();
+      expect(clientConnection.rtt).toBeUndefined();
+      expect(serverConnection.rtt).toBeUndefined();
+
+      // Different protocol: rejection must come from aggregate DA admission,
+      // not the capabilities handler's separate per-protocol stream limit.
+      await expect(
+        (async () => {
+          const excess = await client.dialProtocol(
+            multiaddr(address),
+            daRequestResponseProtocolId(
+              DEPLOYMENT_FINGERPRINT,
+              DaRequestResponseProtocol.payloadByHeader,
+            ),
+            { negotiateFully: true, signal: AbortSignal.timeout(2_000) },
+          );
+          try {
+            await readSingleDaStreamFrame(excess);
+          } finally {
+            excess.abort(new Error("overload test finished"));
+          }
+        })(),
+      ).rejects.toThrow();
+
+      // Leave the production monitor defaults enabled: its first heartbeat
+      // arrives after ten seconds. Both RTTs require a successful monitor read.
+      await vi.waitFor(
+        () => {
+          expect(clientConnection.rtt).toEqual(expect.any(Number));
+          expect(serverConnection.rtt).toEqual(expect.any(Number));
+        },
+        { timeout: 12_000, interval: 25 },
+      );
+      expect(client.getConnections()).toEqual([clientConnection]);
+      expect(server.getConnections()).toEqual([serverConnection]);
+      expect(clientConnection.status).toBe("open");
+      expect(serverConnection.status).toBe("open");
+      expect([...server.getProtocols()].sort()).toEqual(
+        [...listener.protocols, PING_PROTOCOL].sort(),
+      );
+      expect(client.getProtocols()).toEqual([PING_PROTOCOL]);
+
+      const request = encodeDaCapabilitiesRequestCbor({
+        deploymentFingerprint: Buffer.from(DEPLOYMENT_FINGERPRINT, "hex"),
+      });
+      await Promise.all(
+        held.map(async (stream) => {
+          await writeDaStreamFrame(stream, request, { close: true });
+          const response = await readSingleDaStreamFrame(stream);
+          expect(decodeDaCapabilitiesResponseCbor(response)).toMatchObject({
+            transportProtocolVersion: 1,
+          });
+        }),
+      );
+      expect(listener.getActivePeerPermitCountForTest()).toBe(0);
+    } finally {
+      for (const stream of held)
+        stream.abort(new Error("heartbeat test finished"));
+      await client.stop();
+      await listener.stop();
+    }
+  }, 20_000);
+
   it("serves a public Noise-authenticated read over TCP and refuses payload submission", async () => {
     const identity = await loadDaLibp2pIdentity(`seed:${"5a".repeat(32)}`);
     const listener = new PublicRetainedDaListener({
@@ -393,7 +522,7 @@ describe("public retained-DA listener", () => {
     }
   });
 
-  it("installs only the manifest allowlist with no services, gossip, or outbound dialing", async () => {
+  it("installs only public read handlers and ping with no gossip or outbound dialing", async () => {
     const identity = await loadDaLibp2pIdentity(`seed:${"5b".repeat(32)}`);
     const handled: string[] = [];
     const handlers = new Map<
@@ -448,7 +577,7 @@ describe("public retained-DA listener", () => {
         listen: ["/ip4/127.0.0.1/tcp/0"],
       },
     });
-    expect(options).not.toHaveProperty("services");
+    expect(Object.keys(options?.services ?? {})).toEqual(["ping"]);
     expect(options).not.toHaveProperty("peerDiscovery");
     const gater = options?.connectionGater as {
       readonly denyDialPeer?: () => boolean;

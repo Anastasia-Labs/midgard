@@ -12,6 +12,7 @@ import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-v
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
 import {
   keyValuePhasProof,
   keyValuePhasRootWithCount,
@@ -182,6 +183,14 @@ export const prepareValueConservationArtifact = async ({
     : decodeMidgardNativeTxFullFromCanonicalCbor(source.fullTransactionCbor);
   if ("validity" in transaction && transaction.validity !== "TxIsValid")
     return null;
+  // A mint item outside the field-5 grammar has no conservation meaning;
+  // the direct mint-item proof owns that transaction.
+  if (!forced && transactionHasNonCanonicalMintItem(source.fullTransactionCbor))
+    throw replayPrerequisiteFailure(
+      block.headerHash,
+      eventKey,
+      "representable_field_shape",
+    );
   const event = await buildEventToStepMembershipProof({
     reconstruction: block.reconstruction,
     eventKey,

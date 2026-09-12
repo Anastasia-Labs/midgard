@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
+import { appendFileSync, existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
@@ -22,15 +22,20 @@ import { createPublishedWatcherDeploymentAuthority } from "midgard-watcher/tests
 import { expect } from "vitest";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
-import { verifyJourneyCorrection } from "./correction.js";
+import {
+  readJourneyWorkflowEntries,
+  verifyJourneyCorrection,
+} from "./correction.js";
 import type {
   JourneyFixture,
   JourneyFixtureStage,
   JourneySuccessor,
+  JourneySuccessorCheckpoint,
 } from "./fixture.js";
 import { startJourneyHistoryArchives } from "./history-archives.js";
 import { prepareDuplicateEventHistory } from "./history-settlement.js";
-import { loadJourneyContext } from "./live-context.js";
+import { readTransitionTraceJourneyTiming } from "./journey-timing.js";
+import { JOURNEY_FINALITY_DEPTH, loadJourneyContext } from "./live-context.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
 import { startJourneyNativeRecorder } from "./native-recorder.js";
 import { journeyPorts, launchJourneyWatcherProcess } from "./process.js";
@@ -39,6 +44,12 @@ import { verifyJourneyResultEvidence } from "./readiness-evidence.js";
 import { startJourneyRetainedDa } from "./retained-da.js";
 import { measureJourneyStage } from "./stage-timing.js";
 import { prepareJourneyHistory } from "./staging.js";
+import { verifyJourneyWorkflowBindings } from "./workflow-binding-preflight.js";
+
+/** The watcher CLI's failed-closed exit status. */
+const WATCHER_FAILED_CLOSED_EXIT_CODE = 70;
+const WATCHER_RESTART_LIMIT = 12;
+const WATCHER_LAUNCH_TIMEOUT_MS = 1_800_000;
 
 type JourneyExecution =
   | { kind: "journey"; fixture: JourneyFixture }
@@ -88,11 +99,40 @@ const runJourney = async (
     timeoutMs = 300_000,
   ): Promise<T> =>
     stage(name, async () => {
-      const deadline = Date.now() + timeoutMs;
+      const deadline = performance.now() + timeoutMs;
       for (;;) {
         const result = await action();
         if (result !== undefined) return result;
-        if (Date.now() >= deadline)
+        if (performance.now() >= deadline)
+          throw new Error(`Timed out waiting for ${name}`);
+        await pause(1000);
+      }
+    });
+  // A stage that waits on the watcher's authenticated replay is budgeted by
+  // progress, not by wall clock. The watcher resumes from its last persisted
+  // state-queue observation and walks every later L1 block through the
+  // trusted-head authority before it can classify a header, so a long L1 gap
+  // (a node outage, a frozen devnet) legitimately takes hours. The stage fails
+  // only when the authority head stops advancing for the whole allowance; the
+  // journey timeout still bounds the total.
+  const pollWhileReplaying = async <T>(
+    name: string,
+    action: () => Promise<T | undefined>,
+    progress: () => Promise<string | null>,
+    stallTimeoutMs: number,
+  ): Promise<T> =>
+    stage(name, async () => {
+      let lastProgress = await progress();
+      let deadline = performance.now() + stallTimeoutMs;
+      for (;;) {
+        const result = await action();
+        if (result !== undefined) return result;
+        const current = await progress();
+        if (current !== lastProgress) {
+          lastProgress = current;
+          deadline = performance.now() + stallTimeoutMs;
+        }
+        if (performance.now() >= deadline)
           throw new Error(`Timed out waiting for ${name}`);
         await pause(1000);
       }
@@ -102,6 +142,12 @@ const runJourney = async (
       createPublishedWatcherDeploymentAuthority({
         deployment,
         directory,
+        // Every journey resumes the shared watcher runtime, whose saved
+        // user-event history binds the attesting trust root.
+        trustRootKeyPath: join(
+          context.runDirectory,
+          "work/journeys/deployment-trust-root.pem",
+        ),
         fundingProfiles: [],
         programCommitments: {
           "computation-thread-policy-v1": createHash("sha256")
@@ -120,6 +166,17 @@ const runJourney = async (
     ).verifyForWorkflow({
       deploymentFingerprint: deployment.manifest.manifestId,
     });
+    const timing =
+      execution.kind === "journey" && category === "transitionTrace"
+        ? await readTransitionTraceJourneyTiming(context.runDirectory, {
+            authenticatedConfirmationDepth:
+              releaseFinality.policy.confirmationDepth,
+          })
+        : undefined;
+    if (timing !== undefined) {
+      await writeJourneyArtifact(join(directory, "timing-plan.json"), timing);
+      console.info("Live watcher confirmation budget", timing);
+    }
     const retainedDa = await startJourneyRetainedDa({
       runDirectory: context.runDirectory,
       runEnv,
@@ -208,11 +265,11 @@ const runJourney = async (
         requestTimeoutMs: 30_000,
         maxConcurrency: 8,
         finality: {
-          depth: 30,
+          depth: JOURNEY_FINALITY_DEPTH,
           rollback: {
             beforeFinality: "rewind",
             afterFinality: "quarantine",
-            maxDepth: 30,
+            maxDepth: JOURNEY_FINALITY_DEPTH,
           },
         },
       },
@@ -409,16 +466,52 @@ const runJourney = async (
     const configPath = join(directory, "watcher-process.json");
     await writeJourneyArtifact(config.watcherRuntimeConfigPath, watcherInput);
     await writeJourneyArtifact(configPath, processInput);
-    const watcher = launchJourneyWatcherProcess({
-      command: "start",
+    await stage("installed workflow binding preflight", () =>
+      verifyJourneyWorkflowBindings({
+        directory,
+        config,
+      }),
+    );
+    const workflowBaseline = await readJourneyWorkflowEntries({
+      workflowJournalDirectory: config.workflowJournalDirectory,
+      category: fixture.category,
+      headerHash: staged.current.headerHash,
+    });
+    const watcherLaunch = {
+      command: "start" as const,
       configPath,
       directory,
       caPath: archives.caPath,
-    });
-    cleanup.push(watcher.close);
+    };
+    let watcher = launchJourneyWatcherProcess(watcherLaunch);
+    cleanup.push(() => watcher.close());
+    // The watcher fails closed on transient L1 conditions (Kupo checkpoint
+    // churn, Ogmios disconnects, retained-DA fetches) and exits 70. Its
+    // journal makes a restart resume the same workflow, so relaunch a bounded
+    // number of times; a stalled workflow still ends the journey through the
+    // journal, and any other exit remains fatal.
+    let watcherRestarts = 0;
     const requireLive = () => {
       native.assertHealthy();
       authorityProcess.assertHealthy();
+      const observed = watcher.observe();
+      if (
+        observed.state === "exited" &&
+        observed.exitCode === WATCHER_FAILED_CLOSED_EXIT_CODE &&
+        watcherRestarts < WATCHER_RESTART_LIMIT
+      ) {
+        watcherRestarts += 1;
+        appendFileSync(
+          join(directory, "watcher-restarts.ndjson"),
+          `${JSON.stringify({ restartedAt: new Date().toISOString(), restart: watcherRestarts, previous: observed })}\n`,
+        );
+        console.warn(
+          `Live watcher exited failed-closed; relaunching (restart ${watcherRestarts}/${WATCHER_RESTART_LIMIT})`,
+          observed.tail.at(-1) ?? "",
+        );
+        watcher = launchJourneyWatcherProcess(watcherLaunch);
+        return;
+      }
       watcher.assertHealthy();
     };
     const operations = async (path: string) => {
@@ -435,8 +528,28 @@ const runJourney = async (
       status: await operations("/v1/status").catch(String),
       metrics: await operations("/v1/metrics").catch(String),
     });
+    const trustedHeadRevision = async (): Promise<string | null> => {
+      try {
+        const response = await fetch(
+          `${trustedHeadAuthorityEndpoint}/v1/trusted-head`,
+          {
+            headers: { authorization: `Bearer ${bearer}` },
+            signal: AbortSignal.timeout(5000),
+          },
+        );
+        if (!response.ok) return null;
+        const body = (await response.json()) as {
+          head?: { revision?: unknown };
+        };
+        return typeof body.head?.revision === "string"
+          ? body.head.revision
+          : null;
+      } catch {
+        return null;
+      }
+    };
     let nextStartupReport = 0;
-    await poll(
+    await pollWhileReplaying(
       "normal watcher launcher",
       async () => {
         requireLive();
@@ -469,7 +582,11 @@ const runJourney = async (
         }
         return status;
       },
-      600_000,
+      // A watcher resuming after a long L1 outage replays every block it
+      // missed during user-event catch-up before it serves its operations
+      // endpoint, so the launcher is budgeted by trusted-head progress.
+      trustedHeadRevision,
+      WATCHER_LAUNCH_TIMEOUT_MS,
     );
     const readDecisions = async () =>
       (
@@ -503,6 +620,8 @@ const runJourney = async (
       900_000,
     );
     const completion = await verifyJourneyCorrection({
+      workflowBaseline,
+      correctionTimeoutMs: timing?.correctionTimeoutMs,
       context,
       native,
       workflowJournalDirectory: config.workflowJournalDirectory,
@@ -522,14 +641,24 @@ const runJourney = async (
         SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + hash,
       );
     const successorPath = join(directory, "successor.json");
+    const successorProgressPath = join(directory, "successor-progress.json");
     const successor = existsSync(successorPath)
       ? await readJourneyArtifact<JourneySuccessor>(successorPath)
-      : await stage("honest successor commitment", () =>
-          staged.commitHonestSuccessor({ beforeCommit: retainedDa.retain }),
+      : await stage("honest successor commitment", async () =>
+          staged.commitHonestSuccessor({
+            beforeCommit: retainedDa.retain,
+            resume: existsSync(successorProgressPath)
+              ? await readJourneyArtifact<JourneySuccessorCheckpoint>(
+                  successorProgressPath,
+                )
+              : undefined,
+            onCheckpoint: (checkpoint) =>
+              writeJourneyArtifact(successorProgressPath, checkpoint),
+          }),
         );
     await writeJourneyArtifact(successorPath, successor);
     await retain(successor, successor.commitTxHash);
-    await poll(
+    await pollWhileReplaying(
       "healthy processing after correction",
       async () => {
         requireLive();
@@ -555,7 +684,8 @@ const runJourney = async (
         });
         return decision;
       },
-      1_800_000,
+      trustedHeadRevision,
+      timing?.allowances.healthySuccessorObservationMs ?? 1_800_000,
     );
     await writeJourneyArtifact(
       join(context.runDirectory, "work/journeys/head.json"),

@@ -38,6 +38,7 @@ import {
 import {
   bindWatcherRetainedDaOperations,
   createWatcherRetainedDaRuntime,
+  createWatcherRetainedDaRuntimeOwner,
   createWatcherWorkflowRuntimeLoader,
   WATCHER_RETAINED_DA_RUNTIME,
   WatcherRetainedDaSourceWithL1Fallback,
@@ -121,7 +122,9 @@ const deploymentIdentity = (): VerifiedWatcherDeploymentIdentity =>
   AUTHORITY.result;
 
 const transportFactory = () => {
-  const request = vi.fn(async () => new Uint8Array([0xf6]));
+  const request = vi.fn(
+    async (_request: WatcherPublicDaRequest) => new Uint8Array([0xf6]),
+  );
   const stop = vi.fn(async () => undefined);
   const transport = Object.create(
     WatcherPublicDaLibp2pTransport.prototype,
@@ -241,6 +244,40 @@ describe("retained-DA fallback attempt history", () => {
     expect(result.payloadEnvelopeCbor).toBe(success.payloadEnvelopeCbor);
     expect(result.metadata).toBe(success.metadata);
     expect(success.attempts).toEqual([]);
+  });
+
+  it("does not admit L1 fallback after lease closure, including an in-flight fallback", async () => {
+    const lifetime = new AbortController();
+    let releaseFallback!: () => void;
+    const fallback = vi.fn(async () => {
+      await new Promise<void>((resolve) => {
+        releaseFallback = resolve;
+      });
+      return success;
+    });
+    const source = new WatcherRetainedDaSourceWithL1Fallback(
+      {
+        sourceId: "public-da",
+        deploymentFingerprint: DEPLOYMENT,
+        peers: [{ peerId: PEER_ID }],
+        transport: {
+          request: async () => {
+            throw new Error("peer unavailable");
+          },
+        },
+      },
+      { sourceId: "l1-availability", fetchPayloadByHeaderHash: fallback },
+      lifetime.signal,
+    );
+    const pending = source.fetchPayloadByHeaderHash(headerHash);
+    await vi.waitFor(() => expect(fallback).toHaveBeenCalledTimes(1));
+    lifetime.abort(new Error("lease closed"));
+    releaseFallback();
+    await expect(pending).rejects.toThrow("lease closed");
+    await expect(source.fetchPayloadByHeaderHash(headerHash)).rejects.toThrow(
+      "lease closed",
+    );
+    expect(fallback).toHaveBeenCalledTimes(1);
   });
 
   it("returns public success unchanged without calling L1", async () => {
@@ -830,6 +867,234 @@ describe("production retained-DA runtime V1", () => {
       expect(transport.stop).not.toHaveBeenCalled();
     } finally {
       await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("retained-DA runtime owner", () => {
+  const headerHash = "ab".repeat(28);
+
+  it("shares one startup across concurrent and sequential leases and revokes each lease independently", async () => {
+    const fake = transportFactory();
+    const owner = createWatcherRetainedDaRuntimeOwner({
+      deploymentIdentity: deploymentIdentity(),
+      unsafeTransportFactoryForTest: fake.factory,
+    });
+    try {
+      for (let round = 0; round < 32; round += 1) {
+        const [first, second] = await Promise.all([
+          owner.createRuntime(rawConfig()),
+          owner.createRuntime(rawConfig()),
+        ]);
+        await first.close();
+        const calls = fake.request.mock.calls.length;
+        expect(
+          await first.sources[0]!.fetchPayloadByHeaderHash(headerHash),
+        ).toMatchObject({
+          ok: false,
+          attempts: [
+            expect.objectContaining({
+              detail: "retained-DA runtime lease is closed",
+            }),
+          ],
+        });
+        expect(fake.request).toHaveBeenCalledTimes(calls);
+        await second.sources[0]!.fetchPayloadByHeaderHash(headerHash);
+        await second.close();
+        expect(fake.stop).not.toHaveBeenCalled();
+      }
+      expect(fake.factory).toHaveBeenCalledTimes(1);
+      expect(fake.request).toHaveBeenCalledTimes(32);
+      const active = await owner.createRuntime(rawConfig());
+      await owner.close();
+      await owner.close();
+      expect(fake.stop).toHaveBeenCalledTimes(1);
+      const calls = fake.request.mock.calls.length;
+      expect(
+        await active.sources[0]!.fetchPayloadByHeaderHash(headerHash),
+      ).toMatchObject({ ok: false });
+      expect(fake.request).toHaveBeenCalledTimes(calls);
+      await expect(owner.createRuntime(rawConfig())).rejects.toThrow(
+        "owner is closed",
+      );
+    } finally {
+      await owner.close();
+    }
+  });
+
+  it("rejects configuration and deployment substitution without replacing the shared transport", async () => {
+    const fake = transportFactory();
+    const owner = createWatcherRetainedDaRuntimeOwner({
+      deploymentIdentity: deploymentIdentity(),
+      unsafeTransportFactoryForTest: fake.factory,
+    });
+    try {
+      const lease = await owner.createRuntime(rawConfig());
+      await lease.close();
+      const config = rawConfig();
+      await expect(
+        owner.createRuntime({
+          ...config,
+          da: { ...config.da, maxConcurrency: 4 },
+        }),
+      ).rejects.toThrow("owner configuration changed");
+      await expect(
+        owner.createRuntime({ ...config, targetNetwork: "Preview" }),
+      ).rejects.toThrow("network differs");
+      expect(() =>
+        createWatcherWorkflowRuntimeLoader({
+          deploymentIdentity: makeWatcherDeploymentAuthorityFixture({
+            network: "Custom",
+          }).result,
+          runtimeOwner: owner,
+          buildInfrastructureConfig: async () => ({}),
+        }),
+      ).toThrow("owner belongs to another deployment identity");
+      expect(fake.factory).toHaveBeenCalledTimes(1);
+    } finally {
+      await owner.close();
+    }
+  });
+
+  it("bounds shared active requests and queued work, and cancels queued leases without dialing", async () => {
+    const fake = transportFactory();
+    const held: (() => void)[] = [];
+    fake.request.mockImplementation(
+      async (request) =>
+        await new Promise<Uint8Array>((resolve, reject) => {
+          held.push(() => resolve(new Uint8Array([0xf6])));
+          request.signal.addEventListener(
+            "abort",
+            () => reject(request.signal.reason),
+            { once: true },
+          );
+        }),
+    );
+    const owner = createWatcherRetainedDaRuntimeOwner({
+      deploymentIdentity: deploymentIdentity(),
+      unsafeTransportFactoryForTest: fake.factory,
+    });
+    const config = rawConfig();
+    const limited = { ...config, da: { ...config.da, maxConcurrency: 1 } };
+    try {
+      const active = await owner.createRuntime(limited);
+      const queued = await owner.createRuntime(limited);
+      const first = active.sources[0]!.fetchPayloadByHeaderHash(headerHash);
+      await vi.waitFor(() => expect(fake.request).toHaveBeenCalledTimes(1));
+      const waiting = Array.from({ length: 64 }, () =>
+        queued.sources[0]!.fetchPayloadByHeaderHash(headerHash),
+      );
+      expect(
+        await queued.sources[0]!.fetchPayloadByHeaderHash(headerHash),
+      ).toMatchObject({
+        ok: false,
+        attempts: [
+          expect.objectContaining({
+            detail: "retained-DA request queue is full",
+          }),
+        ],
+      });
+      expect(fake.request).toHaveBeenCalledTimes(1);
+      await queued.close();
+      for (const result of await Promise.all(waiting))
+        expect(result).toMatchObject({ ok: false });
+      expect(fake.request).toHaveBeenCalledTimes(1);
+      held.shift()!();
+      await first;
+      const resumed = active.sources[0]!.fetchPayloadByHeaderHash(headerHash);
+      await vi.waitFor(() => expect(fake.request).toHaveBeenCalledTimes(2));
+      held.shift()!();
+      await resumed;
+    } finally {
+      await owner.close();
+    }
+  });
+
+  it("settles queued cancellation with a non-Error signal reason without dialing", async () => {
+    const cancellation = new AbortController();
+    const timeout = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockReturnValue(cancellation.signal);
+    const fake = transportFactory();
+    fake.request.mockImplementation(
+      async (request) =>
+        await new Promise<Uint8Array>((_resolve, reject) => {
+          request.signal.addEventListener(
+            "abort",
+            () => reject(new Error("active request cancelled")),
+            { once: true },
+          );
+        }),
+    );
+    const owner = createWatcherRetainedDaRuntimeOwner({
+      deploymentIdentity: deploymentIdentity(),
+      unsafeTransportFactoryForTest: fake.factory,
+    });
+    const config = rawConfig();
+    try {
+      const lease = await owner.createRuntime({
+        ...config,
+        da: { ...config.da, maxConcurrency: 1 },
+      });
+      const active = lease.sources[0]!.fetchPayloadByHeaderHash(headerHash);
+      await vi.waitFor(() => expect(fake.request).toHaveBeenCalledTimes(1));
+      const queued = lease.sources[0]!.fetchPayloadByHeaderHash(headerHash);
+      cancellation.abort("cancelled by caller");
+      expect(await queued).toMatchObject({
+        ok: false,
+        attempts: [
+          expect.objectContaining({ detail: "retained-DA request aborted" }),
+        ],
+      });
+      await active;
+      expect(fake.request).toHaveBeenCalledTimes(1);
+    } finally {
+      timeout.mockRestore();
+      await owner.close();
+    }
+  });
+
+  it("keeps queue waiting inside the original request deadline and aborts active work on owner close", async () => {
+    const fake = transportFactory();
+    fake.request.mockImplementation(
+      async (request) =>
+        await new Promise<Uint8Array>((_resolve, reject) => {
+          request.signal.addEventListener(
+            "abort",
+            () => reject(request.signal.reason),
+            { once: true },
+          );
+        }),
+    );
+    const owner = createWatcherRetainedDaRuntimeOwner({
+      deploymentIdentity: deploymentIdentity(),
+      unsafeTransportFactoryForTest: fake.factory,
+    });
+    const config = rawConfig();
+    try {
+      const lease = await owner.createRuntime({
+        ...config,
+        da: { ...config.da, maxConcurrency: 1, requestTimeoutMs: 100 },
+      });
+      const results = await Promise.all([
+        lease.sources[0]!.fetchPayloadByHeaderHash(headerHash),
+        lease.sources[0]!.fetchPayloadByHeaderHash(headerHash),
+      ]);
+      for (const result of results)
+        expect(result).toMatchObject({
+          ok: false,
+          attempts: [expect.objectContaining({ status: "timeout" })],
+        });
+      const previousCalls = fake.request.mock.calls.length;
+      const pending = lease.sources[0]!.fetchPayloadByHeaderHash(headerHash);
+      await vi.waitFor(() =>
+        expect(fake.request).toHaveBeenCalledTimes(previousCalls + 1),
+      );
+      await owner.close();
+      expect(await pending).toMatchObject({ ok: false });
+      expect(fake.stop).toHaveBeenCalledTimes(1);
+    } finally {
+      await owner.close();
     }
   });
 });

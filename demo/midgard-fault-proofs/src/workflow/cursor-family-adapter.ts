@@ -6,6 +6,7 @@ import type {
   StateQueueMutationLeaseCoordinator,
 } from "../remove-fraudulent-block.js";
 import type { CanonicalBlockClassification } from "./classification.js";
+import type { CompleteCanonicalReplayContext } from "./complete-replay.js";
 import {
   cursorFamilyObservation,
   type CursorFamilySpec,
@@ -22,9 +23,11 @@ import {
   FRAUD_PROOF_WORKFLOW_SAFETY,
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowAction,
+  type FraudProofWorkflowObservation,
   type FraudProofWorkflowPreflight,
   type FraudProofWorkflowReferenceScript,
 } from "./orchestrator.js";
+import { reconcileSignedWorkflowTransaction } from "./signed-transaction-reconciliation.js";
 import {
   bindWorkflowPreflightTransaction,
   LOCAL_UPLC_EVALUATOR,
@@ -49,11 +52,19 @@ export interface CursorFamilyTransactionPort<
   readonly category: Category;
   prepare(input: {
     readonly evidence: CanonicalBlockEvidence;
+    readonly replayContext?: CompleteCanonicalReplayContext;
     readonly classification: Extract<
       CanonicalBlockClassification,
       { readonly decision: "fault_detected" }
     > & { readonly category: Category };
   }): Promise<JournalJsonObject>;
+  prepareRaw?: FraudProofFamilyWorkflowAdapter["prepareRaw"];
+  validatePreparedRawArtifact?: FraudProofFamilyWorkflowAdapter["validatePreparedRawArtifact"];
+  validatePreparedArtifact?(
+    input: Parameters<CursorFamilyTransactionPort<Category>["prepare"]>[0] & {
+      readonly artifact: JournalJsonObject;
+    },
+  ): Promise<void>;
   capture(input: {
     readonly action: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
@@ -205,11 +216,21 @@ export const createCursorFamilyWorkflowAdapter = <
   l1,
   transactions,
   stateQueueMutationLeaseCoordinator,
+  refineAction,
 }: {
   readonly spec: CursorFamilySpec<Category>;
   readonly l1: FraudProofFamilyL1ObservationPort<Category>;
   readonly transactions: CursorFamilyTransactionPort<Category>;
   readonly stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
+  /** Family grammar fields derived from this same authenticated observation.
+   * Canonical cursor identity and spent references cannot be overridden. */
+  readonly refineAction?: (input: {
+    readonly observed: Awaited<
+      ReturnType<FraudProofFamilyL1ObservationPort<Category>["observe"]>
+    >;
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
+  }) => Promise<JournalJsonObject>;
 }): FraudProofFamilyWorkflowAdapter => {
   const category = spec.category;
   if (
@@ -222,43 +243,112 @@ export const createCursorFamilyWorkflowAdapter = <
   }
   const prepared = new Map<string, CursorFamilyCapturedAction>();
   const leaseByTxHash = new Map<string, StateQueueMutationLease>();
-  const current = async (headerHash: string) => {
+  const current = async (
+    headerHash: string,
+    artifact: JournalJsonObject,
+    reconciliationOnly = false,
+  ) => {
     const observed = await l1.observe({ headerHash });
-    return {
-      observed,
-      workflow: cursorFamilyObservation({
-        spec,
-        headerHash,
-        provenance: observed.provenance,
-        stage: observed.stage,
-      }),
-    };
+    let workflow: FraudProofWorkflowObservation = cursorFamilyObservation({
+      spec,
+      headerHash,
+      provenance: observed.provenance,
+      stage: observed.stage,
+    });
+    if (
+      workflow.kind === "action_required" &&
+      refineAction !== undefined &&
+      !reconciliationOnly
+    ) {
+      const fields = normalizeJournalJson(
+        await refineAction({ observed, action: workflow.action, artifact }),
+      );
+      if (
+        typeof fields !== "object" ||
+        fields === null ||
+        Array.isArray(fields)
+      )
+        throw new Error(`${category} action refinement must return a record`);
+      for (const key of Object.keys(fields)) {
+        if (Object.prototype.hasOwnProperty.call(workflow.action.input, key))
+          throw new Error(
+            `${category} action refinement cannot override canonical input ${key}`,
+          );
+      }
+      workflow = {
+        kind: "action_required",
+        action: {
+          actionId: workflow.action.actionId,
+          input: { ...workflow.action.input, ...(fields as JournalJsonObject) },
+        },
+      };
+    }
+    return { observed, workflow };
   };
 
   const adapter: FraudProofFamilyWorkflowAdapter = {
     adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
     category,
     safety: FRAUD_PROOF_WORKFLOW_SAFETY,
-    prepare: async ({ evidence, classification }) => {
+    prepare: async ({ evidence, classification, replayContext }) => {
       if (classification.category !== category) {
         throw new Error(`${category} port received another classification`);
       }
       return await transactions.prepare({
         evidence,
+        ...(replayContext === undefined ? {} : { replayContext }),
         classification: classification as Extract<
           CanonicalBlockClassification,
           { readonly decision: "fault_detected" }
         > & { readonly category: Category },
       });
     },
-    observe: async ({ identity }) => {
+    ...(transactions.prepareRaw === undefined
+      ? {}
+      : { prepareRaw: transactions.prepareRaw }),
+    ...(transactions.validatePreparedRawArtifact === undefined
+      ? {}
+      : {
+          validatePreparedRawArtifact: transactions.validatePreparedRawArtifact,
+        }),
+    ...(transactions.validatePreparedArtifact === undefined
+      ? {}
+      : {
+          validatePreparedArtifact: async ({
+            evidence,
+            classification,
+            replayContext,
+            artifact,
+          }: Parameters<
+            NonNullable<
+              FraudProofFamilyWorkflowAdapter["validatePreparedArtifact"]
+            >
+          >[0]) => {
+            if (classification.category !== category)
+              throw new Error(
+                `${category} prepared validation received another classification`,
+              );
+            await transactions.validatePreparedArtifact!({
+              evidence,
+              artifact,
+              ...(replayContext === undefined ? {} : { replayContext }),
+              classification: classification as Extract<
+                CanonicalBlockClassification,
+                { readonly decision: "fault_detected" }
+              > & { readonly category: Category },
+            });
+          },
+        }),
+    observe: async ({ identity, artifact, reconciliationOnly }) => {
       if (
         identity.category !== category ||
         identity.target.kind !== "state_queue_header"
       ) {
         throw new Error(`${category} adapter received another identity`);
       }
-      return (await current(identity.target.headerHash)).workflow;
+      return (
+        await current(identity.target.headerHash, artifact, reconciliationOnly)
+      ).workflow;
     },
     preflight: async ({ identity, workflowId, artifact, action }) => {
       if (
@@ -267,7 +357,7 @@ export const createCursorFamilyWorkflowAdapter = <
       ) {
         throw new Error(`${category} preflight changed workflow identity`);
       }
-      const snapshot = await current(identity.target.headerHash);
+      const snapshot = await current(identity.target.headerHash, artifact);
       if (
         snapshot.workflow.kind !== "action_required" ||
         !sameJson(snapshot.workflow.action, action)
@@ -344,7 +434,14 @@ export const createCursorFamilyWorkflowAdapter = <
         prepared.delete(key);
       }
     },
-    reconcile: async ({ identity, action, txHash, durableRecovery }) => {
+    reconcile: async ({
+      identity,
+      action,
+      txHash,
+      durableRecovery,
+      signedTransactionCborHex,
+      authorizeResubmission,
+    }) => {
       if (
         identity.category !== category ||
         identity.target.kind !== "state_queue_header"
@@ -360,23 +457,16 @@ export const createCursorFamilyWorkflowAdapter = <
         };
       }
       let lease = txHash === undefined ? undefined : leaseByTxHash.get(txHash);
-      if (lease === undefined && recovery !== undefined) {
+      const restoreLease = async () => {
+        if (lease !== undefined || recovery === undefined) return;
         if (stateQueueMutationLeaseCoordinator.resume === undefined) {
-          return {
-            kind: "conflict",
-            reason: `${category} lease coordinator cannot resume durable intent`,
-          };
+          throw new Error(
+            `${category} lease coordinator cannot resume durable intent`,
+          );
         }
-        try {
-          lease = await stateQueueMutationLeaseCoordinator.resume(recovery);
-          if (txHash !== undefined) leaseByTxHash.set(txHash, lease);
-        } catch (cause) {
-          return {
-            kind: "conflict",
-            reason: `${category} durable lease cannot resume: ${String(cause)}`,
-          };
-        }
-      }
+        lease = await stateQueueMutationLeaseCoordinator.resume(recovery);
+        if (txHash !== undefined) leaseByTxHash.set(txHash, lease);
+      };
       const observed = await l1.observe({ headerHash });
       const result = await reconcileCursorFamilyAction({
         spec,
@@ -385,15 +475,48 @@ export const createCursorFamilyWorkflowAdapter = <
         ...(txHash === undefined ? {} : { txHash }),
         provenance: observed.provenance,
         stage: observed.stage,
+        recoverUnconfirmedTransaction:
+          txHash === undefined
+            ? undefined
+            : () =>
+                reconcileSignedWorkflowTransaction({
+                  transactionHash: txHash,
+                  signedTransactionCborHex,
+                  observe: l1.observeSignedTransaction,
+                  rebroadcast: l1.rebroadcastSignedTransaction,
+                  authorizeResubmission:
+                    authorizeResubmission === undefined
+                      ? undefined
+                      : async (signed) => {
+                          await restoreLease();
+                          await lease?.renew();
+                          await authorizeResubmission(signed);
+                        },
+                }),
         transactionConfirmed: async (hash) =>
           await l1.transactionConfirmed({
             headerHash,
             txHash: hash,
           }),
       });
+      // Canonical reconciliation remains possible after a removal has made its
+      // old lease unavailable. A live lease is still required for any replay.
+      try {
+        await restoreLease();
+      } catch (cause) {
+        if (result.kind === "pending" || result.kind === "unknown") {
+          return {
+            kind: "unknown",
+            reason: `${category} durable lease cannot resume: ${String(cause)}`,
+          };
+        }
+      }
       if (result.kind === "confirmed") {
         await lease?.release();
         leaseByTxHash.delete(result.txHash);
+      } else if (result.kind === "not_found") {
+        await lease?.release();
+        if (txHash !== undefined) leaseByTxHash.delete(txHash);
       } else if (result.kind === "conflict") {
         await lease?.fail(result.reason);
         if (txHash !== undefined) leaseByTxHash.delete(txHash);

@@ -32,7 +32,13 @@ describe("real state-queue observation source with synthetic local transports", 
     const fixture = await pendingFixture;
     expect(fixture.header).toEqual(headerSnapshot);
     const fixtureFetch = globalThis.fetch;
-    let checkpointSlot = "999999";
+    // Kupo's head stays inside the security window above the observed blocks,
+    // so every checkpoint is young enough to be re-read instead of memoized.
+    const youngHead = (offset: bigint) =>
+      (
+        BigInt(fixture.transport.emptySuccessorBlock.point.slot) + offset
+      ).toString();
+    let checkpointSlot = youngHead(10_000n);
     let changeDuringCapture = false;
     let changeOnceDuringCapture = false;
     let checkpointReads = 0;
@@ -73,7 +79,7 @@ describe("real state-queue observation source with synthetic local transports", 
       ).toThrow();
       // A later observation must acquire its own provider snapshot, even if
       // the shared queue source last captured a much older indexer head.
-      checkpointSlot = "1000000";
+      checkpointSlot = youngHead(20_000n);
       const advancedObservation = await first.localRuntime.observe({
         block: first.nativeBlock,
         depth: first.localObservation.block.chainPoint.depth,
@@ -92,7 +98,10 @@ describe("real state-queue observation source with synthetic local transports", 
       ).rejects.toThrow(
         "Kupo advanced or rolled back during raw snapshot capture",
       );
-      expect(checkpointReads).toBe(6);
+      // The pinned head refuses the first response after the change; the
+      // remaining reads were already in flight. One lookup fewer than before
+      // the source began retaining data it had already read.
+      expect(checkpointReads).toBe(5);
       changeDuringCapture = false;
       changeOnceDuringCapture = true;
       checkpointReads = 0;

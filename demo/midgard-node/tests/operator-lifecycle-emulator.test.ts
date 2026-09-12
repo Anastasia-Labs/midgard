@@ -395,6 +395,111 @@ const advanceEmulatorPastRegistrationDelay = (emulator: Emulator): void => {
 };
 
 describe("operator lifecycle emulator", () => {
+  it("activates operators before, between and after existing keys without duplicate activation", async () => {
+    const { emulator, lucid, referenceScriptsLucid, contracts } =
+      await initOperatorLifecycleFixture();
+    const accounts = Array.from({ length: 4 }, () =>
+      generateEmulatorAccount({ lovelace: 0n }),
+    )
+      .map((account) => ({
+        ...account,
+        key: paymentCredentialOf(account.address).hash,
+      }))
+      .sort((left, right) => left.key.localeCompare(right.key));
+    let funding = lucid.newTx();
+    for (const account of accounts) {
+      funding = funding.pay.ToAddress(account.address, {
+        lovelace: 4_000_000_000n,
+      });
+    }
+    const funded = await funding.complete({ localUPLCEval: true });
+    const signed = await funded.sign.withWallet().complete();
+    await lucid.awaitTx(await signed.submit());
+
+    // Empty list, before its first node, after its last node, then middle.
+    const insertionOrder = [1, 0, 3, 2];
+    const activatedKeys: string[] = [];
+    for (const index of insertionOrder) {
+      const account = accounts[index]!;
+      const operatorLucid = await Lucid(emulator, "Custom");
+      operatorLucid.selectWallet.fromSeed(account.seedPhrase);
+      const registered = await Effect.runPromise(
+        registerOperatorProgram(
+          operatorLucid,
+          contracts,
+          EMULATOR_REQUIRED_BOND_LOVELACE,
+          referenceScriptsLucid,
+        ),
+      );
+      expect(registered.registerTxHash).toHaveLength(64);
+      advanceEmulatorPastRegistrationDelay(emulator);
+      const activated = await Effect.runPromise(
+        activateOperatorProgram(
+          operatorLucid,
+          contracts,
+          EMULATOR_REQUIRED_BOND_LOVELACE,
+          referenceScriptsLucid,
+        ),
+      );
+      expect(activated.activateTxHash).toHaveLength(64);
+      activatedKeys.push(account.key);
+      activatedKeys.sort();
+      const activeUtxos = await operatorLucid.utxosAt(
+        contracts.activeOperators.spendingScriptAddress,
+      );
+      const nodes = await Promise.all(
+        activeUtxos
+          .filter((utxo) =>
+            Object.entries(utxo.assets).some(
+              ([unit, quantity]) =>
+                unit.startsWith(contracts.activeOperators.policyId) &&
+                quantity === 1n,
+            ),
+          )
+          .map(
+            async (utxo) =>
+              await Effect.runPromise(SDK.getLinkedListNodeViewFromUTxO(utxo)),
+          ),
+      );
+      expect(nodes).toHaveLength(activatedKeys.length + 1);
+      const orderedKeys = [null, ...activatedKeys];
+      for (let position = 0; position < orderedKeys.length; position += 1) {
+        const key = orderedKeys[position];
+        const found = nodes.find((entry) =>
+          key === null
+            ? entry.key === "Empty"
+            : entry.key !== "Empty" && entry.key.Key.key === key,
+        );
+        expect(found).toBeDefined();
+        const next = activatedKeys[position];
+        expect(found!.next).toEqual(
+          next === undefined ? "Empty" : { Key: { key: next } },
+        );
+      }
+      const priorOutRefs = activeUtxos
+        .map((utxo) => `${utxo.txHash}#${utxo.outputIndex}`)
+        .sort();
+      const duplicate = await Effect.runPromise(
+        activateOperatorProgram(
+          operatorLucid,
+          contracts,
+          EMULATOR_REQUIRED_BOND_LOVELACE,
+          referenceScriptsLucid,
+        ),
+      );
+      expect(duplicate.activateTxHash).toBeNull();
+      expect(
+        (
+          await operatorLucid.utxosAt(
+            contracts.activeOperators.spendingScriptAddress,
+          )
+        )
+          .map((utxo) => `${utxo.txHash}#${utxo.outputIndex}`)
+          .sort(),
+      ).toEqual(priorOutRefs);
+    }
+  });
+
   it("refreshes the dedicated reference-script wallet from provider state after external replenishment", async () => {
     const operator = generateEmulatorAccount({
       lovelace: 200_000_000n,

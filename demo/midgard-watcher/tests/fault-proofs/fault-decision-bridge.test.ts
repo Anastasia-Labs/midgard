@@ -1,4 +1,12 @@
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
+import {
+  authenticatedStateQueueObservationDigest,
+  type HeaderDecision,
+} from "@al-ft/midgard-fault-proofs";
 import {
   type CorrectionLockDatum,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
@@ -12,11 +20,15 @@ import { unsafeCreateWatcherFaultDecisionBridgeForTest } from "../../src/fault-p
 import type { WatcherPersistedFaultDecisionRecord } from "../../src/fault-proofs/fault-decision-journal.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
 import type { WatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";
-import type { WatcherAuthenticatedStateQueueObservation } from "../../src/indexers/authenticated-state-queue-observation.js";
+import type {
+  WatcherAuthenticatedStateQueueObservation,
+  WatcherStateQueueHeaderObservation,
+} from "../../src/indexers/authenticated-state-queue-observation.js";
 import {
   createWatcherOperationsObservability,
   type WatcherOperationsSink,
 } from "../../src/runtime/operations-observability.js";
+import { createWatcherStateQueueRuntime } from "../../src/runtime/state-queue-runtime.js";
 
 const DEPLOYMENT = "dd".repeat(32);
 const OBSERVATION_DIGEST = "11".repeat(32);
@@ -154,14 +166,23 @@ const harness = (input: {
   readonly records?: readonly WatcherPersistedFaultDecisionRecord[];
   readonly classifyOverride?: (
     value: ReturnType<typeof decision>,
-  ) => ReturnType<typeof decision> | Promise<ReturnType<typeof decision>>;
+  ) => HeaderDecision | Promise<HeaderDecision>;
   readonly enqueueError?: Error;
   readonly operationsSink?: WatcherOperationsSink;
   readonly nowMs?: () => bigint;
   readonly monotonicNowMs?: () => number;
   readonly pendingAvailabilityHeaders?: () => ReadonlySet<string>;
-  readonly resolvePredecessorOverride?: () => Promise<undefined>;
+  readonly resolvePredecessorOverride?: () => Promise<
+    WatcherStateQueueHeaderObservation | undefined
+  >;
+  readonly classificationContextIdentity?: () => Promise<string>;
   readonly decisionUsesLocalEventHistory?: boolean;
+  readonly permitAuthority?:
+    | "submission"
+    | "reconciliation"
+    | (() => "submission" | "reconciliation");
+  readonly observationDigestOverride?: typeof authenticatedStateQueueObservationDigest;
+  readonly deadlineOffset?: () => number;
 }) => {
   const admitted = new WeakSet<object>([input.current]);
   const appended: ReturnType<typeof decision>[] = [];
@@ -169,9 +190,17 @@ const harness = (input: {
   const enqueuedGenerations: string[] = [];
   const controllerGenerations: string[] = [];
   const revocations: string[] = [];
+  const restrictions: string[] = [];
+  const permitIdentities = new WeakMap<
+    object,
+    {
+      decision: Extract<HeaderDecision, { decision: "fault_detected" }>;
+      generation: string;
+    }
+  >();
   const retainedDecisionAuthorities: (string | null)[] = [];
   const application = {
-    deploymentFingerprint: DEPLOYMENT,
+    deploymentFingerprint: input.current.deploymentIdentityDigest,
     installedCategories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
     classifyHeader: vi.fn(async ({ observation: header }) => {
       const category = input.categoryByHeader[header.headerHash];
@@ -209,10 +238,18 @@ const harness = (input: {
       assertObservation: (candidate) => {
         if (!admitted.has(candidate)) throw new Error("not admitted");
       },
-      observationDigest: async () => OBSERVATION_DIGEST,
+      observationDigest: async (observation) =>
+        input.observationDigestOverride === undefined
+          ? OBSERVATION_DIGEST
+          : await input.observationDigestOverride({
+              observation,
+              minimumConfirmationDepth: 30,
+            }),
       ...(input.resolvePredecessorOverride === undefined
         ? {}
         : { resolvePredecessorHeader: input.resolvePredecessorOverride }),
+      classificationContextIdentity:
+        input.classificationContextIdentity ?? (async () => "test-context"),
       readRecords: async () => input.records ?? Object.freeze([]),
       append: async (fresh) => {
         appended.push(fresh as ReturnType<typeof decision>);
@@ -223,12 +260,46 @@ const harness = (input: {
           decision: fresh,
         });
       },
+      assertActuationPermitIdentity: ({
+        permit,
+        category,
+        rollbackGeneration,
+      }) => {
+        const stored = permitIdentities.get(permit);
+        if (
+          stored === undefined ||
+          stored.decision.category !== category ||
+          stored.generation !== rollbackGeneration ||
+          revocations.length !== 0
+        )
+          throw new Error("test permit revoked or substituted");
+        return {
+          decisionDigest: stored.decision.decisionDigest,
+          executionDecisionDigest: stored.decision.decisionDigest,
+          launchScope: stored.decision.launchScope,
+          deploymentFingerprint: input.current.deploymentIdentityDigest,
+          headerHash: stored.decision.headerHash,
+          authority:
+            typeof input.permitAuthority === "function"
+              ? input.permitAuthority()
+              : (input.permitAuthority ?? "submission"),
+        };
+      },
       createActuationController: (_fresh, rollbackGeneration) => {
         controllerGenerations.push(rollbackGeneration);
+        const permit = Object.freeze({
+          permitVersion:
+            "midgard-production-workflow-actuation-permit-v1" as const,
+        });
+        permitIdentities.set(permit, {
+          decision: _fresh,
+          generation: rollbackGeneration,
+        });
         return Object.freeze({
-          permit: Object.freeze({
-            permitVersion: "midgard-production-workflow-actuation-permit-v1",
-          }),
+          permit,
+          restrictToReconciliation: (reason: string) => {
+            restrictions.push(reason);
+          },
           revoke: (reason: string) => {
             revocations.push(reason);
           },
@@ -239,7 +310,9 @@ const harness = (input: {
           headerHash: header.headerHash,
           headerEndTimeMs: "0",
           maturityAtMs: "604800000",
-          latestSafeStartAtMs: "302400000",
+          latestSafeStartAtMs: (
+            302400000 + (input.deadlineOffset?.() ?? 0)
+          ).toString(),
         }),
       enqueue: async (fresh, _permit, _deadline, rollbackGeneration) => {
         if (input.enqueueError !== undefined) throw input.enqueueError;
@@ -258,11 +331,315 @@ const harness = (input: {
     enqueued,
     enqueuedGenerations,
     revocations,
+    restrictions,
     retainedDecisionAuthorities,
   };
 };
 
 describe("production fault decision bridge", () => {
+  it("reuses only the live selected fault across hundreds of forward observations", async () => {
+    const current = observation([headerFixture("01"), headerFixture("02")]);
+    const [healthy, faulty] = current.finalizedHeaders;
+    const h = harness({
+      current,
+      categoryByHeader: {
+        [healthy!.headerHash]: "doubleSpend",
+        [faulty!.headerHash]: "transitionTrace",
+      },
+      pendingAvailabilityHeaders: () => new Set(),
+      classifyOverride: (fresh) =>
+        fresh.headerHash === healthy!.headerHash
+          ? { ...fresh, decision: "healthy" }
+          : fresh,
+    });
+    await h.bridge.prepareForRecovery(current);
+    for (let i = 1; i <= 300; i += 1) {
+      const next = {
+        ...current,
+        nativePoint: {
+          ...current.nativePoint,
+          blockNo: (100 + i).toString(),
+          slot: (1000 + i).toString(),
+        },
+        observationDigest: i.toString(16).padStart(64, "0"),
+      };
+      h.admitted.add(next);
+      h.bridge.beforeHistoryAdvance();
+      await h.bridge.reconcileAndDispatch(next);
+    }
+    const calls = h.application.classifyHeader.mock.calls.map(
+      ([input]) => input.observation.headerHash,
+    );
+    expect(calls.filter((hash) => hash === faulty!.headerHash)).toHaveLength(1);
+    // Healthy classifications may consume moving settlement/event context.
+    expect(calls.filter((hash) => hash === healthy!.headerHash)).toHaveLength(
+      301,
+    );
+    expect(h.controllerGenerations).toEqual(["1"]);
+    expect(h.restrictions).toEqual([]);
+    expect(h.revocations).toEqual([]);
+    expect(h.retainedDecisionAuthorities.at(-1)).toBe(
+      decision(faulty!.headerHash, "transitionTrace").decisionDigest,
+    );
+  });
+
+  it.each([
+    "source",
+    "policy",
+    "queue",
+    "header",
+    "healthy_header",
+    "availability",
+    "predecessor",
+    "deadline",
+    "lock",
+    "configuration",
+    "fork",
+    "backward",
+  ])(
+    "reclassifies rather than reusing active fault after %s evidence changes",
+    async (change) => {
+      const current = observation([headerFixture("01"), headerFixture("02")]);
+      const [healthy, faulty] = current.finalizedHeaders;
+      let changed = false;
+      const h = harness({
+        current,
+        categoryByHeader: {
+          [healthy!.headerHash]: "doubleSpend",
+          [faulty!.headerHash]: "transitionTrace",
+        },
+        pendingAvailabilityHeaders: () => new Set(),
+        classifyOverride: (fresh) =>
+          fresh.headerHash === healthy!.headerHash
+            ? { ...fresh, decision: "healthy" }
+            : fresh,
+        deadlineOffset: () => (changed && change === "deadline" ? 1 : 0),
+        classificationContextIdentity: async () =>
+          changed && change === "configuration" ? "changed" : "original",
+        resolvePredecessorOverride: async () =>
+          changed && change === "predecessor"
+            ? { ...healthy!, observedBlockHash: "ee".repeat(32) }
+            : healthy,
+      });
+      await h.bridge.prepareForRecovery(current);
+      changed = true;
+      const next: WatcherAuthenticatedStateQueueObservation = {
+        ...current,
+        sourceId: change === "source" ? "changed-source" : current.sourceId,
+        protocolScriptAuthorityDigest:
+          change === "policy"
+            ? "ee".repeat(32)
+            : current.protocolScriptAuthorityDigest,
+        observationDigest: "ef".repeat(32),
+        nativePoint: {
+          ...current.nativePoint,
+          blockNo:
+            change === "backward" ? "99" : change === "fork" ? "100" : "101",
+          slot:
+            change === "backward" ? "999" : change === "fork" ? "1000" : "1001",
+          blockHash: "ee".repeat(32),
+        },
+        finalizedQueue:
+          change === "queue"
+            ? current.finalizedQueue.map((node, i) =>
+                i === 0 ? { ...node, outRef: `${"ee".repeat(32)}#0` } : node,
+              )
+            : current.finalizedQueue,
+        finalizedHeaders: current.finalizedHeaders.map((header, index) => {
+          if (
+            (change === "header" && index === 1) ||
+            (change === "healthy_header" && index === 0)
+          )
+            return { ...header, observedBlockHash: "ee".repeat(32) };
+          if (change === "availability" && index === 1)
+            return {
+              ...header,
+              daAvailability: {
+                Attested: { da_bond_asset_name: "ee".repeat(32) },
+              },
+            };
+          return header;
+        }),
+        finalizedCorrectionLock:
+          change === "lock"
+            ? {
+                ...current.finalizedCorrectionLock!,
+                outRef: `${"ee".repeat(32)}#0`,
+              }
+            : current.finalizedCorrectionLock,
+      };
+      h.admitted.add(next);
+      await h.bridge.prepareForRecovery(next);
+      expect(
+        h.application.classifyHeader.mock.calls.filter(
+          ([input]) => input.observation.headerHash === faulty!.headerHash,
+        ),
+      ).toHaveLength(2);
+    },
+  );
+
+  it.each(["configuration", "permit", "history"])(
+    "rejects reuse when %s changes while a healthy sibling is classifying",
+    async (change) => {
+      const current = observation([headerFixture("01"), headerFixture("02")]);
+      const [healthy, faulty] = current.finalizedHeaders;
+      let resumed = false;
+      let changed = false;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const h = harness({
+        current,
+        categoryByHeader: {
+          [healthy!.headerHash]: "doubleSpend",
+          [faulty!.headerHash]: "transitionTrace",
+        },
+        pendingAvailabilityHeaders: () => new Set(),
+        classificationContextIdentity: async () =>
+          changed && change === "configuration" ? "changed" : "original",
+        permitAuthority: () =>
+          changed && change === "permit" ? "reconciliation" : "submission",
+        classifyOverride: async (fresh) => {
+          if (fresh.headerHash === healthy!.headerHash) {
+            if (resumed) await gate;
+            return { ...fresh, decision: "healthy" };
+          }
+          return fresh;
+        },
+      });
+      await h.bridge.prepareForRecovery(current);
+      resumed = true;
+      const pending = h.bridge.prepareForRecovery(current);
+      await vi.waitFor(() =>
+        expect(h.application.classifyHeader).toHaveBeenCalledTimes(3),
+      );
+      changed = true;
+      if (change === "history") h.bridge.invalidateForHistoryChange();
+      release();
+      await expect(pending).rejects.toThrow(
+        change === "configuration"
+          ? "configuration changed"
+          : change === "permit"
+            ? "cannot replace or revive"
+            : "authority changed",
+      );
+      expect(h.controllerGenerations).toEqual(["1"]);
+      expect(
+        h.application.classifyHeader.mock.calls.filter(
+          ([input]) => input.observation.headerHash === faulty!.headerHash,
+        ),
+      ).toHaveLength(1);
+    },
+  );
+
+  it("admits a newly detected earlier fault from fresh healthy-header replay", async () => {
+    const current = observation([headerFixture("01"), headerFixture("02")]);
+    const [earlier, later] = current.finalizedHeaders;
+    let changed = false;
+    const h = harness({
+      current,
+      categoryByHeader: {
+        [earlier!.headerHash]: "doubleSpend",
+        [later!.headerHash]: "transitionTrace",
+      },
+      pendingAvailabilityHeaders: () => new Set(),
+      classifyOverride: (fresh) =>
+        !changed && fresh.headerHash === earlier!.headerHash
+          ? { ...fresh, decision: "healthy" }
+          : fresh,
+    });
+    await h.bridge.prepareForRecovery(current);
+    changed = true;
+    expect(
+      (await h.bridge.prepareForRecovery(current)).target?.headerHash,
+    ).toBe(earlier!.headerHash);
+    expect(
+      h.application.classifyHeader.mock.calls.filter(
+        ([input]) => input.observation.headerHash === later!.headerHash,
+      ),
+    ).toHaveLength(1);
+    expect(h.controllerGenerations).toEqual(["1", "2"]);
+  });
+
+  it("reclassifies an unprovable header when new context becomes available", async () => {
+    const current = observation([headerFixture("01")]);
+    let available = false;
+    const h = harness({
+      current,
+      categoryByHeader: {
+        [current.finalizedHeaders[0]!.headerHash]: "transitionTrace",
+      },
+      pendingAvailabilityHeaders: () => new Set(),
+      classifyOverride: (fresh) =>
+        available
+          ? fresh
+          : {
+              ...fresh,
+              decision: "unprovable",
+              reason: "predecessor_context_unavailable",
+            },
+    });
+    expect((await h.bridge.prepareForRecovery(current)).target).toBeNull();
+    available = true;
+    expect((await h.bridge.prepareForRecovery(current)).target).not.toBeNull();
+    expect(h.application.classifyHeader).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["rollback", "history", "shutdown"])(
+    "discards classification reuse on %s authority loss",
+    async (reason) => {
+      const current = observation([headerFixture("01")]);
+      const h = harness({
+        current,
+        categoryByHeader: {
+          [current.finalizedHeaders[0]!.headerHash]: "transitionTrace",
+        },
+        pendingAvailabilityHeaders: () => new Set(),
+      });
+      await h.bridge.prepareForRecovery(current);
+      if (reason === "rollback") h.bridge.invalidateForRollback();
+      else if (reason === "history") h.bridge.invalidateForHistoryChange();
+      else h.bridge.invalidateForShutdown();
+      await h.bridge.prepareForRecovery(current);
+      expect(h.application.classifyHeader).toHaveBeenCalledTimes(2);
+      expect(h.controllerGenerations).toEqual(["1", "3"]);
+    },
+  );
+
+  it("does not revive a restricted active permit through classification reuse", async () => {
+    const current = observation([headerFixture("01")]);
+    const h = harness({
+      current,
+      categoryByHeader: {
+        [current.finalizedHeaders[0]!.headerHash]: "transitionTrace",
+      },
+      pendingAvailabilityHeaders: () => new Set(),
+      permitAuthority: "reconciliation",
+    });
+    await h.bridge.prepareForRecovery(current);
+    await expect(h.bridge.prepareForRecovery(current)).rejects.toThrow(
+      "cannot replace or revive",
+    );
+    expect(h.application.classifyHeader).toHaveBeenCalledOnce();
+    expect(h.controllerGenerations).toEqual(["1"]);
+  });
+
+  it("does not reuse a selected validation transcript whose history capture needs refresh", async () => {
+    const current = observation([headerFixture("01")]);
+    const h = harness({
+      current,
+      categoryByHeader: {
+        [current.finalizedHeaders[0]!.headerHash]: "validationTraceDispute",
+      },
+      pendingAvailabilityHeaders: () => new Set(),
+      decisionUsesLocalEventHistory: true,
+    });
+    await h.bridge.prepareForRecovery(current);
+    await h.bridge.prepareForRecovery(current);
+    expect(h.application.classifyHeader).toHaveBeenCalledTimes(2);
+  });
+
   it.each([
     { wallAfter: 90_000n, fails: false },
     { wallAfter: 900_000n, fails: false },
@@ -368,6 +745,221 @@ describe("production fault decision bridge", () => {
     const recovered = await currentHarness.bridge.reconcileAndDispatch(current);
     expect(recovered.target?.headerHash).toBe(first.headerHash);
     expect(currentHarness.application.classifyHeader).toHaveBeenCalledOnce();
+  });
+
+  it("preserves the admitted target and replay authority through repeated availability rechecks", async () => {
+    const initial = observation([headerFixture("01")]);
+    const header = initial.finalizedHeaders[0]!;
+    const current: WatcherAuthenticatedStateQueueObservation = {
+      ...initial,
+      finalizedHeaders: [
+        {
+          ...header,
+          daAvailability: { Attested: { da_bond_asset_name: "44".repeat(32) } },
+        },
+      ],
+    };
+    let pending = new Set<string>();
+    const h = harness({
+      current,
+      categoryByHeader: { [header.headerHash]: "transitionTrace" },
+      pendingAvailabilityHeaders: () => pending,
+      decisionUsesLocalEventHistory: true,
+    });
+    const first = await h.bridge.prepareForRecovery(current);
+    await h.bridge.recoverExisting();
+    pending = new Set([header.headerHash]);
+    let previous = current;
+    for (let index = 1; index <= 45; index += 1) {
+      const next = {
+        ...current,
+        observationDigest: index.toString(16).padStart(64, "0"),
+        previousObservationDigest: previous.observationDigest,
+        nativePoint: {
+          ...current.nativePoint,
+          blockNo: (100 + index).toString(),
+          slot: (1000 + index).toString(),
+          blockHash: index.toString(16).padStart(64, "0"),
+          parentBlockHash: previous.nativePoint.blockHash,
+        },
+      };
+      h.admitted.add(next);
+      // Actual follower order: fence history, complete availability recheck, dispatch queue.
+      h.bridge.beforeHistoryAdvance();
+      const result = await h.bridge.reconcileAndDispatch(next);
+      expect(result.target).toEqual(first.target);
+      expect(h.retainedDecisionAuthorities.at(-1)).toBe(
+        first.target!.decisionDigest,
+      );
+      previous = next;
+    }
+    expect(h.application.classifyHeader).toHaveBeenCalledOnce();
+    expect(h.restrictions).toEqual([]);
+    expect(h.revocations).toEqual([]);
+    expect(h.controllerGenerations).toEqual(["1"]);
+    expect(new Set(h.enqueuedGenerations)).toEqual(new Set(["1"]));
+    pending = new Set();
+    await h.bridge.reconcileAndDispatch(previous);
+    expect(h.application.classifyHeader).toHaveBeenCalledTimes(2);
+    expect(h.controllerGenerations).toEqual(["1"]);
+    h.bridge.invalidateForRollback();
+    expect(h.revocations).toEqual(["native_chain_rollback"]);
+  });
+
+  it.each([
+    "queue_out_ref",
+    "source",
+    "native_regression",
+    "availability_state",
+    "native_fork",
+    "header_seal",
+    "deadline",
+    "correction_lock",
+  ])(
+    "does not preserve pending target authority after %s changes",
+    async (change) => {
+      const original = observation([headerFixture("01")]);
+      const header = original.finalizedHeaders[0]!;
+      const current: WatcherAuthenticatedStateQueueObservation = {
+        ...original,
+        finalizedHeaders: [
+          {
+            ...header,
+            daAvailability: {
+              Attested: { da_bond_asset_name: "44".repeat(32) },
+            },
+          },
+        ],
+      };
+      let pending = new Set<string>();
+      const h = harness({
+        current,
+        categoryByHeader: { [header.headerHash]: "transitionTrace" },
+        pendingAvailabilityHeaders: () => pending,
+        deadlineOffset: () =>
+          change === "deadline" && pending.size > 0 ? 1 : 0,
+      });
+      await h.bridge.reconcileAndDispatch(current);
+      pending = new Set([header.headerHash]);
+      const changed: WatcherAuthenticatedStateQueueObservation = {
+        ...current,
+        observationDigest: "aa".repeat(32),
+        sourceId:
+          change === "source" ? "different-native-source" : current.sourceId,
+        finalizedQueue: current.finalizedQueue.map((node) =>
+          change === "queue_out_ref" && node.headerHash === header.headerHash
+            ? { ...node, outRef: `${"ee".repeat(32)}#0` }
+            : node,
+        ),
+        nativePoint: {
+          ...current.nativePoint,
+          blockNo:
+            change === "native_regression"
+              ? "99"
+              : change === "native_fork"
+                ? "100"
+                : "101",
+          slot:
+            change === "native_regression"
+              ? "999"
+              : change === "native_fork"
+                ? "1000"
+                : "1001",
+          blockHash:
+            change === "native_fork"
+              ? "ff".repeat(32)
+              : current.nativePoint.blockHash,
+        },
+        finalizedCorrectionLock:
+          change === "correction_lock"
+            ? {
+                ...current.finalizedCorrectionLock!,
+                outRef: `${"ee".repeat(32)}#1`,
+              }
+            : current.finalizedCorrectionLock,
+        finalizedHeaders: [
+          {
+            ...current.finalizedHeaders[0]!,
+            ...(change === "header_seal"
+              ? { observedBlockHash: "ff".repeat(32) }
+              : {}),
+            ...(change === "queue_out_ref"
+              ? { queueOutRef: `${"ee".repeat(32)}#0` }
+              : {}),
+            ...(change === "availability_state"
+              ? {
+                  daAvailability: {
+                    Attested: { da_bond_asset_name: "55".repeat(32) },
+                  },
+                }
+              : {}),
+          },
+        ],
+      };
+      h.admitted.add(changed);
+      h.bridge.beforeHistoryAdvance();
+      expect((await h.bridge.reconcileAndDispatch(changed)).target).toBeNull();
+      expect(h.restrictions).toEqual(["state_queue_target_changed"]);
+      expect(h.application.classifyHeader).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("never revives a restricted permit and settles other classifiers before rejecting", async () => {
+    const headers = [headerFixture("01"), headerFixture("02")];
+    const header = encodedHeader(headers[1]!);
+    const initial = observation(headers, {
+      Locked: {
+        target_header_hash: header.hash,
+        correction_identity: {
+          FraudProof: {
+            fraud_proof_asset_name: `${FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.transitionTrace}${header.hash}`,
+          },
+        },
+      },
+    });
+    const current: WatcherAuthenticatedStateQueueObservation = {
+      ...initial,
+      finalizedHeaders: initial.finalizedHeaders.map((row) => ({
+        ...row,
+        daAvailability: { Attested: { da_bond_asset_name: "44".repeat(32) } },
+      })),
+    };
+    let pending = new Set<string>();
+    let waitForFirst = false;
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const h = harness({
+      current,
+      categoryByHeader: Object.fromEntries(
+        current.finalizedHeaders.map((row) => [
+          row.headerHash,
+          "transitionTrace",
+        ]),
+      ),
+      pendingAvailabilityHeaders: () => pending,
+      permitAuthority: "reconciliation",
+      classifyOverride: async (value) => {
+        if (waitForFirst && value.headerHash !== header.hash) await waiting;
+        return value;
+      },
+    });
+    await h.bridge.prepareForRecovery(current);
+    pending = new Set([header.hash]);
+    waitForFirst = true;
+    let finished = false;
+    const preparing = h.bridge.prepareForRecovery(current).finally(() => {
+      finished = true;
+    });
+    await vi.waitFor(() =>
+      expect(h.application.classifyHeader).toHaveBeenCalledTimes(3),
+    );
+    expect(finished).toBe(false);
+    release();
+    await expect(preparing).rejects.toThrow("cannot replace or revive");
+    expect(h.controllerGenerations).toEqual(["1"]);
+    expect(h.enqueued).toEqual([]);
   });
 
   it("rejects a pending-availability claim for an unattested header", async () => {
@@ -636,7 +1228,7 @@ describe("production fault decision bridge", () => {
   );
 
   it.each([false, true])(
-    "history advance revokes the selected decision only when it uses the live event head (%s)",
+    "canonical history advance preserves reconciliation until queue removal (%s)",
     async (usesLocalEventHistory) => {
       const current = observation([headerFixture("0d")]);
       const header = current.finalizedHeaders[0]!;
@@ -645,40 +1237,22 @@ describe("production fault decision bridge", () => {
         categoryByHeader: { [header.headerHash]: "transitionTrace" },
         decisionUsesLocalEventHistory: usesLocalEventHistory,
       });
-      const initial = await currentHarness.bridge.reconcileAndDispatch(current);
-      for (let index = 0; index < 3; index += 1) {
-        currentHarness.bridge.beforeHistoryAdvance();
-        if (usesLocalEventHistory) break;
-        await currentHarness.bridge.reconcileAndDispatch(current);
-      }
-      if (usesLocalEventHistory) {
-        expect(currentHarness.revocations).toEqual([
-          "local_event_history_change",
-        ]);
-        expect(currentHarness.bridge.dispatchPrepared()).toBeNull();
-        expect(currentHarness.retainedDecisionAuthorities.at(-1)).toBeNull();
-      } else {
-        expect(currentHarness.revocations).toEqual([]);
-        expect(currentHarness.controllerGenerations).toEqual(["1"]);
-        expect(currentHarness.enqueuedGenerations).toEqual([
-          "1",
-          "1",
-          "1",
-          "1",
-        ]);
-        expect(
-          currentHarness.bridge.isJobPermitted({
-            mode: "resume",
-            category: "transitionTrace",
-            headerHash: header.headerHash,
-            decisionDigest: initial.target!.decisionDigest,
-            rollbackGeneration: "1",
-          }),
-        ).toBe(true);
-        currentHarness.bridge.invalidateForRollback();
-        expect(currentHarness.revocations).toEqual(["native_chain_rollback"]);
-        expect(currentHarness.bridge.dispatchPrepared()).toBeNull();
-      }
+      await currentHarness.bridge.reconcileAndDispatch(current);
+      currentHarness.bridge.beforeHistoryAdvance();
+      expect(currentHarness.revocations).toEqual([]);
+      const removed = Object.freeze({
+        ...observation([]),
+        observationDigest: "55".repeat(32),
+      });
+      currentHarness.admitted.add(removed);
+      await currentHarness.bridge.reconcileAndDispatch(removed);
+      expect(currentHarness.restrictions).toEqual([
+        "state_queue_target_changed",
+      ]);
+      expect(currentHarness.revocations).toEqual([]);
+      expect(currentHarness.bridge.dispatchPrepared()).toBeNull();
+      currentHarness.bridge.invalidateForRollback();
+      expect(currentHarness.revocations).toEqual(["native_chain_rollback"]);
     },
   );
 
@@ -831,3 +1405,160 @@ describe("production fault decision bridge", () => {
     );
   });
 });
+
+const retainedRunDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
+it.skipIf(retainedRunDirectory === undefined).each(["pending", "forward"])(
+  "retains the exact admitted target through %s follower hooks restored from retained queue snapshots",
+  async (mode) => {
+    const config = JSON.parse(
+      await readFile(
+        join(
+          retainedRunDirectory!,
+          "work/journeys/transition-trace/watcher-process.json",
+        ),
+        "utf8",
+      ),
+    );
+    const database = new DatabaseSync(config.watcherConfig.storage.path, {
+      readOnly: true,
+    });
+    let snapshots: WatcherAuthenticatedStateQueueObservation[];
+    try {
+      snapshots = database
+        .prepare(
+          "SELECT canonical_json FROM watcher_state_queue_observation_v1 ORDER BY sequence",
+        )
+        .all()
+        .map((row) => {
+          if (typeof row.canonical_json !== "string")
+            throw new Error("missing retained queue snapshot");
+          return JSON.parse(
+            row.canonical_json,
+          ) as WatcherAuthenticatedStateQueueObservation;
+        });
+    } finally {
+      database.close();
+    }
+    const current = snapshots.at(-1);
+    if (current === undefined)
+      throw new Error("retained replay requires queue snapshots");
+    const directory = join(config.workflowJournalDirectory, "fault-decisions");
+    const records: WatcherPersistedFaultDecisionRecord[] = await Promise.all(
+      (await readdir(directory))
+        .filter((file) => file.endsWith(".json"))
+        .sort()
+        .map(
+          async (file) =>
+            JSON.parse(
+              await readFile(join(directory, file), "utf8"),
+            ) as WatcherPersistedFaultDecisionRecord,
+        ),
+    );
+    const byHeader = new Map(
+      records.map((record) => [record.decision.headerHash, record.decision]),
+    );
+    let pending = new Set<string>();
+    let latest = current;
+    const h = harness({
+      current,
+      categoryByHeader: Object.fromEntries(
+        current.finalizedHeaders.map((row) => [
+          row.headerHash,
+          "transitionTrace",
+        ]),
+      ),
+      observationDigestOverride: authenticatedStateQueueObservationDigest,
+      pendingAvailabilityHeaders: () => pending,
+      classifyOverride: (value) => {
+        const found = byHeader.get(value.headerHash);
+        if (found === undefined) throw new Error("missing retained decision");
+        return found;
+      },
+      decisionUsesLocalEventHistory: mode === "pending",
+    });
+    const first = await h.bridge.prepareForRecovery(current);
+    if (first.target === null)
+      throw new Error("retained run has no admitted fault");
+    await h.bridge.recoverExisting();
+    const point = current.nativePoint;
+    const restore = vi.fn(async () => ({
+      previous: current,
+      discardedObservationCount: 0,
+      replayIntersection: point,
+      catchupBoundary: { ...point, ogmiosTipBlockNo: point.blockNo },
+    }));
+    const append = vi.fn(async () => "appended" as const);
+    const runtime = await createWatcherStateQueueRuntime({
+      store: {
+        readAll: async () => snapshots,
+        append,
+        rollbackTo: async () => undefined,
+      },
+      source: {
+        restore,
+        bootstrap: async () => {
+          throw new Error("must restore retained snapshots");
+        },
+        observe: async () => current,
+        latestFinalizedObservation: () => latest,
+        resolveRetainedHeader: async () => {
+          throw new Error("no new classification required");
+        },
+      },
+    });
+    const reconcileAvailability = vi.fn(async () => {
+      pending =
+        mode === "pending"
+          ? new Set([first.target!.headerHash])
+          : new Set<string>();
+    });
+    const hooks = runtime.bindFaultDecisionBridge(h.bridge, {
+      reconcile: reconcileAvailability,
+      invalidateForRollback: () => {
+        pending = new Set();
+      },
+    });
+    const callbacks = mode === "pending" ? 3 : 300;
+    for (let index = 0; index < callbacks; index += 1) {
+      if (mode === "forward") {
+        latest = {
+          ...current,
+          observationDigest: index.toString(16).padStart(64, "0"),
+          nativePoint: {
+            ...point,
+            blockNo: (BigInt(point.blockNo) + BigInt(index + 1)).toString(),
+            slot: (BigInt(point.slot) + BigInt(index + 1)).toString(),
+          },
+        };
+        h.admitted.add(latest);
+      }
+      h.bridge.beforeHistoryAdvance();
+      await Promise.resolve();
+      await hooks.onFinalized!({
+        nativeBlock: {} as never,
+        localObservation: {} as never,
+        relevance: "touched",
+      });
+    }
+    expect(restore).toHaveBeenCalledWith({ persistedObservations: snapshots });
+    expect(append).not.toHaveBeenCalled();
+    expect(reconcileAvailability).toHaveBeenCalledTimes(callbacks);
+    if (mode === "forward") {
+      expect(
+        h.application.classifyHeader.mock.calls.filter(
+          ([input]) =>
+            input.observation.headerHash === first.target!.headerHash,
+        ),
+      ).toHaveLength(1);
+      expect(h.application.classifyHeader).toHaveBeenCalledTimes(302);
+    }
+    expect(h.controllerGenerations).toEqual(["1"]);
+    expect(h.restrictions).toEqual([]);
+    expect(h.bridge.status().target).toEqual(first.target);
+    expect(h.retainedDecisionAuthorities.at(-1)).toBe(
+      first.target.decisionDigest,
+    );
+    h.bridge.invalidateForRollback();
+    expect(h.revocations).toEqual(["native_chain_rollback"]);
+  },
+);

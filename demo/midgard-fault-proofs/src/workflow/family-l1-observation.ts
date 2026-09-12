@@ -11,13 +11,18 @@ import {
 import {
   createLocalKupmiosHttpOgmiosRawSource,
   type LocalKupmiosHttpOgmiosSourceConfig,
+  readAdmittedLocalKupmiosSignedTransactionRecovery,
+  rebroadcastAdmittedLocalKupmiosSignedTransaction,
 } from "./local-kupmios-http-ogmios-source.js";
 import { createLocalKupmiosFraudProofRawL1SnapshotAuthority } from "./local-kupmios-raw-l1-authority.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofWorkflowTerminalVerifier,
 } from "./orchestrator.js";
-import { deriveRetainedStateQueueHeaderObservationFromRawL1 } from "./raw-l1-family-derivation.js";
+import {
+  deriveRetainedStateQueueHeaderObservationFromRawL1,
+  StateQueueHeaderNotLiveError,
+} from "./raw-l1-family-derivation.js";
 import {
   deriveAuthenticatedStateQueueHeaderObservationFromRawL1,
   deriveFraudProofRawL1FamilyStage,
@@ -37,6 +42,10 @@ import {
 } from "./raw-l1-snapshot.js";
 import type { VerifiedFraudProofReleaseEconomicsPolicy } from "./release-economics-policy.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
+import type {
+  SignedTransactionRecoveryObservation,
+  SignedWorkflowTransaction,
+} from "./signed-transaction-reconciliation.js";
 
 export const FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT =
   "midgard-fraud-proof-family-l1-observation-port-v1" as const;
@@ -49,6 +58,16 @@ export interface FraudProofFamilyL1ObservationPort<
   /** Raw release-final authority retained for live global prerequisites. */
   readonly rawL1?: FraudProofRawL1SnapshotAuthority;
   readonly publications: FraudProofAuthenticatedPublicationObserver;
+  observeSignedTransaction?(
+    input: SignedWorkflowTransaction,
+  ): Promise<SignedTransactionRecoveryObservation>;
+  rebroadcastSignedTransaction?(
+    input: SignedWorkflowTransaction & {
+      readonly authorizeResubmission: (
+        input: SignedWorkflowTransaction,
+      ) => Promise<void>;
+    },
+  ): Promise<string>;
   observeHeader(input: {
     readonly headerHash: string;
   }): Promise<AuthenticatedStateQueueHeaderObservation>;
@@ -69,6 +88,33 @@ export interface FraudProofFamilyL1ObservationPort<
     readonly stage: FraudProofRawL1FamilyStage;
   }>;
 }
+
+/**
+ * Header observation for running or resuming a workflow. While the header is
+ * in the state queue this is the live observation; once a proof has removed
+ * it, the same header is observed from its exact authenticated NFT mint so a
+ * workflow that already submitted the removal can resume to its terminal
+ * instead of failing closed on every retry.  Neither observation authorizes
+ * a new proof action: the family stage machine still decides that.
+ */
+export const observeFraudProofWorkflowHeader = async <
+  Category extends FraudProofCatalogueCategoryName,
+>(
+  l1: FraudProofFamilyL1ObservationPort<Category>,
+  input: { readonly headerHash: string },
+): Promise<AuthenticatedStateQueueHeaderObservation> => {
+  try {
+    return await l1.observeHeader(input);
+  } catch (error) {
+    if (
+      !(error instanceof StateQueueHeaderNotLiveError) ||
+      l1.observeRetainedHeader === undefined
+    ) {
+      throw error;
+    }
+    return await l1.observeRetainedHeader(input);
+  }
+};
 
 /**
  * Family-neutral strict admission over exact raw local Kupo/Ogmios bytes.
@@ -174,7 +220,7 @@ export const createFraudProofFamilyLocalKupmiosL1ObservationPort = <
     ...source,
     releaseFinality,
   });
-  return createFraudProofFamilyRawL1ObservationPort({
+  const port = createFraudProofFamilyRawL1ObservationPort({
     authority: createLocalKupmiosFraudProofRawL1SnapshotAuthority({
       source: rawSource,
       releaseFinality,
@@ -183,12 +229,39 @@ export const createFraudProofFamilyLocalKupmiosL1ObservationPort = <
     releaseEconomics,
     definition,
   });
+  return Object.freeze({
+    ...port,
+    observeSignedTransaction: (input: SignedWorkflowTransaction) =>
+      readAdmittedLocalKupmiosSignedTransactionRecovery({
+        ...input,
+        source: rawSource,
+      }),
+    rebroadcastSignedTransaction: (
+      input: SignedWorkflowTransaction & {
+        readonly authorizeResubmission: (
+          input: SignedWorkflowTransaction,
+        ) => Promise<void>;
+      },
+    ) =>
+      rebroadcastAdmittedLocalKupmiosSignedTransaction({
+        ...input,
+        source: rawSource,
+      }),
+  });
 };
 
 const sameTerminal = (
   left: FraudProofWorkflowTerminal,
   right: FraudProofWorkflowTerminal,
-): boolean => JSON.stringify(left) === JSON.stringify(right);
+): boolean => {
+  // Slot/hash identify the removal's original inclusion and remain immutable.
+  // Only its depth may grow while a durable completion handoff is resumed.
+  const facts = (terminal: FraudProofWorkflowTerminal) => ({
+    ...terminal,
+    observedAt: { ...terminal.observedAt, confirmationDepth: 0 },
+  });
+  return JSON.stringify(facts(left)) === JSON.stringify(facts(right));
+};
 
 /** Independent second raw-L1 observation for terminal acceptance. */
 export const createFraudProofFamilyAuthenticatedL1TerminalVerifier = <
@@ -227,12 +300,16 @@ export const createFraudProofFamilyAuthenticatedL1TerminalVerifier = <
     }
     if (
       terminal.observedAt.confirmationDepth <
-      releaseFinality.policy.confirmationDepth
+        releaseFinality.policy.confirmationDepth ||
+      candidate.observedAt.confirmationDepth <
+        releaseFinality.policy.confirmationDepth ||
+      terminal.observedAt.confirmationDepth <
+        candidate.observedAt.confirmationDepth
     ) {
       throw new Error(
         `authenticated terminal depth is below the release threshold: required=${releaseFinality.policy.confirmationDepth.toString()} actual=${terminal.observedAt.confirmationDepth.toString()} policy=${releaseFinality.policyDigest}`,
       );
     }
-    return terminal;
+    return candidate;
   },
 });

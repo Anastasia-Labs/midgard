@@ -9,6 +9,7 @@ import { deriveCanonicalDepositTransitionEffect } from "@al-ft/midgard-validatio
 import { Data, type Network, type UTxO } from "@lucid-evolution/lucid";
 
 import { classifyCommittedFieldShapeFields } from "../committed-field-shape/prepare-committed-field-shape.js";
+import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
 import { replayPrerequisiteFailure } from "../workflow/replay-prerequisite.js";
 import {
   detectTransitionTraceFaults,
@@ -114,11 +115,12 @@ export const deriveTransitionTraceReplayEvidence = async ({
     ) {
       if (
         source.phase === "L2Transaction" &&
-        classifyCommittedFieldShapeFields(
+        (classifyCommittedFieldShapeFields(
           decodeMidgardNativeTxFullFromCanonicalCbor(
             source.entry.fullTransactionCbor,
           ),
-        ).some(({ evidence: field }) => field.isViolation)
+        ).some(({ evidence: field }) => field.isViolation) ||
+          transactionHasNonCanonicalMintItem(source.entry.fullTransactionCbor))
       )
         throw replayPrerequisiteFailure(
           current.headerHash,
@@ -204,14 +206,21 @@ export const deriveTransitionTraceReplayEvidence = async ({
     } else if (source.phase === "Withdrawal") {
       if (source.entry.value.validity === "WithdrawalIsValid") {
         const id = source.entry.value.body.l2_outref;
+        const key = encodeMidgardSpendInputItem({
+          txId: Buffer.from(id.transactionId, "hex"),
+          outputIndex: Number(id.outputIndex),
+        });
+        // A payable claim on an output the replayed ledger no longer holds has
+        // no delete witness; a direct withdrawal finding must cover the event.
+        if (!ledger.has(key))
+          throw replayPrerequisiteFailure(
+            current.headerHash,
+            step.event_key,
+            "present_spend_input",
+          );
         withdrawal.push({
           stepIndex: index,
-          spentUtxo: await ledger.delete(
-            encodeMidgardSpendInputItem({
-              txId: Buffer.from(id.transactionId, "hex"),
-              outputIndex: Number(id.outputIndex),
-            }),
-          ),
+          spentUtxo: await ledger.delete(key),
         });
       }
     } else {
@@ -254,6 +263,14 @@ export const deriveTransitionTraceReplayEvidence = async ({
       const op = effect.operations[0];
       if (op?.type !== "insert" || effect.operations.length !== 1)
         throw new Error("Transition deposit projection is not one insert");
+      // A deposit that re-creates a held output repeats an earlier source
+      // event; the finding naming that repeat owns its ledger effect.
+      if (ledger.has(op.outRefCbor))
+        throw replayPrerequisiteFailure(
+          current.headerHash,
+          step.event_key,
+          "prior_transition_effect",
+        );
       deposit.push({
         stepIndex: index,
         eventRefInputIndex,

@@ -57,8 +57,11 @@ second set of protocol parameters. The isolated chain retains its own magic,
 start time, keys, genesis funding and initial delegation.
 
 Consensus uses one-second slots, `activeSlotsCoeff=0.05`, `securityParam=2160`,
-`epochLength=432000`, and `GenesisMode`. Blocks are probabilistic. Timeouts and
-confirmation checks must count actual blocks, not treat one slot as one block.
+`epochLength=432000`, and `PraosMode`. The node has no peers, so `GenesisMode`
+must not be used: its limit on eventual chain selection never lifts without a
+caught-up transition and the chain freezes after exactly `securityParam` blocks.
+Blocks are probabilistic. Timeouts and confirmation checks must count actual
+blocks, not treat one slot as one block.
 The generated initial committee terms obey the current maximum term length.
 
 Recovery scenarios follow the chain's actual behavior:

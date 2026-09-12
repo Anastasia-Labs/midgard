@@ -14,7 +14,10 @@ import {
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
-import { admitFraudProofRawL1Point } from "@al-ft/midgard-fault-proofs";
+import {
+  admitFraudProofRawL1Point,
+  computeFraudProofRawL1PointId,
+} from "@al-ft/midgard-fault-proofs";
 import {
   DepositDatumSchema,
   DepositEventSchema,
@@ -124,7 +127,6 @@ import {
 } from "./authenticated-state-queue-observation.js";
 import {
   findWatcherUserEventArchiveIndex,
-  findWatcherUserEventArchiveIndexForEntry,
   makeWatcherUserEventArchiveIndex,
   readWatcherUserEventArchiveIndex,
   type WatcherUserEventArchiveIndexRead,
@@ -4836,12 +4838,24 @@ type LocalHistoryOwner = {
   archiveObjects: readonly LocalArchiveObject[];
   checkpoint: WatcherUserEventCheckpoint | null;
   candidate: WatcherLocalUserEventTransition | null;
+  /** Coverage sits on the head entry and extends over quiet blocks. */
+  coverage: WatcherLocalUserEventCoverage | null;
   generation: number;
   acceptedAtMonotonicMs: number | null;
   closed: boolean;
   suspendedAt: number | null;
   semanticReplay: boolean;
 };
+/**
+ * The moving coverage checkpoint: every block from the head entry's cursor
+ * through `point` has been admitted from the native stream with its parent
+ * link checked, and none of them carried anything the event fold tracks.
+ * Point coverage is a lookup against it, never a walk.
+ */
+export type WatcherLocalUserEventCoverage = Readonly<{
+  point: WatcherUserEventOriginFacts["parentPoint"];
+  headEntryDigest: string;
+}>;
 type LocalTransitionOwner = {
   readonly history: WatcherLocalUserEventHistory;
   readonly generation: number;
@@ -4941,6 +4955,201 @@ const localRetainedEvidence = (
         ? 1
         : 0,
   );
+
+const localCoverageOnHead = (
+  head: WatcherLocalUserEventEntry,
+): WatcherLocalUserEventCoverage =>
+  Object.freeze({
+    point: Object.freeze({ ...head.cursor }),
+    headEntryDigest: head.entryDigest,
+  });
+
+/** The covered head: the coverage point when it references the head entry,
+ * otherwise the head entry's own cursor. The activation block has no entry
+ * yet, so before it the covered head is the origin's parent. */
+const localCoverageHead = (
+  owner: LocalHistoryOwner,
+): WatcherUserEventOriginFacts["parentPoint"] => {
+  const head = owner.entries.at(-1);
+  if (head === undefined) return owner.origin.parentPoint;
+  const coverage = owner.coverage;
+  if (coverage === null || coverage.headEntryDigest !== head.entryDigest)
+    return localRefuse("coverage does not sit on the head entry");
+  return coverage.point;
+};
+
+export const readWatcherLocalUserEventCoverage = (
+  history: WatcherLocalUserEventHistory,
+): WatcherLocalUserEventCoverage | null => {
+  const owner = localOwner(history);
+  const head = owner.entries.at(-1);
+  if (head === undefined) return null;
+  return Object.freeze({
+    point: Object.freeze({ ...localCoverageHead(owner) }),
+    headEntryDigest: head.entryDigest,
+  });
+};
+
+/**
+ * Admits one quiet native block above the covered head. The link is checked
+ * locally from the header the native stream delivered: parent hash, block
+ * number and slot. No request, no observation, no digest-chain change.
+ */
+export const advanceWatcherLocalUserEventCoverage = (
+  input: Readonly<{
+    history: WatcherLocalUserEventHistory;
+    header: Readonly<{
+      blockHash: string;
+      parentBlockHash: string;
+      blockNo: string;
+      slot: string;
+    }>;
+  }>,
+): WatcherLocalUserEventCoverage => {
+  const owner = localOwner(input.history);
+  const head = owner.entries.at(-1);
+  if (
+    head === undefined ||
+    owner.checkpoint === null ||
+    owner.candidate !== null ||
+    owner.anchorCandidate !== null ||
+    owner.semanticReplay
+  )
+    return localRefuse("coverage requires a settled publication");
+  const covered = localCoverageHead(owner);
+  const { header } = input;
+  if (
+    !isHex32(header.blockHash) ||
+    !isHex32(header.parentBlockHash) ||
+    !isNatural(header.blockNo) ||
+    !isNatural(header.slot) ||
+    header.parentBlockHash !== covered.blockHash ||
+    BigInt(header.blockNo) !== BigInt(covered.blockNo) + 1n ||
+    BigInt(header.slot) <= BigInt(covered.slot)
+  )
+    return localRefuse(
+      "quiet block is not the direct child of the covered head",
+    );
+  const point = admitFraudProofRawL1Point({
+    blockHash: header.blockHash,
+    blockNo: header.blockNo,
+    slot: header.slot,
+    pointId: computeFraudProofRawL1PointId({
+      blockHash: header.blockHash,
+      blockNo: header.blockNo,
+      slot: header.slot,
+    }),
+  });
+  owner.coverage = Object.freeze({
+    point: Object.freeze({ ...point }),
+    headEntryDigest: head.entryDigest,
+  });
+  return owner.coverage;
+};
+
+/**
+ * Moves coverage back to a point at or above the head entry after a native
+ * rollback whose fork lies inside the quiet stretch. The caller resolved the
+ * point's block number and hash from the headers it admitted; a fork below
+ * the head entry is not a coverage matter and goes through rollback recovery.
+ */
+export const rewindWatcherLocalUserEventCoverage = (
+  input: Readonly<{
+    history: WatcherLocalUserEventHistory;
+    point: WatcherUserEventOriginFacts["parentPoint"];
+  }>,
+): WatcherLocalUserEventCoverage => {
+  const owner = localOwner(input.history);
+  const head = owner.entries.at(-1);
+  if (
+    head === undefined ||
+    owner.checkpoint === null ||
+    owner.candidate !== null ||
+    owner.anchorCandidate !== null ||
+    owner.semanticReplay
+  )
+    return localRefuse("coverage requires a settled publication");
+  const covered = localCoverageHead(owner);
+  const point = admitFraudProofRawL1Point(input.point);
+  if (
+    BigInt(point.blockNo) > BigInt(covered.blockNo) ||
+    BigInt(point.blockNo) < BigInt(head.cursor.blockNo) ||
+    (point.blockNo === head.cursor.blockNo && !same(point, head.cursor))
+  )
+    return localRefuse("coverage rewind target is outside the covered stretch");
+  owner.coverage = Object.freeze({
+    point: Object.freeze({ ...point }),
+    headEntryDigest: head.entryDigest,
+  });
+  return owner.coverage;
+};
+
+/**
+ * Restores saved coverage over a restored head. A record that references an
+ * older entry is a torn write between the head publication and the coverage
+ * update; it is discarded and coverage restarts at the head. A record on the
+ * current head that lies below it is a bug and fails loudly.
+ */
+export const restoreWatcherLocalUserEventCoverage = (
+  input: Readonly<{
+    history: WatcherLocalUserEventHistory;
+    saved: Readonly<{
+      blockHash: string;
+      blockNo: string;
+      slot: string;
+      headEntryDigest: string;
+      checkpointDigest: string;
+    }> | null;
+  }>,
+): Readonly<{
+  coverage: WatcherLocalUserEventCoverage;
+  disposition: "restored" | "head" | "discarded_stale";
+}> => {
+  const owner = localOwner(input.history);
+  const head = owner.entries.at(-1);
+  if (head === undefined || owner.checkpoint === null)
+    return localRefuse("coverage requires a settled publication");
+  const onHead = localCoverageOnHead(head);
+  const saved = input.saved;
+  if (saved === null) {
+    owner.coverage = onHead;
+    return Object.freeze({ coverage: onHead, disposition: "head" });
+  }
+  if (
+    saved.headEntryDigest !== head.entryDigest ||
+    saved.checkpointDigest !== owner.checkpoint.checkpointDigest
+  ) {
+    owner.coverage = onHead;
+    return Object.freeze({ coverage: onHead, disposition: "discarded_stale" });
+  }
+  if (
+    !isHex32(saved.blockHash) ||
+    !isNatural(saved.blockNo) ||
+    !isNatural(saved.slot) ||
+    BigInt(saved.blockNo) < BigInt(head.cursor.blockNo) ||
+    BigInt(saved.slot) < BigInt(head.cursor.slot) ||
+    (saved.blockNo === head.cursor.blockNo &&
+      saved.blockHash !== head.cursor.blockHash)
+  )
+    return localRefuse(
+      "saved coverage lies below the head entry it references",
+    );
+  const point = admitFraudProofRawL1Point({
+    blockHash: saved.blockHash,
+    blockNo: saved.blockNo,
+    slot: saved.slot,
+    pointId: computeFraudProofRawL1PointId({
+      blockHash: saved.blockHash,
+      blockNo: saved.blockNo,
+      slot: saved.slot,
+    }),
+  });
+  owner.coverage = Object.freeze({
+    point: Object.freeze({ ...point }),
+    headEntryDigest: head.entryDigest,
+  });
+  return Object.freeze({ coverage: owner.coverage, disposition: "restored" });
+};
 
 const localLivePair = (owner: LocalHistoryOwner, pair: LocalPair) => {
   const scripts = readWatcherUserEventScriptBinding({
@@ -5086,6 +5295,7 @@ const createLocalUserEventHistory = (
     archiveObjects: Object.freeze([originArchive]),
     checkpoint: null,
     candidate: null,
+    coverage: null,
     generation: 0,
     acceptedAtMonotonicMs: null,
     closed: false,
@@ -5201,13 +5411,18 @@ const prepareLocalUserEventTransition = (
       block !== owner.origin.block
     )
       return localRefuse("first block is not the exact activation pair");
-  } else if (
-    !same(capture.predecessorPoint, predecessor.cursor) ||
-    block.chainPoint.parentBlockHash !== predecessor.cursor.blockHash ||
-    BigInt(capture.point.blockNo) !== BigInt(predecessor.cursor.blockNo) + 1n ||
-    BigInt(capture.point.slot) <= BigInt(predecessor.cursor.slot)
-  ) {
-    return localRefuse("block is not the strict full-point successor");
+  } else {
+    // The block must be the direct child of the covered head: the last entry
+    // itself, or the quiet stretch admitted above it block by block.
+    const covered = localCoverageHead(owner);
+    if (
+      !same(capture.predecessorPoint, covered) ||
+      block.chainPoint.parentBlockHash !== covered.blockHash ||
+      BigInt(capture.point.blockNo) !== BigInt(covered.blockNo) + 1n ||
+      BigInt(capture.point.slot) <= BigInt(covered.slot)
+    ) {
+      return localRefuse("block is not the strict full-point successor");
+    }
   }
   const derivedSnapshot = deriveLocalBlockEventSnapshot(
     owner.policy,
@@ -5493,6 +5708,7 @@ const commitLocalUserEventTransition = (
   owner.store = prepared.value.nextStore;
   owner.snapshot = prepared.value.snapshot;
   owner.entries = Object.freeze([...owner.entries, prepared.value.entry]);
+  owner.coverage = localCoverageOnHead(prepared.value.entry);
   owner.acceptedEvidence = Object.freeze([
     ...owner.acceptedEvidence,
     Object.freeze({
@@ -5744,6 +5960,176 @@ const localReadArchivedValue = async (
   return value;
 };
 
+/** Parses and validates one sealed segment's retained-entry payload. */
+const localArchivedSegmentEntries = async (
+  owner: LocalHistoryOwner,
+  archive: WatcherUserEventArchive,
+  segment: WatcherUserEventArchiveIndexRead,
+): Promise<readonly WatcherLocalUserEventEntry[]> => {
+  const payload = await localReadArchivedValue(
+    archive,
+    segment.index.sourcePayloadDigest,
+  );
+  const entriesValue = localArchiveField(payload, ["retainedEntries"]);
+  if (
+    !Array.isArray(entriesValue) ||
+    entriesValue.length === 0 ||
+    entriesValue.length > Number(owner.policy.maximumActiveHistoryEntries) ||
+    localArchiveField(payload, ["originDigest"]) !== owner.originDigest ||
+    !same(localArchiveField(payload, ["policy"]), owner.policy)
+  )
+    return localRefuse("historical cutoff segment payload differs");
+  const entries = entriesValue.map(localArchivedEntry);
+  if (!same(localArchiveField(payload, ["head"]), entries.at(-1)))
+    return localRefuse("historical cutoff segment head differs");
+  return entries;
+};
+
+/**
+ * Finds the sealed entry observed at `blockNo`, or null when no event block
+ * was observed there. Entries are no longer dense in block numbers (quiet
+ * blocks publish nothing), so sealed segments are bisected by the block
+ * numbers of their first and last retained entries.
+ */
+const localArchivedEntryAtBlock = async (
+  owner: LocalHistoryOwner,
+  archive: WatcherUserEventArchive,
+  root: WatcherUserEventArchiveIndexRead,
+  blockNo: bigint,
+): Promise<Readonly<{
+  segment: WatcherUserEventArchiveIndexRead;
+  entry: WatcherLocalUserEventEntry;
+}> | null> => {
+  let first = 0n;
+  let last = BigInt(root.index.indexSequence);
+  for (let iteration = 0; first <= last && iteration < 65; iteration += 1) {
+    const middle = (first + last) / 2n;
+    const segment = await findWatcherUserEventArchiveIndex(
+      archive,
+      root,
+      middle.toString(),
+    );
+    // The sealed payload retains the suffix carried over from the previous
+    // segment as well; only this segment's own entry range orders the search.
+    const entries = (
+      await localArchivedSegmentEntries(owner, archive, segment)
+    ).filter(
+      (candidate) =>
+        BigInt(candidate.sequence) >=
+          BigInt(segment.index.firstEntrySequence) &&
+        BigInt(candidate.sequence) <= BigInt(segment.index.lastEntrySequence),
+    );
+    if (entries.length === 0)
+      return localRefuse("historical cutoff segment range is absent");
+    if (blockNo < BigInt(entries[0]!.cursor.blockNo)) last = middle - 1n;
+    else if (blockNo > BigInt(entries.at(-1)!.cursor.blockNo))
+      first = middle + 1n;
+    else {
+      const matches = entries.filter(
+        (candidate) => BigInt(candidate.cursor.blockNo) === blockNo,
+      );
+      if (matches.length > 1)
+        return localRefuse("historical cutoff entry is not uniquely archived");
+      return matches.length === 0
+        ? null
+        : Object.freeze({ segment, entry: matches[0]! });
+    }
+  }
+  return null;
+};
+
+/**
+ * Looks up the accepted event block at a block number: the retained suffix
+ * first, then the sealed archive. Null means the block lies inside the
+ * published range but was quiet, so nothing was observed there.
+ */
+const localEntryAtBlock = async (
+  owner: LocalHistoryOwner,
+  blockNo: bigint,
+  archive: WatcherUserEventArchive,
+): Promise<Readonly<{
+  entry: WatcherLocalUserEventEntry;
+  rawBlockCbor: unknown;
+}> | null> => {
+  const head = owner.entries.at(-1)!;
+  if (
+    blockNo < BigInt(owner.origin.block.chainPoint.blockNo) ||
+    blockNo > BigInt(head.cursor.blockNo)
+  )
+    return localRefuse(
+      "header cutoff lies outside the published event history",
+    );
+  const retained = localRetainedEvidence(owner).find(
+    ({ entry }) => BigInt(entry.cursor.blockNo) === blockNo,
+  );
+  if (retained !== undefined)
+    return Object.freeze({
+      entry: retained.entry,
+      rawBlockCbor: retained.rawBlockCbor,
+    });
+  // Pinned evidence reaches below the retained suffix, so only the suffix's
+  // own oldest entry bounds the range where an absent entry means quiet.
+  if (blockNo > BigInt(owner.entries[0]!.cursor.blockNo)) return null;
+  const root = owner.archiveIndex;
+  if (root === null) return null;
+  const found = await localArchivedEntryAtBlock(owner, archive, root, blockNo);
+  if (found === null) return null;
+  const { segment, entry } = found;
+  if (!segment.index.sourceArchiveDigests.includes(entry.evidenceDigest))
+    return localRefuse(
+      "historical cutoff evidence is not in the sealed closure",
+    );
+  const evidence = await localReadArchivedValue(archive, entry.evidenceDigest);
+  if (
+    localArchiveField(evidence, ["schemaVersion"]) !==
+      "midgard-watcher-local-user-event-block-evidence-v1" ||
+    localArchiveField(evidence, ["numericEncoding"]) !== "exact-decimal-strings"
+  )
+    return localRefuse("historical cutoff evidence framing differs");
+  const rawBlockCbor = localArchiveField(evidence, [
+    "witnesses",
+    "current",
+    "observation",
+    "capture",
+    "nativeBlock",
+    "rawBlockCbor",
+  ]);
+  for (const step of ["first", "current"] as const) {
+    if (
+      localArchiveField(evidence, [
+        "witnesses",
+        step,
+        "observation",
+        "capture",
+        "nativeBlock",
+        "rawBlockCbor",
+      ]) !== rawBlockCbor ||
+      !same(
+        localArchiveField(evidence, [
+          "witnesses",
+          step,
+          "observation",
+          "capture",
+          "point",
+        ]),
+        entry.cursor,
+      ) ||
+      !same(
+        localArchiveField(evidence, [
+          "witnesses",
+          step,
+          "observation",
+          "capture",
+          "predecessorPoint",
+        ]),
+        entry.parent,
+      )
+    )
+      return localRefuse("historical cutoff original witness binding differs");
+  }
+  return Object.freeze({ entry, rawBlockCbor });
+};
+
 const localHeaderBlock = async (
   owner: LocalHistoryOwner,
   header: Pick<
@@ -5754,114 +6140,16 @@ const localHeaderBlock = async (
 ): Promise<
   Readonly<{ entry: WatcherLocalUserEventEntry; rawBlockCbor: string }>
 > => {
-  const sequence =
-    BigInt(header.observedBlockNo) -
-    BigInt(owner.origin.block.chainPoint.blockNo);
-  const head = owner.entries.at(-1)!;
-  if (sequence < 0n || sequence > BigInt(head.sequence))
-    return localRefuse(
-      "header cutoff lies outside the published event history",
-    );
-  const root = owner.archiveIndex;
   const originDigest = owner.originDigest;
   const policyDigest = owner.policy.policyDigest;
-  const retained = localRetainedEvidence(owner).find(
-    ({ entry }) => BigInt(entry.sequence) === sequence,
+  const found = await localEntryAtBlock(
+    owner,
+    BigInt(header.observedBlockNo),
+    archive,
   );
-  let entry: WatcherLocalUserEventEntry;
-  let rawBlockCbor: unknown;
-  if (retained !== undefined) {
-    entry = retained.entry;
-    rawBlockCbor = retained.rawBlockCbor;
-  } else {
-    if (root === null)
-      return localRefuse("header cutoff entry is not retained or sealed");
-    const segment = await findWatcherUserEventArchiveIndexForEntry(
-      archive,
-      root,
-      sequence.toString(),
-    );
-    const payload = await localReadArchivedValue(
-      archive,
-      segment.index.sourcePayloadDigest,
-    );
-    const entriesValue = localArchiveField(payload, ["retainedEntries"]);
-    if (
-      !Array.isArray(entriesValue) ||
-      entriesValue.length > Number(owner.policy.maximumActiveHistoryEntries) ||
-      localArchiveField(payload, ["originDigest"]) !== originDigest ||
-      !same(localArchiveField(payload, ["policy"]), owner.policy)
-    )
-      return localRefuse("historical cutoff segment payload differs");
-    const entries = entriesValue.map(localArchivedEntry);
-    const matches = entries.filter(
-      (candidate) => BigInt(candidate.sequence) === sequence,
-    );
-    if (
-      matches.length !== 1 ||
-      !same(localArchiveField(payload, ["head"]), entries.at(-1))
-    )
-      return localRefuse("historical cutoff entry is not uniquely archived");
-    entry = matches[0]!;
-    if (!segment.index.sourceArchiveDigests.includes(entry.evidenceDigest))
-      return localRefuse(
-        "historical cutoff evidence is not in the sealed closure",
-      );
-    const evidence = await localReadArchivedValue(
-      archive,
-      entry.evidenceDigest,
-    );
-    if (
-      localArchiveField(evidence, ["schemaVersion"]) !==
-        "midgard-watcher-local-user-event-block-evidence-v1" ||
-      localArchiveField(evidence, ["numericEncoding"]) !==
-        "exact-decimal-strings"
-    )
-      return localRefuse("historical cutoff evidence framing differs");
-    rawBlockCbor = localArchiveField(evidence, [
-      "witnesses",
-      "current",
-      "observation",
-      "capture",
-      "nativeBlock",
-      "rawBlockCbor",
-    ]);
-    for (const step of ["first", "current"] as const) {
-      if (
-        localArchiveField(evidence, [
-          "witnesses",
-          step,
-          "observation",
-          "capture",
-          "nativeBlock",
-          "rawBlockCbor",
-        ]) !== rawBlockCbor ||
-        !same(
-          localArchiveField(evidence, [
-            "witnesses",
-            step,
-            "observation",
-            "capture",
-            "point",
-          ]),
-          entry.cursor,
-        ) ||
-        !same(
-          localArchiveField(evidence, [
-            "witnesses",
-            step,
-            "observation",
-            "capture",
-            "predecessorPoint",
-          ]),
-          entry.parent,
-        )
-      )
-        return localRefuse(
-          "historical cutoff original witness binding differs",
-        );
-    }
-  }
+  if (found === null)
+    return localRefuse("header cutoff block carried no observed event");
+  const { entry, rawBlockCbor } = found;
   if (
     entry.originDigest !== originDigest ||
     entry.policyDigest !== policyDigest ||
@@ -6117,7 +6405,7 @@ export const assertWatcherLocalUserEventPointCovered = async (
     runtime: WatcherDurableRuntime;
     archive: WatcherUserEventArchive;
   }>,
-): Promise<void> => {
+): Promise<WatcherLocalUserEventPointCoverage> => {
   const owner = localOwner(input.history);
   const generation = owner.generation;
   const checkpoint = owner.checkpoint;
@@ -6128,16 +6416,33 @@ export const assertWatcherLocalUserEventPointCovered = async (
   )
     return localRefuse("coverage requires a settled publication");
   const point = admitFraudProofRawL1Point(input.point);
-  const block = await localHeaderBlock(
+  const head = owner.entries.at(-1)!;
+  if (BigInt(point.blockNo) > BigInt(head.cursor.blockNo))
+    return localRefuse(
+      "point lies above the head entry; coverage of the quiet stretch is a runtime lookup",
+    );
+  const found = await localEntryAtBlock(
     owner,
-    {
-      observedBlockHash: point.blockHash,
-      observedBlockNo: point.blockNo,
-      observedSlot: point.slot,
-    },
+    BigInt(point.blockNo),
     input.archive,
   );
-  localCutoffTransactionOrder(block);
+  if (found !== null) {
+    // An event block: the point must be exactly the accepted block.
+    const block = await localHeaderBlock(
+      owner,
+      {
+        observedBlockHash: point.blockHash,
+        observedBlockNo: point.blockNo,
+        observedSlot: point.slot,
+      },
+      input.archive,
+    );
+    localCutoffTransactionOrder(block);
+  }
+  // A quiet block at or below the head entry lies inside the strict successor
+  // chain the head's lineage established. Callers below the release-final
+  // boundary need no hash check; the head entry's canonical corroboration
+  // already fixes every ancestor by construction.
   const publication = readWatcherProtectedUserEventCheckpointReceipt(
     await readWatcherProtectedUserEventCheckpoint(input.runtime),
   );
@@ -6155,7 +6460,17 @@ export const assertWatcherLocalUserEventPointCovered = async (
     sha256Bytes(publication.payload) !== checkpoint.payloadDigest
   )
     return localRefuse("coverage changed during protected archive read");
+  return found === null ? "quiet" : "event";
 };
+
+/**
+ * How a point at or below the head entry is covered: "event" when the exact
+ * accepted block was observed there, "quiet" when the block lies inside the
+ * linked stretch between observations. A quiet point above the release-final
+ * boundary still needs its hash confirmed against the canonical chain, which
+ * the runtime resolves with one node lookup on demand.
+ */
+export type WatcherLocalUserEventPointCoverage = "event" | "quiet";
 
 /** Issues one retained event from the privately published whole-block fold. */
 export const admitWatcherLocalUserEventAuthority = async (
@@ -7015,6 +7330,14 @@ export const prepareWatcherLocalUserEventReadmission = async (
               "archived original block bytes differ from fresh canonical replay",
             );
         }
+        // The fresh W12 capture just corroborated `entry.parent` as this
+        // block's canonical predecessor; the archived quiet stretch between
+        // the previous entry and that parent lies on the same linear chain.
+        if (previous !== null)
+          owner.coverage = Object.freeze({
+            point: Object.freeze({ ...entry.parent }),
+            headEntryDigest: owner.entries.at(-1)!.entryDigest,
+          });
         const transition = prepareLocalUserEventTransition(history, pair);
         const fresh = readWatcherLocalUserEventTransition(transition);
         if (
@@ -7428,6 +7751,7 @@ export const acceptWatcherLocalUserEventReadmission = (
   owner.archiveObjects = readmission.archiveObjects;
   owner.lastAccepted = null;
   owner.semanticReplay = false;
+  owner.coverage = localCoverageOnHead(owner.entries.at(-1)!);
   owner.generation += 1;
   owner.acceptedAtMonotonicMs = performance.now();
   readmission.accepted = true;
@@ -8088,6 +8412,7 @@ export const restoreWatcherLocalUserEventHistory = async (
         [...objects.values()].map(({ object }) => object),
       ),
       checkpoint,
+      coverage: localCoverageOnHead(head),
       semanticReplay: false,
       acceptedAtMonotonicMs: performance.now(),
     });

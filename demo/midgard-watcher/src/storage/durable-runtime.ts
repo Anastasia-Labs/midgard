@@ -22,6 +22,7 @@ import {
   readWatcherRollbackDurableUserEventCheckpoint,
   readWatcherRollbackDurableUserEventValidation,
   revalidateWatcherRollbackDurableAuthority,
+  type WatcherRollbackCanonicalAncestryLink,
   type WatcherRollbackDurableAuthority,
   type WatcherRollbackDurableAuthorityRead,
   type WatcherRollbackDurableCanonicalProgressResult,
@@ -62,6 +63,7 @@ export type WatcherDurableRuntime = Readonly<{
     readonly observations: readonly WatcherNormalizedL1Block[];
     readonly consistency: WatcherMultiProviderConsistency;
     readonly transportAttestations: readonly WatcherL1TransportAttestationContext[];
+    readonly ancestry?: readonly WatcherRollbackCanonicalAncestryLink[];
   }): Promise<WatcherRollbackDurableCanonicalProgressResult>;
   persistRollback(input: {
     readonly previousFinalityState: unknown;

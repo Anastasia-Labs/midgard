@@ -5,6 +5,7 @@ import {
   deriveMidgardNativeTxCompact,
   deriveMidgardNativeTxWitnessSetCompact,
   encodeCbor,
+  encodeMidgardFieldPreimage,
   encodeMidgardNativeTxCanonical,
   encodeMidgardNativeTxCompact,
   encodeMidgardNativeTxProofFieldLengths,
@@ -27,6 +28,7 @@ export const JOURNEY_TRANSACTION_SOURCE_CATEGORIES = [
   "canonicalDecodability",
   "committedFieldShape",
   "l2TxMistag",
+  "mintItemNonCanonical",
 ] as const;
 export type JourneyTransactionSourceCategory =
   (typeof JOURNEY_TRANSACTION_SOURCE_CATEGORIES)[number];
@@ -57,6 +59,15 @@ export const buildJourneyTransactionSourceFault = async (
       : {}),
     ...(category === "committedFieldShape"
       ? { requiredSignersPreimageCbor: encodeCbor([Buffer.alloc(27, 0xe4)]) }
+      : {}),
+    // A decodable policy group whose sole asset carries a zero quantity: the
+    // field-5 grammar refuses it, so an accepting operator commits a fault.
+    ...(category === "mintItemNonCanonical"
+      ? {
+          mintPreimageCbor: encodeMidgardFieldPreimage([
+            Buffer.from(`82581c${"e3".repeat(28)}a14000`, "hex"),
+          ]),
+        }
       : {}),
   };
   const validity =
@@ -92,14 +103,15 @@ export const buildJourneyTransactionSourceFault = async (
       ).toString("hex"),
     },
   };
-  // The ordinary encoder correctly refuses this malformed field. Build only
+  // The ordinary encoder correctly refuses these malformed fields. Build only
   // the evidence envelope from a known-valid outer structure, preserving the
-  // exact bad byte string inside it.
+  // exact bad byte strings inside it.
   const validEnvelope = encodeMidgardNativeTxCanonical({
     version: original.version,
     body: {
       ...body,
       requiredSignersPreimageCbor: original.body.requiredSignersPreimageCbor,
+      mintPreimageCbor: original.body.mintPreimageCbor,
     },
     witnessSet,
     validity,
@@ -108,6 +120,7 @@ export const buildJourneyTransactionSourceFault = async (
   if (!Array.isArray(outer) || !Array.isArray(outer[1]))
     throw new Error("Canonical transaction envelope shape changed");
   outer[1][7] = body.requiredSignersPreimageCbor;
+  outer[1][8] = body.mintPreimageCbor;
   const canonicalCbor = encodeCbor(outer);
   const sourceBytes = Buffer.from(
     Data.to(source, SDK.L2TransactionSource),

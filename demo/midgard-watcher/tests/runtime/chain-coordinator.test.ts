@@ -480,6 +480,17 @@ describe("production native-chain coordinator", () => {
         forward(second, String(Number(second.blockNo) + lag)),
       );
 
+      if (lag === 0) {
+        // Below confirmation depth a pending block is not re-observed or
+        // re-persisted: the second observation waits for depth 30.
+        expect(observed).toEqual(["10:1", "11:1"]);
+        expect(persisted).toEqual(["10"]);
+        expect(coordinator.status()).toMatchObject({
+          quarantined: false,
+          bufferedBlockCount: 2,
+        });
+        return;
+      }
       expect(observed).toEqual([
         `10:${lag + 1}`,
         `11:${lag + 1}`,

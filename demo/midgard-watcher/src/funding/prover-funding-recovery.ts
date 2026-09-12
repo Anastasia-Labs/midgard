@@ -3,10 +3,17 @@ import { join } from "node:path";
 
 import {
   assertWorkflowActuationPermitIdentity,
+  assertWorkflowFundingAbandonmentHandoffJournal,
+  assertWorkflowFundingCompletionHandoffJournal,
   bindWorkflowActuationRecoveryIdentity,
   DirectoryFraudProofWorkflowJournalStore,
   journalJsonDigest,
   normalizeJournalJson,
+  parseWorkflowFundingAbandonmentHandoff,
+  parseWorkflowFundingCompletionHandoff,
+  parseWorkflowFundingPreparedTransition,
+  parseWorkflowFundingSubmissionHandoff,
+  reconcileWorkflowFundingSubmissionHandoff,
   type WorkflowActuationPermit,
 } from "@al-ft/midgard-fault-proofs";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
@@ -48,8 +55,13 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
   try {
     names = await readdir(directory, { withFileTypes: true });
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT")
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      if (authority.authority === "reconciliation")
+        throw new Error(
+          "reconciliation funding requires its existing durable workflow",
+        );
       return;
+    }
     throw error;
   }
   if ((await realpath(directory)) !== directory)
@@ -67,7 +79,13 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
       "workflow recovery has multiple candidate executions for one target",
     );
   const candidate = names[0];
-  if (candidate === undefined) return;
+  if (candidate === undefined) {
+    if (authority.authority === "reconciliation")
+      throw new Error(
+        "reconciliation funding requires its existing durable workflow",
+      );
+    return;
+  }
   if (
     (await realpath(join(directory, candidate.name))) !==
     join(directory, candidate.name)
@@ -140,23 +158,98 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
         record.deploymentFingerprint === authority.deploymentFingerprint &&
         record.decisionDigest === identity.decisionDigest,
     );
-  if (reservations.length !== 1 || reservations[0]!.state !== "active")
+  if (reservations.length !== 1 || reservations[0]!.state === "conflict")
     throw new Error(
-      "workflow recovery has no unique active original funding reservation",
+      "workflow recovery has no unique non-conflicted original funding reservation",
     );
-  const pending = reservations[0]!.pendingTransition;
+  const record = reservations[0]!;
+  if (record.state === "released") {
+    const completion = parseWorkflowFundingCompletionHandoff(
+      await input.store.readCompletionHandoff({
+        reservationId: record.reservationId,
+      }),
+    );
+    assertWorkflowFundingCompletionHandoffJournal({
+      handoff: completion,
+      entries,
+    });
+    // The runner may only reverify and persist this exact completion; its
+    // released funding permit cannot select inputs or prepare another action.
+  }
+  const abandoned = await input.store.readAbandonmentHandoff({
+    reservationId: record.reservationId,
+  });
+  if (abandoned !== null) {
+    if (
+      typeof abandoned !== "object" ||
+      Array.isArray(abandoned) ||
+      Object.keys(abandoned).sort().join(",") !== "handoff,transition" ||
+      !("handoff" in abandoned) ||
+      !("transition" in abandoned)
+    )
+      throw new Error("workflow recovery abandonment handoff is malformed");
+    const handoff = parseWorkflowFundingAbandonmentHandoff(abandoned.handoff);
+    const transition = parseWorkflowFundingPreparedTransition(
+      abandoned.transition,
+    );
+    if (
+      transition.transactionHash !== handoff.reconciliation.txHash ||
+      record.pendingTransition !== null
+    )
+      throw new Error(
+        "workflow recovery abandonment differs from its exact signed transaction",
+      );
+    assertWorkflowFundingAbandonmentHandoffJournal({ handoff, entries });
+  }
+  const pending = record.pendingTransition;
   if (pending !== null) {
     const intent = [...entries]
       .reverse()
       .find(({ event }) => event.kind === "submission_intent");
-    if (
+    const recovered: unknown = await input.store.readPendingHandoff({
+      reservationId: record.reservationId,
+    });
+    if (recovered !== null) {
+      if (
+        typeof recovered !== "object" ||
+        Array.isArray(recovered) ||
+        Object.keys(recovered).sort().join(",") !== "handoff,transition" ||
+        !("handoff" in recovered) ||
+        !("transition" in recovered)
+      )
+        throw new Error("workflow recovery submission handoff is malformed");
+      const handoff = parseWorkflowFundingSubmissionHandoff(recovered.handoff);
+      const transition = parseWorkflowFundingPreparedTransition(
+        recovered.transition,
+      );
+      reconcileWorkflowFundingSubmissionHandoff({ handoff, entries });
+      if (
+        journalJsonDigest(normalizeJournalJson(transition)) !==
+        pending.transitionDigest
+      )
+        throw new Error(
+          "workflow recovery handoff changed its exact signed transaction",
+        );
+      if (
+        intent?.event.kind === "submission_intent" &&
+        intent.event.txHash === pending.transactionHash &&
+        journalJsonDigest(normalizeJournalJson(intent.event)) !==
+          journalJsonDigest(normalizeJournalJson(handoff.submissionIntent))
+      )
+        throw new Error(
+          "workflow recovery pending funding lineage differs from its recorded transaction intent",
+        );
+    } else if (
       prepared === undefined ||
       intent?.event.kind !== "submission_intent" ||
       intent.event.txHash !== pending.transactionHash
-    )
+    ) {
+      // Existing signed intents already contain their action identity. A
+      // missing intent requires the transactionally persisted handoff above.
       throw new Error(
         "workflow recovery pending funding lineage differs from its recorded transaction intent",
       );
+    }
   }
   bindWorkflowActuationRecoveryIdentity({
     permit: input.actuationPermit,

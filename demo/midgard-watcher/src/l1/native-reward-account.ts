@@ -160,8 +160,15 @@ export const queryWatcherNativeRewardAccount = async (
         encoding: "utf8",
         env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
       },
-      (error: Error | null, stdout) =>
-        error === null ? resolve(stdout) : reject(error),
+      (error, stdout) =>
+        error === null
+          ? resolve(stdout)
+          : reject(
+              new Error(
+                `native reward-account helper failed: ${error.message}`,
+                { cause: error },
+              ),
+            ),
     );
     child.stdin!.on("error", reject);
     child.stdin!.end(`${watcherCanonicalJson(startup)}\n`, "utf8");

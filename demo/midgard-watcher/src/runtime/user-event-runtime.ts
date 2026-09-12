@@ -29,6 +29,7 @@ import {
 } from "../indexers/user-event-reference-authority.js";
 import {
   admitWatcherLocalBackfillFinality,
+  makeWatcherFinalityPolicy,
   readWatcherLocalBackfillFinality,
   readWatcherLocalBackfillFinalityOriginalWitness,
   type WatcherLocalBackfillFinalityReceipt,
@@ -43,7 +44,12 @@ import {
 } from "../l1/local-historical-capture.js";
 import { createWatcherLocalKupmiosRawSource } from "../l1/local-kupmios-raw-source.js";
 import {
+  admitWatcherNativeRollForwardBlock,
+  type WatcherNativeBlockAdmission,
+} from "../l1/native-block-admission.js";
+import {
   startWatcherNativeChainSync,
+  startWatcherNativeChainSyncWithRetry,
   watcherNativeChainSyncAuthorityDetails,
   type WatcherNativeChainSyncPoint,
   type WatcherNativeChainSyncRuntime,
@@ -55,6 +61,13 @@ import {
 } from "../storage/durable-runtime.js";
 import { watcherSameCanonicalJson as same } from "../storage/durable-store.js";
 import type { WatcherUserEventArchive } from "../storage/user-event-checkpoint.js";
+import type { WatcherUserEventCoverageStore } from "../storage/user-event-coverage-store.js";
+import {
+  classifyWatcherNativeBlock,
+  makeWatcherDeploymentBlockRelevancePolicy,
+  type WatcherBlockRelevance,
+  type WatcherBlockRelevancePolicy,
+} from "./block-relevance.js";
 import { parseWatcherConfig } from "./config.js";
 import {
   assertWatcherVerifiedDeploymentAuthority,
@@ -68,6 +81,12 @@ import {
 const MAX_BATCH = 64;
 const MAX_EVIDENCE_BYTES = 128 * 1024 * 1024;
 const ACQUISITION_TIMEOUT_MS = 120_000;
+/** Quiet headers admitted per enumeration round before the round settles. */
+const MAX_ROUND_ITEMS = 4_096;
+/** Recently covered chain points kept for hash lookups without a request. */
+const COVERED_RING_CAPACITY = 4_096;
+/** One node lookup resolving whether a point is on the canonical chain. */
+const LOOKUP_TIMEOUT_MS = 20_000;
 type Capture = Awaited<ReturnType<typeof openWatcherLocalHistoricalCapture>>;
 type Publisher = Awaited<
   ReturnType<typeof createWatcherLocalUserEventPublisher>
@@ -78,6 +97,15 @@ type PlannedBlock = Readonly<{
   point: FraudProofRawL1Point;
   rawBlockCbor: string;
 }>;
+type QuietHeader = Readonly<{
+  blockHash: string;
+  parentBlockHash: string;
+  blockNo: string;
+  slot: string;
+}>;
+type RoundItem =
+  | Readonly<{ kind: "quiet"; header: QuietHeader }>
+  | Readonly<{ kind: "touched"; plan: PlannedBlock }>;
 type FirstObservation = Readonly<{
   plan: Readonly<{ point: FraudProofRawL1Point; rawBlockCbor?: string }>;
   finality: WatcherLocalBackfillFinalityReceipt;
@@ -94,13 +122,36 @@ export type WatcherUserEventRuntime = Readonly<{
   blueprintHash: string;
   read(): Readonly<{
     status: "ready" | "suspended" | "closed" | "failed";
+    /** The coverage checkpoint: every block through it is covered. */
     currentPoint: FraudProofRawL1Point;
+    /** The last event observation the coverage checkpoint sits on. */
+    headCursor: FraudProofRawL1Point;
     generation: number;
   }>;
-  advanceThrough(
-    point: FraudProofRawL1Point,
-    options?: Readonly<{ prefetch?: boolean }>,
-  ): Promise<void>;
+  /** The deployment's relevance predicate, shared with the coordinator. */
+  relevancePolicy: WatcherBlockRelevancePolicy;
+  /**
+   * Classifies a native block from its bytes with the deployment predicate
+   * plus the active event outrefs of the published fold and any extra
+   * tracked outrefs the caller follows. Never asks a provider.
+   */
+  classify(
+    block: WatcherNativeBlockAdmission,
+    extraTrackedOutRefs?: Iterable<string>,
+  ): WatcherBlockRelevance;
+  /**
+   * Covers one quiet native block. The direct child of the coverage
+   * checkpoint costs a link check and one in-place row write; a block already
+   * covered is verified against the covered chain, and a gap is enumerated
+   * natively through the block.
+   */
+  coverQuiet(block: WatcherNativeBlockAdmission): Promise<void>;
+  /**
+   * Covers every block through `point`, capturing and publishing only the
+   * blocks the relevance predicate marks touched. A point already covered is
+   * verified against the covered chain instead.
+   */
+  advanceThrough(point: FraudProofRawL1Point): Promise<void>;
   eventAuthority(
     input: Readonly<{
       kind: WatcherUserEventKind;
@@ -132,12 +183,15 @@ export const createWatcherUserEventRuntime = async (
     nativeChainSyncBinaryPath: string;
     runtime: WatcherDurableRuntime;
     archive: WatcherUserEventArchive;
+    /** The single mutable coverage record, authenticated by the store. */
+    coverage: WatcherUserEventCoverageStore;
     signal?: AbortSignal;
   }>,
 ): Promise<WatcherUserEventRuntime> => {
   const {
     runtime: durableRuntime,
     archive,
+    coverage: coverageStore,
     nativeChainSyncBinaryPath,
     signal: requestSignal,
   } = input;
@@ -152,6 +206,17 @@ export const createWatcherUserEventRuntime = async (
     binding: scriptBinding,
     deploymentIdentity,
   });
+  const relevancePolicy = makeWatcherDeploymentBlockRelevancePolicy({
+    deploymentIdentity,
+    scripts,
+  });
+  const finalityPolicy = makeWatcherFinalityPolicy(
+    watcherConfig,
+    deploymentIdentity,
+  );
+  if (finalityPolicy === null)
+    throw new Error("User-event runtime finality policy is unavailable");
+  const confirmationDepth = BigInt(finalityPolicy.confirmationDepth);
   const shutdown = new AbortController();
   const signal =
     requestSignal === undefined
@@ -162,19 +227,44 @@ export const createWatcherUserEventRuntime = async (
   let generation = 0;
   let publisher: Publisher | null = null;
   let nativeMonitor: WatcherNativeChainSyncRuntime | null = null;
-  let currentPoint: FraudProofRawL1Point | null = null;
+  /** The node tip the monitor stream last reported; bounds release finality. */
+  let monitorTip: Readonly<{ blockNo: string }> | null = null;
   let operationAbort = new AbortController();
   let tail: Promise<unknown> = Promise.resolve();
   let recovery: Promise<void> | null = null;
   let recoveryPoint: WatcherNativeChainSyncPoint | null = null;
   let headLease: Pair | null = null;
-  // Closed first captures retain only opaque finality facts. Future blocks
-  // cannot enter the published history before their requested second capture.
-  let prefetched: readonly FirstObservation[] = [];
-  let prefetchedBytes = 0;
-  const clearPrefetched = () => {
-    prefetched = [];
-    prefetchedBytes = 0;
+  // Recently covered chain points by height, event and quiet alike, so that
+  // a point inside the covered stretch resolves without any request. Nothing
+  // here is authority: the publisher's coverage checkpoint and the durable
+  // row are, and a miss falls back to one node lookup.
+  const coveredRing = new Map<
+    string,
+    Readonly<{ blockHash: string; slot: string }>
+  >();
+  const remember = (point: Readonly<QuietHeader | FraudProofRawL1Point>) => {
+    coveredRing.delete(point.blockNo);
+    coveredRing.set(
+      point.blockNo,
+      Object.freeze({ blockHash: point.blockHash, slot: point.slot }),
+    );
+    while (coveredRing.size > COVERED_RING_CAPACITY) {
+      const oldest = coveredRing.keys().next();
+      if (oldest.done) break;
+      coveredRing.delete(oldest.value);
+    }
+  };
+  const forgetAbove = (blockNo: bigint) => {
+    for (const height of coveredRing.keys())
+      if (BigInt(height) > blockNo) coveredRing.delete(height);
+  };
+  const rememberedHeight = (
+    point: Readonly<{ blockHash: string; slot: string }>,
+  ): string | null => {
+    for (const [height, known] of coveredRing)
+      if (known.blockHash === point.blockHash && known.slot === point.slot)
+        return height;
+    return null;
   };
   const captures = new Set<Capture>();
   const streams = new Set<WatcherNativeChainSyncRuntime>();
@@ -206,7 +296,6 @@ export const createWatcherUserEventRuntime = async (
   const fail = (error: unknown) => {
     if (status === "closed" || status === "failed") return;
     status = "failed";
-    clearPrefetched();
     generation += 1;
     publisher?.close();
     shutdown.abort(error);
@@ -434,14 +523,243 @@ export const createWatcherUserEventRuntime = async (
     point: FraudProofRawL1Point,
     operationSignal: AbortSignal,
   ) => (await acquireBatch([{ point }], operationSignal))[0]!;
-  const enumerate = async (
+  const rawPoint = (
+    point: Readonly<{ blockHash: string; blockNo: string; slot: string }>,
+  ): FraudProofRawL1Point =>
+    admitFraudProofRawL1Point({
+      blockHash: point.blockHash,
+      blockNo: point.blockNo,
+      slot: point.slot,
+      pointId: computeFraudProofRawL1PointId({
+        blockHash: point.blockHash,
+        blockNo: point.blockNo,
+        slot: point.slot,
+      }),
+    });
+  const headCursor = (): FraudProofRawL1Point => {
+    const cursor = publisher!.read().cursor;
+    if (cursor === null)
+      throw new Error("User-event history has no published head");
+    return rawPoint(cursor);
+  };
+  const coveragePoint = (): FraudProofRawL1Point => {
+    const coverage = publisher!.readCoverage();
+    if (coverage === null)
+      throw new Error("User-event history has no coverage checkpoint");
+    return rawPoint(coverage.point);
+  };
+  // A suspended, closed or failed history refuses reads; `read()` then
+  // reports the last points it observed while the history was live.
+  let lastKnownPoints: Readonly<{
+    currentPoint: FraudProofRawL1Point;
+    headCursor: FraudProofRawL1Point;
+  }> | null = null;
+  const readPoints = () => {
+    try {
+      const current = Object.freeze({
+        currentPoint: coveragePoint(),
+        headCursor: headCursor(),
+      });
+      lastKnownPoints = current;
+      return current;
+    } catch (error) {
+      if (lastKnownPoints === null || status === "ready") throw error;
+      return lastKnownPoints;
+    }
+  };
+  /** Writes the single coverage row in place. It references the head entry
+   * and the checkpoint that published it, so a torn write between a head
+   * publication and this update is detected and discarded on restore. */
+  const persistCoverage = () => {
+    const read = publisher!.read();
+    const coverage = publisher!.readCoverage();
+    if (coverage === null || read.checkpoint === null)
+      throw new Error("User-event coverage cannot be persisted before a head");
+    coverageStore.write({
+      blockHash: coverage.point.blockHash,
+      blockNo: coverage.point.blockNo,
+      slot: coverage.point.slot,
+      headEntryDigest: coverage.headEntryDigest,
+      checkpointDigest: read.checkpoint.checkpointDigest,
+    });
+  };
+  const trackedOutRefs = (): readonly string[] =>
+    publisher === null
+      ? []
+      : publisher.read().snapshot.activeEvents.map((event) => event.outRef);
+  const classify = (
+    block: WatcherNativeBlockAdmission,
+    extraTrackedOutRefs?: Iterable<string>,
+  ): WatcherBlockRelevance =>
+    classifyWatcherNativeBlock({
+      block,
+      policy: relevancePolicy,
+      trackedOutRefs: [...trackedOutRefs(), ...(extraTrackedOutRefs ?? [])],
+    });
+  /** Admits one quiet block as the direct child of the coverage checkpoint. */
+  const coverQuietHeader = (header: QuietHeader) => {
+    publisher!.advanceCoverage(header);
+    persistCoverage();
+    remember(header);
+  };
+  /**
+   * One node lookup: is the block with this hash on the canonical chain, and
+   * at which height? Chain-sync intersects at the point; the node refuses an
+   * unknown point, and the first roll forward (or the reported tip when the
+   * point is the tip) names its height.
+   */
+  const lookupOnChain = async (
+    point: Readonly<{ blockHash: string; slot: string }>,
+    operationSignal: AbortSignal,
+  ): Promise<string | null> => {
+    let stream: WatcherNativeChainSyncRuntime | null = null;
+    let settled = false;
+    let resolveHeight!: (value: string | null) => void;
+    let rejectHeight!: (error: unknown) => void;
+    const height = new Promise<string | null>((resolve, reject) => {
+      resolveHeight = resolve;
+      rejectHeight = reject;
+    });
+    void height.catch(() => undefined);
+    const settle = (value: string | null) => {
+      if (settled) return;
+      settled = true;
+      resolveHeight(value);
+    };
+    const abort = () => {
+      if (settled) return;
+      settled = true;
+      rejectHeight(
+        new Error("User-event lookup aborted", {
+          cause: operationSignal.reason,
+        }),
+      );
+    };
+    operationSignal.throwIfAborted();
+    operationSignal.addEventListener("abort", abort, { once: true });
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      rejectHeight(
+        new Error(
+          "User-event point is not the exact accepted block: the node did not confirm it on its chain",
+        ),
+      );
+    }, LOOKUP_TIMEOUT_MS);
+    try {
+      try {
+        stream = await startWatcherNativeChainSync({
+          binaryPath: nativeChainSyncBinaryPath,
+          watcherConfig,
+          intersection: {
+            kind: "point",
+            blockHash: point.blockHash,
+            slot: point.slot,
+          },
+          startupTimeoutMs: LOOKUP_TIMEOUT_MS,
+          onEvent: async (event) => {
+            if (settled) return;
+            if (event.kind === "roll_backward") {
+              if (
+                event.point.kind === "point" &&
+                event.point.blockHash === point.blockHash &&
+                event.point.slot === point.slot
+              )
+                return;
+              settle(null);
+              return;
+            }
+            settle(
+              event.prevHash === point.blockHash
+                ? (BigInt(event.blockNo) - 1n).toString()
+                : null,
+            );
+          },
+        });
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.name === "NativeChainSyncStartupFailure" &&
+          (error as { code?: unknown }).code === "intersection_failed"
+        )
+          return null;
+        throw error;
+      }
+      streams.add(stream);
+      const details = watcherNativeChainSyncAuthorityDetails(stream.authority);
+      if (
+        details !== null &&
+        details.currentTip.kind === "point" &&
+        details.currentTip.blockHash === point.blockHash &&
+        details.currentTip.slot === point.slot
+      )
+        settle(details.currentTip.blockNo);
+      void stream.done.then(() => settle(null), rejectHeight);
+      return await height;
+    } finally {
+      settled = true;
+      clearTimeout(timer);
+      operationSignal.removeEventListener("abort", abort);
+      if (stream !== null) {
+        streams.delete(stream);
+        await stream.close();
+      }
+    }
+  };
+  /**
+   * Point coverage is a lookup, not a walk. An event block must be the exact
+   * accepted block. A quiet block at or below the release-final boundary is
+   * covered by height; above it, its hash must be on the covered chain: the
+   * recent ring answers without a request, and a miss costs one node lookup.
+   */
+  const assertCovered = async (
+    point: FraudProofRawL1Point,
+    operationSignal: AbortSignal,
+  ) => {
+    const head = headCursor();
+    if (BigInt(point.blockNo) <= BigInt(head.blockNo)) {
+      const kind = await publisher!.assertPointCovered(point);
+      if (kind === "event") return;
+    }
+    const known = coveredRing.get(point.blockNo);
+    if (known !== undefined) {
+      if (known.blockHash === point.blockHash && known.slot === point.slot)
+        return;
+      throw new Error(
+        "User-event point is not the exact accepted block at its covered height",
+      );
+    }
+    if (
+      monitorTip !== null &&
+      BigInt(monitorTip.blockNo) - BigInt(point.blockNo) >= confirmationDepth
+    )
+      return;
+    const height = await lookupOnChain(point, operationSignal);
+    if (height !== point.blockNo)
+      throw new Error(
+        "User-event point is not the exact accepted block on the canonical chain",
+      );
+    remember(point);
+  };
+  /**
+   * Streams the native chain above the coverage checkpoint and classifies
+   * every block locally. Quiet headers are admitted to coverage; touched
+   * blocks are planned for capture. A round ends at `through`, at the touched
+   * bound, or at the header bound, so a long quiet stretch settles in bounded
+   * rounds that publish nothing.
+   */
+  const enumerateRound = async (
     from: FraudProofRawL1Point,
     through: FraudProofRawL1Point,
+    maximumTouched: number,
     operationSignal: AbortSignal,
-  ): Promise<PlannedBlock[]> => {
-    const result: PlannedBlock[] = [];
+  ): Promise<readonly RoundItem[]> => {
+    if (maximumTouched < 1 || maximumTouched > MAX_BATCH)
+      throw new Error("Invalid user-event enumeration bound");
+    const items: RoundItem[] = [];
     let previous = from;
     let sawEnumerationEvent = false;
+    let touched = 0;
     let plannedBytes = 0;
     let finished = false;
     let resolveBatch!: () => void;
@@ -488,16 +806,7 @@ export const createWatcherUserEventRuntime = async (
                 return;
               throw new Error("User-event native enumeration rolled back");
             }
-            const point = admitFraudProofRawL1Point({
-              blockHash: event.blockHash,
-              blockNo: event.blockNo,
-              slot: event.slot,
-              pointId: computeFraudProofRawL1PointId({
-                blockHash: event.blockHash,
-                blockNo: event.blockNo,
-                slot: event.slot,
-              }),
-            });
+            const point = rawPoint(event);
             if (
               event.prevHash !== previous.blockHash ||
               BigInt(point.blockNo) !== BigInt(previous.blockNo) + 1n ||
@@ -511,12 +820,30 @@ export const createWatcherUserEventRuntime = async (
               throw new Error(
                 "User-event native target is on a different fork",
               );
-            plannedBytes += Buffer.byteLength(event.rawBlockCbor);
-            result.push({ point, rawBlockCbor: event.rawBlockCbor });
+            const block = admitWatcherNativeRollForwardBlock(event);
+            if (classify(block) === "quiet") {
+              items.push({
+                kind: "quiet",
+                header: Object.freeze({
+                  blockHash: point.blockHash,
+                  parentBlockHash: event.prevHash,
+                  blockNo: point.blockNo,
+                  slot: point.slot,
+                }),
+              });
+            } else {
+              plannedBytes += Buffer.byteLength(event.rawBlockCbor);
+              touched += 1;
+              items.push({
+                kind: "touched",
+                plan: { point, rawBlockCbor: event.rawBlockCbor },
+              });
+            }
             previous = point;
             if (
               same(point, through) ||
-              result.length === MAX_BATCH ||
+              touched === maximumTouched ||
+              items.length >= MAX_ROUND_ITEMS ||
               plannedBytes >= 24 * 1024 * 1024
             ) {
               finished = true;
@@ -535,7 +862,7 @@ export const createWatcherUserEventRuntime = async (
       }, rejectBatch);
       await collected;
       operationSignal.throwIfAborted();
-      return result;
+      return items;
     } finally {
       finished = true;
       clearTimeout(timer);
@@ -568,11 +895,19 @@ export const createWatcherUserEventRuntime = async (
     });
     return task;
   };
+  /**
+   * The fork is the node's rollback point. A fresh capture at the head entry
+   * corroborates that the last observation survived. Then the coverage
+   * checkpoint moves: a fork inside the quiet stretch rewinds it in place,
+   * with the height resolved from the covered ring or one node lookup; a fork
+   * below the head entry is not a coverage matter and fails closed for
+   * restart reconciliation, which drops observations above the fork.
+   */
   const handleRollback = (
     point: WatcherNativeChainSyncPoint,
   ): Promise<void> => {
     if (recovery !== null && same(point, recoveryPoint)) return recovery;
-    if (status !== "ready" || publisher === null || currentPoint === null) {
+    if (status !== "ready" || publisher === null) {
       const error = new Error(
         "User-event rollback cannot recover this runtime state",
       );
@@ -580,9 +915,9 @@ export const createWatcherUserEventRuntime = async (
       return Promise.reject(error);
     }
     status = "suspended";
-    clearPrefetched();
     generation += 1;
     recoveryPoint = Object.freeze({ ...point });
+    const head = headCursor();
     publisher.suspend();
     operationAbort.abort(new Error("User-event source rolled back"));
     const settled = tail;
@@ -591,7 +926,15 @@ export const createWatcherUserEventRuntime = async (
       await settled;
       await releasing;
       signal.throwIfAborted();
-      const pair = await onePair(currentPoint!, signal);
+      if (point.kind === "origin")
+        throw new Error(
+          "User-event rollback to origin requires restart reconciliation",
+        );
+      if (BigInt(point.slot) < BigInt(head.slot))
+        throw new Error(
+          "User-event rollback below the last event observation requires restart reconciliation",
+        );
+      const pair = await onePair(head, signal);
       try {
         if (status !== "suspended")
           throw new Error("User-event recovery was retired");
@@ -599,6 +942,29 @@ export const createWatcherUserEventRuntime = async (
         signal.throwIfAborted();
         if (status !== "suspended")
           throw new Error("User-event recovery changed during protected read");
+        const coverage = coveragePoint();
+        if (point.blockHash !== coverage.blockHash) {
+          let target: FraudProofRawL1Point;
+          if (point.blockHash === head.blockHash && point.slot === head.slot)
+            target = head;
+          else {
+            const height =
+              rememberedHeight(point) ?? (await lookupOnChain(point, signal));
+            if (height === null)
+              throw new Error(
+                "User-event rollback point is not on the canonical chain",
+              );
+            target = rawPoint({
+              blockHash: point.blockHash,
+              blockNo: height,
+              slot: point.slot,
+            });
+          }
+          publisher!.rewindCoverage(target);
+          persistCoverage();
+          forgetAbove(BigInt(target.blockNo));
+          remember(target);
+        }
         operationAbort = new AbortController();
         status = "ready";
       } finally {
@@ -614,6 +980,63 @@ export const createWatcherUserEventRuntime = async (
         recoveryPoint = null;
       });
     return recovery;
+  };
+  /** Covers every block above the coverage checkpoint through `point`. */
+  const advance = async (
+    point: FraudProofRawL1Point,
+    operationSignal: AbortSignal,
+  ) => {
+    // Quiet coverage leaves the head, and any authority leased at it, intact;
+    // the lease is released only once an event block moves the head.
+    while (!same(coveragePoint(), point)) {
+      if (publisher!.read().retainedEntries >= 128) {
+        await releaseLease();
+        const pair = await onePair(headCursor(), operationSignal);
+        try {
+          await publisher!.rotate(pair);
+        } finally {
+          await pair.close();
+        }
+      }
+      const available = Math.min(
+        MAX_BATCH,
+        128 - publisher!.read().retainedEntries,
+      );
+      const items = await enumerateRound(
+        coveragePoint(),
+        point,
+        available,
+        operationSignal,
+      );
+      const plans = items.flatMap((item) =>
+        item.kind === "touched" ? [item.plan] : [],
+      );
+      const pairs =
+        plans.length === 0 ? [] : await acquireBatch(plans, operationSignal);
+      try {
+        let pairIndex = 0;
+        for (const item of items) {
+          operationSignal.throwIfAborted();
+          assertReady();
+          if (item.kind === "quiet") {
+            coverQuietHeader(item.header);
+            continue;
+          }
+          // The evidence bound may have truncated the captured prefix; the
+          // remainder is enumerated again from the new coverage checkpoint.
+          if (pairIndex >= pairs.length) break;
+          const pair = pairs[pairIndex]!;
+          pairIndex += 1;
+          await releaseLease();
+          await publisher!.publish(pair);
+          persistCoverage();
+          remember(item.plan.point);
+          await pair.close();
+        }
+      } finally {
+        await Promise.allSettled(pairs.map((pair) => pair.close()));
+      }
+    }
   };
   const abortOwner = () => fail(signal.reason);
   signal.addEventListener("abort", abortOwner, { once: true });
@@ -660,8 +1083,8 @@ export const createWatcherUserEventRuntime = async (
     }
     if (activationCandidates.length !== 1)
       throw new Error("User-event activation discovery is absent or ambiguous");
-    currentPoint = activationCandidates[0]!;
-    const activation = await onePair(currentPoint, signal);
+    const activationPoint = activationCandidates[0]!;
+    const activation = await onePair(activationPoint, signal);
     try {
       const origin = admitWatcherUserEventOrigin({
         deploymentIdentity,
@@ -682,6 +1105,7 @@ export const createWatcherUserEventRuntime = async (
       if (protectedHead.checkpoint === null) {
         publisher = await createWatcherLocalUserEventPublisher(bootstrap);
         await publisher.publish(activation);
+        coverageStore.clear();
       } else {
         if (protectedHead.payload === null)
           throw new Error("User-event restart payload is missing");
@@ -703,30 +1127,54 @@ export const createWatcherUserEventRuntime = async (
           throw new Error(
             "User-event restart did not restore the exact saved head",
           );
-        currentPoint = target;
+        // Trust the store: the saved coverage row extends the restored head
+        // over the quiet stretch it covered before shutdown. A row from an
+        // older head is a torn write and coverage restarts at the head.
+        publisher.restoreCoverage(coverageStore.read());
       }
+      const head = headCursor();
+      remember(head);
       // A separate live stream owns rollback/source-loss revocation between
       // historical queries and while issued event capabilities are in use.
-      const monitorIntersection = currentPoint!;
+      // It intersects at the coverage checkpoint when the node still has it,
+      // else at the head entry: the node's answer is the fork, and coverage
+      // rewinds onto the surviving head in place.
+      const candidates = [coveragePoint(), head].filter(
+        (candidate, index, all) =>
+          all.findIndex(
+            (other) =>
+              other.blockHash === candidate.blockHash &&
+              other.slot === candidate.slot,
+          ) === index,
+      );
       let sawMonitorEvent = false;
-      const monitor = await startWatcherNativeChainSync({
+      let selectedIntersection: WatcherNativeChainSyncPoint | null = null;
+      const monitor = await startWatcherNativeChainSyncWithRetry({
         binaryPath: nativeChainSyncBinaryPath,
         watcherConfig,
-        intersection: {
-          kind: "point",
-          blockHash: monitorIntersection.blockHash,
-          slot: monitorIntersection.slot,
-        },
+        intersectionCandidates: candidates.map((candidate) => ({
+          kind: "point" as const,
+          blockHash: candidate.blockHash,
+          slot: candidate.slot,
+        })),
         startupTimeoutMs: ACQUISITION_TIMEOUT_MS,
         onEvent: async (event) => {
+          if (event.tip.kind === "point")
+            monitorTip = Object.freeze({ blockNo: event.tip.blockNo });
           const firstEvent = !sawMonitorEvent;
           sawMonitorEvent = true;
           if (
             firstEvent &&
             event.kind === "roll_backward" &&
             event.point.kind === "point" &&
-            event.point.blockHash === monitorIntersection.blockHash &&
-            event.point.slot === monitorIntersection.slot
+            candidates.some(
+              (candidate) =>
+                event.point.kind === "point" &&
+                candidate.blockHash === event.point.blockHash &&
+                candidate.slot === event.point.slot,
+            ) &&
+            (selectedIntersection === null ||
+              same(event.point, selectedIntersection))
           )
             return;
           if (event.kind === "roll_backward")
@@ -735,6 +1183,28 @@ export const createWatcherUserEventRuntime = async (
       });
       nativeMonitor = monitor;
       streams.add(monitor);
+      const details = watcherNativeChainSyncAuthorityDetails(monitor.authority);
+      if (details === null)
+        throw new Error("User-event native monitor did not report readiness");
+      selectedIntersection = details.selectedIntersection;
+      if (details.currentTip.kind === "point")
+        monitorTip = Object.freeze({ blockNo: details.currentTip.blockNo });
+      const selected = candidates.find(
+        (candidate) =>
+          details.selectedIntersection.kind === "point" &&
+          candidate.blockHash === details.selectedIntersection.blockHash &&
+          candidate.slot === details.selectedIntersection.slot,
+      );
+      if (selected === undefined)
+        throw new Error(
+          "User-event native monitor intersected outside the covered chain",
+        );
+      if (!same(selected, coveragePoint())) {
+        publisher.rewindCoverage(selected);
+        forgetAbove(BigInt(selected.blockNo));
+      }
+      persistCoverage();
+      remember(coveragePoint());
       void monitor.done.then(() => {
         if (streams.has(monitor))
           fail(new Error("User-event native monitor ended"));
@@ -747,117 +1217,45 @@ export const createWatcherUserEventRuntime = async (
       [runtimeBrand]: true as const,
       deploymentFingerprint: deploymentIdentity.manifestId,
       blueprintHash: deploymentIdentity.blueprintHash,
-      read: () =>
-        Object.freeze({
-          status,
-          currentPoint: Object.freeze({ ...currentPoint! }),
-          generation,
-        }),
+      relevancePolicy,
+      read: () => Object.freeze({ status, ...readPoints(), generation }),
       done,
-      advanceThrough: (
-        requested: FraudProofRawL1Point,
-        options?: Readonly<{ prefetch?: boolean }>,
-      ) => {
-        const point = Object.freeze(admitFraudProofRawL1Point(requested));
+      classify,
+      coverQuiet: (block: WatcherNativeBlockAdmission) => {
+        const point = rawPoint(block);
         return serialize(async (operationSignal) => {
-          if (BigInt(point.blockNo) <= BigInt(currentPoint!.blockNo)) {
-            await publisher!.assertPointCovered(point);
+          const coverage = coveragePoint();
+          if (BigInt(point.blockNo) <= BigInt(coverage.blockNo)) {
+            await assertCovered(point, operationSignal);
             return;
           }
-          await releaseLease();
-          while (!same(currentPoint, point)) {
-            if (publisher!.read().retainedEntries >= 128) {
-              const pair = await onePair(currentPoint!, operationSignal);
-              try {
-                await publisher!.rotate(pair);
-              } finally {
-                await pair.close();
-              }
-            }
-            const available = 128 - publisher!.read().retainedEntries;
-            let plans: readonly FirstObservation["plan"][];
-            let pairs: Pair[];
-            if (options?.prefetch === true) {
-              if (prefetched.length === 0) {
-                // A fresh admitted boundary limits lookahead to release-final
-                // chain points. Native enumeration and both W12 captures still
-                // authenticate every block independently.
-                const source = createWatcherLocalKupmiosRawSource({
-                  watcherConfig,
-                  deploymentIdentity,
-                  captureBounds: {
-                    signal: operationSignal,
-                    timeoutMs: watcherConfig.l1.requestTimeoutMs,
-                  },
-                });
-                const boundary = await readAdmittedLocalKupmiosBoundary({
-                  source,
-                });
-                const through =
-                  BigInt(boundary.kupoCheckpoint.blockNo) >
-                  BigInt(point.blockNo)
-                    ? boundary.kupoCheckpoint
-                    : point;
-                const ahead = await enumerate(
-                  currentPoint!,
-                  through,
-                  operationSignal,
-                );
-                const first = await acquireFirst(ahead, operationSignal);
-                operationSignal.throwIfAborted();
-                prefetched = first.observations;
-                prefetchedBytes = first.bytes;
-              }
-              const selected = prefetched
-                .filter(
-                  ({ plan }) =>
-                    BigInt(plan.point.blockNo) <= BigInt(point.blockNo),
-                )
-                .slice(0, available);
-              if (
-                selected.length === 0 ||
-                BigInt(selected[0]!.plan.point.blockNo) !==
-                  BigInt(currentPoint!.blockNo) + 1n ||
-                selected.some(
-                  ({ plan }) =>
-                    plan.point.blockNo === point.blockNo &&
-                    !same(plan.point, point),
-                )
-              )
-                throw new Error(
-                  "User-event prefetched prefix differs from requested chain point",
-                );
-              plans = selected.map(({ plan }) => plan);
-              pairs = await completeFirst(
-                selected,
-                prefetchedBytes,
-                operationSignal,
-              );
-            } else {
-              clearPrefetched();
-              plans = await enumerate(currentPoint!, point, operationSignal);
-              pairs = await acquireBatch(
-                plans.slice(0, available),
-                operationSignal,
-              );
-            }
-            try {
-              for (let index = 0; index < pairs.length; index += 1) {
-                operationSignal.throwIfAborted();
-                assertReady();
-                await publisher!.publish(pairs[index]!);
-                currentPoint = plans[index]!.point;
-                if (options?.prefetch === true) {
-                  prefetchedBytes -= prefetched[0]!.evidenceBytes;
-                  prefetched = prefetched.slice(1);
-                  if (prefetched.length === 0) clearPrefetched();
-                }
-                await pairs[index]!.close();
-              }
-            } finally {
-              await Promise.allSettled(pairs.map((pair) => pair.close()));
-            }
+          if (
+            BigInt(point.blockNo) !== BigInt(coverage.blockNo) + 1n ||
+            block.prevHash !== coverage.blockHash
+          ) {
+            await advance(point, operationSignal);
+            return;
           }
+          if (classify(block) !== "quiet")
+            throw new Error(
+              "User-event quiet coverage was offered a block the fold tracks",
+            );
+          coverQuietHeader({
+            blockHash: point.blockHash,
+            parentBlockHash: block.prevHash,
+            blockNo: point.blockNo,
+            slot: point.slot,
+          });
+        });
+      },
+      advanceThrough: (requested: FraudProofRawL1Point) => {
+        const point = Object.freeze(admitFraudProofRawL1Point(requested));
+        return serialize(async (operationSignal) => {
+          if (BigInt(point.blockNo) <= BigInt(coveragePoint().blockNo)) {
+            await assertCovered(point, operationSignal);
+            return;
+          }
+          await advance(point, operationSignal);
         });
       },
       eventAuthority: (
@@ -882,7 +1280,7 @@ export const createWatcherUserEventRuntime = async (
             }
           }
           if (headLease === null)
-            headLease = await onePair(currentPoint!, operationSignal);
+            headLease = await onePair(headCursor(), operationSignal);
           try {
             return {
               status: "admitted" as const,
@@ -909,7 +1307,6 @@ export const createWatcherUserEventRuntime = async (
         if (status === "closed") return;
         const failed = status === "failed";
         status = "closed";
-        clearPrefetched();
         generation += 1;
         publisher?.close();
         signal.removeEventListener("abort", abortOwner);

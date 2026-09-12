@@ -1,7 +1,10 @@
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import {
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
+} from "../linear-fault-family.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
@@ -16,30 +19,50 @@ import {
   type WorkflowAdapterRunner,
 } from "../workflow/adapters.js";
 import {
+  encodeWorkflowArtifact,
+  requireWorkflowArtifactMatches,
+} from "../workflow/artifact-codec.js";
+import { MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import {
+  createCursorFamilyWorkflowAdapter,
+  CURSOR_FAMILY_TRANSACTION_PORT,
+} from "../workflow/cursor-family-adapter.js";
+import {
+  cursorFamilyActionInput,
+  cursorStringField,
+} from "../workflow/cursor-family-runtime.js";
+import type { CursorFamilySpec } from "../workflow/cursor-family-state.js";
+import {
   assertManifestBoundWorkflowSigner,
   bindFraudProofWorkflowDeployment,
   type FraudProofWorkflowDeploymentBinding,
+  releaseFinalityAuthorityFromDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
-import { createFraudProofFamilyLocalKupmiosL1ObservationPort } from "../workflow/family-l1-observation.js";
+import {
+  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+} from "../workflow/family-l1-observation.js";
 import {
   createAuthenticatedFieldCarriagePrerequisitePort,
   type FieldCarriagePrerequisitePort,
+  withFieldCarriagePrerequisite,
 } from "../workflow/field-carriage-prerequisite.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
-  computeFraudProofWorkflowId,
   DirectoryFraudProofWorkflowJournalStore,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEvent,
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { executeManifestBoundFamilyRecovery } from "../workflow/manifest-bound-family-recovery.js";
 import type { FraudProofWorkflowAction } from "../workflow/orchestrator.js";
+import {
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowRunResult,
+  type FraudProofWorkflowTerminalVerifier,
+} from "../workflow/orchestrator.js";
 import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
-import { submitCapturedTransaction } from "../workflow/transaction-boundary.js";
+import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import {
   createMissingRedeemerActuator,
   type MissingRedeemerActuatorAction,
@@ -50,16 +73,13 @@ import {
   MISSING_REDEEMER_BLUEPRINT_TITLES,
   type MissingRedeemerContracts,
 } from "./contracts.js";
-import { createMissingRedeemerDirectoryJournal } from "./directory-journal.js";
-import {
-  MISSING_REDEEMER_CATEGORY,
-  missingRedeemerEvidenceIdentity,
-} from "./family.js";
+import { MISSING_REDEEMER_CATEGORY } from "./family.js";
 import {
   type MissingRedeemerArtifact,
   replayMissingRedeemer,
 } from "./replay.js";
 import {
+  MissingRedeemerAuthenticationStateSchema,
   MissingRedeemerStep02aDatumSchema,
   MissingRedeemerStep02bDatumSchema,
   MissingRedeemerStep02DatumSchema,
@@ -67,9 +87,10 @@ import {
   MissingRedeemerStep04DatumSchema,
   MissingRedeemerStep05DatumSchema,
 } from "./schemas.js";
-import { planMissingRedeemerStagedWalk } from "./staged-plan.js";
-import type { MissingRedeemerDurableState } from "./workflow.js";
-import { runMissingRedeemerWorkflow } from "./workflow.js";
+import {
+  hashMissingRedeemerGrammarCheckpoint,
+  planMissingRedeemerStagedWalk,
+} from "./staged-plan.js";
 
 export const MISSING_REDEEMER_CONFIG_KEYS = Object.freeze([
   "manifest",
@@ -93,6 +114,21 @@ export const MISSING_REDEEMER_STEP_DATUM_SCHEMAS = Object.freeze([
   MissingRedeemerStep04DatumSchema,
   MissingRedeemerStep05DatumSchema,
 ] as const);
+
+export const MISSING_REDEEMER_CURSOR_SPEC: CursorFamilySpec<"missingRedeemer"> =
+  {
+    category: "missingRedeemer",
+    stepCount: 7,
+    successors: {
+      1: [2],
+      2: [3],
+      3: [4],
+      4: [5],
+      5: [5, 6],
+      6: [6, 7],
+      7: ["proof_token"],
+    },
+  };
 
 export type MissingRedeemerRemovalReferenceScripts = Readonly<{
   correctionLockSpend: UTxO;
@@ -127,6 +163,9 @@ export type ManifestBoundMissingRedeemerWorkflowConfig = Readonly<{
 }>;
 
 export type ManifestBoundMissingRedeemerWorkflow = Readonly<{
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   binding: FraudProofWorkflowDeploymentBinding<"missingRedeemer">;
   lucid: LucidEvolution;
   decisionDigest: string;
@@ -259,6 +298,151 @@ export const createManifestBoundMissingRedeemerWorkflow = async (
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
   });
+  const actuator = createMissingRedeemerActuator({
+    binding,
+    lucid: config.lucid,
+    signer: config.signer,
+    contracts,
+    references: { steps, witnesses },
+    stateQueueMutationLeaseCoordinator:
+      config.stateQueueMutationLeaseCoordinator,
+  });
+  const actionFor = async (
+    action: FraudProofWorkflowAction,
+    artifact: MissingRedeemerArtifact,
+  ): Promise<MissingRedeemerActuatorAction> => {
+    const input = cursorFamilyActionInput({
+      category: "missingRedeemer",
+      action,
+    });
+    if (input.stage === "init")
+      return {
+        stage: "init",
+        stateQueueBlockOutRef: cursorStringField(
+          input,
+          "stateQueueBlockOutRef",
+        ),
+      };
+    if (input.stage === "remove")
+      return {
+        stage: "remove",
+        nextRemovalOutRef: cursorStringField(input, "nextRemovalOutRef"),
+        fraudProofOutRef: cursorStringField(input, "fraudProofOutRef"),
+      };
+    const threadOutRef = cursorStringField(input, "threadOutRef");
+    const fixed = (["step_01", "step_02", "step_02a", "step_02b"] as const)[
+      Number(input.ordinal) - 1
+    ];
+    if (fixed !== undefined)
+      return fixed === "step_01"
+        ? {
+            stage: fixed,
+            threadOutRef,
+            stateQueueBlockOutRef: cursorStringField(
+              input,
+              "stateQueueBlockOutRef",
+            ),
+          }
+        : { stage: fixed, threadOutRef };
+    if (input.ordinal === 6) return { stage: "scan", threadOutRef };
+    if (input.ordinal === 7) return { stage: "finalize", threadOutRef };
+    if (input.ordinal !== 5)
+      throw new Error("missingRedeemer cursor ordinal changed");
+    const { threadUtxo } = await requireLinearFaultThreadUtxo({
+      lucid: config.lucid,
+      contracts,
+      categoryId: binding.definition.categoryId,
+      family: "missing-redeemer",
+      stepIndex: 4,
+      threadOutRef,
+    });
+    const state = requireLinearFaultStepState<
+      Data.Static<typeof MissingRedeemerAuthenticationStateSchema>
+    >({
+      threadUtxo,
+      signer: config.signer,
+      schema: MissingRedeemerStep03DatumSchema as never,
+      family: "missing-redeemer",
+      stepIndex: 4,
+    });
+    if ("Ready" in state)
+      return {
+        stage: "field",
+        threadOutRef,
+        action: {
+          kind:
+            artifact.evidence.carriage === "Certified"
+              ? "grammar_start"
+              : "direct",
+        },
+      };
+    const staged = planMissingRedeemerStagedWalk({
+      transactionId: artifact.evidence.subject.transaction_id,
+      fieldPreimageCbor: artifact.evidence.fieldPreimageHex,
+    });
+    const index = staged.grammar.findIndex(
+      (checkpoint) =>
+        hashMissingRedeemerGrammarCheckpoint(checkpoint) ===
+        state.Grammar.checkpoint_hash,
+    );
+    if (index < 0)
+      throw new Error(
+        "missingRedeemer authenticated grammar checkpoint is absent from exact plan",
+      );
+    return {
+      stage: "field",
+      threadOutRef,
+      action:
+        index === staged.grammar.length - 1
+          ? { kind: "grammar_finish" }
+          : { kind: "grammar_resume", ordinal: index + 1 },
+    };
+  };
+  let freshArtifact: MissingRedeemerArtifact | undefined;
+  const restore = (
+    artifact: import("../workflow/journal.js").JournalJsonObject,
+  ) => {
+    if (freshArtifact === undefined)
+      throw new Error(
+        "missingRedeemer capture requires current authenticated artifact validation",
+      );
+    return requireWorkflowArtifactMatches(artifact, freshArtifact);
+  };
+  const prepareArtifact = async (
+    evidence: import("../evidence/canonical-block-evidence.js").CanonicalBlockEvidence,
+  ) => {
+    const selected = (await replayMissingRedeemer(evidence))[0];
+    if (selected === undefined)
+      throw new Error("missingRedeemer replay has no selected artifact");
+    return selected.artifact;
+  };
+  let adapter = createCursorFamilyWorkflowAdapter({
+    spec: MISSING_REDEEMER_CURSOR_SPEC,
+    l1,
+    stateQueueMutationLeaseCoordinator:
+      config.stateQueueMutationLeaseCoordinator,
+    transactions: {
+      portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
+      category: "missingRedeemer",
+      prepare: async ({ evidence }) => {
+        freshArtifact = await prepareArtifact(evidence);
+        return encodeWorkflowArtifact(freshArtifact);
+      },
+      validatePreparedArtifact: async ({ evidence, artifact }) => {
+        freshArtifact = requireWorkflowArtifactMatches(
+          artifact,
+          await prepareArtifact(evidence),
+        );
+      },
+      capture: async ({ action, artifact }) => {
+        const restored = restore(artifact);
+        return actuator.capture({
+          action: await actionFor(action, restored),
+          artifact: restored,
+        });
+      },
+    },
+  });
   // Field 8 is opened from published carriage: the prerequisite port
   // publishes (and, above the raw bound, certifies) it before the first
   // field-consuming action and recovers it from the raw L1 afterwards.
@@ -268,10 +452,10 @@ export const createManifestBoundMissingRedeemerWorkflow = async (
     network: binding.network,
     signer: config.signer,
     publications: l1.publications,
-    requirementForAction: ({ action, artifact }) =>
+    requirementForAction: async ({ action, artifact }) =>
       missingRedeemerFieldRequirement({
-        action: action.input as unknown as MissingRedeemerActuatorAction,
-        artifact,
+        action: await actionFor(action, restore(artifact)),
+        artifact: restore(artifact),
         owner: config.signer.paymentKeyHash,
         certificate: {
           policyId: certificate.policyId,
@@ -282,6 +466,11 @@ export const createManifestBoundMissingRedeemerWorkflow = async (
     transactionConfirmed: async ({ headerHash, txHash }) =>
       await l1.transactionConfirmed({ headerHash, txHash }),
   });
+  adapter = withFieldCarriagePrerequisite({
+    category: "missingRedeemer",
+    base: adapter,
+    prerequisite,
+  });
   return Object.freeze({
     binding,
     lucid: config.lucid,
@@ -289,15 +478,11 @@ export const createManifestBoundMissingRedeemerWorkflow = async (
     l1,
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
-    actuator: createMissingRedeemerActuator({
-      binding,
-      lucid: config.lucid,
-      signer: config.signer,
-      contracts,
-      references: { steps, witnesses },
-      stateQueueMutationLeaseCoordinator:
-        config.stateQueueMutationLeaseCoordinator,
-    }),
+    actuator,
+    adapter,
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
+    releaseFinalityAuthority:
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
     prerequisite,
   });
 };
@@ -314,128 +499,6 @@ export type LoadMissingRedeemerWorkflow = (input: {
   invocation: WorkflowAdapterReadinessInput;
 }) => Promise<LoadedMissingRedeemerWorkflow>;
 
-const appendEvent = async (
-  journal: FraudProofWorkflowJournalStore,
-  workflowId: string,
-  identity: FraudProofWorkflowIdentity,
-  event: FraudProofWorkflowJournalEvent,
-) => {
-  const sequence = (await journal.load(workflowId)).length;
-  await journal.append(
-    {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-      workflowId,
-      identity,
-      sequence,
-      recordedAt: new Date().toISOString(),
-      event,
-    },
-    sequence,
-  );
-};
-
-const countConfirmedActions = (
-  entries: readonly Readonly<{ event: FraudProofWorkflowJournalEvent }>[],
-  prefix: string,
-) =>
-  entries.filter(
-    ({ event }) =>
-      event.kind === "confirmed" && event.actionId.startsWith(prefix),
-  ).length;
-
-const actionFor = async ({
-  workflow,
-  artifact,
-  entries,
-}: {
-  workflow: ManifestBoundMissingRedeemerWorkflow;
-  artifact: MissingRedeemerArtifact;
-  entries: readonly Readonly<{ event: FraudProofWorkflowJournalEvent }>[];
-}): Promise<
-  | Readonly<{ action: MissingRedeemerActuatorAction; actionId: string }>
-  | "removed"
-> => {
-  const stage = (
-    await workflow.l1.observe({
-      headerHash: workflow.binding.definition.headerHash,
-    })
-  ).stage;
-  if (stage.kind === "not_started")
-    return {
-      action: {
-        stage: "init",
-        stateQueueBlockOutRef: stage.stateQueueBlockOutRef,
-      },
-      actionId: "missingRedeemer:init",
-    };
-  if (stage.kind === "proof_token")
-    return {
-      action: {
-        stage: "remove",
-        nextRemovalOutRef: stage.nextRemovalOutRef,
-        fraudProofOutRef: stage.fraudProofOutRef,
-      },
-      actionId: "missingRedeemer:remove",
-    };
-  if (stage.kind === "removed") return "removed";
-  const threadOutRef = stage.threadOutRef;
-  const fixed = (["step_01", "step_02", "step_02a", "step_02b"] as const)[
-    stage.step - 1
-  ];
-  if (fixed !== undefined)
-    return {
-      action:
-        fixed === "step_01"
-          ? {
-              stage: fixed,
-              threadOutRef,
-              stateQueueBlockOutRef: stage.stateQueueBlockOutRef,
-            }
-          : { stage: fixed, threadOutRef },
-      actionId: `missingRedeemer:${fixed}`,
-    };
-  if (stage.step === 5) {
-    const count = countConfirmedActions(entries, "missingRedeemer:field:");
-    if (artifact.evidence.carriage !== "Certified")
-      return {
-        action: { stage: "field", threadOutRef, action: { kind: "direct" } },
-        actionId: "missingRedeemer:field:direct",
-      };
-    const staged = planMissingRedeemerStagedWalk({
-      transactionId: artifact.evidence.subject.transaction_id,
-      fieldPreimageCbor: artifact.evidence.fieldPreimageHex,
-    });
-    if (count > staged.grammar.length)
-      throw new Error(
-        "missingRedeemer grammar journal passed terminal checkpoint",
-      );
-    const fieldAction =
-      count === 0
-        ? ({ kind: "grammar_start" } as const)
-        : count === staged.grammar.length
-          ? ({ kind: "grammar_finish" } as const)
-          : ({ kind: "grammar_resume", ordinal: count } as const);
-    return {
-      action: { stage: "field", threadOutRef, action: fieldAction },
-      actionId: `missingRedeemer:field:${count.toString()}`,
-    };
-  }
-  if (stage.step === 6) {
-    const count = countConfirmedActions(entries, "missingRedeemer:scan:");
-    return {
-      action: { stage: "scan", threadOutRef },
-      actionId: `missingRedeemer:scan:${count.toString()}`,
-    };
-  }
-  if (stage.step === 7)
-    return {
-      action: { stage: "finalize", threadOutRef },
-      actionId: "missingRedeemer:finalize",
-    };
-  throw new Error("missingRedeemer observed impossible step");
-};
-
-/** One retained-DA-derived, locally evaluated, intent-journaled action. */
 export const executeManifestBoundMissingRedeemerWorkflow = async ({
   workflow,
   sources,
@@ -444,143 +507,13 @@ export const executeManifestBoundMissingRedeemerWorkflow = async ({
   workflow: ManifestBoundMissingRedeemerWorkflow;
   sources: readonly RetainedDaPayloadSource[];
   journal: FraudProofWorkflowJournalStore;
-}) => {
-  const headerHash = workflow.binding.definition.headerHash;
-  const block = await fetchCanonicalBlockEvidence({
-    observation: await workflow.l1.observeHeader({ headerHash }),
+}): Promise<FraudProofWorkflowRunResult> =>
+  executeManifestBoundFamilyRecovery({
+    ...workflow,
     sources,
+    journal,
+    replayer: MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
   });
-  const candidate = (await replayMissingRedeemer(block))[0];
-  if (candidate === undefined)
-    throw new Error(
-      "missingRedeemer complete replay found no canonical violation",
-    );
-  const artifact = candidate.artifact;
-  const identity: FraudProofWorkflowIdentity = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    category: MISSING_REDEEMER_CATEGORY,
-    target: { kind: "state_queue_header", headerHash },
-    decisionDigest: workflow.decisionDigest,
-  };
-  const workflowId = computeFraudProofWorkflowId(identity);
-  let entries = await journal.load(workflowId);
-  if (entries.length === 0) {
-    await appendEvent(journal, workflowId, identity, {
-      kind: "started",
-    });
-    entries = await journal.load(workflowId);
-  }
-  const pending = [...entries]
-    .reverse()
-    .find(({ event }) => event.kind === "submission_intent");
-  const intent =
-    pending?.event.kind === "submission_intent" ? pending.event : undefined;
-  if (
-    intent !== undefined &&
-    !entries.some(
-      ({ event }) =>
-        event.kind === "confirmed" && event.actionId === intent.actionId,
-    )
-  ) {
-    if (
-      !(await workflow.l1.transactionConfirmed({
-        headerHash,
-        txHash: intent.txHash,
-      }))
-    )
-      return { kind: "pending" as const, workflowId, txHash: intent.txHash };
-    await appendEvent(journal, workflowId, identity, {
-      kind: "confirmed",
-      actionId: intent.actionId,
-      txHash: intent.txHash,
-    });
-    entries = await journal.load(workflowId);
-  }
-  const selected = await actionFor({ workflow, artifact, entries });
-  if (selected === "removed") return { kind: "completed" as const, workflowId };
-  const actionInput = {
-    schemaVersion: "midgard-production-cursor-family-action-v1",
-    category: MISSING_REDEEMER_CATEGORY,
-    ...selected.action,
-  };
-  const baseAction: FraudProofWorkflowAction = {
-    actionId: selected.actionId,
-    input: actionInput as unknown as FraudProofWorkflowAction["input"],
-  };
-  const journalArtifact =
-    artifact as unknown as FraudProofWorkflowAction["input"];
-  const prerequisite = await workflow.prerequisite.inspect({
-    headerHash,
-    baseAction,
-    artifact: journalArtifact,
-    entries,
-  });
-  if (prerequisite.kind === "pending")
-    return { kind: "pending" as const, workflowId };
-  if (prerequisite.kind === "required") {
-    const carriage = await workflow.prerequisite.capture({
-      headerHash,
-      action: prerequisite.action,
-      artifact: journalArtifact,
-    });
-    await appendEvent(journal, workflowId, identity, {
-      kind: "preflight_passed",
-      actionId: prerequisite.action.actionId,
-      txHash: carriage.transaction.txHash,
-      localEvaluator: "lucid-evolution-local-uplc-v1",
-      referenceScripts: carriage.transaction.referenceScripts,
-    });
-    await appendEvent(journal, workflowId, identity, {
-      kind: "submission_intent",
-      actionId: prerequisite.action.actionId,
-      actionInput: prerequisite.action.input,
-      durableRecovery: carriage.durableRecovery,
-      attempt: 1,
-      txHash: carriage.transaction.txHash,
-    });
-    const submittedCarriage = await submitCapturedTransaction(
-      carriage.transaction,
-    );
-    if (submittedCarriage !== carriage.transaction.txHash)
-      throw new Error("missingRedeemer provider substituted carriage");
-    await appendEvent(journal, workflowId, identity, {
-      kind: "submitted",
-      actionId: prerequisite.action.actionId,
-      attempt: 1,
-      txHash: submittedCarriage,
-    });
-    return { kind: "pending" as const, workflowId, txHash: submittedCarriage };
-  }
-  const captured = await workflow.actuator.capture({
-    action: selected.action,
-    artifact,
-  });
-  await appendEvent(journal, workflowId, identity, {
-    kind: "preflight_passed",
-    actionId: selected.actionId,
-    txHash: captured.transaction.txHash,
-    localEvaluator: "lucid-evolution-local-uplc-v1",
-    referenceScripts: captured.transaction.referenceScripts,
-  });
-  await appendEvent(journal, workflowId, identity, {
-    kind: "submission_intent",
-    actionId: selected.actionId,
-    actionInput: baseAction.input,
-    attempt: 1,
-    txHash: captured.transaction.txHash,
-  });
-  const submitted = await submitCapturedTransaction(captured.transaction);
-  if (submitted !== captured.transaction.txHash)
-    throw new Error("missingRedeemer provider substituted transaction");
-  await appendEvent(journal, workflowId, identity, {
-    kind: "submitted",
-    actionId: selected.actionId,
-    attempt: 1,
-    txHash: submitted,
-  });
-  return { kind: "pending" as const, workflowId, txHash: submitted };
-};
 
 export const runOrResumeManifestBoundMissingRedeemerWorkflow = async (input: {
   workflow: ManifestBoundMissingRedeemerWorkflow;
@@ -655,177 +588,3 @@ export const createMissingRedeemerWorkflowRunnerSurface = ({
       }
     },
   });
-
-export interface MissingRedeemerObservationPort {
-  observe(identity: string): Promise<MissingRedeemerDurableState>;
-  stateQueueBlockOutRef(headerHash: string): Promise<string>;
-  removalOutRefs(
-    headerHash: string,
-  ): Promise<Readonly<{ nextRemovalOutRef: string; fraudProofOutRef: string }>>;
-  transactionConfirmed(txHash: string): Promise<boolean>;
-}
-export type MissingRedeemerRunnerConfig = Readonly<{
-  journalDirectory: string;
-  actuator: ReturnType<typeof createMissingRedeemerActuator>;
-  observation: MissingRedeemerObservationPort;
-}>;
-
-/**
- * Package-owned production runner. Evidence is accepted only as the strict
- * retained-DA artifact emitted by production replay; runtime configuration is
- * limited to durable storage and chain infrastructure.
- */
-export const createMissingRedeemerRunner = async (
-  config: MissingRedeemerRunnerConfig,
-) => {
-  const journal = await createMissingRedeemerDirectoryJournal(
-    config.journalDirectory,
-  );
-  return Object.freeze({
-    run: async (
-      artifact: MissingRedeemerArtifact,
-    ): Promise<"removed" | "cancelled"> => {
-      const staged = planMissingRedeemerStagedWalk({
-        transactionId: artifact.evidence.subject.transaction_id,
-        fieldPreimageCbor: artifact.evidence.fieldPreimageHex,
-      });
-      return await runMissingRedeemerWorkflow({
-        evidence: artifact.evidence,
-        journal,
-        actuator: {
-          observe: async (identity) =>
-            await config.observation.observe(identity),
-          submit: async ({ identity, action, scanCursor }) => {
-            const observed = await config.observation.observe(identity);
-            let concrete: MissingRedeemerActuatorAction;
-            if (action === "init")
-              concrete = {
-                stage: "init",
-                stateQueueBlockOutRef:
-                  await config.observation.stateQueueBlockOutRef(
-                    artifact.headerHash,
-                  ),
-              };
-            else if (action === "bind")
-              concrete = {
-                stage: "step_01",
-                threadOutRef: observed.outputReference!,
-                stateQueueBlockOutRef:
-                  await config.observation.stateQueueBlockOutRef(
-                    artifact.headerHash,
-                  ),
-              };
-            else if (action === "authenticatePurpose")
-              concrete = {
-                stage: "step_02",
-                threadOutRef: observed.outputReference!,
-              };
-            else if (action === "authenticateTrace")
-              concrete = {
-                stage: "step_02a",
-                threadOutRef: observed.outputReference!,
-              };
-            else if (action === "authenticateSelection")
-              concrete = {
-                stage: "step_02b",
-                threadOutRef: observed.outputReference!,
-              };
-            else if (action === "openRedeemers") {
-              const fieldAction =
-                artifact.evidence.carriage !== "Certified"
-                  ? { kind: "direct" as const }
-                  : scanCursor === 0
-                    ? { kind: "grammar_start" as const }
-                    : scanCursor < staged.grammar.length
-                      ? { kind: "grammar_resume" as const, ordinal: scanCursor }
-                      : { kind: "grammar_finish" as const };
-              concrete = {
-                stage: "field",
-                threadOutRef: observed.outputReference!,
-                action: fieldAction,
-              };
-            } else if (action === "scan")
-              concrete = {
-                stage: "scan",
-                threadOutRef: observed.outputReference!,
-              };
-            else if (action === "finalize")
-              concrete = {
-                stage: "finalize",
-                threadOutRef: observed.outputReference!,
-              };
-            else {
-              const refs = await config.observation.removalOutRefs(
-                artifact.headerHash,
-              );
-              concrete = { stage: "remove", ...refs };
-            }
-            if (
-              ("threadOutRef" in concrete && concrete.threadOutRef == null) ||
-              observed.stage === "cancelled"
-            )
-              throw new Error(
-                "missingRedeemer observed cursor cannot execute action",
-              );
-            const captured = await config.actuator.capture({
-              action: concrete,
-              artifact,
-            });
-            const submitted = await submitCapturedTransaction(
-              captured.transaction,
-            );
-            if (submitted !== captured.transaction.txHash)
-              throw new Error(
-                "missingRedeemer provider substituted transaction identity",
-              );
-            if (!(await config.observation.transactionConfirmed(submitted)))
-              throw new Error(
-                "missingRedeemer submitted transaction is unresolved",
-              );
-            const next = await config.observation.observe(identity);
-            if (next.txHash !== submitted)
-              throw new Error(
-                "missingRedeemer confirmed cursor changed transaction identity",
-              );
-            return next;
-          },
-        },
-      });
-    },
-    cancel: async (artifact: MissingRedeemerArtifact): Promise<"cancelled"> => {
-      const identity = missingRedeemerEvidenceIdentity(artifact.evidence);
-      const observed = await config.observation.observe(identity);
-      const stepIndex = [
-        "step01",
-        "step02",
-        "step02a",
-        "step02b",
-        "step03",
-        "step04",
-        "step05",
-      ].indexOf(observed.stage);
-      if (stepIndex < 0 || observed.outputReference === null)
-        throw new Error("missingRedeemer observed stage cannot cancel");
-      const captured = await config.actuator.capture({
-        action: {
-          stage: "cancel",
-          threadOutRef: observed.outputReference,
-          stepIndex,
-        },
-        artifact,
-      });
-      const submitted = await submitCapturedTransaction(captured.transaction);
-      if (
-        submitted !== captured.transaction.txHash ||
-        !(await config.observation.transactionConfirmed(submitted))
-      )
-        throw new Error("missingRedeemer cancellation is unresolved");
-      const next = await config.observation.observe(identity);
-      if (next.stage !== "cancelled" || next.txHash !== submitted)
-        throw new Error("missingRedeemer cancellation cursor changed");
-      const entries = await journal.load(identity);
-      await journal.append(identity, entries.length, next);
-      return "cancelled";
-    },
-  });
-};

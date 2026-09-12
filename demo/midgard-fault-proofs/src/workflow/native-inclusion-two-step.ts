@@ -80,6 +80,7 @@ import {
   createFraudProofFamilyAuthenticatedL1TerminalVerifier,
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
+  observeFraudProofWorkflowHeader,
 } from "./family-l1-observation.js";
 import {
   type FraudProofWorkflowJournalStore,
@@ -1508,7 +1509,7 @@ const runWorkflow = async <Category extends NativeInclusionTwoStepCategory>({
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
 }): Promise<FraudProofWorkflowRunResult> => {
-  const observation = await workflow.l1.observeHeader({
+  const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
     headerHash: workflow.binding.definition.headerHash,
   });
   const category = workflow.binding.definition.category;

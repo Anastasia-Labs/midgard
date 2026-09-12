@@ -66,6 +66,7 @@ import {
   type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
   type WatcherProtocolUtxo,
+  watcherRetainsCanonicalMembers,
   watcherSameCanonicalJson,
   watcherSha256CanonicalJson,
 } from "../storage/durable-store.js";
@@ -2603,7 +2604,7 @@ const transactionInputs = (
 };
 
 const storeRetains = <T>(previous: readonly T[], next: readonly T[]): boolean =>
-  previous.every((entry) => next.some((candidate) => same(entry, candidate)));
+  watcherRetainsCanonicalMembers(previous, next);
 
 type SettlementRoleClassification = "owned" | "foreign" | "invalid";
 

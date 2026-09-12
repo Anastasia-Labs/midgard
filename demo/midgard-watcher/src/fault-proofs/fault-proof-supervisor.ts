@@ -3,9 +3,12 @@ import { join } from "node:path";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
+  assertWorkflowActuationPermitIdentity,
+  DirectoryFraudProofWorkflowJournalStore,
   type HeaderDecision,
   isWorkflowActuationRevokedError,
   requireRunnableHeaderFault,
+  validateFraudProofWorkflowJournal,
   type WorkflowActuationPermit,
   type WorkflowActuationRevokedError,
 } from "@al-ft/midgard-fault-proofs";
@@ -77,7 +80,14 @@ export type WatcherFaultProofJob = Readonly<{
   headerHash: string;
   decisionDigest: string;
   rollbackGeneration: string;
-  deadline: WatcherFaultProofDeadline;
+  deadline: WatcherFaultProofDeadline | null;
+}>;
+
+export type WatcherFaultProofReconciliation = Readonly<{
+  category: WatcherInstalledWorkflowCategory;
+  headerHash: string;
+  decisionDigest: string;
+  actuationPermit: WorkflowActuationPermit;
 }>;
 
 type UnsafeWatcherFaultProofJobForTest = Omit<
@@ -105,6 +115,7 @@ export type WatcherFaultProofSupervisor = Readonly<{
     actuationPermit?: WorkflowActuationPermit,
     deadline?: WatcherFaultProofDeadline,
     rollbackGeneration?: string,
+    reconciliations?: readonly WatcherFaultProofReconciliation[],
   ): Promise<number>;
   status(): WatcherFaultProofSupervisorStatus;
   durableQueueStatus(): Readonly<{
@@ -221,7 +232,30 @@ const validateJob = (
   job: WatcherFaultProofJob | UnsafeWatcherFaultProofJobForTest,
   categories: readonly WatcherInstalledWorkflowCategory[],
   requireAdmittedDeadline: boolean,
+  actuationPermit: WorkflowActuationPermit | null,
 ): WatcherFaultProofJob => {
+  if (job.deadline === null) {
+    if (
+      actuationPermit === null ||
+      job.mode !== "resume" ||
+      !categories.includes(job.category)
+    )
+      throw new Error("reconciliation job omitted its admitted authority");
+    const authority = assertWorkflowActuationPermitIdentity({
+      permit: actuationPermit,
+      category: job.category,
+      rollbackGeneration: job.rollbackGeneration,
+    });
+    if (
+      authority.authority !== "reconciliation" ||
+      authority.headerHash !== job.headerHash ||
+      authority.decisionDigest !== job.decisionDigest
+    )
+      throw new Error(
+        "reconciliation job changed its existing execution identity",
+      );
+    return Object.freeze({ ...job, deadline: null });
+  }
   const deadline =
     job.deadline ??
     Object.freeze({
@@ -367,12 +401,18 @@ const createSupervisor = (input: {
   };
 
   const remainingSafeStartMs = (job: WatcherFaultProofJob): bigint =>
-    BigInt(job.deadline.latestSafeStartAtMs) - BigInt(now());
+    BigInt(job.deadline!.latestSafeStartAtMs) - BigInt(now());
 
   const compareJobs = (
     left: WatcherFaultProofJob,
     right: WatcherFaultProofJob,
   ): number => {
+    if (left.deadline === null || right.deadline === null)
+      return left.deadline === right.deadline
+        ? 0
+        : left.deadline === null
+          ? -1
+          : 1;
     const leftDeadline = BigInt(left.deadline.latestSafeStartAtMs);
     const rightDeadline = BigInt(right.deadline.latestSafeStartAtMs);
     if (leftDeadline !== rightDeadline) {
@@ -398,7 +438,7 @@ const createSupervisor = (input: {
       entry.reject(new Error("watcher fault-proof supervisor is blocked"));
       return;
     }
-    if (remainingSafeStartMs(job) <= 0n) {
+    if (job.deadline !== null && remainingSafeStartMs(job) <= 0n) {
       entry.reject(
         block(
           new Error(
@@ -490,17 +530,13 @@ const createSupervisor = (input: {
       rawJob,
       categories,
       !input.exposeUnsafeRunnerForTest,
+      actuationPermit,
     );
     const key = `${job.category}\u0000${job.headerHash}\u0000${job.decisionDigest}\u0000${job.rollbackGeneration}`;
     const existing = jobs.get(key);
     if (existing !== undefined) {
       if (
-        existing.job.deadline.headerEndTimeMs !==
-          job.deadline.headerEndTimeMs ||
-        existing.job.deadline.headerHash !== job.deadline.headerHash ||
-        existing.job.deadline.maturityAtMs !== job.deadline.maturityAtMs ||
-        existing.job.deadline.latestSafeStartAtMs !==
-          job.deadline.latestSafeStartAtMs
+        JSON.stringify(existing.job.deadline) !== JSON.stringify(job.deadline)
       ) {
         throw new Error(
           "duplicate watcher fault-proof job changed its authenticated deadline",
@@ -508,7 +544,7 @@ const createSupervisor = (input: {
       }
       return Object.freeze({ completion: existing.completion });
     }
-    if (remainingSafeStartMs(job) <= 0n) {
+    if (job.deadline !== null && remainingSafeStartMs(job) <= 0n) {
       throw block(
         new Error(
           `watcher fault-proof deadline is unsafe for ${job.category}/${job.headerHash}`,
@@ -526,9 +562,84 @@ const createSupervisor = (input: {
       deploymentFingerprint: input.deploymentFingerprint,
       identity,
     });
+    let reopenFinished = false;
+    let completedForHeader = false;
+    if (job.mode === "resume" && actuationPermit !== null) {
+      const authority = assertWorkflowActuationPermitIdentity({
+        permit: actuationPermit,
+        category: job.category,
+        rollbackGeneration: job.rollbackGeneration,
+      });
+      if (
+        authority.deploymentFingerprint !== input.deploymentFingerprint ||
+        authority.headerHash !== job.headerHash ||
+        authority.decisionDigest !== job.decisionDigest
+      )
+        throw new Error(
+          "workflow recovery changed its admitted queue identity",
+        );
+      const directory = join(
+        input.journalRoot,
+        "fault-proofs",
+        job.category,
+        job.headerHash,
+      );
+      const store = new DirectoryFraudProofWorkflowJournalStore(directory);
+      const directories = await readdir(directory, { withFileTypes: true });
+      if (directories.length > MAX_RECOVERABLE_WORKFLOWS)
+        throw new Error("workflow execution recovery exceeds its bound");
+      for (const entry of directories) {
+        if (!entry.isDirectory() || !DEPLOYMENT_FINGERPRINT.test(entry.name))
+          throw new Error(
+            "workflow recovery directory has an invalid execution identity",
+          );
+        const entries = await store.load(entry.name);
+        const first = entries[0];
+        if (first === undefined) continue;
+        validateFraudProofWorkflowJournal({
+          workflowId: entry.name,
+          entries,
+          expectedIdentity: first.identity,
+        });
+        if (
+          first.identity.deploymentFingerprint !==
+            input.deploymentFingerprint ||
+          first.identity.category !== job.category ||
+          first.identity.target.kind !== "state_queue_header" ||
+          first.identity.target.headerHash !== job.headerHash
+        )
+          throw new Error(
+            "workflow recovery directory has a foreign execution",
+          );
+        if (
+          authority.authority === "reconciliation" &&
+          first.identity.decisionDigest !== authority.executionDecisionDigest
+        )
+          continue;
+        if (
+          entries[1]?.event.kind === "prepared" &&
+          !entries.some(({ event }) => event.kind === "completed")
+        )
+          reopenFinished = true;
+        if (
+          authority.authority === "submission" &&
+          entries.some(({ event }) => event.kind === "completed")
+        )
+          completedForHeader = true;
+      }
+    }
+    // This header already ran to its confirmed terminal: the proof token is
+    // permanent and the removal is release-final. A watcher replaying blocks
+    // that still list the header before its removal classifies the fault
+    // again under a fresh decision digest (the observation digest differs at
+    // every point); there is nothing left to prove, and funding recovery
+    // rightly refuses a new execution over a completed one.
+    if (completedForHeader) {
+      return Object.freeze({ completion: Promise.resolve(undefined) });
+    }
     const registration = await (
       await queueJournal
-    ).register(identity, now().toString());
+    ).register(identity, now().toString(), { reopenFinished });
     if (registration.finished) {
       return Object.freeze({ completion: Promise.resolve(undefined) });
     }
@@ -584,6 +695,7 @@ const createSupervisor = (input: {
       actuationPermit,
       deadline,
       rollbackGeneration = "0",
+      reconciliations = [],
     ) => {
       if (recovery !== undefined) return await recovery;
       recovery = (async () => {
@@ -658,8 +770,32 @@ const createSupervisor = (input: {
             );
             void scheduled.completion.catch(() => undefined);
           }
+          for (const reconciliation of reconciliations) {
+            if (
+              !existing.some(
+                (job) =>
+                  job.category === reconciliation.category &&
+                  job.headerHash === reconciliation.headerHash,
+              )
+            )
+              throw new Error(
+                "reconciliation intake has no existing workflow directory",
+              );
+            const scheduled = await schedule(
+              {
+                mode: "resume",
+                category: reconciliation.category,
+                headerHash: reconciliation.headerHash,
+                decisionDigest: reconciliation.decisionDigest,
+                rollbackGeneration,
+                deadline: null,
+              },
+              reconciliation.actuationPermit,
+            );
+            void scheduled.completion.catch(() => undefined);
+          }
           recovered = true;
-          return authorized.length;
+          return authorized.length + reconciliations.length;
         } catch (error) {
           throw block(error, null);
         }
@@ -678,7 +814,9 @@ const createSupervisor = (input: {
       const remaining =
         earliestDeadlineJob === null
           ? null
-          : remainingSafeStartMs(earliestDeadlineJob);
+          : earliestDeadlineJob.deadline === null
+            ? null
+            : remainingSafeStartMs(earliestDeadlineJob);
       const deadlineHealth =
         phase === "blocked" || (remaining !== null && remaining <= 0n)
           ? ("unsafe" as const)

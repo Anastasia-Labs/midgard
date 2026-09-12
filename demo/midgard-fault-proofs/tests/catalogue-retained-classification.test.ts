@@ -679,16 +679,23 @@ describe("installed catalogue retained classification", () => {
     },
   );
 
-  it("detects a false transition when an accepted descriptor carries a rejection terminal", async () => {
+  it("proves an accepted descriptor whose terminal bytes reject the transaction", async () => {
     const fixture = await buildRetainedPlutusUnboundVariableFixture({
       verdict: "accepted",
     });
     const { classifyInput } = await setup(fixture, "normal");
+    // The retained terminal witness rejects while the descriptor claims
+    // Accepted, so the operator applied a transaction its own authenticated
+    // replay refused. Accepted-mismatch evidence is now assembled only from a
+    // genuine acceptance witness, which leaves this shape as the buildable
+    // one-step transition fault it always was.
     const decision = await classifyHeader(classifyInput);
     expect(decision).toMatchObject({
       decision: "fault_detected",
       category: "transitionTrace",
       detectionId: "transition-trace:0:invalidOneStepTransition",
+      headerHash: fixture.block.headerHash,
+      position: "0",
     });
     expect(await headerDecisionCanonicalEvidence(decision)).toBeDefined();
   });

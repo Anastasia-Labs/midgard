@@ -13,16 +13,25 @@ export type JourneyContext = Awaited<ReturnType<typeof loadJourneyContext>>;
 export type JourneyBlock = {
   header: SDK.Header;
   headerHash: string;
-  payloadEnvelopeCbor: Uint8Array;
+  payloadEnvelopeCbor: Buffer;
 };
 
 export type JourneySuccessor = JourneyBlock & { commitTxHash: string };
+
+/** Successor progress persisted before signing, before submission, and after inclusion. */
+export type JourneySuccessorCheckpoint = {
+  block: JourneyBlock;
+  signedCommit?: { txHash: string; signedCbor: string };
+  commitTxHash?: string;
+};
 
 export type StagedJourney = {
   predecessor: JourneyBlock;
   current: JourneyBlock;
   commitHonestSuccessor(options: {
     beforeCommit(block: JourneyBlock): Promise<void>;
+    resume?: JourneySuccessorCheckpoint;
+    onCheckpoint?(checkpoint: JourneySuccessorCheckpoint): Promise<void>;
   }): Promise<JourneySuccessor>;
 };
 

@@ -14,7 +14,9 @@ import type {
   WatcherNativeChainSyncEvent,
   WatcherNativeChainSyncPoint,
 } from "../l1/native-chain-sync.js";
+import type { WatcherBlockProgressStore } from "../storage/block-progress-store.js";
 import type { WatcherDurableRuntime } from "../storage/durable-runtime.js";
+import type { WatcherBlockRelevance } from "./block-relevance.js";
 
 export const WATCHER_CHAIN_COORDINATOR_SCHEMA_VERSION =
   "midgard-watcher-production-chain-coordinator-v1" as const;
@@ -26,7 +28,31 @@ export type WatcherChainCoordinator = Readonly<{
     rollbackPoint: WatcherNativeChainSyncPoint | null;
     quarantined: boolean;
     bufferedBlockCount: number;
+    processedThrough: WatcherProcessedHead | null;
   }>;
+}>;
+
+export type WatcherProcessedHead = Readonly<{
+  blockHash: string;
+  blockNo: string;
+  slot: string;
+}>;
+
+/**
+ * Quiet blocks are still forced into the durable finality authority at this
+ * spacing so its finalized point, and the retained progress ring that links
+ * it to the next touched block, stay bounded.
+ */
+export const WATCHER_AUTHORITY_CHECKPOINT_INTERVAL_BLOCKS = 2_160n;
+
+export type WatcherChainCoordinatorDependencies = Readonly<{
+  /**
+   * Cheap local answer to "did this block touch anything the watcher tracks".
+   * Quiet blocks skip the network observation and the durable authority.
+   */
+  relevance?: (block: WatcherNativeBlockAdmission) => WatcherBlockRelevance;
+  /** "Processed through block N", written once every finalized block. */
+  progress?: WatcherBlockProgressStore;
 }>;
 
 export type WatcherChainCoordinatorHooks = Readonly<{
@@ -39,7 +65,9 @@ export type WatcherChainCoordinatorHooks = Readonly<{
   onFinalized(
     input: Readonly<{
       nativeBlock: WatcherNativeBlockAdmission;
-      localObservation: WatcherLocalKupmiosNativeObservation;
+      /** Absent for quiet blocks, which are never observed over the network. */
+      localObservation: WatcherLocalKupmiosNativeObservation | null;
+      relevance: WatcherBlockRelevance;
     }>,
   ): Promise<void>;
 }>;
@@ -185,9 +213,26 @@ const createCoordinator = (input: {
   readonly observation: WatcherLocalKupmiosNativeObservationRuntime;
   readonly restartIntersection?: WatcherNativeChainSyncPoint;
   readonly hooks: WatcherChainCoordinatorHooks;
-  readonly dependencies: Readonly<{ admitRollForward: AdmitRollForward }>;
+  readonly dependencies: Readonly<{ admitRollForward: AdmitRollForward }> &
+    WatcherChainCoordinatorDependencies;
 }): WatcherChainCoordinator => {
   const buffered = new Map<string, WatcherNativeBlockAdmission>();
+  const relevances = new Map<string, WatcherBlockRelevance>();
+  const relevanceOf = (
+    block: WatcherNativeBlockAdmission,
+  ): WatcherBlockRelevance => {
+    const key = pointKey(block.blockHash, block.slot);
+    const known = relevances.get(key);
+    if (known !== undefined) return known;
+    const relevance = input.dependencies.relevance?.(block) ?? "touched";
+    relevances.set(key, relevance);
+    return relevance;
+  };
+  const forget = (key: string): void => {
+    buffered.delete(key);
+    captured.delete(key);
+    relevances.delete(key);
+  };
   const captured = new Map<
     string,
     {
@@ -195,6 +240,8 @@ const createCoordinator = (input: {
       firstDepth: string;
       latest: WatcherLocalKupmiosNativeObservation;
       latestDepth: string;
+      /** Depth of the newest observation the durable authority has seen. */
+      persistedDepth: string | null;
     }
   >();
   const retainedFinality = input.durable.readFinality();
@@ -213,6 +260,54 @@ const createCoordinator = (input: {
     retainedFinality.phase === "pending"
       ? (input.durable.read().authenticatedConsistencyHistory ?? [])
       : [];
+  const progress = input.dependencies.progress ?? null;
+  let progressHead = progress?.readHead() ?? null;
+  const authorityFinalizedHead = (): WatcherProcessedHead | null => {
+    const state = input.durable.readFinality();
+    return state.phase === "finalized" && state.finalized !== null
+      ? Object.freeze({
+          blockHash: state.finalized.blockHash,
+          blockNo: state.finalized.blockNo,
+          slot: state.finalized.slot,
+        })
+      : null;
+  };
+  const headOf = (
+    record: Readonly<{ blockHash: string; blockNo: string; slot: string }>,
+  ): WatcherProcessedHead =>
+    Object.freeze({
+      blockHash: record.blockHash,
+      blockNo: record.blockNo,
+      slot: record.slot,
+    });
+  // "Processed through": the progress ring first, then the durable finality
+  // authority. Everything at or below it is recorded fact until a rollback.
+  const recomputeEffectiveHead = (): WatcherProcessedHead | null =>
+    progressHead !== null ? headOf(progressHead) : authorityFinalizedHead();
+  let effectiveHead = recomputeEffectiveHead();
+  if (
+    replayBoundary !== null &&
+    replayBoundary.inclusive &&
+    progress !== null &&
+    progressHead !== null &&
+    input.restartIntersection?.kind === "point" &&
+    BigInt(progressHead.blockNo) >= BigInt(replayBoundary.point.blockNo)
+  ) {
+    // The progress ring attests every block from durable finality to the
+    // restart point; there is no retained prefix left to replay.
+    const intersection = input.restartIntersection;
+    const attested = progress
+      .readRange({
+        afterBlockNo: (BigInt(replayBoundary.point.blockNo) - 1n).toString(),
+        throughBlockNo: progressHead.blockNo,
+      })
+      .some(
+        (row) =>
+          row.blockHash === intersection.blockHash &&
+          row.slot === intersection.slot,
+      );
+    if (attested) replayBoundary = null;
+  }
   let retainedReplay: readonly WatcherNativeBlockAdmission[] | null = null;
   let retainedReplacement: Readonly<{
     block: WatcherNativeBlockAdmission;
@@ -294,6 +389,7 @@ const createCoordinator = (input: {
         firstDepth: depth,
         latest: observation,
         latestDepth: depth,
+        persistedDepth: null,
       });
     } else {
       prior.latest = observation;
@@ -302,15 +398,69 @@ const createCoordinator = (input: {
     return observation;
   };
 
+  const recordProgress = (
+    block: WatcherNativeBlockAdmission,
+    relevance: WatcherBlockRelevance,
+  ): void => {
+    if (progress !== null) {
+      if (
+        progressHead !== null &&
+        BigInt(block.blockNo) <= BigInt(progressHead.blockNo)
+      ) {
+        if (
+          progressHead.blockNo === block.blockNo &&
+          progressHead.blockHash !== block.blockHash
+        ) {
+          throw new Error(
+            "watcher block progress head conflicts with the finalized block",
+          );
+        }
+      } else {
+        if (
+          progressHead !== null &&
+          progressHead.blockHash !== block.prevHash
+        ) {
+          // Only a contiguous ring attests ancestry. After a rewind to a point
+          // the ring never recorded, the durable authority alone anchors it.
+          progress.rollbackTo({ kind: "origin" });
+          progressHead = null;
+        }
+        const record = Object.freeze({
+          blockHash: block.blockHash,
+          parentBlockHash: block.prevHash,
+          blockNo: block.blockNo,
+          slot: block.slot,
+          relevance,
+        });
+        const finalized = authorityFinalizedHead();
+        progress.record(
+          record,
+          finalized === null
+            ? undefined
+            : { retainFromBlockNo: finalized.blockNo },
+        );
+        progressHead = record;
+      }
+    }
+    if (
+      effectiveHead === null ||
+      BigInt(block.blockNo) > BigInt(effectiveHead.blockNo)
+    ) {
+      effectiveHead = headOf(block);
+    }
+  };
+
   const deliverFinalized = async (
     block: WatcherNativeBlockAdmission,
-    observation: WatcherLocalKupmiosNativeObservation,
+    observation: WatcherLocalKupmiosNativeObservation | null,
+    relevance: WatcherBlockRelevance,
   ): Promise<void> => {
     const key = pointKey(block.blockHash, block.slot);
     if (releaseFinalizedHooked.has(key)) return;
     await input.hooks.onFinalized({
       nativeBlock: block,
       localObservation: observation,
+      relevance,
     });
     releaseFinalizedHooked.set(
       key,
@@ -320,6 +470,30 @@ const createCoordinator = (input: {
         slot: block.slot,
       }),
     );
+    // Written after the block's own transactions: a crash between them costs
+    // one idempotent replay of this block on restart, never lost work.
+    recordProgress(block, relevance);
+  };
+
+  const ancestryFromFinalized = (
+    finalized: WatcherProcessedHead,
+    target: WatcherNativeBlockAdmission,
+  ) => {
+    if (BigInt(target.blockNo) === BigInt(finalized.blockNo) + 1n) return [];
+    if (progress === null) return [];
+    return progress
+      .readRange({
+        afterBlockNo: finalized.blockNo,
+        throughBlockNo: (BigInt(target.blockNo) - 1n).toString(),
+      })
+      .map((row) =>
+        Object.freeze({
+          blockHash: row.blockHash,
+          parentBlockHash: row.parentBlockHash,
+          blockNo: row.blockNo,
+          slot: row.slot,
+        }),
+      );
   };
 
   const replayRetainedPrefix = async (
@@ -446,10 +620,12 @@ const createCoordinator = (input: {
       ) {
         return false;
       }
-      await deliverFinalized(block, await observe(block, event));
-      const key = pointKey(block.blockHash, block.slot);
-      buffered.delete(key);
-      captured.delete(key);
+      await deliverFinalized(
+        block,
+        await observe(block, event),
+        relevanceOf(block),
+      );
+      forget(pointKey(block.blockHash, block.slot));
       retainedReplay = retainedReplay.slice(1);
     }
     replayBoundary = null;
@@ -536,6 +712,8 @@ const createCoordinator = (input: {
       }
     }
     rollbackPoint = null;
+    progressHead = progress?.readHead() ?? null;
+    effectiveHead = recomputeEffectiveHead();
   };
 
   const advanceCanonical = async (
@@ -544,6 +722,7 @@ const createCoordinator = (input: {
       { readonly kind: "roll_forward" }
     >,
   ): Promise<void> => {
+    const confirmationDepth = BigInt(input.policy.confirmationDepth);
     const maximumIterations = buffered.size + 1;
     for (let iteration = 0; iteration < maximumIterations; iteration += 1) {
       const state = input.durable.readFinality();
@@ -551,57 +730,107 @@ const createCoordinator = (input: {
         quarantined = true;
         return;
       }
-      const target =
-        state.phase === "pending" && state.pending !== null
-          ? ([...buffered.values()].find(
-              (block) =>
-                block.blockHash === state.pending!.blockHash &&
-                block.slot === state.pending!.slot &&
-                block.blockNo === state.pending!.blockNo,
-            ) ?? null)
-          : nextBufferedChild(
-              buffered,
-              state.phase === "finalized"
-                ? (state.finalized?.blockHash ?? null)
-                : null,
-              state.phase === "finalized"
-                ? (state.finalized?.blockNo ?? null)
-                : null,
-            );
+      if (state.phase === "pending" && state.pending !== null) {
+        const pending = state.pending;
+        const target =
+          [...buffered.values()].find(
+            (block) =>
+              block.blockHash === pending.blockHash &&
+              block.slot === pending.slot &&
+              block.blockNo === pending.blockNo,
+          ) ?? null;
+        if (target === null) return;
+        const depth = depthAtTip(target, event);
+        // Finality needs a second observation at confirmation depth. Every
+        // shallower arrival would only persist another pending snapshot.
+        if (BigInt(depth) < confirmationDepth) return;
+        const key = pointKey(target.blockHash, target.slot);
+        if (captured.get(key)?.persistedDepth === depth) return;
+        const observed = await observe(target, event);
+        const progressed =
+          await input.durable.persistCanonicalProgress(observed);
+        if (progressed.persistence === "conflict") {
+          throw new Error("watcher canonical progress persistence conflicted");
+        }
+        captured.get(key)!.persistedDepth = depth;
+        if (progressed.finalityResult.action !== "finalize") return;
+        await deliverFinalized(target, observed, relevanceOf(target));
+        forget(key);
+        continue;
+      }
+      const finalized = authorityFinalizedHead();
+      const head = effectiveHead;
+      const target = nextBufferedChild(
+        buffered,
+        head?.blockHash ?? null,
+        head?.blockNo ?? null,
+      );
       if (target === null) return;
       const key = pointKey(target.blockHash, target.slot);
-      const arrival = captured.get(key);
-      if (arrival === undefined) {
+      const relevance = relevanceOf(target);
+      const atFinalized =
+        finalized !== null &&
+        finalized.blockHash === target.blockHash &&
+        finalized.slot === target.slot;
+      if (
+        finalized !== null &&
+        !atFinalized &&
+        BigInt(target.blockNo) <= BigInt(finalized.blockNo)
+      ) {
         throw new Error(
-          "native buffered block has no authenticated first observation",
+          "watcher processed head trails durable finality by more than one block",
         );
       }
-      // A child may have waited behind the pending head. Preserve the actual
-      // earlier observation instead of making its first visibility the later
-      // tip at which it becomes the canonical child.
-      let observed =
-        state.phase === "pending"
-          ? await observe(target, event)
-          : arrival.first;
-      let progress = await input.durable.persistCanonicalProgress(observed);
-      if (progress.persistence === "conflict") {
+      if (atFinalized) {
+        // The authority committed this block but its progress row is absent:
+        // the process stopped between them. Re-run its idempotent hooks.
+        const observed =
+          relevance === "touched"
+            ? (captured.get(key)?.latest ?? (await observe(target, event)))
+            : null;
+        await deliverFinalized(target, observed, relevance);
+        forget(key);
+        continue;
+      }
+      const forcedCheckpoint =
+        finalized !== null &&
+        BigInt(target.blockNo) - BigInt(finalized.blockNo) >=
+          WATCHER_AUTHORITY_CHECKPOINT_INTERVAL_BLOCKS;
+      if (relevance === "quiet" && !forcedCheckpoint) {
+        // A quiet block is final once it is deep enough; nothing else about
+        // it is ever consulted.
+        if (BigInt(depthAtTip(target, event)) < confirmationDepth) return;
+        await deliverFinalized(target, null, "quiet");
+        forget(key);
+        continue;
+      }
+      if (!captured.has(key)) await observe(target, event);
+      const arrival = captured.get(key)!;
+      let observed = arrival.first;
+      const ancestry =
+        finalized === null ? [] : ancestryFromFinalized(finalized, target);
+      let progressed = await input.durable.persistCanonicalProgress({
+        ...observed,
+        ancestry,
+      });
+      if (progressed.persistence === "conflict") {
         throw new Error("watcher canonical progress persistence conflicted");
       }
+      arrival.persistedDepth = arrival.firstDepth;
       if (
-        progress.finalityResult.action !== "finalize" &&
-        state.phase !== "pending" &&
+        progressed.finalityResult.action !== "finalize" &&
         BigInt(depthAtTip(target, event)) > BigInt(arrival.firstDepth)
       ) {
         observed = await observe(target, event);
-        progress = await input.durable.persistCanonicalProgress(observed);
-        if (progress.persistence === "conflict") {
+        progressed = await input.durable.persistCanonicalProgress(observed);
+        if (progressed.persistence === "conflict") {
           throw new Error("watcher canonical progress persistence conflicted");
         }
+        arrival.persistedDepth = depthAtTip(target, event);
       }
-      if (progress.finalityResult.action !== "finalize") return;
-      await deliverFinalized(target, observed);
-      buffered.delete(key);
-      captured.delete(key);
+      if (progressed.finalityResult.action !== "finalize") return;
+      await deliverFinalized(target, observed, relevance);
+      forget(key);
     }
     throw new Error("watcher canonical buffer did not converge");
   };
@@ -622,10 +851,24 @@ const createCoordinator = (input: {
       firstNativeEvent = false;
       if (initialAcknowledgement) {
         // Native FindIntersect acknowledges the selected point with a backward
-        // frame. This first exact acknowledgement is not a rewind, including
-        // when the sparse queue cursor trails retained durable finality.
+        // frame. This first exact acknowledgement is not a rewind unless the
+        // node intersected below the recorded processed head.
         await restartRecovery;
-        if (!quarantined) return;
+        if (!quarantined) {
+          // With a progress ring the node was offered the recorded head
+          // first, so a lower selection means it lacks that head: a rewind.
+          // Without one, a lower selection is the lagging queue cursor and
+          // the retained prefix replays below.
+          const head = effectiveHead;
+          if (
+            progress === null ||
+            head === null ||
+            (event.point.kind === "point" &&
+              event.point.blockHash === head.blockHash &&
+              event.point.slot === head.slot)
+          )
+            return;
+        }
       }
       if (event.kind === "roll_backward") {
         // The production hook invalidates the in-memory actuation generation
@@ -652,17 +895,41 @@ const createCoordinator = (input: {
         );
       }
       if (event.kind === "roll_backward") {
-        rollbackPoint = event.point;
+        const point = event.point;
         for (const [key, block] of buffered) {
           if (
-            event.point.kind === "origin" ||
-            BigInt(block.slot) > BigInt(event.point.slot) ||
-            samePoint(event.point, block)
+            point.kind === "origin" ||
+            BigInt(block.slot) > BigInt(point.slot) ||
+            samePoint(point, block)
           ) {
-            buffered.delete(key);
-            captured.delete(key);
+            forget(key);
           }
         }
+        progress?.rollbackTo(point);
+        progressHead = progress?.readHead() ?? null;
+        const finality = input.durable.readFinality();
+        const frontier =
+          finality.phase === "pending"
+            ? finality.pending
+            : finality.phase === "finalized"
+              ? finality.finalized
+              : null;
+        const belowAuthority =
+          frontier === null ||
+          frontier === undefined ||
+          point.kind === "origin" ||
+          BigInt(point.slot) < BigInt(frontier.slot) ||
+          (point.slot === frontier.slot &&
+            point.blockHash !== frontier.blockHash);
+        if (belowAuthority) {
+          // The durable authority itself is contradicted (or has not been
+          // established yet): its dedicated rewind path evaluates the
+          // replacement block.
+          rollbackPoint = point;
+          return;
+        }
+        // Only quiet, ring-attested history above the authority is affected.
+        effectiveHead = recomputeEffectiveHead();
         return;
       }
       const block = input.dependencies.admitRollForward(event);
@@ -679,15 +946,14 @@ const createCoordinator = (input: {
         await processRollbackReplacement(block, event);
         if (quarantined) return;
       }
-      await observe(block, event);
+      // Touched blocks are observed at first visibility; quiet blocks cost
+      // nothing beyond the local classification until they finalize.
+      if (relevanceOf(block) === "touched") await observe(block, event);
       if (!(await replayRetainedPrefix(event))) return;
       await advanceCanonical(event);
       const minimumBlockNo = BigInt(block.blockNo) - 2_160n;
       for (const [bufferedKey, candidate] of buffered) {
-        if (BigInt(candidate.blockNo) < minimumBlockNo) {
-          buffered.delete(bufferedKey);
-          captured.delete(bufferedKey);
-        }
+        if (BigInt(candidate.blockNo) < minimumBlockNo) forget(bufferedKey);
       }
       for (const [hookedKey, hooked] of releaseFinalizedHooked) {
         if (BigInt(hooked.blockNo) < minimumBlockNo) {
@@ -700,6 +966,7 @@ const createCoordinator = (input: {
         rollbackPoint,
         quarantined,
         bufferedBlockCount: buffered.size,
+        processedThrough: effectiveHead,
       }),
   });
 };
@@ -710,8 +977,17 @@ export const createWatcherChainCoordinator = (input: {
   readonly observation: WatcherLocalKupmiosNativeObservationRuntime;
   readonly restartIntersection?: WatcherNativeChainSyncPoint;
   readonly hooks: WatcherChainCoordinatorHooks;
+  readonly relevance?: WatcherChainCoordinatorDependencies["relevance"];
+  readonly progress?: WatcherChainCoordinatorDependencies["progress"];
 }): WatcherChainCoordinator =>
-  createCoordinator({ ...input, dependencies: productionDependencies });
+  createCoordinator({
+    ...input,
+    dependencies: {
+      ...productionDependencies,
+      relevance: input.relevance,
+      progress: input.progress,
+    },
+  });
 
 /** Test-only seam for independently exercising ordering and rollback states. */
 export const unsafeCreateWatcherChainCoordinatorForTest = (
@@ -722,7 +998,8 @@ export const unsafeCreateWatcherChainCoordinatorForTest = (
     readonly restartIntersection?: WatcherNativeChainSyncPoint;
     readonly hooks?: WatcherChainCoordinatorHooks;
   },
-  dependencies: Readonly<{ admitRollForward: AdmitRollForward }>,
+  dependencies: Readonly<{ admitRollForward: AdmitRollForward }> &
+    WatcherChainCoordinatorDependencies,
 ): WatcherChainCoordinator =>
   createCoordinator({
     ...input,

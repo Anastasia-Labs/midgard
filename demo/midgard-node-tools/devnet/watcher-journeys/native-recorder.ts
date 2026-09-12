@@ -7,6 +7,7 @@ import {
   startWatcherNativeChainSync,
   type WatcherConfig,
   type WatcherNativeBlockAdmission,
+  watcherNativeChainSyncAuthorityDetails,
   type WatcherNativeChainSyncEvent,
 } from "midgard-watcher";
 
@@ -30,6 +31,8 @@ export const startJourneyNativeRecorder = async (input: {
     }
   >();
   let failure: unknown;
+  let latestTip: WatcherNativeChainSyncEvent["tip"] | undefined;
+  let latestBlockNo: bigint | undefined;
   const native = await startWatcherNativeChainSync({
     watcherConfig: input.watcherConfig,
     binaryPath: input.binaryPath,
@@ -41,6 +44,7 @@ export const startJourneyNativeRecorder = async (input: {
         `${JSON.stringify(event)}\n`,
       );
       if (event.kind === "roll_backward") {
+        latestTip = event.tip;
         await input.onRollback?.(event.point);
         for (const [id, { point }] of transactions) {
           if (
@@ -54,6 +58,8 @@ export const startJourneyNativeRecorder = async (input: {
         return;
       }
       const block = admitWatcherNativeRollForwardBlock(event);
+      latestTip = event.tip;
+      latestBlockNo = BigInt(block.blockNo);
       await input.onBlock?.(block);
       const point = {
         blockHash: block.blockHash,
@@ -74,13 +80,37 @@ export const startJourneyNativeRecorder = async (input: {
   };
   return {
     assertHealthy,
+    tip: () => {
+      assertHealthy();
+      const authority = watcherNativeChainSyncAuthorityDetails(
+        native.authority,
+      );
+      if (authority === null)
+        throw new Error("Native recorder timing authority is inactive");
+      const tip = latestTip ?? authority.currentTip;
+      if (tip.kind === "origin")
+        throw new Error("Native recorder timing tip is still origin");
+      const blockNo = Number(tip.blockNo);
+      if (!Number.isSafeInteger(blockNo) || blockNo < 0)
+        throw new Error("Native recorder timing tip exceeds safe block bounds");
+      return { blockNo, blockHash: tip.blockHash, slot: tip.slot };
+    },
     transaction: async (txHash: string) => {
-      const deadline = Date.now() + 90_000;
+      // The recorder replays from origin, so a transaction a resumed stage
+      // already submitted is only missing once the replay has reached the tip.
+      let deadline: number | undefined;
       for (;;) {
         assertHealthy();
         const transaction = transactions.get(txHash);
         if (transaction !== undefined) return transaction;
-        if (Date.now() >= deadline)
+        if (
+          latestTip !== undefined &&
+          latestTip.kind !== "origin" &&
+          latestBlockNo !== undefined &&
+          latestBlockNo >= BigInt(latestTip.blockNo)
+        )
+          deadline ??= Date.now() + 90_000;
+        if (deadline !== undefined && Date.now() >= deadline)
           throw new Error(`Native node did not include transaction ${txHash}`);
         await pause(250);
       }

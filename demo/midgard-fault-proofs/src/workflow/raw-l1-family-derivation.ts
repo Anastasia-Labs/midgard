@@ -309,6 +309,16 @@ const stateQueueTopology = async ({
   };
 };
 
+/** The selected header is no longer in the state queue. */
+export class StateQueueHeaderNotLiveError extends Error {
+  constructor() {
+    super(
+      "authenticated state-queue header observation requires a live target",
+    );
+    this.name = "StateQueueHeaderNotLiveError";
+  }
+}
+
 /**
  * Derives the canonical evidence header observation from the same admitted
  * state-queue bytes used by the live family state machine. Production callers
@@ -323,9 +333,7 @@ export const deriveAuthenticatedStateQueueHeaderObservationFromRawL1 = async ({
 }): Promise<AuthenticatedStateQueueHeaderObservation> => {
   const topology = await stateQueueTopology({ snapshot, definition });
   if (topology.target === undefined) {
-    throw new Error(
-      "authenticated state-queue header observation requires a live target",
-    );
+    throw new StateQueueHeaderNotLiveError();
   }
   const header = await Effect.runPromise(
     getHeaderFromStateQueueDatum(topology.target.datum),

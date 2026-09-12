@@ -5,9 +5,11 @@ import {
   requireRunnableHeaderFault,
 } from "./header-classifier.js";
 import {
+  type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowJournalStore,
   journalJsonDigest,
   normalizeJournalJson,
+  validateFraudProofWorkflowJournal,
 } from "./journal.js";
 
 export const WORKFLOW_ACTUATION_PERMIT =
@@ -32,6 +34,7 @@ export interface WorkflowActuationPermit {
 
 export type WorkflowActuationPermitController = Readonly<{
   permit: WorkflowActuationPermit;
+  restrictToReconciliation(reason: string): void;
   revoke(reason: string): void;
 }>;
 
@@ -45,6 +48,7 @@ type PermitState = {
   readonly headerHash: string;
   readonly rollbackGeneration: string;
   revokedReason: string | undefined;
+  reconciliationReason: string | undefined;
 };
 
 export class WorkflowActuationRevokedError extends Error {
@@ -92,14 +96,19 @@ const canonicalReason = (reason: string): string => {
   return reason;
 };
 
-export const createWorkflowActuationPermitController = ({
+const createController = ({
   decision,
   rollbackGeneration,
+  reconciliationReason,
 }: {
   readonly decision: HeaderFaultDecision;
   readonly rollbackGeneration: string;
+  readonly reconciliationReason?: string;
 }): WorkflowActuationPermitController => {
-  const admitted = requireRunnableHeaderFault(decision);
+  const admitted =
+    reconciliationReason === undefined
+      ? requireRunnableHeaderFault(decision)
+      : decision;
   if (!CANONICAL_NATURAL.test(rollbackGeneration)) {
     throw new Error(
       "actuation permit rollback generation must be a canonical natural",
@@ -118,16 +127,77 @@ export const createWorkflowActuationPermitController = ({
     headerHash: admitted.headerHash,
     rollbackGeneration,
     revokedReason: undefined,
+    reconciliationReason,
   };
   admittedPermits.set(permit, state);
   return Object.freeze({
     permit,
+    restrictToReconciliation: (reason: string): void => {
+      state.reconciliationReason ??= canonicalReason(reason);
+    },
     revoke: (reason: string): void => {
       const admittedReason = canonicalReason(reason);
       if (state.revokedReason === undefined) {
         state.revokedReason = admittedReason;
       }
     },
+  });
+};
+
+export const createWorkflowActuationPermitController = (input: {
+  readonly decision: HeaderFaultDecision;
+  readonly rollbackGeneration: string;
+}): WorkflowActuationPermitController => createController(input);
+
+/** Historical classification grants only observation of an already signed
+ * execution. It never regains runnable classification or submission authority. */
+export const createWorkflowReconciliationPermitController = (input: {
+  readonly decision: HeaderFaultDecision;
+  readonly deploymentFingerprint: string;
+  readonly rollbackGeneration: string;
+  readonly entries: readonly FraudProofWorkflowJournalEntry[];
+}): WorkflowActuationPermitController => {
+  const { decisionDigest, ...unsealed } = input.decision;
+  const first = input.entries[0];
+  const prepared = input.entries[1];
+  if (
+    first === undefined ||
+    prepared?.event.kind !== "prepared" ||
+    !input.entries.some(({ event }) => event.kind === "submission_intent") ||
+    input.entries.some(({ event }) => event.kind === "completed") ||
+    input.decision.decision !== "fault_detected" ||
+    journalJsonDigest(normalizeJournalJson(unsealed)) !== decisionDigest ||
+    input.decision.deploymentFingerprint !== input.deploymentFingerprint ||
+    first.identity.deploymentFingerprint !== input.deploymentFingerprint ||
+    first.identity.decisionDigest !== decisionDigest ||
+    first.identity.category !== input.decision.category ||
+    first.identity.target.kind !== "state_queue_header" ||
+    first.identity.target.headerHash !== input.decision.headerHash
+  )
+    throw new Error(
+      "reconciliation authority requires an exact existing signed workflow",
+    );
+  validateFraudProofWorkflowJournal({
+    workflowId: first.workflowId,
+    entries: input.entries,
+    expectedIdentity: first.identity,
+  });
+  const binding = prepared.event.artifact.evidenceBinding;
+  if (
+    typeof binding !== "object" ||
+    binding === null ||
+    Array.isArray(binding) ||
+    !("headerHash" in binding) ||
+    !("payloadSha256" in binding) ||
+    binding.headerHash !== input.decision.headerHash ||
+    binding.payloadSha256 !== input.decision.payloadSha256
+  )
+    throw new Error(
+      "reconciliation authority changed its prepared fault evidence",
+    );
+  return createController({
+    ...input,
+    reconciliationReason: "existing_signed_workflow_only",
   });
 };
 
@@ -163,12 +233,17 @@ const assertPermit = ({
       `production workflow actuation permit identity mismatch at ${checkpoint}`,
     );
   }
-  if (state.revokedReason !== undefined) {
+  const revokedReason =
+    state.revokedReason ??
+    (checkpoint === "before_preflight" || checkpoint === "before_submit"
+      ? state.reconciliationReason
+      : undefined);
+  if (revokedReason !== undefined) {
     const error = new WorkflowActuationRevokedError({
       decisionDigest: state.decisionDigest,
       rollbackGeneration: state.rollbackGeneration,
       checkpoint,
-      revocationReason: state.revokedReason,
+      revocationReason: revokedReason,
     });
     admittedRevocationErrors.add(error);
     Object.freeze(error);
@@ -203,6 +278,7 @@ export const assertWorkflowActuationPermitIdentity = ({
   launchScope: HeaderFaultDecision["launchScope"];
   deploymentFingerprint: string;
   headerHash: string;
+  authority: "submission" | "reconciliation";
 }> => {
   const state = admittedPermits.get(permit);
   if (
@@ -234,6 +310,10 @@ export const assertWorkflowActuationPermitIdentity = ({
     launchScope: state.decision.launchScope,
     deploymentFingerprint: state.deploymentFingerprint,
     headerHash: state.headerHash,
+    authority:
+      state.reconciliationReason === undefined
+        ? "submission"
+        : "reconciliation",
   });
 };
 
@@ -329,6 +409,34 @@ export const workflowActuationDecisionDigest = (
   journal: FraudProofWorkflowJournalStore,
 ): string | undefined => {
   return journalPermits.get(journal)?.executionDecisionDigest;
+};
+
+export const workflowActuationPermitIsReconciliationOnly = (
+  permit: WorkflowActuationPermit,
+): boolean => {
+  const state = admittedPermits.get(permit);
+  if (state === undefined)
+    throw new Error("production workflow actuation permit was not admitted");
+  assertPermit({
+    permit,
+    decisionDigest: state.decisionDigest,
+    deploymentFingerprint: state.deploymentFingerprint,
+    category: state.category,
+    headerHash: state.headerHash,
+    checkpoint: "runner_start",
+  });
+  return state.reconciliationReason !== undefined;
+};
+
+/** Recovery-only authority never becomes permission to build or broadcast. */
+export const workflowJournalIsReconciliationOnly = (
+  journal: FraudProofWorkflowJournalStore,
+): boolean => {
+  const binding = journalPermits.get(journal);
+  if (binding === undefined) return false;
+  return (
+    admittedPermits.get(binding.permit)!.reconciliationReason !== undefined
+  );
 };
 
 /**

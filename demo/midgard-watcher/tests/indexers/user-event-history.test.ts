@@ -102,6 +102,7 @@ import {
   makeWatcherUserEventCheckpoint,
   watcherUserEventArchiveDigest,
 } from "../../src/storage/user-event-checkpoint.js";
+import { createInMemoryWatcherUserEventCoverageStore } from "../../src/storage/user-event-coverage-store.js";
 import {
   assertWatcherAuthenticatedReplayTranscript,
   createWatcherAuthenticatedReplayTranscript,
@@ -3290,14 +3291,16 @@ describe("owned user-event runtime ordinary unavailable candidates", () => {
       targetParameterSnapshot: WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
     });
     await construction.close();
-    const state: { lifecycle: ReturnType<typeof depositLifecycle> | null } = {
-      lifecycle: null,
-    };
+    const state: {
+      lifecycle: ReturnType<typeof depositLifecycle> | null;
+      depositAddressHex: string | null;
+    } = { lifecycle: null, depositAddressHex: null };
     const fixture = await createSyntheticStateQueueObservationFixture({
       ruleBundleCommitment: computeWatcherRuleBundleCommitment(ruleBundle),
       composeCommitBlock: async ({ transport, commitTransactionCbor }) => {
         const origin = await openOrigin(transport);
         state.lifecycle = depositLifecycle(origin.facts);
+        state.depositAddressHex = origin.facts.scripts.deposit.addressHex;
         await origin.pair.close();
         return {
           transactions: [state.lifecycle.create, commitTransactionCbor],
@@ -3345,6 +3348,7 @@ describe("owned user-event runtime ordinary unavailable candidates", () => {
         nativeChainSyncBinaryPath: transport.nativeChainSyncBinaryPath,
         runtime: durable.runtime,
         archive: durable.archive,
+        coverage: createInMemoryWatcherUserEventCoverageStore(),
       });
       await service.advanceThrough(fixture.commitBlock.point);
       const captured = await fixture.observeFresh();
@@ -3367,6 +3371,8 @@ describe("owned user-event runtime ordinary unavailable candidates", () => {
         expect(
           (await readWatcherLocalUserEventAuthority(cap)).event.eventId,
         ).toBe(request.eventId);
+        // A quiet successor is covered without a publication: the issued
+        // authority stays current because no new checkpoint retired it.
         const next = await transport.makeBlock({
           transactions: [],
           parent: fixture.commitBlock,
@@ -3375,6 +3381,36 @@ describe("owned user-event runtime ordinary unavailable candidates", () => {
         expect(service.read()).toMatchObject({
           status: "ready",
           currentPoint: next.point,
+          headCursor: fixture.commitBlock.point,
+        });
+        expect(
+          (await readWatcherLocalUserEventAuthority(cap)).event.eventId,
+        ).toBe(request.eventId);
+        // A touched successor (a plain payment at the deposit credential,
+        // which the fold ignores) publishes a new checkpoint and retires it.
+        const touchedInputs = CML.TransactionInputList.new();
+        touchedInputs.add(transactionInput(`${h32("c3")}#0`));
+        const touchedOutputs = CML.TransactionOutputList.new();
+        touchedOutputs.add(
+          CML.TransactionOutput.new(
+            CML.Address.from_hex(state.depositAddressHex!),
+            CML.Value.new(2_000_000n, CML.MultiAsset.new()),
+          ),
+        );
+        const touched = await transport.makeBlock({
+          transactions: [
+            transaction(
+              CML.TransactionBody.new(touchedInputs, touchedOutputs, 200_000n),
+              [],
+            ),
+          ],
+          parent: next,
+        });
+        await service.advanceThrough(touched.point);
+        expect(service.read()).toMatchObject({
+          status: "ready",
+          currentPoint: touched.point,
+          headCursor: touched.point,
         });
         await expect(readWatcherLocalUserEventAuthority(cap)).rejects.toThrow();
         const protectedHead = readWatcherProtectedUserEventCheckpointReceipt(

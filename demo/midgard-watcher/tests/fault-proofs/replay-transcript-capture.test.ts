@@ -60,6 +60,7 @@ import {
   watcherSameCanonicalJson,
 } from "../../src/storage/durable-store.js";
 import { watcherUserEventArchiveDigest } from "../../src/storage/user-event-checkpoint.js";
+import { createInMemoryWatcherUserEventCoverageStore } from "../../src/storage/user-event-coverage-store.js";
 import { watcherAuthenticatedReplayTranscriptCborHex } from "../../src/verification/authenticated-replay-transcript.js";
 import { readWatcherReplayTranscriptRecords } from "../../src/verification/replay-transcript-records.js";
 import {
@@ -380,6 +381,7 @@ const setup = async (kind: "normal" | "forced") => {
     nativeChainSyncBinaryPath: fixture.nativeChainSyncBinaryPath,
     runtime,
     archive,
+    coverage: createInMemoryWatcherUserEventCoverageStore(),
   };
   return {
     retained,

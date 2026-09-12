@@ -71,9 +71,11 @@ import {
   encodeWatcherDurableStore,
   journalWatcherProtocolUtxoTransition,
   parseWatcherDurableStore,
+  watcherCanonicalMembersAbsentFrom,
   type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
   type WatcherProtocolUtxo,
+  watcherRetainsCanonicalMembers,
   watcherSameCanonicalJson,
   watcherSha256CanonicalJson,
 } from "../storage/durable-store.js";
@@ -1741,12 +1743,11 @@ const storeTransitionMatches = (
     BigInt(next.revision) !== BigInt(source.revision) + 1n ||
     !sameMarker(source.deploymentMarker, next.deploymentMarker) ||
     !nonProtocolRecordsMatch(source, next) ||
-    !source.l1Observations.every((entry) =>
-      next.l1Observations.some((candidate) => same(candidate, entry)),
+    !watcherRetainsCanonicalMembers(
+      source.l1Observations,
+      next.l1Observations,
     ) ||
-    !source.chainPoints.every((entry) =>
-      next.chainPoints.some((candidate) => same(candidate, entry)),
-    )
+    !watcherRetainsCanonicalMembers(source.chainPoints, next.chainPoints)
   ) {
     return false;
   }
@@ -1776,12 +1777,13 @@ const storeTransitionMatches = (
   ) {
     return false;
   }
-  const newObservations = next.l1Observations.filter(
-    (entry) =>
-      !source.l1Observations.some((candidate) => same(candidate, entry)),
+  const newObservations = watcherCanonicalMembersAbsentFrom(
+    next.l1Observations,
+    source.l1Observations,
   );
-  const newPoints = next.chainPoints.filter(
-    (entry) => !source.chainPoints.some((candidate) => same(candidate, entry)),
+  const newPoints = watcherCanonicalMembersAbsentFrom(
+    next.chainPoints,
+    source.chainPoints,
   );
   if (
     newObservations.length !== (sourceHasObservation ? 0 : 1) ||

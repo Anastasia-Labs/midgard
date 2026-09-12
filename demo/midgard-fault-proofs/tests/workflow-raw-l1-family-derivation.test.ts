@@ -31,9 +31,12 @@ import {
   deriveRetainedStateQueueHeaderObservationFromRawL1,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
   FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
+  type FraudProofFamilyL1ObservationPort,
   type FraudProofRawL1FamilyDefinition,
   type FraudProofRawL1Snapshot,
   type FraudProofRawL1Utxo,
+  observeFraudProofWorkflowHeader,
+  StateQueueHeaderNotLiveError,
   type VerifiedFraudProofReleaseEconomicsPolicy,
 } from "../src/workflow/index.js";
 import { makeHeader } from "./support/emulator/header-fixtures.js";
@@ -452,7 +455,7 @@ describe("raw L1 family terminal economics", () => {
         snapshot: retained,
         definition,
       }),
-    ).rejects.toThrow("requires a live target");
+    ).rejects.toThrow(StateQueueHeaderNotLiveError);
     await expect(
       deriveRetainedStateQueueHeaderObservationFromRawL1({
         snapshot: retained,
@@ -468,6 +471,38 @@ describe("raw L1 family terminal economics", () => {
         definition,
       }),
     ).rejects.toThrow("one authenticated NFT mint");
+    // A workflow that already removed its header resumes from the mint
+    // history; every other observation failure still propagates.
+    const port = (
+      live: () => Promise<never>,
+      retained?: FraudProofFamilyL1ObservationPort<"doubleSpend">["observeRetainedHeader"],
+    ) =>
+      ({
+        observeHeader: live,
+        ...(retained === undefined ? {} : { observeRetainedHeader: retained }),
+      }) as unknown as FraudProofFamilyL1ObservationPort<"doubleSpend">;
+    const fromMint = () =>
+      deriveRetainedStateQueueHeaderObservationFromRawL1({
+        snapshot: retained,
+        definition,
+      });
+    const notLive = () => Promise.reject(new StateQueueHeaderNotLiveError());
+    await expect(
+      observeFraudProofWorkflowHeader(port(notLive, fromMint), {
+        headerHash: definition.headerHash,
+      }),
+    ).resolves.toStrictEqual(await fromMint());
+    await expect(
+      observeFraudProofWorkflowHeader(port(notLive), {
+        headerHash: definition.headerHash,
+      }),
+    ).rejects.toThrow(StateQueueHeaderNotLiveError);
+    await expect(
+      observeFraudProofWorkflowHeader(
+        port(() => Promise.reject(new Error("provider unavailable")), fromMint),
+        { headerHash: definition.headerHash },
+      ),
+    ).rejects.toThrow("provider unavailable");
     await expect(
       deriveRetainedStateQueueHeaderObservationFromRawL1({
         snapshot: {

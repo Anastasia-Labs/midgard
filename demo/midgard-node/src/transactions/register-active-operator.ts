@@ -6,7 +6,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   activateLayoutToLogString,
-  activeAppendAnchorWitness,
   getAssetNameByPolicy,
   nodeKeyEquals,
   type NodeWithDatum,
@@ -436,6 +435,16 @@ const toLifecycleResult = (
     return txHashes;
   });
 
+/**
+ * Activation on behalf of another operator. On-chain activation is
+ * permissionless, so the wallet behind `lucid` only pays the fee while the
+ * registered bond moves into the activated node unchanged. Registration and
+ * deregistration still require the operator's own wallet.
+ */
+type PermissionlessActivation = {
+  readonly operatorKeyHash: string;
+};
+
 const operatorLifecycleProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -443,6 +452,7 @@ const operatorLifecycleProgram = (
   mode: OperatorLifecycleMode,
   referenceScriptsLucid: LucidEvolution = lucid,
   referenceScriptsAddress?: string,
+  permissionlessActivation?: PermissionlessActivation,
 ): Effect.Effect<
   OperatorLifecycleTxHashes,
   | SDK.StateQueueError
@@ -452,7 +462,18 @@ const operatorLifecycleProgram = (
   | TxSubmitError
 > =>
   Effect.gen(function* () {
-    const operatorKeyHash = yield* getOperatorKeyHash(lucid);
+    if (permissionlessActivation !== undefined && mode !== "activate-only") {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Permissionless operator activation supports only the activate-only lifecycle mode",
+          cause: mode,
+        }),
+      );
+    }
+    const operatorKeyHash =
+      permissionlessActivation?.operatorKeyHash ??
+      (yield* getOperatorKeyHash(lucid));
     const usesWallClockTime = lucid.config().network === "Custom";
     const hubOracleRefInput = yield* fetchHubOracleRefInput(lucid, contracts);
     const hubOracleDatum = yield* decodeHubOracleDatum(hubOracleRefInput);
@@ -1026,16 +1047,16 @@ const operatorLifecycleProgram = (
       );
     }
 
-    const activeAppendAnchor = activeNodes.find(({ datum }) =>
-      activeAppendAnchorWitness(datum, operatorKeyHash),
+    const activeInsertionAnchor = activeNodes.find(({ datum }) =>
+      orderedNotMemberWitness(datum, operatorKeyHash),
     );
-    if (activeAppendAnchor === undefined) {
+    if (activeInsertionAnchor === undefined) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
           message:
-            "Failed to find active-operators append anchor for activation",
+            "Failed to find active-operators ordered insertion anchor for activation",
           cause:
-            "Current operator key must be lexicographically greater than the active-operators tail key",
+            "No active-operators node proves strict ordered non-membership for the operator key",
         }),
       );
     }
@@ -1171,7 +1192,7 @@ const operatorLifecycleProgram = (
         retiredNotMemberWitness: retiredNotMemberWitnessForActivate,
         registeredNode,
         registeredAnchor,
-        activeAppendAnchor,
+        activeInsertionAnchor,
         activationFundingInputs,
         validFrom,
         validTo,
@@ -1179,6 +1200,7 @@ const operatorLifecycleProgram = (
         activeNodeUnit,
         transferredOperatorAssets,
         updatedRegisteredAnchorDatum,
+        requireOperatorSignature: permissionlessActivation === undefined,
         layout,
         onLayout: (layout) => {
           activateLayout = layout;
@@ -1322,6 +1344,41 @@ export const activateOperatorProgram = (
     "activate-only",
     referenceScriptsLucid,
     referenceScriptsAddress,
+  ).pipe(
+    Effect.map(({ registerTxHash, activateTxHash }) => ({
+      registerTxHash,
+      activateTxHash,
+    })),
+  );
+
+/**
+ * Activate an eligible registered operator from any funded wallet. The
+ * registered node's activation time must already have elapsed unless the
+ * active set is empty; the caller's wallet pays only the fee.
+ */
+export const activateRegisteredOperatorProgram = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  requiredBondLovelace: bigint,
+  operatorKeyHash: string,
+  referenceScriptsLucid?: LucidEvolution,
+  referenceScriptsAddress?: string,
+): Effect.Effect<
+  ActivationTxHashes,
+  | SDK.StateQueueError
+  | SDK.LucidError
+  | TxConfirmError
+  | TxSignError
+  | TxSubmitError
+> =>
+  operatorLifecycleProgram(
+    lucid,
+    contracts,
+    requiredBondLovelace,
+    "activate-only",
+    referenceScriptsLucid,
+    referenceScriptsAddress,
+    { operatorKeyHash },
   ).pipe(
     Effect.map(({ registerTxHash, activateTxHash }) => ({
       registerTxHash,

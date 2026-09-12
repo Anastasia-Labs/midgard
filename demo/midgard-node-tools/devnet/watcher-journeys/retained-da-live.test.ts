@@ -15,7 +15,7 @@ import { startJourneyRetainedDa } from "./retained-da.js";
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
 type RetainedBlock = {
   headerHash: string;
-  payloadEnvelopeCbor: Uint8Array;
+  payloadEnvelopeCbor: Buffer;
 };
 
 it.skipIf(runDirectory === undefined)(

@@ -252,6 +252,10 @@ export const createWatcherLocalKupmiosNativeObservationRuntime = async (
       );
     }
     let closed = false;
+    let observationSource = createWatcherLocalKupmiosRawSource({
+      watcherConfig,
+      deploymentIdentity: input.deploymentIdentity,
+    });
     return Object.freeze({
       rawSource,
       observe: async ({ block, depth }) => {
@@ -272,13 +276,9 @@ export const createWatcherLocalKupmiosNativeObservationRuntime = async (
         const capture = async (): Promise<LocalKupmiosRawBlockAtPoint> => {
           for (let attempt = 0; ; attempt += 1) {
             if (closed) throw new Error("local Kupo/Ogmios runtime is closed");
-            // A snapshot belongs to this observation, not to the runtime's
-            // bootstrap or a previous block. Retry a moving provider head only
-            // by reacquiring every byte and checkpoint from a fresh source.
-            const observationSource = createWatcherLocalKupmiosRawSource({
-              watcherConfig,
-              deploymentIdentity: input.deploymentIdentity,
-            });
+            // One source serves every observation so immutable checkpoints and
+            // blocks stay cached. A moving provider head still forces a fresh
+            // source: its pinned head belongs to the interrupted capture.
             try {
               return await readAdmittedLocalKupmiosRawBlockAtPoint({
                 source: observationSource,
@@ -290,6 +290,10 @@ export const createWatcherLocalKupmiosNativeObservationRuntime = async (
                 attempt >= 2
               )
                 throw error;
+              observationSource = createWatcherLocalKupmiosRawSource({
+                watcherConfig,
+                deploymentIdentity: input.deploymentIdentity,
+              });
             }
           }
         };

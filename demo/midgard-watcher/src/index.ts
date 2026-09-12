@@ -17,6 +17,7 @@ export {
 } from "./fault-proofs/fault-decision-journal.js";
 export {
   createWatcherFaultProofApplication,
+  createWatcherFaultProofReadinessApplication,
   unsafeCreateWatcherFaultProofApplicationForTest,
   WATCHER_FAULT_PROOF_APPLICATION,
   WATCHER_FAULT_PROOF_STARTUP_READINESS,
@@ -726,10 +727,12 @@ export {
 } from "./storage/public-da-libp2p-transport.js";
 export {
   createWatcherRetainedDaRuntime,
+  createWatcherRetainedDaRuntimeOwner,
   createWatcherWorkflowRuntimeLoader,
   WATCHER_RETAINED_DA_RUNTIME,
   type WatcherRetainedDaRuntime,
   type WatcherRetainedDaRuntimeOptions,
+  type WatcherRetainedDaRuntimeOwner,
   type WatcherWorkflowInfrastructureBuilder,
 } from "./storage/retained-da-runtime.js";
 export {

@@ -1,3 +1,4 @@
+import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import { CML, Data as LucidData } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
@@ -21,7 +22,15 @@ export type WithdrawalSignatureVerification =
 const isHex = (value: string): boolean => /^[0-9a-fA-F]*$/.test(value);
 
 export const withdrawalSigningMessage = (body: WithdrawalBody): Uint8Array => {
-  const bodyCbor = Buffer.from(LucidData.to(body, WithdrawalBody), "hex");
+  // The signed preimage is the body exactly as `cbor.serialise` renders it
+  // on-chain (`withdrawal_signature_is_valid_v1`): definite asset maps, which
+  // Lucid's own encoder does not emit.
+  const bodyCbor = Buffer.from(
+    aikenSerialisedPlutusDataCborPreservingMapOrder(
+      LucidData.to(body, WithdrawalBody),
+    ),
+    "hex",
+  );
   const preimage = Buffer.concat([
     Buffer.from(WITHDRAWAL_SIGNATURE_DOMAIN, "utf8"),
     bodyCbor,

@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
@@ -12,7 +12,6 @@ import {
   toUnit,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { registerOperatorProgram } from "midgard-node/transactions/register-active-operator";
 import { createPublishedWatcherBlockActor } from "midgard-watcher/tests/support/published-block-actor";
 import {
   type PublishedDepositTraceCheckpoint,
@@ -28,6 +27,7 @@ import type {
   JourneySuccessor,
   StagedJourney,
 } from "./fixture.js";
+import { JOURNEY_FINALITY_DEPTH } from "./live-context.js";
 
 export type JourneyRetainedBlock = JourneyBlock & { payload: SDK.DaPayload };
 
@@ -164,6 +164,37 @@ async function stageJourney(
     if (output === undefined) throw new Error(`Missing journey header ${hash}`);
     return output;
   };
+  // A journey that stopped after attesting its fault leaves that header on
+  // the queue until its fraud proof removes it. Name the journey so the
+  // operator reruns it instead of guessing which family owns the tail.
+  const describeQueueTail = async (): Promise<string> => {
+    const outputs = await provider.getUtxosWithUnit(
+      contracts.stateQueue.spendingScriptAddress,
+      toUnit(contracts.stateQueue.policyId, SDK.STATE_QUEUE_ROOT_ASSET_NAME),
+    );
+    const root = outputs[0];
+    if (outputs.length !== 1 || root === undefined) return "";
+    let cursor = await Effect.runPromise(
+      SDK.getLinkedListNodeViewFromUTxO(root),
+    );
+    let tail: string | undefined;
+    for (let hops = 0; cursor.next !== "Empty" && hops < 1_000; hops += 1) {
+      tail = cursor.next.Key.key;
+      cursor = await Effect.runPromise(
+        SDK.getLinkedListNodeViewFromUTxO(await requireHeader(tail)),
+      );
+    }
+    if (tail === undefined) return " (the state queue is empty)";
+    const journeys = join(context.runDirectory, "work/journeys");
+    for (const family of readdirSync(journeys, { withFileTypes: true })) {
+      const staged = join(journeys, family.name, "staged.json");
+      if (!family.isDirectory() || !existsSync(staged)) continue;
+      const checkpoint = await readJourneyArtifact<StagingCheckpoint>(staged);
+      if (checkpoint.current.headerHash === tail)
+        return ` ${tail}: it is the unproven fault header staged by the ${family.name} journey; rerun that journey so its fraud proof removes it`;
+    }
+    return ` ${tail}`;
+  };
   const assertTail = async (block: JourneyBlock) => {
     const output = await requireHeader(block.headerHash);
     const node = await Effect.runPromise(
@@ -178,7 +209,7 @@ async function stageJourney(
         SDK.encodeHeaderCbor(block.header).toString("hex")
     ) {
       throw new Error(
-        "Retained healthy head differs from the actual state queue tail",
+        `Retained healthy head ${block.headerHash} differs from the actual state queue tail${await describeQueueTail()}`,
       );
     }
     return output;
@@ -266,6 +297,8 @@ async function stageJourney(
         : undefined,
       onCheckpoint: (checkpoint) =>
         writeJourneyArtifact(initialPath, checkpoint),
+      timeoutCorrectionJournalPath: join(directory, "timeout-correction.json"),
+      finalityDepth: JOURNEY_FINALITY_DEPTH,
     });
     await retain(initial.predecessor, initial.commits[0]!);
     await retain(initial.current, initial.commits[1]!);
@@ -406,20 +439,9 @@ async function stageJourney(
     if (resume === undefined) await assertTail(predecessor);
   }
 
-  // Re-register the previously slashed actor while the next proof progresses.
-  // Activation waits until correction has removed the malicious scheduler owner.
-  if (resume === undefined) {
-    await actor.onboardOperator();
-    await Effect.runPromise(
-      registerOperatorProgram(
-        successorLucid,
-        contracts,
-        SDK.getProtocolParameters("Preprod").required_bond,
-        deployment.publisherLucid,
-        await deployment.publisherLucid.wallet().address(),
-      ),
-    );
-  }
+  // Onboard the faulty publisher now. The next producer registers after
+  // confirmed correction, so its eligibility cannot block scheduler removal.
+  if (resume === undefined) await actor.onboardOperator();
   const faultEndTime = BigInt(chain.now() + 59_999);
   const current =
     resume?.current ??

@@ -60,6 +60,7 @@ import {
   type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
   type WatcherProtocolUtxo,
+  watcherRetainsCanonicalMembers,
   watcherSameCanonicalJson,
   watcherSha256CanonicalJson,
 } from "../storage/durable-store.js";
@@ -1881,11 +1882,7 @@ const durableStoreExtends = (
     "deadlines",
     "correctionResults",
   ] as const) {
-    if (
-      !prior[field].every((entry) =>
-        source[field].some((candidate) => same(candidate, entry)),
-      )
-    ) {
+    if (!watcherRetainsCanonicalMembers(prior[field], source[field])) {
       return false;
     }
   }

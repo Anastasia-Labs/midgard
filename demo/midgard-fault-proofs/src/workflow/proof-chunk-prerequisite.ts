@@ -17,9 +17,11 @@ import {
   splitProofIntoChunkDatums,
 } from "../publish-proof-chunks.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type {
-  FraudProofWorkflowJournalEntry,
-  JournalJsonObject,
+import {
+  type FraudProofWorkflowJournalEntry,
+  journalJsonDigest,
+  type JournalJsonObject,
+  normalizeJournalJson,
 } from "./journal.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
@@ -185,8 +187,11 @@ export const resolveDirectFirstProofChunks = async ({
   return chunks;
 };
 
+// The orchestrator hands back the journal-normalized (key-sorted) action, so
+// equality must be structural, not byte order.
 const sameJson = (left: unknown, right: unknown): boolean =>
-  JSON.stringify(left) === JSON.stringify(right);
+  journalJsonDigest(normalizeJournalJson(left)) ===
+  journalJsonDigest(normalizeJournalJson(right));
 
 const record = (
   value: unknown,
@@ -221,26 +226,26 @@ const exact = (
   return parsed;
 };
 
+// Artifacts carry the proof as the MPF library encodes it (an indefinite-length
+// CBOR list), so the chunk identity is bound to the canonical re-encoding and
+// any encoding of the same proof steps names the same publication.
 const requirementFor = ({
-  proofCbor,
+  proofCbor: encodedProofCbor,
   label,
 }: {
   readonly proofCbor: string;
   readonly label: string;
 }): ProofChunkRequirement => {
-  if (typeof proofCbor !== "string" || proofCbor.length === 0) {
-    throw new Error(`${label} omitted its canonical MPF proof`);
+  if (typeof encodedProofCbor !== "string" || encodedProofCbor.length === 0) {
+    throw new Error(`${label} omitted its MPF proof`);
   }
-  let canonical: string;
+  let proofCbor: string;
   try {
-    canonical = canonicalPlutusDataCbor(
-      Data.to(Data.from(proofCbor, Proof), Proof),
+    proofCbor = canonicalPlutusDataCbor(
+      Data.to(Data.from(encodedProofCbor, Proof), Proof),
     );
   } catch {
-    throw new Error(`${label} MPF proof is not canonical PlutusData CBOR`);
-  }
-  if (canonical !== proofCbor) {
-    throw new Error(`${label} MPF proof is not canonical PlutusData CBOR`);
+    throw new Error(`${label} MPF proof is not a PlutusData MPF proof`);
   }
   const chunkDatums = Object.freeze([...splitProofIntoChunkDatums(proofCbor)]);
   return Object.freeze({
@@ -1079,9 +1084,17 @@ export const withProofChunkPrerequisite = <
     category,
     safety: FRAUD_PROOF_WORKFLOW_SAFETY,
     prepare: async (input) => await base.prepare(input),
+    ...(base.validatePreparedArtifact === undefined
+      ? {}
+      : { validatePreparedArtifact: base.validatePreparedArtifact }),
+    ...(base.prepareRaw === undefined ? {} : { prepareRaw: base.prepareRaw }),
+    ...(base.validatePreparedRawArtifact === undefined
+      ? {}
+      : { validatePreparedRawArtifact: base.validatePreparedRawArtifact }),
     observe: async (context) => {
       const observed = await base.observe(context);
       if (
+        context.reconciliationOnly === true ||
         observed.kind !== "action_required" ||
         context.identity.target.kind !== "state_queue_header"
       ) {

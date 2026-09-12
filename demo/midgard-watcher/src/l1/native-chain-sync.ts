@@ -19,6 +19,7 @@ const HEX_32 = /^[0-9a-f]{64}$/u;
 const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const MAX_BLOCK_CBOR_HEX = 8 * 1024 * 1024;
 const MAX_STDERR_BYTES = 1024 * 1024;
+const MAX_STDERR_DIAGNOSTIC_BYTES = 8 * 1024;
 const MAX_INTERSECTIONS = 128;
 const MAX_IDENTITY_FILE_BYTES = 4 * 1024 * 1024;
 const MAX_QUERY_STDOUT_BYTES = MAX_BLOCK_CBOR_HEX + 16_384;
@@ -194,7 +195,9 @@ const exactRecord = (
     actual.length !== expected.length ||
     actual.some((key, index) => key !== expected[index])
   ) {
-    throw new Error(`${label} has unknown or missing fields`);
+    throw new Error(
+      `${label} has unknown or missing fields: missing=${JSON.stringify(expected.filter((key) => !actual.includes(key)))} unknown=${JSON.stringify(actual.filter((key) => !expected.includes(key)))}`,
+    );
   }
   return record;
 };
@@ -604,11 +607,16 @@ const startNativeSupervisor = async (
   let queryCaptured = false;
   let mintedAuthority: WatcherNativeChainSyncAuthority | undefined;
 
+  let stderrTail = Buffer.alloc(0);
+  let rejectedLine: string | undefined;
   const stderrDrain = (async () => {
     try {
       let total = 0;
       for await (const chunk of child.stderr) {
         total += chunk.byteLength;
+        stderrTail = Buffer.concat([stderrTail, chunk]).subarray(
+          -MAX_STDERR_DIAGNOSTIC_BYTES,
+        );
         if (total > MAX_STDERR_BYTES) {
           child.kill("SIGKILL");
           throw new Error("native chain-sync stderr exceeded its bound");
@@ -629,28 +637,29 @@ const startNativeSupervisor = async (
           ? MAX_QUERY_STDOUT_BYTES
           : undefined,
       )) {
+        rejectedLine = line;
         const value = parseJsonLine(line);
-        if (!sawReady) {
+        if (
+          typeof value === "object" &&
+          value !== null &&
+          (value as { kind?: unknown }).kind === "error"
+        ) {
+          const failure = exactRecord(
+            value,
+            ["code", "kind", "schemaVersion"],
+            "native chain-sync failure",
+          );
           if (
-            typeof value === "object" &&
-            value !== null &&
-            (value as { kind?: unknown }).kind === "error"
-          ) {
-            const failure = exactRecord(
-              value,
-              ["code", "kind", "schemaVersion"],
-              "native chain-sync startup failure",
-            );
-            if (
-              failure.schemaVersion !==
-                WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION ||
-              typeof failure.code !== "string" ||
-              !/^[a-z][a-z0-9_]{0,62}$/u.test(failure.code)
-            ) {
-              throw new Error("native chain-sync emitted an invalid failure");
-            }
-            throw new NativeChainSyncStartupFailure(failure.code);
-          }
+            failure.schemaVersion !==
+              WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION ||
+            typeof failure.code !== "string" ||
+            !/^[a-z][a-z0-9_]{0,62}$/u.test(failure.code)
+          )
+            throw new Error("native chain-sync emitted an invalid failure");
+          if (!sawReady) throw new NativeChainSyncStartupFailure(failure.code);
+          throw new Error(`native chain-sync runtime failed: ${failure.code}`);
+        }
+        if (!sawReady) {
           const record = exactRecord(
             value,
             [
@@ -711,6 +720,7 @@ const startNativeSupervisor = async (
           mintedAuthority = authority;
           sawReady = true;
           resolveReady(authority);
+          rejectedLine = undefined;
           continue;
         }
         const event = parseWatcherNativeChainSyncEvent(value);
@@ -800,6 +810,7 @@ const startNativeSupervisor = async (
           );
           receiptsByEvent.set(event, receipt);
         }
+        rejectedLine = undefined;
         await input.onEvent(event);
       }
       await stderrDrain;
@@ -810,6 +821,20 @@ const startNativeSupervisor = async (
       const failure = error instanceof Error ? error : new Error(String(error));
       rejectReady(failure);
       if (!closing) child.kill("SIGKILL");
+      if (rejectedLine !== undefined) {
+        // A terminal native error is stdout control data, not a chain event.
+        // Drain its preceding stderr after process termination, with a bound
+        // for a broken child; never include raw block payloads in diagnostics.
+        let diagnosticTimer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          stderrDrain.catch(() => undefined),
+          new Promise<void>((resolve) => {
+            diagnosticTimer = setTimeout(resolve, 1000);
+          }),
+        ]);
+        if (diagnosticTimer !== undefined) clearTimeout(diagnosticTimer);
+        failure.message += `; nativePid=${child.pid ?? "unavailable"} nativeOperation=${watcherCanonicalJson(input.operation)} nativeStartupDigest=${startupDigest} nativeLineBytes=${Buffer.byteLength(rejectedLine)} nativeLineSha256=${sha256(rejectedLine)} stderrTail=${JSON.stringify(stderrTail.toString("utf8"))}`;
+      }
       throw failure;
     } finally {
       revokeEventProvenance();

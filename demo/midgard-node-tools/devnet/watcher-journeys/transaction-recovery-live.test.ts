@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -6,6 +7,7 @@ import {
   createLocalKupmiosHttpOgmiosRawSource,
   readAdmittedLocalKupmiosBoundary,
   readAdmittedLocalKupmiosSignedTransactionRecovery,
+  type SignedWorkflowTransaction,
 } from "@al-ft/midgard-fault-proofs";
 import {
   loadWatcherVerifiedDeploymentAuthority,
@@ -15,7 +17,7 @@ import {
 } from "midgard-watcher";
 import { expect, it } from "vitest";
 
-import { writeJourneyArtifact } from "./artifacts.js";
+import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import { loadJourneyContext } from "./live-context.js";
 
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
@@ -142,11 +144,42 @@ it.skipIf(runDirectory === undefined)(
       },
     );
     expect(rebroadcast.status).toBe("rebroadcast");
+    const noExpiryBuilt = await lucid
+      .newTx()
+      .collectFrom([funding])
+      .pay.ToAddress(address, { lovelace: 2_000_000n })
+      .complete({
+        coinSelection: false,
+        localUPLCEval: true,
+        changeAddress: address,
+      });
+    const noExpirySigned = await noExpiryBuilt.sign.withWallet().complete();
+    const noExpiryIntent = {
+      transactionHash: noExpirySigned.toHash(),
+      signedTransactionCborHex: noExpirySigned.toCBOR(),
+    };
+    await writeJourneyArtifact(
+      join(runDirectory!, "work/never-submitted-no-expiry-intent.json"),
+      {
+        deploymentFingerprint: context.deployment.manifest.manifestId,
+        purpose: "Read-only no-TTL recovery eligibility probe; never submit",
+        ...noExpiryIntent,
+      },
+    );
+    const noExpiry = await readAdmittedLocalKupmiosSignedTransactionRecovery({
+      source,
+      ...noExpiryIntent,
+    });
+    expect(noExpiry.status).toBe("rebroadcast");
+    const evidencePath = join(
+      runDirectory!,
+      "work/transaction-recovery-source-evidence.json",
+    );
+    let recorded: SignedWorkflowTransaction | undefined;
     const database = new DatabaseSync(
       join(runDirectory!, "work/journeys/runtime/watcher.sqlite"),
       { readOnly: true },
     );
-    let recorded;
     try {
       const reservations = database
         .prepare(
@@ -160,15 +193,28 @@ it.skipIf(runDirectory === undefined)(
             JSON.parse(row.canonical_json),
           );
         });
-      recorded = reservations.find(
-        (reservation) => reservation.pendingTransition !== null,
-      )?.pendingTransition;
+      recorded =
+        reservations.find(
+          (reservation) => reservation.pendingTransition !== null,
+        )?.pendingTransition ?? undefined;
     } finally {
       database.close();
     }
-    if (recorded == null)
+    // Retain the same input case after the workflow has completed and cleared
+    // its pending reservation. The node independently rechecks inclusion below.
+    if (recorded === undefined && existsSync(evidencePath)) {
+      const previous = await readJourneyArtifact<{
+        deploymentFingerprint: string;
+        recordedTransaction: SignedWorkflowTransaction;
+      }>(evidencePath);
+      expect(previous.deploymentFingerprint).toBe(
+        context.deployment.manifest.manifestId,
+      );
+      recorded = previous.recordedTransaction;
+    }
+    if (recorded === undefined)
       throw new Error(
-        "Probe requires the retained chain-included pending transaction",
+        "Probe requires a recorded chain-included signed transaction",
       );
     const included = await readAdmittedLocalKupmiosSignedTransactionRecovery({
       source,
@@ -176,18 +222,20 @@ it.skipIf(runDirectory === undefined)(
       signedTransactionCborHex: recorded.signedTransactionCborHex,
     });
     expect(included.status).toBe("included");
-    await writeJourneyArtifact(
-      join(runDirectory!, "work/transaction-recovery-source-evidence.json"),
-      {
-        deploymentFingerprint: context.deployment.manifest.manifestId,
-        observedAt: new Date().toISOString(),
-        durationMs: performance.now() - started,
-        submittedTransactions: 0,
-        expired,
-        rebroadcast,
-        included,
+    await writeJourneyArtifact(evidencePath, {
+      deploymentFingerprint: context.deployment.manifest.manifestId,
+      observedAt: new Date().toISOString(),
+      durationMs: performance.now() - started,
+      submittedTransactions: 0,
+      recordedTransaction: {
+        transactionHash: recorded.transactionHash,
+        signedTransactionCborHex: recorded.signedTransactionCborHex,
       },
-    );
+      expired,
+      rebroadcast,
+      noExpiry,
+      included,
+    });
   },
   180_000,
 );

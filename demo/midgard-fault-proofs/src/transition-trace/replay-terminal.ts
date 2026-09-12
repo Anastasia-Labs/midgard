@@ -5,6 +5,7 @@ import { type EventKey, readRetainedValidationState } from "@al-ft/midgard-sdk";
 
 import { classifyCommittedFieldShapeFields } from "../committed-field-shape/prepare-committed-field-shape.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
 import { replayPrerequisiteFailure } from "../workflow/replay-prerequisite.js";
 import { eventKeyFingerprint } from "./reconstruct.js";
 import { buildRetainedValidationClaimWitness } from "./witnesses.js";
@@ -68,11 +69,12 @@ export const requireRetainedReplayPhase = async (
   );
   if (
     source?.phase === "L2Transaction" &&
-    classifyCommittedFieldShapeFields(
+    (classifyCommittedFieldShapeFields(
       decodeMidgardNativeTxFullFromCanonicalCbor(
         source.entry.fullTransactionCbor,
       ),
-    ).some(({ evidence: field }) => field.isViolation)
+    ).some(({ evidence: field }) => field.isViolation) ||
+      transactionHasNonCanonicalMintItem(source.entry.fullTransactionCbor))
   )
     throw replayPrerequisiteFailure(
       evidence.headerHash,

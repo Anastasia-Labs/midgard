@@ -129,6 +129,142 @@ export type WatcherRetainedDaRuntimeOptions = Readonly<{
   ) => Promise<WatcherPublicDaLibp2pTransport>;
 }>;
 
+export type WatcherRetainedDaRuntimeOwner = Readonly<{
+  createRuntime(watcherConfig: unknown): Promise<WatcherRetainedDaRuntime>;
+  close(): Promise<void>;
+}>;
+
+const runtimeOwnerIdentities = new WeakMap<
+  WatcherRetainedDaRuntimeOwner,
+  VerifiedWatcherDeploymentIdentity
+>();
+
+/** One bounded request queue for all leases sharing a public peer identity. */
+class RetainedDaRequestPermits {
+  private active = 0;
+  private readonly waiting = new Set<{
+    grant(): void;
+    signal: AbortSignal;
+    onAbort(): void;
+  }>();
+
+  constructor(private readonly maximum: number) {}
+
+  async acquire(signal: AbortSignal): Promise<() => void> {
+    signal.throwIfAborted();
+    if (this.active < this.maximum) {
+      this.active += 1;
+      return this.releaseOnce();
+    }
+    if (this.waiting.size >= 64) {
+      throw new Error("retained-DA request queue is full");
+    }
+    return await new Promise<() => void>((resolve, reject) => {
+      const waiter = {
+        signal,
+        grant: () => {
+          this.active += 1;
+          resolve(this.releaseOnce());
+        },
+        onAbort: () => {
+          this.waiting.delete(waiter);
+          reject(
+            signal.reason instanceof Error
+              ? signal.reason
+              : new Error("retained-DA request aborted", {
+                  cause: signal.reason,
+                }),
+          );
+        },
+      };
+      this.waiting.add(waiter);
+      signal.addEventListener("abort", waiter.onAbort, { once: true });
+    });
+  }
+
+  private releaseOnce(): () => void {
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.active -= 1;
+      for (const waiter of this.waiting) {
+        this.waiting.delete(waiter);
+        waiter.signal.removeEventListener("abort", waiter.onAbort);
+        if (!waiter.signal.aborted) {
+          waiter.grant();
+          break;
+        }
+      }
+    };
+  }
+}
+
+type RetainedDaTransportScope = Readonly<{
+  open(): Promise<WatcherPublicDaLibp2pTransport>;
+  signal: AbortSignal;
+  acquireRequest(signal: AbortSignal): Promise<() => void>;
+}>;
+
+/**
+ * Keeps one client identity/connection alive across bounded workflow leases.
+ * Ownership is explicit: lease close revokes its requests; owner close tears
+ * down the node. Repeated classifications must not redial as new peers.
+ */
+export const createWatcherRetainedDaRuntimeOwner = (
+  options: Omit<WatcherRetainedDaRuntimeOptions, "watcherConfig">,
+): WatcherRetainedDaRuntimeOwner => {
+  const admitted = admitRuntimeOptions(options);
+  const controller = new AbortController();
+  let configuration: string | undefined;
+  let transport: Promise<WatcherPublicDaLibp2pTransport> | undefined;
+  let permits: RetainedDaRequestPermits | undefined;
+  let closePromise: Promise<void> | undefined;
+  const owner: WatcherRetainedDaRuntimeOwner = Object.freeze({
+    createRuntime: async (watcherConfig: unknown) => {
+      controller.signal.throwIfAborted();
+      const config = parseWatcherConfig(watcherConfig);
+      return await createRuntimeFromAdmittedConfig(admitted, config, {
+        signal: controller.signal,
+        open: async () => {
+          controller.signal.throwIfAborted();
+          const binding = JSON.stringify({
+            mode: config.mode,
+            targetNetwork: config.targetNetwork,
+            customNetwork: config.customNetwork,
+            da: config.da,
+          });
+          if (configuration !== undefined && configuration !== binding) {
+            throw new Error("retained-DA owner configuration changed");
+          }
+          if (transport === undefined) {
+            configuration = binding;
+            permits = new RetainedDaRequestPermits(config.da.maxConcurrency);
+            transport = (
+              admitted.unsafeTransportFactoryForTest ??
+              createWatcherPublicDaLibp2pTransport
+            )(admitted.unsafeTransportOptionsForTest);
+          }
+          const opened = await transport;
+          controller.signal.throwIfAborted();
+          return opened;
+        },
+        acquireRequest: async (signal) => await permits!.acquire(signal),
+      });
+    },
+    close: () => {
+      if (closePromise !== undefined) return closePromise;
+      controller.abort(new Error("retained-DA runtime owner is closed"));
+      closePromise = (async () => {
+        await (await transport)?.stop();
+      })();
+      return closePromise;
+    },
+  });
+  runtimeOwnerIdentities.set(owner, admitted.deploymentIdentity);
+  return owner;
+};
+
 type AdmittedRuntimeOptions = Readonly<{
   deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   unsafeTransportOptionsForTest?: WatcherPublicDaLibp2pTransportOptions;
@@ -193,6 +329,10 @@ class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
     private readonly configuredTimeoutMs: number,
     private readonly operationsSink: WatcherOperationsSink | undefined,
     private readonly customNetwork: WatcherPublicDaRequest["customNetwork"],
+    private readonly lifetime: AbortSignal,
+    private readonly acquireRequest: (
+      signal: AbortSignal,
+    ) => Promise<() => void>,
   ) {
     this.peerById = new Map(peers.map((peer) => [peer.peerId, peer]));
   }
@@ -218,7 +358,14 @@ class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
       .digest("hex");
     const startedAtMs = Date.now().toString();
     const startedMonotonicMs = performance.now();
+    const signal = AbortSignal.any([
+      this.lifetime,
+      AbortSignal.timeout(this.configuredTimeoutMs),
+    ]);
+    let release: (() => void) | undefined;
     try {
+      release = await this.acquireRequest(signal);
+      signal.throwIfAborted();
       const response = await this.transport.request({
         peerIdentity: peer.identity,
         peerId: peer.peerId,
@@ -230,13 +377,14 @@ class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
         ),
         requestCbor: args.payload,
         timeoutMs: this.configuredTimeoutMs,
-        signal: AbortSignal.timeout(this.configuredTimeoutMs),
+        signal,
         ...(this.customNetwork === undefined
           ? {}
           : {
               customNetwork: this.customNetwork,
             }),
       });
+      signal.throwIfAborted();
       const completedAtMs = Date.now().toString();
       this.operationsSink?.recordDaFetch({
         subjectDigest,
@@ -281,6 +429,8 @@ class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
         );
       }
       throw error;
+    } finally {
+      release?.();
     }
   }
 }
@@ -289,14 +439,18 @@ export class WatcherRetainedDaSourceWithL1Fallback extends DaLibp2pRetainedDaSou
   constructor(
     options: ConstructorParameters<typeof DaLibp2pRetainedDaSource>[0],
     private readonly l1Source: RetainedDaPayloadSource,
+    private readonly lifetime?: AbortSignal,
   ) {
     super(options);
   }
 
   override async fetchPayloadByHeaderHash(headerHash: string) {
+    this.lifetime?.throwIfAborted();
     const result = await super.fetchPayloadByHeaderHash(headerHash);
+    this.lifetime?.throwIfAborted();
     if (result.ok) return result;
     const fallback = await this.l1Source.fetchPayloadByHeaderHash(headerHash);
+    this.lifetime?.throwIfAborted();
     return {
       ...fallback,
       attempts: [...result.attempts, ...fallback.attempts],
@@ -316,6 +470,7 @@ export class WatcherRetainedDaSourceWithL1Fallback extends DaLibp2pRetainedDaSou
 const createRuntimeFromAdmittedConfig = async (
   options: AdmittedRuntimeOptions,
   config: WatcherConfig,
+  shared?: RetainedDaTransportScope,
 ): Promise<WatcherRetainedDaRuntime> => {
   assertVerifiedWatcherDeploymentIdentity(options.deploymentIdentity);
   if (config.mode !== "acceptance") {
@@ -339,11 +494,20 @@ const createRuntimeFromAdmittedConfig = async (
       "production retained-DA watcher network differs from the verified deployment",
     );
   }
-  const transport = await (
-    options.unsafeTransportFactoryForTest ??
-    createWatcherPublicDaLibp2pTransport
-  )(options.unsafeTransportOptionsForTest);
+  const lifetime = new AbortController();
+  const permits = new RetainedDaRequestPermits(config.da.maxConcurrency);
+  const transport =
+    shared === undefined
+      ? await (
+          options.unsafeTransportFactoryForTest ??
+          createWatcherPublicDaLibp2pTransport
+        )(options.unsafeTransportOptionsForTest)
+      : await shared.open();
   try {
+    const signal =
+      shared === undefined
+        ? lifetime.signal
+        : AbortSignal.any([lifetime.signal, shared.signal]);
     const adapter = new WatcherRetainedDaLibp2pTransport(
       deploymentFingerprint,
       config.da.peers,
@@ -356,6 +520,8 @@ const createRuntimeFromAdmittedConfig = async (
             deploymentIdentity: options.deploymentIdentity,
           })
         : undefined,
+      signal,
+      shared?.acquireRequest ?? ((signal) => permits.acquire(signal)),
     );
     const l1Source = l1AvailabilitySourceByDeploymentIdentity.get(
       options.deploymentIdentity,
@@ -369,7 +535,7 @@ const createRuntimeFromAdmittedConfig = async (
         timeoutMs: config.da.requestTimeoutMs,
       };
       return l1Source !== undefined && index === config.da.peers.length - 1
-        ? new WatcherRetainedDaSourceWithL1Fallback(options, l1Source)
+        ? new WatcherRetainedDaSourceWithL1Fallback(options, l1Source, signal)
         : new DaLibp2pRetainedDaSource(options);
     });
     const sources = Object.freeze(publicSources);
@@ -381,11 +547,13 @@ const createRuntimeFromAdmittedConfig = async (
       close: async (): Promise<void> => {
         if (closed) return;
         closed = true;
-        await transport.stop();
+        lifetime.abort(new Error("retained-DA runtime lease is closed"));
+        if (shared === undefined) await transport.stop();
       },
     });
   } catch (cause) {
-    await transport.stop();
+    lifetime.abort(cause);
+    if (shared === undefined) await transport.stop();
     throw cause;
   }
 };
@@ -413,10 +581,12 @@ export const createWatcherRetainedDaRuntime = async (
 export const createWatcherWorkflowRuntimeLoader = <Config>(
   options: Omit<WatcherRetainedDaRuntimeOptions, "watcherConfig"> & {
     readonly buildInfrastructureConfig: WatcherWorkflowInfrastructureBuilder<Config>;
+    readonly runtimeOwner?: WatcherRetainedDaRuntimeOwner;
   },
 ): WorkflowRuntimeConfigLoader<Config> => {
   const {
     buildInfrastructureConfig,
+    runtimeOwner,
     deploymentIdentity,
     unsafeTransportFactoryForTest,
     unsafeTransportOptionsForTest,
@@ -435,6 +605,12 @@ export const createWatcherWorkflowRuntimeLoader = <Config>(
       ? {}
       : { unsafeTransportFactoryForTest }),
   });
+  if (
+    runtimeOwner !== undefined &&
+    runtimeOwnerIdentities.get(runtimeOwner) !== deploymentIdentity
+  ) {
+    throw new Error("retained-DA owner belongs to another deployment identity");
+  }
   return async ({ runtimeConfigPath, invocation }) => {
     if (
       !isAbsolute(runtimeConfigPath) ||
@@ -461,10 +637,13 @@ export const createWatcherWorkflowRuntimeLoader = <Config>(
     const watcherConfig = parseWatcherConfigJson(
       await readFile(canonicalRuntimeConfigPath, "utf8"),
     );
-    const retainedDa = await createRuntimeFromAdmittedConfig(
-      admittedRuntimeOptions,
-      watcherConfig,
-    );
+    const retainedDa =
+      runtimeOwner === undefined
+        ? await createRuntimeFromAdmittedConfig(
+            admittedRuntimeOptions,
+            watcherConfig,
+          )
+        : await runtimeOwner.createRuntime(watcherConfig);
     try {
       return {
         schemaVersion: WORKFLOW_RUNTIME_CONFIG,

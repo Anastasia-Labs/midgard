@@ -75,6 +75,19 @@ export const findMintItemNonCanonicalEvidence = (
     });
   });
 
+/** True when the direct mint-item proof owns this transaction: sibling
+ * replayers that decode field 5 must yield a field-shape prerequisite. */
+export const transactionHasNonCanonicalMintItem = (txCbor: Buffer): boolean =>
+  findMintItemNonCanonicalEvidence([
+    {
+      nodeTxId:
+        deriveMidgardNativeTxFaultEvidenceMaterial(
+          txCbor,
+        ).transactionId.toString("hex"),
+      txCbor: txCbor.toString("hex"),
+    },
+  ]).length > 0;
+
 export const findMintItemNonCanonicalBlockEvidence = (
   block: CanonicalBlockEvidence,
 ) =>

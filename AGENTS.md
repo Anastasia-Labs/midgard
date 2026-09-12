@@ -24,8 +24,9 @@ Tradeoff order: correctness, safety, liveness, performance, convenience.
   Never trade a working product for unfinished complexity.
 - Prefer established, well-maintained libraries when they reduce overall
   complexity or improve reliability.
-- Write maintainable code with clear names, direct control flow, and abstractions
-  justified by current behavior.
+- Write clean code, with a focus on maintainability, clear names, direct control flow, and abstractions
+  justified by current behavior. There are many human developers working on the codebase, and keeping it 
+  easy for them to work on is a top priority. 
 - Ship architecture that supports the intended deployment. Temporary diagnostic
   instrumentation follows `docs/agents/production-l2.md`.
 
@@ -50,17 +51,11 @@ Use the declared repo toolchain: pnpm/Node in `demo`, Aiken in
   post-launch upgrades; preserve or migrate only versions that actually shipped.
   This does not authorize resetting an existing deployment. Before resetting
   durable state or redeploying, read `docs/agents/state-reset.md`.
-- Follow the current task and its named plans, review docs, commands, and
-  verification requirements. Reconcile stale guidance with the user's current
-  instructions and the deployment target. Keep changes inside the agreed scope.
 - Preserve user work: check dirty state, do not clean or revert unrelated
-  changes or generated artifacts.
+  changes.
 - Before finalizing changes, run the named required checks and the narrow checks
   that prove touched behavior. Report exactly what ran; a smoke test does not
   replace a required acceptance check.
-- When a path is explicitly protected, search only individually named tracked
-  files. Shell wildcards expand before tool-level exclusions, so a later
-  `--glob` or ignore rule does not protect an argument the shell already added.
 
 ## When Relevant
 

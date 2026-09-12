@@ -834,7 +834,54 @@ describe("Q33/Q34 retained-DA evidence", () => {
     ).rejects.toThrow(/archive|retained DA|could not fetch/u);
   });
 
-  it("does not hide retained-DA corruption behind the archival quorum", async () => {
+  it.each([
+    {
+      status: "invalid_content",
+      detail: "authenticated peer returned corrupt bytes",
+    },
+    {
+      status: "transport_error",
+      detail: "connection closed during historical request",
+    },
+    { status: "timeout", detail: "historical request deadline exceeded" },
+  ] as const)(
+    "preserves $status diagnostics without using the archival quorum",
+    async ({ status, detail }) => {
+      const fixture = await buildCanonicalBlockFixture({
+        transactions: [fixtureTransaction(nativeTx({}))],
+      });
+      const attempt = {
+        sourceId: "failed-retained-da",
+        sourcePeerId: "peer-failed",
+        protocol: "payload-by-header",
+        status,
+        detail,
+      } as const;
+      const request = resolveHistoricalNativeScriptCorpus({
+        deploymentFingerprint: "11".repeat(32),
+        checkpointStore: authenticatedCheckpointStore(),
+        // Authenticated archival bytes exist, but cannot mask this failure.
+        historySource: historySource([fixture]),
+        currentEvidence: await evidenceFromFixture(fixture),
+        sources: [
+          {
+            sourceId: attempt.sourceId,
+            fetchPayloadByHeaderHash: async () => ({
+              ok: false,
+              sourceId: attempt.sourceId,
+              attempts: [attempt],
+            }),
+          },
+        ],
+      });
+      await expect(request).rejects.toBeInstanceOf(Error);
+      await expect(request).rejects.toMatchObject({
+        message: `public retained-DA history failed without authenticated retention absence for header ${fixture.headerHash}; sources: ["failed-retained-da"]; attempts: ${JSON.stringify([attempt])}`,
+      });
+    },
+  );
+
+  it("identifies the header and source when retained-DA failure has no attempts", async () => {
     const fixture = await buildCanonicalBlockFixture({
       transactions: [fixtureTransaction(nativeTx({}))],
     });
@@ -846,24 +893,18 @@ describe("Q33/Q34 retained-DA evidence", () => {
         currentEvidence: await evidenceFromFixture(fixture),
         sources: [
           {
-            sourceId: "corrupt-retained-da",
+            sourceId: "empty-failed-source",
             fetchPayloadByHeaderHash: async () => ({
               ok: false,
-              sourceId: "corrupt-retained-da",
-              attempts: [
-                {
-                  sourceId: "corrupt-retained-da",
-                  sourcePeerId: "peer-corrupt",
-                  protocol: "payload-by-header",
-                  status: "invalid_content",
-                  detail: "authenticated peer returned corrupt bytes",
-                },
-              ],
+              sourceId: "empty-failed-source",
+              attempts: [],
             }),
           },
         ],
       }),
-    ).rejects.toThrow(/without authenticated retention absence/u);
+    ).rejects.toMatchObject({
+      message: `public retained-DA history failed without authenticated retention absence for header ${fixture.headerHash}; sources: ["empty-failed-source"]; attempts: []`,
+    });
   });
 
   it("rejects a rewritten durable checkpoint even when its public digest is recomputed", async () => {

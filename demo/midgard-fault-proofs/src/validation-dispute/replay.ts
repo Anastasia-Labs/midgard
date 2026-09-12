@@ -16,6 +16,7 @@ import {
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import {
   classifyWithdrawalFromLedger,
+  committedWithdrawalValueBytes,
   DepositDatum,
   DepositInfo,
   EMPTY_MERKLE_TREE_ROOT,
@@ -469,9 +470,28 @@ export const admitValidationTraceReplayContext = async ({
         depositPolicyId: origins!.depositPolicyId,
         depositAssetNameHex: origin!.assetName,
       });
+      if (
+        effect.operations.some(
+          (operation) =>
+            operation.type === "insert" &&
+            state.has(operation.outRefCbor.toString("hex")),
+        )
+      ) {
+        // The committed deposit re-creates an output the ledger already
+        // holds: a repeated source event. Its effect is owed to the finding
+        // that names the repeat, so keep the ledger and scan the rest.
+        prerequisites.push(
+          ...replayPrerequisiteFailure(
+            evidence.headerHash,
+            source.eventKey,
+            "prior_transition_effect",
+          ).failures,
+        );
+        continue;
+      }
       for (const operation of effect.operations) {
         const key = operation.outRefCbor.toString("hex");
-        if (operation.type !== "insert" || state.has(key))
+        if (operation.type !== "insert")
           throw new Error(
             "validation replay deposit does not insert an absent ledger output",
           );
@@ -487,11 +507,13 @@ export const admitValidationTraceReplayContext = async ({
         origin!.event.datum!,
         WithdrawalOrderDatum,
       ).event;
+      // The producer and Aiken serialiseData commit definite asset maps, so the
+      // committed leaf is compared in its canonical committed encoding.
       if (
-        Data.to(
-          { ...original.info, validity: source.entry.value.validity },
-          WithdrawalInfo,
-        ) !== source.entry.valueBytes.toString("hex")
+        committedWithdrawalValueBytes({
+          ...original.info,
+          validity: source.entry.value.validity,
+        }) !== source.entry.valueBytes.toString("hex")
       )
         throw new Error(
           "validation replay withdrawal differs from its originating body and signature",

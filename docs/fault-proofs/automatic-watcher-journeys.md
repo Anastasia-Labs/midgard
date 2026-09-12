@@ -44,12 +44,48 @@ isolated source tree with its recorded catalogue. Preserve the concurrent work
 and record the isolated source hashes; do not relax deployment admission to
 load incompatible receipts.
 
+Before the watcher starts, a binding preflight runs the production configuration
+loaders for every installed family against the finalized manifest and actual
+reference UTxOs. Its application exposes readiness checks and resource cleanup
+only. `workflow-binding-preflight.test.ts` runs this check independently of the
+watcher launcher; its per-family receipts do not imply live proof completion.
+
 Before launching the watcher, the runner uses its actual parsed configuration
 and verified deployment identity to retrieve both staged payloads through the
 production public DA runtime. Exact bytes and authenticated peer identities must
 match. `public-da-preflight.json` records payload hashes, durations, and failed
 requests. The standalone `retained-da-live.test.ts` uses this same preflight for
 cheap diagnosis without restarting the watcher or submitting transactions.
+
+The watcher application shares one public DA transport across classification
+and workflow runtime leases. Each lease can cancel its own requests; the owner
+bounds concurrent requests and queued work and closes after the proof supervisor.
+This avoids creating a new libp2p connection for each classification, which can
+exceed the retained DA server's connection admission rate. Server limits and
+authenticated retention-absence checks remain enforced.
+`retained-da-lifecycle-live.test.ts` checks this lifecycle with the actual runtime
+configuration and retained payloads: 256 exact fetches across 128 leases,
+including 330 seconds idle. A passing transport probe does not establish a
+completed proof journey.
+
+Public DA retrieval may repeat an identical request once on a fresh stream after
+a recognized stream closure, remote reset or connection closure. Both attempts share the original
+deadline, cancellation, peer and protocol identity. Partial responses are
+discarded, and each complete response still passes normal authentication and
+frame checks. Submission protocols and validation failures are never retried.
+Set `MIDGARD_WATCHER_DA_CONTINUOUS_SECONDS=720` for the lifecycle test's bounded
+continuous-retrieval variant; its evidence remains separate from proof journals.
+Set `MIDGARD_WATCHER_DA_CONCURRENT_LEASES=8` to exercise the actual owner's full
+request concurrency; the default remains two leases.
+
+Both public DA endpoints serve the standard libp2p ping control protocol on
+existing authenticated connections. Two bounded inbound control streams allow
+heartbeat and asynchronous stream closure to coexist with the separate DA
+request limit. The watcher still refuses inbound connections and exposes no
+inbound DA handlers. Connection monitoring stays enabled: a zero inbound Yamux
+stream budget resets heartbeats before negotiation and makes the monitor abort
+otherwise healthy connections. The retained listener keeps its DA protocol
+allowlist, aggregate admission bounds and outbound dialing restrictions.
 
 The read-only `reference-acquisition-live.test.ts` checks every retained
 reference output against its canonical bytes through the actual Kupo/Ogmios
@@ -71,12 +107,25 @@ one current connection and one renewal candidate; it waits for physical closure
 before another renewal. Lost or revoked authority is never revived. A closed
 transport and an endpoint mismatch have separate diagnostics.
 
+`transaction-recovery-live.test.ts` uses the production signed-intent reader to
+check a never-submitted expired transaction, a valid transaction absent from the
+real mempool, and a recorded transaction already included on chain. It signs
+with an independent plain-Ada publisher input but submits nothing. The recorded
+inclusion case remains reusable after the workflow clears its pending funding
+state. These source checks do not replace full workflow recovery acceptance.
+
 The CLI emits structured startup phase records before its operations endpoint is
 available. Pending records report elapsed time every 30 seconds; completed and
 failed records retain stage duration. These records always report
 `productionReady: false`; they describe startup activity, not a readiness result.
 Journey stage timing also retains failures so a failed start does not disappear
 from the timing record.
+
+Availability failures and recovery emit bounded `availability_status` records
+into the same CLI log. They retain the authenticated observation identity and
+reconciliation duration, including failures caught internally while proof
+processing continues. Repeated identical failures are deduplicated; these
+diagnostics never assert whole-watcher readiness.
 
 ## Shared configuration and verification
 
@@ -190,6 +239,57 @@ canonical intersection through subsequent live blocks. Native follower recovery
 is a lower-layer gate; workflow recovery additionally needs proof initialization,
 intermediate-step and lost-acknowledgement interruptions through the common
 runner, followed by independent token, correction and economics checks.
+
+Native node-to-client streaming must survive waiting for a block and consumer
+backpressure. The pinned muxer's segment deadline starts when the first byte
+arrives; incomplete headers and payloads remain bounded. Exact-point queries
+retain their absolute operation deadline. Native failures after startup retain
+the operation, helper identity and bounded stderr cause, while revoking the
+failed helper's authority. The real-node regression pauses the stdout consumer
+for 130 seconds, then checks ordered catch-up; the old helper failed this case
+with a socket read timeout.
+
+The deterministic single-deposit `transitionTrace` fixture has fifteen dependent
+transactions, including its preimages, checkpoint folds, proof token and removal.
+The fixture checks the real projected output against the audited plan: one
+41-byte output, three scan primitives and two value primitives. Its timing helper
+reads the retained genesis and verified deployment manifest, and checks the
+runtime's authenticated finality depth. Thirty actual blocks at one-second slots
+and `f=0.05` average ten minutes per confirmation gate; thirty minutes for the
+whole proof and two hours for the whole journey are insufficient.
+
+The trace harness allows twice the expected confirmation time, plus explicit
+transaction preparation, RPC, startup and successor allowances. This gives
+337.5 minutes for correction and 415.5 minutes for the complete retained journey
+under the captured configuration. These are finite test deadlines, not finality
+guarantees. They do not change transaction validity, consensus or confirmation
+depth. Other family timing plans remain separate work. Poll deadlines use a
+monotonic clock, and a resumed attempt preserves its entire pre-launch journal
+prefix while treating newly recorded failures as failures of the current attempt.
+
+Test the authority transition through the actual follower callbacks: history
+advance, authenticated queue removal, and subsequent workflow reconciliation.
+Removal may restrict authority to checking the exact recorded transaction and
+terminal result. It must not authorize another submission. A real rollback or
+lost canonical authority still revokes reconciliation. Restart tests must pass
+through the supervisor queue as well as the workflow runner; a queue job marked
+finished does not establish that its transaction journal completed.
+
+Preparation and completion each cross a SQLite reservation and an immutable
+directory journal. Crash tests must close and reopen both stores between those
+writes. The durable preparation handoff retains the exact signed transaction,
+action and expected journal prefix. The completion handoff retains the verified
+terminal result with the funding release, so recovery cannot reopen released
+inputs. An expiry/absence result needs the same interruption analysis before
+discarding pending transaction context.
+
+The real-node `transaction-recovery-live.test.ts` gate reads a never-submitted
+expired transaction, valid transactions with and without expiry absent from the
+node's mempool, and an already included recorded workflow transaction. It retains
+the exact signed transaction for rechecking after workflow completion and uses the runtime's admitted
+source and signs diagnostic intents without submitting them. This establishes
+the adapter's expiry and rebroadcast eligibility decisions; actual rebroadcast,
+crash recovery and complete proof evidence remain separate gates.
 
 A frozen standalone producer has the actual consensus forecast horizon derived
 from `3*k/f` (129,600 one-second slots for this profile). Phase 4 refuses a restore

@@ -9,6 +9,8 @@ import {
   beginWorkflowFundingReservationAction,
   confirmWorkflowFundingReservationTransaction,
   conflictWorkflowFundingReservationTransaction,
+  createWorkflowFundingAbandonmentHandoff,
+  createWorkflowFundingSubmissionHandoff,
   prepareWorkflowFundingReservationTransaction,
 } from "../workflow/funding-reservation-permit.js";
 import {
@@ -302,6 +304,12 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
         journal: store,
         action,
         preflight,
+        handoff: createWorkflowFundingSubmissionHandoff({
+          entries: await entries(),
+          action,
+          preflight,
+          attempt,
+        }),
       });
       await appendEvent({
         kind: "preflight_passed",
@@ -353,6 +361,10 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
       await abandonWorkflowFundingReservationTransaction({
         journal: store,
         transactionHash: intent.event.txHash,
+        handoff: createWorkflowFundingAbandonmentHandoff({
+          entries: await entries(),
+          transactionHash: intent.event.txHash,
+        }),
       });
       await appendEvent({
         kind: "reconciled",
@@ -427,6 +439,12 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
         journal: store,
         action,
         preflight,
+        handoff: createWorkflowFundingSubmissionHandoff({
+          entries: await entries(),
+          action,
+          preflight,
+          attempt: 1,
+        }),
       });
       await appendEvent({
         kind: "preflight_passed",

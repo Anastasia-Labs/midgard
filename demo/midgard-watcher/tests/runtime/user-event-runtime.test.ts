@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -15,6 +16,7 @@ import {
   type WatcherRollbackDurableTrustedHead,
 } from "../../src/l1/rollback-engine.js";
 import { loadWatcherVerifiedDeploymentAuthority } from "../../src/runtime/deployment-authority.js";
+import { readWatcherUserEventScriptBinding } from "../../src/runtime/deployment-identity.js";
 import type { WatcherTrustedHeadAuthorityClient } from "../../src/runtime/trusted-head-authority.js";
 import {
   assertWatcherUserEventRuntime,
@@ -27,6 +29,7 @@ import {
   watcherSameCanonicalJson,
 } from "../../src/storage/durable-store.js";
 import { watcherUserEventArchiveDigest } from "../../src/storage/user-event-checkpoint.js";
+import { createInMemoryWatcherUserEventCoverageStore } from "../../src/storage/user-event-coverage-store.js";
 import {
   computeWatcherRuleBundleCommitment,
   makeWatcherCanonicalRuleBundle,
@@ -179,11 +182,53 @@ const setup = async (
     nativeChainSyncBinaryPath: fixture.nativeChainSyncBinaryPath,
     runtime: durable.runtime,
     archive: durable.archive,
+    // One store for the whole test so a restart restores the saved coverage.
+    coverage: createInMemoryWatcherUserEventCoverageStore(),
   };
+  const depositAddressHex = readWatcherUserEventScriptBinding({
+    binding: fixture.scriptBinding,
+    deploymentIdentity: fixture.deploymentIdentity,
+  }).deposit.addressHex;
+  let paymentIndex = 0;
+  // A plain payment at the deposit credential: the relevance predicate matches
+  // it, so the block is captured, yet the fold observes no event.
+  const touchedBlock = async () => {
+    const inputs = CML.TransactionInputList.new();
+    inputs.add(
+      CML.TransactionInput.new(
+        CML.TransactionHash.from_hex(h32("c3")),
+        BigInt(paymentIndex++),
+      ),
+    );
+    const outputs = CML.TransactionOutputList.new();
+    outputs.add(
+      CML.TransactionOutput.new(
+        CML.Address.from_hex(depositAddressHex),
+        CML.Value.new(2_000_000n, CML.MultiAsset.new()),
+      ),
+    );
+    return fixture.makeBlock({
+      transactions: [
+        CML.Transaction.new(
+          CML.TransactionBody.new(inputs, outputs, 200_000n),
+          CML.TransactionWitnessSet.new(),
+          true,
+        ).to_cbor_hex(),
+      ],
+    });
+  };
+  const capturesOf = (
+    queries: readonly Awaited<
+      ReturnType<typeof fixture.readNativeQueries>
+    >[number][],
+    blockHash: string,
+  ) => queries.filter((query) => query.target.blockHash === blockHash);
   return {
     fixture,
     durable,
     input,
+    touchedBlock,
+    capturesOf,
     close: async () => {
       await fixture.close();
       await rm(directory, { recursive: true, force: true });
@@ -192,8 +237,9 @@ const setup = async (
 };
 
 describe("owned user-event runtime over actual synthetic native transport", () => {
-  it("discovers signed Init, publishes empty blocks, reopens the protected history, and fails closed on source exit", async () => {
+  it("discovers signed Init, covers quiet blocks without native requests, reopens the protected history with its coverage, and fails closed on source exit", async () => {
     const context = await setup();
+    const { fixture, capturesOf } = context;
     let runtime: Awaited<
       ReturnType<typeof createWatcherUserEventRuntime>
     > | null = null;
@@ -206,18 +252,27 @@ describe("owned user-event runtime over actual synthetic native transport", () =
           { kind: "deposit", eventId: h32("aa") },
         ]),
       ).toThrow();
+      expect(runtime.read()).toMatchObject({
+        currentPoint: fixture.activationBlock.point,
+        headCursor: fixture.activationBlock.point,
+      });
+      const before = (await fixture.readNativeQueries()).length;
+      await runtime.advanceThrough(fixture.emptySuccessorBlock.point);
+      expect(runtime.read()).toMatchObject({
+        currentPoint: fixture.emptySuccessorBlock.point,
+        headCursor: fixture.activationBlock.point,
+      });
+      expect(
+        capturesOf(
+          (await fixture.readNativeQueries()).slice(before),
+          fixture.emptySuccessorBlock.point.blockHash,
+        ),
+      ).toHaveLength(0);
+      await runtime.advanceThrough(fixture.activationBlock.point);
       expect(runtime.read().currentPoint).toEqual(
-        context.fixture.activationBlock.point,
+        fixture.emptySuccessorBlock.point,
       );
-      await runtime.advanceThrough(context.fixture.emptySuccessorBlock.point);
-      expect(runtime.read().currentPoint).toEqual(
-        context.fixture.emptySuccessorBlock.point,
-      );
-      await runtime.advanceThrough(context.fixture.activationBlock.point);
-      expect(runtime.read().currentPoint).toEqual(
-        context.fixture.emptySuccessorBlock.point,
-      );
-      const before = context.durable.casCount();
+      const casBefore = context.durable.casCount();
       await runtime.close();
       await expect(runtime.done).resolves.toBeUndefined();
       const reopened = await createWatcherDurableRuntime(
@@ -227,17 +282,18 @@ describe("owned user-event runtime over actual synthetic native transport", () =
         ...context.input,
         runtime: reopened,
       });
-      expect(runtime.read().currentPoint).toEqual(
-        context.fixture.emptySuccessorBlock.point,
-      );
-      expect(context.durable.casCount()).toBe(before);
+      expect(runtime.read()).toMatchObject({
+        currentPoint: fixture.emptySuccessorBlock.point,
+        headCursor: fixture.activationBlock.point,
+      });
+      expect(context.durable.casCount()).toBe(casBefore);
       const failed = expect(runtime.done).rejects.toThrow();
-      await context.fixture.exitNativeStream(7);
+      await fixture.exitNativeStream(7);
       await failed;
       expect(runtime.read().status).toBe("failed");
       expect(() => assertWatcherUserEventRuntime(runtime!)).toThrow();
       await expect(
-        runtime.advanceThrough(context.fixture.emptySuccessorBlock.point),
+        runtime.advanceThrough(fixture.emptySuccessorBlock.point),
       ).rejects.toThrow();
     } finally {
       await runtime?.close();
@@ -246,325 +302,203 @@ describe("owned user-event runtime over actual synthetic native transport", () =
   }, 120_000);
 });
 
-const waitForQuery = async (
-  fixture: Awaited<ReturnType<typeof setup>>["fixture"],
-  blockHash: string,
-  after: number,
-  operation: Promise<unknown>,
-) => {
-  let failure: unknown;
-  let finished = false;
-  void operation.then(
-    () => {
-      finished = true;
-    },
-    (error: unknown) => {
-      failure = error;
-      finished = true;
-    },
-  );
-  const deadline = performance.now() + 100_000;
-  for (;;) {
-    if (finished)
-      throw (
-        failure ??
-        new Error(
-          "Runtime operation finished before a required real TIP growth",
-        )
-      );
-    const queries = (await fixture.readNativeQueries()).slice(after);
-    if (
-      queries.filter((query) => query.target.blockHash === blockHash).length >=
-      3
-    )
-      return queries;
-    if (performance.now() > deadline)
-      throw new Error("Runtime never reached its second capture wave");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-};
-
-describe("user-event runtime native acquisition batching", () => {
-  it("retains every first capture when the native tip advances across a startup batch", async () => {
+describe("user-event runtime coverage and capture", () => {
+  it("captures only touched blocks, covers the quiet stretch in place, rewinds coverage on rollback, and restores it on restart", async () => {
     const context = await setup();
-    let runtime:
-      | Awaited<ReturnType<typeof createWatcherUserEventRuntime>>
-      | undefined;
+    const { fixture, capturesOf } = context;
+    let runtime: Awaited<
+      ReturnType<typeof createWatcherUserEventRuntime>
+    > | null = null;
     try {
       runtime = await createWatcherUserEventRuntime(context.input);
-      const blocks = [context.fixture.emptySuccessorBlock];
-      for (let index = 0; index < 3; index += 1)
-        blocks.push(await context.fixture.makeBlock({ transactions: [] }));
-      const before = (await context.fixture.readNativeQueries()).length;
-      await runtime.advanceThrough(blocks.at(-1)!.point);
-      expect(runtime.read().currentPoint).toEqual(blocks.at(-1)!.point);
-      const queries = (await context.fixture.readNativeQueries()).slice(before);
-      for (const block of blocks)
-        expect(
-          queries.filter(
-            (query) => query.target.blockHash === block.point.blockHash,
-          ),
-        ).toHaveLength(4);
-    } finally {
-      await runtime?.close();
-      await context.close();
-    }
-  });
-
-  it("prefetches first observations while publishing each requested block only and discards them on rollback", async () => {
-    const context = await setup("controlled");
-    const { fixture } = context;
-    let runtime: Awaited<
-      ReturnType<typeof createWatcherUserEventRuntime>
-    > | null = null;
-    try {
-      const blocks = [fixture.activationBlock, fixture.emptySuccessorBlock];
-      for (let index = 2; index <= 8; index += 1)
-        blocks.push(await fixture.makeBlock({ transactions: [] }));
-      const last = blocks.at(-1)!.point;
-      await fixture.setNativeTip({
-        blockHash: h32("ed"),
-        blockNo: (BigInt(last.blockNo) + 100n).toString(),
-        slot: (BigInt(last.slot) + 600n).toString(),
-      });
-      const bootstrap = createWatcherUserEventRuntime(context.input);
-      await waitForQuery(fixture, blocks[0]!.point.blockHash, 0, bootstrap);
-      await fixture.growNativeTip();
-      runtime = await bootstrap;
-
+      const quietA = fixture.emptySuccessorBlock;
+      const quietB = await fixture.makeBlock({ transactions: [] });
+      const touchedA = await context.touchedBlock();
+      const quietC = await fixture.makeBlock({ transactions: [] });
+      const touchedB = await context.touchedBlock();
+      const quietD = await fixture.makeBlock({ transactions: [] });
       let before = (await fixture.readNativeQueries()).length;
-      const first = runtime.advanceThrough(blocks[1]!.point, {
-        prefetch: true,
+      await runtime.advanceThrough(quietD.point);
+      expect(runtime.read()).toMatchObject({
+        currentPoint: quietD.point,
+        headCursor: touchedB.point,
       });
-      const firstWave = await waitForQuery(
-        fixture,
-        blocks[1]!.point.blockHash,
-        before,
-        first,
-      );
-      for (const block of blocks.slice(2))
-        expect(
-          firstWave.filter(
-            (query) => query.target.blockHash === block.point.blockHash,
-          ),
-        ).toHaveLength(2);
-      expect(runtime.read().currentPoint).toEqual(blocks[0]!.point);
-      await fixture.growNativeTip();
-      await first;
-      expect(runtime.read().currentPoint).toEqual(blocks[1]!.point);
+      let queries = (await fixture.readNativeQueries()).slice(before);
+      for (const quiet of [quietA, quietB, quietC, quietD])
+        expect(capturesOf(queries, quiet.point.blockHash)).toHaveLength(0);
+      for (const touched of [touchedA, touchedB])
+        expect(capturesOf(queries, touched.point.blockHash)).toHaveLength(4);
 
-      // One actual tip growth completes multiple later calls, but each still
-      // performs its own fresh native second capture before publication.
-      for (const block of blocks.slice(2, 5)) {
-        before = (await fixture.readNativeQueries()).length;
-        await runtime.advanceThrough(block.point, { prefetch: true });
-        expect(runtime.read().currentPoint).toEqual(block.point);
-        const captures = (await fixture.readNativeQueries())
-          .slice(before)
-          .filter((query) => query.target.blockHash === block.point.blockHash);
-        expect(captures).toHaveLength(2);
-      }
-
-      before = (await fixture.readNativeQueries()).length;
-      const rollback = runtime.handleRollback({
-        kind: "point",
-        blockHash: blocks[4]!.point.blockHash,
-        slot: blocks[4]!.point.slot,
+      // Rolling back into the quiet stretch above the head observation
+      // rewinds the checkpoint in place; the head observation survives.
+      const quietE = await fixture.makeBlock({ transactions: [] });
+      const quietF = await fixture.makeBlock({ transactions: [] });
+      await runtime.advanceThrough(quietF.point);
+      expect(runtime.read()).toMatchObject({
+        currentPoint: quietF.point,
+        headCursor: touchedB.point,
       });
-      await waitForQuery(fixture, blocks[4]!.point.blockHash, before, rollback);
-      await fixture.growNativeTip();
-      await rollback;
-      before = (await fixture.readNativeQueries()).length;
-      const resumed = runtime.advanceThrough(blocks[5]!.point, {
-        prefetch: true,
-      });
-      await waitForQuery(fixture, blocks[5]!.point.blockHash, before, resumed);
-      expect(runtime.read().currentPoint).toEqual(blocks[4]!.point);
-      await fixture.growNativeTip();
-      await resumed;
-      for (const block of blocks.slice(6)) {
-        await runtime.advanceThrough(block.point, { prefetch: true });
-        expect(runtime.read().currentPoint).toEqual(block.point);
-      }
-    } finally {
-      await runtime?.close();
-      await context.close();
-    }
-  }, 120_000);
-
-  it("crosses 128 blocks with shared first-wave tips, resumes a suspended head and restores its sealed history without replay", async () => {
-    const context = await setup("controlled");
-    const { fixture } = context;
-    let runtime: Awaited<
-      ReturnType<typeof createWatcherUserEventRuntime>
-    > | null = null;
-    try {
-      const blocks = [fixture.activationBlock, fixture.emptySuccessorBlock];
-      for (let index = 2; index <= 129; index++)
-        blocks.push(await fixture.makeBlock({ transactions: [] }));
-      const last = blocks.at(-1)!.point;
-      await fixture.setNativeTip({
-        blockHash: h32("ed"),
-        blockNo: (BigInt(last.blockNo) + 100n).toString(),
-        slot: (BigInt(last.slot) + 600n).toString(),
-      });
-      const bootstrap = createWatcherUserEventRuntime(context.input);
-      await waitForQuery(fixture, blocks[0]!.point.blockHash, 0, bootstrap);
-      await fixture.growNativeTip();
-      runtime = await bootstrap;
-      for (const [first, lastIndex] of [
-        [1, 64],
-        [65, 127],
-      ] as const) {
-        const before = (await fixture.readNativeQueries()).length;
-        const advance = runtime.advanceThrough(blocks[lastIndex]!.point);
-        const firstWave = await waitForQuery(
-          fixture,
-          blocks[first]!.point.blockHash,
-          before,
-          advance,
-        );
-        const tips = new Set<string>();
-        for (const block of blocks.slice(first, lastIndex + 1)) {
-          const captures = firstWave
-            .filter((query) => query.target.blockHash === block.point.blockHash)
-            .slice(0, 2);
-          expect(captures).toHaveLength(2);
-          for (const capture of captures) tips.add(JSON.stringify(capture.tip));
-        }
-        expect(tips.size).toBe(1);
-        await fixture.growNativeTip();
-        await advance;
-        expect(runtime.read().currentPoint).toEqual(blocks[lastIndex]!.point);
-      }
-      let before = (await fixture.readNativeQueries()).length;
-      const crossing = runtime.advanceThrough(blocks[129]!.point);
-      await waitForQuery(
-        fixture,
-        blocks[127]!.point.blockHash,
-        before,
-        crossing,
-      );
-      await fixture.growNativeTip();
-      before = (await fixture.readNativeQueries()).length;
-      await waitForQuery(
-        fixture,
-        blocks[128]!.point.blockHash,
-        before,
-        crossing,
-      );
-      await fixture.growNativeTip();
-      await crossing;
-      expect(runtime.read().currentPoint).toEqual(blocks[129]!.point);
-      await runtime.advanceThrough(blocks[20]!.point);
-      expect(runtime.read().currentPoint).toEqual(blocks[129]!.point);
-      before = (await fixture.readNativeQueries()).length;
       const priorGeneration = runtime.read().generation;
-      const rollback = runtime.handleRollback({
+      await runtime.handleRollback({
         kind: "point",
-        blockHash: last.blockHash,
-        slot: last.slot,
+        blockHash: quietD.point.blockHash,
+        slot: quietD.point.slot,
       });
-      expect(runtime.read().status).toBe("suspended");
-      expect(runtime.read().generation).toBe(priorGeneration + 1);
-      expect(() => assertWatcherUserEventRuntime(runtime!)).toThrow(
-        /suspended/u,
-      );
-      await expect(runtime.advanceThrough(last)).rejects.toThrow();
-      await waitForQuery(fixture, last.blockHash, before, rollback);
-      await fixture.growNativeTip();
-      await rollback;
-      expect(runtime.read().status).toBe("ready");
-      expect(runtime.read().generation).toBe(priorGeneration + 1);
-      expect(() => assertWatcherUserEventRuntime(runtime!)).not.toThrow();
+      expect(runtime.read()).toMatchObject({
+        status: "ready",
+        generation: priorGeneration + 1,
+        currentPoint: quietD.point,
+        headCursor: touchedB.point,
+      });
+      before = (await fixture.readNativeQueries()).length;
+      await runtime.advanceThrough(quietF.point);
+      expect(runtime.read()).toMatchObject({
+        currentPoint: quietF.point,
+        headCursor: touchedB.point,
+      });
+      queries = (await fixture.readNativeQueries()).slice(before);
+      for (const quiet of [quietE, quietF])
+        expect(capturesOf(queries, quiet.point.blockHash)).toHaveLength(0);
+
+      // A restart restores the saved coverage above the sealed head.
       await runtime.close();
-      expect(() => assertWatcherUserEventRuntime(runtime!)).toThrow(
-        /closed|abort/u,
-      );
       const reopened = await createWatcherDurableRuntime(
         context.durable.runtimeInput,
       );
       before = (await fixture.readNativeQueries()).length;
-      const restarting = createWatcherUserEventRuntime({
+      runtime = await createWatcherUserEventRuntime({
         ...context.input,
         runtime: reopened,
       });
-      for (const index of [0, 129]) {
-        await waitForQuery(
-          fixture,
-          blocks[index]!.point.blockHash,
-          before,
-          restarting,
-        );
-        await fixture.growNativeTip();
-        before = (await fixture.readNativeQueries()).length;
-      }
-      runtime = await restarting;
-      expect(runtime.read().currentPoint).toEqual(last);
-      await runtime.advanceThrough(blocks[20]!.point);
-      const successor = await fixture.makeBlock({
-        transactions: [],
-        parent: blocks[129]!,
+      expect(runtime.read()).toMatchObject({
+        status: "ready",
+        currentPoint: quietF.point,
+        headCursor: touchedB.point,
       });
-      before = (await fixture.readNativeQueries()).length;
-      const interrupted = runtime.advanceThrough(successor.point);
-      const interruptedRefusal = expect(interrupted).rejects.toThrow();
-      await waitForQuery(
-        fixture,
-        successor.point.blockHash,
-        before,
-        interrupted,
-      );
-      before = (await fixture.readNativeQueries()).length;
-      const recovering = runtime.handleRollback({
-        kind: "point",
-        blockHash: last.blockHash,
-        slot: last.slot,
+      queries = (await fixture.readNativeQueries()).slice(before);
+      for (const quiet of [quietC, quietD, quietE, quietF])
+        expect(capturesOf(queries, quiet.point.blockHash)).toHaveLength(0);
+      const quietG = await fixture.makeBlock({ transactions: [] });
+      await runtime.advanceThrough(quietG.point);
+      expect(runtime.read()).toMatchObject({
+        currentPoint: quietG.point,
+        headCursor: touchedB.point,
       });
-      await interruptedRefusal;
-      await waitForQuery(fixture, last.blockHash, before, recovering);
-      await fixture.growNativeTip();
-      await recovering;
-      expect(runtime.read().currentPoint).toEqual(last);
-      before = (await fixture.readNativeQueries()).length;
-      const next = runtime.advanceThrough(successor.point);
-      await waitForQuery(fixture, successor.point.blockHash, before, next);
-      await fixture.growNativeTip();
-      await next;
-      expect(runtime.read().currentPoint).toEqual(successor.point);
-      // A real native rollback frame also suspends the service between calls.
-      before = (await fixture.readNativeQueries()).length;
+
+      // A real native rollback frame suspends the service between calls.
       await fixture.rollbackNativeStream({
-        blockHash: successor.point.blockHash,
-        blockNo: successor.point.blockNo,
-        slot: successor.point.slot,
+        blockHash: quietF.point.blockHash,
+        blockNo: quietF.point.blockNo,
+        slot: quietF.point.slot,
       });
       await expect.poll(() => runtime!.read().status).toBe("suspended");
       expect(() => assertWatcherUserEventRuntime(runtime!)).toThrow();
-      const monitoredRecovery = runtime.handleRollback({
+      await runtime.handleRollback({
         kind: "point",
-        blockHash: successor.point.blockHash,
-        slot: successor.point.slot,
+        blockHash: quietF.point.blockHash,
+        slot: quietF.point.slot,
       });
-      await waitForQuery(
-        fixture,
-        successor.point.blockHash,
-        before,
-        monitoredRecovery,
-      );
-      await fixture.growNativeTip();
-      await monitoredRecovery;
-      expect(runtime.read().status).toBe("ready");
-      const fork = { ...blocks[20]!.point, blockHash: h32("aa") };
-      // Supply a geometrically valid point-id on the wrong accepted height.
+      expect(runtime.read()).toMatchObject({
+        status: "ready",
+        currentPoint: quietF.point,
+        headCursor: touchedB.point,
+      });
+
+      // Below the head observation the runtime fails closed to restart
+      // reconciliation, which drops observations above the fork.
+      await expect(
+        runtime.handleRollback({
+          kind: "point",
+          blockHash: quietB.point.blockHash,
+          slot: quietB.point.slot,
+        }),
+      ).rejects.toThrow(/restart reconciliation/u);
+      await runtime.close();
+      runtime = await createWatcherUserEventRuntime({
+        ...context.input,
+        runtime: await createWatcherDurableRuntime(
+          context.durable.runtimeInput,
+        ),
+      });
+      expect(runtime.read()).toMatchObject({
+        status: "ready",
+        currentPoint: quietF.point,
+        headCursor: touchedB.point,
+      });
+
+      // Below the release-final boundary the hash check is unnecessary: a
+      // point there resolves as covered by height alone, with no request.
       const { computeFraudProofRawL1PointId } = await import(
         "@al-ft/midgard-fault-proofs"
       );
+      const deep = { ...quietB.point, blockHash: h32("aa") };
+      deep.pointId = computeFraudProofRawL1PointId(deep);
+      before = (await fixture.readNativeQueries()).length;
+      await runtime.advanceThrough(deep);
+      expect((await fixture.readNativeQueries()).length).toBe(before);
+      expect(runtime.read()).toMatchObject({
+        status: "ready",
+        currentPoint: quietF.point,
+      });
+      // A wrong hash at a height the runtime itself covered is refused
+      // without any request; the caller asked for a point off the canonical
+      // chain, so the runtime fails closed.
+      const quietH = await fixture.makeBlock({ transactions: [] });
+      await runtime.advanceThrough(quietH.point);
+      const fork = { ...quietH.point, blockHash: h32("aa") };
       fork.pointId = computeFraudProofRawL1PointId(fork);
+      before = (await fixture.readNativeQueries()).length;
       await expect(runtime.advanceThrough(fork)).rejects.toThrow(
         /exact accepted block/u,
       );
+      expect((await fixture.readNativeQueries()).length).toBe(before);
+      expect(runtime.read().status).toBe("failed");
       await expect(runtime.done).rejects.toThrow();
+    } finally {
+      await runtime?.close();
+      await context.close();
+    }
+  }, 300_000);
+
+  it("crosses 128 retained observations, rotates the sealed history, and restores it without replay", async () => {
+    const context = await setup();
+    const { fixture } = context;
+    let runtime: Awaited<
+      ReturnType<typeof createWatcherUserEventRuntime>
+    > | null = null;
+    try {
+      runtime = await createWatcherUserEventRuntime(context.input);
+      const blocks = [fixture.emptySuccessorBlock];
+      for (let index = 1; index <= 130; index++)
+        blocks.push(await context.touchedBlock());
+      for (const index of [64, 127, 130]) {
+        await runtime.advanceThrough(blocks[index]!.point);
+        expect(runtime.read()).toMatchObject({
+          currentPoint: blocks[index]!.point,
+          headCursor: blocks[index]!.point,
+        });
+      }
+      await runtime.advanceThrough(blocks[20]!.point);
+      expect(runtime.read().currentPoint).toEqual(blocks[130]!.point);
+      await runtime.close();
+      const reopened = await createWatcherDurableRuntime(
+        context.durable.runtimeInput,
+      );
+      runtime = await createWatcherUserEventRuntime({
+        ...context.input,
+        runtime: reopened,
+      });
+      expect(runtime.read()).toMatchObject({
+        status: "ready",
+        currentPoint: blocks[130]!.point,
+        headCursor: blocks[130]!.point,
+      });
+      const successor = await fixture.makeBlock({ transactions: [] });
+      await runtime.advanceThrough(successor.point);
+      expect(runtime.read()).toMatchObject({
+        currentPoint: successor.point,
+        headCursor: blocks[130]!.point,
+      });
     } finally {
       await runtime?.close();
       await context.close();

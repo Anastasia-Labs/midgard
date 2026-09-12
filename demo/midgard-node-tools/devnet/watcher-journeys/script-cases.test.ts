@@ -230,14 +230,52 @@ it
             });
       expect(artifact.headerHash).toBe(block.headerHash);
     }
-    if (category === "executionNativeScriptInvalid")
+    const recoveryMaterial = async <T>(material: Promise<T>): Promise<T> => {
+      const fresh = await material;
+      const encoded = FP.encodeWorkflowArtifact(fresh);
+      expect(FP.requireWorkflowArtifactMatches(encoded, fresh)).toBe(fresh);
+      return fresh;
+    };
+    if (category === "executionNativeScriptInvalid") {
       expect(
         (await prepareJourneyNativeExecutionEvidence(evidence, predecessor))
           .evidence.contradiction,
       ).toBe(true);
+      if (
+        full.evidence === undefined ||
+        full.historicalNativeScriptCorpus === undefined
+      )
+        throw new Error(
+          "Native recovery fixture omitted authenticated history",
+        );
+      const detections =
+        FP.executionNativeScriptInvalid.detectExecutionNativeScriptInvalidCanonicalViolations(
+          { block: full.evidence, corpus: full.historicalNativeScriptCorpus },
+        );
+      expect(detections).toHaveLength(1);
+      await recoveryMaterial(
+        Promise.resolve({
+          header: full.evidence.header,
+          headerHash: full.evidence.headerHash,
+          detection: detections[0]!,
+          corpus: full.historicalNativeScriptCorpus,
+        }),
+      );
+    }
     if (category === "missingRedeemer") {
       const candidates = await FP.replayMissingRedeemer(evidence);
       expect(candidates).toHaveLength(1);
+      const artifact = await recoveryMaterial(
+        Promise.resolve(candidates[0]!.artifact),
+      );
+      expect(artifact.headerHash).toHaveLength(56);
+      expect(FP.admitMissingRedeemerArtifact(artifact)).toBe(artifact);
+      expect(() =>
+        FP.admitMissingRedeemerArtifact({
+          ...artifact,
+          headerHash: "11".repeat(32),
+        }),
+      ).toThrow("not admitted");
       expect(
         FP.missingRedeemerEvidenceCloses(candidates[0]!.artifact.evidence),
       ).toBe(true);
@@ -245,43 +283,66 @@ it
     if (category === "unusedRedeemer")
       expect(
         FP.unusedRedeemerEvidenceCloses(
-          (await FP.prepareUnusedRedeemerArtifact(evidence)).evidence,
+          (await recoveryMaterial(FP.prepareUnusedRedeemerArtifact(evidence)))
+            .evidence,
         ),
       ).toBe(true);
     if (category === "unusedScriptWitness")
       expect(
         FP.unusedScriptWitnessEvidenceCloses(
-          (await FP.prepareUnusedScriptWitnessArtifact(evidence)).evidence,
+          (
+            await recoveryMaterial(
+              FP.prepareUnusedScriptWitnessArtifact(evidence),
+            )
+          ).evidence,
         ),
       ).toBe(true);
     if (category === "receivePurposeLanguage")
       expect(
         FP.receivePurposeLanguageEvidenceCloses(
-          (await FP.prepareReceivePurposeLanguageArtifact(evidence)).evidence,
+          (
+            await recoveryMaterial(
+              FP.prepareReceivePurposeLanguageArtifact(evidence),
+            )
+          ).evidence,
         ),
       ).toBe(true);
     if (category === "executionSourceScriptDecoding")
       expect(
         FP.executionSourceScriptDecodingEvidenceCloses(
-          (await FP.prepareExecutionSourceScriptDecodingArtifact(evidence))
-            .evidence,
-        ),
-      ).toBe(true);
-    if (category === "missingScriptSource")
-      expect(
-        FP.missingScriptSourceV1.missingScriptSourceEvidenceCloses(
           (
-            await FP.missingScriptSourceV1.prepareMissingScriptSourceArtifact(
-              evidence,
+            await recoveryMaterial(
+              FP.prepareExecutionSourceScriptDecodingArtifact(evidence),
             )
           ).evidence,
         ),
       ).toBe(true);
+    if (category === "missingScriptSource") {
+      const artifact =
+        await FP.missingScriptSourceV1.prepareMissingScriptSourceArtifact(
+          evidence,
+        );
+      expect(
+        FP.missingScriptSourceV1.missingScriptSourceEvidenceCloses(
+          artifact.evidence,
+        ),
+      ).toBe(true);
+      await recoveryMaterial(
+        Promise.resolve(
+          FP.missingScriptSourceV1.missingScriptSourceRecoveryMaterial(
+            artifact,
+          ),
+        ),
+      );
+    }
     if (category === "scriptIntegrityHashMismatch")
       expect(
         FP.scriptIntegrityHashMismatchEvidenceCloses(
-          (await FP.prepareScriptIntegrityHashMismatchArtifact(evidence))
-            .evidence,
+          (
+            await recoveryMaterial(
+              FP.prepareScriptIntegrityHashMismatchArtifact(evidence),
+            )
+          ).evidence,
         ),
       ).toBe(true);
 

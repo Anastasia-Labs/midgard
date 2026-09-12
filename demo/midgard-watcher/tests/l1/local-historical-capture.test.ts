@@ -383,7 +383,13 @@ await import(${JSON.stringify(new URL("../support/native-chain-sync-fixture.mjs"
     close(): void {
       if (this.closed) return;
       this.closed = true;
-      queueMicrotask(() => this.dispatchEvent(new Event("close")));
+      // The source waits for the physical close event before releasing the
+      // session, exactly as a real socket reports it.
+      queueMicrotask(() =>
+        this.dispatchEvent(
+          Object.assign(new Event("close"), { code: 1000, wasClean: true }),
+        ),
+      );
     }
   }
   vi.stubGlobal("WebSocket", BoundarySocket);

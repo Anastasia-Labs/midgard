@@ -93,6 +93,8 @@ export const createPublishedWorkflowDeploymentAccounts =
 export type PublishedWorkflowChain = Readonly<{
   now: () => number;
   awaitSlot: (slots: number) => void | Promise<void>;
+  /** Canonical tip height; absent where finality has no block depth. */
+  blockHeight?: () => Promise<number>;
 }>;
 
 export type PublishedWorkflowDeploymentResume = Readonly<{
@@ -146,6 +148,7 @@ export const submitPublishedInitialization = async ({
   signedCbor: string;
   onPrepared: (signedCbor: string) => void | Promise<void>;
   synchronize: () => Promise<number>;
+  /** Chain wall clock; an emulator supplies its own time, never the host's. */
   now?: () => number;
   waitForRetry?: (milliseconds: number) => Promise<void>;
 }>): Promise<string> => {

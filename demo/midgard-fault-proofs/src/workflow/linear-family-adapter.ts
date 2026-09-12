@@ -11,7 +11,11 @@ import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation.js";
-import type { JournalJsonObject } from "./journal.js";
+import {
+  journalJsonDigest,
+  type JournalJsonObject,
+  normalizeJournalJson,
+} from "./journal.js";
 import type { LinearFamilyCategory } from "./linear-family-spec.js";
 import {
   linearFamilyObservation,
@@ -27,6 +31,7 @@ import {
   FRAUD_PROOF_WORKFLOW_SAFETY,
   type FraudProofFamilyWorkflowAdapter,
 } from "./orchestrator.js";
+import { reconcileSignedWorkflowTransaction } from "./signed-transaction-reconciliation.js";
 import {
   bindWorkflowPreflightTransaction,
   LOCAL_UPLC_EVALUATOR,
@@ -73,8 +78,11 @@ const TX_HASH = /^[0-9a-f]{64}$/u;
 const SCRIPT_HASH = /^[0-9a-f]{56}$/u;
 const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 
+// The orchestrator hands back the journal-normalized (key-sorted) action, so
+// equality must be structural, not byte order.
 const sameJson = (left: unknown, right: unknown): boolean =>
-  JSON.stringify(left) === JSON.stringify(right);
+  journalJsonDigest(normalizeJournalJson(left)) ===
+  journalJsonDigest(normalizeJournalJson(right));
 
 const assertExactCurrentAction = ({
   expected,
@@ -374,7 +382,14 @@ export const createLinearFamilyWorkflowAdapter = <
         prepared.delete(key);
       }
     },
-    reconcile: async ({ identity, action, txHash, durableRecovery }) => {
+    reconcile: async ({
+      identity,
+      action,
+      txHash,
+      durableRecovery,
+      signedTransactionCborHex,
+      authorizeResubmission,
+    }) => {
       if (
         identity.category !== category ||
         identity.target.kind !== "state_queue_header"
@@ -390,23 +405,16 @@ export const createLinearFamilyWorkflowAdapter = <
         };
       }
       let lease = txHash === undefined ? undefined : leaseByTxHash.get(txHash);
-      if (lease === undefined && recovery !== undefined) {
+      const restoreLease = async () => {
+        if (lease !== undefined || recovery === undefined) return;
         if (stateQueueMutationLeaseCoordinator.resume === undefined) {
-          return {
-            kind: "conflict",
-            reason: `${category} mutation-lease coordinator cannot resume durable intent`,
-          };
+          throw new Error(
+            `${category} lease coordinator cannot resume durable intent`,
+          );
         }
-        try {
-          lease = await stateQueueMutationLeaseCoordinator.resume(recovery);
-          if (txHash !== undefined) leaseByTxHash.set(txHash, lease);
-        } catch (cause) {
-          return {
-            kind: "conflict",
-            reason: `${category} durable mutation lease cannot resume: ${String(cause)}`,
-          };
-        }
-      }
+        lease = await stateQueueMutationLeaseCoordinator.resume(recovery);
+        if (txHash !== undefined) leaseByTxHash.set(txHash, lease);
+      };
       const observed = await l1.observe({
         headerHash,
       });
@@ -417,15 +425,48 @@ export const createLinearFamilyWorkflowAdapter = <
         ...(txHash === undefined ? {} : { txHash }),
         provenance: observed.provenance,
         stage: observed.stage,
+        recoverUnconfirmedTransaction:
+          txHash === undefined
+            ? undefined
+            : () =>
+                reconcileSignedWorkflowTransaction({
+                  transactionHash: txHash,
+                  signedTransactionCborHex,
+                  observe: l1.observeSignedTransaction,
+                  rebroadcast: l1.rebroadcastSignedTransaction,
+                  authorizeResubmission:
+                    authorizeResubmission === undefined
+                      ? undefined
+                      : async (signed) => {
+                          await restoreLease();
+                          await lease?.renew();
+                          await authorizeResubmission(signed);
+                        },
+                }),
         transactionConfirmed: async (hash) =>
           await l1.transactionConfirmed({
             headerHash,
             txHash: hash,
           }),
       });
+      // Canonical reconciliation remains possible after a removal has made its
+      // old lease unavailable. A live lease is still required for any replay.
+      try {
+        await restoreLease();
+      } catch (cause) {
+        if (result.kind === "pending" || result.kind === "unknown") {
+          return {
+            kind: "unknown",
+            reason: `${category} durable lease cannot resume: ${String(cause)}`,
+          };
+        }
+      }
       if (result.kind === "confirmed") {
         await lease?.release();
         leaseByTxHash.delete(result.txHash);
+      } else if (result.kind === "not_found") {
+        await lease?.release();
+        if (txHash !== undefined) leaseByTxHash.delete(txHash);
       } else if (result.kind === "conflict") {
         await lease?.fail(result.reason);
         if (txHash !== undefined) leaseByTxHash.delete(txHash);

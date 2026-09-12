@@ -136,7 +136,7 @@ describe("fieldItemWidthIllegal central journal adapter", () => {
     );
   });
 
-  it("abandons an unconfirmed intent only when raw L1 still authenticates its source stage", async () => {
+  it("retains the exact pending intent until expiry is independently authenticated", async () => {
     const memory = store();
     const bridge = adapter(memory.value, async () => false);
     await bridge.begin("submitStep03", "family-evidence", "step03", "proven");
@@ -146,10 +146,24 @@ describe("fieldItemWidthIllegal central journal adapter", () => {
       "step03",
       "proven",
     )({ txHash: "9".repeat(64), referenceScripts: [] } as never);
-    await bridge.reconcile("step03");
-    expect(memory.entries.at(-1)?.event).toEqual(
-      expect.objectContaining({ kind: "reconciled", outcome: "not_found" }),
+    await expect(bridge.reconcile("step03")).rejects.toThrow(
+      "authenticated signed-transaction expiry",
     );
+    expect(memory.entries.at(-1)?.event).toEqual(
+      expect.objectContaining({
+        kind: "reconciled",
+        outcome: "pending",
+        txHash: "9".repeat(64),
+      }),
+    );
+    await expect(
+      adapter(memory.value, async () => false).begin(
+        "submitStep03",
+        "family-evidence",
+        "step03",
+        "proven",
+      ),
+    ).rejects.toThrow("unresolved submission");
   });
 
   it("reconciles an exact submitted transaction after a directory-backed process restart", async () => {

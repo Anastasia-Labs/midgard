@@ -341,6 +341,7 @@ export const reconcileLinearFamilyAction = async ({
   provenance,
   stage,
   transactionConfirmed,
+  recoverUnconfirmedTransaction,
 }: {
   readonly category: LinearFamilyCategory;
   readonly headerHash: string;
@@ -349,6 +350,7 @@ export const reconcileLinearFamilyAction = async ({
   readonly provenance: EvidenceProvenance;
   readonly stage: FraudProofRawL1FamilyStage;
   readonly transactionConfirmed: (txHash: string) => Promise<boolean>;
+  readonly recoverUnconfirmedTransaction?: () => Promise<FraudProofWorkflowReconcileResult>;
 }): Promise<FraudProofWorkflowReconcileResult> => {
   const spec = linearFamilySpec(category);
   const admittedStage = admitLinearFamilyStage({
@@ -393,14 +395,18 @@ export const reconcileLinearFamilyAction = async ({
   // Absence from release-final history does not authorize rebuilding a
   // submitted transaction whose inputs may already be spent at the live tip.
   if (unchanged) {
-    return { kind: "pending", txHash };
+    return !included && recoverUnconfirmedTransaction !== undefined
+      ? recoverUnconfirmedTransaction()
+      : { kind: "pending", txHash };
   }
   if (
     !included &&
     parsed.stage === "remove" &&
     admittedStage.kind === "proof_token"
   ) {
-    return { kind: "pending", txHash };
+    return recoverUnconfirmedTransaction === undefined
+      ? { kind: "pending", txHash }
+      : recoverUnconfirmedTransaction();
   }
   return {
     kind: "conflict",

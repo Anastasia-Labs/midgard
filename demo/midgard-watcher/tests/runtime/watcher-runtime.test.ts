@@ -387,7 +387,7 @@ describe("launcher checkpoint admission with signed unit release fixtures", () =
     expect(boundary.closed).toHaveBeenCalledOnce();
     await expect(
       boundary.opened!.userEventArchive.read(seeded.frame.payloadDigest),
-    ).rejects.toThrow("database is not open");
+    ).rejects.toThrow();
   });
 
   it.each(["missing", "corrupt"] as const)(
@@ -422,16 +422,16 @@ describe("launcher checkpoint admission with signed unit release fixtures", () =
         createWatcherRuntime({ config: seeded.config }),
       ).rejects.toThrow(
         damage === "missing"
-          ? "watcher SQLite required archive record is missing"
+          ? "required archive record is missing"
           : "digest mismatch",
       );
       expect(boundary.forwardedArchive).toBe(boundary.opened?.userEventArchive);
       expect(boundary.admitted).toBeUndefined();
       expect(boundary.acquireL1).not.toHaveBeenCalled();
       expect(boundary.closed).toHaveBeenCalledOnce();
-      await expect(boundary.opened!.backend.read()).rejects.toThrow(
-        "database is not open",
-      );
+      // A valid backend read must fail after closure, independent of Node's
+      // SQLite error wording.
+      await expect(boundary.opened!.backend.read()).rejects.toThrow();
     },
   );
 });
