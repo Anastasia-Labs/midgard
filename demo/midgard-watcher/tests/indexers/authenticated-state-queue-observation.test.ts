@@ -23,6 +23,7 @@ import {
   assertWatcherStateQueueObservation,
   createWatcherStateQueueObservationSource,
   stateQueueProgressRecordDue,
+  unsafeAnchoredHeaderObservationForTest,
   unsafeDeriveFraudProofCorrectionIdentityForTest,
   unsafeDeriveWatcherStateQueueObservationForTest,
   unsafeResolveRetainedWatcherStateQueueHeaderForTest,
@@ -854,6 +855,88 @@ describe("production state-queue observation source", () => {
         readers: restoreReaders,
       }),
     ).rejects.toThrow("CorrectionLock was substituted");
+  });
+
+  it("keeps an observed HeaderV1 anchored at its mint when a later queue transaction re-outputs it", () => {
+    const initial = fixture();
+    const previous = unsafeDeriveWatcherStateQueueObservationForTest({
+      nativeBlock: initial.nativeBlock,
+      localObservation: initial.localObservation,
+      authority: initial.authority,
+      sourceId: "test-source",
+      previous: null,
+      rawTransactions: [initial.raw],
+    });
+    const append = appendFixture({ initial, previous });
+    const minted = unsafeDeriveWatcherStateQueueObservationForTest({
+      nativeBlock: append.nativeBlock,
+      localObservation: append.localObservation,
+      authority: initial.authority,
+      sourceId: "test-source",
+      previous,
+      rawTransactions: [append.raw],
+    }).finalizedHeaders[0]!;
+    const later = {
+      transactionHash: h32("b7"),
+      blockHash: h32("b8"),
+      slot: "1042",
+      blockNo: "103",
+      chainPointId: "later-point",
+    };
+    const reOutput = unsafeAnchoredHeaderObservationForTest({
+      prior: minted,
+      header: {
+        headerHash: minted.headerHash,
+        headerCborHex: minted.headerCborHex,
+        stateQueueNodeCborHex: minted.stateQueueNodeCborHex,
+        linkedListDatumCborHex: minted.linkedListDatumCborHex,
+        daAvailability: { Attested: { da_bond_asset_name: h32("da") } },
+      },
+      queueOutRef: `${later.transactionHash}#1`,
+      nextHeaderHash: h32("c9"),
+      point: later,
+    });
+    expect(reOutput).toEqual({
+      ...minted,
+      queueOutRef: `${later.transactionHash}#1`,
+      nextHeaderHash: h32("c9"),
+      daAvailability: { Attested: { da_bond_asset_name: h32("da") } },
+    });
+    const fresh = unsafeAnchoredHeaderObservationForTest({
+      prior: undefined,
+      header: {
+        headerHash: minted.headerHash,
+        headerCborHex: minted.headerCborHex,
+        stateQueueNodeCborHex: minted.stateQueueNodeCborHex,
+        linkedListDatumCborHex: minted.linkedListDatumCborHex,
+        daAvailability: "Unattested",
+      },
+      queueOutRef: `${later.transactionHash}#1`,
+      nextHeaderHash: null,
+      point: later,
+    });
+    expect(fresh).toMatchObject({
+      observedTransactionHash: later.transactionHash,
+      observedBlockHash: later.blockHash,
+      observedSlot: later.slot,
+      observedBlockNo: later.blockNo,
+      observedChainPointId: later.chainPointId,
+      finalityDepth: "30",
+    });
+    const substituted = unsafeAnchoredHeaderObservationForTest({
+      prior: { ...minted, headerCborHex: `${minted.headerCborHex}00` },
+      header: {
+        headerHash: minted.headerHash,
+        headerCborHex: minted.headerCborHex,
+        stateQueueNodeCborHex: minted.stateQueueNodeCborHex,
+        linkedListDatumCborHex: minted.linkedListDatumCborHex,
+        daAvailability: "Unattested",
+      },
+      queueOutRef: `${later.transactionHash}#1`,
+      nextHeaderHash: null,
+      point: later,
+    });
+    expect(substituted.observedTransactionHash).toBe(later.transactionHash);
   });
 
   it("preserves the exact finalized CommitBlockHeader datum, HeaderV1, and lock provenance", () => {
