@@ -32,6 +32,7 @@ export const startJourneyNativeRecorder = async (input: {
   >();
   let failure: unknown;
   let latestTip: WatcherNativeChainSyncEvent["tip"] | undefined;
+  let latestBlockNo: bigint | undefined;
   const native = await startWatcherNativeChainSync({
     watcherConfig: input.watcherConfig,
     binaryPath: input.binaryPath,
@@ -58,6 +59,7 @@ export const startJourneyNativeRecorder = async (input: {
       }
       const block = admitWatcherNativeRollForwardBlock(event);
       latestTip = event.tip;
+      latestBlockNo = BigInt(block.blockNo);
       await input.onBlock?.(block);
       const point = {
         blockHash: block.blockHash,
@@ -94,12 +96,21 @@ export const startJourneyNativeRecorder = async (input: {
       return { blockNo, blockHash: tip.blockHash, slot: tip.slot };
     },
     transaction: async (txHash: string) => {
-      const deadline = Date.now() + 90_000;
+      // The recorder replays from origin, so a transaction a resumed stage
+      // already submitted is only missing once the replay has reached the tip.
+      let deadline: number | undefined;
       for (;;) {
         assertHealthy();
         const transaction = transactions.get(txHash);
         if (transaction !== undefined) return transaction;
-        if (Date.now() >= deadline)
+        if (
+          latestTip !== undefined &&
+          latestTip.kind !== "origin" &&
+          latestBlockNo !== undefined &&
+          latestBlockNo >= BigInt(latestTip.blockNo)
+        )
+          deadline ??= Date.now() + 90_000;
+        if (deadline !== undefined && Date.now() >= deadline)
           throw new Error(`Native node did not include transaction ${txHash}`);
         await pause(250);
       }
