@@ -19,7 +19,10 @@ import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofWorkflowTerminalVerifier,
 } from "./orchestrator.js";
-import { deriveRetainedStateQueueHeaderObservationFromRawL1 } from "./raw-l1-family-derivation.js";
+import {
+  deriveRetainedStateQueueHeaderObservationFromRawL1,
+  StateQueueHeaderNotLiveError,
+} from "./raw-l1-family-derivation.js";
 import {
   deriveAuthenticatedStateQueueHeaderObservationFromRawL1,
   deriveFraudProofRawL1FamilyStage,
@@ -85,6 +88,33 @@ export interface FraudProofFamilyL1ObservationPort<
     readonly stage: FraudProofRawL1FamilyStage;
   }>;
 }
+
+/**
+ * Header observation for running or resuming a workflow. While the header is
+ * in the state queue this is the live observation; once a proof has removed
+ * it, the same header is observed from its exact authenticated NFT mint so a
+ * workflow that already submitted the removal can resume to its terminal
+ * instead of failing closed on every retry.  Neither observation authorizes
+ * a new proof action: the family stage machine still decides that.
+ */
+export const observeFraudProofWorkflowHeader = async <
+  Category extends FraudProofCatalogueCategoryName,
+>(
+  l1: FraudProofFamilyL1ObservationPort<Category>,
+  input: { readonly headerHash: string },
+): Promise<AuthenticatedStateQueueHeaderObservation> => {
+  try {
+    return await l1.observeHeader(input);
+  } catch (error) {
+    if (
+      !(error instanceof StateQueueHeaderNotLiveError) ||
+      l1.observeRetainedHeader === undefined
+    ) {
+      throw error;
+    }
+    return await l1.observeRetainedHeader(input);
+  }
+};
 
 /**
  * Family-neutral strict admission over exact raw local Kupo/Ogmios bytes.

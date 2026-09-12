@@ -15,7 +15,10 @@ import type {
   CompleteCanonicalReplayContext,
 } from "./complete-replay.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
-import type { FraudProofFamilyL1ObservationPort } from "./family-l1-observation.js";
+import {
+  type FraudProofFamilyL1ObservationPort,
+  observeFraudProofWorkflowHeader,
+} from "./family-l1-observation.js";
 import {
   type FraudProofWorkflowJournalStore,
   journalJsonDigest,
@@ -122,7 +125,7 @@ export const executeManifestBoundFamilyRecovery = async <
     });
   return await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: binding.deploymentFingerprint,
-    observation: await l1.observeHeader({ headerHash }),
+    observation: await observeFraudProofWorkflowHeader(l1, { headerHash }),
     sources,
     replayer,
     replayContext,
