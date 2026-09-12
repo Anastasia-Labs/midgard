@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
@@ -164,6 +164,37 @@ async function stageJourney(
     if (output === undefined) throw new Error(`Missing journey header ${hash}`);
     return output;
   };
+  // A journey that stopped after attesting its fault leaves that header on
+  // the queue until its fraud proof removes it. Name the journey so the
+  // operator reruns it instead of guessing which family owns the tail.
+  const describeQueueTail = async (): Promise<string> => {
+    const outputs = await provider.getUtxosWithUnit(
+      contracts.stateQueue.spendingScriptAddress,
+      toUnit(contracts.stateQueue.policyId, SDK.STATE_QUEUE_ROOT_ASSET_NAME),
+    );
+    const root = outputs[0];
+    if (outputs.length !== 1 || root === undefined) return "";
+    let cursor = await Effect.runPromise(
+      SDK.getLinkedListNodeViewFromUTxO(root),
+    );
+    let tail: string | undefined;
+    for (let hops = 0; cursor.next !== "Empty" && hops < 1_000; hops += 1) {
+      tail = cursor.next.Key.key;
+      cursor = await Effect.runPromise(
+        SDK.getLinkedListNodeViewFromUTxO(await requireHeader(tail)),
+      );
+    }
+    if (tail === undefined) return " (the state queue is empty)";
+    const journeys = join(context.runDirectory, "work/journeys");
+    for (const family of readdirSync(journeys, { withFileTypes: true })) {
+      const staged = join(journeys, family.name, "staged.json");
+      if (!family.isDirectory() || !existsSync(staged)) continue;
+      const checkpoint = await readJourneyArtifact<StagingCheckpoint>(staged);
+      if (checkpoint.current.headerHash === tail)
+        return ` ${tail}: it is the unproven fault header staged by the ${family.name} journey; rerun that journey so its fraud proof removes it`;
+    }
+    return ` ${tail}`;
+  };
   const assertTail = async (block: JourneyBlock) => {
     const output = await requireHeader(block.headerHash);
     const node = await Effect.runPromise(
@@ -178,7 +209,7 @@ async function stageJourney(
         SDK.encodeHeaderCbor(block.header).toString("hex")
     ) {
       throw new Error(
-        "Retained healthy head differs from the actual state queue tail",
+        `Retained healthy head ${block.headerHash} differs from the actual state queue tail${await describeQueueTail()}`,
       );
     }
     return output;
