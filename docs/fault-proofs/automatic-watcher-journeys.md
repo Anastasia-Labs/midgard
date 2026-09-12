@@ -16,10 +16,12 @@ run took 2,896.92 seconds: deployment 19.6s, startup 57.9s, proof/correction
 catch-up; they do not establish the real devnet's performance.
 
 Live status, 2026-09-12: `transitionTrace` completed the full real-devnet
-journey (10,730 seconds end to end, on a revision before the forced-submission
-merge, which invalidated that deployment's manifest). No other family has a
-completed live journey on this harness; the remaining 53 non-interactive
-families are locally verified, blocked on owner rulings, or unrun. A family
+journey twice, most recently in 11,153 seconds end to end on the
+forced-submission-merged code against its 55-family deployment, with three
+harness-driven watcher relaunches during release-final waits. No other family
+has a completed live journey on this harness; the remaining 53 non-interactive
+families are locally verified, running on this harness, blocked on owner
+rulings, or unrun. A family
 that fails mid-journey leaves its attested, unproven header on the state
 queue, and every later family fails until that header is proven or times out.
 
