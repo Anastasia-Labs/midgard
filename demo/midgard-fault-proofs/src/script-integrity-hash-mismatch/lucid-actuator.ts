@@ -11,11 +11,6 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { VAN_ROSSEM_MAX_SIGNED_TX_BYTES } from "../proof-fit/van-rossem-fit-ledger.js";
-import {
-  publishProofChunks,
-  resolvePublishedProofChunks,
-} from "../publish-proof-chunks.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
@@ -25,6 +20,8 @@ import {
   captureCursorRemoval,
   type CursorFamilyActionInput,
 } from "../workflow/cursor-family-runtime.js";
+import type { FraudProofWorkflowAction } from "../workflow/orchestrator.js";
+import { resolveDirectFirstProofChunks } from "../workflow/proof-chunk-prerequisite.js";
 import {
   captureLocallyEvaluatedTransaction,
   type LocallyEvaluatedTransaction,
@@ -77,7 +74,6 @@ export type ScriptIntegrityHashMismatchLucidAction =
     }>;
 export type ScriptIntegrityHashMismatchCapturedLucidAction = Readonly<{
   transaction: LocallyEvaluatedTransaction;
-  prerequisite?: "proof_chunks";
   mutationLease?: Awaited<
     ReturnType<StateQueueMutationLeaseCoordinator["acquire"]>
   >;
@@ -120,9 +116,11 @@ export const createScriptIntegrityHashMismatchLucidActuator = (
     capture: async ({
       action,
       artifact,
+      workflowAction,
     }: {
       action: ScriptIntegrityHashMismatchLucidAction;
       artifact: ScriptIntegrityHashMismatchArtifact;
+      workflowAction?: FraudProofWorkflowAction;
     }): Promise<ScriptIntegrityHashMismatchCapturedLucidAction> => {
       if (artifact.headerHash !== config.binding.definition.headerHash)
         throw new Error(
@@ -169,52 +167,24 @@ export const createScriptIntegrityHashMismatchLucidActuator = (
             txInclusion: inclusion,
             witnessReferenceScripts: config.references.witnesses,
           };
-          try {
-            return await captured(async (preSubmitBoundary) => {
-              await submitScriptIntegrityHashMismatchStep01Accepted({
-                ...acceptedArgs,
-                preSubmitBoundary,
-              });
-            });
-          } catch (cause) {
-            const message =
-              cause instanceof Error ? cause.message : String(cause);
-            const capacity =
-              /Max transaction size of (\d+) exceeded\. Found: (\d+)/u.exec(
-                message,
-              );
-            if (
-              capacity === null ||
-              Number(capacity[1]) !== VAN_ROSSEM_MAX_SIGNED_TX_BYTES ||
-              Number(capacity[2]) <= VAN_ROSSEM_MAX_SIGNED_TX_BYTES
-            )
-              throw cause;
-          }
-          const chunks = await resolvePublishedProofChunks({
-            lucid: config.lucid,
-            address: credentialToAddress(config.binding.network, {
-              type: "Key",
-              hash: config.signer.paymentKeyHash,
-            }),
-            proofCbor: inclusion.txMembershipProofCbor,
-          });
-          if (chunks === undefined) {
-            const publication = await captured(async (preSubmitBoundary) => {
-              await publishProofChunks({
-                lucid: config.lucid,
-                network: config.binding.network,
-                signer: config.signer,
-                proofCbor: inclusion.txMembershipProofCbor,
-                preSubmitBoundary,
-                awaitConfirmation: false,
-              });
-            });
-            return { ...publication, prerequisite: "proof_chunks" };
-          }
-          return await captured(async (preSubmitBoundary) => {
+          // The common prerequisite adapter alone chooses and journals publication.
+          // Standalone capture only attempts the existing direct builder.
+          const chunks =
+            workflowAction === undefined
+              ? []
+              : await resolveDirectFirstProofChunks({
+                  action: workflowAction,
+                  lucid: config.lucid,
+                  address: credentialToAddress(config.binding.network, {
+                    type: "Key",
+                    hash: config.signer.paymentKeyHash,
+                  }),
+                  proofCbor: inclusion.txMembershipProofCbor,
+                });
+          return captured(async (preSubmitBoundary) => {
             await submitScriptIntegrityHashMismatchStep01Accepted({
               ...acceptedArgs,
-              publishedProofChunks: chunks,
+              ...(chunks.length === 0 ? {} : { publishedProofChunks: chunks }),
               preSubmitBoundary,
             });
           });

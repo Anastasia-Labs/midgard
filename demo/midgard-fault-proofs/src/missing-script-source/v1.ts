@@ -1,7 +1,6 @@
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
@@ -18,30 +17,48 @@ import {
   type WorkflowAdapterReadinessInput,
   type WorkflowAdapterRunner,
 } from "../workflow/adapters.js";
+import { MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import {
+  createCursorFamilyWorkflowAdapter,
+  CURSOR_FAMILY_TRANSACTION_PORT,
+} from "../workflow/cursor-family-adapter.js";
+import {
+  cursorFamilyActionInput,
+  cursorStringField,
+} from "../workflow/cursor-family-runtime.js";
+import type { CursorFamilySpec } from "../workflow/cursor-family-state.js";
 import {
   assertManifestBoundWorkflowSigner,
   bindFraudProofWorkflowDeployment,
   type FraudProofWorkflowDeploymentBinding,
+  releaseFinalityAuthorityFromDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
-import { createFraudProofFamilyLocalKupmiosL1ObservationPort } from "../workflow/family-l1-observation.js";
+import {
+  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+} from "../workflow/family-l1-observation.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
-  computeFraudProofWorkflowId,
   DirectoryFraudProofWorkflowJournalStore,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEvent,
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import {
+  createCanonicalFamilyArtifactPort,
+  executeManifestBoundFamilyRecovery,
+} from "../workflow/manifest-bound-family-recovery.js";
+import {
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowRunResult,
+  type FraudProofWorkflowTerminalVerifier,
+} from "../workflow/orchestrator.js";
 import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
-import { submitCapturedTransaction } from "../workflow/transaction-boundary.js";
+import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import {
   type BoundMissingScriptSourceActuatorConfig,
   createMissingScriptSourceActuator,
-  type MissingScriptSourceActuatorAction,
+  type MissingScriptSourceArtifact,
   type MissingScriptSourceWorkflowReferences,
 } from "./actuator.js";
 import { prepareMissingScriptSourceArtifact } from "./authenticated-replay.js";
@@ -56,6 +73,17 @@ import {
   ExecutionSourceStep05DatumSchema,
   ExecutionSourceStep06DatumSchema,
 } from "./schemas.js";
+
+/** Persist the exact Plutus control bytes; capture retains the freshly authenticated Data object. */
+export const missingScriptSourceRecoveryMaterial = (
+  artifact: MissingScriptSourceArtifact,
+) => ({
+  ...artifact,
+  authentication: {
+    ...artifact.authentication,
+    control_data: Data.to(artifact.authentication.control_data),
+  },
+});
 
 export const MISSING_SCRIPT_SOURCE_WORKFLOW =
   "midgard-missing-script-source-production-workflow-v1" as const;
@@ -79,6 +107,20 @@ export const MISSING_SCRIPT_SOURCE_STEP_DATUM_SCHEMAS = Object.freeze([
   ExecutionSourceStep05DatumSchema,
   ExecutionSourceStep06DatumSchema,
 ] as const);
+
+export const MISSING_SCRIPT_SOURCE_CURSOR_SPEC: CursorFamilySpec<"missingScriptSource"> =
+  Object.freeze<CursorFamilySpec<"missingScriptSource">>({
+    category: "missingScriptSource",
+    stepCount: 6,
+    successors: {
+      1: [2],
+      2: [3],
+      3: [4],
+      4: [5],
+      5: [5, 6],
+      6: ["proof_token"],
+    },
+  });
 
 export type MissingScriptSourceRemovalReferences = Readonly<{
   correctionLockSpend: UTxO;
@@ -109,6 +151,9 @@ export type ManifestBoundMissingScriptSourceWorkflowConfig = Readonly<{
 }>;
 
 export type ManifestBoundMissingScriptSourceWorkflow = Readonly<{
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   binding: FraudProofWorkflowDeploymentBinding<never> &
     BoundMissingScriptSourceActuatorConfig["binding"];
   actuator: ReturnType<typeof createMissingScriptSourceActuator>;
@@ -225,6 +270,84 @@ export const createManifestBoundMissingScriptSourceWorkflow = async (
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
   });
+  const actuator = createMissingScriptSourceActuator({
+    binding,
+    lucid: config.lucid,
+    signer: config.signer,
+    contracts,
+    references: { steps, witnesses },
+    stateQueueMutationLeaseCoordinator:
+      config.stateQueueMutationLeaseCoordinator,
+  });
+  const artifacts = createCanonicalFamilyArtifactPort(
+    ({ evidence }) => prepareMissingScriptSourceArtifact(evidence),
+    missingScriptSourceRecoveryMaterial,
+  );
+  const adapter = createCursorFamilyWorkflowAdapter({
+    spec: MISSING_SCRIPT_SOURCE_CURSOR_SPEC,
+    l1,
+    stateQueueMutationLeaseCoordinator:
+      config.stateQueueMutationLeaseCoordinator,
+    transactions: {
+      portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
+      category: "missingScriptSource",
+      prepare: artifacts.prepare,
+      validatePreparedArtifact: artifacts.validatePreparedArtifact,
+      capture: async ({ action, artifact }) => {
+        const input = cursorFamilyActionInput({
+          category: "missingScriptSource",
+          action,
+        });
+        const restored = artifacts.require(artifact);
+        if (input.stage === "init")
+          return actuator.capture({
+            artifact: restored,
+            action: {
+              stage: "init",
+              stateQueueBlockOutRef: cursorStringField(
+                input,
+                "stateQueueBlockOutRef",
+              ),
+            },
+          });
+        if (input.stage === "remove")
+          return actuator.capture({
+            artifact: restored,
+            action: {
+              stage: "remove",
+              nextRemovalOutRef: cursorStringField(input, "nextRemovalOutRef"),
+              fraudProofOutRef: cursorStringField(input, "fraudProofOutRef"),
+            },
+          });
+        const stages = [
+          "step_01",
+          "step_02",
+          "step_03",
+          "scan",
+          "prove",
+          "finalize",
+        ] as const;
+        const stage = stages[Number(input.ordinal) - 1];
+        if (stage === undefined)
+          throw new Error("missingScriptSource cursor ordinal changed");
+        const threadOutRef = cursorStringField(input, "threadOutRef");
+        return actuator.capture({
+          artifact: restored,
+          action:
+            stage === "step_01"
+              ? {
+                  stage,
+                  threadOutRef,
+                  stateQueueBlockOutRef: cursorStringField(
+                    input,
+                    "stateQueueBlockOutRef",
+                  ),
+                }
+              : { stage, threadOutRef },
+        });
+      },
+    },
+  });
   return Object.freeze({
     binding,
     lucid: config.lucid,
@@ -233,90 +356,14 @@ export const createManifestBoundMissingScriptSourceWorkflow = async (
     l1,
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
-    actuator: createMissingScriptSourceActuator({
-      binding,
-      lucid: config.lucid,
-      signer: config.signer,
-      contracts,
-      references: { steps, witnesses },
-      stateQueueMutationLeaseCoordinator:
-        config.stateQueueMutationLeaseCoordinator,
-    }),
+    actuator,
+    adapter,
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
+    releaseFinalityAuthority:
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
   });
 };
 
-const appendEvent = async ({
-  journal,
-  workflowId,
-  identity,
-  event,
-}: {
-  journal: FraudProofWorkflowJournalStore;
-  workflowId: string;
-  identity: FraudProofWorkflowIdentity;
-  event: FraudProofWorkflowJournalEvent;
-}) => {
-  const sequence = (await journal.load(workflowId)).length;
-  await journal.append(
-    {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-      workflowId,
-      identity,
-      sequence,
-      recordedAt: new Date().toISOString(),
-      event,
-    },
-    sequence,
-  );
-};
-
-const currentAction = async (
-  workflow: ManifestBoundMissingScriptSourceWorkflow,
-): Promise<MissingScriptSourceActuatorAction | "removed"> => {
-  const stage = (
-    await workflow.l1.observe({
-      headerHash: workflow.binding.definition.headerHash,
-    })
-  ).stage;
-  if (stage.kind === "not_started")
-    return {
-      stage: "init",
-      stateQueueBlockOutRef: stage.stateQueueBlockOutRef,
-    };
-  if (stage.kind === "proof_token")
-    return {
-      stage: "remove",
-      nextRemovalOutRef: stage.nextRemovalOutRef,
-      fraudProofOutRef: stage.fraudProofOutRef,
-    };
-  if (stage.kind === "removed") return "removed";
-  const actions = [
-    "step_01",
-    "step_02",
-    "step_03",
-    "scan",
-    "prove",
-    "finalize",
-  ] as const;
-  const action = actions[stage.step - 1];
-  if (action === undefined)
-    throw new Error("missingScriptSource observed impossible step");
-  return action === "step_01"
-    ? {
-        stage: action,
-        threadOutRef: stage.threadOutRef,
-        stateQueueBlockOutRef: stage.stateQueueBlockOutRef,
-      }
-    : { stage: action, threadOutRef: stage.threadOutRef };
-};
-
-export type MissingScriptSourceWorkflowRunResult = Readonly<{
-  kind: "pending" | "completed";
-  workflowId: string;
-  txHash?: string;
-}>;
-
-/** One package-owned locally evaluated, intent-journaled action per call. */
 export const executeManifestBoundMissingScriptSourceWorkflow = async ({
   workflow,
   sources,
@@ -325,105 +372,13 @@ export const executeManifestBoundMissingScriptSourceWorkflow = async ({
   workflow: ManifestBoundMissingScriptSourceWorkflow;
   sources: readonly RetainedDaPayloadSource[];
   journal: FraudProofWorkflowJournalStore;
-}): Promise<MissingScriptSourceWorkflowRunResult> => {
-  const headerHash = workflow.binding.definition.headerHash;
-  const evidence = await fetchCanonicalBlockEvidence({
-    observation: await workflow.l1.observeHeader({ headerHash }),
+}): Promise<FraudProofWorkflowRunResult> => {
+  return executeManifestBoundFamilyRecovery({
+    ...workflow,
     sources,
-  });
-  const artifact = await prepareMissingScriptSourceArtifact(evidence);
-  const identity: FraudProofWorkflowIdentity = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    category: "missingScriptSource" as never,
-    target: { kind: "state_queue_header", headerHash },
-    decisionDigest: workflow.decisionDigest,
-  };
-  const workflowId = computeFraudProofWorkflowId(identity);
-  let entries = await journal.load(workflowId);
-  if (entries.length === 0) {
-    await appendEvent({
-      journal,
-      workflowId,
-      identity,
-      event: { kind: "started" },
-    });
-    entries = await journal.load(workflowId);
-  }
-  const pending = [...entries]
-    .reverse()
-    .find(({ event }) => event.kind === "submission_intent");
-  const pendingIntent =
-    pending?.event.kind === "submission_intent" ? pending.event : undefined;
-  if (
-    pendingIntent !== undefined &&
-    !entries.some(
-      ({ event }) =>
-        event.kind === "confirmed" && event.actionId === pendingIntent.actionId,
-    )
-  ) {
-    const intent = pendingIntent;
-    if (
-      !(await workflow.l1.transactionConfirmed({
-        headerHash,
-        txHash: intent.txHash,
-      }))
-    )
-      return { kind: "pending", workflowId, txHash: intent.txHash };
-    await appendEvent({
-      journal,
-      workflowId,
-      identity,
-      event: {
-        kind: "confirmed",
-        actionId: intent.actionId,
-        txHash: intent.txHash,
-      },
-    });
-  }
-  const action = await currentAction(workflow);
-  if (action === "removed") return { kind: "completed", workflowId };
-  const captured = await workflow.actuator.capture({ action, artifact });
-  const actionId = `missingScriptSource:${action.stage}`;
-  const actionInput = {
-    schemaVersion: "midgard-production-cursor-family-action-v1" as const,
-    category: "missingScriptSource",
-    stage: action.stage,
-  };
-  await appendEvent({
     journal,
-    workflowId,
-    identity,
-    event: {
-      kind: "preflight_passed",
-      actionId,
-      txHash: captured.transaction.txHash,
-      localEvaluator: "lucid-evolution-local-uplc-v1",
-      referenceScripts: captured.transaction.referenceScripts,
-    },
+    replayer: MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
   });
-  await appendEvent({
-    journal,
-    workflowId,
-    identity,
-    event: {
-      kind: "submission_intent",
-      actionId,
-      actionInput,
-      attempt: 1,
-      txHash: captured.transaction.txHash,
-    },
-  });
-  const submitted = await submitCapturedTransaction(captured.transaction);
-  if (submitted !== captured.transaction.txHash)
-    throw new Error("missingScriptSource provider substituted transaction");
-  await appendEvent({
-    journal,
-    workflowId,
-    identity,
-    event: { kind: "submitted", actionId, attempt: 1, txHash: submitted },
-  });
-  return { kind: "pending", workflowId, txHash: submitted };
 };
 
 export const runOrResumeManifestBoundMissingScriptSourceWorkflow =

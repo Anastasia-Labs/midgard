@@ -5,12 +5,12 @@ import {
   encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core";
 import {
+  encodeProofThreadForcedSourceKey,
   type ForcedInclusionTxV1,
   type FraudProofCatalogueCategoryName,
   FraudProofComputationThreadStepDatum,
   type Header,
   type OutputReference,
-  OutputReferenceSchema,
   PROOF_THREAD_SOURCE_KIND_ACCEPTED,
   PROOF_THREAD_SOURCE_KIND_FORCED,
   RejectionReasonSchema,
@@ -54,15 +54,35 @@ import {
   type WorkflowAdapterRunner,
 } from "../workflow/adapters.js";
 import {
+  admitCompleteCanonicalReplayHistoricalCorpus,
+  SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
+} from "../workflow/complete-replay.js";
+import {
+  createCursorFamilyWorkflowAdapter,
+  CURSOR_FAMILY_TRANSACTION_PORT,
+  type CursorFamilyTransactionPort,
+} from "../workflow/cursor-family-adapter.js";
+import {
+  captureCursorRemoval,
+  cursorFamilyActionInput,
+  cursorStringField,
+} from "../workflow/cursor-family-runtime.js";
+import { releaseFinalityAuthorityFromDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
+import {
   assertManifestBoundWorkflowSigner,
   bindFraudProofWorkflowDeployment,
   type FraudProofWorkflowDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
+import { createFraudProofFamilyAuthenticatedL1TerminalVerifier } from "../workflow/family-l1-observation.js";
 import {
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
+import {
+  createAuthenticatedFieldCarriagePrerequisitePort,
+  withFieldCarriagePrerequisite,
+} from "../workflow/field-carriage-prerequisite.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
   type HistoricalNativeScriptCheckpointStore,
@@ -74,9 +94,22 @@ import {
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import {
+  createCanonicalFamilyArtifactPort,
+  executeManifestBoundFamilyRecovery,
+} from "../workflow/manifest-bound-family-recovery.js";
 import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
+import {
+  captureLocallyEvaluatedTransaction,
+  workflowTransactionInputOutRefs,
+} from "../workflow/transaction-boundary.js";
 import { createSpendInputSignerMissingCentralJournalAdapter } from "./central-journal.js";
 import type { SpendInputSignerMissingContracts } from "./contracts.js";
+import {
+  planSpendInputSignerInputOpening,
+  planSpendInputSignerWitnessOpening,
+} from "./field-plans.js";
 import {
   SpendInputSignerStep02DatumSchema,
   SpendInputSignerStep03DatumSchema,
@@ -100,6 +133,7 @@ import {
   type SpendInputSignerStage,
   spendInputSignerWorkflowEvidenceIdentity,
 } from "./workflow.js";
+import { SPEND_INPUT_SIGNER_MISSING_CURSOR_SPEC } from "./workflow-spec.js";
 
 export const SPEND_INPUT_SIGNER_MISSING_WORKFLOW =
   "midgard-spend-input-signer-missing-production-workflow-v1" as const;
@@ -400,11 +434,8 @@ export const deriveSpendInputSignerMissingAuthenticatedSource = async ({
   const forced = block.reconstruction.forcedTransactions.find(
     ({ key, value }) =>
       value.tx_id === evidence.subject.transaction_id &&
-      Data.to(key as never, OutputReferenceSchema as never) ===
-        Data.to(
-          evidence.subject.source_key as never,
-          OutputReferenceSchema as never,
-        ),
+      encodeProofThreadForcedSourceKey(key).toString("hex") ===
+        evidence.subject.source_key,
   );
   if (forced === undefined || forced.value.verdict === "ForcedTxValid") {
     throw new Error(
@@ -580,11 +611,13 @@ const createManifestBoundSpendInputSignerMissingSubmission = ({
   observe,
   resolveStage,
   centralJournal,
+  preSubmitBoundary,
   stateQueueMutationLeaseCoordinator,
 }: {
   readonly config: ManifestBoundSpendInputSignerMissingConfig;
   readonly observe: (identity: string) => Promise<SpendInputSignerStage>;
   readonly resolveStage: SpendInputSignerMissingRuntimeLoader["resolveStage"];
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly centralJournal?: ReturnType<
     typeof createSpendInputSignerMissingCentralJournalAdapter
   >;
@@ -644,12 +677,14 @@ const createManifestBoundSpendInputSignerMissingSubmission = ({
         fraudulentBlockOutRef: stage.fraudulentBlockOutRef,
         fraudulentHeaderHash: config.binding.definition.headerHash,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary: centralJournal?.boundary(
-          action,
-          familyIdentity,
-          transition[0],
-          transition[1],
-        ),
+        preSubmitBoundary:
+          preSubmitBoundary ??
+          centralJournal?.boundary(
+            action,
+            familyIdentity,
+            transition[0],
+            transition[1],
+          ),
       });
       return {
         stage: "step01" as const,
@@ -675,12 +710,14 @@ const createManifestBoundSpendInputSignerMissingSubmission = ({
           txInclusion: required(stage.acceptedInclusion, "accepted inclusion"),
           referenceScriptUtxo: config.referenceScripts.step01,
           witnessReferenceScripts: config.referenceScripts.witnesses,
-          preSubmitBoundary: centralJournal?.boundary(
-            action,
-            familyIdentity,
-            transition[0],
-            transition[1],
-          ),
+          preSubmitBoundary:
+            preSubmitBoundary ??
+            centralJournal?.boundary(
+              action,
+              familyIdentity,
+              transition[0],
+              transition[1],
+            ),
         });
         return {
           stage: "step02" as const,
@@ -705,12 +742,14 @@ const createManifestBoundSpendInputSignerMissingSubmission = ({
           direction: required(stage.forcedDirection, "forced direction"),
         },
         referenceScriptUtxo: config.referenceScripts.step01,
-        preSubmitBoundary: centralJournal?.boundary(
-          action,
-          familyIdentity,
-          transition[0],
-          transition[1],
-        ),
+        preSubmitBoundary:
+          preSubmitBoundary ??
+          centralJournal?.boundary(
+            action,
+            familyIdentity,
+            transition[0],
+            transition[1],
+          ),
       });
       return {
         stage: "step02" as const,
@@ -740,18 +779,22 @@ const createManifestBoundSpendInputSignerMissingSubmission = ({
           config.referenceScripts.fieldPreimageCertificateMint,
         membershipReferenceScriptUtxo:
           config.referenceScripts.witnesses.phasMembershipWithdraw,
-        publicationBoundary: centralJournal?.auxiliaryBoundary(
-          "publication",
-          familyIdentity,
-          "step02",
-          auxiliaryHashes,
-        ),
-        certificateBoundary: centralJournal?.auxiliaryBoundary(
-          "certificate",
-          familyIdentity,
-          "step02",
-          auxiliaryHashes,
-        ),
+        publicationBoundary:
+          preSubmitBoundary ??
+          centralJournal?.auxiliaryBoundary(
+            "publication",
+            familyIdentity,
+            "step02",
+            auxiliaryHashes,
+          ),
+        certificateBoundary:
+          preSubmitBoundary ??
+          centralJournal?.auxiliaryBoundary(
+            "certificate",
+            familyIdentity,
+            "step02",
+            auxiliaryHashes,
+          ),
         onCarriageReady:
           centralJournal === undefined
             ? undefined
@@ -760,12 +803,14 @@ const createManifestBoundSpendInputSignerMissingSubmission = ({
                   await centralJournal.confirmAuxiliary(txHash);
               },
         referenceScriptUtxo: config.referenceScripts.step02,
-        preSubmitBoundary: centralJournal?.boundary(
-          action,
-          familyIdentity,
-          transition[0],
-          transition[1],
-        ),
+        preSubmitBoundary:
+          preSubmitBoundary ??
+          centralJournal?.boundary(
+            action,
+            familyIdentity,
+            transition[0],
+            transition[1],
+          ),
       });
       return {
         stage: result.stage,
@@ -793,18 +838,22 @@ const createManifestBoundSpendInputSignerMissingSubmission = ({
         ),
         certificateReferenceScriptUtxo:
           config.referenceScripts.fieldPreimageCertificateMint,
-        publicationBoundary: centralJournal?.auxiliaryBoundary(
-          "publication",
-          familyIdentity,
-          "step03",
-          auxiliaryHashes,
-        ),
-        certificateBoundary: centralJournal?.auxiliaryBoundary(
-          "certificate",
-          familyIdentity,
-          "step03",
-          auxiliaryHashes,
-        ),
+        publicationBoundary:
+          preSubmitBoundary ??
+          centralJournal?.auxiliaryBoundary(
+            "publication",
+            familyIdentity,
+            "step03",
+            auxiliaryHashes,
+          ),
+        certificateBoundary:
+          preSubmitBoundary ??
+          centralJournal?.auxiliaryBoundary(
+            "certificate",
+            familyIdentity,
+            "step03",
+            auxiliaryHashes,
+          ),
         onCarriageReady:
           centralJournal === undefined
             ? undefined
@@ -813,12 +862,14 @@ const createManifestBoundSpendInputSignerMissingSubmission = ({
                   await centralJournal.confirmAuxiliary(txHash);
               },
         referenceScriptUtxo: config.referenceScripts.step03,
-        preSubmitBoundary: centralJournal?.boundary(
-          action,
-          familyIdentity,
-          transition[0],
-          transition[1],
-        ),
+        preSubmitBoundary:
+          preSubmitBoundary ??
+          centralJournal?.boundary(
+            action,
+            familyIdentity,
+            transition[0],
+            transition[1],
+          ),
       });
       return {
         stage: "scanning" as const,
@@ -849,18 +900,22 @@ const createManifestBoundSpendInputSignerMissingSubmission = ({
         ),
         certificateReferenceScriptUtxo:
           config.referenceScripts.fieldPreimageCertificateMint,
-        publicationBoundary: centralJournal?.auxiliaryBoundary(
-          "publication",
-          familyIdentity,
-          "scanning",
-          auxiliaryHashes,
-        ),
-        certificateBoundary: centralJournal?.auxiliaryBoundary(
-          "certificate",
-          familyIdentity,
-          "scanning",
-          auxiliaryHashes,
-        ),
+        publicationBoundary:
+          preSubmitBoundary ??
+          centralJournal?.auxiliaryBoundary(
+            "publication",
+            familyIdentity,
+            "scanning",
+            auxiliaryHashes,
+          ),
+        certificateBoundary:
+          preSubmitBoundary ??
+          centralJournal?.auxiliaryBoundary(
+            "certificate",
+            familyIdentity,
+            "scanning",
+            auxiliaryHashes,
+          ),
         onCarriageReady:
           centralJournal === undefined
             ? undefined
@@ -869,12 +924,14 @@ const createManifestBoundSpendInputSignerMissingSubmission = ({
                   await centralJournal.confirmAuxiliary(txHash);
               },
         referenceScriptUtxo: config.referenceScripts.step04,
-        preSubmitBoundary: centralJournal?.boundary(
-          action,
-          familyIdentity,
-          transition[0],
-          transition[1],
-        ),
+        preSubmitBoundary:
+          preSubmitBoundary ??
+          centralJournal?.boundary(
+            action,
+            familyIdentity,
+            transition[0],
+            transition[1],
+          ),
       });
       return {
         stage: result.stage,
@@ -892,12 +949,14 @@ const createManifestBoundSpendInputSignerMissingSubmission = ({
         evidence,
         referenceScriptUtxo: config.referenceScripts.step05,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary: centralJournal?.boundary(
-          action,
-          familyIdentity,
-          transition[0],
-          transition[1],
-        ),
+        preSubmitBoundary:
+          preSubmitBoundary ??
+          centralJournal?.boundary(
+            action,
+            familyIdentity,
+            transition[0],
+            transition[1],
+          ),
       });
       return {
         stage: "proven" as const,
@@ -925,12 +984,14 @@ const createManifestBoundSpendInputSignerMissingSubmission = ({
       awaitConfirmation: true,
       validFrom: stage.validFrom,
       validTo: stage.validTo,
-      preSubmitBoundary: centralJournal?.boundary(
-        action,
-        familyIdentity,
-        transition[0],
-        transition[1],
-      ),
+      preSubmitBoundary:
+        preSubmitBoundary ??
+        centralJournal?.boundary(
+          action,
+          familyIdentity,
+          transition[0],
+          transition[1],
+        ),
     });
     return {
       stage: "removed" as const,
@@ -1165,6 +1226,210 @@ export const runOrResumeManifestBoundSpendInputSignerMissingWorkflow =
     return await runtime.runOrResume(evidence);
   };
 
+/** Material re-derived from admitted canonical evidence before durable encoding. */
+export const prepareSpendInputSignerMissingRecoveryMaterial = async (
+  canonical: CanonicalBlockEvidence,
+  detectionId: string,
+  corpus: Awaited<ReturnType<typeof resolveHistoricalNativeScriptCorpus>>,
+) => {
+  const priorLedger =
+    await deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus({
+      block: canonical,
+      corpus: corpus,
+    });
+  const findings = detectSpendInputSignerMissingCompleteReplay({
+    block: canonical,
+    priorLedger,
+  });
+  if (findings.length !== 1)
+    throw new Error(
+      "spendInputSignerMissing public replay requires one exact finding",
+    );
+  const evidence = findings[0]!;
+  const source = await deriveSpendInputSignerMissingAuthenticatedSource({
+    block: canonical,
+    evidence,
+  });
+  return {
+    category: "spendInputSignerMissing" as const,
+    headerHash: canonical.headerHash,
+    detectionId,
+    evidence,
+    source,
+  };
+};
+
+export const createSpendInputSignerMissingRecoveryAdapter = (
+  workflow: ManifestBoundSpendInputSignerMissingWorkflow,
+  sources: readonly RetainedDaPayloadSource[],
+) => {
+  const { config, binding, l1, stateQueueMutationLeaseCoordinator } = workflow;
+  const category = "spendInputSignerMissing";
+  let currentHistory:
+    | {
+        evidence: CanonicalBlockEvidence;
+        corpus: Awaited<ReturnType<typeof resolveHistoricalNativeScriptCorpus>>;
+      }
+    | undefined;
+  const resolveReplayContext = async (canonical: CanonicalBlockEvidence) => {
+    const corpus = await resolveHistoricalNativeScriptCorpus({
+      deploymentFingerprint: binding.deploymentFingerprint,
+      checkpointStore: workflow.historicalCheckpointStore,
+      historySource: workflow.historicalSource,
+      currentEvidence: canonical,
+      sources,
+    });
+    currentHistory = { evidence: canonical, corpus };
+    return {
+      historicalCorpus: admitCompleteCanonicalReplayHistoricalCorpus({
+        evidence: canonical,
+        corpus,
+      }),
+    };
+  };
+  const material = createCanonicalFamilyArtifactPort(
+    async ({ evidence: canonical, classification }) => {
+      if (currentHistory?.evidence !== canonical)
+        throw new Error(
+          "spendInputSignerMissing requires its exact admitted historical replay context",
+        );
+      return await prepareSpendInputSignerMissingRecoveryMaterial(
+        canonical,
+        classification.selected.detectionId,
+        currentHistory.corpus,
+      );
+    },
+  );
+  const transactions: CursorFamilyTransactionPort<typeof category> = {
+    portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
+    category,
+    prepare: material.prepare,
+    validatePreparedArtifact: material.validatePreparedArtifact,
+    capture: async ({ action, artifact }) => {
+      const input = cursorFamilyActionInput({ category, action });
+      if (input.stage === "remove")
+        return await captureCursorRemoval({
+          category,
+          lucid: config.lucid,
+          blueprint: binding.blueprint,
+          deploymentInfo: binding.deploymentInfo,
+          network: binding.network,
+          signer: config.signer,
+          headerHash: binding.definition.headerHash,
+          input,
+          stateQueueMutationLeaseCoordinator,
+          fraudProverRewardLovelace: BigInt(
+            binding.releaseEconomics.policy.fraudProverRewardLovelace,
+          ),
+        });
+      const admitted = material.require(artifact);
+      const actions = {
+        init: "submitInit",
+        step_01: "submitStep01",
+        step_02: "submitStep02",
+        step_03: "submitStep03",
+        step_04: "submitScan",
+        step_05: "submitStep05",
+      } as const;
+      const familyAction = actions[input.stage as keyof typeof actions];
+      if (familyAction === undefined)
+        throw new Error(
+          `${category} cursor action is outside its exact topology`,
+        );
+      const transaction = await captureLocallyEvaluatedTransaction(
+        async (preSubmitBoundary) => {
+          const submission =
+            createManifestBoundSpendInputSignerMissingSubmission({
+              config,
+              preSubmitBoundary,
+              observe: async () =>
+                spendInputSignerStageFromL1(
+                  (
+                    await l1.observe({
+                      headerHash: binding.definition.headerHash,
+                    })
+                  ).stage,
+                ),
+              resolveStage: createSpendInputSignerMissingRawL1StageResolver({
+                config,
+                l1,
+                source: admitted.source,
+              }),
+            });
+          await submission.submit(familyAction, admitted.evidence);
+        },
+      );
+      if (
+        input.stage !== "init" &&
+        !workflowTransactionInputOutRefs(transaction.signed).includes(
+          cursorStringField(input, "threadOutRef"),
+        )
+      )
+        throw new Error(
+          `${category} captured transaction changed its authenticated thread input`,
+        );
+      return { transaction };
+    },
+  };
+  const base = createCursorFamilyWorkflowAdapter({
+    spec: SPEND_INPUT_SIGNER_MISSING_CURSOR_SPEC,
+    l1,
+    transactions,
+    stateQueueMutationLeaseCoordinator,
+  });
+  const adapter = withFieldCarriagePrerequisite({
+    category,
+    base,
+    prerequisite: createAuthenticatedFieldCarriagePrerequisitePort({
+      category,
+      lucid: config.lucid,
+      network: binding.network,
+      signer: config.signer,
+      publications: l1.publications,
+      transactionConfirmed: async ({ headerHash, txHash }) =>
+        await l1.transactionConfirmed({ headerHash, txHash }),
+      requirementForAction: ({ action, artifact }) => {
+        if (
+          action.input.stage !== "step_02" &&
+          action.input.stage !== "step_03" &&
+          action.input.stage !== "step_04"
+        )
+          return null;
+        const { evidence, source } = material.require(artifact);
+        const certificate = binding.fieldPreimageCertificate;
+        if (certificate === null)
+          throw new Error(`${category} omitted field certificate authority`);
+        return {
+          planned:
+            action.input.stage === "step_02"
+              ? planSpendInputSignerInputOpening({
+                  evidence,
+                  nativeTxCompactCbor: source.nativeTxCompactCbor,
+                  owner: config.signer.paymentKeyHash,
+                  publish: true,
+                })
+              : planSpendInputSignerWitnessOpening({
+                  evidence,
+                  nativeTxCompactCbor: source.nativeTxCompactCbor,
+                  witnessSetCompactCbor: source.witnessSetCompactCbor,
+                  owner: config.signer.paymentKeyHash,
+                  publish: true,
+                }),
+          compactCbor: source.nativeTxCompactCbor,
+          witnessSetCompactCbor: source.witnessSetCompactCbor,
+          certificate: {
+            policyId: certificate.policyId,
+            mintingScript: certificate.mintingScript,
+            referenceScriptUtxo:
+              config.referenceScripts.fieldPreimageCertificateMint,
+          },
+        };
+      },
+    }),
+  });
+  return { adapter, transactions, resolveReplayContext };
+};
+
 export const executeManifestBoundSpendInputSignerMissingWorkflow = async ({
   workflow,
   sources,
@@ -1173,63 +1438,20 @@ export const executeManifestBoundSpendInputSignerMissingWorkflow = async ({
   readonly workflow: ManifestBoundSpendInputSignerMissingWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<SpendInputSignerStage> => {
-  const headerHash = workflow.binding.definition.headerHash;
-  const canonical = await fetchCanonicalBlockEvidence({
-    observation: await workflow.l1.observeHeader({ headerHash }),
+}) =>
+  await executeManifestBoundFamilyRecovery({
+    ...workflow,
     sources,
+    journal,
+    ...createSpendInputSignerMissingRecoveryAdapter(workflow, sources),
+    replayer: SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(
+      workflow.l1,
+    ),
+    releaseFinalityAuthority: releaseFinalityAuthorityFromDeploymentBinding(
+      workflow.binding,
+    ),
   });
-  const corpus = await resolveHistoricalNativeScriptCorpus({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    checkpointStore: workflow.historicalCheckpointStore,
-    historySource: workflow.historicalSource,
-    currentEvidence: canonical,
-    sources,
-  });
-  const priorLedger =
-    await deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus({
-      block: canonical,
-      corpus,
-    });
-  const findings = detectSpendInputSignerMissingCompleteReplay({
-    block: canonical,
-    priorLedger,
-  });
-  if (findings.length !== 1)
-    throw new Error(
-      `spendInputSignerMissing public replay yielded ${findings.length.toString()} exact findings`,
-    );
-  const evidence = findings[0]!;
-  const source = await deriveSpendInputSignerMissingAuthenticatedSource({
-    block: canonical,
-    evidence,
-  });
-  const centralJournal = createSpendInputSignerMissingCentralJournalAdapter({
-    store: journal,
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    headerHash,
-    decisionDigest: workflow.decisionDigest,
-    transactionConfirmed: async (txHash) =>
-      await workflow.l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  const runtime = createManifestBoundSpendInputSignerMissingRuntime({
-    config: workflow.config,
-    journal: centralJournal.familyJournal,
-    observe: async () =>
-      spendInputSignerStageFromL1(
-        (await workflow.l1.observe({ headerHash })).stage,
-      ),
-    resolveStage: createSpendInputSignerMissingRawL1StageResolver({
-      config: workflow.config,
-      l1: workflow.l1,
-      source,
-    }),
-    centralJournal,
-    stateQueueMutationLeaseCoordinator:
-      workflow.stateQueueMutationLeaseCoordinator,
-  });
-  return await runtime.runOrResume(evidence);
-};
 
 export type LoadedSpendInputSignerMissingWorkflow = Readonly<{
   schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";

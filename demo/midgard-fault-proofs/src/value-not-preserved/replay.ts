@@ -11,6 +11,7 @@ import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-v
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
 import {
   keyValuePhasProof,
   keyValuePhasRootWithCount,
@@ -21,6 +22,10 @@ import {
   buildForcedTransactionLeafMembershipProof,
   buildIndexedTraceProof,
 } from "../transition-trace/witnesses.js";
+import {
+  collectReplayFindings,
+  replayPrerequisiteFailure,
+} from "../workflow/replay-prerequisite.js";
 import {
   VALUE_CONSERVATION_ARTIFACT,
   type ValueConservationArtifact,
@@ -120,8 +125,10 @@ const eventLedger = async (
       );
     ledger = await root();
     if (ledger.root !== step.post_utxos_root)
-      throw new Error(
-        "value conservation: prior committed effect root differs",
+      throw replayPrerequisiteFailure(
+        block.headerHash,
+        step.event_key,
+        "prior_transition_effect",
       );
   }
   return { ledger, outputs };
@@ -172,6 +179,14 @@ export const prepareValueConservationArtifact = async ({
     source.fullTransactionCbor,
   );
   if (transaction.validity !== "TxIsValid") return null;
+  // A mint item outside the field-5 grammar has no conservation meaning;
+  // the direct mint-item proof owns that transaction.
+  if (!forced && transactionHasNonCanonicalMintItem(source.fullTransactionCbor))
+    throw replayPrerequisiteFailure(
+      block.headerHash,
+      eventKey,
+      "representable_field_shape",
+    );
   const event = await buildEventToStepMembershipProof({
     reconstruction: block.reconstruction,
     eventKey,
@@ -291,30 +306,33 @@ export const detectValueConservationFaults = async ({
   readonly block: CanonicalBlockEvidence;
   readonly predecessor?: CanonicalBlockEvidence;
 }) => {
-  const detections = [];
+  const candidates: { forced: boolean; index: number }[] = [];
   for (const forced of [false, true]) {
     const count = forced
       ? block.reconstruction.forcedTransactions.length
       : block.reconstruction.transactions.length;
-    for (let index = 0; index < count; index++) {
+    for (let index = 0; index < count; index++)
+      candidates.push({ forced, index });
+  }
+  return collectReplayFindings(
+    candidates.map(async ({ forced, index }) => {
       const artifact = await prepareValueConservationArtifact({
         block,
         predecessor,
         sourceIndex: index,
         forced,
       });
-      if (artifact === null) continue;
+      if (artifact === null) return null;
       const violationId = forced
         ? VALUE_NOT_PRESERVED_REJECTION_VIOLATION
         : VALUE_NOT_PRESERVED_VIOLATION;
-      detections.push({
+      return {
         detectionId: `${violationId}:${index}`,
         headerHash: block.headerHash,
         violationId,
         position: BigInt((forced ? block.transactions.length : 0) + index),
         diagnostic: `authenticated value conservation contradiction at ${forced ? "forced" : "accepted"} source ${index}`,
-      });
-    }
-  }
-  return detections;
+      };
+    }),
+  );
 };

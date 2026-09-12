@@ -9,6 +9,7 @@ import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { retainedOutputReferenceScript } from "../evidence/retained-ledger-output.js";
+import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
 import { nativeScriptDecodingPriorLedger } from "../native-script-decoding/replay.js";
 import { decodeTransactionMaterial } from "../prepare-double-spend.js";
 import { keyValuePhasProof } from "../transition-trace/phas.js";
@@ -17,6 +18,10 @@ import {
   buildEventToStepMembershipProof,
   buildIndexedTraceProof,
 } from "../transition-trace/witnesses.js";
+import {
+  collectReplayFindingBatches,
+  replayPrerequisiteFailure,
+} from "../workflow/replay-prerequisite.js";
 import { scanMintAuthorization } from "./prover.js";
 
 export type MintAuthorizationCoordinate = Readonly<{
@@ -149,26 +154,29 @@ export const detectMintAuthorizationReplay = async ({
   block: CanonicalBlockEvidence;
   predecessor?: CanonicalBlockEvidence;
 }) => {
-  const findings = [];
-  for (
-    let sourceIndex = 0;
-    sourceIndex < block.reconstruction.transactions.length;
-    sourceIndex++
-  ) {
-    const prepared = await prepareMintAuthorizationReplay({
-      current: block.reconstruction,
-      predecessor: predecessor?.reconstruction,
-      sourceIndex,
-    });
-    for (const item of prepared)
-      findings.push({
+  return collectReplayFindingBatches(
+    block.reconstruction.transactions.map(async (source, sourceIndex) => {
+      // A mint item outside the field-5 grammar has no authorization
+      // meaning; the direct mint-item proof owns that transaction.
+      if (transactionHasNonCanonicalMintItem(source.fullTransactionCbor))
+        throw replayPrerequisiteFailure(
+          block.headerHash,
+          { L2TransactionEventKey: { tx_id: source.txId } },
+          "representable_field_shape",
+        );
+      const prepared = await prepareMintAuthorizationReplay({
+        current: block.reconstruction,
+        predecessor: predecessor?.reconstruction,
+        sourceIndex,
+      });
+      return prepared.map((item) => ({
         detectionId: mintAuthorizationDetectionId(item.coordinate),
         headerHash: block.headerHash,
         violationId: SDK.MINT_AUTHORIZATION_VIOLATION_ID,
         position: BigInt(sourceIndex),
         diagnostic: `accepted transaction ${item.txInclusion.nativeTxId} has unauthorized mint policy ${item.finding.policyIdHex}`,
         prepared: item,
-      });
-  }
-  return findings;
+      }));
+    }),
+  );
 };

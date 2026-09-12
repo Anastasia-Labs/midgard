@@ -368,6 +368,7 @@ export const reconcileCursorFamilyAction = async <
   provenance,
   stage,
   transactionConfirmed,
+  recoverUnconfirmedTransaction,
 }: {
   readonly spec: CursorFamilySpec<Category>;
   readonly headerHash: string;
@@ -376,6 +377,7 @@ export const reconcileCursorFamilyAction = async <
   readonly provenance: EvidenceProvenance;
   readonly stage: FraudProofRawL1FamilyStage;
   readonly transactionConfirmed: (txHash: string) => Promise<boolean>;
+  readonly recoverUnconfirmedTransaction?: () => Promise<FraudProofWorkflowReconcileResult>;
 }): Promise<FraudProofWorkflowReconcileResult> => {
   const spec = validateSpec(inputSpec);
   const admittedStage = admitStage({ spec, headerHash, provenance, stage });
@@ -407,15 +409,20 @@ export const reconcileCursorFamilyAction = async <
   ) {
     return { kind: "confirmed", txHash };
   }
-  // A release-final snapshot cannot establish that a submitted transaction
-  // was rejected or expired. Preserve its intent while the state is unchanged.
-  if (unchanged()) return { kind: "pending", txHash };
+  // Historical absence alone is insufficient. Exact signed-input recovery may
+  // establish canonical expiry or safely replay this same transaction.
+  if (unchanged())
+    return !included && recoverUnconfirmedTransaction !== undefined
+      ? recoverUnconfirmedTransaction()
+      : { kind: "pending", txHash };
   if (
     !included &&
     parsed.stage === "remove" &&
     admittedStage.kind === "proof_token"
   ) {
-    return { kind: "pending", txHash };
+    return recoverUnconfirmedTransaction === undefined
+      ? { kind: "pending", txHash }
+      : recoverUnconfirmedTransaction();
   }
   return {
     kind: "conflict",

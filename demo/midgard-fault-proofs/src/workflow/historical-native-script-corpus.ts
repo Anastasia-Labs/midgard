@@ -1062,7 +1062,7 @@ const fetchHistoricalPayload = async ({
       attempts.some((attempt) => attempt.status !== "not_found")
     ) {
       throw new Error(
-        "public retained-DA history failed without authenticated retention absence",
+        `public retained-DA history failed without authenticated retention absence for header ${headerHash}; sources: ${JSON.stringify(results.map((result) => result.sourceId))}; attempts: ${JSON.stringify(attempts)}`,
       );
     }
   }

@@ -26,6 +26,7 @@ import {
   type LinkedListNodeView,
   type OutputReference,
   outputReferenceFromUTxO,
+  REGISTERED_OPERATOR_NODE_ASSET_NAME_PREFIX,
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
   requireInputIndex,
   requireMintRedeemerIndex,
@@ -379,7 +380,7 @@ type OperatorSlashingLayout = {
   readonly schedulerRedeemerTxInfoIndex?: bigint;
   readonly activeOperatorsLastNodeRefInputIndex?: bigint;
   readonly hubOracleRefInputIndex: bigint;
-  readonly registeredOperatorsRootRefInputIndex?: bigint;
+  readonly registeredOperatorsElementRefInputIndex?: bigint;
 };
 
 const REMOVE_LAYOUT_KEYS = [
@@ -421,7 +422,7 @@ type RemoveTransactionResult = {
   readonly removedOperator: string;
   readonly stateQueueBlockOutRef: string;
   readonly operatorNodeOutRef: string | null;
-  readonly registeredOperatorsRootOutRef: string | null;
+  readonly registeredOperatorsElementOutRef: string | null;
   readonly slashingApproach:
     | "SlashActiveOperator"
     | "SlashRetiredOperator"
@@ -455,7 +456,7 @@ type OperatorSlashingLayoutContext =
       readonly scheduler: UTxO;
       readonly schedulerPlan: SchedulerRemovalPlan;
       readonly hubOracle: UTxO;
-      readonly registeredOperatorsRoot?: UTxO;
+      readonly registeredOperatorsElement?: UTxO;
       readonly activeOperatorsLastNode?: UTxO;
       readonly operatorDirectoryAnchorUnit: string;
       readonly slashedOperatorDirectory: "active";
@@ -574,7 +575,7 @@ export type SubmitRemoveFraudulentBlockResult = {
   readonly activeOperatorNodeOutRef: string | null;
   readonly schedulerOutRef: string;
   readonly hubOracleOutRef: string;
-  readonly registeredOperatorsRootOutRef: string | null;
+  readonly registeredOperatorsElementOutRef: string | null;
   readonly referenceScriptOutRefs: Readonly<
     Record<ReferenceScriptName, string | null>
   >;
@@ -1400,6 +1401,111 @@ const loadOperatorList = async ({
   return entries;
 };
 
+export class RegisteredOperatorActivationRequiredError extends Error {
+  constructor(
+    readonly registeredOperatorOutRef: string,
+    readonly activationTime: bigint,
+  ) {
+    super(
+      `Scheduler rewind requires activation of registered operator ${registeredOperatorOutRef} first (activation time ${activationTime.toString()}).`,
+    );
+    this.name = "RegisteredOperatorActivationRequiredError";
+  }
+}
+
+/** The scheduler requires the final registered element, whose activation is
+ * still after the complete removal interval, or the empty registered root. */
+export const resolveRegisteredOperatorRemovalWitness = async ({
+  utxos,
+  address,
+  policyId,
+  inclusiveValidityUpperBound,
+}: {
+  readonly utxos: readonly UTxO[];
+  readonly address: string;
+  readonly policyId: string;
+  readonly inclusiveValidityUpperBound: bigint;
+}): Promise<UTxO> => {
+  const entries = await Promise.all(
+    utxos
+      .filter(
+        (utxo) =>
+          utxo.address === address &&
+          hasOperatorListToken({
+            utxo,
+            policyId,
+            rootAssetName: REGISTERED_OPERATORS_ROOT_ASSET_NAME,
+            nodeAssetNamePrefix: REGISTERED_OPERATOR_NODE_ASSET_NAME_PREFIX,
+          }),
+      )
+      .map(async (utxo) => ({
+        utxo,
+        view: await Effect.runPromise(getLinkedListNodeViewFromUTxO(utxo)),
+      })),
+  );
+  const roots = entries.filter((entry) => entry.view.key === "Empty");
+  if (
+    roots.length !== 1 ||
+    roots[0]!.utxo.assets[
+      toUnit(policyId, REGISTERED_OPERATORS_ROOT_ASSET_NAME)
+    ] !== 1n
+  ) {
+    throw new Error("Registered operators require exactly one authentic root.");
+  }
+  const nodes = new Map<string, OperatorListEntry>();
+  for (const entry of entries) {
+    const key = nodeKeyValue(entry.view.key);
+    if (key === null) continue;
+    if (
+      !/^(?:[0-9a-f]{2})+$/u.test(key) ||
+      entry.utxo.assets[
+        toUnit(policyId, REGISTERED_OPERATOR_NODE_ASSET_NAME_PREFIX + key)
+      ] !== 1n ||
+      nodes.has(key)
+    ) {
+      throw new Error(
+        "Registered operators contain an invalid or duplicate node identity.",
+      );
+    }
+    nodes.set(key, entry);
+  }
+  let terminal = roots[0]!;
+  let previousActivation: bigint | undefined;
+  const visited = new Set<string>();
+  for (
+    let key = nextKeyValue(terminal.view);
+    key !== null;
+    key = nextKeyValue(terminal.view)
+  ) {
+    const node = nodes.get(key);
+    if (node === undefined || visited.has(key)) {
+      throw new Error("Registered operators contain a missing node or cycle.");
+    }
+    const activation = BigInt(`0x${key}`);
+    if (previousActivation !== undefined && activation >= previousActivation) {
+      throw new Error(
+        "Registered operators are not ordered by descending activation time.",
+      );
+    }
+    visited.add(key);
+    previousActivation = activation;
+    terminal = node;
+  }
+  if (visited.size !== nodes.size) {
+    throw new Error("Registered operators contain unreachable nodes.");
+  }
+  if (
+    previousActivation !== undefined &&
+    previousActivation <= inclusiveValidityUpperBound
+  ) {
+    throw new RegisteredOperatorActivationRequiredError(
+      outRefLabel(terminal.utxo),
+      previousActivation,
+    );
+  }
+  return terminal.utxo;
+};
+
 const resolveOperatorRemovalPlan = ({
   entries,
   operator,
@@ -1551,8 +1657,10 @@ const resolveSchedulerRemovalPlan = ({
 type SlashingTxPlan = {
   readonly approach: RemoveTransactionResult["slashingApproach"];
   readonly removedOperatorNodeOutRef: string | null;
-  readonly registeredOperatorsRootOutRef: string | null;
-  readonly buildSlashing: (txValidTo: bigint) => RemoveFraudulentBlockSlashing;
+  readonly registeredOperatorsElementOutRef: string | null;
+  readonly buildSlashing: (
+    schedulerStartTime: bigint,
+  ) => RemoveFraudulentBlockSlashing;
   readonly additionalRefInputs: readonly UTxO[];
 };
 
@@ -1711,8 +1819,8 @@ const makeSchedulerSpendRedeemerFromPlan =
                   layout.activeOperatorsLastNodeRefInputIndex ?? null,
                 removal_reason: "OperatorSlashing",
                 registered_element_ref_input_index: requireLayoutIndex(
-                  layout.registeredOperatorsRootRefInputIndex,
-                  "registeredOperatorsRootRefInputIndex",
+                  layout.registeredOperatorsElementRefInputIndex,
+                  "registeredOperatorsElementRefInputIndex",
                 ),
               },
             },
@@ -1844,7 +1952,7 @@ const buildActiveSlashingInputs = ({
   operator,
   contracts,
   hubOracleUtxo,
-  registeredOperatorsRootUtxo,
+  registeredOperatorsElementUtxo,
   fraudProverReward,
 }: {
   readonly plan: Extract<
@@ -1854,28 +1962,28 @@ const buildActiveSlashingInputs = ({
   readonly operator: string;
   readonly contracts: RemoveFraudulentBlockContracts;
   readonly hubOracleUtxo: UTxO;
-  readonly registeredOperatorsRootUtxo?: UTxO;
+  readonly registeredOperatorsElementUtxo?: UTxO;
   readonly fraudProverReward?: FraudProverRewardPlan;
 }): SlashingTxPlan => {
   const schedulerUnit = toUnit(
     contracts.schedulerPolicyId,
     SCHEDULER_ASSET_NAME,
   );
-  const registeredOperatorsRoot =
+  const registeredOperatorsElement =
     plan.schedulerPlan.kind === "rewind"
       ? requireLayoutUtxo(
-          registeredOperatorsRootUtxo,
-          "registered-operators root",
+          registeredOperatorsElementUtxo,
+          "registered-operators terminal element",
         )
       : undefined;
   return {
     approach: "SlashActiveOperator",
     removedOperatorNodeOutRef: outRefLabel(plan.removalPlan.node.utxo),
-    registeredOperatorsRootOutRef:
-      registeredOperatorsRoot === undefined
+    registeredOperatorsElementOutRef:
+      registeredOperatorsElement === undefined
         ? null
-        : outRefLabel(registeredOperatorsRoot),
-    buildSlashing: (txValidTo) => {
+        : outRefLabel(registeredOperatorsElement),
+    buildSlashing: (schedulerStartTime) => {
       const activeLayoutContext: OperatorSlashingLayoutContext = {
         operatorDirectoryAnchor: plan.removalPlan.anchor.utxo,
         operatorDirectoryNode: plan.removalPlan.node.utxo,
@@ -1886,9 +1994,9 @@ const buildActiveSlashingInputs = ({
         operatorDirectoryAnchorUnit: plan.anchorUnit,
         slashedOperatorDirectory: "active",
         schedulerUnit,
-        ...(registeredOperatorsRoot === undefined
+        ...(registeredOperatorsElement === undefined
           ? {}
-          : { registeredOperatorsRoot }),
+          : { registeredOperatorsElement }),
         contracts,
       };
       const schedulerSpend =
@@ -1919,7 +2027,7 @@ const buildActiveSlashingInputs = ({
                         {
                           ActiveOperator: {
                             operator: plan.schedulerPlan.newOperator,
-                            start_time: txValidTo,
+                            start_time: schedulerStartTime,
                           },
                         },
                         SchedulerDatum,
@@ -1970,9 +2078,9 @@ const buildActiveSlashingInputs = ({
     additionalRefInputs: [
       hubOracleUtxo,
       ...(plan.schedulerPlan.kind === "inactive" ? [plan.schedulerUtxo] : []),
-      ...(registeredOperatorsRoot === undefined
+      ...(registeredOperatorsElement === undefined
         ? []
-        : [registeredOperatorsRoot]),
+        : [registeredOperatorsElement]),
       ...(plan.activeOperatorsLastNode === undefined
         ? []
         : [plan.activeOperatorsLastNode]),
@@ -1998,7 +2106,7 @@ const buildRetiredSlashingInputs = ({
 }): SlashingTxPlan => ({
   approach: "SlashRetiredOperator",
   removedOperatorNodeOutRef: outRefLabel(plan.removalPlan.node.utxo),
-  registeredOperatorsRootOutRef: null,
+  registeredOperatorsElementOutRef: null,
   buildSlashing: () => {
     const retiredLayoutContext: OperatorSlashingLayoutContext = {
       operatorDirectoryAnchor: plan.removalPlan.anchor.utxo,
@@ -2057,7 +2165,7 @@ const buildAlreadySlashedInputs = ({
 }): SlashingTxPlan => ({
   approach: "OperatorAlreadySlashed",
   removedOperatorNodeOutRef: null,
-  registeredOperatorsRootOutRef: null,
+  registeredOperatorsElementOutRef: null,
   buildSlashing: () => ({
     kind: "operatorAlreadySlashed",
     activeOperatorsElementRefInput: plan.activeWitness.utxo,
@@ -2071,14 +2179,14 @@ const buildSlashingInputs = ({
   operator,
   contracts,
   hubOracleUtxo,
-  registeredOperatorsRootUtxo,
+  registeredOperatorsElementUtxo,
   fraudProverReward,
 }: {
   readonly plan: OperatorSlashingPlan;
   readonly operator: string;
   readonly contracts: RemoveFraudulentBlockContracts;
   readonly hubOracleUtxo: UTxO;
-  readonly registeredOperatorsRootUtxo?: UTxO;
+  readonly registeredOperatorsElementUtxo?: UTxO;
   /**
    * D3 reward routing. Only the bond-consuming approaches can carry it;
    * `OperatorAlreadySlashed` consumes no bond and pays no reward, which is the
@@ -2093,7 +2201,7 @@ const buildSlashingInputs = ({
         operator,
         contracts,
         hubOracleUtxo,
-        registeredOperatorsRootUtxo,
+        registeredOperatorsElementUtxo,
         ...(fraudProverReward === undefined ? {} : { fraudProverReward }),
       });
     case "SlashRetiredOperator":
@@ -2170,7 +2278,7 @@ const deriveOperatorSlashingLayoutFromRedeemerContext = ({
   const {
     scheduler,
     schedulerPlan,
-    registeredOperatorsRoot,
+    registeredOperatorsElement,
     activeOperatorsLastNode,
     schedulerUnit,
   } = layoutContext;
@@ -2213,13 +2321,13 @@ const deriveOperatorSlashingLayoutFromRedeemerContext = ({
         }),
     ...(schedulerPlan.kind === "rewind"
       ? {
-          registeredOperatorsRootRefInputIndex: requireReferenceInputIndex(
+          registeredOperatorsElementRefInputIndex: requireReferenceInputIndex(
             ctx,
             requireLayoutUtxo(
-              registeredOperatorsRoot,
-              "registered-operators root",
+              registeredOperatorsElement,
+              "registered-operators terminal element",
             ),
-            "registered-operators root reference input",
+            "registered-operators terminal element reference input",
           ),
         }
       : {}),
@@ -2662,16 +2770,6 @@ export const submitRemoveFraudulentBlock = async ({
       txValidTo: validTo ?? now + STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS,
     };
   };
-  const loadRegisteredOperatorsRootUtxo = () =>
-    requireSingletonUtxo({
-      lucid,
-      address: contracts.registeredOperatorsAddress,
-      unit: toUnit(
-        contracts.registeredOperatorsPolicyId,
-        REGISTERED_OPERATORS_ROOT_ASSET_NAME,
-      ),
-      label: "registered-operators root",
-    });
 
   const submitRemovalTransaction = async ({
     kind,
@@ -2712,24 +2810,37 @@ export const submitRemoveFraudulentBlock = async ({
             deploymentEconomics,
             operatorSlashingPlan.removalPlan.node.utxo.assets.lovelace ?? 0n,
           );
-    const registeredOperatorsRootForSlashing =
+    const { txValidFrom, txValidTo } = txValidityWindow();
+    // The scheduler compares the new shift against the ledger's inclusive
+    // upper bound, after Lucid converts validTo to an exclusive slot bound.
+    const schedulerStartTime =
+      BigInt(lucid.slotToUnixTime(lucid.unixTimeToSlot(Number(txValidTo)))) -
+      1n;
+    const registeredOperatorsElementForSlashing =
       operatorSlashingPlan.approach === "SlashActiveOperator" &&
       operatorSlashingPlan.schedulerPlan.kind === "rewind"
-        ? await loadRegisteredOperatorsRootUtxo()
+        ? await resolveRegisteredOperatorRemovalWitness({
+            utxos: await lucid.utxosAt(contracts.registeredOperatorsAddress),
+            address: contracts.registeredOperatorsAddress,
+            policyId: contracts.registeredOperatorsPolicyId,
+            inclusiveValidityUpperBound: schedulerStartTime,
+          })
         : undefined;
     const slashingPlan = buildSlashingInputs({
       plan: operatorSlashingPlan,
       operator: fraudulentOperator,
       contracts,
       hubOracleUtxo,
-      ...(registeredOperatorsRootForSlashing === undefined
+      ...(registeredOperatorsElementForSlashing === undefined
         ? {}
-        : { registeredOperatorsRootUtxo: registeredOperatorsRootForSlashing }),
+        : {
+            registeredOperatorsElementUtxo:
+              registeredOperatorsElementForSlashing,
+          }),
       ...(fraudProverRewardPlan === undefined
         ? {}
         : { fraudProverReward: fraudProverRewardPlan }),
     });
-    const { txValidFrom, txValidTo } = txValidityWindow();
     // A legal operator bond tranche is exactly reward + slash fee.  Do not
     // add a wallet fee input to that branch: its change would be an unrelated
     // second payment to the prover whenever the submitter uses the prover's
@@ -2739,7 +2850,7 @@ export const submitRemoveFraudulentBlock = async ({
       slashEconomics === null
         ? [selectFeeInput(await lucid.wallet().getUtxos())]
         : [];
-    const slashing = slashingPlan.buildSlashing(txValidTo);
+    const slashing = slashingPlan.buildSlashing(schedulerStartTime);
     if (slashEconomics !== null) {
       if (slashing.kind === "operatorAlreadySlashed") {
         throw new Error(
@@ -2995,7 +3106,8 @@ export const submitRemoveFraudulentBlock = async ({
       removedOperator: fraudulentOperator,
       stateQueueBlockOutRef: outRefLabel(removed.utxo),
       operatorNodeOutRef: slashingPlan.removedOperatorNodeOutRef,
-      registeredOperatorsRootOutRef: slashingPlan.registeredOperatorsRootOutRef,
+      registeredOperatorsElementOutRef:
+        slashingPlan.registeredOperatorsElementOutRef,
       slashingApproach: slashingPlan.approach,
       layout: layoutToJson(txLayout),
     };
@@ -3071,9 +3183,9 @@ export const submitRemoveFraudulentBlock = async ({
           : null,
       schedulerOutRef: outRefLabel(schedulerUtxo),
       hubOracleOutRef: outRefLabel(hubOracleUtxo),
-      registeredOperatorsRootOutRef:
-        transactions.find((tx) => tx.registeredOperatorsRootOutRef !== null)
-          ?.registeredOperatorsRootOutRef ?? null,
+      registeredOperatorsElementOutRef:
+        transactions.find((tx) => tx.registeredOperatorsElementOutRef !== null)
+          ?.registeredOperatorsElementOutRef ?? null,
       referenceScriptOutRefs: referenceScriptOutRefs(referenceScripts),
       transactions,
       layout: finalTransaction.layout,

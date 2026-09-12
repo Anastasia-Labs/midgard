@@ -39,6 +39,7 @@ export const createTransitionTraceLedgerReplay = async ({
     );
   return Object.freeze({
     root,
+    has: (key: Buffer): boolean => values.has(key.toString("hex")),
     async delete(key: Buffer): Promise<SDK.LedgerDeleteWitness> {
       decodeMidgardSpendInputItem(key);
       const value = values.get(key.toString("hex"));

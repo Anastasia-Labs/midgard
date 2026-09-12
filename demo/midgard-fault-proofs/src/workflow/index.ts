@@ -1,5 +1,9 @@
 export * from "./actuation-permit.js";
 export * from "./adapters.js";
+export {
+  encodeWorkflowArtifact,
+  requireWorkflowArtifactMatches,
+} from "./artifact-codec.js";
 export * from "./authenticated-replay-artifact.js";
 export * from "./canonical-decodability.js";
 export * from "./catalogue-replay.js";

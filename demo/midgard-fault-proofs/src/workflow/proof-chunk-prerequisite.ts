@@ -1079,9 +1079,17 @@ export const withProofChunkPrerequisite = <
     category,
     safety: FRAUD_PROOF_WORKFLOW_SAFETY,
     prepare: async (input) => await base.prepare(input),
+    ...(base.validatePreparedArtifact === undefined
+      ? {}
+      : { validatePreparedArtifact: base.validatePreparedArtifact }),
+    ...(base.prepareRaw === undefined ? {} : { prepareRaw: base.prepareRaw }),
+    ...(base.validatePreparedRawArtifact === undefined
+      ? {}
+      : { validatePreparedRawArtifact: base.validatePreparedRawArtifact }),
     observe: async (context) => {
       const observed = await base.observe(context);
       if (
+        context.reconciliationOnly === true ||
         observed.kind !== "action_required" ||
         context.identity.target.kind !== "state_queue_header"
       ) {

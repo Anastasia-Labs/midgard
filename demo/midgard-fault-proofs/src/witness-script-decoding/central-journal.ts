@@ -1,10 +1,10 @@
 import { assertWorkflowJournalActuation } from "../workflow/actuation-permit.js";
 import {
-  abandonWorkflowFundingReservationTransaction,
   assertWorkflowFundingReservationReadyToSubmit,
   beginWorkflowFundingReservationAction,
   confirmWorkflowFundingReservationTransaction,
   conflictWorkflowFundingReservationTransaction,
+  createWorkflowFundingSubmissionHandoff,
   prepareWorkflowFundingReservationTransaction,
 } from "../workflow/funding-reservation-permit.js";
 import {
@@ -277,6 +277,12 @@ export const createWitnessScriptDecodingCentralJournalAdapter = ({
         journal: store,
         action,
         preflight,
+        handoff: createWorkflowFundingSubmissionHandoff({
+          entries: await entries(),
+          action,
+          preflight,
+          attempt: attempt,
+        }),
       });
       await appendEvent({
         kind: "preflight_passed",
@@ -327,16 +333,17 @@ export const createWitnessScriptDecodingCentralJournalAdapter = ({
       return;
     }
     if (!confirmed && observedStage === recovery.sourceStage) {
-      await abandonWorkflowFundingReservationTransaction({
-        journal: store,
-        transactionHash: intent.event.txHash,
-      });
+      // A negative confirmation lookup and unchanged stage do not prove
+      // signed validity expiry. Keep the exact intent and its funding reserved.
       await appendEvent({
         kind: "reconciled",
         actionId: intent.event.actionId,
-        outcome: "not_found",
+        outcome: "pending",
+        txHash: intent.event.txHash,
       });
-      return;
+      throw new Error(
+        "unresolved transaction requires authenticated signed-transaction expiry before replacement",
+      );
     }
     await conflictWorkflowFundingReservationTransaction({
       journal: store,
@@ -404,6 +411,12 @@ export const createWitnessScriptDecodingCentralJournalAdapter = ({
         journal: store,
         action,
         preflight,
+        handoff: createWorkflowFundingSubmissionHandoff({
+          entries: await entries(),
+          action,
+          preflight,
+          attempt: 1,
+        }),
       });
       await appendEvent({
         kind: "preflight_passed",

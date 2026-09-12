@@ -1,8 +1,13 @@
-import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import { decodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
+import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { resolvePublishedProofChunks } from "../publish-proof-chunks.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import {
+  nativeTxFromCoreCompact,
+  parseSubmitStep01TxInclusion,
+} from "../submit-step-01.js";
 import {
   DaLibp2pRetainedDaSource,
   type RetainedDaPayloadSource,
@@ -11,38 +16,58 @@ import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scr
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
+  workflowActuationDecisionDigest,
+  workflowJournalIsReconciliationOnly,
 } from "../workflow/actuation-permit.js";
 import {
   WORKFLOW_ADAPTER_RUNNER,
   type WorkflowAdapterReadinessInput,
   type WorkflowAdapterRunner,
 } from "../workflow/adapters.js";
+import { DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import {
+  createCursorFamilyWorkflowAdapter,
+  CURSOR_FAMILY_TRANSACTION_PORT,
+} from "../workflow/cursor-family-adapter.js";
+import { cursorStringField } from "../workflow/cursor-family-runtime.js";
 import {
   assertManifestBoundWorkflowSigner,
   bindFraudProofWorkflowDeployment,
   type FraudProofWorkflowDeploymentBinding,
+  releaseFinalityAuthorityFromDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
 import {
+  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
-import { journalJsonDigest } from "../workflow/journal.js";
+import type { JournalJsonObject } from "../workflow/journal.js";
 import {
-  computeFraudProofWorkflowId,
   DirectoryFraudProofWorkflowJournalStore,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEvent,
   type FraudProofWorkflowJournalStore,
+  journalJsonDigest,
+  normalizeJournalJson,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import {
+  createFraudProofWorkflowRegistry,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowRunResult,
+  type FraudProofWorkflowTerminalVerifier,
+  resumeRecordedFraudProofWorkflow,
+  runFraudProofWorkflowFromRetainedDa,
+} from "../workflow/orchestrator.js";
 import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
-import { submitCapturedTransaction } from "../workflow/transaction-boundary.js";
+import {
+  createAuthenticatedProofChunkPrerequisitePort,
+  withProofChunkPrerequisite,
+} from "../workflow/proof-chunk-prerequisite.js";
+import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import {
   createDistinctAssetAccumulationActuator,
+  type DistinctAssetAccumulationActuationArtifact,
   type DistinctAssetAccumulationActuatorAction,
   type DistinctAssetAccumulationWorkflowReferences,
 } from "./actuator.js";
@@ -54,15 +79,19 @@ import {
 import {
   DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
   DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID,
+  type DistinctAssetAccumulationEvidence,
+  prepareDistinctAssetAccumulationEvidence,
 } from "./family.js";
+import { distinctAssetPreparedJournalArtifact } from "./proof-carriage.js";
 import {
-  captureDistinctAssetActionWithProofCarriage,
-  createDistinctAssetProofPrerequisite,
-  distinctAssetPreparedJournalArtifact,
-  distinctAssetProofPublicationRecovery,
-  requireDistinctAssetPreparedArtifact,
-} from "./proof-carriage.js";
-import { DISTINCT_ASSET_ACCUMULATION_STEP_DATUM_SCHEMAS } from "./schemas.js";
+  DISTINCT_ASSET_ACCUMULATION_STEP_DATUM_SCHEMAS,
+  DistinctAssetStep01RedeemerSchema,
+  DistinctAssetStep02RedeemerSchema,
+  DistinctAssetStep03RedeemerSchema,
+  DistinctAssetStep04RedeemerSchema,
+  DistinctAssetStep05RedeemerSchema,
+  DistinctAssetVerdictSubjectSchema,
+} from "./schemas.js";
 
 export const DISTINCT_ASSET_ACCUMULATION_WORKFLOW =
   "midgard-distinct-asset-accumulation-production-workflow-v1" as const;
@@ -116,6 +145,9 @@ export type ManifestBoundDistinctAssetAccumulationWorkflow = Readonly<{
   decisionDigest: string;
   l1: FraudProofFamilyL1ObservationPort<"distinctAssetAccumulationLimit">;
   actuator: ReturnType<typeof createDistinctAssetAccumulationActuator>;
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
 
 const manifestContracts = Object.freeze({
@@ -239,92 +271,275 @@ export const createManifestBoundDistinctAssetAccumulationWorkflow = async (
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
   });
+  const actuator = createDistinctAssetAccumulationActuator({
+    lucid: config.lucid,
+    blueprint: binding.blueprint,
+    deploymentInfo: binding.deploymentInfo,
+    network: binding.network,
+    signer: config.signer,
+    categoryId: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID,
+    contracts,
+    references: { steps, witnesses },
+    stateQueueMutationLeaseCoordinator:
+      config.stateQueueMutationLeaseCoordinator,
+    fraudProofSpendingScriptHash:
+      binding.resolvedContracts.contracts.fraudProof.spendingScriptHash,
+    fraudProverRewardLovelace: BigInt(
+      binding.releaseEconomics.policy.fraudProverRewardLovelace,
+    ),
+  });
+  const adapter = withProofChunkPrerequisite({
+    category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
+    prerequisite: createAuthenticatedProofChunkPrerequisitePort({
+      category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
+      lucid: config.lucid,
+      network: binding.network,
+      signer: config.signer,
+      publications: l1.publications,
+      maximumTransactionBytes: binding.cardanoProtocolParameters.maxTxSize,
+      transactionConfirmed: async ({ headerHash, txHash }) =>
+        await l1.transactionConfirmed({ headerHash, txHash }),
+      proofCborForAction: ({ action, artifact }) =>
+        action.input.stage === "step_01"
+          ? (admitDistinctAssetWorkflowArtifact(artifact).accepted?.txInclusion
+              .txMembershipProofCbor ?? null)
+          : null,
+    }),
+    base: createCursorFamilyWorkflowAdapter({
+      spec: {
+        category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
+        stepCount: 6,
+        successors: {
+          1: [2],
+          2: [3],
+          3: [4],
+          4: [5],
+          5: [6],
+          6: ["proof_token"],
+        },
+      },
+      l1,
+      stateQueueMutationLeaseCoordinator:
+        config.stateQueueMutationLeaseCoordinator,
+      transactions: {
+        portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
+        category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
+        validatePreparedArtifact: async ({ evidence, artifact }) => {
+          if (
+            journalJsonDigest(
+              distinctAssetWorkflowArtifact(
+                await prepareDistinctAssetAccumulationArtifact(evidence),
+              ),
+            ) !== journalJsonDigest(artifact)
+          )
+            throw new Error(
+              "prepared family artifact differs from retained evidence",
+            );
+        },
+        prepare: async ({ evidence }) =>
+          distinctAssetWorkflowArtifact(
+            await prepareDistinctAssetAccumulationArtifact(evidence),
+          ),
+        capture: async ({ action, artifact: serialized }) => {
+          const artifact = admitDistinctAssetWorkflowArtifact(serialized);
+          const input = action.input;
+          let selected: DistinctAssetAccumulationActuatorAction;
+          if (input.stage === "init")
+            selected = {
+              stage: "init",
+              stateQueueBlockOutRef: cursorStringField(
+                input,
+                "stateQueueBlockOutRef",
+              ),
+            };
+          else if (input.stage === "remove")
+            selected = {
+              stage: "remove",
+              nextRemovalOutRef: cursorStringField(input, "nextRemovalOutRef"),
+              fraudProofOutRef: cursorStringField(input, "fraudProofOutRef"),
+            };
+          else if (input.ordinal === 1)
+            selected = {
+              stage: "step01",
+              threadOutRef: cursorStringField(input, "threadOutRef"),
+              stateQueueBlockOutRef: cursorStringField(
+                input,
+                "stateQueueBlockOutRef",
+              ),
+            };
+          else if (input.ordinal === 2)
+            selected = {
+              stage: "step02",
+              threadOutRef: cursorStringField(input, "threadOutRef"),
+            };
+          else if (input.ordinal === 6)
+            selected = {
+              stage: "step06",
+              threadOutRef: cursorStringField(input, "threadOutRef"),
+            };
+          else if (
+            input.ordinal === 3 ||
+            input.ordinal === 4 ||
+            input.ordinal === 5
+          )
+            selected = {
+              stage: "fold",
+              threadOutRef: cursorStringField(input, "threadOutRef"),
+              stepIndex: (input.ordinal - 1) as 2 | 3 | 4,
+            };
+          else throw new Error("distinctAssetAccumulationLimit action changed");
+          const publishedProofChunks =
+            selected.stage === "step01" && artifact.accepted !== undefined
+              ? await resolvePublishedProofChunks({
+                  lucid: config.lucid,
+                  address: config.signer.address,
+                  proofCbor:
+                    artifact.accepted.txInclusion.txMembershipProofCbor,
+                })
+              : undefined;
+          return await actuator.capture({
+            action: selected,
+            artifact,
+            publishedProofChunks,
+          });
+        },
+      },
+    }),
+  });
   return Object.freeze({
     binding,
     lucid: config.lucid,
     signer: config.signer,
     decisionDigest: config.decisionDigest,
     l1,
-    actuator: createDistinctAssetAccumulationActuator({
-      lucid: config.lucid,
-      blueprint: binding.blueprint,
-      deploymentInfo: binding.deploymentInfo,
-      network: binding.network,
-      signer: config.signer,
-      categoryId: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID,
-      contracts,
-      references: { steps, witnesses },
-      stateQueueMutationLeaseCoordinator:
-        config.stateQueueMutationLeaseCoordinator,
-      fraudProofSpendingScriptHash:
-        binding.resolvedContracts.contracts.fraudProof.spendingScriptHash,
-      fraudProverRewardLovelace: BigInt(
-        binding.releaseEconomics.policy.fraudProverRewardLovelace,
-      ),
-    }),
+    actuator,
+    adapter,
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
+    releaseFinalityAuthority:
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
   });
 };
 
-const appendEvent = async (
-  journal: FraudProofWorkflowJournalStore,
-  workflowId: string,
-  identity: FraudProofWorkflowIdentity,
-  event: FraudProofWorkflowJournalEvent,
-) => {
-  const sequence = (await journal.load(workflowId)).length;
-  await journal.append(
-    {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-      workflowId,
-      identity,
-      sequence,
-      recordedAt: new Date().toISOString(),
-      event,
-    },
-    sequence,
-  );
+/** Exact schema-carried witnesses and scalar diagnostics, admitted again at capture. */
+export const distinctAssetWorkflowArtifact = (
+  artifact: DistinctAssetAccumulationActuationArtifact,
+): JournalJsonObject => ({
+  ...distinctAssetPreparedJournalArtifact(artifact),
+  evidence: normalizeJournalJson({
+    traceStateHashHex: artifact.evidence.traceStateHashHex,
+    workRootHex: artifact.evidence.workRootHex,
+    pre: artifact.evidence.pre,
+    post: artifact.evidence.post,
+    mutationWasPresent: artifact.evidence.mutationWasPresent,
+  }),
+  accepted:
+    artifact.accepted === undefined
+      ? null
+      : {
+          validationTracesRoot: artifact.accepted.validationTracesRoot,
+          validationTraceCount:
+            artifact.accepted.validationTraceCount.toString(),
+        },
+});
+
+export const admitDistinctAssetWorkflowArtifact = (
+  serialized: JournalJsonObject,
+): DistinctAssetAccumulationActuationArtifact => {
+  const subject = Data.from(
+    cursorStringField(serialized, "subjectCbor"),
+    DistinctAssetVerdictSubjectSchema as never,
+  ) as DistinctAssetAccumulationActuationArtifact["finding"]["subject"];
+  const finding = {
+    subject,
+    coordinate:
+      serialized.coordinate as unknown as DistinctAssetAccumulationActuationArtifact["finding"]["coordinate"],
+  };
+  const evidence = prepareDistinctAssetAccumulationEvidence({
+    ...(serialized.evidence as unknown as DistinctAssetAccumulationEvidence),
+    finding,
+  });
+  const source = serialized.source as JournalJsonObject;
+  const accepted = serialized.accepted as {
+    validationTracesRoot: string;
+    validationTraceCount: string;
+  } | null;
+  const forced =
+    accepted !== null
+      ? undefined
+      : (
+          Data.from(
+            cursorStringField(source, "forcedSourceCbor"),
+            DistinctAssetStep01RedeemerSchema as never,
+          ) as {
+            Continue: [
+              {
+                source: {
+                  ForcedSource: DistinctAssetAccumulationActuationArtifact["forcedSource"];
+                };
+              },
+            ];
+          }
+        ).Continue[0].source.ForcedSource;
+  const authentication = (
+    Data.from(
+      cursorStringField(serialized, "authenticationCbor"),
+      DistinctAssetStep02RedeemerSchema as never,
+    ) as {
+      Continue: [DistinctAssetAccumulationActuationArtifact["authentication"]];
+    }
+  ).Continue[0];
+  const schemas = [
+    DistinctAssetStep03RedeemerSchema,
+    DistinctAssetStep04RedeemerSchema,
+    DistinctAssetStep05RedeemerSchema,
+  ];
+  const folds = (serialized.foldCbors as string[]).map((cbor, index) => {
+    const decoded = (
+      Data.from(cbor, schemas[index] as never) as {
+        Continue: [{ Skip?: unknown; Authenticate?: { evidence: unknown } }];
+      }
+    ).Continue[0];
+    return "Skip" in decoded
+      ? { kind: "skip" as const }
+      : {
+          kind: "authenticate" as const,
+          evidence: decoded.Authenticate!.evidence,
+        };
+  }) as unknown as DistinctAssetAccumulationActuationArtifact["folds"];
+  const artifact: DistinctAssetAccumulationActuationArtifact = {
+    headerHash: cursorStringField(serialized, "headerHash"),
+    finding,
+    evidence,
+    authentication,
+    folds,
+    ...(accepted === null
+      ? { forcedSource: forced }
+      : {
+          accepted: {
+            validationTracesRoot: accepted.validationTracesRoot,
+            validationTraceCount: BigInt(accepted.validationTraceCount),
+            txInclusion: parseSubmitStep01TxInclusion({
+              ...source,
+              nativeTx: nativeTxFromCoreCompact(
+                decodeMidgardNativeTxCompact(
+                  Buffer.from(
+                    cursorStringField(source, "nativeTxCompactCbor"),
+                    "hex",
+                  ),
+                ),
+              ),
+            }),
+          },
+        }),
+  };
+  if (
+    journalJsonDigest(distinctAssetWorkflowArtifact(artifact)) !==
+    journalJsonDigest(serialized)
+  )
+    throw new Error("distinctAssetAccumulationLimit prepared artifact changed");
+  return artifact;
 };
 
-const actionFor = async ({
-  workflow,
-  headerHash,
-}: {
-  workflow: ManifestBoundDistinctAssetAccumulationWorkflow;
-  headerHash: string;
-}): Promise<DistinctAssetAccumulationActuatorAction | "removed"> => {
-  const stage = (await workflow.l1.observe({ headerHash })).stage;
-  if (stage.kind === "not_started")
-    return {
-      stage: "init",
-      stateQueueBlockOutRef: stage.stateQueueBlockOutRef,
-    };
-  if (stage.kind === "proof_token")
-    return {
-      stage: "remove",
-      nextRemovalOutRef: stage.nextRemovalOutRef,
-      fraudProofOutRef: stage.fraudProofOutRef,
-    };
-  if (stage.kind === "removed") return "removed";
-  if (stage.step === 1)
-    return {
-      stage: "step01",
-      threadOutRef: stage.threadOutRef,
-      stateQueueBlockOutRef: stage.stateQueueBlockOutRef,
-    };
-  if (stage.step === 2)
-    return { stage: "step02", threadOutRef: stage.threadOutRef };
-  if (stage.step >= 3 && stage.step <= 5)
-    return {
-      stage: "fold",
-      stepIndex: (stage.step - 1) as 2 | 3 | 4,
-      threadOutRef: stage.threadOutRef,
-    };
-  if (stage.step === 6)
-    return { stage: "step06", threadOutRef: stage.threadOutRef };
-  throw new Error("distinctAssetAccumulationLimit observed impossible step");
-};
-
-/** One retained-DA-derived, locally evaluated, intent-journaled action. */
 export const executeManifestBoundDistinctAssetAccumulationWorkflow = async ({
   workflow,
   sources,
@@ -333,153 +548,37 @@ export const executeManifestBoundDistinctAssetAccumulationWorkflow = async ({
   workflow: ManifestBoundDistinctAssetAccumulationWorkflow;
   sources: readonly RetainedDaPayloadSource[];
   journal: FraudProofWorkflowJournalStore;
-}) => {
-  const headerHash = workflow.binding.definition.headerHash;
-  const block = await fetchCanonicalBlockEvidence({
-    observation: await workflow.l1.observeHeader({ headerHash }),
-    sources,
-  });
-  const artifact = await prepareDistinctAssetAccumulationArtifact(block);
-  if (workflow.l1.publications === undefined)
-    throw new Error("distinct-asset L1 authority omitted publication observer");
-  const prerequisite = createDistinctAssetProofPrerequisite({
-    maximumTransactionBytes:
-      workflow.binding.cardanoProtocolParameters.maxTxSize,
-    lucid: workflow.lucid,
-    network: workflow.binding.network,
-    signer: workflow.signer,
-    publications: workflow.l1.publications,
-    artifact,
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await workflow.l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  const identity: FraudProofWorkflowIdentity = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
-    target: { kind: "state_queue_header", headerHash },
-    decisionDigest: workflow.decisionDigest,
-  };
-  const workflowId = computeFraudProofWorkflowId(identity);
-  const preparedArtifact = distinctAssetPreparedJournalArtifact(artifact);
-  let entries = await journal.load(workflowId);
-  if (entries.length === 0) {
-    await appendEvent(journal, workflowId, identity, { kind: "started" });
-    await appendEvent(journal, workflowId, identity, {
-      kind: "prepared",
-      artifact: preparedArtifact,
-      artifactDigest: journalJsonDigest(preparedArtifact),
-    });
-    entries = await journal.load(workflowId);
-  }
-  if (entries.length === 1) {
-    await appendEvent(journal, workflowId, identity, {
-      kind: "prepared",
-      artifact: preparedArtifact,
-      artifactDigest: journalJsonDigest(preparedArtifact),
-    });
-    entries = await journal.load(workflowId);
-  }
-  requireDistinctAssetPreparedArtifact(entries, artifact);
-  const pending = [...entries]
-    .reverse()
-    .find(({ event }) => event.kind === "submission_intent");
-  const intent =
-    pending?.event.kind === "submission_intent" ? pending.event : undefined;
-  if (
-    intent !== undefined &&
-    !entries.some(
-      ({ event }) =>
-        event.kind === "confirmed" && event.actionId === intent.actionId,
-    )
-  ) {
-    if (
-      !(await workflow.l1.transactionConfirmed({
-        headerHash,
-        txHash: intent.txHash,
-      }))
-    )
-      return { kind: "pending" as const, workflowId, txHash: intent.txHash };
-    if (intent.actionId.startsWith("publish-proof-chunks:")) {
-      const reconciled = await prerequisite.reconcile({
-        headerHash,
-        action: { actionId: intent.actionId, input: intent.actionInput },
-        artifact: {},
-        txHash: intent.txHash,
-        durableRecovery: distinctAssetProofPublicationRecovery(
-          intent.durableRecovery,
-          Number(workflow.binding.cardanoProtocolParameters.maxTxSize),
-        ),
-      });
-      if (reconciled.kind !== "confirmed")
-        throw new Error(
-          "distinct-asset pending source publication changed or is not final",
-        );
-    }
-    await appendEvent(journal, workflowId, identity, {
-      kind: "reconciled",
-      actionId: intent.actionId,
-      txHash: intent.txHash,
-      outcome: "confirmed",
-    });
-    await appendEvent(journal, workflowId, identity, {
-      kind: "confirmed",
-      actionId: intent.actionId,
-      txHash: intent.txHash,
-    });
-  }
-  const action = await actionFor({ workflow, headerHash });
-  if (action === "removed") return { kind: "completed" as const, workflowId };
-  entries = await journal.load(workflowId);
-  const captured = await captureDistinctAssetActionWithProofCarriage({
-    actuator: workflow.actuator,
-    action,
-    artifact,
-    entries,
-    prerequisite,
-    lucid: workflow.lucid,
-    signer: workflow.signer,
-  });
-  const actionId = captured.actionId;
-  await appendEvent(journal, workflowId, identity, {
-    kind: "preflight_passed",
-    actionId,
-    txHash: captured.transaction.txHash,
-    localEvaluator: "lucid-evolution-local-uplc-v1",
-    referenceScripts: captured.transaction.referenceScripts,
-  });
-  await appendEvent(journal, workflowId, identity, {
-    kind: "submission_intent",
-    actionId,
-    actionInput: captured.actionInput,
-    ...(captured.durableRecovery === undefined
-      ? {}
-      : { durableRecovery: captured.durableRecovery }),
-    ...(captured.mutationLease === undefined
-      ? {}
-      : {
-          durableRecovery: {
-            stateQueueMutationLease: {
-              token: captured.mutationLease.token,
-              source: captured.mutationLease.source,
-            },
-          },
-        }),
-    attempt: 1,
-    txHash: captured.transaction.txHash,
-  });
-  const submitted = await submitCapturedTransaction(captured.transaction);
-  if (submitted !== captured.transaction.txHash)
+}): Promise<FraudProofWorkflowRunResult> => {
+  if (workflowActuationDecisionDigest(journal) !== workflow.decisionDigest)
     throw new Error(
-      "distinctAssetAccumulationLimit provider substituted transaction",
+      "distinctAssetAccumulationLimit journal changed decision digest",
     );
-  await appendEvent(journal, workflowId, identity, {
-    kind: "submitted",
-    actionId,
-    attempt: 1,
-    txHash: submitted,
+  if (workflowJournalIsReconciliationOnly(journal))
+    return await resumeRecordedFraudProofWorkflow({
+      deploymentFingerprint: workflow.binding.deploymentFingerprint,
+      category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
+      headerHash: workflow.binding.definition.headerHash,
+      journal,
+      adapter: workflow.adapter,
+      terminalVerifier: workflow.terminalVerifier,
+      releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+    });
+  const observation = await workflow.l1.observeHeader({
+    headerHash: workflow.binding.definition.headerHash,
   });
-  return { kind: "pending" as const, workflowId, txHash: submitted };
+  return await runFraudProofWorkflowFromRetainedDa({
+    deploymentFingerprint: workflow.binding.deploymentFingerprint,
+    observation,
+    sources,
+    replayer: DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
+    registry: createFraudProofWorkflowRegistry({
+      adapters: [workflow.adapter],
+      launchScope: [DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY],
+    }),
+    journal,
+    terminalVerifier: workflow.terminalVerifier,
+    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+  });
 };
 
 export const runOrResumeManifestBoundDistinctAssetAccumulationWorkflow =

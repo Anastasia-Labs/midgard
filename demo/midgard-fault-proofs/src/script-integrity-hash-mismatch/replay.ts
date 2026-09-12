@@ -11,8 +11,10 @@ import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
+import { requireRetainedReplayPhase } from "../transition-trace/replay-terminal.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
+import { collectReplayFindings } from "../workflow/replay-prerequisite.js";
 import {
   prepareScriptIntegrityHashMismatchEvidence,
   SCRIPT_INTEGRITY_HASH_MISMATCH_VIOLATION_ID,
@@ -78,6 +80,7 @@ const evidenceFor = async ({
   }>
 > => {
   const body = block.reconstruction.payload.block_body;
+  await requireRetainedReplayPhase(block, eventKey, 10n);
   const authentication =
     await buildScriptIntegrityStageThreeAuthenticationFromRetainedDa({
       eventKey,
@@ -116,64 +119,56 @@ const evidenceFor = async ({
 export const detectScriptIntegrityHashMismatchCanonicalViolations = async (
   block: CanonicalBlockEvidence,
 ): Promise<readonly CanonicalViolationDetection[]> => {
-  const accepted = await Promise.all(
-    block.transactions.map(async (transaction, position) => {
+  const accepted = block.transactions.map(async (transaction, position) => {
+    const { evidence } = await evidenceFor({
+      block,
+      subject: acceptedVerdictSubject(transaction.nodeTxId),
+      eventKey: {
+        L2TransactionEventKey: { tx_id: transaction.nodeTxId },
+      },
+    });
+    return scriptIntegrityHashMismatchDetectionFromEvidence({
+      headerHash: block.headerHash,
+      position: BigInt(position),
+      source: "accepted",
+      evidence,
+    });
+  });
+  const forced = block.reconstruction.forcedTransactions.map(
+    async (transaction, position) => {
+      const verdict = transaction.value.verdict;
+      if (
+        verdict === "ForcedTxValid" ||
+        verdict.ForcedTxInvalid.reason !== "ScriptIntegrityHashMismatch"
+      )
+        return null;
+      const eventKey = {
+        ForcedTransactionEventKey: { tx_order_id: transaction.key },
+      } as const;
       const { evidence } = await evidenceFor({
         block,
-        subject: acceptedVerdictSubject(transaction.nodeTxId),
-        eventKey: {
-          L2TransactionEventKey: { tx_id: transaction.nodeTxId },
-        },
+        subject: forcedVerdictSubject({
+          transactionId: transaction.value.tx_id,
+          sourceKey: transaction.key,
+          rejectionReason: verdict.ForcedTxInvalid.reason,
+        }),
+        eventKey,
       });
       return scriptIntegrityHashMismatchDetectionFromEvidence({
         headerHash: block.headerHash,
         position: BigInt(position),
-        source: "accepted",
+        source: "forced",
         evidence,
       });
-    }),
+    },
   );
-  const forced = await Promise.all(
-    block.reconstruction.forcedTransactions.map(
-      async (transaction, position) => {
-        const verdict = transaction.value.verdict;
-        if (
-          verdict === "ForcedTxValid" ||
-          verdict.ForcedTxInvalid.reason !== "ScriptIntegrityHashMismatch"
-        )
-          return null;
-        const eventKey = {
-          ForcedTransactionEventKey: { tx_order_id: transaction.key },
-        } as const;
-        const { evidence } = await evidenceFor({
-          block,
-          subject: forcedVerdictSubject({
-            transactionId: transaction.value.tx_id,
-            sourceKey: transaction.key,
-            rejectionReason: verdict.ForcedTxInvalid.reason,
-          }),
-          eventKey,
-        });
-        return scriptIntegrityHashMismatchDetectionFromEvidence({
-          headerHash: block.headerHash,
-          position: BigInt(position),
-          source: "forced",
-          evidence,
-        });
-      },
-    ),
-  );
+  const detections = await collectReplayFindings([...accepted, ...forced]);
   return Object.freeze(
-    [...accepted, ...forced]
-      .filter(
-        (candidate): candidate is CanonicalViolationDetection =>
-          candidate !== null,
-      )
-      .sort(
-        (left, right) =>
-          Number(left.position - right.position) ||
-          left.detectionId.localeCompare(right.detectionId),
-      ),
+    [...detections].sort(
+      (left, right) =>
+        Number(left.position - right.position) ||
+        left.detectionId.localeCompare(right.detectionId),
+    ),
   );
 };
 

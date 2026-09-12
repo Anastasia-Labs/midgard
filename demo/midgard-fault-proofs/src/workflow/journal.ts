@@ -268,6 +268,13 @@ export type FraudProofWorkflowJournalEvent =
       readonly txHash: string;
     }
   | {
+      readonly kind: "rebroadcast_intent";
+      readonly actionId: string;
+      readonly txHash: string;
+      /** Initial submission counts as one; this counter survives restarts. */
+      readonly attempt: number;
+    }
+  | {
       readonly kind: "submission_ambiguous";
       readonly actionId: string;
       readonly attempt: number;
@@ -428,6 +435,7 @@ export const validateFraudProofWorkflowJournal = ({
   const confirmedReconciliationByAction = new Map<string, string>();
   const confirmedTransactionHashes = new Set<string>();
   const attemptsByAction = new Map<string, number>();
+  const broadcastsByTransaction = new Map<string, number>();
   let completed = false;
   let previousEvent: FraudProofWorkflowJournalEvent | undefined;
   const requireTxHash = (value: string, field: string): void => {
@@ -519,7 +527,7 @@ export const validateFraudProofWorkflowJournal = ({
     }
     const event = entry.event;
     const previous = previousEvent;
-    previousEvent = event;
+    if (event.kind !== "stalled") previousEvent = event;
     const eventRecord = requireRecord(
       event,
       `journal entry ${sequence.toString()} event`,
@@ -661,7 +669,30 @@ export const validateFraudProofWorkflowJournal = ({
       }
       attemptsByAction.set(event.actionId, event.attempt);
       latestIntentByAction.set(event.actionId, event);
+      broadcastsByTransaction.set(event.txHash, 1);
       unresolvedSubmissionByAction.set(event.actionId, "intent");
+      return;
+    }
+    if (event.kind === "rebroadcast_intent") {
+      requireExactKeys(
+        event,
+        ["kind", "actionId", "txHash", "attempt"],
+        "journal rebroadcast intent",
+      );
+      const intent = latestIntentByAction.get(event.actionId);
+      if (
+        unresolvedSubmissionByAction.size !== 1 ||
+        !unresolvedSubmissionByAction.has(event.actionId) ||
+        unresolvedSubmissionByAction.get(event.actionId) ===
+          "reconciled_confirmed" ||
+        intent?.txHash !== event.txHash ||
+        !Number.isSafeInteger(event.attempt) ||
+        event.attempt !== (broadcastsByTransaction.get(event.txHash) ?? 0) + 1
+      )
+        throw new Error(
+          "journal rebroadcast differs from its unresolved exact transaction",
+        );
+      broadcastsByTransaction.set(event.txHash, event.attempt);
       return;
     }
     if (event.kind === "submitted" || event.kind === "submission_ambiguous") {

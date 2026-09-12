@@ -1,57 +1,63 @@
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   DaLibp2pRetainedDaSource,
-  fetchRetainedDaPayloadByHeaderHash,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
+  workflowActuationDecisionDigest,
+  workflowJournalIsReconciliationOnly,
 } from "../workflow/actuation-permit.js";
 import {
   WORKFLOW_ADAPTER_RUNNER,
   type WorkflowAdapterReadinessInput,
   type WorkflowAdapterRunner,
 } from "../workflow/adapters.js";
+import { MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import {
+  createCursorFamilyWorkflowAdapter,
+  CURSOR_FAMILY_TRANSACTION_PORT,
+} from "../workflow/cursor-family-adapter.js";
 import {
   assertManifestBoundWorkflowSigner,
   bindFraudProofWorkflowDeployment,
   type FraudProofWorkflowDeploymentBinding,
+  releaseFinalityAuthorityFromDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
 import {
+  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
 import {
   createAuthenticatedFieldCarriagePrerequisitePort,
   type FieldCarriagePrerequisitePort,
+  withFieldCarriagePrerequisite,
 } from "../workflow/field-carriage-prerequisite.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
-  computeFraudProofWorkflowId,
   DirectoryFraudProofWorkflowJournalStore,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEntry,
-  type FraudProofWorkflowJournalEvent,
   type FraudProofWorkflowJournalStore,
   journalJsonDigest,
-  type JournalJsonObject,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
-import type { FraudProofWorkflowAction } from "../workflow/orchestrator.js";
-import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import {
-  submitCapturedTransaction,
-  workflowTransactionInputOutRefs,
-} from "../workflow/transaction-boundary.js";
+  createFraudProofWorkflowRegistry,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowRunResult,
+  type FraudProofWorkflowTerminalVerifier,
+  resumeRecordedFraudProofWorkflow,
+  runFraudProofWorkflowFromRetainedDa,
+} from "../workflow/orchestrator.js";
+import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
+import type { FraudProofRawL1FamilyStage } from "../workflow/raw-l1-family-derivation.js";
+import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import {
   createMintDeclaredAssetLimitActuator,
   type MintDeclaredAssetLimitActuatorAction,
@@ -61,7 +67,6 @@ import {
 import {
   admitMintDeclaredAssetLimitArtifact,
   type MintDeclaredAssetLimitArtifact,
-  mintDeclaredAssetLimitArtifactDigest,
 } from "./artifact.js";
 import {
   MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES,
@@ -72,8 +77,6 @@ import {
   mintDeclaredFoldDataMatches,
 } from "./family.js";
 import {
-  detectMintDeclaredAssetLimitAcceptedRawReplay,
-  mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayload,
   prepareMintDeclaredAssetLimitAcceptedArtifact,
   prepareMintDeclaredAssetLimitForcedArtifact,
 } from "./replay.js";
@@ -125,6 +128,9 @@ export type ManifestBoundMintDeclaredAssetLimitWorkflow = Readonly<{
   lucid: LucidEvolution;
   decisionDigest: string;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
 
 const CATEGORY = "mintDeclaredAssetLimit" as const;
@@ -265,9 +271,84 @@ export const createManifestBoundMintDeclaredAssetLimitWorkflow = async (
     transactionConfirmed: async ({ headerHash, txHash }) =>
       await l1.transactionConfirmed({ headerHash, txHash }),
   });
+  const adapter = withFieldCarriagePrerequisite({
+    category: CATEGORY,
+    prerequisite,
+    base: createCursorFamilyWorkflowAdapter({
+      spec: {
+        category: CATEGORY,
+        stepCount: 4,
+        successors: { 1: [2], 2: [2, 3, 4], 3: [3, 4], 4: ["proof_token"] },
+      },
+      l1,
+      stateQueueMutationLeaseCoordinator:
+        config.stateQueueMutationLeaseCoordinator,
+      refineAction: async ({ observed, artifact }) => {
+        const selected = await currentAction({
+          workflow: { lucid: config.lucid },
+          artifact: admitMintDeclaredAssetLimitArtifact(artifact).artifact,
+          stage: observed.stage,
+        });
+        if (selected === "removed")
+          throw new Error("mintDeclaredAssetLimit action became terminal");
+        return Object.fromEntries(
+          Object.entries(selected).filter(
+            ([key]) => key === "action" || key === "walkOrdinal",
+          ),
+        );
+      },
+      transactions: {
+        portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
+        category: CATEGORY,
+        prepareRaw: async (routed) => {
+          if (routed.kind !== "mint_declared_asset_limit")
+            throw new Error("raw family route changed");
+          return await prepareMintDeclaredAssetLimitAcceptedArtifact(
+            routed.evidence,
+          );
+        },
+        validatePreparedRawArtifact: async ({ routed, artifact }) => {
+          if (routed.kind !== "mint_declared_asset_limit")
+            throw new Error("raw family route changed");
+          if (
+            journalJsonDigest(
+              await prepareMintDeclaredAssetLimitAcceptedArtifact(
+                routed.evidence,
+              ),
+            ) !== journalJsonDigest(artifact)
+          )
+            throw new Error(
+              "prepared raw artifact differs from retained evidence",
+            );
+        },
+        validatePreparedArtifact: async ({ evidence, artifact }) => {
+          if (
+            journalJsonDigest(
+              await prepareMintDeclaredAssetLimitForcedArtifact(evidence),
+            ) !== journalJsonDigest(artifact)
+          )
+            throw new Error(
+              "prepared family artifact differs from retained evidence",
+            );
+        },
+        prepare: async ({ evidence }) =>
+          await prepareMintDeclaredAssetLimitForcedArtifact(evidence),
+        capture: async ({ action, artifact }) =>
+          await actuator.capture({
+            action:
+              action.input as unknown as MintDeclaredAssetLimitActuatorAction,
+            artifact,
+          }),
+      },
+    }),
+  });
   return Object.freeze({
     binding,
     l1,
+    adapter,
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
+    releaseFinalityAuthority:
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
     lucid: config.lucid,
     actuator,
     prerequisite,
@@ -277,54 +358,15 @@ export const createManifestBoundMintDeclaredAssetLimitWorkflow = async (
   });
 };
 
-const appendEvent = async ({
-  journal,
-  workflowId,
-  identity,
-  event,
-}: {
-  readonly journal: FraudProofWorkflowJournalStore;
-  readonly workflowId: string;
-  readonly identity: FraudProofWorkflowIdentity;
-  readonly event: FraudProofWorkflowJournalEvent;
-}) => {
-  const sequence = (await journal.load(workflowId)).length;
-  const entry: FraudProofWorkflowJournalEntry = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-    workflowId,
-    identity,
-    sequence,
-    recordedAt: new Date().toISOString(),
-    event,
-  };
-  await journal.append(entry, sequence);
-};
-
-export const mintDeclaredAssetLimitActionId = (
-  action: MintDeclaredAssetLimitActuatorAction,
-): string =>
-  `mintDeclaredAssetLimit:${Buffer.from(JSON.stringify(action)).toString("hex")}`;
-
-const workflowAction = (
-  action: MintDeclaredAssetLimitActuatorAction,
-): FraudProofWorkflowAction => ({
-  actionId: mintDeclaredAssetLimitActionId(action),
-  input: {
-    schemaVersion: "midgard-production-cursor-family-action-v1",
-    category: "mintDeclaredAssetLimit",
-    ...action,
-  },
-});
-
 const currentAction = async ({
   workflow,
   artifact,
+  stage,
 }: {
-  readonly workflow: ManifestBoundMintDeclaredAssetLimitWorkflow;
+  readonly workflow: Pick<ManifestBoundMintDeclaredAssetLimitWorkflow, "lucid">;
   readonly artifact: MintDeclaredAssetLimitArtifact;
+  readonly stage: FraudProofRawL1FamilyStage;
 }): Promise<MintDeclaredAssetLimitActuatorAction | "removed"> => {
-  const stage = (await workflow.l1.observe({ headerHash: artifact.headerHash }))
-    .stage;
   const admitted = admitMintDeclaredAssetLimitArtifact(artifact);
   if (stage.kind === "not_started")
     return {
@@ -423,80 +465,9 @@ const currentAction = async ({
   throw new Error("mintDeclaredAssetLimit observed an impossible step");
 };
 
-export type MintDeclaredAssetLimitWorkflowRunResult = Readonly<{
-  kind: "pending" | "completed";
-  workflowId: string;
-  txHash?: string;
-}>;
+export type MintDeclaredAssetLimitWorkflowRunResult =
+  FraudProofWorkflowRunResult;
 
-export const reconcileMintDeclaredAssetLimitSubmissionIntent = ({
-  intendedActionId,
-  txHash,
-  transactionConfirmed,
-  observedAction,
-}: {
-  readonly intendedActionId: string;
-  readonly txHash: string;
-  readonly transactionConfirmed: boolean;
-  readonly observedAction: MintDeclaredAssetLimitActuatorAction | "removed";
-}):
-  | Readonly<{ kind: "confirmed"; txHash: string }>
-  | Readonly<{ kind: "pending"; txHash: string }>
-  | Readonly<{ kind: "conflict"; txHash: string }> => {
-  if (transactionConfirmed) return { kind: "confirmed", txHash };
-  if (
-    observedAction === "removed" ||
-    mintDeclaredAssetLimitActionId(observedAction) !== intendedActionId
-  )
-    return { kind: "conflict", txHash };
-  return { kind: "pending", txHash };
-};
-
-/** Deterministic durability prelude shared by prerequisite and proof actions. */
-export const mintDeclaredAssetLimitSubmissionPrelude = ({
-  actionId,
-  actionInput,
-  txHash,
-  referenceScripts,
-  durableRecovery,
-}: {
-  readonly actionId: string;
-  readonly actionInput: JournalJsonObject;
-  readonly txHash: string;
-  readonly referenceScripts: Extract<
-    FraudProofWorkflowJournalEvent,
-    { readonly kind: "preflight_passed" }
-  >["referenceScripts"];
-  readonly durableRecovery?: JournalJsonObject;
-}): readonly [
-  Extract<
-    FraudProofWorkflowJournalEvent,
-    { readonly kind: "preflight_passed" }
-  >,
-  Extract<
-    FraudProofWorkflowJournalEvent,
-    { readonly kind: "submission_intent" }
-  >,
-] =>
-  Object.freeze([
-    Object.freeze({
-      kind: "preflight_passed",
-      actionId,
-      txHash,
-      localEvaluator: "lucid-evolution-local-uplc-v1",
-      referenceScripts,
-    }),
-    Object.freeze({
-      kind: "submission_intent",
-      actionId,
-      actionInput,
-      ...(durableRecovery === undefined ? {} : { durableRecovery }),
-      attempt: 1,
-      txHash,
-    }),
-  ]);
-
-/** One crash-safe action per call; callers resume by invoking the same runner. */
 export const executeManifestBoundMintDeclaredAssetLimitWorkflow = async ({
   workflow,
   sources,
@@ -505,228 +476,35 @@ export const executeManifestBoundMintDeclaredAssetLimitWorkflow = async ({
   readonly workflow: ManifestBoundMintDeclaredAssetLimitWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<MintDeclaredAssetLimitWorkflowRunResult> => {
+}): Promise<FraudProofWorkflowRunResult> => {
+  if (workflowActuationDecisionDigest(journal) !== workflow.decisionDigest)
+    throw new Error("mintDeclaredAssetLimit journal changed decision digest");
+  if (workflowJournalIsReconciliationOnly(journal))
+    return await resumeRecordedFraudProofWorkflow({
+      deploymentFingerprint: workflow.binding.deploymentFingerprint,
+      category: CATEGORY,
+      headerHash: workflow.binding.definition.headerHash,
+      journal,
+      adapter: workflow.adapter,
+      terminalVerifier: workflow.terminalVerifier,
+      releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+    });
   const observation = await workflow.l1.observeHeader({
     headerHash: workflow.binding.definition.headerHash,
   });
-  const fetched = await fetchRetainedDaPayloadByHeaderHash({
-    headerHash: observation.headerHash,
-    sources,
-  });
-  const raw = await mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayload({
-    observation,
-    payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
-    daProvenance: fetched.provenance,
-  });
-  const artifact =
-    detectMintDeclaredAssetLimitAcceptedRawReplay(raw).length > 0
-      ? await prepareMintDeclaredAssetLimitAcceptedArtifact(raw)
-      : await prepareMintDeclaredAssetLimitForcedArtifact(
-          await fetchCanonicalBlockEvidence({ observation, sources }),
-        );
-  const identity: FraudProofWorkflowIdentity = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  return await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    category: CATEGORY,
-    target: { kind: "state_queue_header", headerHash: artifact.headerHash },
-    decisionDigest: workflow.decisionDigest,
-  };
-  const workflowId = computeFraudProofWorkflowId(identity);
-  let entries = await journal.load(workflowId);
-  if (entries.length === 0) {
-    await appendEvent({
-      journal,
-      workflowId,
-      identity,
-      event: { kind: "started" },
-    });
-    await appendEvent({
-      journal,
-      workflowId,
-      identity,
-      event: {
-        kind: "prepared",
-        artifact,
-        artifactDigest: mintDeclaredAssetLimitArtifactDigest(artifact),
-      },
-    });
-    entries = await journal.load(workflowId);
-  } else {
-    const prepared = entries.find((entry) => entry.event.kind === "prepared");
-    if (
-      prepared?.event.kind !== "prepared" ||
-      prepared.event.artifactDigest !==
-        mintDeclaredAssetLimitArtifactDigest(artifact)
-    )
-      throw new Error("mintDeclaredAssetLimit durable artifact substitution");
-  }
-  const lastIntent = [...entries]
-    .reverse()
-    .find((entry) => entry.event.kind === "submission_intent");
-  if (lastIntent?.event.kind === "submission_intent") {
-    const intent = lastIntent.event;
-    const confirmed = entries.some(
-      (entry) =>
-        entry.event.kind === "confirmed" &&
-        entry.event.actionId === intent.actionId,
-    );
-    if (!confirmed) {
-      const onChain = await workflow.l1.transactionConfirmed({
-        headerHash: artifact.headerHash,
-        txHash: intent.txHash,
-      });
-      const recovery = intent.durableRecovery?.stateQueueMutationLease;
-      const resumed =
-        typeof recovery === "object" &&
-        recovery !== null &&
-        !Array.isArray(recovery) &&
-        workflow.stateQueueMutationLeaseCoordinator.resume !== undefined
-          ? await workflow.stateQueueMutationLeaseCoordinator.resume(
-              recovery as { token: string; source: string },
-            )
-          : undefined;
-      if (!onChain) {
-        const observedAction = await currentAction({ workflow, artifact });
-        const reconciliation = reconcileMintDeclaredAssetLimitSubmissionIntent({
-          intendedActionId: intent.actionId,
-          txHash: intent.txHash,
-          transactionConfirmed: false,
-          observedAction,
-        });
-        if (reconciliation.kind === "conflict") {
-          await resumed?.fail(
-            "mintDeclaredAssetLimit observed a different transaction at the durable cursor",
-          );
-          throw new Error(
-            "mintDeclaredAssetLimit transaction substitution changed the durable cursor",
-          );
-        }
-        await resumed?.renew();
-        return { kind: "pending", workflowId, txHash: intent.txHash };
-      }
-      await resumed?.release();
-      await appendEvent({
-        journal,
-        workflowId,
-        identity,
-        event: {
-          kind: "reconciled",
-          actionId: intent.actionId,
-          outcome: "confirmed",
-          txHash: intent.txHash,
-        },
-      });
-      await appendEvent({
-        journal,
-        workflowId,
-        identity,
-        event: {
-          kind: "confirmed",
-          actionId: intent.actionId,
-          txHash: intent.txHash,
-        },
-      });
-    }
-  }
-  const action = await currentAction({ workflow, artifact });
-  if (action === "removed") {
-    const terminalStage = (
-      await workflow.l1.observe({ headerHash: artifact.headerHash })
-    ).stage;
-    if (terminalStage.kind !== "removed")
-      throw new Error("mintDeclaredAssetLimit terminal observation changed");
-    const complete = (await journal.load(workflowId)).some(
-      (entry) => entry.event.kind === "completed",
-    );
-    if (!complete)
-      await appendEvent({
-        journal,
-        workflowId,
-        identity,
-        event: {
-          kind: "completed",
-          terminal: terminalStage.terminal,
-          terminalDigest: journalJsonDigest(
-            terminalStage.terminal as unknown as JournalJsonObject,
-          ),
-        },
-      });
-    return { kind: "completed", workflowId };
-  }
-  const baseAction = workflowAction(action);
-  const prerequisite = await workflow.prerequisite.inspect({
-    headerHash: artifact.headerHash,
-    baseAction,
-    artifact,
-    entries: await journal.load(workflowId),
-  });
-  if (prerequisite.kind === "pending") return { kind: "pending", workflowId };
-  if (prerequisite.kind === "required") {
-    const captured = await workflow.prerequisite.capture({
-      headerHash: artifact.headerHash,
-      action: prerequisite.action,
-      artifact,
-    });
-    const prelude = mintDeclaredAssetLimitSubmissionPrelude({
-      actionId: prerequisite.action.actionId,
-      actionInput: prerequisite.action.input,
-      txHash: captured.transaction.txHash,
-      referenceScripts: captured.transaction.referenceScripts,
-      durableRecovery: captured.durableRecovery,
-    });
-    for (const event of prelude)
-      await appendEvent({ journal, workflowId, identity, event });
-    const submitted = await submitCapturedTransaction(captured.transaction);
-    await appendEvent({
-      journal,
-      workflowId,
-      identity,
-      event: {
-        kind: "submitted",
-        actionId: prerequisite.action.actionId,
-        attempt: 1,
-        txHash: submitted,
-      },
-    });
-    return { kind: "pending", workflowId, txHash: submitted };
-  }
-  const id = baseAction.actionId;
-  const captured = await workflow.actuator.capture({ action, artifact });
-  const prelude = mintDeclaredAssetLimitSubmissionPrelude({
-    actionId: id,
-    actionInput: baseAction.input,
-    txHash: captured.transaction.txHash,
-    referenceScripts: captured.transaction.referenceScripts,
-    ...(captured.mutationLease === undefined
-      ? {}
-      : {
-          durableRecovery: {
-            stateQueueMutationLease: {
-              token: captured.mutationLease.token,
-              source: captured.mutationLease.source,
-            },
-          },
-        }),
-  });
-  for (const event of prelude)
-    await appendEvent({ journal, workflowId, identity, event });
-  const submitted = await submitCapturedTransaction(captured.transaction);
-  if (submitted !== captured.transaction.txHash)
-    throw new Error("mintDeclaredAssetLimit provider substituted transaction");
-  await appendEvent({
+    observation,
+    sources,
+    replayer: MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
+    registry: createFraudProofWorkflowRegistry({
+      adapters: [workflow.adapter],
+      launchScope: [CATEGORY],
+    }),
     journal,
-    workflowId,
-    identity,
-    event: { kind: "submitted", actionId: id, attempt: 1, txHash: submitted },
+    terminalVerifier: workflow.terminalVerifier,
+    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
   });
-  if (
-    action.stage === "remove" &&
-    !workflowTransactionInputOutRefs(captured.transaction.signed).includes(
-      action.nextRemovalOutRef,
-    )
-  )
-    throw new Error("mintDeclaredAssetLimit removal changed mutation target");
-  return { kind: "pending", workflowId, txHash: submitted };
 };
 
 export type LoadedMintDeclaredAssetLimitWorkflow = Readonly<{

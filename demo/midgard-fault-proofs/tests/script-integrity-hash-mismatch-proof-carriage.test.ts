@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   accepted: vi.fn(),
   publish: vi.fn(),
   resolve: vi.fn(),
+  directFirst: vi.fn(),
   transaction: { txHash: "ab".repeat(32) },
 }));
 
@@ -29,9 +30,15 @@ vi.mock("../src/workflow/transaction-boundary.js", async (original) => ({
   },
 }));
 
-import { createScriptIntegrityHashMismatchLucidActuator } from "../src/script-integrity-hash-mismatch/lucid-actuator.js";
+vi.mock("../src/workflow/proof-chunk-prerequisite.js", async (original) => ({
+  ...(await original<object>()),
+  resolveDirectFirstProofChunks: mocks.directFirst,
+}));
 
-const capture = () =>
+import { createScriptIntegrityHashMismatchLucidActuator } from "../src/script-integrity-hash-mismatch/lucid-actuator.js";
+import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
+
+const capture = (workflowAction?: FraudProofWorkflowAction) =>
   createScriptIntegrityHashMismatchLucidActuator({
     binding: {
       definition: { headerHash: "11".repeat(28) },
@@ -43,6 +50,7 @@ const capture = () =>
     contracts: {},
     references: { steps: [{}], witnesses: {} },
   } as never).capture({
+    workflowAction,
     action: {
       stage: "step_01",
       threadOutRef: `${"33".repeat(32)}#0`,
@@ -60,37 +68,36 @@ describe("script integrity source proof publication recovery", () => {
     mocks.accepted.mockReset();
     mocks.resolve.mockResolvedValue(undefined);
     mocks.publish.mockResolvedValue(undefined);
+    mocks.directFirst.mockResolvedValue([]);
   });
 
-  it("captures a publication for journaling only after the ordinary transaction exceeds the real byte limit", async () => {
+  it("leaves size-limit publication scheduling to the common journal adapter", async () => {
     mocks.accepted.mockRejectedValue(
       new Error("Max transaction size of 16384 exceeded. Found: 19752"),
     );
-    await expect(capture()).resolves.toEqual({
-      transaction: mocks.transaction,
-      prerequisite: "proof_chunks",
-    });
-    expect(mocks.publish).toHaveBeenCalledOnce();
-    expect(mocks.publish.mock.calls[0]![0]).toMatchObject({
-      awaitConfirmation: false,
-      preSubmitBoundary: {},
-    });
+    await expect(capture()).rejects.toThrow("Max transaction size");
+    expect(mocks.publish).not.toHaveBeenCalled();
+    expect(mocks.resolve).not.toHaveBeenCalled();
+    expect(mocks.directFirst).not.toHaveBeenCalled();
   });
 
-  it("reopens exact published chunks on restart and captures the family transition", async () => {
+  it("uses the exact common workflow action to reopen published chunks", async () => {
     const chunks = [{ outRef: `${"55".repeat(32)}#0` }];
-    mocks.accepted
-      .mockRejectedValueOnce(
-        new Error("Max transaction size of 16384 exceeded. Found: 19752"),
-      )
-      .mockResolvedValueOnce(undefined);
-    mocks.resolve.mockResolvedValue(chunks);
-    await expect(capture()).resolves.toEqual({
+    const workflowAction = {
+      actionId: "step_01:thread",
+      input: { category: "scriptIntegrityHashMismatch", stage: "step_01" },
+    };
+    mocks.directFirst.mockResolvedValue(chunks);
+    mocks.accepted.mockResolvedValue(undefined);
+    await expect(capture(workflowAction)).resolves.toEqual({
       transaction: mocks.transaction,
     });
-    expect(mocks.accepted.mock.calls[1]![0]).toMatchObject({
-      publishedProofChunks: chunks,
-    });
+    expect(mocks.directFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ action: workflowAction, proofCbor: "80" }),
+    );
+    expect(mocks.accepted).toHaveBeenCalledWith(
+      expect.objectContaining({ publishedProofChunks: chunks }),
+    );
     expect(mocks.publish).not.toHaveBeenCalled();
   });
 

@@ -447,6 +447,35 @@ describe("production cursor family adapter V1", () => {
     ).resolves.toEqual({ kind: "confirmed", txHash });
     expect(releasedLease.release).toHaveBeenCalledTimes(1);
 
+    const expiredResume = vi.fn(async () => {
+      throw new Error("old mutation lease expired after confirmed removal");
+    });
+    const expired = createCursorFamilyWorkflowAdapter({
+      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
+      l1: l1(stage, async () => true),
+      transactions: port(async () => {
+        throw new Error("must not rebuild");
+      }),
+      stateQueueMutationLeaseCoordinator: {
+        acquire: async () => {
+          throw new Error("must not acquire");
+        },
+        resume: expiredResume,
+      },
+    });
+    await expect(
+      expired.reconcile({
+        ...context,
+        action: action,
+        txHash,
+        durableRecovery: preflight.durableRecovery,
+        authorizeResubmission: async () => {
+          throw new Error("must not submit");
+        },
+      }),
+    ).resolves.toEqual({ kind: "confirmed", txHash });
+    expect(expiredResume).toHaveBeenCalledTimes(1);
+
     const failedLease = lease();
     stage.value = {
       kind: "removed",
@@ -503,5 +532,58 @@ describe("production cursor family adapter V1", () => {
     );
     expect(lease.fail).toHaveBeenCalledTimes(1);
     expect(lease.release).not.toHaveBeenCalled();
+  });
+});
+
+describe("authenticated family action refinement", () => {
+  const stage = {
+    value: {
+      kind: "step",
+      step: 6,
+      threadOutRef: outRef("11"),
+      stateQueueBlockOutRef: outRef("10"),
+    } as FraudProofRawL1FamilyStage,
+  };
+  it("binds extra grammar fields and rejects changes before capture", async () => {
+    let grammar = "start";
+    const capture = vi.fn(async () => ({ transaction: transaction() }));
+    const refineAction = vi.fn(async () => ({ grammar }));
+    const adapter = createCursorFamilyWorkflowAdapter({
+      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
+      l1: l1(stage),
+      transactions: port(capture),
+      stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
+      refineAction,
+    });
+    const observed = await adapter.observe(context);
+    if (observed.kind !== "action_required") throw new Error("missing action");
+    expect(observed.action.actionId).toBe(required(stage.value).actionId);
+    expect(observed.action.input.grammar).toBe("start");
+    grammar = "finish";
+    await expect(
+      adapter.preflight({ ...context, action: observed.action }),
+    ).rejects.toThrow("differs from authenticated current L1 state");
+    expect(capture).not.toHaveBeenCalled();
+    grammar = "start";
+    await adapter.preflight({ ...context, action: observed.action });
+    expect(capture).toHaveBeenCalledOnce();
+    expect(capture.mock.calls[0]).toBeDefined();
+  });
+  it("never permits canonical input overrides and does not refine read-only observation", async () => {
+    const refineAction = vi.fn(async () => ({ stage: "remove" }));
+    const adapter = createCursorFamilyWorkflowAdapter({
+      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
+      l1: l1(stage),
+      transactions: port(async () => ({ transaction: transaction() })),
+      stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
+      refineAction,
+    });
+    await expect(adapter.observe(context)).rejects.toThrow(
+      "cannot override canonical input stage",
+    );
+    expect(
+      await adapter.observe({ ...context, reconciliationOnly: true }),
+    ).toEqual({ kind: "action_required", action: required(stage.value) });
+    expect(refineAction).toHaveBeenCalledOnce();
   });
 });

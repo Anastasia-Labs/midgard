@@ -42,6 +42,7 @@ import {
   unsafeCreateWorkflowFundingReservationPermitForTest,
   unsafeWorkflowFundingReservationSelectedOutRefsForTest,
   type WorkflowFundingReservationSnapshot,
+  type WorkflowFundingSubmissionHandoff,
 } from "../src/workflow/funding-reservation-permit.js";
 import {
   authenticatedStateQueueObservationDigest,
@@ -56,6 +57,7 @@ import {
   type FraudProofWorkflowIdentity,
   MemoryFraudProofWorkflowJournalStore,
 } from "../src/workflow/journal.js";
+import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
 import { continuePendingWorkflow } from "../src/workflow/pending-continuation.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
@@ -69,7 +71,10 @@ import {
   WORKFLOW_RUNTIME_CONFIG,
 } from "../src/workflow/runtime.js";
 import { readWorkflowRuntimeFundingPolicy } from "../src/workflow/runtime-funding-policy.js";
-import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
+import {
+  bindWorkflowPreflightTransaction,
+  workflowPreflightTransaction,
+} from "../src/workflow/transaction-boundary.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -158,6 +163,42 @@ const admittedActuation = async () => {
     headerHash: decision.headerHash,
     revoke: controller.revoke,
   });
+};
+
+/** Funding-boundary fixtures supply the durable action metadata alongside real CML bytes. */
+const fundingHandoff = (
+  actuation: Awaited<ReturnType<typeof admittedActuation>>,
+  action: FraudProofWorkflowAction,
+  preflight: object,
+): WorkflowFundingSubmissionHandoff => {
+  const signed = workflowPreflightTransaction(preflight)!;
+  const identity: FraudProofWorkflowIdentity = {
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+    deploymentFingerprint: DEPLOYMENT,
+    category: "doubleSpend",
+    target: { kind: "state_queue_header", headerHash: actuation.headerHash },
+    decisionDigest: actuation.decisionDigest,
+  };
+  return {
+    workflowId: computeFraudProofWorkflowId(identity),
+    identity,
+    preparedArtifactDigest: "ab".repeat(32),
+    expectedJournalSequence: 2,
+    preflight: {
+      kind: "preflight_passed",
+      actionId: action.actionId,
+      txHash: signed.toHash(),
+      localEvaluator: "funding-boundary-fixture",
+      referenceScripts: [],
+    },
+    submissionIntent: {
+      kind: "submission_intent",
+      actionId: action.actionId,
+      actionInput: action.input,
+      txHash: signed.toHash(),
+      attempt: 1,
+    },
+  };
 };
 
 const fundingKey = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x51));
@@ -285,6 +326,11 @@ const runtimeFunding = async (
             .to_canonical_cbor_hex(),
         };
       },
+      readPendingTransition: async () => null,
+      readPendingHandoff: async () => null,
+      readCompletionHandoff: async () => null,
+      readAbandonmentHandoff: async () => null,
+      acknowledgeAbandonment: async () => snapshot,
       resolveProtocolInputAuthority: async () => {
         throw new Error("test action has no protocol input");
       },
@@ -313,6 +359,15 @@ const runtimeFunding = async (
     journal,
     permit,
     prepare,
+    prepareTransaction: (input: {
+      action: FraudProofWorkflowAction;
+      preflight: object;
+    }) =>
+      prepareWorkflowFundingReservationTransaction({
+        journal,
+        ...input,
+        handoff: fundingHandoff(actuation, input.action, input.preflight),
+      }),
     selected: unsafeWorkflowFundingReservationSelectedOutRefsForTest(permit),
     setSnapshot: (value: WorkflowFundingReservationSnapshot) => {
       currentSnapshot = value;
@@ -443,8 +498,7 @@ const prepareRuntimeFunding = (
   runtime: Awaited<ReturnType<typeof runtimeFunding>>,
   signed: TxSigned,
 ) =>
-  prepareWorkflowFundingReservationTransaction({
-    journal: runtime.journal,
+  runtime.prepareTransaction({
     action: { actionId: "step-one", input: { stage: "step-one" } },
     preflight: bindWorkflowPreflightTransaction(
       Object.freeze({ txHash: signed.toHash() }),
@@ -571,6 +625,11 @@ const slashFundingFixture = async (
       resolveConfirmedInput: async () => {
         throw new Error("slash inputs must reacquire protocol authority");
       },
+      readPendingTransition: async () => null,
+      readPendingHandoff: async () => null,
+      readCompletionHandoff: async () => null,
+      readAbandonmentHandoff: async () => null,
+      acknowledgeAbandonment: async () => snapshot,
       resolveProtocolInputAuthority: protocolAuthority,
       prepare,
       confirm: async () => snapshot,
@@ -652,15 +711,18 @@ const slashFundingFixture = async (
     prepare,
     policy,
     protocolAuthority,
-    admit: () =>
-      prepareWorkflowFundingReservationTransaction({
+    admit: () => {
+      const preflight = bindWorkflowPreflightTransaction(
+        { txHash: signed.toHash() },
+        signed,
+      );
+      return prepareWorkflowFundingReservationTransaction({
         journal,
         action,
-        preflight: bindWorkflowPreflightTransaction(
-          { txHash: signed.toHash() },
-          signed,
-        ),
-      }),
+        preflight,
+        handoff: fundingHandoff(actuation, action, preflight),
+      });
+    },
     close: () => reader.mockRestore(),
   };
 };
@@ -956,8 +1018,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       }),
     );
     await expect(
-      prepareWorkflowFundingReservationTransaction({
-        journal: runtime.journal,
+      runtime.prepareTransaction({
         action: {
           actionId: "verify_source",
           input: { stage: "verify_source" },
@@ -1016,8 +1077,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       }),
     );
     await expect(
-      prepareWorkflowFundingReservationTransaction({
-        journal: runtime.journal,
+      runtime.prepareTransaction({
         action,
         preflight: validPreflight,
       }),
@@ -1036,8 +1096,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       }),
     );
     await expect(
-      prepareWorkflowFundingReservationTransaction({
-        journal: hostile.journal,
+      hostile.prepareTransaction({
         action,
         preflight: substitutedPreflight,
       }),
@@ -1063,8 +1122,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       }),
     );
     await expect(
-      prepareWorkflowFundingReservationTransaction({
-        journal: runtime.journal,
+      runtime.prepareTransaction({
         action: { actionId: "step-one", input: { actionKind: "step-one" } },
         preflight,
       }),

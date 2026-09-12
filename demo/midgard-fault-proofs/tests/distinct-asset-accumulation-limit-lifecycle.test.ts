@@ -62,6 +62,10 @@ import {
 } from "../src/distinct-asset-accumulation-limit/submit-step-01.js";
 import { submitDistinctAssetAccumulationStep02 } from "../src/distinct-asset-accumulation-limit/submit-step-02.js";
 import { submitDistinctAssetAccumulationStep06 } from "../src/distinct-asset-accumulation-limit/submit-step-06.js";
+import {
+  admitDistinctAssetWorkflowArtifact,
+  distinctAssetWorkflowArtifact,
+} from "../src/distinct-asset-accumulation-limit/v1.js";
 import { requireLinearFaultThreadUtxo } from "../src/linear-fault-family.js";
 import {
   buildVanRossemFitLedger,
@@ -741,6 +745,12 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
             }
           : { forcedSource }),
       };
+      const serializedArtifact = distinctAssetWorkflowArtifact(artifact);
+      expect(
+        distinctAssetWorkflowArtifact(
+          admitDistinctAssetWorkflowArtifact(serializedArtifact),
+        ),
+      ).toEqual(serializedArtifact);
       const installed = async (
         action: DistinctAssetAccumulationActuatorAction,
         nextStep: number,
@@ -858,7 +868,9 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
             network,
             signer: harness.proverSigner,
             publications,
-            artifact: { ...artifact, ...recovered },
+            artifact: admitDistinctAssetWorkflowArtifact(
+              distinctAssetWorkflowArtifact({ ...artifact, ...recovered }),
+            ),
             transactionConfirmed: async () => true,
           });
           const entries = await new DirectoryFraudProofWorkflowJournalStore(
@@ -877,7 +889,9 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
           const captured = await captureDistinctAssetActionWithProofCarriage({
             actuator,
             action,
-            artifact: { ...artifact, ...recovered },
+            artifact: admitDistinctAssetWorkflowArtifact(
+              distinctAssetWorkflowArtifact({ ...artifact, ...recovered }),
+            ),
             entries,
             prerequisite,
             lucid: harness.proverLucid,

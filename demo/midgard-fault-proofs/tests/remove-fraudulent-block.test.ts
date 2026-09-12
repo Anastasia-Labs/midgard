@@ -1,12 +1,125 @@
+import {
+  encodeLinkedListNodeView,
+  REGISTERED_OPERATOR_NODE_ASSET_NAME_PREFIX,
+  REGISTERED_OPERATORS_ROOT_ASSET_NAME,
+} from "@al-ft/midgard-sdk";
+import { credentialToAddress, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createHttpStateQueueMutationLeaseCoordinator,
   fraudRemovalUsesWalletCoinSelection,
   fraudSlashEconomicsFromDeploymentManifest,
+  RegisteredOperatorActivationRequiredError,
   resolveFraudSlashEconomics,
+  resolveRegisteredOperatorRemovalWitness,
   submitRemoveFraudulentBlockFromFiles,
 } from "../src/remove-fraudulent-block.js";
+
+describe("registered-operator scheduler rewind witness", () => {
+  const policyId = "ab".repeat(28);
+  const address = credentialToAddress("Custom", {
+    type: "Script",
+    hash: "cd".repeat(28),
+  });
+  const key = (time: bigint) => time.toString(16).padStart(12, "0");
+  const element = (activation: bigint | null, next: bigint | null): UTxO => ({
+    txHash: (activation === null
+      ? "11"
+      : activation % 2n === 0n
+        ? "22"
+        : "33"
+    ).repeat(32),
+    outputIndex: activation === null ? 0 : 1,
+    address,
+    assets: {
+      lovelace: 2_000_000n,
+      [toUnit(
+        policyId,
+        activation === null
+          ? REGISTERED_OPERATORS_ROOT_ASSET_NAME
+          : REGISTERED_OPERATOR_NODE_ASSET_NAME_PREFIX + key(activation),
+      )]: 1n,
+    },
+    datum: encodeLinkedListNodeView({
+      key: activation === null ? "Empty" : { Key: { key: key(activation) } },
+      next: next === null ? "Empty" : { Key: { key: key(next) } },
+      data: "",
+    }),
+  });
+  const resolve = (utxos: UTxO[], upper = 999n) =>
+    resolveRegisteredOperatorRemovalWitness({
+      utxos,
+      address,
+      policyId,
+      inclusiveValidityUpperBound: upper,
+    });
+
+  it("uses the authentic empty root", async () => {
+    const root = element(null, null);
+    expect(await resolve([root])).toBe(root);
+  });
+  it("uses the final future registration instead of a nonempty root, regardless of provider order", async () => {
+    const root = element(null, 2001n);
+    const latest = element(2001n, 1000n);
+    const earliest = element(1000n, null);
+    expect(await resolve([earliest, root, latest])).toBe(earliest);
+  });
+  it.each([1000n, 1001n])(
+    "requires activation when the removal interval reaches the final registration at %s",
+    async (upper) => {
+      const pending = element(1000n, null);
+      await expect(
+        resolve([element(null, 1000n), pending], upper),
+      ).rejects.toMatchObject({
+        name: RegisteredOperatorActivationRequiredError.name,
+        registeredOperatorOutRef: `${pending.txHash}#1`,
+        activationTime: 1000n,
+      });
+    },
+  );
+  it("refuses a missing final node", async () => {
+    await expect(resolve([element(null, 1000n)])).rejects.toThrow(
+      /missing node/u,
+    );
+  });
+  it("refuses an unreachable registration", async () => {
+    await expect(
+      resolve([element(null, null), element(1000n, null)]),
+    ).rejects.toThrow(/unreachable/u);
+  });
+  it("refuses descending-order violations instead of treating a later node as the earliest activation", async () => {
+    await expect(
+      resolve([
+        element(null, 1000n),
+        element(1000n, 2001n),
+        element(2001n, null),
+      ]),
+    ).rejects.toThrow(/descending activation/u);
+  });
+  it("refuses a cycle", async () => {
+    await expect(
+      resolve([element(null, 1000n), element(1000n, 1000n)]),
+    ).rejects.toThrow(/cycle/u);
+  });
+  it("ignores unauthenticated root lookalikes", async () => {
+    const root = element(null, null);
+    await expect(
+      resolve([{ ...root, assets: { lovelace: 2_000_000n } }]),
+    ).rejects.toThrow(/authentic root/u);
+    await expect(
+      resolve([
+        {
+          ...root,
+          address: credentialToAddress("Custom", {
+            type: "Key",
+            hash: "ef".repeat(28),
+          }),
+        },
+      ]),
+    ).rejects.toThrow(/authentic root/u);
+  });
+});
 
 const publicEconomics = {
   profile: "public-preprod-launch-v1",

@@ -13,6 +13,7 @@ import {
   buildUnsignedFieldPreimagePublicationProgram,
   deriveFieldPreimageCertification,
   FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
+  fieldPreimagePublicationBytes,
   fieldPreimagePublicationDatumCbor,
   type FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk";
@@ -511,12 +512,12 @@ const recovery = ({
 
 const parseRecovery = ({
   value,
-  requirement,
+  requirementSha256,
   txHash,
   kind,
 }: {
   readonly value: JournalJsonObject | undefined;
-  readonly requirement: Requirement;
+  readonly requirementSha256: string;
   readonly txHash: string;
   readonly kind: Recovery["kind"];
 }): Recovery => {
@@ -536,7 +537,7 @@ const parseRecovery = ({
   if (
     parsed.schemaVersion !== FIELD_CARRIAGE_RECOVERY ||
     parsed.kind !== kind ||
-    parsed.requirementSha256 !== requirement.identitySha256 ||
+    parsed.requirementSha256 !== requirementSha256 ||
     typeof parsed.outRef !== "string" ||
     !OUT_REF.test(parsed.outRef) ||
     !parsed.outRef.startsWith(`${txHash}#`) ||
@@ -548,11 +549,105 @@ const parseRecovery = ({
   return Object.freeze({
     schemaVersion: FIELD_CARRIAGE_RECOVERY,
     kind,
-    requirementSha256: requirement.identitySha256,
+    requirementSha256: requirementSha256,
     outRef: parsed.outRef,
     datumCbor: parsed.datumCbor,
     unit: parsed.unit,
   });
+};
+
+/** Recover exact published output identity without replaying a removed target. */
+const recordedCarriageRecovery = ({
+  category,
+  action,
+  txHash,
+  value,
+}: {
+  category: FraudProofCatalogueCategoryName;
+  action: FraudProofWorkflowAction;
+  txHash: string;
+  value: JournalJsonObject | undefined;
+}): Recovery => {
+  const publication = action.input.stage === "publish_field_carriage";
+  const input = exact(
+    action.input,
+    publication
+      ? [
+          "schemaVersion",
+          "category",
+          "stage",
+          "forAction",
+          "requirementSha256",
+          "publicationIndex",
+          "publicationDigest",
+          "datumCborSha256",
+        ]
+      : [
+          "schemaVersion",
+          "category",
+          "stage",
+          "forAction",
+          "requirementSha256",
+          "certificateDatumCborSha256",
+          "certificateUnit",
+        ],
+    "recorded field carriage action",
+  );
+  const raw = input.schemaVersion === RAW_DATUM_PREIMAGE_PREREQUISITE;
+  if (
+    (!raw && input.schemaVersion !== FIELD_CARRIAGE_PREREQUISITE) ||
+    input.category !== category ||
+    (!publication && (raw || input.stage !== "certify_field_carriage")) ||
+    typeof input.requirementSha256 !== "string" ||
+    !/^[0-9a-f]{64}$/u.test(input.requirementSha256)
+  )
+    throw new Error("recorded field carriage action changed identity");
+  const base = parseBaseAction(
+    input.forAction,
+    "recorded field carriage base action",
+  );
+  if (
+    base.actionId.trim() !== base.actionId ||
+    base.actionId.length === 0 ||
+    (base.input.category !== undefined && base.input.category !== category)
+  )
+    throw new Error("recorded field carriage base action changed identity");
+  const recovered = parseRecovery({
+    value,
+    requirementSha256: input.requirementSha256,
+    txHash,
+    kind: publication ? "publication" : "certificate",
+  });
+  if (publication) {
+    if (
+      typeof input.publicationIndex !== "number" ||
+      !Number.isSafeInteger(input.publicationIndex) ||
+      input.publicationIndex < 0 ||
+      action.actionId !==
+        `publish-${raw ? "raw-datum-preimage" : "field-carriage"}:${base.actionId}:${input.requirementSha256}:${input.publicationIndex}` ||
+      recovered.unit !== null ||
+      sha256(recovered.datumCbor) !== input.datumCborSha256 ||
+      computeHash32(
+        fieldPreimagePublicationBytes(recovered.datumCbor),
+      ).toString("hex") !== input.publicationDigest
+    )
+      throw new Error("recorded field publication changed its exact output");
+  } else {
+    if (
+      action.actionId !==
+        `certify-field-carriage:${base.actionId}:${input.requirementSha256}` ||
+      typeof recovered.unit !== "string" ||
+      !new RegExp(
+        `^[0-9a-f]{56}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}$`,
+        "u",
+      ).test(recovered.unit) ||
+      recovered.unit !== input.certificateUnit ||
+      sha256(recovered.datumCbor) !== input.certificateDatumCborSha256
+    )
+      throw new Error("recorded field certificate changed its exact output");
+    CML.PlutusData.from_cbor_hex(recovered.datumCbor);
+  }
+  return recovered;
 };
 
 /**
@@ -970,60 +1065,34 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
         }),
       };
     },
-    reconcile: async ({
-      headerHash,
-      action,
-      artifact,
-      txHash,
-      durableRecovery,
-    }) => {
-      const parsed = await exactAction({ action, artifact });
-      if (txHash === undefined || !TX_HASH.test(txHash)) {
+    reconcile: async ({ headerHash, action, txHash, durableRecovery }) => {
+      if (txHash === undefined || !TX_HASH.test(txHash))
         return {
           kind: "conflict",
           reason: `${category} field prerequisite omitted its exact transaction hash`,
         };
-      }
       let recovered: Recovery;
       try {
-        recovered = parseRecovery({
-          value: durableRecovery,
-          requirement: parsed.requirement,
+        recovered = recordedCarriageRecovery({
+          category,
+          action,
           txHash,
-          kind: parsed.kind,
+          value: durableRecovery,
         });
       } catch (cause) {
         return { kind: "conflict", reason: String(cause) };
       }
-      const expectedDatum =
-        parsed.kind === "publication"
-          ? parsed.requirement.publicationDatums[parsed.publicationIndex!]!
-          : parsed.requirement.certificateDatumCbor!;
-      const expectedUnit =
-        parsed.kind === "publication"
-          ? null
-          : parsed.requirement.certificateUnit!;
-      if (
-        recovered.datumCbor !== expectedDatum ||
-        recovered.unit !== expectedUnit
-      ) {
-        return {
-          kind: "conflict",
-          reason: `${category} field prerequisite recovery changed its exact output`,
-        };
-      }
       const address =
-        parsed.kind === "publication"
+        recovered.kind === "publication"
           ? signer.address
           : fieldPreimageCertificateAddress({
               network,
-              certificatePolicyId: certifiedRequirement(parsed.requirement)
-                .certificate.policyId,
+              certificatePolicyId: recovered.unit!.slice(0, 56),
             });
       const observation = await publications.observeExact({
         headerHash,
         kind:
-          parsed.kind === "publication"
+          recovered.kind === "publication"
             ? "field_publication"
             : "field_certificate",
         address,
@@ -1088,9 +1157,17 @@ export const withFieldCarriagePrerequisite = <
     category,
     safety: FRAUD_PROOF_WORKFLOW_SAFETY,
     prepare: async (input) => await base.prepare(input),
+    ...(base.validatePreparedArtifact === undefined
+      ? {}
+      : { validatePreparedArtifact: base.validatePreparedArtifact }),
+    ...(base.prepareRaw === undefined ? {} : { prepareRaw: base.prepareRaw }),
+    ...(base.validatePreparedRawArtifact === undefined
+      ? {}
+      : { validatePreparedRawArtifact: base.validatePreparedRawArtifact }),
     observe: async (context) => {
       const observed = await base.observe(context);
       if (
+        context.reconciliationOnly === true ||
         observed.kind !== "action_required" ||
         context.identity.target.kind !== "state_queue_header"
       ) {

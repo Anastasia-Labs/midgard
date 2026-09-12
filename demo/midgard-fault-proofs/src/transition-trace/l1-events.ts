@@ -286,6 +286,16 @@ export const createTransitionTraceEventAuthority = ({
     throw new Error(
       "Transition event authority requires local raw L1 observations",
     );
+  return createEventAuthorityFromRaw({ binding, authority });
+};
+
+const createEventAuthorityFromRaw = ({
+  binding,
+  authority,
+}: {
+  binding: FraudProofWorkflowDeploymentBinding<"transitionTrace">;
+  authority: FraudProofRawL1SnapshotAuthority;
+}): TransitionTraceEventAuthority => {
   const handle = Object.freeze({
     deploymentFingerprint: binding.deploymentFingerprint,
   });
@@ -300,6 +310,10 @@ export const createTransitionTraceEventAuthority = ({
   );
   return handle;
 };
+/** Test-only transport injection; every capture still admits exact raw L1 evidence. */
+export const unsafeCreateTransitionTraceEventAuthorityFromRawForTest =
+  createEventAuthorityFromRaw;
+
 export const requireTransitionTraceEventAuthority = (
   handle: TransitionTraceEventAuthority,
 ) => {

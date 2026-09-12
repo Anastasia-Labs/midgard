@@ -445,6 +445,7 @@ export const detectResolvedOutputNonCanonicalCompleteReplay = ({
     const resolved = priorLedger.outputs.get(
       outRefKey(transactionId, selected.outputIndex),
     );
+    if (resolved === undefined && subject.source_kind === 0n) return;
     if (resolved === undefined)
       return fail("complete predecessor replay omitted a resolved input");
     try {

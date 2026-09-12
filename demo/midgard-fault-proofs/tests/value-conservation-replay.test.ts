@@ -333,9 +333,21 @@ it.each([true, false])(
         forced,
       });
       if (corruptPriorEffect)
-        await expect(result).rejects.toThrow(
-          "prior committed effect root differs",
-        );
+        await expect(result).rejects.toMatchObject({
+          name: "CanonicalReplayPrerequisiteError",
+          failures: [
+            {
+              headerHash: block.headerHash,
+              eventKeyCbor: Data.to(
+                Data.from(transition_trace[0]![1], SDK.TransitionStep)
+                  .event_key,
+                SDK.EventKey,
+              ),
+              prerequisite: "prior_transition_effect",
+            },
+          ],
+          detections: [],
+        });
       else {
         const artifact = await result;
         expect(artifact).not.toBeNull();

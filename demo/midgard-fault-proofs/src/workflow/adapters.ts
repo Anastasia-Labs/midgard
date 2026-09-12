@@ -744,6 +744,14 @@ const workflowAdapterRegistrationRows = [
     requiredClosure:
       "install the manifest-bound six-script runner in the compiled watcher application with authenticated retained DA",
   },
+  {
+    category: "mintItemNonCanonical",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: ["mint-item-non-canonical/workflow.ts"],
+    requiredClosure:
+      "install and exercise the manifest-bound four-step runner with public retained DA",
+  },
 ] as const satisfies readonly WorkflowAdapterRegistration[];
 
 export const WORKFLOW_ADAPTER_REGISTRATIONS = Object.freeze(

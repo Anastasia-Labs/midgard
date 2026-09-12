@@ -169,6 +169,25 @@ const prerequisite = ({
 });
 
 describe("production proof-chunk prerequisite V1", () => {
+  it("does not reconstruct proof carriage after read-only intent reconciliation", async () => {
+    const underlying = base();
+    const port = prerequisite();
+    vi.mocked(port.inspect).mockRejectedValue(
+      new Error("fresh typed material unavailable"),
+    );
+    const adapter = withProofChunkPrerequisite({
+      category: "invalidRange",
+      base: underlying,
+      prerequisite: port,
+    });
+    await expect(
+      adapter.observe({ ...context, reconciliationOnly: true }),
+    ).resolves.toEqual({ kind: "action_required", action: baseAction });
+    expect(port.inspect).not.toHaveBeenCalled();
+    expect(port.capture).not.toHaveBeenCalled();
+    expect(underlying.preflight).not.toHaveBeenCalled();
+  });
+
   it("waits for proof chunk finality without allowing another capture or proof preflight", async () => {
     const underlying = base();
     const port = prerequisite();

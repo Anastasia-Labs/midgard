@@ -20,6 +20,10 @@
       "midgard-source": "./tests/support/retained-reason-classifier.ts",
       "types": "./tests/support/retained-reason-classifier.ts"
     },
+    "./test-support/retained-transaction": {
+      "midgard-source": "./tests/support/retained-transaction.ts",
+      "types": "./tests/support/retained-transaction.ts"
+    },
     "./test-support/canonical-block-evidence-fixture": {
       "midgard-source": "./tests/helpers/canonical-block-evidence-fixture.ts",
       "types": "./tests/helpers/canonical-block-evidence-fixture.ts"
@@ -39,6 +43,18 @@
     "./test-support/transition-trace-retained": {
       "midgard-source": "./tests/support/transition-trace-retained.ts",
       "types": "./tests/support/transition-trace-retained.ts"
+    },
+    "./test-support/cross-block-settlement-authority": {
+      "midgard-source": "./src/cross-block-duplicate-event/settlement-authority.ts",
+      "types": "./src/cross-block-duplicate-event/settlement-authority.ts"
+    },
+    "./test-support/prepare-fabricated-deposit": {
+      "midgard-source": "./src/prepare-fabricated-deposit.ts",
+      "types": "./src/prepare-fabricated-deposit.ts"
+    },
+    "./test-support/prepare-fabricated-withdrawal": {
+      "midgard-source": "./src/prepare-fabricated-withdrawal.ts",
+      "types": "./src/prepare-fabricated-withdrawal.ts"
     }
   },
   "type": "module",
@@ -72,15 +88,17 @@
     "@al-ft/midgard-validation": "workspace:*",
     "@harmoniclabs/cbor": "1.6.6",
     "@lucid-evolution/lucid": "0.6.4",
-    "effect": "^3.14.22"
+    "effect": "^3.14.22",
+    "json-bigint": "npm:@cardanosolutions/json-bigint@1.1.0",
+    "typescript": "^5.7.3"
   },
   "devDependencies": {
     "@al-ft/midgard-test-support": "workspace:*",
     "@lucid-evolution/scalus-uplc": "0.1.3",
+    "@types/json-bigint": "1.0.4",
     "@types/node": "^22.17.0",
     "rimraf": "^6.0.1",
     "tsup": "^8.4.0",
-    "typescript": "^5.7.3",
     "vitest": "^3.0.7"
   }
 }

@@ -7,6 +7,9 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { deriveCanonicalDepositTransitionEffect } from "@al-ft/midgard-validation";
 import { Data, type Network, type UTxO } from "@lucid-evolution/lucid";
 
+import { classifyCommittedFieldShapeFields } from "../committed-field-shape/prepare-committed-field-shape.js";
+import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
+import { replayPrerequisiteFailure } from "../workflow/replay-prerequisite.js";
 import {
   detectTransitionTraceFaults,
   type TransitionTraceDetectionEvidence,
@@ -16,6 +19,7 @@ import {
   eventKeyFingerprint,
   type TransitionTraceReconstruction,
 } from "./reconstruct.js";
+import { assertRetainedReplayTerminal } from "./replay-terminal.js";
 import { buildRetainedValidationClaimWitness } from "./witnesses.js";
 
 /** Exact L1 event preimages; the installed caller must admit their raw snapshot
@@ -77,6 +81,14 @@ export const deriveTransitionTraceReplayEvidence = async ({
   if ((await detectTransitionTraceFaults(current)).some((d) => d.buildable))
     return evidence;
   for (let index = 0n; index < current.counts.transitionStepCount; index++) {
+    // Preserve a buildable finding from the already replayed prefix before a
+    // later event can leave the semantic proof's domain.
+    if (
+      (await detectTransitionTraceFaults(current, evidence)).some(
+        (d) => d.buildable,
+      )
+    )
+      return evidence;
     const step = current.traceByStepIndex.get(index)?.value;
     if (step === undefined || step.pre_utxos_root !== ledger.root())
       throw new Error(
@@ -88,14 +100,42 @@ export const deriveTransitionTraceReplayEvidence = async ({
     if (source === undefined)
       throw new Error("Transition replay source is absent");
     if (
+      source.phase === "L2Transaction" &&
+      source.entry.validity !== "TxIsValid"
+    )
+      throw replayPrerequisiteFailure(
+        current.headerHash,
+        step.event_key,
+        "representable_validity_flag",
+      );
+    if (
       source.phase === "L2Transaction" ||
       source.phase === "ForcedTransaction"
     ) {
+      if (
+        source.phase === "L2Transaction" &&
+        (classifyCommittedFieldShapeFields(
+          decodeMidgardNativeTxFullFromCanonicalCbor(
+            source.entry.fullTransactionCbor,
+          ),
+        ).some(({ evidence: field }) => field.isViolation) ||
+          transactionHasNonCanonicalMintItem(source.entry.fullTransactionCbor))
+      )
+        throw replayPrerequisiteFailure(
+          current.headerHash,
+          step.event_key,
+          "representable_field_shape",
+        );
       const retained = await buildRetainedValidationClaimWitness({
         reconstruction: current,
         eventKey: step.event_key,
       });
-      if (retained.claim.descriptor_membership.value.verdict === "Accepted")
+      assertRetainedReplayTerminal(retained);
+      const acceptedDescriptor =
+        retained.claim.descriptor_membership.value.verdict === "Accepted";
+      const acceptedTerminal =
+        retained.claim.terminal_state.verdict === "Accepted";
+      if (acceptedDescriptor && acceptedTerminal)
         claims.push({
           claim: retained.claim,
           terminalAcceptanceWitnessCbor: retained.terminalWorkWitnessCbor,
@@ -112,8 +152,15 @@ export const deriveTransitionTraceReplayEvidence = async ({
         const producedUtxos: SDK.LedgerInsertWitness[] = [];
         for (const key of decodeMidgardFieldPreimage(
           full.body.spendInputsPreimageCbor,
-        ))
+        )) {
+          if (!ledger.has(key))
+            throw replayPrerequisiteFailure(
+              current.headerHash,
+              step.event_key,
+              "present_spend_input",
+            );
           spentUtxos.push(await ledger.delete(key));
+        }
         const txId =
           source.phase === "L2Transaction"
             ? source.entry.txId
@@ -132,6 +179,23 @@ export const deriveTransitionTraceReplayEvidence = async ({
           );
         if (source.phase === "L2Transaction")
           l2.push({ stepIndex: index, spentUtxos, producedUtxos });
+      }
+      if (acceptedDescriptor && !acceptedTerminal) {
+        if (retained.claim.terminal_state.verdict !== "Rejected")
+          throw new Error(
+            "Transition replay retained endpoint is not terminal",
+          );
+        if (
+          (await detectTransitionTraceFaults(current, evidence)).some(
+            (d) => d.buildable,
+          )
+        )
+          return evidence;
+        throw replayPrerequisiteFailure(
+          current.headerHash,
+          step.event_key,
+          "accepted_terminal",
+        );
       }
     } else if (source.phase === "Withdrawal") {
       if (source.entry.value.validity === "WithdrawalIsValid") {

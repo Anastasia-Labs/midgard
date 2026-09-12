@@ -409,6 +409,39 @@ describe("Q55/W-O6 deterministic violation classification", () => {
 });
 
 describe("Q51/W-O4 resumable workflow", () => {
+  it("revalidates recorded family material before any resumed live observation", async () => {
+    const evidence = await canonicalEvidence();
+    const journal = new MemoryFraudProofWorkflowJournalStore();
+    const observe = vi.fn(async () => ({
+      kind: "pending" as const,
+      reason: "awaiting chain",
+    }));
+    const validatePreparedArtifact = vi.fn(
+      async ({
+        artifact,
+      }: Parameters<
+        NonNullable<FraudProofFamilyWorkflowAdapter["validatePreparedArtifact"]>
+      >[0]) => {
+        if (artifact.headerHash !== evidence.headerHash)
+          throw new Error("changed typed material");
+      },
+    );
+    const adapter = { ...makeAdapter(), observe, validatePreparedArtifact };
+    expect((await run({ evidence, adapter, journal })).kind).toBe("pending");
+    expect(validatePreparedArtifact).not.toHaveBeenCalled();
+    expect((await run({ evidence, adapter, journal })).kind).toBe("pending");
+    expect(validatePreparedArtifact).toHaveBeenCalledOnce();
+    expect(validatePreparedArtifact.mock.calls[0]![0].evidence).toBe(evidence);
+    validatePreparedArtifact.mockRejectedValueOnce(
+      new Error("changed typed material"),
+    );
+    await expect(run({ evidence, adapter, journal })).rejects.toThrow(
+      "changed typed material",
+    );
+    expect(observe).toHaveBeenCalledTimes(2);
+    expect(adapter.prepare).toHaveBeenCalledOnce();
+  });
+
   it("runs from authenticated L1 plus public retained DA with no private evidence input", async () => {
     const sharedInput = outRefCbor(61, 0n);
     const fixture = await buildCanonicalBlockFixture({
@@ -418,11 +451,16 @@ describe("Q51/W-O4 resumable workflow", () => {
       ],
     });
     const adapter = makeAdapter();
+    const replayContext = {};
+    const resolveReplayContext = vi.fn(
+      async (_evidence: CanonicalBlockEvidence) => replayContext,
+    );
     const result = await runFraudProofWorkflowFromRetainedDa({
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       observation: authenticatedHeaderObservation(fixture),
       sources: [retainedDaSource(fixture.payloadEnvelopeCbor)],
       replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
+      resolveReplayContext,
       registry: createFraudProofWorkflowRegistry({
         adapters: [adapter],
         launchScope: ["doubleSpend"],
@@ -433,6 +471,13 @@ describe("Q51/W-O4 resumable workflow", () => {
       now: () => new Date("2026-08-29T00:00:00.000Z"),
     });
     expect(result.kind).toBe("completed");
+    expect(resolveReplayContext).toHaveBeenCalledOnce();
+    expect(adapter.prepare).toHaveBeenCalledWith(
+      expect.objectContaining({
+        evidence: resolveReplayContext.mock.calls[0]![0],
+        replayContext,
+      }),
+    );
   });
 
   it("rejects a caller-authored partial detector disguised as complete replay", async () => {

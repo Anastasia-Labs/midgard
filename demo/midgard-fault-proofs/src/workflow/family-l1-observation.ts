@@ -11,6 +11,8 @@ import {
 import {
   createLocalKupmiosHttpOgmiosRawSource,
   type LocalKupmiosHttpOgmiosSourceConfig,
+  readAdmittedLocalKupmiosSignedTransactionRecovery,
+  rebroadcastAdmittedLocalKupmiosSignedTransaction,
 } from "./local-kupmios-http-ogmios-source.js";
 import { createLocalKupmiosFraudProofRawL1SnapshotAuthority } from "./local-kupmios-raw-l1-authority.js";
 import {
@@ -37,6 +39,10 @@ import {
 } from "./raw-l1-snapshot.js";
 import type { VerifiedFraudProofReleaseEconomicsPolicy } from "./release-economics-policy.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
+import type {
+  SignedTransactionRecoveryObservation,
+  SignedWorkflowTransaction,
+} from "./signed-transaction-reconciliation.js";
 
 export const FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT =
   "midgard-fraud-proof-family-l1-observation-port-v1" as const;
@@ -49,6 +55,16 @@ export interface FraudProofFamilyL1ObservationPort<
   /** Raw release-final authority retained for live global prerequisites. */
   readonly rawL1?: FraudProofRawL1SnapshotAuthority;
   readonly publications: FraudProofAuthenticatedPublicationObserver;
+  observeSignedTransaction?(
+    input: SignedWorkflowTransaction,
+  ): Promise<SignedTransactionRecoveryObservation>;
+  rebroadcastSignedTransaction?(
+    input: SignedWorkflowTransaction & {
+      readonly authorizeResubmission: (
+        input: SignedWorkflowTransaction,
+      ) => Promise<void>;
+    },
+  ): Promise<string>;
   observeHeader(input: {
     readonly headerHash: string;
   }): Promise<AuthenticatedStateQueueHeaderObservation>;
@@ -174,7 +190,7 @@ export const createFraudProofFamilyLocalKupmiosL1ObservationPort = <
     ...source,
     releaseFinality,
   });
-  return createFraudProofFamilyRawL1ObservationPort({
+  const port = createFraudProofFamilyRawL1ObservationPort({
     authority: createLocalKupmiosFraudProofRawL1SnapshotAuthority({
       source: rawSource,
       releaseFinality,
@@ -183,12 +199,39 @@ export const createFraudProofFamilyLocalKupmiosL1ObservationPort = <
     releaseEconomics,
     definition,
   });
+  return Object.freeze({
+    ...port,
+    observeSignedTransaction: (input: SignedWorkflowTransaction) =>
+      readAdmittedLocalKupmiosSignedTransactionRecovery({
+        ...input,
+        source: rawSource,
+      }),
+    rebroadcastSignedTransaction: (
+      input: SignedWorkflowTransaction & {
+        readonly authorizeResubmission: (
+          input: SignedWorkflowTransaction,
+        ) => Promise<void>;
+      },
+    ) =>
+      rebroadcastAdmittedLocalKupmiosSignedTransaction({
+        ...input,
+        source: rawSource,
+      }),
+  });
 };
 
 const sameTerminal = (
   left: FraudProofWorkflowTerminal,
   right: FraudProofWorkflowTerminal,
-): boolean => JSON.stringify(left) === JSON.stringify(right);
+): boolean => {
+  // Slot/hash identify the removal's original inclusion and remain immutable.
+  // Only its depth may grow while a durable completion handoff is resumed.
+  const facts = (terminal: FraudProofWorkflowTerminal) => ({
+    ...terminal,
+    observedAt: { ...terminal.observedAt, confirmationDepth: 0 },
+  });
+  return JSON.stringify(facts(left)) === JSON.stringify(facts(right));
+};
 
 /** Independent second raw-L1 observation for terminal acceptance. */
 export const createFraudProofFamilyAuthenticatedL1TerminalVerifier = <
@@ -227,12 +270,16 @@ export const createFraudProofFamilyAuthenticatedL1TerminalVerifier = <
     }
     if (
       terminal.observedAt.confirmationDepth <
-      releaseFinality.policy.confirmationDepth
+        releaseFinality.policy.confirmationDepth ||
+      candidate.observedAt.confirmationDepth <
+        releaseFinality.policy.confirmationDepth ||
+      terminal.observedAt.confirmationDepth <
+        candidate.observedAt.confirmationDepth
     ) {
       throw new Error(
         `authenticated terminal depth is below the release threshold: required=${releaseFinality.policy.confirmationDepth.toString()} actual=${terminal.observedAt.confirmationDepth.toString()} policy=${releaseFinality.policyDigest}`,
       );
     }
-    return terminal;
+    return candidate;
   },
 });
