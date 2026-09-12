@@ -338,16 +338,11 @@ export const deriveAuthenticatedStateQueueHeaderObservationFromRawL1 = async ({
   const header = await Effect.runPromise(
     getHeaderFromStateQueueDatum(topology.target.datum),
   );
-  const targetOutRef = outRef(topology.target.utxo);
-  const creatingTxHash = targetOutRef.split("#")[0]!;
-  const creatingTransaction = snapshot.transactions.find(
-    (transaction) => transaction.txHash === creatingTxHash,
-  );
-  if (creatingTransaction === undefined) {
-    throw new Error(
-      "raw L1 snapshot omitted the state-queue header creation transaction",
-    );
-  }
+  // The header was committed where its NFT was minted. Later transactions
+  // re-create the live output without changing the header (a DA attestation
+  // does), so binding evidence to the current output's creating transaction
+  // would change the observation under a prepared workflow.
+  const mint = uniqueStateQueueHeaderMint({ snapshot, definition });
   return {
     schemaVersion: CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
     sourceMode: "local_node",
@@ -357,13 +352,37 @@ export const deriveAuthenticatedStateQueueHeaderObservationFromRawL1 = async ({
       grade: "security",
     },
     chainPoint: {
-      slot: BigInt(creatingTransaction.inclusionPoint.slot),
-      blockHash: creatingTransaction.inclusionPoint.blockHash,
+      slot: BigInt(mint.inclusionPoint.slot),
+      blockHash: mint.inclusionPoint.blockHash,
     },
-    confirmationDepth: creatingTransaction.confirmationDepth,
+    confirmationDepth: mint.confirmationDepth,
     headerHash: definition.headerHash,
     header,
   };
+};
+
+/** The one authenticated mint of the selected header's state-queue NFT. */
+const uniqueStateQueueHeaderMint = ({
+  snapshot,
+  definition,
+}: {
+  readonly snapshot: FraudProofRawL1Snapshot;
+  readonly definition: FraudProofRawL1FamilyDefinition;
+}): FraudProofRawL1Transaction => {
+  const unit = toUnit(
+    definition.stateQueue.policyId,
+    STATE_QUEUE_NODE_ASSET_NAME_PREFIX + definition.headerHash,
+  );
+  const mints = snapshot.transactions.filter(
+    (transaction) =>
+      mintQuantity(
+        CML.TransactionBody.from_cbor_hex(transaction.bodyCbor),
+        unit,
+      ) === 1n,
+  );
+  if (mints.length !== 1)
+    throw new Error("state-queue header requires one authenticated NFT mint");
+  return mints[0]!;
 };
 
 /** Recovery-only observation of the unique authenticated mint of a header NFT.
@@ -380,16 +399,7 @@ export const deriveRetainedStateQueueHeaderObservationFromRawL1 = async ({
     definition.stateQueue.policyId,
     STATE_QUEUE_NODE_ASSET_NAME_PREFIX + definition.headerHash,
   );
-  const mints = snapshot.transactions.filter(
-    (transaction) =>
-      mintQuantity(
-        CML.TransactionBody.from_cbor_hex(transaction.bodyCbor),
-        unit,
-      ) === 1n,
-  );
-  if (mints.length !== 1)
-    throw new Error("Retained header requires one authenticated NFT mint");
-  const transaction = mints[0]!;
+  const transaction = uniqueStateQueueHeaderMint({ snapshot, definition });
   const outputs = CML.TransactionBody.from_cbor_hex(
     transaction.bodyCbor,
   ).outputs();
