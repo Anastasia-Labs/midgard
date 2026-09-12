@@ -6,7 +6,11 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { expect, it } from "vitest";
 
-import { journeyWorkflowUpdates } from "./correction.js";
+import {
+  JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS,
+  journeyWorkflowProgressCount,
+  journeyWorkflowUpdates,
+} from "./correction.js";
 
 const identity = {
   schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
@@ -108,4 +112,23 @@ it("rejects a changed or truncated pre-launch journal prefix", () => {
       baseline,
     ),
   ).toThrow();
+});
+
+it("counts durable workflow progress without the per-block observations", () => {
+  const observation = entry(5, {
+    kind: "reconciled",
+    actionId: "init:cd#0",
+    txHash: "56".repeat(32),
+    outcome: "pending",
+  });
+  const stall = entry(6, { kind: "stalled", reason: "preflight failed" });
+  expect(journeyWorkflowProgressCount([])).toBe(0);
+  expect(journeyWorkflowProgressCount([observation, observation])).toBe(0);
+  expect(journeyWorkflowProgressCount([observation, stall, observation])).toBe(
+    1,
+  );
+});
+
+it("allows the watcher's whole preflight retry budget before failing a stall", () => {
+  expect(JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS).toBe(31 * 60_000);
 });

@@ -26,6 +26,26 @@ export const TRANSITION_TRACE_JOURNEY_PLAN = Object.freeze({
   successorTransactions: 4,
 });
 
+/**
+ * Finite bound for every automatic family without an audited plan. The largest
+ * installed proof chain (executionNativeScriptInvalid: init, thirteen steps,
+ * removal, and its publications) stays well under this bound; a family that
+ * needs more must publish an audited plan like transitionTrace instead of
+ * widening the bound. The correction stage additionally fails as soon as the
+ * workflow journal stops making durable progress for one transaction
+ * allowance, so this bound only caps a family that keeps progressing.
+ */
+export const GENERIC_JOURNEY_PLAN = Object.freeze({
+  category: "generic",
+  dependentTransactions: 24,
+  // Registration, activation, appointment, and honest commitment.
+  successorTransactions: 4,
+});
+
+export type JourneyTimingPlan =
+  | typeof TRANSITION_TRACE_JOURNEY_PLAN
+  | typeof GENERIC_JOURNEY_PLAN;
+
 /** Refuse to reuse the audited plan if the actual projected output has drifted. */
 export const verifyTransitionTraceJourneyOutputPlan = (
   outputCbor: Uint8Array,
@@ -50,13 +70,15 @@ export const verifyTransitionTraceJourneyOutputPlan = (
   return plan;
 };
 
-export interface TransitionTraceJourneyCadence {
+export interface JourneyCadence {
   slotLengthSeconds: number;
   activeSlotsCoeff: number;
   confirmationDepth: number;
   /** Separate preparation budget; retained fixture retries need no fresh preparation. */
   fixtureStagingAllowanceMs?: number;
 }
+
+export type TransitionTraceJourneyCadence = JourneyCadence;
 
 export const HEALTHY_REPLAY_BLOCK_ALLOWANCE_MS = 10_000;
 const MAX_TIMER_MS = 2_147_483_647;
@@ -147,12 +169,15 @@ export const requireHealthyReplayFitsDeadline = (input: {
   return remainingMs;
 };
 
-export const transitionTraceJourneyTiming = ({
-  slotLengthSeconds,
-  activeSlotsCoeff,
-  confirmationDepth,
-  fixtureStagingAllowanceMs = 0,
-}: TransitionTraceJourneyCadence) => {
+export const journeyTimingForPlan = (
+  plan: JourneyTimingPlan,
+  {
+    slotLengthSeconds,
+    activeSlotsCoeff,
+    confirmationDepth,
+    fixtureStagingAllowanceMs = 0,
+  }: JourneyCadence,
+) => {
   if (
     !Number.isFinite(slotLengthSeconds) ||
     slotLengthSeconds <= 0 ||
@@ -164,11 +189,8 @@ export const transitionTraceJourneyTiming = ({
     !Number.isSafeInteger(fixtureStagingAllowanceMs) ||
     fixtureStagingAllowanceMs < 0
   ) {
-    throw new Error(
-      "Invalid transition-trace journey cadence or staging allowance",
-    );
+    throw new Error("Invalid journey cadence or staging allowance");
   }
-  const plan = TRANSITION_TRACE_JOURNEY_PLAN;
   const expectedConfirmationPerTransactionMs =
     (confirmationDepth * slotLengthSeconds * 1000) / activeSlotsCoeff;
   // Two times the ideal cadence mean is a finite allowance, not a finality guarantee.
@@ -206,9 +228,7 @@ export const transitionTraceJourneyTiming = ({
     !Number.isSafeInteger(journeyTimeoutMs) ||
     journeyTimeoutMs > 2_147_483_647
   ) {
-    throw new Error(
-      "Transition-trace journey timing exceeds the supported timer range",
-    );
+    throw new Error("Journey timing exceeds the supported timer range");
   }
   return {
     plan,
@@ -217,11 +237,29 @@ export const transitionTraceJourneyTiming = ({
       plan.dependentTransactions * expectedConfirmationPerTransactionMs,
     confirmationAllowanceMs:
       plan.dependentTransactions * confirmationAllowancePerTransactionMs,
+    /** Build, submit, and confirm one dependent transaction; also the progress allowance. */
+    transactionAllowanceMs,
     correctionTimeoutMs,
     journeyTimeoutMs,
     allowances,
   };
 };
+
+export type JourneyTiming = ReturnType<typeof journeyTimingForPlan>;
+
+export const transitionTraceJourneyTiming = (cadence: JourneyCadence) =>
+  journeyTimingForPlan(TRANSITION_TRACE_JOURNEY_PLAN, cadence);
+
+export const genericJourneyTiming = (cadence: JourneyCadence) =>
+  journeyTimingForPlan(GENERIC_JOURNEY_PLAN, cadence);
+
+export const journeyTimingForCategory = (
+  category: string,
+  cadence: JourneyCadence,
+) =>
+  category === TRANSITION_TRACE_JOURNEY_PLAN.category
+    ? transitionTraceJourneyTiming(cadence)
+    : genericJourneyTiming(cadence);
 
 const object = (value: unknown, label: string): Record<string, unknown> => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -230,14 +268,16 @@ const object = (value: unknown, label: string): Record<string, unknown> => {
   return value as Record<string, unknown>;
 };
 
+export interface ReadJourneyTimingOptions {
+  authenticatedConfirmationDepth?: number;
+  fixtureStagingAllowanceMs?: number;
+}
+
 /** Safe at Vitest module load: reads public configuration only, without providers or keys. */
-export const readTransitionTraceJourneyTiming = async (
+export const readJourneyCadence = async (
   runDirectory: string,
-  options: {
-    authenticatedConfirmationDepth?: number;
-    fixtureStagingAllowanceMs?: number;
-  } = {},
-) => {
+  options: ReadJourneyTimingOptions = {},
+): Promise<JourneyCadence> => {
   if (!isAbsolute(runDirectory))
     throw new Error("Journey run directory must be absolute");
   const [genesisBytes, manifestBytes] = await Promise.all([
@@ -265,13 +305,29 @@ export const readTransitionTraceJourneyTiming = async (
       "Journey timing differs from authenticated release finality depth",
     );
   }
-  return transitionTraceJourneyTiming({
+  return {
     slotLengthSeconds: genesis.slotLength,
     activeSlotsCoeff: genesis.activeSlotsCoeff,
     confirmationDepth,
     fixtureStagingAllowanceMs: options.fixtureStagingAllowanceMs,
-  });
+  };
 };
+
+/** The audited plan for transitionTrace; the finite generic plan for every other family. */
+export const readJourneyTiming = async (
+  runDirectory: string,
+  category: string,
+  options: ReadJourneyTimingOptions = {},
+) =>
+  journeyTimingForCategory(
+    category,
+    await readJourneyCadence(runDirectory, options),
+  );
+
+export const readTransitionTraceJourneyTiming = async (
+  runDirectory: string,
+  options: ReadJourneyTimingOptions = {},
+) => readJourneyTiming(runDirectory, "transitionTrace", options);
 
 export interface JourneyTimingTip {
   blockNo: number;
@@ -381,8 +437,8 @@ const readJourneyTimingTip = async (
   }
 };
 
-export const transitionTraceJourneyExecutionTiming = (
-  timing: ReturnType<typeof transitionTraceJourneyTiming>,
+export const journeyExecutionTiming = (
+  timing: JourneyTiming,
   capturedTip: JourneyTimingTip,
   capturedAtMonotonicMs: number,
 ) => {
@@ -415,19 +471,21 @@ export const transitionTraceJourneyExecutionTiming = (
   });
 };
 
-export type TransitionTraceJourneyExecutionTiming = ReturnType<
-  typeof transitionTraceJourneyExecutionTiming
->;
+export const transitionTraceJourneyExecutionTiming = journeyExecutionTiming;
+
+export type JourneyExecutionTiming = ReturnType<typeof journeyExecutionTiming>;
+export type TransitionTraceJourneyExecutionTiming = JourneyExecutionTiming;
 
 /** Suite-load planning opens only a bounded read-only RPC and reads public configuration. */
+export const readJourneyExecutionTiming = async (
+  runDirectory: string,
+  category: string,
+) => {
+  const timing = await readJourneyTiming(runDirectory, category);
+  const capturedTip = await readJourneyTimingTip(runDirectory);
+  return journeyExecutionTiming(timing, capturedTip, performance.now());
+};
+
 export const readTransitionTraceJourneyExecutionTiming = async (
   runDirectory: string,
-) => {
-  const timing = await readTransitionTraceJourneyTiming(runDirectory);
-  const capturedTip = await readJourneyTimingTip(runDirectory);
-  return transitionTraceJourneyExecutionTiming(
-    timing,
-    capturedTip,
-    performance.now(),
-  );
-};
+) => readJourneyExecutionTiming(runDirectory, "transitionTrace");

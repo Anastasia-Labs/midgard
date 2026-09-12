@@ -5,7 +5,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  GENERIC_JOURNEY_PLAN,
+  genericJourneyTiming,
   healthyJourneyReplayTiming,
+  journeyTimingForCategory,
   readTransitionTraceJourneyExecutionTiming,
   readTransitionTraceJourneyTiming,
   requireHealthyReplayFitsDeadline,
@@ -110,7 +113,7 @@ describe("single-deposit transition-trace journey timing", () => {
   ])("rejects invalid cadence or allowance %j", (invalid) => {
     expect(() =>
       transitionTraceJourneyTiming({ ...preprod, ...invalid }),
-    ).toThrow("Invalid transition-trace");
+    ).toThrow("Invalid journey cadence");
   });
 
   it("rejects timer overflow instead of turning a long deadline into an immediate one", () => {
@@ -141,6 +144,36 @@ describe("single-deposit transition-trace journey timing", () => {
     await expect(
       readTransitionTraceJourneyTiming("relative-run"),
     ).rejects.toThrow("must be absolute");
+  });
+});
+
+describe("generic journey timing for families without an audited plan", () => {
+  it("budgets the same cadence formula over the finite generic transaction bound", () => {
+    const timing = genericJourneyTiming(preprod);
+    const audited = transitionTraceJourneyTiming(preprod);
+    expect(timing.plan).toBe(GENERIC_JOURNEY_PLAN);
+    expect(GENERIC_JOURNEY_PLAN.dependentTransactions).toBeGreaterThan(
+      TRANSITION_TRACE_JOURNEY_PLAN.dependentTransactions,
+    );
+    // Two finality windows plus build and RPC for one dependent transaction.
+    expect(timing.transactionAllowanceMs).toBe(1_350_000);
+    expect(timing.transactionAllowanceMs).toBe(audited.transactionAllowanceMs);
+    expect(timing.correctionTimeoutMs).toBe(24 * 1_350_000);
+    expect(timing.journeyTimeoutMs).toBe(41_130_030);
+    expect(timing.journeyTimeoutMs).toBeGreaterThan(audited.journeyTimeoutMs);
+    expect(timing.allowances).toEqual(audited.allowances);
+  });
+
+  it("keeps the audited plan for transitionTrace and uses the generic plan elsewhere", () => {
+    expect(journeyTimingForCategory("transitionTrace", preprod).plan).toBe(
+      TRANSITION_TRACE_JOURNEY_PLAN,
+    );
+    expect(journeyTimingForCategory("zeroInput", preprod)).toEqual(
+      genericJourneyTiming(preprod),
+    );
+    expect(
+      journeyTimingForCategory("executionNativeScriptInvalid", preprod).plan,
+    ).toBe(GENERIC_JOURNEY_PLAN);
   });
 });
 

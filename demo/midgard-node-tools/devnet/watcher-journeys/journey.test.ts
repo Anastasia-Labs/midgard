@@ -2,7 +2,7 @@ import { it } from "vitest";
 
 import { selectJourneyFixtures } from "./catalogue.js";
 import { runAutonomousWatcherJourney } from "./journey-runner.js";
-import { readTransitionTraceJourneyExecutionTiming } from "./journey-timing.js";
+import { readJourneyExecutionTiming } from "./journey-timing.js";
 
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
 const fixtures = selectJourneyFixtures(
@@ -12,9 +12,12 @@ const fixtures = selectJourneyFixtures(
 // All families share wallets and chain state. The package config admits one fork,
 // and this sequential suite leaves deployment and service ownership with the runner.
 for (const fixture of fixtures) {
+  // Every family is budgeted from the actual cadence and finality depth: the
+  // audited transitionTrace plan or the finite generic plan. A fixed wall-clock
+  // timeout cannot fit a multi-step proof chain at release finality.
   const timing =
-    runDirectory !== undefined && fixture.category === "transitionTrace"
-      ? await readTransitionTraceJourneyExecutionTiming(runDirectory)
+    runDirectory !== undefined
+      ? await readJourneyExecutionTiming(runDirectory, fixture.category)
       : undefined;
   const timeoutMs = timing?.journeyTimeoutMs ?? 7_200_000;
   it.skipIf(runDirectory === undefined)(

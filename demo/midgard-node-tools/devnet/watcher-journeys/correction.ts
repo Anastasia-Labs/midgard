@@ -17,6 +17,10 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+import {
+  WATCHER_PREFLIGHT_STALL_RETRY_BUDGET_MS,
+  WATCHER_PREFLIGHT_STALL_RETRY_DELAY_MS,
+} from "midgard-watcher";
 import { expect } from "vitest";
 
 import { writeJourneyArtifact } from "./artifacts.js";
@@ -228,8 +232,22 @@ export const readJourneyWorkflowEntries = async ({
  * builds against the live chain, so a header the queue re-created in that
  * window (a DA attestation moves the header output) stalls preflight until
  * the re-creating block finalizes; the next pass then binds the live output.
+ * The watcher itself resumes such a preflight stall every
+ * `WATCHER_PREFLIGHT_STALL_RETRY_DELAY_MS` for up to its retry budget, so the
+ * journey allows the whole budget plus one delay before calling it a failure.
  */
-export const JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS = 600_000;
+export const JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS =
+  WATCHER_PREFLIGHT_STALL_RETRY_BUDGET_MS +
+  WATCHER_PREFLIGHT_STALL_RETRY_DELAY_MS;
+
+/**
+ * Durable workflow progress: every journal record except the per-block
+ * `reconciled` observations, which the watcher appends whether or not the
+ * proof chain advances.
+ */
+export const journeyWorkflowProgressCount = (
+  records: readonly FraudProofWorkflowJournalEntry[],
+) => records.filter(({ event }) => event.kind !== "reconciled").length;
 
 /**
  * A retained failure is history. A new stall fails the current attempt unless
@@ -295,6 +313,7 @@ export const verifyJourneyCorrection = async ({
   predecessorHeaderHash,
   workflowBaseline,
   correctionTimeoutMs = 1_800_000,
+  progressAllowanceMs,
   stallAllowanceMs = JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS,
   operatorVkey,
   requireLive,
@@ -309,7 +328,15 @@ export const verifyJourneyCorrection = async ({
   headerHash: string;
   predecessorHeaderHash: string;
   workflowBaseline: readonly FraudProofWorkflowJournalEntry[];
+  /** Hard cap on the whole correction: the family's audited or generic plan. */
   correctionTimeoutMs?: number;
+  /**
+   * Fails the correction as soon as the workflow journal makes no durable
+   * progress for this long; one transaction's build, submit, and confirmation
+   * allowance. A multi-step family at release finality legitimately runs past
+   * any fixed wall clock, so progress, not elapsed time, is the health signal.
+   */
+  progressAllowanceMs?: number;
   stallAllowanceMs?: number;
   operatorVkey: string;
   requireLive(): void;
@@ -323,6 +350,8 @@ export const verifyJourneyCorrection = async ({
   const { deployment, provider, accounts } = context;
   let reported = workflowBaseline.length - 1;
   let reportedStall: string | undefined;
+  let progressCount = journeyWorkflowProgressCount(workflowBaseline);
+  let progressAt = Date.now();
   const completion = await poll(
     "confirmed proof and correction",
     async () => {
@@ -332,6 +361,18 @@ export const verifyJourneyCorrection = async ({
         category,
         headerHash,
       });
+      const progress = journeyWorkflowProgressCount(records);
+      if (progress !== progressCount) {
+        progressCount = progress;
+        progressAt = Date.now();
+      } else if (
+        progressAllowanceMs !== undefined &&
+        Date.now() - progressAt > progressAllowanceMs
+      ) {
+        throw new Error(
+          `Workflow made no durable progress for ${progressAllowanceMs.toString()} ms (${progressCount.toString()} progress records)`,
+        );
+      }
       for (const { sequence, event } of journeyWorkflowUpdates(
         records,
         workflowBaseline,

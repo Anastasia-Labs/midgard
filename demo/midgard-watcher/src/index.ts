@@ -44,6 +44,13 @@ export {
   type WatcherFaultProofSupervisorStatus,
 } from "./fault-proofs/fault-proof-supervisor.js";
 export {
+  isWatcherPreflightStalledResult,
+  runWorkflowWithPreflightStallRetries,
+  WATCHER_PREFLIGHT_STALL_RETRY_BUDGET_MS,
+  WATCHER_PREFLIGHT_STALL_RETRY_DELAY_MS,
+  type WatcherPreflightStalledResult,
+} from "./fault-proofs/preflight-stall-retry.js";
+export {
   assertWatcherProtocolParameterRuntimeAuthority,
   createWatcherProtocolParameterRuntimeAuthority,
   WATCHER_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY,

@@ -34,7 +34,7 @@ import type {
 } from "./fixture.js";
 import { startJourneyHistoryArchives } from "./history-archives.js";
 import { prepareDuplicateEventHistory } from "./history-settlement.js";
-import { readTransitionTraceJourneyTiming } from "./journey-timing.js";
+import { readJourneyTiming } from "./journey-timing.js";
 import { JOURNEY_FINALITY_DEPTH, loadJourneyContext } from "./live-context.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
 import { startJourneyNativeRecorder } from "./native-recorder.js";
@@ -167,8 +167,8 @@ const runJourney = async (
       deploymentFingerprint: deployment.manifest.manifestId,
     });
     const timing =
-      execution.kind === "journey" && category === "transitionTrace"
-        ? await readTransitionTraceJourneyTiming(context.runDirectory, {
+      execution.kind === "journey"
+        ? await readJourneyTiming(context.runDirectory, category, {
             authenticatedConfirmationDepth:
               releaseFinality.policy.confirmationDepth,
           })
@@ -622,6 +622,7 @@ const runJourney = async (
     const completion = await verifyJourneyCorrection({
       workflowBaseline,
       correctionTimeoutMs: timing?.correctionTimeoutMs,
+      progressAllowanceMs: timing?.transactionAllowanceMs,
       context,
       native,
       workflowJournalDirectory: config.workflowJournalDirectory,
