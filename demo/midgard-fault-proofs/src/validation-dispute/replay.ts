@@ -15,6 +15,7 @@ import {
 } from "@al-ft/midgard-core";
 import {
   classifyWithdrawalFromLedger,
+  committedWithdrawalValueBytes,
   DepositDatum,
   DepositInfo,
   EMPTY_MERKLE_TREE_ROOT,
@@ -486,11 +487,13 @@ export const admitValidationTraceReplayContext = async ({
         origin!.event.datum!,
         WithdrawalOrderDatum,
       ).event;
+      // The producer and Aiken serialiseData commit definite asset maps, so the
+      // committed leaf is compared in its canonical committed encoding.
       if (
-        Data.to(
-          { ...original.info, validity: source.entry.value.validity },
-          WithdrawalInfo,
-        ) !== source.entry.valueBytes.toString("hex")
+        committedWithdrawalValueBytes({
+          ...original.info,
+          validity: source.entry.value.validity,
+        }) !== source.entry.valueBytes.toString("hex")
       )
         throw new Error(
           "validation replay withdrawal differs from its originating body and signature",
