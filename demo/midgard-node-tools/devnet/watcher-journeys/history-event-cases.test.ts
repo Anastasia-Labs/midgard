@@ -1,5 +1,8 @@
 import {
   canonicalBlockEvidenceFromVerifiedPayload,
+  type CompleteCanonicalReplay,
+  DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
+  prepareDoubleWithdrawFromCommittedLeaves,
   prepareWithdrawnInputFromCanonicalEvidence,
   prepareWithdrawnReferenceInput,
 } from "@al-ft/midgard-fault-proofs";
@@ -16,6 +19,7 @@ import {
 } from "./history-event-local-staging.js";
 import { classifyLocalHistoryEventFixture } from "./history-event-verification.js";
 import {
+  buildJourneyWithdrawalEvent,
   buildJourneyWithdrawnTransaction,
   journeyWithdrawalBody,
 } from "./history-events.js";
@@ -103,12 +107,14 @@ const select = async (input: {
   predecessor: VerifiableJourneyBlock;
   history: readonly VerifiableJourneyBlock[];
   honest: boolean;
+  replayer?: CompleteCanonicalReplay;
 }) => {
   const result = await classifyLocalHistoryEventFixture({
     stage,
     block: input.block,
     predecessor: input.predecessor,
     history: input.history,
+    ...(input.replayer === undefined ? {} : { replayer: input.replayer }),
   });
   if (input.honest) expect(result.decision.decision).toBe("healthy");
   else {
@@ -171,3 +177,106 @@ it.each(["withdrawnInput", "withdrawnReferenceInput"] as const)(
   },
   1_800_000,
 );
+
+/**
+ * The full installed catalogue proves the fault and clears the honest control,
+ * while the family's own replay confirms the fixture is exactly its fault. The
+ * installed selection between `winners` is an open owner decision recorded in
+ * the case below; neither outcome is pinned here.
+ */
+const selectWithinInstalledCatalogue = async (input: {
+  category: SDK.FraudProofCatalogueCategoryName;
+  winners: readonly SDK.FraudProofCatalogueCategoryName[];
+  replayer: CompleteCanonicalReplay;
+  block: VerifiableJourneyBlock;
+  predecessor: VerifiableJourneyBlock;
+  history: readonly VerifiableJourneyBlock[];
+  honest: boolean;
+}) => {
+  const { category, winners, replayer, ...blocks } = input;
+  const installed = await classifyLocalHistoryEventFixture({
+    stage,
+    block: blocks.block,
+    predecessor: blocks.predecessor,
+    history: blocks.history,
+  });
+  const summary = JSON.stringify(installed.decision, null, 2);
+  if (input.honest)
+    expect(installed.decision.decision, summary).toBe("healthy");
+  else {
+    expect(installed.decision.decision, summary).toBe("fault_detected");
+    if (installed.decision.decision === "fault_detected")
+      expect(winners, summary).toContain(installed.decision.category);
+  }
+  return await select({ ...blocks, category, replayer });
+};
+
+it("doubleWithdraw proves two real published withdrawals of one L2 output and its honest control passes", async () => {
+  const { predecessor, history } = await openFamilyWindow(1);
+  const body = journeyWithdrawalBody({
+    predecessor,
+    owner: stage.ownerKey.to_public().hash().to_hex(),
+  });
+  const withdrawals = [
+    await stage.publishWithdrawal(body, 0),
+    await stage.publishWithdrawal(body, 1),
+  ];
+  const endTime = latestInclusion(withdrawals);
+  const slot = blockSlot++;
+  for (const honest of [false, true]) {
+    const block = await buildJourneyWithdrawalEvent({
+      predecessor,
+      operatorVkey: stage.operatorVkey,
+      endTime,
+      blockSlot: slot,
+      category: "doubleWithdraw",
+      withdrawals,
+      honest,
+    });
+    // The honest ledger verdicts never depend on the operator's claims: the
+    // second event drains an output the first one already withdrew.
+    expect(block.classifications.map(({ validity }) => validity)).toEqual([
+      "WithdrawalIsValid",
+      "NonExistentWithdrawalUtxo",
+    ]);
+    // Owner decision: the second payable leaf is also a withdrawalMistag
+    // finding at the same leaf position, and the canonical rule order ranks
+    // withdrawalMistag ahead of doubleWithdraw, so the installed catalogue
+    // currently selects withdrawalMistag for this fault.
+    //
+    // Owner decision: the honest block marks the second leaf
+    // NonExistentWithdrawalUtxo while the published L1 order datum always
+    // carries WithdrawalIsValid, and the fabricated-withdrawal rule convicts
+    // on any WithdrawalInfo difference, validity included. Until that rule and
+    // the operator-verdict leaf shape are reconciled, the honest control is
+    // verified against the family replayer only.
+    if (honest)
+      await select({
+        category: "doubleWithdraw",
+        replayer: DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
+        block,
+        predecessor,
+        history,
+        honest,
+      });
+    else
+      await selectWithinInstalledCatalogue({
+        category: "doubleWithdraw",
+        winners: ["withdrawalMistag", "doubleWithdraw"],
+        replayer: DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
+        block,
+        predecessor,
+        history,
+        honest,
+      });
+    const prepared = prepareDoubleWithdrawFromCommittedLeaves({
+      headerHash: block.headerHash,
+      committedWithdrawalsRoot: block.header.withdrawalsRoot,
+      withdrawalCount: block.header.withdrawalCount,
+      entries: block.payload.block_body.withdrawals,
+    });
+    if (honest)
+      await expect(prepared).rejects.toThrow(/no_payable_duplicate_pair/u);
+    else expect((await prepared).headerHash).toBe(block.headerHash);
+  }
+}, 1_800_000);

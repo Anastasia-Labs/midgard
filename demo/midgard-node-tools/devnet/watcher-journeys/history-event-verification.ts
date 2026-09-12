@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
+  type CompleteCanonicalReplay,
   computeFraudProofReleaseFinalityPolicyDigest,
   createCatalogueCompleteCanonicalReplay,
   createHeaderClassifier,
@@ -41,8 +42,17 @@ export const classifyLocalHistoryEventFixture = async (input: {
   block: VerifiableJourneyBlock;
   predecessor: VerifiableJourneyBlock;
   history?: readonly VerifiableJourneyBlock[];
+  /** Restrict the launch scope; the full installed catalogue by default. */
+  replayer?: CompleteCanonicalReplay;
 }) => {
   const { deployment } = input.stage;
+  const retained = [input.block, input.predecessor, ...(input.history ?? [])];
+  const retainedBlock = (headerHash: string) => {
+    const block = retained.find((block) => block.headerHash === headerHash);
+    if (block === undefined)
+      throw new Error(`Missing actual retained ancestor ${headerHash}`);
+    return block;
+  };
   const deploymentFingerprint = deployment.manifest.manifestId;
   const releaseFinality = {
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
@@ -101,13 +111,15 @@ export const classifyLocalHistoryEventFixture = async (input: {
         raw: input.stage.rawAuthority,
         historySource,
       });
-    const replayer = createCatalogueCompleteCanonicalReplay({
-      lucid: deployment.operatorLucid,
-      network: "Custom",
-      hubOraclePolicyId,
-      minimumConfirmationDepth: policy.confirmationDepth,
-      owner: input.stage.operatorVkey,
-    });
+    const replayer =
+      input.replayer ??
+      createCatalogueCompleteCanonicalReplay({
+        lucid: deployment.operatorLucid,
+        network: "Custom",
+        hubOraclePolicyId,
+        minimumConfirmationDepth: policy.confirmationDepth,
+        owner: input.stage.operatorVkey,
+      });
     const classifier = await createHeaderClassifier({
       deploymentFingerprint,
       replayer,
@@ -123,13 +135,7 @@ export const classifyLocalHistoryEventFixture = async (input: {
       {
         sourceId: "retained-local",
         fetchPayloadByHeaderHash: async (headerHash) => {
-          const retained = [
-            input.block,
-            input.predecessor,
-            ...(input.history ?? []),
-          ].find((block) => block.headerHash === headerHash);
-          if (retained === undefined)
-            throw new Error(`Missing actual retained ancestor ${headerHash}`);
+          const retained = retainedBlock(headerHash);
           return {
             ok: true,
             sourceId: "retained-local",

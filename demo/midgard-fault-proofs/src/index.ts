@@ -68,6 +68,7 @@ export * from "./non-existent-input/submit.js";
 export * from "./non-existent-input/wrongful-rejection.js";
 export * from "./prepare-da-hash-preimage.js";
 export * from "./prepare-double-spend.js";
+export * from "./prepare-double-withdraw.js";
 export * from "./prepare-input-no-idx.js";
 export * from "./prepare-invalid-range.js";
 export * from "./prepare-invalid-signature.js";

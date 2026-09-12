@@ -200,14 +200,21 @@ export const deriveTransitionTraceReplayEvidence = async ({
     } else if (source.phase === "Withdrawal") {
       if (source.entry.value.validity === "WithdrawalIsValid") {
         const id = source.entry.value.body.l2_outref;
+        const key = encodeMidgardSpendInputItem({
+          txId: Buffer.from(id.transactionId, "hex"),
+          outputIndex: Number(id.outputIndex),
+        });
+        // A payable claim on an output the replayed ledger no longer holds has
+        // no delete witness; a direct withdrawal finding must cover the event.
+        if (!ledger.has(key))
+          throw replayPrerequisiteFailure(
+            current.headerHash,
+            step.event_key,
+            "present_spend_input",
+          );
         withdrawal.push({
           stepIndex: index,
-          spentUtxo: await ledger.delete(
-            encodeMidgardSpendInputItem({
-              txId: Buffer.from(id.transactionId, "hex"),
-              outputIndex: Number(id.outputIndex),
-            }),
-          ),
+          spentUtxo: await ledger.delete(key),
         });
       }
     } else {
