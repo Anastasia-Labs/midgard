@@ -469,9 +469,28 @@ export const admitValidationTraceReplayContext = async ({
         depositPolicyId: origins!.depositPolicyId,
         depositAssetNameHex: origin!.assetName,
       });
+      if (
+        effect.operations.some(
+          (operation) =>
+            operation.type === "insert" &&
+            state.has(operation.outRefCbor.toString("hex")),
+        )
+      ) {
+        // The committed deposit re-creates an output the ledger already
+        // holds: a repeated source event. Its effect is owed to the finding
+        // that names the repeat, so keep the ledger and scan the rest.
+        prerequisites.push(
+          ...replayPrerequisiteFailure(
+            evidence.headerHash,
+            source.eventKey,
+            "prior_transition_effect",
+          ).failures,
+        );
+        continue;
+      }
       for (const operation of effect.operations) {
         const key = operation.outRefCbor.toString("hex");
-        if (operation.type !== "insert" || state.has(key))
+        if (operation.type !== "insert")
           throw new Error(
             "validation replay deposit does not insert an absent ledger output",
           );

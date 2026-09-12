@@ -257,6 +257,14 @@ export const deriveTransitionTraceReplayEvidence = async ({
       const op = effect.operations[0];
       if (op?.type !== "insert" || effect.operations.length !== 1)
         throw new Error("Transition deposit projection is not one insert");
+      // A deposit that re-creates a held output repeats an earlier source
+      // event; the finding naming that repeat owns its ledger effect.
+      if (ledger.has(op.outRefCbor))
+        throw replayPrerequisiteFailure(
+          current.headerHash,
+          step.event_key,
+          "prior_transition_effect",
+        );
       deposit.push({
         stepIndex: index,
         eventRefInputIndex,

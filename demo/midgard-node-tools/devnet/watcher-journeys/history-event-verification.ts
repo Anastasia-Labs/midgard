@@ -103,13 +103,30 @@ export const classifyLocalHistoryEventFixture = async (input: {
         >[0]["binding"],
         authority: input.stage.rawAuthority,
       });
+    // A settled ancestor's payload is its exact retained bytes; the authority
+    // still checks them against the live settlement datum's counted roots.
+    const settlementHistorySource = {
+      ...historySource,
+      fetchPayloadByHeaderHash: async ({
+        headerHash,
+      }: {
+        headerHash: string;
+      }) =>
+        ({
+          payloadEnvelopeCbor: Buffer.from(
+            retainedBlock(headerHash).payloadEnvelopeCbor,
+          ),
+        }) as unknown as Awaited<
+          ReturnType<typeof historySource.fetchPayloadByHeaderHash>
+        >,
+    };
     const settlementAuthority =
       unsafeCreateCrossBlockSettlementAuthorityFromRawForTest({
         binding: bindingFields as Parameters<
           typeof unsafeCreateCrossBlockSettlementAuthorityFromRawForTest
         >[0]["binding"],
         raw: input.stage.rawAuthority,
-        historySource,
+        historySource: settlementHistorySource,
       });
     const replayer =
       input.replayer ??

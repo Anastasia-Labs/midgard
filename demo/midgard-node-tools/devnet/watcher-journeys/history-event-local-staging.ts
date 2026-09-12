@@ -1,15 +1,20 @@
 import { recordCrossBlockRawEmulator } from "@al-ft/midgard-fault-proofs/test-support/cross-block-raw-emulator";
-import type * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   type CML,
+  Data,
   paymentCredentialOf,
+  toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 import {
   createPublishedWorkflowDeploymentAccounts,
   publishWorkflowDeployment,
 } from "midgard-node/tests/helpers/published-workflow-deployment";
+import { createPublishedWatcherBlockActor } from "midgard-watcher/tests/support/published-block-actor";
 
+import type { VerifiableJourneyBlock } from "./fixture-verification.js";
 import {
   journeyDepositEventRequest,
   type JourneyEventPublicationRequest,
@@ -25,6 +30,13 @@ export type StagedLocalHistoryEvent = StagedHistoryEvent & {
 
 type LocalDeployment = Awaited<ReturnType<typeof publishWorkflowDeployment>>;
 
+/** The confirmed state a committed local history must chain from. */
+export type LocalConfirmedState = {
+  headerHash: string;
+  utxoRoot: string;
+  endTime: bigint;
+};
+
 /** The staging chain a local event fixture publishes its L1 events on. */
 export type LocalHistoryEventStage = {
   deployment: LocalDeployment;
@@ -37,6 +49,15 @@ export type LocalHistoryEventStage = {
     body: SDK.WithdrawalBody,
     ordinal: number,
   ): Promise<StagedLocalHistoryEvent>;
+  /** The live confirmed state of the staging chain's state queue. */
+  confirmedState(): Promise<LocalConfirmedState>;
+  /**
+   * Commit, attest and merge one block through the protocol's own state queue
+   * so that its settlement output exists on the staging chain. Maturity is
+   * reached by advancing the emulator clock, so no event may be published on
+   * this chain afterwards: the SDK dates events by the wall clock.
+   */
+  settle(block: VerifiableJourneyBlock): Promise<UTxO>;
   close(): void;
 };
 
@@ -106,12 +127,150 @@ export const openLocalHistoryEventStage =
           inclusionTime: BigInt(built.metadata.inclusionTime),
         };
       };
+      const { contracts, chain } = deployment;
+      const rootUnit = toUnit(
+        contracts.stateQueue.policyId,
+        SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+      );
+      const one = async (scriptAddress: string, unit: string) => {
+        const found = await lucid.utxosAtWithUnit(scriptAddress, unit);
+        if (found.length !== 1 || found[0] === undefined)
+          throw new Error(`Expected one actual published state: ${unit}`);
+        return found[0];
+      };
+      const reference = (name: string) => {
+        const found = deployment.references.get(name);
+        if (found === undefined)
+          throw new Error(`Missing published ${name} reference`);
+        return found;
+      };
+      const confirmedState = async (): Promise<LocalConfirmedState> => {
+        const root = await one(
+          contracts.stateQueue.spendingScriptAddress,
+          rootUnit,
+        );
+        const confirmed = await Effect.runPromise(
+          SDK.getConfirmedStateFromStateQueueDatum(
+            await Effect.runPromise(SDK.getLinkedListNodeViewFromUTxO(root)),
+          ),
+        );
+        return {
+          headerHash: confirmed.data.headerHash,
+          utxoRoot: confirmed.data.utxoRoot,
+          endTime: confirmed.data.endTime,
+        };
+      };
+      const awaitTime = async (time: number) => {
+        const slots = Math.ceil((time - chain.now()) / 1000);
+        if (slots > 0) await chain.awaitSlot(slots);
+      };
+      const settle = async (block: VerifiableJourneyBlock) => {
+        const actor = await createPublishedWatcherBlockActor({
+          deployment,
+          lucid,
+          daSignerConfig: {
+            NETWORK: "Custom",
+            L1_OPERATOR_SEED_PHRASE: accounts.operator.seedPhrase,
+            DA_COSIGNER_SEED_PHRASE: accounts.cosigner.seedPhrase,
+          },
+        });
+        await actor.onboardOperator();
+        // The commit's short validity range fixes the header end time (Q60),
+        // so the chain clock must first reach the block's closing minute.
+        await awaitTime(Number(block.header.endTime) - 59_999);
+        lucid.overrideUTxOs(await lucid.utxosAt(address));
+        const anchor = await one(
+          contracts.stateQueue.spendingScriptAddress,
+          rootUnit,
+        );
+        await actor.commit(block, anchor);
+        await actor.attest({
+          ...block,
+          payloadEnvelopeCbor: Buffer.from(block.payloadEnvelopeCbor),
+        });
+        const maturity = Number(
+          block.header.endTime + SDK.MATURITY_DURATION_MS,
+        );
+        const validFrom = lucid.slotToUnixTime(
+          lucid.unixTimeToSlot(maturity) + 1,
+        );
+        await awaitTime(validFrom + 1_000);
+        const fetchConfig = {
+          stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+          stateQueuePolicyId: contracts.stateQueue.policyId,
+        };
+        const queue = await Effect.runPromise(
+          SDK.fetchConfirmedStateAndItsLinkProgram(lucid, fetchConfig),
+        );
+        if (
+          queue.link.datum.key === "Empty" ||
+          queue.link.datum.key.Key.key !== block.headerHash
+        )
+          throw new Error(
+            "The committed block is not the oldest queued header",
+          );
+        const [hub, correctionLock] = await Promise.all([
+          Effect.runPromise(
+            SDK.fetchHubOracleUTxOProgram(lucid, {
+              hubOracleAddress: contracts.hubOracle.spendingScriptAddress,
+              hubOraclePolicyId: contracts.hubOracle.policyId,
+            }),
+          ),
+          Effect.runPromise(
+            SDK.fetchCorrectionLockUTxOProgram(lucid, {
+              correctionLockAddress:
+                contracts.correctionLock.spendingScriptAddress,
+              hubOraclePolicyId: contracts.hubOracle.policyId,
+            }),
+          ),
+        ]);
+        const funding = (await lucid.utxosAt(address)).filter(
+          isOrdinaryFunding,
+        );
+        if (funding.length === 0)
+          throw new Error("Settlement has no ordinary funding input");
+        lucid.overrideUTxOs(funding);
+        const merged = await Effect.runPromise(
+          SDK.buildMergeToConfirmedStateTxProgram({
+            lucid,
+            contracts,
+            fetchConfig,
+            confirmedUTxO: queue.confirmed,
+            firstBlockUTxO: queue.link,
+            validFrom,
+            presetWalletInputs: funding,
+            hubOracleRefInput: hub.utxo,
+            correctionLockRefInput: correctionLock,
+            stateQueueMergeYieldRefInput: reference("stateQueueMergeWithdraw"),
+            referenceScripts: {
+              stateQueueSpending: reference("stateQueueSpend"),
+              stateQueueMinting: reference("stateQueueMint"),
+              settlementMinting: reference("settlementMint"),
+            },
+          }),
+        );
+        const signed = await merged.tx.sign.withWallet().complete();
+        await lucid.awaitTx(await signed.submit(), 200);
+        lucid.overrideUTxOs(await lucid.utxosAt(address));
+        const settlement = await one(
+          contracts.settlement.spendingScriptAddress,
+          contracts.settlement.policyId + block.headerHash,
+        );
+        const datum = Data.from(settlement.datum!, SDK.SettlementDatum);
+        if (datum.deposits_root !== block.header.depositsRoot)
+          throw new Error(
+            "Settlement does not preserve the retained deposit root",
+          );
+        return settlement;
+      };
       return {
         deployment,
         operatorVkey,
         ownerSeedPhrase,
         ownerKey,
         rawAuthority: recorder.authority,
+        confirmedState,
+        settle,
         publishDeposit: () =>
           publish(journeyDepositEventRequest({ deployment, ownerKey })),
         publishWithdrawal: (body: SDK.WithdrawalBody, ordinal: number) =>

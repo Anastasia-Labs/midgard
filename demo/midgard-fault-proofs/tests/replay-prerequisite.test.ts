@@ -5,9 +5,12 @@ import {
 import {
   committedWithdrawalKeyBytes,
   committedWithdrawalValueBytes,
+  CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID,
   EMPTY_MERKLE_TREE_ROOT,
   EventKey,
+  outOfWindowSourceEventFault,
   type OutputReference,
+  type TransitionFault,
   WITHDRAWAL_MISTAG_VIOLATION_ID,
   type WithdrawalInfo,
 } from "@al-ft/midgard-sdk";
@@ -18,7 +21,9 @@ import {
   type CanonicalBlockEvidence,
   canonicalBlockEvidenceFromVerifiedPayload,
 } from "../src/evidence/canonical-block-evidence.js";
+import type { TransitionTraceDetection } from "../src/transition-trace/detect.js";
 import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.js";
+import { provenTransitionEventKeyCbor } from "../src/transition-trace/replay-authority.js";
 import { assertRetainedReplayTerminal } from "../src/transition-trace/replay-terminal.js";
 import { buildRetainedValidationClaimWitness } from "../src/transition-trace/witnesses.js";
 import {
@@ -378,5 +383,137 @@ describe("withdrawal replay prerequisites", () => {
     expect(() =>
       assertReplayPrerequisiteCovered(evidence, other, [mistag(1n)]),
     ).toThrow(CanonicalReplayPrerequisiteError);
+  });
+});
+
+/** A deposit source frontier, as the reconstruction admits it. */
+const depositEvidence = () => {
+  const deposits = [0, 1].map((index) => {
+    const key: OutputReference = {
+      transactionId: (0x30 + index).toString(16).repeat(32),
+      outputIndex: BigInt(index),
+    };
+    return {
+      key,
+      value: {},
+      keyBytes: Buffer.alloc(0),
+      valueBytes: Buffer.alloc(0),
+    };
+  });
+  const sourceEvents = deposits.map((entry) => {
+    const eventKey = { DepositEventKey: { deposit_id: entry.key } };
+    return {
+      phase: "Deposit",
+      fingerprint: eventKeyFingerprint(eventKey),
+      eventKey,
+      entry,
+    };
+  });
+  const evidence = {
+    headerHash: "45".repeat(28),
+    payloadEnvelopeSha256: "66".repeat(32),
+    payloadSha256: "77".repeat(32),
+    transactions: [],
+    reconstruction: {
+      deposits,
+      withdrawals: [],
+      forcedTransactions: [],
+      sourceEvents,
+      sourceEventsByFingerprint: new Map(
+        sourceEvents.map((source) => [source.fingerprint, source] as const),
+      ),
+    },
+  } as unknown as CanonicalBlockEvidence;
+  return {
+    evidence,
+    eventKey: (index: number) => sourceEvents[index]!.eventKey,
+    depositId: (index: number) => deposits[index]!.key,
+  };
+};
+
+describe("deposit replay prerequisites", () => {
+  it("lets the cross-block duplicate finding at the source position cover a repeated deposit", () => {
+    const { evidence, eventKey } = depositEvidence();
+    const failure = replayPrerequisiteFailure(
+      evidence.headerHash,
+      eventKey(1),
+      "prior_transition_effect",
+    ).failures[0]!;
+    const finding = (position: bigint): CanonicalViolationDetection => ({
+      headerHash: evidence.headerHash,
+      violationId: CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID,
+      detectionId: `cross-block-duplicate-event:${position}`,
+      position,
+    });
+    expect(() =>
+      assertReplayPrerequisiteCovered(evidence, failure, [finding(1n)]),
+    ).not.toThrow();
+    for (const unrelated of [
+      [],
+      [finding(0n)],
+      [{ ...finding(1n), headerHash: "99".repeat(28) }],
+      [{ ...finding(1n), violationId: "fabricated-deposit" }],
+    ])
+      expect(() =>
+        assertReplayPrerequisiteCovered(evidence, failure, unrelated),
+      ).toThrow(CanonicalReplayPrerequisiteError);
+  });
+
+  it("names the committed event an out-of-window transition finding opens", () => {
+    const { evidence, eventKey, depositId } = depositEvidence();
+    const failure = replayPrerequisiteFailure(
+      evidence.headerHash,
+      eventKey(0),
+      "prior_transition_effect",
+    ).failures[0]!;
+    const fault: TransitionFault = outOfWindowSourceEventFault({
+      OutOfWindowDeposit: {
+        event_ref_input_index: 0n,
+        event_asset_name: "ab".repeat(32),
+        source_membership: {
+          domain: "d",
+          root: "00".repeat(32),
+          phas_root: "00".repeat(32),
+          count: 1n,
+          key: depositId(0),
+          value: {},
+          proof: [],
+        },
+      },
+    } as never);
+    const detection = {
+      buildable: true,
+      kind: "outOfWindowSourceEvent",
+      invariant: "source_event_is_within_block_window",
+      diagnostic: "",
+      fault,
+      proof: {},
+    } as unknown as TransitionTraceDetection;
+    const proven = provenTransitionEventKeyCbor(detection);
+    expect(proven).toBe(Data.to(eventKey(0), EventKey));
+    const finding = {
+      headerHash: evidence.headerHash,
+      violationId: "transition-trace",
+      detectionId: "transition-trace:0:outOfWindowSourceEvent",
+      position: 0n,
+      provenTransitionEventKeyCbor: proven,
+    };
+    expect(() =>
+      assertReplayPrerequisiteCovered(evidence, failure, [finding]),
+    ).not.toThrow();
+    expect(() =>
+      assertReplayPrerequisiteCovered(
+        evidence,
+        replayPrerequisiteFailure(
+          evidence.headerHash,
+          eventKey(1),
+          "prior_transition_effect",
+        ).failures[0]!,
+        [finding],
+      ),
+    ).toThrow(CanonicalReplayPrerequisiteError);
+    expect(
+      provenTransitionEventKeyCbor({ ...detection, buildable: false } as never),
+    ).toBeUndefined();
   });
 });

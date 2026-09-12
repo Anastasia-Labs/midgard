@@ -1,4 +1,5 @@
 import {
+  CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID,
   DOUBLE_WITHDRAW_VIOLATION_ID,
   EventKey,
   type EventKey as EventKeyValue,
@@ -165,6 +166,19 @@ export const assertReplayPrerequisiteCovered = (
           detection.headerHash === evidence.headerHash &&
           detection.violationId === "transition-trace" &&
           detection.provenTransitionEventKeyCbor === failure.eventKeyCbor,
+      )
+    )
+      return;
+    // A deposit whose output the ledger already holds repeats a settled
+    // event; the cross-block finding at that source position names it.
+    if (
+      source?.phase === "Deposit" &&
+      detections.some(
+        (detection) =>
+          detection.headerHash === evidence.headerHash &&
+          detection.violationId === CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID &&
+          detection.position ===
+            BigInt(evidence.reconstruction.sourceEvents.indexOf(source)),
       )
     )
       return;

@@ -1,6 +1,7 @@
 import {
   canonicalBlockEvidenceFromVerifiedPayload,
   type CompleteCanonicalReplay,
+  CROSS_BLOCK_DUPLICATE_EVENT_COMPLETE_CANONICAL_REPLAY,
   DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
   prepareDoubleWithdrawFromCommittedLeaves,
   prepareWithdrawnInputFromCanonicalEvidence,
@@ -19,6 +20,7 @@ import {
 } from "./history-event-local-staging.js";
 import { classifyLocalHistoryEventFixture } from "./history-event-verification.js";
 import {
+  buildJourneyRepeatedDeposit,
   buildJourneyWithdrawalEvent,
   buildJourneyWithdrawnTransaction,
   journeyWithdrawalBody,
@@ -278,5 +280,69 @@ it("doubleWithdraw proves two real published withdrawals of one L2 output and it
     if (honest)
       await expect(prepared).rejects.toThrow(/no_payable_duplicate_pair/u);
     else expect((await prepared).headerHash).toBe(block.headerHash);
+  }
+}, 1_800_000);
+
+it("crossBlockDuplicateEvent proves a deposit repeated from a really settled ancestor and its honest control passes", async () => {
+  stage = await openLocalHistoryEventStage();
+  const lucid = stage.deployment.operatorLucid;
+  const slotOf = (time: bigint) => BigInt(lucid.unixTimeToSlot(Number(time)));
+  // The only event on this chain: it is published before settlement moves
+  // the chain clock a maturity period ahead of the wall clock.
+  const deposit = await stage.publishDeposit();
+  const confirmed = await stage.confirmedState();
+  const settledEnd = ((deposit.inclusionTime + 999n) / 1000n) * 1000n + 59_999n;
+  const settled = await depositEventsRetainedBlock({
+    operatorVkey: stage.operatorVkey,
+    startTime: confirmed.endTime,
+    endTime: settledEnd,
+    blockSlot: slotOf(settledEnd),
+    prevHeaderHash: confirmed.headerHash,
+    prevUtxosRoot: confirmed.utxoRoot,
+    priorLedger: [],
+    events: [
+      {
+        event: deposit.event,
+        depositPolicyId: deposit.policyId,
+        assetName: deposit.assetName,
+        honest: true,
+      },
+    ],
+  });
+  await stage.settle(settled);
+  const predecessorEnd = settledEnd + 60_000n;
+  const predecessor = await depositEventsRetainedBlock({
+    operatorVkey: stage.operatorVkey,
+    startTime: settledEnd,
+    endTime: predecessorEnd,
+    blockSlot: slotOf(predecessorEnd),
+    prevHeaderHash: settled.headerHash,
+    prevUtxosRoot: settled.header.utxosRoot,
+    priorLedger: settled.payload.block_body.utxos,
+    events: [],
+  });
+  const endTime = predecessorEnd + 60_000n;
+  for (const honest of [false, true]) {
+    const block = await buildJourneyRepeatedDeposit({
+      predecessor,
+      operatorVkey: stage.operatorVkey,
+      endTime,
+      blockSlot: slotOf(endTime),
+      settled,
+      honest,
+    });
+    // Owner decision: the repeated deposit's L1 event lies outside the
+    // accused window, which transitionTrace reports as an out-of-window
+    // source event at the same position, and the canonical rule order ranks
+    // transitionTrace ahead of crossBlockDuplicateEvent.
+    await selectWithinInstalledCatalogue({
+      category: "crossBlockDuplicateEvent",
+      winners: ["transitionTrace", "crossBlockDuplicateEvent"],
+      replayer: CROSS_BLOCK_DUPLICATE_EVENT_COMPLETE_CANONICAL_REPLAY,
+      block,
+      predecessor,
+      history: [settled],
+      honest,
+    });
   }
 }, 1_800_000);
