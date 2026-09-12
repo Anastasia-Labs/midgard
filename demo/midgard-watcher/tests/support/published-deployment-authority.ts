@@ -1,6 +1,13 @@
-import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  type KeyObject,
+  sign,
+} from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -37,21 +44,69 @@ type PublishedDeployment = Awaited<
   ReturnType<typeof publishWorkflowDeploymentOnChain>
 >;
 
+export type WatcherTestTrustRootKey = Readonly<{
+  privateKey: KeyObject;
+  publicKeySpkiDerHex: string;
+  trustRootId: string;
+}>;
+
+const trustRootKeyOf = (privateKey: KeyObject): WatcherTestTrustRootKey => {
+  const publicKeySpkiDerHex = createPublicKey(privateKey)
+    .export({ format: "der", type: "spki" })
+    .toString("hex");
+  return {
+    privateKey,
+    publicKeySpkiDerHex,
+    trustRootId: createHash("sha256")
+      .update(Buffer.from(publicKeySpkiDerHex, "hex"))
+      .digest("hex"),
+  };
+};
+
+/**
+ * Loads the ed25519 trust-root signing key saved at `path`, creating it on
+ * first use. Journeys that share one watcher runtime must attest their
+ * deployment under one trust root: the watcher's user-event policy binds the
+ * attesting trust root id, so a re-keyed authority makes the runtime refuse
+ * its saved history as a changed dependency.
+ */
+export const loadOrCreateWatcherTestTrustRootKey = async (
+  path: string,
+): Promise<WatcherTestTrustRootKey> => {
+  if (existsSync(path)) {
+    const privateKey = createPrivateKey(await readFile(path, "utf8"));
+    if (privateKey.asymmetricKeyType !== "ed25519")
+      throw new Error(`Saved trust-root key ${path} is not an ed25519 key`);
+    return trustRootKeyOf(privateKey);
+  }
+  const { privateKey } = generateKeyPairSync("ed25519");
+  await writeFile(path, privateKey.export({ format: "pem", type: "pkcs8" }), {
+    mode: 0o600,
+    flag: "wx",
+  });
+  return trustRootKeyOf(privateKey);
+};
+
 /**
  * Signs the exact published manifest once and reuses its saved test trust root.
  * The blueprint hash, published references and supplied proof program
  * commitments still pass the production identity and rule-bundle loaders.
+ * With `trustRootKeyPath` the attesting key is the saved one, so every
+ * directory signed against that path publishes the same trust root; a saved
+ * authority under another root is set aside and re-signed.
  */
 export const createPublishedWatcherDeploymentAuthority = async ({
   deployment,
   programCommitments,
   fundingProfiles,
   directory,
+  trustRootKeyPath,
 }: {
   readonly deployment: PublishedDeployment;
   readonly programCommitments: Readonly<Record<string, string>>;
   readonly fundingProfiles: readonly WatcherWorkflowFundingProfileBody[];
   readonly directory: string;
+  readonly trustRootKeyPath?: string;
 }) => {
   const manifest = deployment.manifest;
   verifyFinalizedDeploymentManifest(manifest);
@@ -152,6 +207,22 @@ export const createPublishedWatcherDeploymentAuthority = async ({
       path: authorityPath,
       ruleBundlePath,
     });
+  const trustRootKey =
+    trustRootKeyPath === undefined
+      ? trustRootKeyOf(generateKeyPairSync("ed25519").privateKey)
+      : await loadOrCreateWatcherTestTrustRootKey(trustRootKeyPath);
+  if (existsSync(authorityPath) && trustRootKeyPath !== undefined) {
+    const saved: { trustRoots: readonly { trustRootId: string }[] } =
+      JSON.parse(await readFile(authorityPath, "utf8"));
+    if (saved.trustRoots[0]?.trustRootId !== trustRootKey.trustRootId)
+      await rename(
+        authorityPath,
+        join(
+          directory,
+          `deployment-authority.superseded-${saved.trustRoots[0]?.trustRootId ?? "unknown"}.json`,
+        ),
+      );
+  }
   if (existsSync(authorityPath)) {
     const deploymentAuthority = await reopen();
     const verified = deploymentAuthority.deploymentIdentity;
@@ -197,13 +268,7 @@ export const createPublishedWatcherDeploymentAuthority = async ({
       fundingProfileBundlePath,
     };
   }
-  const { privateKey, publicKey } = generateKeyPairSync("ed25519");
-  const publicKeySpkiDerHex = publicKey
-    .export({ format: "der", type: "spki" })
-    .toString("hex");
-  const trustRootId = createHash("sha256")
-    .update(Buffer.from(publicKeySpkiDerHex, "hex"))
-    .digest("hex");
+  const { privateKey, publicKeySpkiDerHex, trustRootId } = trustRootKey;
   const signedIdentity = {
     schemaVersion: WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
     manifest,

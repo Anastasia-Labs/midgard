@@ -142,6 +142,12 @@ const runJourney = async (
       createPublishedWatcherDeploymentAuthority({
         deployment,
         directory,
+        // Every journey resumes the shared watcher runtime, whose saved
+        // user-event history binds the attesting trust root.
+        trustRootKeyPath: join(
+          context.runDirectory,
+          "work/journeys/deployment-trust-root.pem",
+        ),
         fundingProfiles: [],
         programCommitments: {
           "computation-thread-policy-v1": createHash("sha256")
