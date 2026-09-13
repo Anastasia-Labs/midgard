@@ -18,6 +18,7 @@ import {
   resumeWatcherLocalUserEventPublisher,
 } from "../indexers/user-event-history.js";
 import {
+  WATCHER_USER_EVENT_INDEXER_BOUNDS,
   isWatcherLocalUserEventAuthorityUnavailable,
   type WatcherLocalUserEventAuthority,
   type WatcherUserEventKind,
@@ -989,7 +990,7 @@ export const createWatcherUserEventRuntime = async (
     // Quiet coverage leaves the head, and any authority leased at it, intact;
     // the lease is released only once an event block moves the head.
     while (!same(coveragePoint(), point)) {
-      if (publisher!.read().retainedEntries >= 128) {
+      if (publisher!.read().anchorDue) {
         await releaseLease();
         const pair = await onePair(headCursor(), operationSignal);
         try {
@@ -1000,7 +1001,8 @@ export const createWatcherUserEventRuntime = async (
       }
       const available = Math.min(
         MAX_BATCH,
-        128 - publisher!.read().retainedEntries,
+        WATCHER_USER_EVENT_INDEXER_BOUNDS.activeHistoryEntries -
+          publisher!.read().retainedEntries,
       );
       const items = await enumerateRound(
         coveragePoint(),
@@ -1022,9 +1024,10 @@ export const createWatcherUserEventRuntime = async (
             coverQuietHeader(item.header);
             continue;
           }
-          // The evidence bound may have truncated the captured prefix; the
+          // The evidence bound may have truncated the captured prefix, or the
+          // retained closure may have grown due for an anchor mid-round; the
           // remainder is enumerated again from the new coverage checkpoint.
-          if (pairIndex >= pairs.length) break;
+          if (pairIndex >= pairs.length || publisher!.read().anchorDue) break;
           const pair = pairs[pairIndex]!;
           pairIndex += 1;
           await releaseLease();

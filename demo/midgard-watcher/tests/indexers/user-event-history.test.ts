@@ -649,6 +649,9 @@ describe("bounded local user-event semantic publication (synthetic local blocks)
         expect(publisher.read()).toMatchObject({
           cursor: null,
           retainedEntries: 0,
+          // Only the origin archive is retained before the first entry.
+          retainedArchive: { objects: 1 },
+          anchorDue: false,
           status: "publication_pending",
           store: { revision: "0" },
         });
@@ -1895,6 +1898,7 @@ describe("local user-event materialized history (synthetic local blocks)", () =>
       expect(publisher.read()).toMatchObject({
         status: "publication_pending",
         retainedEntries: 128,
+        anchorDue: true,
         store: { revision: before.store.revision },
       });
       await expect(publisher.publish(successor)).rejects.toThrow(
@@ -1939,6 +1943,12 @@ describe("local user-event materialized history (synthetic local blocks)", () =>
       );
       const anchored = publisher.read();
       expect(anchored.retainedEntries).toBe(64);
+      expect(anchored.anchorDue).toBe(false);
+      expect(anchored.retainedArchive.objects).toBe(
+        anchored.checkpoint!.requiredArchiveDigests.length,
+      );
+      expect(anchored.retainedArchive.bytes).toBeGreaterThan(0);
+      expect(anchored.retainedArchive.nodes).toBeGreaterThan(0);
       expect(anchored.store.l1Observations).toHaveLength(65);
       expect(anchored.snapshot.terminalEvents[0]).toMatchObject({
         eventId: lifecycle.expectedEventId,

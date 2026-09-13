@@ -5314,6 +5314,43 @@ export const createWatcherLocalUserEventHistory = (
 ): WatcherLocalUserEventHistory =>
   createLocalUserEventHistory({ ...input, semanticReplay: false });
 
+/** Retained checkpoint closure measured the way the publish bound measures
+ * it: unique objects by digest, canonical bytes, evidence nodes. */
+const localRetainedArchive = (owner: LocalHistoryOwner) =>
+  Object.freeze({
+    objects: owner.archiveObjects.length,
+    bytes: owner.archiveObjects.reduce(
+      (total, object) => total + object.bytesHex.length / 2,
+      0,
+    ),
+    nodes: owner.archiveObjects.reduce(
+      (total, object) => total + localArchiveBudgets.get(object)!.nodes,
+      0,
+    ),
+  });
+/** Every retained entry pins its own durable-store snapshot, so the closure
+ * grows with the store as well as with the entry count. An anchor is due once
+ * more than the 64-entry suffix is retained and either the entry count reaches
+ * the active bound or any closure dimension has used half its bound; waiting
+ * for the entry count alone lets the publish bound refuse first. */
+const localAnchorDue = (owner: LocalHistoryOwner): boolean => {
+  if (owner.entries.length <= 64) return false;
+  if (
+    owner.entries.length >=
+    WATCHER_USER_EVENT_INDEXER_BOUNDS.activeHistoryEntries
+  )
+    return true;
+  const retained = localRetainedArchive(owner);
+  return (
+    retained.objects * 2 >=
+      WATCHER_USER_EVENT_INDEXER_BOUNDS.evidenceContainerEntries ||
+    retained.bytes * 2 >=
+      WATCHER_USER_EVENT_INDEXER_BOUNDS.cumulativeEvidenceBytes ||
+    retained.nodes * 2 >=
+      WATCHER_USER_EVENT_INDEXER_BOUNDS.cumulativeEvidenceNodes
+  );
+};
+
 export const readWatcherLocalUserEventHistory = (
   history: WatcherLocalUserEventHistory,
 ) => {
@@ -5326,6 +5363,8 @@ export const readWatcherLocalUserEventHistory = (
     entryDigest: owner.entries.at(-1)?.entryDigest ?? null,
     checkpoint: owner.checkpoint,
     retainedEntries: owner.entries.length,
+    retainedArchive: localRetainedArchive(owner),
+    anchorDue: localAnchorDue(owner),
     status:
       owner.candidate !== null || owner.anchorCandidate !== null
         ? ("publication_pending" as const)
@@ -5554,26 +5593,36 @@ const prepareLocalUserEventTransition = (
     requiredSemanticResume:
       "authenticated_origin_replay_or_semantic_publication_receipt",
   });
+  // Retained objects are identified by digest: an entry whose evidence or
+  // store archive repeats an earlier object must not be budgeted twice.
   const archiveObjects = Object.freeze([
-    ...owner.archiveObjects,
-    evidence,
-    entryArchive,
-    storeArchive,
-    payload,
+    ...new Map(
+      [
+        ...owner.archiveObjects,
+        evidence,
+        entryArchive,
+        storeArchive,
+        payload,
+      ].map((object) => [object.digest, object] as const),
+    ).values(),
   ]);
+  const retainedNodes = archiveObjects.reduce(
+    (nodes, object) => nodes + localArchiveBudgets.get(object)!.nodes,
+    0,
+  );
+  const retainedBytes = archiveObjects.reduce(
+    (bytes, object) => bytes + object.bytesHex.length / 2,
+    0,
+  );
   if (
-    archiveObjects.reduce(
-      (nodes, object) => nodes + localArchiveBudgets.get(object)!.nodes,
-      0,
-    ) > WATCHER_USER_EVENT_INDEXER_BOUNDS.cumulativeEvidenceNodes ||
+    retainedNodes > WATCHER_USER_EVENT_INDEXER_BOUNDS.cumulativeEvidenceNodes ||
     archiveObjects.length >
       WATCHER_USER_EVENT_INDEXER_BOUNDS.evidenceContainerEntries ||
-    archiveObjects.reduce(
-      (bytes, object) => bytes + object.bytesHex.length / 2,
-      0,
-    ) > WATCHER_USER_EVENT_INDEXER_BOUNDS.cumulativeEvidenceBytes
+    retainedBytes > WATCHER_USER_EVENT_INDEXER_BOUNDS.cumulativeEvidenceBytes
   )
-    return localRefuse("retained archive bound reached");
+    return localRefuse(
+      `retained archive bound reached (objects ${archiveObjects.length.toString()}/${WATCHER_USER_EVENT_INDEXER_BOUNDS.evidenceContainerEntries.toString()}, bytes ${retainedBytes.toString()}/${WATCHER_USER_EVENT_INDEXER_BOUNDS.cumulativeEvidenceBytes.toString()}, nodes ${retainedNodes.toString()}/${WATCHER_USER_EVENT_INDEXER_BOUNDS.cumulativeEvidenceNodes.toString()}; new evidence ${localArchiveBudgets.get(evidence)!.nodes.toString()} nodes ${(evidence.bytesHex.length / 2).toString()} bytes)`,
+    );
   const nextCheckpoint = makeWatcherUserEventCheckpoint({
     schemaVersion: WATCHER_USER_EVENT_CHECKPOINT_SCHEMA_VERSION,
     deploymentMarker: owner.policy.deploymentMarker,
