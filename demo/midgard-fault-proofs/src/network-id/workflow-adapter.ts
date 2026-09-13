@@ -79,9 +79,16 @@ import type {
 } from "../workflow/journal.js";
 import {
   createLocalKupmiosHttpOgmiosRawSource,
+  readAdmittedLocalKupmiosSignedTransactionRecovery,
+  rebroadcastAdmittedLocalKupmiosSignedTransaction,
   type LocalKupmiosHttpOgmiosSourceConfig,
 } from "../workflow/local-kupmios-http-ogmios-source.js";
 import { createLocalKupmiosFraudProofRawL1SnapshotAuthority } from "../workflow/local-kupmios-raw-l1-authority.js";
+import {
+  reconcileSignedWorkflowTransaction,
+  type SignedTransactionRecoveryObservation,
+  type SignedWorkflowTransaction,
+} from "../workflow/signed-transaction-reconciliation.js";
 import {
   createFraudProofWorkflowRegistry,
   FRAUD_PROOF_WORKFLOW_ADAPTER,
@@ -738,6 +745,22 @@ export type NetworkIdWorkflowTerminalFacts = {
 
 export interface NetworkIdRawL1ObservationPort {
   readonly publications?: FraudProofAuthenticatedPublicationObserver;
+  /**
+   * Canonical recovery of a journaled signed transaction (mempool, inclusion,
+   * expiry). Reconciliation reports a submitted transaction as absent only
+   * through this port; without it an unconfirmed submission stays unresolved
+   * rather than being abandoned and rebuilt.
+   */
+  observeSignedTransaction?(
+    input: SignedWorkflowTransaction,
+  ): Promise<SignedTransactionRecoveryObservation>;
+  rebroadcastSignedTransaction?(
+    input: SignedWorkflowTransaction & {
+      readonly authorizeResubmission: (
+        input: SignedWorkflowTransaction,
+      ) => Promise<void>;
+    },
+  ): Promise<string>;
   observeHeader?(input: {
     readonly headerHash: string;
   }): Promise<AuthenticatedStateQueueHeaderObservation>;
@@ -826,7 +849,7 @@ export const createNetworkIdLocalKupmiosL1ObservationPort = ({
     ...source,
     releaseFinality,
   });
-  return createNetworkIdRawL1ObservationPort({
+  const port = createNetworkIdRawL1ObservationPort({
     authority: createLocalKupmiosFraudProofRawL1SnapshotAuthority({
       source: rawSource,
       releaseFinality,
@@ -834,6 +857,25 @@ export const createNetworkIdLocalKupmiosL1ObservationPort = ({
     releaseFinality,
     releaseEconomics,
     definition,
+  });
+  return Object.freeze({
+    ...port,
+    observeSignedTransaction: (input: SignedWorkflowTransaction) =>
+      readAdmittedLocalKupmiosSignedTransactionRecovery({
+        ...input,
+        source: rawSource,
+      }),
+    rebroadcastSignedTransaction: (
+      input: SignedWorkflowTransaction & {
+        readonly authorizeResubmission: (
+          input: SignedWorkflowTransaction,
+        ) => Promise<void>;
+      },
+    ) =>
+      rebroadcastAdmittedLocalKupmiosSignedTransaction({
+        ...input,
+        source: rawSource,
+      }),
   });
 };
 
@@ -2381,6 +2423,34 @@ export const createNetworkIdWorkflowAdapter = (
       const admitted = admitNetworkIdWorkflowArtifact(context.artifact);
       const prepared = admitted.prepared;
       const kind = actionKind(context.action);
+      // A journaled submission the chain has not reflected yet is resolved
+      // through canonical signed-transaction recovery: still in the mempool is
+      // `pending`, expired is `not_found`, and anything the port cannot settle
+      // stays `unknown`. Reporting `not_found` directly would make the
+      // orchestrator abandon the funding transition and rebuild the identical
+      // transaction while the original is still landing.
+      const unconfirmed = async (
+        lease?: StateQueueMutationLease,
+      ): Promise<FraudProofWorkflowReconcileResult> => {
+        const observe = config.rawL1?.observeSignedTransaction;
+        if (context.txHash === undefined || observe === undefined) {
+          return { kind: "not_found" };
+        }
+        const { authorizeResubmission } = context;
+        return await reconcileSignedWorkflowTransaction({
+          transactionHash: context.txHash,
+          signedTransactionCborHex: context.signedTransactionCborHex,
+          observe,
+          rebroadcast: config.rawL1?.rebroadcastSignedTransaction,
+          authorizeResubmission:
+            authorizeResubmission === undefined
+              ? undefined
+              : async (signed) => {
+                  await lease?.renew();
+                  await authorizeResubmission(signed);
+                },
+        });
+      };
       let advanced: boolean;
       if (kind === "publish_field" || kind === "certify_field") {
         const opening = outputsOpeningPlanFor(admitted);
@@ -2417,7 +2487,7 @@ export const createNetworkIdWorkflowAdapter = (
               utxo.txHash === context.txHash &&
               utxo.datum === context.action.input.publicationDatumCbor,
           );
-          if (candidate === undefined) return { kind: "not_found" };
+          if (candidate === undefined) return await unconfirmed();
           const observation = await observer.observeExact({
             headerHash: prepared.headerHash,
             kind: "field_publication",
@@ -2441,7 +2511,7 @@ export const createNetworkIdWorkflowAdapter = (
             certificate === undefined ||
             certificate.txHash !== context.txHash
           ) {
-            return { kind: "not_found" };
+            return await unconfirmed();
           }
           const certification = deriveFieldPreimageCertification(opening.plan);
           const observation = await observer.observeExact({
@@ -2575,8 +2645,21 @@ export const createNetworkIdWorkflowAdapter = (
               mutationLeaseByTxHash,
             });
       if (recovery.kind === "conflict") return recovery;
-      await recovery.lease?.renew();
-      return { kind: "not_found" };
+      const result = await unconfirmed(recovery.lease);
+      if (result.kind === "not_found") {
+        await recovery.lease?.release();
+        if (context.txHash !== undefined) {
+          mutationLeaseByTxHash.delete(context.txHash);
+        }
+      } else if (result.kind === "conflict") {
+        await recovery.lease?.fail(result.reason);
+        if (context.txHash !== undefined) {
+          mutationLeaseByTxHash.delete(context.txHash);
+        }
+      } else {
+        await recovery.lease?.renew();
+      }
+      return result;
     },
   };
 };

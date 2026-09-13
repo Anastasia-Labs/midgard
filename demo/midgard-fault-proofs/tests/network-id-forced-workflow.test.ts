@@ -27,6 +27,7 @@ import {
   ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
 import {
+  CML,
   Data,
   type LucidEvolution,
   type MintingPolicy,
@@ -66,6 +67,7 @@ import {
   type JournalJsonObject,
 } from "../src/workflow/journal.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
+import type { SignedTransactionRecoveryObservation } from "../src/workflow/signed-transaction-reconciliation.js";
 import {
   type LocallyEvaluatedTransaction,
   workflowPreflightTransaction,
@@ -271,6 +273,7 @@ const forcedHarness = ({
   forcedDoorOccupied,
   forcedScanDatum,
   walletUtxos = [],
+  observeSignedTransaction,
 }: {
   readonly prepared: PreparedNetworkIdWrongfulRejection;
   readonly stage: FraudProofRawL1FamilyStage;
@@ -278,6 +281,11 @@ const forcedHarness = ({
   /** Inline datum of the live scan thread, absent when the scan is empty. */
   readonly forcedScanDatum?: string;
   readonly walletUtxos?: readonly UTxO[];
+  /** Canonical signed-transaction recovery; absent in the bare raw-L1 stub. */
+  readonly observeSignedTransaction?: (input: {
+    readonly transactionHash: string;
+    readonly signedTransactionCborHex: string;
+  }) => Promise<SignedTransactionRecoveryObservation>;
 }) => {
   const forcedUtxo = utxo({
     txHash: h32(0x77),
@@ -359,6 +367,9 @@ const forcedHarness = ({
       },
       transactionConfirmed: async () => true,
       observe: async () => stage,
+      ...(observeSignedTransaction === undefined
+        ? {}
+        : { observeSignedTransaction }),
     },
     terminalFacts: async () => {
       throw new Error("terminal state is outside this test");
@@ -808,6 +819,110 @@ describe("network-id forced (§5.2) production workflow", () => {
         threadOutRef: `${h32(0x78)}#0`,
       }),
     ).resolves.toEqual({ kind: "confirmed", txHash: h32(0x41) });
+  });
+
+  // Regression: one second after submission the chain has not advanced, so
+  // the adapter used to answer `not_found`, which makes the orchestrator
+  // abandon the funding transition and rebuild the identical transaction while
+  // the original is still landing. An unconfirmed submission now resolves
+  // through canonical signed-transaction recovery.
+  it("keeps an unconfirmed submission pending until signed recovery reports expiry", async () => {
+    const prepared = await forcedPrepared();
+    const inputs = CML.TransactionInputList.new();
+    inputs.add(
+      CML.TransactionInput.new(CML.TransactionHash.from_hex(h32(0x11)), 0n),
+    );
+    const body = CML.TransactionBody.new(
+      inputs,
+      CML.TransactionOutputList.new(),
+      0n,
+    );
+    const signed = CML.Transaction.new(
+      body,
+      CML.TransactionWitnessSet.new(),
+      true,
+    );
+    const transactionHash = CML.hash_transaction(body).to_hex();
+    const signedTransactionCborHex = signed.to_cbor_hex();
+    const point = {
+      slot: "1",
+      blockHash: h32(0x21),
+      blockNo: "1",
+      pointId: "1",
+    };
+    const observation = (
+      status: SignedTransactionRecoveryObservation["status"],
+    ): SignedTransactionRecoveryObservation => ({
+      transactionHash,
+      signedTransactionCborHex,
+      status,
+      canonicalPoint: point,
+      releaseFinalPoint: point,
+      inputs: [],
+      reason: status,
+    });
+    const observe = vi.fn(async () => observation("pending"));
+    const notStarted: FraudProofRawL1FamilyStage = {
+      kind: "not_started",
+      stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+    };
+    const reconcile = async (
+      harness: ReturnType<typeof forcedHarness>,
+      overrides: { readonly signedTransactionCborHex?: string } = {
+        signedTransactionCborHex,
+      },
+    ) => {
+      const observed = await harness.observe();
+      if (observed.kind !== "action_required") {
+        throw new Error("expected the init action");
+      }
+      return await harness.adapter.reconcile({
+        identity: workflowIdentity(prepared.headerHash),
+        workflowId: h32(0x51),
+        artifact: harness.artifact,
+        entries: [],
+        action: observed.action,
+        txHash: transactionHash,
+        ...overrides,
+      });
+    };
+    const recovering = forcedHarness({
+      prepared,
+      stage: notStarted,
+      forcedDoorOccupied: false,
+      observeSignedTransaction: observe,
+    });
+    await expect(reconcile(recovering)).resolves.toEqual({
+      kind: "pending",
+      txHash: transactionHash,
+    });
+    expect(observe).toHaveBeenCalledWith({
+      transactionHash,
+      signedTransactionCborHex,
+    });
+    observe.mockResolvedValueOnce(observation("expired"));
+    await expect(reconcile(recovering)).resolves.toEqual({
+      kind: "not_found",
+    });
+    observe.mockResolvedValueOnce(observation("conflict"));
+    await expect(reconcile(recovering)).resolves.toEqual({
+      kind: "conflict",
+      reason: "conflict",
+    });
+    // Without the durable signed bytes recovery cannot establish absence.
+    await expect(reconcile(recovering, {})).resolves.toMatchObject({
+      kind: "unknown",
+    });
+    // The bare raw-L1 stub has no signed recovery, so the legacy answer stands.
+    await expect(
+      reconcile(
+        forcedHarness({
+          prepared,
+          stage: notStarted,
+          forcedDoorOccupied: false,
+        }),
+      ),
+    ).resolves.toEqual({ kind: "not_found" });
   });
 
   it("routes the forced violation to networkId and refuses another category or a generic fallback", async () => {
