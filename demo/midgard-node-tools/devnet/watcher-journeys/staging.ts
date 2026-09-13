@@ -530,6 +530,18 @@ async function stageJourney(
     else
       for (;;) {
         const anchor = await assertTail(predecessor);
+        // A fault staged by an earlier attempt may have outlived its commit
+        // interval before anything referenced it; its header end time bounds
+        // the commit's validity, so an elapsed one cannot be committed.
+        if (current.header.endTime <= BigInt(chain.now())) {
+          onStage(
+            "staged fault interval elapsed unminted; rebuilding the fault",
+          );
+          current = await buildFault();
+          checkpoint.current = current;
+          delete checkpoint.signedCommit;
+          await writeJourneyArtifact(checkpointPath, checkpoint);
+        }
         try {
           checkpoint.commitTxHash = await actor.commit(
             current,
