@@ -248,6 +248,18 @@ const historicalCorpusByAuthority = new WeakMap<
   HistoricalNativeScriptCorpus
 >();
 
+// The classifier admits the corpus against the evidence it routed, while a
+// family workflow re-fetches the same challenged block from retained DA, so
+// the corpus binds to the block's content digests rather than one object.
+const sameCanonicalBlockEvidence = (
+  left: CanonicalBlockEvidence,
+  right: CanonicalBlockEvidence,
+): boolean =>
+  left === right ||
+  (left.headerHash === right.headerHash &&
+    left.payloadEnvelopeSha256 === right.payloadEnvelopeSha256 &&
+    left.payloadSha256 === right.payloadSha256);
+
 export const admitCompleteCanonicalReplayHistoricalCorpus = ({
   evidence,
   corpus,
@@ -257,7 +269,7 @@ export const admitCompleteCanonicalReplayHistoricalCorpus = ({
 }): CompleteCanonicalReplayHistoricalCorpus => {
   const admitted = requireHistoricalNativeScriptCorpus(corpus);
   if (
-    admitted.currentEvidence !== evidence ||
+    !sameCanonicalBlockEvidence(admitted.currentEvidence, evidence) ||
     corpus.throughHeaderHash !== evidence.headerHash
   ) {
     throw new Error(
@@ -299,7 +311,10 @@ const requireReplayHistoricalCorpus = ({
     authority.checkpointDigest !== corpus.checkpointDigest ||
     authority.corpusDigest !== corpus.corpusDigest ||
     authority.evidenceDigest !== corpus.evidenceDigest ||
-    requireHistoricalNativeScriptCorpus(corpus).currentEvidence !== evidence
+    !sameCanonicalBlockEvidence(
+      requireHistoricalNativeScriptCorpus(corpus).currentEvidence,
+      evidence,
+    )
   ) {
     throw new Error(
       "complete replay historical corpus was not admitted for this challenged header",
