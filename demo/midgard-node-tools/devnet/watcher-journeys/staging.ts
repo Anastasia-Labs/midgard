@@ -496,7 +496,10 @@ async function stageJourney(
 
   // Onboard the faulty publisher now. The next producer registers after
   // confirmed correction, so its eligibility cannot block scheduler removal.
-  if (resume === undefined) await actor.onboardOperator();
+  // A resumed fault re-onboards when an earlier journey's confirmed slashing
+  // correction has since spent the publisher's active node.
+  if (resume === undefined || !(await actor.operatorActive()))
+    await actor.onboardOperator();
   const buildFault = () => {
     const faultEndTime = BigInt(chain.now() + 59_999);
     return prepared.buildFault({

@@ -147,6 +147,15 @@ export const createPublishedWatcherBlockActor = async ({
     contracts.scheduler.policyId,
     SDK.SCHEDULER_ASSET_NAME,
   );
+  /** Whether the operator's active node is currently published. A confirmed
+   * slashing correction spends it, so a resumed journey must look again. */
+  const operatorActive = async () =>
+    (
+      await lucid.utxosAtWithUnit(
+        contracts.activeOperators.spendingScriptAddress,
+        activeUnit,
+      )
+    ).length === 1;
   const onboardOperator = async () => {
     lucid.overrideUTxOs(await lucid.utxosAt(address));
     onStage("operator registration");
@@ -643,6 +652,7 @@ export const createPublishedWatcherBlockActor = async ({
   return {
     address,
     operatorVkey,
+    operatorActive,
     onboardOperator,
     commit,
     attest,
