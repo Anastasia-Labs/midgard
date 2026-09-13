@@ -280,13 +280,16 @@ const actionKind = (action: FraudProofWorkflowAction): ActionKind => {
   return kind;
 };
 
+// Every action carries its kind twice: `kind` drives this adapter's own
+// dispatch and `actionKind` is the stable action label the production funding
+// reservation permit reads (it accepts `actionKind` or `stage`, never `kind`).
 const action = (
   kind: ActionKind,
   input: Readonly<Record<string, string>>,
   actionId = `network-id:${kind}:${Object.values(input).join(":")}`,
 ): FraudProofWorkflowAction => ({
   actionId,
-  input: { kind, ...input },
+  input: { kind, actionKind: kind, ...input },
 });
 
 const contentActionId = ({

@@ -424,6 +424,9 @@ describe("network-id forced (§5.2) production workflow", () => {
     ).toThrow(/membership proof opens another root/u);
   });
 
+  // Every selected action also carries `actionKind`: the production funding
+  // reservation permit labels reservations by `actionKind` (or `stage`) and
+  // refuses an action that offers only the adapter-private `kind`.
   it("selects init, forced step-01, the forced door, and step-02 from chain state alone", async () => {
     const prepared = await forcedPrepared();
     const notStarted = await forcedHarness({
@@ -436,7 +439,7 @@ describe("network-id forced (§5.2) production workflow", () => {
     }).observe();
     expect(notStarted).toMatchObject({
       kind: "action_required",
-      action: { input: { kind: "init" } },
+      action: { input: { kind: "init", actionKind: "init" } },
     });
 
     const atStep01 = await forcedHarness({
@@ -452,7 +455,11 @@ describe("network-id forced (§5.2) production workflow", () => {
     expect(atStep01).toMatchObject({
       kind: "action_required",
       action: {
-        input: { kind: "forced_step01", threadOutRef: `${h32(0x72)}#0` },
+        input: {
+          kind: "forced_step01",
+          actionKind: "forced_step01",
+          threadOutRef: `${h32(0x72)}#0`,
+        },
       },
     });
 
@@ -469,7 +476,11 @@ describe("network-id forced (§5.2) production workflow", () => {
     expect(atDoor).toMatchObject({
       kind: "action_required",
       action: {
-        input: { kind: "forced_bind", threadOutRef: `${h32(0x77)}#0` },
+        input: {
+          kind: "forced_bind",
+          actionKind: "forced_bind",
+          threadOutRef: `${h32(0x77)}#0`,
+        },
       },
     });
 
@@ -487,7 +498,13 @@ describe("network-id forced (§5.2) production workflow", () => {
     }).observe();
     expect(atStep02).toMatchObject({
       kind: "action_required",
-      action: { input: { kind: "step02", threadOutRef: `${h32(0x74)}#0` } },
+      action: {
+        input: {
+          kind: "step02",
+          actionKind: "step02",
+          threadOutRef: `${h32(0x74)}#0`,
+        },
+      },
     });
   });
 
