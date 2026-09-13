@@ -101,6 +101,7 @@ import type { VerifiedFraudProofReleaseEconomicsPolicy } from "./release-economi
 import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 import {
+  bindWorkflowPreflightTransaction,
   captureLocallyEvaluatedTransaction,
   LOCAL_UPLC_EVALUATOR,
   type LocallyEvaluatedTransaction,
@@ -611,18 +612,25 @@ const preflightOf = (
     transaction,
     label: "double-spend production transaction",
   });
-  return {
-    actionId,
-    txHash: transaction.txHash,
-    scriptExecution:
-      transaction.referenceScripts.length === 0 ? "none" : "reference_scripts",
-    localUplcEvaluation: {
-      status: "passed",
-      evaluator: LOCAL_UPLC_EVALUATOR,
+  // The production funding reservation permit reads the signed body back from
+  // the in-memory preflight to reconcile the reserved inputs it spends.
+  return bindWorkflowPreflightTransaction(
+    {
+      actionId,
+      txHash: transaction.txHash,
+      scriptExecution:
+        transaction.referenceScripts.length === 0
+          ? "none"
+          : "reference_scripts",
+      localUplcEvaluation: {
+        status: "passed",
+        evaluator: LOCAL_UPLC_EVALUATOR,
+      },
+      referenceScripts: transaction.referenceScripts,
+      ...(durableRecovery === undefined ? {} : { durableRecovery }),
     },
-    referenceScripts: transaction.referenceScripts,
-    ...(durableRecovery === undefined ? {} : { durableRecovery }),
-  };
+    transaction.signed,
+  );
 };
 
 const mutationLeaseRecovery = (

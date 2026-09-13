@@ -116,6 +116,7 @@ import type { VerifiedFraudProofReleaseEconomicsPolicy } from "../workflow/relea
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "../workflow/release-finality-policy.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import {
+  bindWorkflowPreflightTransaction,
   captureLocallyEvaluatedTransaction,
   type FraudProofPreSubmitBoundary,
   LOCAL_UPLC_EVALUATOR,
@@ -2308,26 +2309,32 @@ export const createNetworkIdWorkflowAdapter = (
         transaction,
         ...(mutationLease === undefined ? {} : { mutationLease }),
       });
-      return {
-        actionId: context.action.actionId,
-        txHash: transaction.txHash,
-        scriptExecution: "reference_scripts",
-        localUplcEvaluation: {
-          status: "passed",
-          evaluator: LOCAL_UPLC_EVALUATOR,
-        },
-        referenceScripts: transaction.referenceScripts,
-        ...(mutationLease === undefined
-          ? {}
-          : {
-              durableRecovery: {
-                stateQueueMutationLease: {
-                  token: mutationLease.token,
-                  source: mutationLease.source,
+      // The production funding reservation permit reads the signed body back
+      // from the in-memory preflight to reconcile the reserved inputs it
+      // actually spends, so the capture is bound beside the journal-safe view.
+      return bindWorkflowPreflightTransaction(
+        {
+          actionId: context.action.actionId,
+          txHash: transaction.txHash,
+          scriptExecution: "reference_scripts",
+          localUplcEvaluation: {
+            status: "passed",
+            evaluator: LOCAL_UPLC_EVALUATOR,
+          },
+          referenceScripts: transaction.referenceScripts,
+          ...(mutationLease === undefined
+            ? {}
+            : {
+                durableRecovery: {
+                  stateQueueMutationLease: {
+                    token: mutationLease.token,
+                    source: mutationLease.source,
+                  },
                 },
-              },
-            }),
-      };
+              }),
+        },
+        transaction.signed,
+      );
     },
     submit: async (context) => {
       const key = `${context.workflowId}:${context.action.actionId}`;
