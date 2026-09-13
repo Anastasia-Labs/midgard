@@ -149,9 +149,35 @@ describe("production linear family authenticated state machine V1", () => {
         Array.from({ length: row.steps.length }, (_, index) => index + 1),
       );
       expect(row.steps.map((step) => step.terminalStep)).toEqual(
-        row.steps.map((_, index) => index === row.steps.length - 1),
+        row.steps.map((step) => step.successors.includes("proof_token")),
       );
+      expect(row.steps.at(-1)?.terminalStep).toBe(true);
+      for (const step of row.steps) {
+        expect(step.successors.length).toBeGreaterThanOrEqual(1);
+        for (const successor of step.successors) {
+          if (successor === "proof_token") continue;
+          expect(successor).toBeGreaterThan(step.ordinal);
+          expect(successor).toBeLessThanOrEqual(row.steps.length);
+        }
+      }
+      if (row.category !== "inputSetUniqueness") {
+        expect(row.steps.map((step) => step.successors)).toEqual(
+          row.steps.map((step, index) =>
+            index === row.steps.length - 1
+              ? ["proof_token"]
+              : [step.ordinal + 1],
+          ),
+        );
+      }
     }
+  });
+
+  it("declares the accepted and forced input-set-uniqueness branches", () => {
+    expect(
+      linearFamilySpec("inputSetUniqueness").steps.map(
+        (step) => step.successors,
+      ),
+    ).toEqual([[2, 3], ["proof_token"], [4], ["proof_token"]]);
   });
 
   it("refuses missing-signature because step-04 is a cursor-driven self-loop", () => {
@@ -252,6 +278,109 @@ describe("production linear family authenticated state machine V1", () => {
           stateQueueBlockOutRef: outRef("10"),
           nextRemovalOutRef: outRef("33"),
         },
+        transactionConfirmed: async () => true,
+      }),
+    ).resolves.toMatchObject({ kind: "conflict" });
+  });
+
+  it("accepts every declared branch successor and nothing else", async () => {
+    const at = (step: 1 | 2 | 3 | 4, threadOutRef: string) =>
+      linearFamilyObservation({
+        category: "inputSetUniqueness",
+        headerHash,
+        provenance,
+        stage: {
+          kind: "step",
+          step,
+          threadOutRef,
+          stateQueueBlockOutRef: outRef("10"),
+        },
+      });
+    const reconcile = (
+      action: ReturnType<typeof at>,
+      txHash: string,
+      stage: Parameters<typeof reconcileLinearFamilyAction>[0]["stage"],
+    ) => {
+      if (action.kind !== "action_required") throw new Error("missing action");
+      return reconcileLinearFamilyAction({
+        category: "inputSetUniqueness",
+        headerHash,
+        action: action.action,
+        txHash,
+        provenance,
+        stage,
+        transactionConfirmed: async () => true,
+      });
+    };
+    const step = (
+      ordinal: 1 | 2 | 3 | 4,
+      txHash: string,
+    ): Parameters<typeof reconcileLinearFamilyAction>[0]["stage"] => ({
+      kind: "step",
+      step: ordinal,
+      threadOutRef: `${txHash}#0`,
+      stateQueueBlockOutRef: outRef("10"),
+    });
+    const proof = (
+      txHash: string,
+    ): Parameters<typeof reconcileLinearFamilyAction>[0]["stage"] => ({
+      kind: "proof_token",
+      fraudProofOutRef: `${txHash}#0`,
+      stateQueueBlockOutRef: outRef("10"),
+      nextRemovalOutRef: outRef("33"),
+    });
+    const txHash = hash("22");
+    // Accepted evidence: step-01 -> step-02 -> proof token.
+    await expect(
+      reconcile(at(1, outRef("11")), txHash, step(2, txHash)),
+    ).resolves.toEqual({ kind: "confirmed", txHash });
+    await expect(
+      reconcile(at(2, outRef("11")), txHash, proof(txHash)),
+    ).resolves.toEqual({ kind: "confirmed", txHash });
+    // Forced evidence: step-01 -> step-03 -> step-04 -> proof token.
+    await expect(
+      reconcile(at(1, outRef("11")), txHash, step(3, txHash)),
+    ).resolves.toEqual({ kind: "confirmed", txHash });
+    await expect(
+      reconcile(at(3, outRef("11")), txHash, step(4, txHash)),
+    ).resolves.toEqual({ kind: "confirmed", txHash });
+    await expect(
+      reconcile(at(4, outRef("11")), txHash, proof(txHash)),
+    ).resolves.toEqual({ kind: "confirmed", txHash });
+    // Undeclared edges stay conflicts.
+    await expect(
+      reconcile(at(2, outRef("11")), txHash, step(3, txHash)),
+    ).resolves.toMatchObject({ kind: "conflict" });
+    await expect(
+      reconcile(at(1, outRef("11")), txHash, step(4, txHash)),
+    ).resolves.toMatchObject({ kind: "conflict" });
+    await expect(
+      reconcile(at(1, outRef("11")), txHash, proof(txHash)),
+    ).resolves.toMatchObject({ kind: "conflict" });
+    await expect(
+      reconcile(at(3, outRef("11")), txHash, proof(txHash)),
+    ).resolves.toMatchObject({ kind: "conflict" });
+    // A straight four-step chain still refuses to skip a step.
+    const skip = linearFamilyObservation({
+      category: "nonExistentInput",
+      headerHash,
+      provenance,
+      stage: {
+        kind: "step",
+        step: 1,
+        threadOutRef: outRef("11"),
+        stateQueueBlockOutRef: outRef("10"),
+      },
+    });
+    if (skip.kind !== "action_required") throw new Error("missing action");
+    await expect(
+      reconcileLinearFamilyAction({
+        category: "nonExistentInput",
+        headerHash,
+        action: skip.action,
+        txHash,
+        provenance,
+        stage: step(3, txHash),
         transactionConfirmed: async () => true,
       }),
     ).resolves.toMatchObject({ kind: "conflict" });

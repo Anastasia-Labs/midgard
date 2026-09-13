@@ -289,16 +289,16 @@ const exactSuccessor = ({
         parsed.proofOutRef
     );
   }
-  const ordinal = parsed.ordinal!;
-  if (ordinal === spec.steps.length) {
+  const step = stageStep(spec, parsed.ordinal!);
+  if (stage.kind === "proof_token") {
     return (
-      stage.kind === "proof_token" &&
+      step.successors.includes("proof_token") &&
       outputBelongsToTransaction(stage.fraudProofOutRef, txHash)
     );
   }
   return (
     stage.kind === "step" &&
-    stage.step === ordinal + 1 &&
+    step.successors.some((successor) => successor === stage.step) &&
     outputBelongsToTransaction(stage.threadOutRef, txHash)
   );
 };
@@ -329,8 +329,8 @@ const sameRequiredAction = ({
 
 /**
  * Reconciles only against raw-derived L1 facts. A confirmed transaction must
- * produce the immediate content-addressed successor; skipped/reordered stages
- * are a conflict. A known intended transaction remains pending until its
+ * produce one of the step's declared content-addressed successors (exactly
+ * one for a straight chain); skipped/reordered stages are a conflict. A known intended transaction remains pending until its
  * inclusion is authenticated; finalized-history absence cannot permit a retry.
  */
 export const reconcileLinearFamilyAction = async ({

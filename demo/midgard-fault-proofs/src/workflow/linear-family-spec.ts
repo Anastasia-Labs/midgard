@@ -33,9 +33,17 @@ export type LinearFamilyStep = Readonly<{
   actionId: `step_0${1 | 2 | 3 | 4}`;
   rawL1Role: `computation_thread_step_0${1 | 2 | 3 | 4}`;
   manifestContractName: string;
-  /** The final step burns the computation thread and mints the proof token. */
+  /**
+   * Exact chain successors one confirmed transaction from this step may
+   * produce: later step ordinals, or the permanent proof token. Most chains
+   * are straight lines; a branching chain (accepted versus forced evidence)
+   * lists every on-chain continuation target.
+   */
+  successors: readonly LinearFamilySuccessor[];
+  /** A step that may burn the computation thread and mint the proof token. */
   terminalStep: boolean;
 }>;
+export type LinearFamilySuccessor = 2 | 3 | 4 | "proof_token";
 
 export type LinearFamilySpec = Readonly<{
   schemaVersion: typeof LINEAR_FAMILY_SPEC;
@@ -54,33 +62,67 @@ const TERMINAL_SEMANTICS = Object.freeze({
   economics: "manifest_exact_slash_reward_fee_v1",
 } as const);
 
+type SuccessorOverrides = Readonly<
+  Partial<Record<1 | 2 | 3 | 4, readonly LinearFamilySuccessor[]>>
+>;
+
 const steps = (
-  ...manifestContractNames: readonly [string, ...string[]]
-): readonly LinearFamilyStep[] =>
-  Object.freeze(
+  manifestContractNames: readonly [string, ...string[]],
+  overrides: SuccessorOverrides = {},
+): readonly LinearFamilyStep[] => {
+  const stepCount = manifestContractNames.length;
+  return Object.freeze(
     manifestContractNames.map((manifestContractName, index) => {
       const ordinal = (index + 1) as 1 | 2 | 3 | 4;
       if (ordinal > 4) {
         throw new Error("production linear family cannot exceed four steps");
+      }
+      const successors: readonly LinearFamilySuccessor[] =
+        overrides[ordinal] ??
+        (ordinal === stepCount
+          ? ["proof_token"]
+          : [(ordinal + 1) as 2 | 3 | 4]);
+      if (successors.length === 0) {
+        throw new Error(
+          `production linear family step ${ordinal.toString()} has no successor`,
+        );
+      }
+      for (const successor of successors) {
+        if (
+          successor !== "proof_token" &&
+          (successor <= ordinal || successor > stepCount)
+        ) {
+          throw new Error(
+            `production linear family step ${ordinal.toString()} successor ${successor.toString()} leaves its exact chain`,
+          );
+        }
+      }
+      if (ordinal === stepCount && !successors.includes("proof_token")) {
+        throw new Error(
+          "production linear family last step must mint the proof token",
+        );
       }
       return Object.freeze({
         ordinal,
         actionId: `step_0${ordinal}` as const,
         rawL1Role: `computation_thread_step_0${ordinal}` as const,
         manifestContractName,
-        terminalStep: index === manifestContractNames.length - 1,
+        successors: Object.freeze([...successors]),
+        terminalStep: successors.includes("proof_token"),
       });
     }),
   );
+};
 
 const spec = (
   category: LinearFamilyCategory,
   manifestContractNames: readonly [string, ...string[]],
+  overrides: SuccessorOverrides = {},
 ): LinearFamilySpec =>
   Object.freeze({
     schemaVersion: LINEAR_FAMILY_SPEC,
     category,
-    steps: steps(...manifestContractNames),
+    steps: steps(manifestContractNames, overrides),
     terminalSemantics: TERMINAL_SEMANTICS,
   });
 
@@ -162,12 +204,19 @@ const rows = [
     "fraudProofWithdrawnInputStep02",
     "fraudProofWithdrawnInputStep03",
   ]),
-  spec("inputSetUniqueness", [
-    "fraudProofInputSetUniqueness",
-    "fraudProofInputSetUniquenessStep02",
-    "fraudProofInputSetUniquenessStep03",
-    "fraudProofInputSetUniquenessStep04",
-  ]),
+  // Accepted evidence finalizes at step-02; forced evidence branches from
+  // step-01 to step-03 and finalizes at step-04 (validators/fraud-proofs/
+  // input-set-uniqueness/step-0{1,2,3,4}.ak).
+  spec(
+    "inputSetUniqueness",
+    [
+      "fraudProofInputSetUniqueness",
+      "fraudProofInputSetUniquenessStep02",
+      "fraudProofInputSetUniquenessStep03",
+      "fraudProofInputSetUniquenessStep04",
+    ],
+    { 1: [2, 3], 2: ["proof_token"], 3: [4], 4: ["proof_token"] },
+  ),
 ] as const satisfies readonly LinearFamilySpec[];
 
 if (
