@@ -29,6 +29,7 @@ import {
 } from "../src/network-id/workflow-adapter.js";
 import { deriveL2TransactionSourceCbor } from "../src/prepare-double-spend.js";
 import type { ResolvedProverSigner } from "../src/runtime.js";
+import { submitInit } from "../src/submit-init.js";
 import {
   createDoubleSpendConstrainedWorkflowAdapter,
   type DoubleSpendConstrainedWorkflowAdapterConfig,
@@ -42,11 +43,23 @@ import {
 } from "../src/workflow/journal.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
 import {
+  type LocallyEvaluatedTransaction,
+  workflowPreflightTransaction,
+} from "../src/workflow/transaction-boundary.js";
+import {
   buildFixtureTransaction,
   h28,
   h32,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+
+// The double-spend preflight must reach a real builder's pre-submit boundary;
+// only the init builder itself is replaced, so everything the adapter does
+// with the captured body stays under test.
+vi.mock("../src/submit-init.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/submit-init.js")>()),
+  submitInit: vi.fn(),
+}));
 
 const POLICY_ID = "91".repeat(28);
 const HEADER_HASH = h28(0x71);
@@ -679,6 +692,100 @@ describe("Q38 tier-3 workflow action chains", () => {
         }),
       ).resolves.toEqual({ kind: "pending", txHash });
     }
+  });
+
+  // Regression: the production funding reservation permit reads the signed
+  // body back off the in-memory preflight, so a preflight that forgets to bind
+  // its captured transaction fails the whole run at reservation time.
+  it("doubleSpend binds the captured signed transaction to the preflight it returns", async () => {
+    const capturedTxHash = h32(0x7e);
+    const capturedSigned = {
+      toHash: () => capturedTxHash,
+      submit: async () => capturedTxHash,
+      toTransaction: () => ({
+        witness_set: () => ({
+          native_scripts: () => undefined,
+          plutus_v1_scripts: () => undefined,
+          plutus_v2_scripts: () => undefined,
+          plutus_v3_scripts: () => undefined,
+        }),
+        body: () => ({
+          inputs: { len: () => 0, get: () => undefined },
+          reference_inputs: () => undefined,
+        }),
+      }),
+    } as unknown as LocallyEvaluatedTransaction["signed"];
+    vi.mocked(submitInit).mockImplementation(
+      async ({
+        preSubmitBoundary,
+      }: {
+        readonly preSubmitBoundary?: unknown;
+      }) => {
+        await (
+          preSubmitBoundary as (
+            transaction: LocallyEvaluatedTransaction,
+          ) => Promise<void>
+        )({
+          txHash: capturedTxHash,
+          signed: capturedSigned,
+          referenceScripts: [
+            {
+              role: "V1 fraud-proof double-spend init",
+              outRef: `${h32(0x19)}#0`,
+              scriptHash: h28(0x11),
+            },
+          ],
+        });
+        throw new Error("init builder must not run past its boundary");
+      },
+    );
+
+    const adapter = createDoubleSpendConstrainedWorkflowAdapter({
+      signer: SIGNER,
+      referenceScripts: { steps: [], witnesses: {} },
+      l1: {
+        transactionConfirmed: async () => false,
+        observe: async () => ({
+          provenance: {
+            trustClass: "authenticated_cardano_l1",
+            sourceId: "local-node-test",
+            grade: "security",
+          },
+          stage: {
+            kind: "not_started" as const,
+            stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+          },
+        }),
+      },
+    } as unknown as DoubleSpendConstrainedWorkflowAdapterConfig);
+    const artifact = {
+      headerHash: HEADER_HASH,
+    } as unknown as JournalJsonObject;
+    const observation = await observe({
+      adapter,
+      category: "doubleSpend",
+      artifact,
+    });
+    expect(observation).toMatchObject({
+      kind: "action_required",
+      action: { input: { stage: "init" } },
+    });
+    if (observation.kind !== "action_required") return;
+    const preflight = await adapter.preflight({
+      identity: workflowIdentity("doubleSpend"),
+      workflowId: h32(0x51),
+      artifact,
+      entries: [],
+      action: observation.action,
+    });
+    expect(workflowPreflightTransaction(preflight)).toBeDefined();
+    expect(workflowPreflightTransaction(preflight)).toBe(capturedSigned);
+    expect(preflight).toMatchObject({
+      actionId: observation.action.actionId,
+      txHash: capturedTxHash,
+      scriptExecution: "reference_scripts",
+      localUplcEvaluation: { status: "passed" },
+    });
   });
 
   it("doubleSpend resumes the exact descendant-removal fencing lease in a fresh adapter", async () => {

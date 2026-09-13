@@ -41,6 +41,7 @@ import {
   planNetworkIdForcedScan,
 } from "../src/network-id/forced-scan-plan.js";
 import { planNetworkIdOutputsOpening } from "../src/network-id/prepare.js";
+import { submitNetworkIdInit } from "../src/network-id/submit-network-id-init.js";
 import {
   admitNetworkIdForcedArtifact,
   admitNetworkIdWorkflowArtifact,
@@ -66,6 +67,10 @@ import {
 } from "../src/workflow/journal.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
 import {
+  type LocallyEvaluatedTransaction,
+  workflowPreflightTransaction,
+} from "../src/workflow/transaction-boundary.js";
+import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
   h28,
@@ -74,6 +79,19 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { makeHeader } from "./support/emulator/header-fixtures.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
+
+// The forced preflight must reach a real builder's pre-submit boundary; only
+// the init builder itself is replaced, so everything the adapter does with the
+// captured body stays under test.
+vi.mock(
+  "../src/network-id/submit-network-id-init.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../src/network-id/submit-network-id-init.js")
+    >()),
+    submitNetworkIdInit: vi.fn(),
+  }),
+);
 
 const POLICY_ID = "91".repeat(28);
 const THREAD_POLICY_ID = h28(0x13);
@@ -599,6 +617,74 @@ describe("network-id forced (§5.2) production workflow", () => {
         walletUtxos: carriage,
       }).observe(),
     ).rejects.toThrow(/on no batch of the planned walk/u);
+  });
+
+  // Regression: the production funding reservation permit reads the signed
+  // body back off the in-memory preflight, so a preflight that forgets to bind
+  // its captured transaction fails the whole run at reservation time.
+  it("binds the captured signed transaction to the preflight it returns", async () => {
+    const prepared = await forcedPrepared();
+    const capturedTxHash = h32(0x41);
+    const capturedSigned = {
+      toHash: () => capturedTxHash,
+      submit: async () => capturedTxHash,
+      toTransaction: () => ({
+        witness_set: () => ({
+          native_scripts: () => undefined,
+          plutus_v1_scripts: () => undefined,
+          plutus_v2_scripts: () => undefined,
+          plutus_v3_scripts: () => undefined,
+        }),
+        body: () => ({
+          inputs: { len: () => 0, get: () => undefined },
+          reference_inputs: () => undefined,
+        }),
+      }),
+    } as unknown as LocallyEvaluatedTransaction["signed"];
+    vi.mocked(submitNetworkIdInit).mockImplementation(
+      async ({ preSubmitBoundary }) => {
+        await preSubmitBoundary?.({
+          txHash: capturedTxHash,
+          signed: capturedSigned,
+          referenceScripts: [
+            {
+              role: "V1 fraud-proof network-id init",
+              outRef: `${h32(0x19)}#0`,
+              scriptHash: h28(0x11),
+            },
+          ],
+        });
+        throw new Error("init builder must not run past its boundary");
+      },
+    );
+
+    const harness = forcedHarness({
+      prepared,
+      stage: {
+        kind: "not_started",
+        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+      },
+      forcedDoorOccupied: false,
+    });
+    const observation = await harness.observe();
+    if (observation.kind !== "action_required") {
+      throw new Error("expected the init action");
+    }
+    const preflight = await harness.adapter.preflight({
+      identity: workflowIdentity(prepared.headerHash),
+      workflowId: h32(0x51),
+      artifact: harness.artifact,
+      entries: [],
+      action: observation.action,
+    });
+    expect(workflowPreflightTransaction(preflight)).toBeDefined();
+    expect(workflowPreflightTransaction(preflight)).toBe(capturedSigned);
+    expect(preflight).toMatchObject({
+      actionId: observation.action.actionId,
+      txHash: capturedTxHash,
+      scriptExecution: "reference_scripts",
+      localUplcEvaluation: { status: "passed" },
+    });
   });
 
   it("reconciles each forced stage from chain state and the journaled tx hash", async () => {
