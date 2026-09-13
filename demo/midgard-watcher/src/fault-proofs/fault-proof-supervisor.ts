@@ -487,12 +487,18 @@ const createSupervisor = (input: {
         failure = block(error, job);
       }
     } finally {
-      try {
-        await (
-          await queueJournal
-        ).markFinished(entry.jobIdentityDigest, now().toString());
-      } catch (error) {
-        failure ??= block(error, job);
+      // A failed run blocks the supervisor and the process exits failed
+      // closed. Leave its queue registration active so the next process
+      // requeues the job instead of reading a durable finish that never
+      // reached the workflow journal.
+      if (failure === undefined) {
+        try {
+          await (
+            await queueJournal
+          ).markFinished(entry.jobIdentityDigest, now().toString());
+        } catch (error) {
+          failure = block(error, job);
+        }
       }
       activeJob = null;
     }
@@ -588,6 +594,7 @@ const createSupervisor = (input: {
       const directories = await readdir(directory, { withFileTypes: true });
       if (directories.length > MAX_RECOVERABLE_WORKFLOWS)
         throw new Error("workflow execution recovery exceeds its bound");
+      let durableExecutions = 0;
       for (const entry of directories) {
         if (!entry.isDirectory() || !DEPLOYMENT_FINGERPRINT.test(entry.name))
           throw new Error(
@@ -596,6 +603,7 @@ const createSupervisor = (input: {
         const entries = await store.load(entry.name);
         const first = entries[0];
         if (first === undefined) continue;
+        durableExecutions += 1;
         validateFraudProofWorkflowJournal({
           workflowId: entry.name,
           entries,
@@ -627,6 +635,10 @@ const createSupervisor = (input: {
         )
           completedForHeader = true;
       }
+      // A finished registration with no durable execution recorded nothing
+      // it could have completed: an earlier run failed before its first
+      // journal entry, so the job must run again.
+      if (durableExecutions === 0) reopenFinished = true;
     }
     // This header already ran to its confirmed terminal: the proof token is
     // permanent and the removal is release-final. A watcher replaying blocks
