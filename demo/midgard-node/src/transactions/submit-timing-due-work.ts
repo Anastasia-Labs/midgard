@@ -1,8 +1,8 @@
 import type {
   SlotAwareDueWork,
   SlotAwareDueWorkKind,
-} from "@/fibers/slot-aware-due-work.js";
-import type { SubmitTimingNotDuePlan } from "@/transactions/submit-timing.js";
+} from "../fibers/slot-aware-due-work.js";
+import type { SubmitTimingNotDuePlan } from "./submit-timing.js";
 
 export const DEFERRABLE_SUBMIT_TIMING_OWNERS = {
   commit_scheduler_refresh: true,

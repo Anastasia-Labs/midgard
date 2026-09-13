@@ -2,15 +2,15 @@ import { SqlClient } from "@effect/sql";
 import { Address } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import * as DepositsDB from "@/database/deposits.js";
+import { Database } from "../services/database.js";
+import * as DepositsDB from "./deposits.js";
 import {
   clearTable,
   DatabaseError,
   logDatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import * as Ledger from "@/database/utils/ledger.js";
-import { Database } from "@/services/database.js";
+} from "./utils/common.js";
+import * as Ledger from "./utils/ledger.js";
 
 export const tableName = "mempool_ledger";
 const INSERT_ROW_CHUNK_SIZE = 10_000;

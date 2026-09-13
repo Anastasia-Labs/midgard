@@ -18,8 +18,7 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import * as LedgerUtils from "@/database/utils/ledger.js";
-
+import * as LedgerUtils from "../../src/database/utils/ledger.js";
 import {
   buildBenchmarkMeta,
   formatMs,

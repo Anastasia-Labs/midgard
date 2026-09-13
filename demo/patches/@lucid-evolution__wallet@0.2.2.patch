@@ -1,0 +1,32 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 5a8dbc466d57dfd9430f2b97f7c8b409a5e88990..69ea9892054e3eae851eff85e6326d6adaac9071 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -553,6 +553,11 @@ var makeWalletFromAPI = (provider, api) => {
+       );
+       return utxos;
+     },
++    ...(typeof api.getCollateral !== "function" ? {} : {
++      getCollateral: async () => (await api.getCollateral() || []).map(
++        (utxo) => (0, import_utils2.coreToUtxo)(CML.TransactionUnspentOutput.from_cbor_hex(utxo))
++      )
++    }),
+     getUtxosCore: async () => {
+       const utxos = config.overriddenUTxOs !== void 0 ? config.overriddenUTxOs.map(import_utils2.utxoToCore) : (await api.getUtxos() || []).map(
+         (utxo) => CML.TransactionUnspentOutput.from_cbor_hex(utxo)
+diff --git a/dist/index.js b/dist/index.js
+index a6c7c53ea6bb361e56dfafad6c059e53f3b52364..57c1b0cc0930a7bc694e34e1728dfbe849f2e2bc 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -517,6 +517,11 @@ var makeWalletFromAPI = (provider, api) => {
+       );
+       return utxos;
+     },
++    ...(typeof api.getCollateral !== "function" ? {} : {
++      getCollateral: async () => (await api.getCollateral() || []).map(
++        (utxo) => coreToUtxo(CML.TransactionUnspentOutput.from_cbor_hex(utxo))
++      )
++    }),
+     getUtxosCore: async () => {
+       const utxos = config.overriddenUTxOs !== void 0 ? config.overriddenUTxOs.map(utxoToCore) : (await api.getUtxos() || []).map(
+         (utxo) => CML.TransactionUnspentOutput.from_cbor_hex(utxo)

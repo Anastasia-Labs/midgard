@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   classifyPlutusEvaluationFailure,
   repeatScheduledWithCauseLogging,
-} from "@/fibers/tx-queue-processor.js";
+} from "../src/fibers/tx-queue-processor.js";
 
 describe("tx queue processor plutus evaluation failure classification", () => {
   it("treats infrastructure/network failures as retryable", () => {

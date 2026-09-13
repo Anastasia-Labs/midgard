@@ -2,6 +2,7 @@
  * Public surface for the node's long-running worker fibers.
  */
 export * from "./admission-backlog-gauge.js";
+export * from "./attestation-timeout-correction.js";
 export * from "./block-commitment.js";
 export * from "./block-confirmation.js";
 export * from "./da-publication-reconciler.js";

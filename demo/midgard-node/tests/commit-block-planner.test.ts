@@ -4,8 +4,9 @@ import { describe, expect, it } from "vitest";
 import {
   Columns as TxColumns,
   EntryWithTimeStamp,
-} from "@/database/utils/tx.js";
-import { shouldShortCircuitIdleCommitAttempt } from "@/workers/commit-block-header.js";
+} from "../src/database/utils/tx.js";
+import { establishEffectiveEndTimeFromDecodedMempool } from "../src/mpf/index.js";
+import { shouldShortCircuitIdleCommitAttempt } from "../src/workers/commit-block-header.js";
 import {
   buildSuccessfulCommitBatches,
   calibratedCommitBuildMsPerTx,
@@ -18,8 +19,7 @@ import {
   selectCommitRoots,
   selectCommitTxCandidates,
   updateCommitBuildEwma,
-} from "@/workers/utils/commit-block-planner.js";
-import { establishEffectiveEndTimeFromDecodedMempool } from "@/workers/utils/mpf.js";
+} from "../src/workers/utils/commit-block-planner.js";
 
 const mkTxEntry = (
   seed: number,
@@ -223,6 +223,36 @@ describe("commit block planner", () => {
     expect(planned.candidateSelection.candidateTxHashes).toHaveLength(2);
   });
 
+  it("fails closed with an empty selection when the first candidate exceeds a bound", () => {
+    const selection = selectCommitTxCandidates({
+      mempoolTxs: [mkTxEntry(1), mkTxEntry(2)],
+      processedMempoolTxs: [],
+    });
+
+    const planned = planCommitBatchBudgets({
+      candidateSelection: selection,
+      limits: {
+        maxL2TxCount: 10,
+        maxCanonicalTxBytes: 1,
+        maxLedgerOpCount: 10,
+        maxTransitionStepCount: 10,
+        maxDaPayloadBytes: 10,
+        maxCommitTxBytes: 10_000,
+        maxEstimatedCommitBuildMs: 10_000,
+        estimatedLedgerOpsPerTx: 1,
+        estimatedTransitionStepsPerTx: 1,
+        estimatedDaOverheadBytesPerTx: 0,
+        estimatedCommitTxOverheadBytes: 0,
+        estimatedCommitBuildMsPerTx: 1,
+      },
+    });
+
+    expect(planned.plan.stopReason).toBe("tx_bytes_budget");
+    expect(planned.plan.selectedTxCount).toBe(0);
+    expect(planned.candidateSelection.candidateTxs).toEqual([]);
+    expect(planned.prunedTxCount).toBe(2);
+  });
+
   it("uses the maximum candidate tx timestamp as the shared tx-backed candidate end-time source", () => {
     const first = mkTxEntry(1, new Date("2026-01-01T00:03:00.000Z"));
     const second = mkTxEntry(2, new Date("2026-01-01T00:04:00.000Z"));
@@ -320,6 +350,38 @@ describe("commit block planner", () => {
     ]);
   });
 
+  it("accepts a validTo one millisecond beyond the inclusive scheduler cap", () => {
+    const cap = Date.parse("2026-01-01T00:05:00.000Z");
+    const atCap = mkTxEntry(1, new Date(cap));
+    const selection = selectCommitTxCandidates({
+      mempoolTxs: [atCap],
+      processedMempoolTxs: [],
+    });
+
+    const plan = planSchedulerAwareCommitSelection({
+      candidateSelection: selection,
+      userEventOnlyEndTime: new Date(cap),
+      currentSchedulerWindow: {
+        schedulerOutRef: "aa#0",
+        operatorKeyHash: "operator",
+        startTimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
+        endTimeMs: cap,
+      },
+      currentBlockStartTimeMs: Date.parse("2025-12-31T23:59:00.000Z"),
+      nowMs: Date.parse("2026-01-01T00:00:00.000Z"),
+      minimumCurrentWindowBudgetMs: 60_000,
+      currentWindowCommitEndTimeFit: fitInsideSchedulerWindow({
+        resolvedEndTimeMs: cap + 1,
+        maximumEndTimeMs: cap,
+      }),
+    });
+
+    expect(plan.status).toBe("using_current_scheduler_window");
+    expect(plan.reason).toContain(
+      `resolved_inclusive_end_time_ms=${cap.toString()}`,
+    );
+  });
+
   it("does not cap to the current scheduler window when the remaining budget is too low", () => {
     const cap = Date.parse("2026-01-01T00:05:00.000Z");
     const afterCap = mkTxEntry(2, new Date("2026-01-01T00:05:01.000Z"));
@@ -383,7 +445,7 @@ describe("commit block planner", () => {
     expect(plan.candidateSelection).toBe(selection);
     expect(plan.userEventOnlyEndTime).toBe(userEventOnlyEndTime);
     expect(plan.reason).toContain(
-      `resolved_end_time_ms=${(nowMs + 8 * 60_000 + 1_000).toString()}`,
+      `resolved_valid_to_ms=${(nowMs + 8 * 60_000 + 1_000).toString()}`,
     );
     expect(plan.reason).toContain(`current_scheduler_end_ms=${cap.toString()}`);
     expect(plan.reason).toContain("minimum_future_buffer_ms=480000");

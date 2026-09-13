@@ -36,11 +36,13 @@ export const extractStateQueueErrorCode = (
 export const failWith500 = (
   method: "GET" | "POST",
   endpoint: string,
-  error: HttpBodyError | string | any,
+  error: unknown,
   msgOverride?: string,
-) =>
+): Effect.Effect<HttpServerResponse.HttpServerResponse, HttpBodyError, never> =>
   Effect.gen(function* () {
-    yield* Effect.logInfo(`${method} /${endpoint} - failure: ${error}`);
+    yield* Effect.logInfo(
+      `${method} /${endpoint} - failure: ${formatUnknownError(error)}`,
+    );
     return yield* HttpServerResponse.json(
       { error: msgOverride ?? "Something went wrong" },
       { status: 500 },

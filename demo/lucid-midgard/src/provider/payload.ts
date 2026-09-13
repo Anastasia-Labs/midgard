@@ -4,6 +4,12 @@ import {
   type ScriptLanguageTag,
   scriptLanguageTagToName,
 } from "@al-ft/midgard-core/codec";
+import {
+  isMidgardConsensusProfile,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_CONSENSUS_PROFILE,
+} from "@al-ft/midgard-core/consensus-profile";
+import { parseDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
 
 import { ProviderPayloadError } from "../core/errors.js";
@@ -31,6 +37,23 @@ const requireObject = (
     throw new ProviderPayloadError(endpoint, `${fieldName} must be an object`);
   }
   return value;
+};
+
+const assertExactObjectKeys = (
+  value: Record<string, unknown>,
+  expectedKeys: readonly string[],
+  fieldName: string,
+  endpoint: string,
+): void => {
+  const expected = new Set(expectedKeys);
+  const unknownKeys = Object.keys(value).filter((key) => !expected.has(key));
+  if (unknownKeys.length > 0) {
+    throw new ProviderPayloadError(
+      endpoint,
+      `${fieldName} contains unknown field${unknownKeys.length === 1 ? "" : "s"}`,
+      unknownKeys.sort().join(","),
+    );
+  }
 };
 
 const requireString = (
@@ -72,20 +95,6 @@ const requireNonNegativeSafeInteger = (
   return value;
 };
 
-const requireNonNegativeBigInt = (
-  value: unknown,
-  fieldName: string,
-  endpoint: string,
-): bigint => {
-  if (typeof value !== "bigint" || value < 0n) {
-    throw new ProviderPayloadError(
-      endpoint,
-      `${fieldName} must be a non-negative bigint`,
-    );
-  }
-  return value;
-};
-
 const parseNonNegativeBigInt = (
   value: unknown,
   fieldName: string,
@@ -117,6 +126,7 @@ const validateSupportedScriptLanguages = (
   languages: unknown,
   endpoint: string,
   fieldName = "supportedScriptLanguages",
+  expectedLanguages: readonly ProtocolScriptLanguage[] = MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 ): readonly ProtocolScriptLanguage[] => {
   if (!Array.isArray(languages)) {
     throw new ProviderPayloadError(endpoint, `${fieldName} must be an array`);
@@ -124,6 +134,12 @@ const validateSupportedScriptLanguages = (
   const normalized = languages.map((raw, index) => {
     const language = requireObject(
       raw,
+      `${fieldName}[${index.toString()}]`,
+      endpoint,
+    );
+    assertExactObjectKeys(
+      language,
+      ["name", "tag"],
       `${fieldName}[${index.toString()}]`,
       endpoint,
     );
@@ -159,9 +175,7 @@ const validateSupportedScriptLanguages = (
       tag: tag as ScriptLanguageTag,
     };
   });
-  const expected = MIDGARD_SUPPORTED_SCRIPT_LANGUAGES.map(
-    expectedScriptLanguageLabel,
-  ).sort();
+  const expected = expectedLanguages.map(expectedScriptLanguageLabel).sort();
   const actual = normalized.map(expectedScriptLanguageLabel).sort();
   if (
     expected.length !== actual.length ||
@@ -173,7 +187,7 @@ const validateSupportedScriptLanguages = (
       `expected=${expected.join(",")} actual=${actual.join(",")}`,
     );
   }
-  return cloneSupportedScriptLanguages(MIDGARD_SUPPORTED_SCRIPT_LANGUAGES);
+  return cloneSupportedScriptLanguages(expectedLanguages);
 };
 
 const fromHex = (hex: string, fieldName: string, endpoint: string): Buffer => {
@@ -275,8 +289,32 @@ export const parseProtocolInfo = (
   endpoint: string,
 ): MidgardProtocolInfo => {
   const info = requireObject(payload, "protocol-info", endpoint);
+  assertExactObjectKeys(
+    info,
+    [
+      "apiVersion",
+      "network",
+      "midgardNativeTxVersion",
+      "currentSlot",
+      "consensusProfile",
+      "deploymentMarker",
+      "supportedScriptLanguages",
+      "codecSupportedScriptLanguages",
+      "protocolFeeParameters",
+      "submissionLimits",
+      "validation",
+    ],
+    "protocol-info",
+    endpoint,
+  );
   const protocolFeeParameters = requireObject(
     info.protocolFeeParameters,
+    "protocolFeeParameters",
+    endpoint,
+  );
+  assertExactObjectKeys(
+    protocolFeeParameters,
+    ["minFeeA", "minFeeB"],
     "protocolFeeParameters",
     endpoint,
   );
@@ -285,29 +323,92 @@ export const parseProtocolInfo = (
     "submissionLimits",
     endpoint,
   );
+  assertExactObjectKeys(
+    submissionLimits,
+    ["maxSubmitTxCborBytes"],
+    "submissionLimits",
+    endpoint,
+  );
   const validation = requireObject(info.validation, "validation", endpoint);
+  assertExactObjectKeys(
+    validation,
+    ["strictnessProfile", "localValidationIsAuthoritative"],
+    "validation",
+    endpoint,
+  );
   if (validation.localValidationIsAuthoritative !== false) {
     throw new ProviderPayloadError(
       endpoint,
       "validation.localValidationIsAuthoritative must be false",
     );
   }
-  return {
-    apiVersion: requireNumber(info.apiVersion, "apiVersion", endpoint),
-    network: requireString(info.network, "network", endpoint),
-    midgardNativeTxVersion: requireNumber(
-      info.midgardNativeTxVersion,
-      "midgardNativeTxVersion",
+  const apiVersion = requireNumber(info.apiVersion, "apiVersion", endpoint);
+  if (apiVersion !== 1) {
+    throw new ProviderPayloadError(
       endpoint,
-    ),
+      `apiVersion must equal 1; got ${apiVersion.toString()}`,
+    );
+  }
+  if (!isMidgardConsensusProfile(info.consensusProfile)) {
+    throw new ProviderPayloadError(
+      endpoint,
+      "consensusProfile does not exactly match the compiled V1 profile",
+    );
+  }
+  const deploymentMarker = (() => {
+    try {
+      return parseDeploymentMarker(info.deploymentMarker);
+    } catch (cause) {
+      throw new ProviderPayloadError(
+        endpoint,
+        "deploymentMarker must be the exact final DeploymentMarkerV1",
+        cause instanceof Error ? cause.message : String(cause),
+      );
+    }
+  })();
+  const expectedNativeTxVersion = 1;
+  const midgardNativeTxVersion = requireNumber(
+    info.midgardNativeTxVersion,
+    "midgardNativeTxVersion",
+    endpoint,
+  );
+  if (midgardNativeTxVersion !== expectedNativeTxVersion) {
+    throw new ProviderPayloadError(
+      endpoint,
+      `midgardNativeTxVersion must equal ${expectedNativeTxVersion.toString()} for API ${apiVersion.toString()}`,
+    );
+  }
+  const supportedScriptLanguages = validateSupportedScriptLanguages(
+    info.supportedScriptLanguages,
+    endpoint,
+    "supportedScriptLanguages",
+    MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+  );
+  const profileTxLimit = MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes;
+  const maxSubmitTxCborBytes = requireNumber(
+    submissionLimits.maxSubmitTxCborBytes,
+    "submissionLimits.maxSubmitTxCborBytes",
+    endpoint,
+  );
+  if (maxSubmitTxCborBytes > profileTxLimit) {
+    throw new ProviderPayloadError(
+      endpoint,
+      `submissionLimits.maxSubmitTxCborBytes must be between 1 and ${profileTxLimit.toString()}`,
+    );
+  }
+  const common = {
+    network: requireString(info.network, "network", endpoint),
+    midgardNativeTxVersion,
     currentSlot: parseNonNegativeBigInt(
       info.currentSlot,
       "currentSlot",
       endpoint,
     ),
-    supportedScriptLanguages: validateSupportedScriptLanguages(
-      info.supportedScriptLanguages,
+    supportedScriptLanguages,
+    codecSupportedScriptLanguages: validateSupportedScriptLanguages(
+      info.codecSupportedScriptLanguages,
       endpoint,
+      "codecSupportedScriptLanguages",
     ),
     protocolFeeParameters: {
       minFeeA: parseNonNegativeBigInt(
@@ -322,11 +423,7 @@ export const parseProtocolInfo = (
       ),
     },
     submissionLimits: {
-      maxSubmitTxCborBytes: requireNumber(
-        submissionLimits.maxSubmitTxCborBytes,
-        "submissionLimits.maxSubmitTxCborBytes",
-        endpoint,
-      ),
+      maxSubmitTxCborBytes,
     },
     validation: {
       strictnessProfile: requireString(
@@ -334,91 +431,14 @@ export const parseProtocolInfo = (
         "validation.strictnessProfile",
         endpoint,
       ),
-      localValidationIsAuthoritative: false,
+      localValidationIsAuthoritative: false as const,
     },
   };
-};
-
-export const validateFallbackProtocolInfo = (
-  protocolInfo: MidgardProtocolInfo,
-  endpoint: string,
-): MidgardProtocolInfo => {
-  const fallback = requireObject(
-    protocolInfo,
-    "fallback protocolInfo",
-    endpoint,
-  );
-  const protocolFeeParameters = requireObject(
-    fallback.protocolFeeParameters,
-    "fallback protocolFeeParameters",
-    endpoint,
-  );
-  const submissionLimits = requireObject(
-    fallback.submissionLimits,
-    "fallback submissionLimits",
-    endpoint,
-  );
-  const validation = requireObject(
-    fallback.validation,
-    "fallback validation",
-    endpoint,
-  );
-  const supportedScriptLanguages = validateSupportedScriptLanguages(
-    fallback.supportedScriptLanguages,
-    endpoint,
-    "fallback supportedScriptLanguages",
-  );
-  if (validation.localValidationIsAuthoritative !== false) {
-    throw new ProviderPayloadError(
-      endpoint,
-      "fallback validation facts are invalid",
-    );
-  }
   return {
-    apiVersion: requireNumber(
-      fallback.apiVersion,
-      "fallback apiVersion",
-      endpoint,
-    ),
-    network: requireString(fallback.network, "fallback network", endpoint),
-    midgardNativeTxVersion: requireNumber(
-      fallback.midgardNativeTxVersion,
-      "fallback midgardNativeTxVersion",
-      endpoint,
-    ),
-    currentSlot: requireNonNegativeBigInt(
-      fallback.currentSlot,
-      "fallback currentSlot",
-      endpoint,
-    ),
-    supportedScriptLanguages,
-    protocolFeeParameters: {
-      minFeeA: requireNonNegativeBigInt(
-        protocolFeeParameters.minFeeA,
-        "fallback protocolFeeParameters.minFeeA",
-        endpoint,
-      ),
-      minFeeB: requireNonNegativeBigInt(
-        protocolFeeParameters.minFeeB,
-        "fallback protocolFeeParameters.minFeeB",
-        endpoint,
-      ),
-    },
-    submissionLimits: {
-      maxSubmitTxCborBytes: requireNumber(
-        submissionLimits.maxSubmitTxCborBytes,
-        "fallback submissionLimits.maxSubmitTxCborBytes",
-        endpoint,
-      ),
-    },
-    validation: {
-      strictnessProfile: requireString(
-        validation.strictnessProfile,
-        "fallback validation.strictnessProfile",
-        endpoint,
-      ),
-      localValidationIsAuthoritative: false,
-    },
+    ...common,
+    apiVersion: 1,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+    deploymentMarker,
   };
 };
 

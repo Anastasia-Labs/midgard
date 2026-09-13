@@ -1,8 +1,9 @@
 import type * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
-import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contracts.js";
+import { AlwaysSucceedsContract } from "../../src/services/always-succeeds.js";
+import { withRealStateQueueAndOperatorContracts } from "../../src/services/midgard-contracts.js";
+import { TEST_AVAILABILITY_PARAMETERS } from "./availability-challenge.js";
 
 export type TestOneShotOutRef = {
   readonly txHash: string;
@@ -23,6 +24,7 @@ export const loadRealMidgardContractsForTest = (
         {
           referenceScriptAuth:
             referenceScriptAuth ?? placeholder.referenceScriptAuth,
+          availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
         },
       );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),

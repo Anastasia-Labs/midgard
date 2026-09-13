@@ -1,0 +1,630 @@
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
+
+import { describe, expect, it } from "vitest";
+
+import {
+  closeWatcherL1TransportAttestationContext,
+  establishWatcherLocalNodeAuthorityTransport,
+  watcherL1TransportAttestationDetails,
+} from "../../src/l1/l1-adapter.js";
+import {
+  parseWatcherNativeChainSyncEvent,
+  readWatcherNativeChainSyncEventReceipt,
+  startWatcherNativeChainSync,
+  startWatcherNativeChainSyncWithRetry,
+  WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
+  watcherNativeChainSyncAuthorityDetails,
+  type WatcherNativeChainSyncEvent,
+  type WatcherNativeChainSyncEventReceipt,
+  watcherNativeChainSyncEventReceipt,
+} from "../../src/l1/native-chain-sync.js";
+import {
+  WATCHER_CONFIG_SCHEMA_VERSION,
+  type WatcherConfig,
+} from "../../src/runtime/config.js";
+import { watcherCanonicalJson } from "../../src/storage/durable-store.js";
+
+const fixturePath = fileURLToPath(
+  new URL("../support/native-chain-sync-fixture.mjs", import.meta.url),
+);
+const NODE_CONFIG_PATH = "/etc/cardano/node-config.json";
+const GENESIS_CONFIG_PATH = "/etc/cardano/shelley-genesis.json";
+const NODE_CONFIG_BYTES = new TextEncoder().encode(
+  JSON.stringify({ ShelleyGenesisFile: GENESIS_CONFIG_PATH }),
+);
+const GENESIS_CONFIG_BYTES = new TextEncoder().encode(
+  JSON.stringify({ networkMagic: 1 }),
+);
+const GENESIS = createHash("sha256").update(GENESIS_CONFIG_BYTES).digest("hex");
+const INTERSECTION = Object.freeze({
+  blockHash: "aa".repeat(32),
+  kind: "point" as const,
+  slot: "100",
+});
+
+const config = (): WatcherConfig =>
+  Object.freeze({
+    schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
+    mode: "acceptance",
+    targetNetwork: "Preprod",
+    l1: Object.freeze({
+      source: Object.freeze({
+        sourceMode: "local_node",
+        authorityNodeId: "watcher-node",
+        chainSync: Object.freeze({
+          kind: "cardano_node_socket",
+          socketPath: "/run/cardano/node.socket",
+          nodeConfigPath: NODE_CONFIG_PATH,
+          genesisConfigPath: GENESIS_CONFIG_PATH,
+          genesisIdentitySha256: GENESIS,
+        }),
+        queryServices: Object.freeze([
+          Object.freeze({
+            kind: "ogmios",
+            identity: "local-ogmios",
+            endpoint: "ws://127.0.0.1:1337",
+          }),
+          Object.freeze({
+            kind: "kupo",
+            identity: "local-kupo",
+            endpoint: "http://127.0.0.1:1442",
+          }),
+        ]),
+      }),
+      requestTimeoutMs: 10_000,
+      maxConcurrency: 4,
+      finality: Object.freeze({
+        depth: 30,
+        rollback: Object.freeze({
+          beforeFinality: "rewind",
+          afterFinality: "quarantine",
+          maxDepth: 30,
+          postFinalityRecoveryMaxDepth: 2_160,
+        }),
+      }),
+    }),
+    da: Object.freeze({
+      peers: Object.freeze([]),
+      requestTimeoutMs: 10_000,
+      maxConcurrency: 4,
+    }),
+    storage: Object.freeze({
+      driver: "sqlite",
+      path: "/var/lib/midgard-watcher/watcher.sqlite",
+      rollbackAuthorityKeySource: Object.freeze({
+        kind: "environment",
+        variable: "MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY",
+      }),
+    }),
+    proverWallet: Object.freeze({
+      keySource: Object.freeze({
+        kind: "environment",
+        variable: "MIDGARD_WATCHER_PROVER_KEY",
+      }),
+    }),
+    deadlines: Object.freeze({
+      daFetchMs: 60_000,
+      daPublishMs: 60_000,
+      proofConstructMs: 300_000,
+      proofSubmitMs: 120_000,
+    }),
+  });
+
+const spawnFixture = (mode: string) => () =>
+  spawn(process.execPath, [fixturePath, mode], {
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+const readIdentityFixture = async (path: string): Promise<Uint8Array> => {
+  if (path === NODE_CONFIG_PATH) return NODE_CONFIG_BYTES;
+  if (path === GENESIS_CONFIG_PATH) return GENESIS_CONFIG_BYTES;
+  throw new Error("unexpected native identity fixture path");
+};
+
+const start = async (
+  mode: string,
+  onEvent: Parameters<typeof startWatcherNativeChainSync>[0]["onEvent"],
+  onSpawn?: (child: ChildProcessWithoutNullStreams) => void,
+) =>
+  await startWatcherNativeChainSync({
+    binaryPath: "/test/native-chain-sync",
+    watcherConfig: config(),
+    intersection: INTERSECTION,
+    startupTimeoutMs: 2_000,
+    onEvent,
+    unsafeSpawnForTest: () => {
+      const child = spawnFixture(mode)();
+      onSpawn?.(child);
+      return child;
+    },
+    unsafeReadIdentityFileForTest: readIdentityFixture,
+  });
+
+const waitFor = async (predicate: () => boolean): Promise<void> => {
+  const deadline = Date.now() + 2_000;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("native fixture timed out");
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+  }
+};
+
+describe("native Cardano node-to-client chain-sync supervisor", () => {
+  it.each(["matching", "magic", "zeroTime", "slotLength", "hardFork"])(
+    "binds a custom chain clock and magic to its actual genesis: %s",
+    async (variant) => {
+      const customNetwork = {
+        networkMagic: 424242,
+        slotConfig: { zeroTime: 1789041600000, zeroSlot: 0, slotLength: 1000 },
+      };
+      const genesisBytes = new TextEncoder().encode(
+        JSON.stringify({
+          networkMagic: variant === "magic" ? 424243 : 424242,
+          networkId: "Testnet",
+          systemStart: new Date(
+            customNetwork.slotConfig.zeroTime +
+              (variant === "zeroTime" ? 1000 : 0),
+          ).toISOString(),
+          slotLength: variant === "slotLength" ? 2 : 1,
+        }),
+      );
+      const nodeBytes = new TextEncoder().encode(
+        JSON.stringify({
+          ShelleyGenesisFile: GENESIS_CONFIG_PATH,
+          TestShelleyHardForkAtEpoch: 0,
+          TestConwayHardForkAtEpoch: variant === "hardFork" ? 1 : 0,
+        }),
+      );
+      const base = config();
+      if (base.l1.source.sourceMode !== "local_node")
+        throw new Error("local fixture required");
+      const genesisIdentitySha256 = createHash("sha256")
+        .update(genesisBytes)
+        .digest("hex");
+      let spawned = false;
+      const pending = startWatcherNativeChainSync({
+        binaryPath: "/test/native-chain-sync",
+        watcherConfig: {
+          ...base,
+          targetNetwork: "Custom",
+          customNetwork,
+          l1: {
+            ...base.l1,
+            source: {
+              ...base.l1.source,
+              chainSync: { ...base.l1.source.chainSync, genesisIdentitySha256 },
+            },
+          },
+        },
+        intersection: INTERSECTION,
+        startupTimeoutMs: 2000,
+        onEvent: async () => {},
+        unsafeSpawnForTest: () => {
+          spawned = true;
+          return spawnFixture("honest")();
+        },
+        unsafeReadIdentityFileForTest: async (path) => {
+          if (path === NODE_CONFIG_PATH) return nodeBytes;
+          if (path === GENESIS_CONFIG_PATH) return genesisBytes;
+          throw new Error("unexpected identity path");
+        },
+      });
+      if (variant === "matching") {
+        const runtime = await pending;
+        try {
+          expect(
+            watcherNativeChainSyncAuthorityDetails(runtime.authority),
+          ).toMatchObject({
+            network: "Custom",
+            genesisIdentitySha256,
+          });
+        } finally {
+          await runtime.close();
+        }
+        expect(spawned).toBe(true);
+      } else {
+        await expect(pending).rejects.toThrow(
+          variant === "magic" ? "network magic differs" : "slot clock differs",
+        );
+        expect(spawned).toBe(false);
+      }
+    },
+  );
+
+  it("seals the exact startup identity and admits ordered roll-forward/rollback", async () => {
+    const events: WatcherNativeChainSyncEvent[] = [];
+    const receipts: WatcherNativeChainSyncEventReceipt[] = [];
+    const captured: ReturnType<
+      typeof readWatcherNativeChainSyncEventReceipt
+    >[] = [];
+    const runtime = await start("honest", async (event) => {
+      const receipt = watcherNativeChainSyncEventReceipt(event);
+      if (receipt === null) throw new Error("callback event has no receipt");
+      expect(watcherNativeChainSyncEventReceipt({ ...event })).toBeNull();
+      expect(
+        watcherNativeChainSyncEventReceipt(
+          parseWatcherNativeChainSyncEvent(event),
+        ),
+      ).toBeNull();
+      expect(() =>
+        readWatcherNativeChainSyncEventReceipt({ ...receipt }),
+      ).toThrow("absent or stale");
+      if (event.kind === "roll_backward") {
+        expect(watcherNativeChainSyncEventReceipt(events[0]!)).toBeNull();
+        expect(() =>
+          readWatcherNativeChainSyncEventReceipt(receipts[0]!),
+        ).toThrow("absent or stale");
+      }
+      events.push(event);
+      receipts.push(receipt);
+      captured.push(readWatcherNativeChainSyncEventReceipt(receipt));
+    });
+    try {
+      await waitFor(() => events.length === 2);
+      expect(events).toMatchObject([
+        {
+          kind: "roll_forward",
+          blockType: "6",
+          prevHash: INTERSECTION.blockHash,
+        },
+        { kind: "roll_backward", point: INTERSECTION },
+      ]);
+      for (const [index, value] of captured.entries()) {
+        expect(value.authority).toBe(runtime.authority);
+        expect(value.startupDigest).toBe(
+          watcherNativeChainSyncAuthorityDetails(runtime.authority)
+            ?.startupDigest,
+        );
+        expect(value.event).toBe(events[index]);
+        expect(value.eventDigest).toBe(
+          createHash("sha256")
+            .update(watcherCanonicalJson(events[index]!), "utf8")
+            .digest("hex"),
+        );
+        expect(Object.isFrozen(value)).toBe(true);
+        expect(Object.isFrozen(value.event)).toBe(true);
+        expect(Object.isFrozen(value.event.tip)).toBe(true);
+      }
+      expect(readWatcherNativeChainSyncEventReceipt(receipts[1]!)).toBe(
+        captured[1],
+      );
+      expect(watcherNativeChainSyncAuthorityDetails(runtime.authority)).toEqual(
+        {
+          network: "Preprod",
+          authorityNodeId: "watcher-node",
+          operation: { kind: "stream" },
+          genesisIdentitySha256: GENESIS,
+          socketPath: "/run/cardano/node.socket",
+          startupDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+          selectedIntersection: INTERSECTION,
+          currentTip: {
+            blockHash: "44".repeat(32),
+            blockNo: "12",
+            kind: "point",
+            slot: "103",
+          },
+        },
+      );
+      const context = establishWatcherLocalNodeAuthorityTransport(
+        runtime.authority,
+      );
+      try {
+        expect(watcherL1TransportAttestationDetails(context)).toMatchObject({
+          provider: {
+            network: "Preprod",
+            providerId: "watcher-node",
+            source: {
+              sourceMode: "local_node",
+              authorityNodeId: "watcher-node",
+              surface: "chain_sync",
+            },
+            authentication: {
+              kind: "cardano_node_genesis_v1",
+              publicIdentitySha256: GENESIS,
+            },
+          },
+          transportEndpoint: "/run/cardano/node.socket",
+        });
+      } finally {
+        closeWatcherL1TransportAttestationContext(context);
+      }
+    } finally {
+      await runtime.close();
+    }
+    expect(watcherNativeChainSyncEventReceipt(events[1]!)).toBeNull();
+    expect(() => readWatcherNativeChainSyncEventReceipt(receipts[1]!)).toThrow(
+      "absent or stale",
+    );
+  });
+
+  it("revokes a receipt at close entry while its callback remains pending", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const receipts: WatcherNativeChainSyncEventReceipt[] = [];
+    let callbackCompleted = false;
+    const runtime = await start("honest", async (event) => {
+      if (event.kind !== "roll_forward") return;
+      const receipt = watcherNativeChainSyncEventReceipt(event);
+      if (receipt === null) throw new Error("callback event has no receipt");
+      receipts.push(receipt);
+      await gate;
+      callbackCompleted = true;
+    });
+    try {
+      await waitFor(() => receipts.length === 1);
+      const receipt = receipts[0]!;
+      const { event } = readWatcherNativeChainSyncEventReceipt(receipt);
+      const shutdown = runtime.close();
+      try {
+        expect(callbackCompleted).toBe(false);
+        expect(watcherNativeChainSyncEventReceipt(event)).toBeNull();
+        expect(() => readWatcherNativeChainSyncEventReceipt(receipt)).toThrow(
+          "absent or stale",
+        );
+      } finally {
+        release();
+        await shutdown;
+      }
+    } finally {
+      release();
+      await runtime.close();
+    }
+  });
+
+  it.each(["exit", "error"] as const)(
+    "revokes provenance when helper %s is observed during a pending callback",
+    async (lifecycle) => {
+      let child!: ChildProcessWithoutNullStreams;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const receipts: WatcherNativeChainSyncEventReceipt[] = [];
+      let callbackCompleted = false;
+      const runtime = await start(
+        "honest",
+        async (event) => {
+          if (event.kind !== "roll_forward") return;
+          const receipt = watcherNativeChainSyncEventReceipt(event);
+          if (receipt === null)
+            throw new Error("callback event has no receipt");
+          receipts.push(receipt);
+          await gate;
+          callbackCompleted = true;
+        },
+        (spawned) => {
+          child = spawned;
+        },
+      );
+      try {
+        await waitFor(() => receipts.length === 1);
+        const receipt = receipts[0]!;
+        const { event } = readWatcherNativeChainSyncEventReceipt(receipt);
+        if (lifecycle === "exit") {
+          const exited = new Promise<void>((resolve) => {
+            child.once("exit", () => resolve());
+          });
+          child.kill("SIGTERM");
+          await exited;
+        } else {
+          child.emit("error", new Error("native fixture lifecycle error"));
+        }
+        expect(callbackCompleted).toBe(false);
+        expect(watcherNativeChainSyncEventReceipt(event)).toBeNull();
+        expect(() => readWatcherNativeChainSyncEventReceipt(receipt)).toThrow(
+          "absent or stale",
+        );
+        release();
+        if (lifecycle === "exit") {
+          await expect(runtime.done).rejects.toThrow("exited unexpectedly");
+        }
+      } finally {
+        release();
+        await runtime.close();
+      }
+    },
+  );
+
+  it("reports exact native failures after ready and preserves bounded stderr diagnostics", async () => {
+    const events: WatcherNativeChainSyncEvent[] = [];
+    const runtime = await start("runtime_failure", async (event) => {
+      events.push(event);
+    });
+    try {
+      await expect(runtime.done).rejects.toThrow(
+        "native chain-sync runtime failed: chain_sync_failed",
+      );
+      await expect(runtime.done).rejects.toThrow(
+        "actual underlying socket failure",
+      );
+      await expect(runtime.done).rejects.toThrow("nativeLineSha256=");
+      expect(events).toHaveLength(0);
+      expect(
+        watcherNativeChainSyncAuthorityDetails(runtime.authority),
+      ).toBeNull();
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it("bounds retained stderr while keeping the terminal cause", async () => {
+    const runtime = await start("runtime_failure_large_stderr", async () => {});
+    try {
+      const failure = await runtime.done.catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(Error);
+      if (!(failure instanceof Error))
+        throw new Error("missing native failure");
+      expect(failure.message).toContain("actual underlying socket failure");
+      expect(failure.message).not.toContain("discarded stderr prefix");
+      expect(Buffer.byteLength(failure.message)).toBeLessThan(9_000);
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it("rejects extra fields on a post-ready native failure", async () => {
+    const runtime = await start("malformed_runtime_failure", async () => {
+      throw new Error("unexpected chain event");
+    });
+    try {
+      await expect(runtime.done).rejects.toThrow('unknown=["extra"]');
+      expect(
+        watcherNativeChainSyncAuthorityDetails(runtime.authority),
+      ).toBeNull();
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it("revokes a delivered receipt when the callback fails", async () => {
+    const receipts: WatcherNativeChainSyncEventReceipt[] = [];
+    const runtime = await start("honest", async (event) => {
+      const receipt = watcherNativeChainSyncEventReceipt(event);
+      if (receipt === null) throw new Error("callback event has no receipt");
+      receipts.push(receipt);
+      throw new Error("native fixture callback failed");
+    });
+    try {
+      await expect(runtime.done).rejects.toThrow("callback failed");
+      expect(receipts).toHaveLength(1);
+      expect(() =>
+        readWatcherNativeChainSyncEventReceipt(receipts[0]!),
+      ).toThrow("absent or stale");
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it("rejects substituted startup identity before minting authority", async () => {
+    await expect(start("forged_ready", async () => undefined)).rejects.toThrow(
+      "ready identity differs",
+    );
+  });
+
+  it("derives genesis identity from the exact node config before spawning", async () => {
+    let spawnCount = 0;
+    const invoke = async (
+      readIdentityFile: (path: string) => Promise<Uint8Array>,
+    ) =>
+      await startWatcherNativeChainSync({
+        binaryPath: "/test/native-chain-sync",
+        watcherConfig: config(),
+        intersection: INTERSECTION,
+        startupTimeoutMs: 2_000,
+        onEvent: async () => undefined,
+        unsafeSpawnForTest: () => {
+          spawnCount += 1;
+          return spawnFixture("honest")();
+        },
+        unsafeReadIdentityFileForTest: readIdentityFile,
+      });
+
+    await expect(
+      invoke(async (path) =>
+        path === NODE_CONFIG_PATH
+          ? new TextEncoder().encode(
+              `{"ShelleyGenesisFile":"${GENESIS_CONFIG_PATH}","ShelleyGenesisFile":"${GENESIS_CONFIG_PATH}"}`,
+            )
+          : GENESIS_CONFIG_BYTES,
+      ),
+    ).rejects.toThrow(/duplicate_field/u);
+    await expect(
+      invoke(async (path) =>
+        path === NODE_CONFIG_PATH
+          ? NODE_CONFIG_BYTES
+          : new TextEncoder().encode(JSON.stringify({ networkMagic: 2 })),
+      ),
+    ).rejects.toThrow("network magic differs");
+    expect(spawnCount).toBe(0);
+  });
+
+  it.each(["reordered", "first_slot_regression", "unknown_rollback"])(
+    "terminates on hostile %s output",
+    async (mode) => {
+      const receipts: WatcherNativeChainSyncEventReceipt[] = [];
+      const runtime = await start(mode, async (event) => {
+        const receipt = watcherNativeChainSyncEventReceipt(event);
+        if (receipt === null) throw new Error("callback event has no receipt");
+        receipts.push(receipt);
+      });
+      await expect(runtime.done).rejects.toThrow(
+        /out of order|not durable history/u,
+      );
+      expect(receipts).toHaveLength(mode === "unknown_rollback" ? 1 : 0);
+      for (const receipt of receipts) {
+        expect(() => readWatcherNativeChainSyncEventReceipt(receipt)).toThrow(
+          "absent or stale",
+        );
+      }
+      await runtime.close();
+    },
+  );
+
+  it("surfaces helper process crash after authenticated startup", async () => {
+    const runtime = await start("crash", async () => undefined);
+    await expect(runtime.done).rejects.toThrow("exited unexpectedly");
+    await runtime.close();
+  });
+
+  it("retries durable ancestors one process at a time and binds explicit Origin", async () => {
+    const runtime = await startWatcherNativeChainSyncWithRetry({
+      binaryPath: "/test/native-chain-sync",
+      watcherConfig: config(),
+      intersectionCandidates: [INTERSECTION, { kind: "origin" }],
+      startupTimeoutMs: 2_000,
+      onEvent: async () => undefined,
+      unsafeSpawnForTest: spawnFixture("retry_intersection"),
+      unsafeReadIdentityFileForTest: readIdentityFixture,
+    });
+    try {
+      expect(
+        watcherNativeChainSyncAuthorityDetails(runtime.authority)
+          ?.selectedIntersection,
+      ).toEqual({ kind: "origin" });
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it("strictly parses canonical bounded event shapes", () => {
+    const event = {
+      blockHash: "bb".repeat(32),
+      blockNo: "10",
+      blockType: "6",
+      kind: "roll_forward",
+      prevHash: "aa".repeat(32),
+      rawBlockCbor: "80",
+      schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
+      slot: "101",
+      tip: {
+        blockHash: "cc".repeat(32),
+        blockNo: "11",
+        kind: "point",
+        slot: "102",
+      },
+    };
+    const parsed = parseWatcherNativeChainSyncEvent(event);
+    expect(parsed).toEqual(event);
+    expect(watcherNativeChainSyncEventReceipt(parsed)).toBeNull();
+    expect(() =>
+      parseWatcherNativeChainSyncEvent({ ...event, trusted: true }),
+    ).toThrow("unknown or missing");
+    expect(() =>
+      parseWatcherNativeChainSyncEvent({ ...event, slot: "0101" }),
+    ).toThrow("slot is invalid");
+    expect(() =>
+      parseWatcherNativeChainSyncEvent({ ...event, rawBlockCbor: "0" }),
+    ).toThrow("CBOR is invalid");
+    expect(
+      parseWatcherNativeChainSyncEvent({
+        kind: "roll_backward",
+        point: { kind: "origin" },
+        schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
+        tip: { kind: "origin" },
+      }),
+    ).toMatchObject({ kind: "roll_backward", point: { kind: "origin" } });
+  });
+});

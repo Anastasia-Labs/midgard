@@ -1,5 +1,14 @@
 import { availableParallelism } from "node:os";
 
+import {
+  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
+  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
+} from "@al-ft/midgard-core/cek-proof";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+import {
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  type DeploymentManifestEconomicsProfile,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
@@ -8,8 +17,66 @@ import {
 import { Network, UTxO, walletFromSeed } from "@lucid-evolution/lucid";
 import { Config, Context, Data, Effect, Layer, Option } from "effect";
 
-import { readDaHardeningConfig } from "@/da/hardening-config.js";
-import { validateRetentionDays } from "@/database/retention-policy.js";
+import {
+  positiveFiniteNumber,
+  positiveSafeInteger,
+} from "../artifact-schema.js";
+import { readDaHardeningConfig } from "../da/hardening-config.js";
+import {
+  isStrictlyAscending,
+  splitPackedHex,
+  VERIFICATION_KEY_HASH_HEX_LENGTH,
+  VERIFICATION_KEY_HEX_LENGTH,
+} from "../da/local-signers.js";
+import {
+  assertRetentionDaysMatchesDeployment,
+  validateRetentionDays,
+} from "../database/retention-policy.js";
+import { parseDeploymentEconomicsProfile } from "../environment.js";
+
+/**
+ * Validates the *encoding* of one of the DA key sets (`DA_COMMITTEE_HEX`,
+ * `DA_OWNERS_HEX`) at config load, returning the normalized packed hex.
+ *
+ * Encoding only — deliberately not policy. `DA_COMMITTEE_HEX`, `DA_OWNERS_HEX`
+ * and `DA_THRESHOLD` are read by exactly one consumer,
+ * `deriveOperatorDaParams`, and every other subsystem that loads `NodeConfig`
+ * ignores them. Enforcing the Q63 governed floors here would let a stale
+ * deployment value (say the pre-Q63 `DA_THRESHOLD=1` still sitting in a
+ * checkout's `.env`) fail config load for the whole process, surfacing as an
+ * opaque error inside subsystems that never touch DA. The floors are instead
+ * enforced in `deriveOperatorDaParams`, at the one point where a
+ * governor-invalid datum would actually be written, where the real committee
+ * length is known even when it is derived from local signers rather than
+ * configured.
+ *
+ * What stays here is what is unambiguously wrong regardless of policy: a value
+ * that is not hex, is not a whole number of elements, or is not the
+ * sorted-unique ascending order the governor's walkers require.
+ */
+const validateDaKeySetEncoding = (
+  value: string,
+  chunkHexLength: number,
+  fieldName: string,
+  shape: string,
+): string => {
+  const normalized = value.trim().toLowerCase();
+  if (normalized.length === 0) {
+    return "";
+  }
+  let elements: readonly string[];
+  try {
+    elements = splitPackedHex(normalized, chunkHexLength, fieldName);
+  } catch {
+    throw new Error(`${fieldName} must be ${shape} as hex`);
+  }
+  if (!isStrictlyAscending(elements)) {
+    throw new Error(
+      `${fieldName} must be sorted ascending with no duplicates, matching the governor's sorted-unique encoding`,
+    );
+  }
+  return normalized;
+};
 
 /**
  * Configuration loading for the Midgard node process.
@@ -19,6 +86,18 @@ import { validateRetentionDays } from "@/database/retention-policy.js";
  * production configuration easier to audit.
  */
 type Provider = "Kupmios";
+
+/**
+ * The SQL quota counts each unique material entry (32-byte root plus at most
+ * six bytes of DA-value framing), its membership row (32 + 32 + boolean), and
+ * its admission-owner row (32 + 32 + 32). Reserving 199 bytes per maximum
+ * reachable node in addition to the authenticated preimages guarantees that
+ * one protocol-valid maximum envelope fits even at the configured minimum.
+ */
+export const CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES = Number(
+  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES +
+    MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT * 199n,
+);
 
 export const resolveValidationWorkerPoolSize = (
   configured: number | undefined,
@@ -74,7 +153,7 @@ export type NodeConfigDep = {
   REFERENCE_SCRIPT_AUTH_TIMELOCK_MS: number;
   REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS: number;
   NETWORK: Network;
-  PROTOCOL_PARAMETERS: SDK.ProtocolParameters;
+  MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE: DeploymentManifestEconomicsProfile;
   PORT: number;
   WAIT_BETWEEN_BLOCK_COMMITMENT: number;
   WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
@@ -110,6 +189,10 @@ export type NodeConfigDep = {
   RUN_GENESIS_ON_STARTUP: boolean;
   ADMIN_API_KEY: string;
   MAX_DURABLE_ADMISSION_BACKLOG: number;
+  MAX_DURABLE_ADMISSION_BACKLOG_BYTES: number;
+  SUBMIT_INGRESS_MAX_CONCURRENCY: number;
+  SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES: number;
+  CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES: number;
   MAX_SUBMIT_TX_CBOR_BYTES: number;
   READINESS_MAX_HEARTBEAT_AGE_MS: number;
   READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS: number;
@@ -124,6 +207,7 @@ export type NodeConfigDep = {
   STATE_QUEUE_MUTATION_LEASE_TTL_MS: number;
   STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS: number;
   STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS: number;
+  STATE_QUEUE_CORRECTION_FINALITY_DEPTH: number;
   RETENTION_DAYS: number;
   WAIT_BETWEEN_RETENTION_SWEEPS: number;
   HUB_ORACLE_ONE_SHOT_TX_HASH: string;
@@ -132,7 +216,9 @@ export type NodeConfigDep = {
   OPERATOR_SLASHING_PENALTY_LOVELACE: bigint;
   DA_COMMITTEE_HEX: string;
   DA_THRESHOLD: bigint | null;
-  MIDGARD_DA_PAYLOAD_ENVELOPE: "off" | "identity" | "zstd";
+  DA_OWNERS_HEX: string;
+  DA_COSIGNER_SEED_PHRASE: string;
+  MIDGARD_DA_PAYLOAD_ENVELOPE: "identity" | "zstd";
   MIDGARD_DA_ZSTD_LEVEL: number;
   MIDGARD_DA_PUBLISH_CONCURRENCY: number;
   MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS: number;
@@ -182,7 +268,7 @@ export type NodeConfigDep = {
   LEDGER_MPF_DB_PATH: string;
   TRANSACTIONS_MPF_DB_PATH: string;
   GENESIS_UTXOS: UTxO[];
-  /** Preserves configured wallet identity even when an isolated harness aliases C=A. */
+  /** Preserves configured wallet identity when an isolated harness maps C=A. */
   GENESIS_UTXOS_BY_WALLET?: Readonly<{
     A: readonly UTxO[];
     B: readonly UTxO[];
@@ -190,48 +276,16 @@ export type NodeConfigDep = {
   }>;
 };
 
-const rejectDeprecatedRootStoreEnvVars = Effect.sync(() => {
-  const deprecated = [
-    ["LEDGER_MPT_DB_PATH", "LEDGER_MPF_DB_PATH"],
-    ["MEMPOOL_MPT_DB_PATH", "TRANSACTIONS_MPF_DB_PATH"],
-    ["MEMPOOL_MPF_DB_PATH", "TRANSACTIONS_MPF_DB_PATH"],
-    ["L1_PROVIDER_FAILOVER", "local Kupmios configuration"],
-  ] as const;
-  const configuredDeprecated = deprecated.filter(
-    ([name]) => process.env[name] !== undefined,
-  );
-  if (configuredDeprecated.length > 0) {
-    throw new Error(
-      configuredDeprecated
-        .map(
-          ([name, replacement]) =>
-            `${name} is no longer supported; use ${replacement}`,
-        )
-        .join("; "),
-    );
-  }
-});
-
 const positiveSafeIntegerConfig = (name: string, defaultValue: number) =>
   Config.integer(name).pipe(
     Config.withDefault(defaultValue),
-    Config.mapAttempt((value) => {
-      if (!Number.isSafeInteger(value) || value <= 0) {
-        throw new Error(`${name} must be a positive safe integer`);
-      }
-      return value;
-    }),
+    Config.mapAttempt((value) => positiveSafeInteger(value, name)),
   );
 
 const positiveFiniteNumberConfig = (name: string, defaultValue: number) =>
   Config.number(name).pipe(
     Config.withDefault(defaultValue),
-    Config.mapAttempt((value) => {
-      if (!Number.isFinite(value) || value <= 0) {
-        throw new Error(`${name} must be a positive finite number`);
-      }
-      return value;
-    }),
+    Config.mapAttempt((value) => positiveFiniteNumber(value, name)),
   );
 
 /**
@@ -239,7 +293,6 @@ const positiveFiniteNumberConfig = (name: string, defaultValue: number) =>
  * variables.
  */
 const makeConfig = Effect.gen(function* () {
-  yield* rejectDeprecatedRootStoreEnvVars;
   const provider = yield* Config.literal("Kupmios")("L1_PROVIDER");
   const ogmiosKey = yield* Config.string("L1_OGMIOS_KEY");
   const kupoKey = yield* Config.string("L1_KUPO_KEY");
@@ -253,6 +306,11 @@ const makeConfig = Effect.gen(function* () {
     "Preview",
     "Custom",
   )("NETWORK");
+  const deploymentEconomicsProfile = yield* Config.string(
+    "MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE",
+  ).pipe(Config.mapAttempt(parseDeploymentEconomicsProfile));
+  const deploymentEconomics =
+    DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE[deploymentEconomicsProfile];
   const l1ProviderPreflightTimeoutMs = yield* Config.integer(
     "L1_PROVIDER_PREFLIGHT_TIMEOUT_MS",
   ).pipe(
@@ -513,9 +571,72 @@ const makeConfig = Effect.gen(function* () {
   const maxDurableAdmissionBacklog = yield* Config.integer(
     "MAX_DURABLE_ADMISSION_BACKLOG",
   ).pipe(Config.withDefault(10_000));
+  const maxDurableAdmissionBacklogBytes = yield* Config.integer(
+    "MAX_DURABLE_ADMISSION_BACKLOG_BYTES",
+  ).pipe(
+    Config.withDefault(MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes),
+    Config.mapAttempt((value) => {
+      if (!Number.isSafeInteger(value) || value <= 0) {
+        throw new Error(
+          "MAX_DURABLE_ADMISSION_BACKLOG_BYTES must be a positive safe integer",
+        );
+      }
+      return value;
+    }),
+  );
+  const submitIngressMaxConcurrency = yield* positiveSafeIntegerConfig(
+    "SUBMIT_INGRESS_MAX_CONCURRENCY",
+    4,
+  );
+  const submitIngressMaxInFlightBytes = yield* Config.integer(
+    "SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES",
+  ).pipe(
+    Config.withDefault(MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes),
+    Config.mapAttempt((value) => {
+      if (
+        !Number.isSafeInteger(value) ||
+        value < MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes
+      ) {
+        throw new Error(
+          `SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES must be a safe integer at least ${MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes.toString()}`,
+        );
+      }
+      return value;
+    }),
+  );
+  const cekProgramMaterialStoreMaxBytes = yield* Config.integer(
+    "CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES",
+  ).pipe(
+    Config.withDefault(CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES * 4),
+    Config.mapAttempt((value) => {
+      if (
+        !Number.isSafeInteger(value) ||
+        value < CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES
+      ) {
+        throw new Error(
+          `CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES must be a safe integer at least ${CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES.toString()}`,
+        );
+      }
+      return value;
+    }),
+  );
   const maxSubmitTxCborBytes = yield* Config.integer(
     "MAX_SUBMIT_TX_CBOR_BYTES",
-  ).pipe(Config.withDefault(32_768));
+  ).pipe(
+    Config.withDefault(MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes),
+    Config.mapAttempt((value) => {
+      if (
+        !Number.isSafeInteger(value) ||
+        value <= 0 ||
+        value > MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes
+      ) {
+        throw new Error(
+          `MAX_SUBMIT_TX_CBOR_BYTES must be between 1 and ${MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes.toString()}`,
+        );
+      }
+      return value;
+    }),
+  );
   const readinessMaxHeartbeatAgeMs = yield* Config.integer(
     "READINESS_MAX_HEARTBEAT_AGE_MS",
   ).pipe(Config.withDefault(120_000));
@@ -603,9 +724,26 @@ const makeConfig = Effect.gen(function* () {
       return value;
     }),
   );
+  const stateQueueCorrectionFinalityDepth = yield* Config.integer(
+    "STATE_QUEUE_CORRECTION_FINALITY_DEPTH",
+  ).pipe(
+    Config.withDefault(30),
+    Config.mapAttempt((value) => {
+      if (value !== 30) {
+        throw new Error(
+          "STATE_QUEUE_CORRECTION_FINALITY_DEPTH must equal the F04 public/testnet release depth of 30 blocks",
+        );
+      }
+      return value;
+    }),
+  );
   const retentionDays = yield* Config.integer("RETENTION_DAYS").pipe(
     Config.withDefault(0),
     Config.mapAttempt(validateRetentionDays),
+    // Q54: enabled pruning must cover the deployment manifest's
+    // da.transportProfile.retentionDays window; a shorter env value fails the
+    // config load rather than silently pruning challengeable evidence.
+    Config.mapAttempt((value) => assertRetentionDaysMatchesDeployment(value)),
   );
   const waitBetweenRetentionSweeps = yield* Config.integer(
     "WAIT_BETWEEN_RETENTION_SWEEPS",
@@ -619,24 +757,94 @@ const makeConfig = Effect.gen(function* () {
   const operatorRequiredBondLovelace = yield* Config.string(
     "OPERATOR_REQUIRED_BOND_LOVELACE",
   ).pipe(
-    Config.withDefault("5000000"),
-    Config.mapAttempt((value) => BigInt(value)),
+    Config.withDefault(deploymentEconomics.requiredBondLovelace.toString()),
+    Config.mapAttempt((value) => {
+      const parsed = BigInt(value);
+      const expected = BigInt(deploymentEconomics.requiredBondLovelace);
+      if (parsed !== expected) {
+        throw new Error(
+          `OPERATOR_REQUIRED_BOND_LOVELACE must equal ${deploymentEconomicsProfile} profile economics ${expected.toString()}`,
+        );
+      }
+      return parsed;
+    }),
   );
   const operatorSlashingPenaltyLovelace = yield* Config.string(
     "OPERATOR_SLASHING_PENALTY_LOVELACE",
   ).pipe(
-    Config.withDefault("200000"),
-    Config.mapAttempt((value) => BigInt(value)),
+    Config.withDefault(deploymentEconomics.slashingPenaltyLovelace.toString()),
+    Config.mapAttempt((value) => {
+      const parsed = BigInt(value);
+      const expected = BigInt(deploymentEconomics.slashingPenaltyLovelace);
+      if (parsed !== expected) {
+        throw new Error(
+          `OPERATOR_SLASHING_PENALTY_LOVELACE must equal ${deploymentEconomicsProfile} profile economics ${expected.toString()}`,
+        );
+      }
+      return parsed;
+    }),
   );
+  // Q63 (F04 §4) governed floors are enforced in `deriveOperatorDaParams`, not
+  // here — see `validateDaKeySetEncoding`. Config load only rejects values that
+  // are malformed no matter what the policy is.
   const daCommitteeHex = yield* Config.string("DA_COMMITTEE_HEX").pipe(
     Config.withDefault(""),
-    Config.map((value) => value.trim().toLowerCase()),
+    Config.mapAttempt((value) =>
+      validateDaKeySetEncoding(
+        value,
+        VERIFICATION_KEY_HEX_LENGTH,
+        "DA_COMMITTEE_HEX",
+        "packed 32-byte verification keys",
+      ),
+    ),
   );
   const daThreshold = yield* Config.string("DA_THRESHOLD").pipe(
     Config.withDefault(""),
     Config.mapAttempt((value) => {
       const trimmed = value.trim();
-      return trimmed.length === 0 ? null : BigInt(trimmed);
+      if (trimmed.length === 0) {
+        return null;
+      }
+      const threshold = BigInt(trimmed);
+      if (threshold <= 0n) {
+        throw new Error(
+          `DA_THRESHOLD must be a positive integer, received ${threshold.toString()}`,
+        );
+      }
+      return threshold;
+    }),
+  );
+  const daOwnersHex = yield* Config.string("DA_OWNERS_HEX").pipe(
+    Config.withDefault(""),
+    Config.mapAttempt((value) =>
+      validateDaKeySetEncoding(
+        value,
+        VERIFICATION_KEY_HASH_HEX_LENGTH,
+        "DA_OWNERS_HEX",
+        "packed 28-byte payment key hashes",
+      ),
+    ),
+  );
+  const daCosignerSeedPhrase = yield* Config.string(
+    "DA_COSIGNER_SEED_PHRASE",
+  ).pipe(
+    Config.withDefault(""),
+    Config.mapAttempt((value) => {
+      const trimmed = value.trim();
+      if (trimmed.length > 0) {
+        // Derive once here so a malformed seed fails config load with a
+        // ConfigError, the way the operator and reference-script seeds already
+        // do, rather than surfacing later as an untyped defect inside
+        // bootstrap or attestation signing.
+        try {
+          walletFromSeed(trimmed, { network });
+        } catch (cause) {
+          throw new Error(
+            `DA_COSIGNER_SEED_PHRASE is not a valid wallet seed phrase: ${String(cause)}`,
+          );
+        }
+      }
+      return trimmed;
     }),
   );
   const daHardeningConfig = readDaHardeningConfig();
@@ -867,15 +1075,42 @@ const makeConfig = Effect.gen(function* () {
   );
   const commitMaxL2TxCount = yield* positiveSafeIntegerConfig(
     "COMMIT_MAX_L2_TX_COUNT",
-    10_000,
+    MIDGARD_CONSENSUS_LIMITS.maxL2TransactionCount,
+  ).pipe(
+    Config.mapAttempt((value) => {
+      if (value > MIDGARD_CONSENSUS_LIMITS.maxL2TransactionCount) {
+        throw new Error(
+          `COMMIT_MAX_L2_TX_COUNT must be <= ${MIDGARD_CONSENSUS_LIMITS.maxL2TransactionCount.toString()}`,
+        );
+      }
+      return value;
+    }),
   );
   const commitMaxLedgerOpCount = yield* positiveSafeIntegerConfig(
     "COMMIT_MAX_LEDGER_OP_COUNT",
-    40_000,
+    MIDGARD_CONSENSUS_LIMITS.maxLedgerOperationCount,
+  ).pipe(
+    Config.mapAttempt((value) => {
+      if (value > MIDGARD_CONSENSUS_LIMITS.maxLedgerOperationCount) {
+        throw new Error(
+          `COMMIT_MAX_LEDGER_OP_COUNT must be <= ${MIDGARD_CONSENSUS_LIMITS.maxLedgerOperationCount.toString()}`,
+        );
+      }
+      return value;
+    }),
   );
   const commitMaxTransitionStepCount = yield* positiveSafeIntegerConfig(
     "COMMIT_MAX_TRANSITION_STEP_COUNT",
-    40_000,
+    MIDGARD_CONSENSUS_LIMITS.maxTransitionStepCount,
+  ).pipe(
+    Config.mapAttempt((value) => {
+      if (value > MIDGARD_CONSENSUS_LIMITS.maxTransitionStepCount) {
+        throw new Error(
+          `COMMIT_MAX_TRANSITION_STEP_COUNT must be <= ${MIDGARD_CONSENSUS_LIMITS.maxTransitionStepCount.toString()}`,
+        );
+      }
+      return value;
+    }),
   );
   const commitBuildCostModel = yield* Config.literal(
     "static",
@@ -1096,7 +1331,7 @@ const makeConfig = Effect.gen(function* () {
     REFERENCE_SCRIPT_AUTH_TIMELOCK_MS: referenceScriptAuthTimelockMs,
     REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS: referenceScriptAuthMinRemainingMs,
     NETWORK: network,
-    PROTOCOL_PARAMETERS: SDK.getProtocolParameters(network),
+    MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE: deploymentEconomicsProfile,
     PORT: port,
     WAIT_BETWEEN_BLOCK_COMMITMENT: waitBetweenBlockCommitment,
     WAIT_BETWEEN_BLOCK_CONFIRMATION: waitBetweenBlockConfirmation,
@@ -1131,6 +1366,10 @@ const makeConfig = Effect.gen(function* () {
     RUN_GENESIS_ON_STARTUP: runGenesisOnStartup,
     ADMIN_API_KEY: adminApiKey,
     MAX_DURABLE_ADMISSION_BACKLOG: maxDurableAdmissionBacklog,
+    MAX_DURABLE_ADMISSION_BACKLOG_BYTES: maxDurableAdmissionBacklogBytes,
+    SUBMIT_INGRESS_MAX_CONCURRENCY: submitIngressMaxConcurrency,
+    SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES: submitIngressMaxInFlightBytes,
+    CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES: cekProgramMaterialStoreMaxBytes,
     MAX_SUBMIT_TX_CBOR_BYTES: maxSubmitTxCborBytes,
     READINESS_MAX_HEARTBEAT_AGE_MS: readinessMaxHeartbeatAgeMs,
     READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS:
@@ -1152,6 +1391,7 @@ const makeConfig = Effect.gen(function* () {
       stateQueueMutationLeaseRenewIntervalMs,
     STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS:
       stateQueueMutationLeaseStaleGraceMs,
+    STATE_QUEUE_CORRECTION_FINALITY_DEPTH: stateQueueCorrectionFinalityDepth,
     RETENTION_DAYS: retentionDays,
     WAIT_BETWEEN_RETENTION_SWEEPS: waitBetweenRetentionSweeps,
     HUB_ORACLE_ONE_SHOT_TX_HASH: hubOracleOneShotTxHash,
@@ -1160,6 +1400,8 @@ const makeConfig = Effect.gen(function* () {
     OPERATOR_SLASHING_PENALTY_LOVELACE: operatorSlashingPenaltyLovelace,
     DA_COMMITTEE_HEX: daCommitteeHex,
     DA_THRESHOLD: daThreshold,
+    DA_OWNERS_HEX: daOwnersHex,
+    DA_COSIGNER_SEED_PHRASE: daCosignerSeedPhrase,
     MIDGARD_DA_PAYLOAD_ENVELOPE: daHardeningConfig.envelopeMode,
     MIDGARD_DA_ZSTD_LEVEL: daHardeningConfig.zstdLevel,
     MIDGARD_DA_PUBLISH_CONCURRENCY: daHardeningConfig.publishConcurrency,

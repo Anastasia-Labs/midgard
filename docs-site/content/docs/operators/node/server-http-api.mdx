@@ -3,7 +3,7 @@ title: "Server HTTP API"
 description: "The HTTP routes exposed by the Midgard node: unauthenticated routes for submission and queries, and admin-gated routes for initialization and operational control."
 ---
 
-The `listen` command starts the node's HTTP server together with all background
+The `listen` command starts the node's HTTP server together with its configured background
 fibers. Every route below is registered in `src/commands/listen-router.ts`.
 
 ## Starting the listener
@@ -31,54 +31,58 @@ rate limiting, and ingress hardening are
 [readiness blockers](/docs/getting-started/status), not solved problems.
 
 <Callout type="warn" title="Always set ADMIN_API_KEY on shared nodes">
-`ADMIN_API_KEY` gates the admin-only HTTP surface (init, commit, merge, state
-queue inspection, mutation-lease coordination, and log routes). Keep it set in
-any shared or remotely reachable environment.
+  `ADMIN_API_KEY` gates the admin-only HTTP surface (init, commit, merge, state
+  queue inspection, mutation-lease coordination, and log routes). Keep it set in
+  any shared or remotely reachable environment.
 </Callout>
 
 ## Public routes
 
 ### Health and readiness
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `GET` | `/healthz` | Liveness only: confirms the server is running. |
-| `GET` | `/readyz` | Readiness: worker heartbeats, admission backlog/age, unfinished mutation jobs, unresolved block submissions, DB connectivity, provider reachability, and mutation-lease state. Returns `503` until ready. |
-| `GET` | `/protocol-info` | Stable public facts external transaction builders need (includes the current slot). |
+| Method | Route              | Purpose                                                                                                                                                                                                   |
+| ------ | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/healthz`         | Liveness only: confirms the server is running.                                                                                                                                                            |
+| `GET`  | `/readyz`          | Readiness: worker heartbeats, admission backlog/age, unfinished mutation jobs, unresolved block submissions, DB connectivity, provider reachability, and mutation-lease state. Returns `503` until ready. |
+| `GET`  | `/pipeline-status` | Admission, mempool and validation pipeline counts and age diagnostics.                                                                                                                                    |
+| `GET`  | `/protocol-info`   | Stable public facts external transaction builders need (includes the current slot).                                                                                                                       |
 
 ### Transaction submission and status
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `POST` | `/submit` | Validate, normalize, and enqueue a submitted L2 transaction. Body must be raw Midgard canonical transaction CBOR with `Content-Type: application/cbor`. |
-| `GET` | `/tx-status` | Resolve the node's canonical status for a transaction (`?tx_hash=...`). |
-| `GET` | `/tx` | Return the CBOR for a known tx hash from mempool or immutable storage (`?tx_hash=...`). |
-| `GET` | `/txs` | Return the address-history tx payloads for an address (`?address=...`). |
+| Method | Route        | Purpose                                                                                                                                                                                                                |
+| ------ | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST` | `/submit`    | Validate, normalize, and enqueue a submitted L2 transaction. Body must be a canonical V1 proof submission envelope (transaction bytes plus CEK program material) with `Content-Type: application/vnd.midgard.v1+cbor`. |
+| `GET`  | `/tx-status` | Resolve the node's canonical status for a transaction (`?tx_hash=...`).                                                                                                                                                |
+| `POST` | `/tx-status` | Batch status lookup with JSON `{ "txHashes": ["..."] }`, containing 1–1000 transaction hashes.                                                                                                                         |
+| `GET`  | `/tx`        | Return the CBOR for a known tx hash from mempool or immutable storage (`?tx_hash=...`).                                                                                                                                |
+| `GET`  | `/txs`       | Return the address-history tx payloads for an address (`?address=...`).                                                                                                                                                |
 
 `POST /submit` responses are explicit: `202` for a newly admitted transaction,
-`200` for a duplicate, `415` when the content type is not `application/cbor`,
-`400` for an invalid or non-normalizable payload, `409` on a tx-id byte
-conflict, and `503` when the durable admission backlog is full.
+`200` for a duplicate, `415` for the wrong media type, `413` for a body that
+exceeds or fails its bounded read, `400` for malformed content, and `409` for a
+transaction-identity conflict. Capacity or admission-writer unavailability
+returns `503`; other operational failures can return `500`. HTTP admission
+is distinct from successful ledger validation or settlement.
 
 ### UTxO and ledger queries
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `GET` | `/utxos` | Spendable mempool-ledger UTxOs for an address (`?address=...`). |
-| `GET` | `/utxo` | One spendable mempool-ledger UTxO by raw TxOutRef CBOR hex (`?txOutRef=...`). |
+| Method | Route               | Purpose                                                                                             |
+| ------ | ------------------- | --------------------------------------------------------------------------------------------------- |
+| `GET`  | `/utxos`            | Spendable mempool-ledger UTxOs for an address (`?address=...`).                                     |
+| `GET`  | `/utxo`             | One spendable mempool-ledger UTxO by raw TxOutRef CBOR hex (`?txOutRef=...`).                       |
 | `POST` | `/utxos?by-outrefs` | Spendable UTxOs for a requested list of `txHash#outputIndex` references, supplied in the JSON body. |
-| `GET` | `/block` | Tx hashes referenced by a committed block header (`?header_hash=...`). |
-| `GET` | `/deposit-status` | One serialized deposit row by event id or L1 tx hash. |
+| `GET`  | `/block`            | Tx hashes referenced by a committed block header (`?header_hash=...`).                              |
+| `GET`  | `/deposit-status`   | One serialized deposit row by event id or L1 tx hash.                                               |
 
 ### Building an unsigned deposit
 
-| Method | Route | Purpose |
-| --- | --- | --- |
+| Method | Route            | Purpose                                                                                                           |
+| ------ | ---------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `POST` | `/deposit/build` | Build an unsigned L1 deposit transaction from a caller-supplied wallet view and return CBOR for external signing. |
 
 The caller supplies the funding address plus the exact wallet UTxOs that may be
-spent; the node holds no signing key and returns `unsignedTxCbor` for the caller
-to sign externally.
+spent; this route needs no depositor signing key and returns `unsignedTxCbor`
+for external signing. The node still has separately configured operator keys.
 
 ```sh
 curl -X POST http://127.0.0.1:3000/deposit/build \
@@ -101,28 +105,29 @@ curl -X POST http://127.0.0.1:3000/deposit/build \
 Optional body fields include `l2Datum` (even-length hex inline datum; Midgard L2
 outputs support only absent or inline datums, never datum-hash outputs),
 `additionalAssets` (an array of `{ unit, amount }`), and per-UTxO
-`datumHash` / `datum` / `scriptRef` hex fields preserved in the external wallet
-view.
+`datumHash` / `datum` hex fields in the external wallet view. Funding-input
+`scriptRef` is rejected. The supplied funding UTxOs must be unique and belong
+to `fundingAddress`; the request accepts at most 128 funding inputs.
 
 ## Admin routes
 
 All routes below require the `x-midgard-admin-key` header matching
 `ADMIN_API_KEY`.
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `GET` | `/init` | Initialize protocol state when startup policy and on-chain topology allow it. Refuses over invalid existing topology. |
-| `GET` | `/commit` | Trigger a manual block commitment. |
-| `GET` | `/merge` | Trigger a manual merge of the oldest queued block into confirmed state. |
-| `GET` | `/stateQueue` | Log and return the current ordered state-queue headers plus merge-readiness. |
-| `GET` | `/stateQueueMutationLease` | Inspect the state-queue mutation lease (`?recent_limit=...`). |
+| Method | Route                      | Purpose                                                                                                                                   |
+| ------ | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/init`                    | Initialize protocol state when startup policy and on-chain topology allow it. Refuses over invalid existing topology.                     |
+| `GET`  | `/commit`                  | Trigger a manual block commitment.                                                                                                        |
+| `GET`  | `/merge`                   | Trigger a manual merge of the oldest queued block into confirmed state.                                                                   |
+| `GET`  | `/stateQueue`              | Log and return the current ordered state-queue headers plus merge-readiness.                                                              |
+| `GET`  | `/stateQueueMutationLease` | Inspect the state-queue mutation lease (`?recent_limit=...`).                                                                             |
 | `POST` | `/stateQueueMutationLease` | Coordinate external state-queue mutators (`inspect`, `acquire`, `renew`, `release`, `fail`) for flows such as manual fault-proof removal. |
-| `GET` | `/logBlocksDB` | Log a compact summary of block-link rows. |
-| `GET` | `/logGlobals` | Log the current process-global coordination state. |
+| `GET`  | `/logBlocksDB`             | Log a compact summary of block-link rows.                                                                                                 |
+| `GET`  | `/logGlobals`              | Log the current process-global coordination state.                                                                                        |
 
 <Callout type="info" title="The mutation lease is a safety interlock">
-The state-queue mutation lease is a mutual-exclusion token. External mutators (for
-example a manual fault-proof removal) must `acquire` the lease, do their work, then
-`release` it. A busy lease returns `409`. The node's readiness check treats a stale
-active lease as a reason to stay not-ready.
+  The state-queue mutation lease is a mutual-exclusion token. External mutators
+  (for example a manual fault-proof removal) must `acquire` the lease, do their
+  work, then `release` it. A busy lease returns `409`. The node's readiness
+  check treats a stale active lease as a reason to stay not-ready.
 </Callout>

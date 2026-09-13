@@ -5,7 +5,7 @@ use aiken/math.{max}
 use aiken_design_patterns/linked_list
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/address.{Address}
-use cardano/assets.{PolicyId}
+use cardano/assets.{PolicyId, quantity_of}
 use cardano/transaction.{
   Input, Mint, OutputReference, Redeemer, ScriptPurpose, Transaction,
   ValidityRange,
@@ -30,7 +30,7 @@ use midgard/scheduler.{
 use midgard/state_queue
 use midgard/user_events
 use midgard/user_events/deposit
-use midgard/user_events/tx_order
+use midgard/user_events/tx_order_v1 as tx_order
 use midgard/user_events/withdrawal
 
 validator mint(hub_oracle_script_hash: PolicyId) {
@@ -38,20 +38,14 @@ validator mint(hub_oracle_script_hash: PolicyId) {
     let Transaction { mint, .. } = self
     when redeemer is {
       Init -> and {
-          Pair(hub.asset_name, 1) == utils.get_singleton_asset_with_policy(
-            mint,
-            hub_oracle_script_hash,
-          ),
+          quantity_of(mint, hub_oracle_script_hash, hub.asset_name) == 1,
           Pair(asset_name, 1) == utils.get_singleton_asset_with_policy(
             mint,
             own_policy_id,
           ),
         }
       Deinit -> and {
-          Pair(hub.asset_name, -1) == utils.get_singleton_asset_with_policy(
-            mint,
-            hub_oracle_script_hash,
-          ),
+          quantity_of(mint, hub_oracle_script_hash, hub.asset_name) == -1,
           Pair(asset_name, -1) == utils.get_singleton_asset_with_policy(
             mint,
             own_policy_id,
@@ -78,60 +72,58 @@ validator spend(
     own_out_ref: OutputReference,
     self: Transaction,
   ) {
-    let SpendRedeemer {
-      scheduler_input_index,
-      scheduler_output_index,
-      advancing_approach,
-    } = redeemer
+    let
+        SpendRedeemer {
+          scheduler_input_index,
+          scheduler_output_index,
+          advancing_approach,
+        }
+      = redeemer
 
-    let Transaction {
-      inputs,
-      outputs,
-      reference_inputs,
-      redeemers,
-      extra_signatories,
-      validity_range,
-      ..
-    } = self
+    let
+        Transaction {
+          inputs,
+          outputs,
+          reference_inputs,
+          redeemers,
+          extra_signatories,
+          validity_range,
+          ..
+        }
+      = self
 
     expect Some(datum) = m_datum
 
     // 2. Output and the correct input must exist at the specified indices.
-    let
-      input,
-      output,
-    <-
-      singular_utxo_indexer.one_to_one(
-        input_index: scheduler_input_index,
-        output_index: scheduler_output_index,
-        own_ref: own_out_ref,
-        inputs: inputs,
-        outputs: outputs,
-        // Double satisfaction is prevented by requiring the same NFT present
-        // in both the input and the output.
-        double_satisfaction_prevented: True,
-      )
+    let input, output <- singular_utxo_indexer.one_to_one(
+      input_index: scheduler_input_index,
+      output_index: scheduler_output_index,
+      own_ref: own_out_ref,
+      inputs: inputs,
+      outputs: outputs,
+      // Double satisfaction is prevented by requiring the same NFT present
+      // in both the input and the output.
+      double_satisfaction_prevented: True,
+    )
 
     // 3. Both input and output must have the scheduler NFT, and the output must
     //    have an inline datum.
-    let output_datum_data =
-      utils.authenticate_input_output_and_get_output_datum_data(
-        input,
-        output,
-        scheduler_policy_id,
-      )
+    let output_datum_data = utils.authenticate_input_output_and_get_output_datum_data(
+      input,
+      output,
+      scheduler_policy_id,
+    )
 
     when advancing_approach is {
       GoToNextDueToEndOfShift { new_shifts_operator_node_ref_input_index } -> {
         // 4a. Input and output datums must be valid, and time conditions and
         //     potentially next operator's consent must be met.
-        let (previous_shifts_operator, new_shifts_operator) =
-          validate_end_of_shift_and_get_operators(
-            datum,
-            output_datum_data,
-            validity_range,
-            extra_signatories,
-          )
+        let (previous_shifts_operator, new_shifts_operator) = validate_end_of_shift_and_get_operators(
+          datum,
+          output_datum_data,
+          validity_range,
+          extra_signatories,
+        )
 
         // 5a. The referenced node in the active operators set must have a key
         //     that matches the new shift's operator, and a link that points to
@@ -155,13 +147,12 @@ validator spend(
       } -> {
         // 4b. Input and output datums must be valid, and time conditions and
         //     potentially next operator's consent must be met.
-        let (previous_shifts_operator, new_shifts_operator) =
-          validate_end_of_shift_and_get_operators(
-            datum,
-            output_datum_data,
-            validity_range,
-            extra_signatories,
-          )
+        let (previous_shifts_operator, new_shifts_operator) = validate_end_of_shift_and_get_operators(
+          datum,
+          output_datum_data,
+          validity_range,
+          extra_signatories,
+        )
 
         // 5b. The active operators root UTxO must point to the previous shift's
         //     operator.
@@ -205,32 +196,31 @@ validator spend(
       } -> {
         // 4c. Input and output datums must both have appointed operators.
         let
-          previous_shifts_operator,
-          new_shifts_operator,
-          previous_shifts_start_time,
-          new_shifts_start_time,
-        <- validate_active_datums_and_get_info(datum, output_datum_data)
+            previous_shifts_operator,
+            new_shifts_operator,
+            previous_shifts_start_time,
+            new_shifts_start_time
+          <- validate_active_datums_and_get_info(datum, output_datum_data)
 
         // 5c. Inactive operator (i.e. previous shift's operator) must be
         //     receiving a strike, and the last element in the state queue must
         //     be old enough for the operator to be considered inactive.
-        expect _inactive_operators_link =
-          validate_operator_inactivity_and_get_its_link(
-            active_operators_address,
-            hub_oracle_script_hash,
-            scheduler_input_index,
-            skipped_operator_node_input_index,
-            active_operators_spend_redeemer_index,
-            state_queue_ref_input_index,
-            hub_oracle_ref_input_index,
-            neglected_user_event,
-            previous_shifts_operator,
-            previous_shifts_start_time,
-            inputs,
-            reference_inputs,
-            redeemers,
-            validity_range,
-          )
+        expect _inactive_operators_link = validate_operator_inactivity_and_get_its_link(
+          active_operators_address,
+          hub_oracle_script_hash,
+          scheduler_input_index,
+          skipped_operator_node_input_index,
+          active_operators_spend_redeemer_index,
+          state_queue_ref_input_index,
+          hub_oracle_ref_input_index,
+          neglected_user_event,
+          previous_shifts_operator,
+          previous_shifts_start_time,
+          inputs,
+          reference_inputs,
+          redeemers,
+          validity_range,
+        )
 
         // 6c. The new shift must start some time in a close future.
         expect
@@ -266,11 +256,11 @@ validator spend(
       } -> {
         // 4d. Input and output datums must both have an appointed operators.
         let
-          previous_shifts_operator,
-          new_shifts_operator,
-          previous_shifts_start_time,
-          new_shifts_start_time,
-        <- validate_active_datums_and_get_info(datum, output_datum_data)
+            previous_shifts_operator,
+            new_shifts_operator,
+            previous_shifts_start_time,
+            new_shifts_start_time
+          <- validate_active_datums_and_get_info(datum, output_datum_data)
 
         // 5d. The referenced active operators root UTxO must point to the
         //     previous operator.
@@ -294,23 +284,22 @@ validator spend(
         // 7d. Inactive operator (i.e. previous shift's operator) must be
         //     receiving a strike, and the last element in the state queue must
         //     be old enough for the operator to be considered inactive.
-        let inactive_operators_link =
-          validate_operator_inactivity_and_get_its_link(
-            active_operators_address,
-            hub_oracle_script_hash,
-            scheduler_input_index,
-            skipped_operator_node_input_index,
-            active_operators_spend_redeemer_index,
-            state_queue_ref_input_index,
-            hub_oracle_ref_input_index,
-            neglected_user_event,
-            previous_shifts_operator,
-            previous_shifts_start_time,
-            inputs,
-            reference_inputs,
-            redeemers,
-            validity_range,
-          )
+        let inactive_operators_link = validate_operator_inactivity_and_get_its_link(
+          active_operators_address,
+          hub_oracle_script_hash,
+          scheduler_input_index,
+          skipped_operator_node_input_index,
+          active_operators_spend_redeemer_index,
+          state_queue_ref_input_index,
+          hub_oracle_ref_input_index,
+          neglected_user_event,
+          previous_shifts_operator,
+          previous_shifts_start_time,
+          inputs,
+          reference_inputs,
+          redeemers,
+          validity_range,
+        )
 
         // 8d. The new shift must start some time in a close future.
         expect
@@ -348,11 +337,11 @@ validator spend(
       } -> {
         // 4e. Input and output datums must both have an appointed operators.
         let
-          previous_shifts_operator,
-          new_shifts_operator,
-          _previous_shifts_start_time,
-          new_shifts_start_time,
-        <- validate_active_datums_and_get_info(datum, output_datum_data)
+            previous_shifts_operator,
+            new_shifts_operator,
+            _previous_shifts_start_time,
+            new_shifts_start_time
+          <- validate_active_datums_and_get_info(datum, output_datum_data)
 
         // 5e. The new shift must start some time in a close future.
         expect
@@ -364,18 +353,14 @@ validator spend(
         // 6e. The previous shift's operator must be getting removed from the
         //     active operators set, where its mint redeemer provides some info
         //     for this endpoint to use.
-        let
-          removing_operators_anchor_element_key,
-          _last_operator_is_removed,
-        <-
-          validate_active_operator_removal(
-            active_operators_policy_id,
-            active_operators_mint_redeemer_index,
-            scheduler_input_index,
-            removal_reason,
-            previous_shifts_operator,
-            redeemers,
-          )
+        let removing_operators_anchor_element_key, _last_operator_is_removed <- validate_active_operator_removal(
+          active_operators_policy_id,
+          active_operators_mint_redeemer_index,
+          scheduler_input_index,
+          removal_reason,
+          previous_shifts_operator,
+          redeemers,
+        )
 
         // 7e. The anchor node of the removed operator must have a key matching
         //     the new shift's operator from scheduler's output datum.
@@ -392,26 +377,24 @@ validator spend(
         registered_element_ref_input_index,
       } -> {
         // 4f. An active operator must be appointed.
-        expect ActiveOperator {
-          operator: previous_shifts_operator,
-          start_time: _previous_shifts_start_time,
-        } = datum
+        expect
+            ActiveOperator {
+              operator: previous_shifts_operator,
+              start_time: _previous_shifts_start_time,
+            }
+          = datum
 
         // 5f. The previous shift's operator must be getting removed from the
         //     active operators set, where its mint redeemer provides some info
         //     for this endpoint to use.
-        let
-          removing_operators_anchor_element_key,
-          last_operator_is_removed,
-        <-
-          validate_active_operator_removal(
-            active_operators_policy_id,
-            active_operators_mint_redeemer_index,
-            scheduler_input_index,
-            removal_reason,
-            previous_shifts_operator,
-            redeemers,
-          )
+        let removing_operators_anchor_element_key, last_operator_is_removed <- validate_active_operator_removal(
+          active_operators_policy_id,
+          active_operators_mint_redeemer_index,
+          scheduler_input_index,
+          removal_reason,
+          previous_shifts_operator,
+          redeemers,
+        )
 
         // 6f. For rewinding, the anchor element of the removing node must be
         //     root.
@@ -444,10 +427,12 @@ validator spend(
             //      node points to another node as its link.
             expect !last_operator_is_removed
 
-            expect ActiveOperator {
-              operator: new_shifts_operator,
-              start_time: new_shifts_start_time,
-            } = output_datum_data
+            expect
+                ActiveOperator {
+                  operator: new_shifts_operator,
+                  start_time: new_shifts_start_time,
+                }
+              = output_datum_data
 
             // 9f'. The new shift must start some time in a close future.
             expect
@@ -479,10 +464,12 @@ validator spend(
         expect NoActiveOperators = datum
 
         // 5g. An active operator must be appointed at output.
-        expect ActiveOperator {
-          operator: new_shifts_operator,
-          start_time: new_shifts_start_time,
-        } = output_datum_data
+        expect
+            ActiveOperator {
+              operator: new_shifts_operator,
+              start_time: new_shifts_start_time,
+            }
+          = output_datum_data
 
         // 6g. The new shift must start some time in a close future.
         expect
@@ -528,16 +515,20 @@ fn validate_active_datums_and_get_info(
     result,
 ) -> result {
   // 1. An operator must already be appointed active.
-  expect ActiveOperator {
-    operator: previous_shifts_operator,
-    start_time: previous_shifts_start_time,
-  } = input_datum
+  expect
+      ActiveOperator {
+        operator: previous_shifts_operator,
+        start_time: previous_shifts_start_time,
+      }
+    = input_datum
 
   // 2. Output datum must specify an appointed operator.
-  expect ActiveOperator {
-    operator: new_shifts_operator,
-    start_time: new_shifts_start_time,
-  } = output_datum_data
+  expect
+      ActiveOperator {
+        operator: new_shifts_operator,
+        start_time: new_shifts_start_time,
+      }
+    = output_datum_data
 
   return(
     previous_shifts_operator,
@@ -555,19 +546,20 @@ fn validate_end_of_shift_and_get_operators(
 ) -> (VerificationKeyHash, VerificationKeyHash) {
   // 1. Input and output datums must both have an appointed operators.
   let
-    previous_shifts_operator,
-    new_shifts_operator,
-    previous_shifts_start_time,
-    new_shifts_start_time,
-  <- validate_active_datums_and_get_info(input_datum, output_datum_data)
+      previous_shifts_operator,
+      new_shifts_operator,
+      previous_shifts_start_time,
+      new_shifts_start_time
+    <- validate_active_datums_and_get_info(input_datum, output_datum_data)
 
   // 2. End-of-shift advancement is permissionless once the transaction validity
   //    range starts at or after the previous shift ended. The new shift starts
   //    at the validity lower bound, allowing stale schedules to catch up in a
   //    single refresh instead of replaying every missed shift.
   let previous_shift_end = shift_end_time(previous_shifts_start_time)
-  let (inclusive_lower_bound, _inclusive_upper_bound) =
-    utils.get_inclusive_bounds_of_a_short_validity_range(validity_range)
+  let (inclusive_lower_bound, _inclusive_upper_bound) = utils.get_inclusive_bounds_of_a_short_validity_range(
+    validity_range,
+  )
   expect inclusive_lower_bound >= previous_shift_end
   expect new_shifts_start_time == inclusive_lower_bound
 
@@ -578,8 +570,9 @@ fn validate_unscheduled_new_shifts_start_time(
   new_shifts_start_time: PosixTime,
   validity_range: ValidityRange,
 ) -> Bool {
-  let (_inclusive_lower_bound, inclusive_upper_bound) =
-    utils.get_inclusive_bounds_of_a_short_validity_range(validity_range)
+  let (_inclusive_lower_bound, inclusive_upper_bound) = utils.get_inclusive_bounds_of_a_short_validity_range(
+    validity_range,
+  )
   new_shifts_start_time == inclusive_upper_bound
 }
 
@@ -604,64 +597,61 @@ fn validate_operator_inactivity_and_get_its_link(
 ) -> linked_list.Link {
   // 1. A matching spending redeemer of the active operators set must exist for
   //    incrementing the strike counter of the inactive operator.
-  expect active_operators.StrikeForInactivity {
-    operator,
-    active_node_link,
-    scheduler_input_index: scheduler_input_index_from_active_ops_redeemer,
-    ..
-  } =
-    utils.get_spending_redeemer_data_at(
-      active_operators_address,
-      active_operators_input_index,
-      active_operators_redeemer_index,
-      inputs,
-      redeemers,
-    )
+  expect
+      active_operators.StrikeForInactivity {
+        operator,
+        active_node_link,
+        scheduler_input_index: scheduler_input_index_from_active_ops_redeemer,
+        ..
+      }
+    = utils.get_spending_redeemer_data_at(
+    active_operators_address,
+    active_operators_input_index,
+    active_operators_redeemer_index,
+    inputs,
+    redeemers,
+  )
   expect inactive_operator == operator
   expect scheduler_input_index_from_active_ops_redeemer == scheduler_input_index
 
   // 2. Authentic hub oracle UTxO must be referred to.
-  let hub_datum =
-    hub.get_datum(
-      reference_inputs,
-      hub_oracle_script_hash,
-      hub_oracle_ref_input_index,
-    )
+  let hub_datum = hub.get_datum(
+    reference_inputs,
+    hub_oracle_script_hash,
+    hub_oracle_ref_input_index,
+  )
 
   // 3. Specified state queue element UTxO must exist in reference inputs.
-  expect Some(state_queue_ref_input) =
-    reference_inputs |> list.at(state_queue_ref_input_index)
+  expect Some(state_queue_ref_input) = reference_inputs
+    |> list.at(state_queue_ref_input_index)
 
   // 4. The referred state queue UTxO must be authentic.
   expect
     {
       let
-        _state_queue_address,
-        _state_queue_lovelace,
-        m_header_hash,
-        confirmed_state_or_header_data,
-        state_queue_link,
-      <- linked_list.get_element_info(state_queue_ref_input.output)
+          _state_queue_address,
+          _state_queue_lovelace,
+          m_header_hash,
+          confirmed_state_or_header_data,
+          state_queue_link
+        <- linked_list.get_element_info(state_queue_ref_input.output)
 
       // 5. The element must be last in the state queue.
       expect None == state_queue_link
 
       // 6. Let `last_state_queue_elements_end_time` be the upper bound of the
       //    latest element of the state queue's event interval.
-      let last_state_queue_elements_end_time =
-        when m_header_hash is {
-          None -> {
-            expect ledger_state.ConfirmedState { end_time, .. } =
-              confirmed_state_or_header_data
-            end_time
-          }
-          Some(_) -> {
-            expect state_queue.StateQueueNode { header, .. } =
-              confirmed_state_or_header_data
-            let ledger_state.Header { end_time, .. } = header
-            end_time
-          }
+      let last_state_queue_elements_end_time = when m_header_hash is {
+        None -> {
+          expect ledger_state.ConfirmedState { end_time, .. } = confirmed_state_or_header_data
+          end_time
         }
+        Some(_) -> {
+          expect state_queue.StateQueueNode { header, .. } = confirmed_state_or_header_data
+          let header_view = state_queue.decode_header_view(header)
+          header_view.end_time
+        }
+      }
 
       // 7. Let `inactivity_threshold` be a point in time that can be attained
       //    from three values:
@@ -672,53 +662,46 @@ fn validate_operator_inactivity_and_get_its_link(
       //      protocol parameter.
       //    - A given user event's inclusion time, plus the
       //      `user_events_negligence_timeout` protocol parameter.
-      let inactivity_threshold =
-        max(
-          inactive_operators_shift_start_time + env.new_shift_inactivity_grace_period,
-          when neglected_user_event is {
-            NoNeglectedUserEvent ->
-              last_state_queue_elements_end_time + env.max_inactivity_between_block_commitments
-            NeglectedDeposit { deposit_ref_input_index } -> {
-              let deposit.Datum { inclusion_time, .. } =
-                reference_inputs
-                  |> deposit.get_datum(
-                      hub_datum.deposit,
-                      deposit_ref_input_index,
-                    )
+      let inactivity_threshold = max(
+        inactive_operators_shift_start_time + env.new_shift_inactivity_grace_period,
+        when neglected_user_event is {
+          NoNeglectedUserEvent ->
+            last_state_queue_elements_end_time + env.max_inactivity_between_block_commitments
+          NeglectedDeposit { deposit_ref_input_index } -> {
+            let deposit.DepositDatum { inclusion_time, .. } = reference_inputs
+              |> deposit.get_datum(hub_datum.deposit, deposit_ref_input_index)
 
-              inclusion_time
-                |> inactivity_threshold_from_user_event_inclusion_time(
-                    last_state_queue_elements_end_time,
-                  )
-            }
-            NeglectedWithdrawal { withdrawal_ref_input_index } -> {
-              let user_events.OptimisticDatum { inclusion_time, .. } =
-                reference_inputs
-                  |> withdrawal.get_datum(
-                      hub_datum.withdrawal,
-                      withdrawal_ref_input_index,
-                    )
+            inclusion_time
+              |> inactivity_threshold_from_user_event_inclusion_time(
+                  last_state_queue_elements_end_time,
+                )
+          }
+          NeglectedWithdrawal { withdrawal_ref_input_index } -> {
+            let user_events.OptimisticDatum { inclusion_time, .. } = reference_inputs
+              |> withdrawal.get_datum(
+                  hub_datum.withdrawal,
+                  withdrawal_ref_input_index,
+                )
 
-              inclusion_time
-                |> inactivity_threshold_from_user_event_inclusion_time(
-                    last_state_queue_elements_end_time,
-                  )
-            }
-            NeglectedTxOrder { tx_order_ref_input_index } -> {
-              let user_events.OptimisticDatum { inclusion_time, .. } =
-                reference_inputs
-                  |> tx_order.get_datum(
-                      hub_datum.tx_order,
-                      tx_order_ref_input_index,
-                    )
+            inclusion_time
+              |> inactivity_threshold_from_user_event_inclusion_time(
+                  last_state_queue_elements_end_time,
+                )
+          }
+          NeglectedTxOrder { tx_order_ref_input_index } -> {
+            let user_events.OptimisticDatum { inclusion_time, .. } = reference_inputs
+              |> tx_order.get_datum(
+                  hub_datum.tx_order,
+                  tx_order_ref_input_index,
+                )
 
-              inclusion_time
-                |> inactivity_threshold_from_user_event_inclusion_time(
-                    last_state_queue_elements_end_time,
-                  )
-            }
-          },
-        )
+            inclusion_time
+              |> inactivity_threshold_from_user_event_inclusion_time(
+                  last_state_queue_elements_end_time,
+                )
+          }
+        },
+      )
 
       expect
         inactivity_threshold < shift_end_time(
@@ -757,17 +740,17 @@ fn validate_root_is_reached(
   reference_inputs: List<Input>,
 ) -> Bool {
   // 1. Element UTxO of active operators set must exist at the specified index.
-  expect Some(active_root_ref_input) =
-    reference_inputs |> list.at(active_operators_root_ref_input_index)
+  expect Some(active_root_ref_input) = reference_inputs
+    |> list.at(active_operators_root_ref_input_index)
 
   {
     let
-      _active_root_address,
-      _active_root_lovelace,
-      m_active_root_key,
-      _active_root_data,
-      active_root_link,
-    <- linked_list.get_element_info(active_root_ref_input.output)
+        _active_root_address,
+        _active_root_lovelace,
+        m_active_root_key,
+        _active_root_data,
+        active_root_link
+      <- linked_list.get_element_info(active_root_ref_input.output)
 
     // 2. The referenced element must be root.
     expect None == m_active_root_key
@@ -789,18 +772,17 @@ fn validate_operator_is_the_last_active_node(
   reference_inputs: List<Input>,
 ) -> Bool {
   // 1. The specified UTxO must exist in the reference inputs list.
-  expect Some(active_node_ref_input) =
-    reference_inputs
-      |> list.at(active_operators_last_node_ref_input_index)
+  expect Some(active_node_ref_input) = reference_inputs
+    |> list.at(active_operators_last_node_ref_input_index)
 
   {
     let
-      _active_node_address,
-      _active_node_lovelace,
-      m_active_node_key,
-      _active_node_data,
-      active_node_link,
-    <- linked_list.get_element_info(active_node_ref_input.output)
+        _active_node_address,
+        _active_node_lovelace,
+        m_active_node_key,
+        _active_node_data,
+        active_node_link
+      <- linked_list.get_element_info(active_node_ref_input.output)
 
     // 2. The referenced element must be a node with a key that matches the next
     //    shift's operator.
@@ -823,20 +805,20 @@ fn validate_new_shifts_node_is_next(
   reference_inputs: List<Input>,
 ) -> Bool {
   // 1. Active operator element must exist at the specified index.
-  expect Some(active_node_ref_input) =
-    reference_inputs |> list.at(new_shifts_operator_node_ref_input_index)
+  expect Some(active_node_ref_input) = reference_inputs
+    |> list.at(new_shifts_operator_node_ref_input_index)
 
   // The referenced node in the active operators set must have a key that
   // matches the new shift's operator, and a link that points to the
   // previous operator.
   {
     let
-      _active_node_address,
-      _active_node_lovelace,
-      m_active_node_key,
-      _active_node_data,
-      active_node_link,
-    <- linked_list.get_element_info(active_node_ref_input.output)
+        _active_node_address,
+        _active_node_lovelace,
+        m_active_node_key,
+        _active_node_data,
+        active_node_link
+      <- linked_list.get_element_info(active_node_ref_input.output)
 
     // 2. The referenced element must be a node with a key that matches
     //    the next shift's operator.
@@ -866,25 +848,26 @@ fn validate_active_operator_removal(
   return: fn(Option<linked_list.NodeKey>, Bool) -> Bool,
 ) -> Bool {
   // 1. Minting script of active operators set must be invoked.
-  let active_operators_mint_redeemer_data =
-    redeemers
-      |> utils.get_redeemer_at(
-          expected_purpose: Mint(active_operators_policy_id),
-          redeemer_index: active_operators_mint_redeemer_index,
-        )
+  let active_operators_mint_redeemer_data = redeemers
+    |> utils.get_redeemer_at(
+        expected_purpose: Mint(active_operators_policy_id),
+        redeemer_index: active_operators_mint_redeemer_index,
+      )
 
   when removal_reason is {
     OperatorRetirement -> {
-      expect active_operators.RetireOperator {
-        active_operator_key,
-        operator_removal_scheduler_sync: active_operators.ShowSchedulerIsAdvancing {
-          scheduler_input_index: scheduler_input_index_from_active_ops_redeemer,
-          removing_operators_anchor_element_key,
-          removing_operator_is_the_last_member,
-          ..
-        },
-        ..
-      } = active_operators_mint_redeemer_data
+      expect
+          active_operators.RetireOperator {
+            active_operator_key,
+            operator_removal_scheduler_sync: active_operators.ShowSchedulerIsAdvancing {
+              scheduler_input_index: scheduler_input_index_from_active_ops_redeemer,
+              removing_operators_anchor_element_key,
+              removing_operator_is_the_last_member,
+              ..
+            },
+            ..
+          }
+        = active_operators_mint_redeemer_data
 
       // 2a. Operator in the spent scheduler UTxO must match the retiring
       //     operator from active operators redeemer.
@@ -901,18 +884,20 @@ fn validate_active_operator_removal(
       )
     }
     OperatorSlashing -> {
-      expect active_operators.SlashOperator {
-        slashing_arguments: operator_directory.SlashingArguments {
-          slashed_operator,
-          ..
-        },
-        operator_removal_scheduler_sync: active_operators.ShowSchedulerIsAdvancing {
-          scheduler_input_index: scheduler_input_index_from_active_ops_redeemer,
-          removing_operators_anchor_element_key,
-          removing_operator_is_the_last_member,
-          ..
-        },
-      } = active_operators_mint_redeemer_data
+      expect
+          active_operators.SlashOperator {
+            slashing_arguments: operator_directory.SlashingArguments {
+              slashed_operator,
+              ..
+            },
+            operator_removal_scheduler_sync: active_operators.ShowSchedulerIsAdvancing {
+              scheduler_input_index: scheduler_input_index_from_active_ops_redeemer,
+              removing_operators_anchor_element_key,
+              removing_operator_is_the_last_member,
+              ..
+            },
+          }
+        = active_operators_mint_redeemer_data
 
       // 2b. Operator in the spent scheduler UTxO must match the slashed
       //     operator from active operators redeemer.
@@ -938,17 +923,17 @@ fn validate_no_registered_operators_can_activate(
   validity_range: ValidityRange,
 ) -> Bool {
   // 1. Registered operator element must exist at the specified index.
-  expect Some(registered_element_ref_input) =
-    reference_inputs |> list.at(registered_element_ref_input_index)
+  expect Some(registered_element_ref_input) = reference_inputs
+    |> list.at(registered_element_ref_input_index)
 
   {
     let
-      _registered_element_address,
-      _registered_element_lovelace,
-      m_registered_element_key,
-      _registered_element_data,
-      registered_element_link,
-    <- linked_list.get_element_info(registered_element_ref_input.output)
+        _registered_element_address,
+        _registered_element_lovelace,
+        m_registered_element_key,
+        _registered_element_data,
+        registered_element_link
+      <- linked_list.get_element_info(registered_element_ref_input.output)
 
     // 2. If the referenced registered operator element is a node, its
     //    activation time must not have been reached yet.
@@ -956,10 +941,9 @@ fn validate_no_registered_operators_can_activate(
       when m_registered_element_key is {
         None -> True
         Some(registered_node_key) -> {
-          let activation_time =
-            registered_operators.node_key_to_activation_time(
-              registered_node_key,
-            )
+          let activation_time = registered_operators.node_key_to_activation_time(
+            registered_node_key,
+          )
           validity_range |> interval.is_entirely_before(activation_time)
         }
       }

@@ -7,6 +7,8 @@
 \section{Operator directory}
 \label{h:operator-directory}
 
+\paragraph{Economics conformance.} The general forfeiture narrative below predates the current reward ownership rule: the configured fraud-prover reward is paid only by the bond-consuming fraudulent-block removal routes in the state queue. Duplicate-registration slashing does not pay that named reward. Current duplicate and inactivity slashing require the configured fee exactly, rather than a lower bound. The predicates below that describe fee minima and a universal reward split retain the earlier economic design and must be reconciled with these current rules before treating them as acceptance criteria. Transaction fees enter Cardano fee accounting; they are not a direct treasury transfer.
+
 Midgard operators receive and process L2 events from users, collate them into blocks, publish the full block contents on the data availability layer, and commit the block headers to Midgard's state queue on L1.
 This responsibility is shared among the operators on a rotating schedule, with each operator getting a turn to exclusively process L2 events and then commit their blocks of events until the end of their turn.
 

@@ -3,26 +3,32 @@ title: "Data-Availability Validators"
 description: "The da-attestation control plane and da-params-governor validators."
 ---
 
-Two validators govern Midgard's **data-availability (DA)** control plane on L1,
+The attestation, governance, and availability-challenge validators govern Midgard's **data-availability (DA)** control plane on L1,
 enforcing the DA rules from the [Off-Chain Data Architecture](/docs/spec/offchain-data-architecture)
 chapter.
 
-Their Aiken/blueprint module identifiers are `da_attestation` and
-`da_params_governor`.
+Their Aiken/blueprint module identifiers include `da_attestation`,
+`da_params_governor`, and `availability_challenge`.
 
 ## Validators
 
 - **`da-attestation`**: the DA attestation control plane. Records committee
   attestations that block data has been made available, gated by a signature
-  threshold from the DA committee.
+  threshold from the DA committee. Signatures bind the full availability
+  commitment, and application is cross-bound to minting its DA bond.
 - **`da-params-governor`**: governs the DA parameters (for example the committee
   configuration and thresholds), controlling how those values may change.
 
+- **`availability-challenge`**: governs DA bonds, retained-data challenges,
+  publication tranches, and success/timeout settlement. Queue availability is
+  typed state rather than a policy-id marker. See the
+  [committee contract boundary](/docs/watchers/da-committee-node#contract-boundary).
+
 <Callout type="info" title="Blueprint note">
-These validators exist in the Aiken source and in the checked-in
-`onchain/aiken/plutus.json`. After a validator or parameter change, run `aiken
-build` in `onchain/aiken`, review the generated diff, and verify the deployment
-manifest uses the intended script hashes.
+  These validators exist in the Aiken source and in the checked-in
+  `onchain/aiken/plutus.json`. After a validator or parameter change, run `aiken
+  build --env testnet` in `onchain/aiken`, review the generated diff, and verify
+  the deployment manifest uses the intended script hashes.
 </Callout>
 
 ## Related

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { Effect } from "effect";
 
 export const SUBMIT_SLOT_LENGTH_MS = 1_000;
@@ -30,6 +32,10 @@ export type LocalOgmiosSubmitSlotOptions = {
 export type ShelleyGenesisSlotConfig = {
   readonly startTimeMs: number;
   readonly slotLengthMs: number;
+};
+
+export type ShelleyGenesisSlotEvidence = ShelleyGenesisSlotConfig & {
+  readonly configurationSha256: string;
 };
 
 export type LocalOgmiosShelleyGenesisSlotOptions = Pick<
@@ -82,6 +88,21 @@ const record = (value: unknown): Record<string, unknown> | null =>
     ? (value as Record<string, unknown>)
     : null;
 
+const canonicalJsonValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(canonicalJsonValue);
+  }
+  const object = record(value);
+  if (object !== null) {
+    return Object.fromEntries(
+      Object.keys(object)
+        .sort()
+        .map((key) => [key, canonicalJsonValue(object[key])]),
+    );
+  }
+  return value;
+};
+
 export const normalizeOgmiosHttpUrl = (url: string): string => {
   const parsed = new URL(url.trim());
   if (parsed.protocol === "ws:") {
@@ -92,6 +113,9 @@ export const normalizeOgmiosHttpUrl = (url: string): string => {
   parsed.hash = "";
   return parsed.toString().replace(/\/$/, "");
 };
+
+export const ogmiosEndpointIdentitySha256 = (url: string): string =>
+  createHash("sha256").update(normalizeOgmiosHttpUrl(url)).digest("hex");
 
 const joinUrl = (base: string, path: string): string =>
   `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
@@ -163,7 +187,7 @@ export const parseOgmiosTipSlot = (payload: unknown): number => {
 
 export const parseOgmiosShelleyGenesisSlotConfig = (
   payload: unknown,
-): ShelleyGenesisSlotConfig => {
+): ShelleyGenesisSlotEvidence => {
   const root = record(payload);
   const result = record(root?.result);
   const startTime = result?.startTime;
@@ -190,7 +214,13 @@ export const parseOgmiosShelleyGenesisSlotConfig = (
       "Ogmios Shelley genesis response did not include a positive integer slotLength.milliseconds",
     );
   }
-  return { startTimeMs, slotLengthMs };
+  return {
+    startTimeMs,
+    slotLengthMs,
+    configurationSha256: createHash("sha256")
+      .update(JSON.stringify(canonicalJsonValue(result)))
+      .digest("hex"),
+  };
 };
 
 export const parseOgmiosHealthEvidence = (
@@ -348,7 +378,7 @@ export const queryLocalOgmiosShelleyGenesisSlotConfig = async ({
   fetchImpl = fetch,
   timeoutMs = 5_000,
   signal,
-}: LocalOgmiosShelleyGenesisSlotOptions): Promise<ShelleyGenesisSlotConfig> => {
+}: LocalOgmiosShelleyGenesisSlotOptions): Promise<ShelleyGenesisSlotEvidence> => {
   const baseUrl = normalizeOgmiosHttpUrl(ogmiosUrl);
   const body = await fetchTextWithTimeout(
     fetchImpl,
@@ -373,7 +403,7 @@ export const queryLocalOgmiosShelleyGenesisSlotConfig = async ({
 
 export const fetchLocalOgmiosShelleyGenesisSlotConfig = (
   options: LocalOgmiosShelleyGenesisSlotOptions,
-): Effect.Effect<ShelleyGenesisSlotConfig, Error> =>
+): Effect.Effect<ShelleyGenesisSlotEvidence, Error> =>
   Effect.tryPromise({
     try: (effectSignal) =>
       queryLocalOgmiosShelleyGenesisSlotConfig({

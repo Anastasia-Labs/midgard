@@ -1,0 +1,169 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { isAbsolute, join } from "node:path";
+import { setTimeout as pause } from "node:timers/promises";
+
+import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  Lucid,
+  type UTxO,
+  validatorToScriptHash,
+} from "@lucid-evolution/lucid";
+import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
+import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
+import { WatcherLocalKupmios } from "midgard-watcher";
+
+import { awaitLedgerTipSlot, readOgmiosTipSlot } from "./ledger-tip.js";
+import { journeyNativeNodeQuery } from "./native-node.js";
+
+type Deployment = Awaited<ReturnType<typeof publishWorkflowDeploymentOnChain>>;
+
+/** Longest block gap the journeys tolerate while waiting for the ledger tip. */
+const LEDGER_TIP_WAIT_MS = 15 * 60_000;
+type PersistedDeployment = Omit<
+  Deployment,
+  "chain" | "operatorLucid" | "publisherLucid" | "references"
+> & {
+  references: [string, UTxO][];
+};
+
+/** Reopen run-owned artifacts and real providers after a stopped journey. */
+/** L1 depth the journey watcher requires before a block is finalized. */
+export const JOURNEY_FINALITY_DEPTH = 30;
+
+export const loadJourneyContext = async (runDirectory: string) => {
+  if (!isAbsolute(runDirectory))
+    throw new Error("Journey run directory must be absolute");
+  const runEnv = Object.fromEntries(
+    (await readFile(join(runDirectory, "run.env"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => {
+        const separator = line.indexOf("=");
+        return [line.slice(0, separator), line.slice(separator + 1)];
+      }),
+  );
+  if (runEnv.MIDGARD_PHASE4_RUN_DIR !== runDirectory)
+    throw new Error("Run environment changed its directory");
+  const genesisBytes = await readFile(
+    join(runDirectory, "genesis/shelley-genesis.json"),
+  );
+  const genesis = JSON.parse(genesisBytes.toString("utf8"));
+  if (genesis.networkMagic !== 424242 || genesis.networkId !== "Testnet")
+    throw new Error("Journey requires its isolated devnet genesis");
+  const customNetwork = {
+    networkMagic: genesis.networkMagic as number,
+    slotConfig: {
+      zeroTime: Date.parse(genesis.systemStart),
+      zeroSlot: 0,
+      slotLength: genesis.slotLength * 1000,
+    },
+  };
+  const kupoUrl = `http://127.0.0.1:${runEnv.MIDGARD_PHASE4_KUPO_PORT}`;
+  const ogmiosUrl = `http://127.0.0.1:${runEnv.MIDGARD_PHASE4_OGMIOS_PORT}`;
+  const provider = new WatcherLocalKupmios(
+    kupoUrl,
+    ogmiosUrl,
+    await journeyNativeNodeQuery(runDirectory),
+  );
+  const accounts: Record<
+    "operator" | "publisher" | "cosigner" | "availability",
+    { seedPhrase: string; address: string }
+  > = JSON.parse(
+    await readFile(join(runDirectory, "secrets/journey-accounts.json"), "utf8"),
+  );
+  const persisted: PersistedDeployment = JSON.parse(
+    await readFile(
+      join(runDirectory, "deploymentInfo/live-deployment.json"),
+      "utf8",
+    ),
+    (_, value) =>
+      value !== null &&
+      typeof value === "object" &&
+      Object.keys(value).length === 1 &&
+      typeof value.bigint === "string"
+        ? BigInt(value.bigint)
+        : value,
+  );
+  const verified = verifyFinalizedDeploymentManifest(persisted.manifest);
+  if (
+    verified.network !== "Custom" ||
+    createHash("sha256").update(persisted.blueprintJson).digest("hex") !==
+      persisted.manifest.artifacts.blueprintHash
+  ) {
+    throw new Error(
+      "Stored deployment differs from its frozen blueprint or network",
+    );
+  }
+  const references = new Map(persisted.references);
+  for (const receipt of persisted.receipts) {
+    const reference = references.get(receipt.contractName);
+    if (
+      reference?.scriptRef == null ||
+      validatorToScriptHash(reference.scriptRef) !== receipt.scriptHash ||
+      reference.txHash !== receipt.outRef.txHash ||
+      reference.outputIndex !== receipt.outRef.outputIndex
+    ) {
+      throw new Error(`Stored reference changed: ${receipt.role}`);
+    }
+  }
+  const operatorLucid = await Lucid(provider, "Custom", {
+    slotConfig: customNetwork.slotConfig,
+    evaluator: createScalusEvaluator(),
+  });
+  const publisherLucid = await Lucid(provider, "Custom", {
+    slotConfig: customNetwork.slotConfig,
+    evaluator: createScalusEvaluator(),
+  });
+  operatorLucid.selectWallet.fromSeed(accounts.operator.seedPhrase);
+  publisherLucid.selectWallet.fromSeed(accounts.publisher.seedPhrase);
+  const deployment: Deployment = {
+    ...persisted,
+    references,
+    operatorLucid,
+    publisherLucid,
+    chain: {
+      now: () => operatorLucid.slotToUnixTime(operatorLucid.currentSlot()),
+      awaitSlot: async (slots) => {
+        const targetSlot = operatorLucid.currentSlot() + slots;
+        await pause(slots * customNetwork.slotConfig.slotLength);
+        // Lower validity bounds are checked against the ledger tip, so a
+        // block gap would otherwise reject a transaction due by the clock.
+        await awaitLedgerTipSlot({
+          targetSlot,
+          readTipSlot: () => readOgmiosTipSlot(ogmiosUrl),
+          timeoutMs: LEDGER_TIP_WAIT_MS,
+          pollMs: customNetwork.slotConfig.slotLength,
+        });
+      },
+      blockHeight: async () => {
+        const response = await fetch(ogmiosUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            method: "queryNetwork/blockHeight",
+            id: null,
+          }),
+        });
+        const { result } = (await response.json()) as { result?: unknown };
+        if (typeof result !== "number" || !Number.isSafeInteger(result))
+          throw new Error("Ogmios did not report a block height");
+        return result;
+      },
+    },
+  };
+  return {
+    runDirectory,
+    runEnv,
+    customNetwork,
+    genesisIdentitySha256: createHash("sha256")
+      .update(genesisBytes)
+      .digest("hex"),
+    kupoUrl,
+    ogmiosUrl,
+    provider,
+    accounts,
+    deployment,
+  };
+};

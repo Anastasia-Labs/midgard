@@ -3,13 +3,21 @@ import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import { ensureHash32, type Hash32 } from "./hash.js";
 import { MIDGARD_NATIVE_TX_VERSION } from "./native-constants.js";
 
+/**
+ * The wire-normative Midgard native-V1 transaction validity language.
+ *
+ * The twin is `MidgardTxValidity` in
+ * `onchain/aiken/lib/midgard/fraud-proofs/native-tx/types.ak`: a two-arm sum
+ * whose constructor order is the wire scalar, so the codes are `0`/`1` and the
+ * Plutus-data forms are `d87980`/`d87a80`. The reason a transaction is invalid
+ * is *not* carried here — it belongs to `RejectionReasonV1`
+ * (`onchain/aiken/lib/midgard/rejection-reason-v1.ak`, mirrored by
+ * `demo/midgard-sdk/src/rejection-reason.ts`), which the operator verdict
+ * carries instead.
+ */
 export const MidgardTxValidityCodes = {
   TxIsValid: 0n,
-  NonExistentInputUtxo: 1n,
-  InvalidSignature: 2n,
-  FailedScript: 3n,
-  FeeTooLow: 4n,
-  UnbalancedTx: 5n,
+  TxIsInvalid: 1n,
 } as const;
 
 export type MidgardTxValidity = keyof typeof MidgardTxValidityCodes;
@@ -92,8 +100,8 @@ export const decodeVersion = (value: unknown, fieldName: string): bigint => {
   if (version !== MIDGARD_NATIVE_TX_VERSION) {
     throw new MidgardTxCodecError(
       MidgardTxCodecErrorCodes.SchemaMismatch,
-      "Unsupported Midgard native tx version",
-      `supported=${MIDGARD_NATIVE_TX_VERSION} actual=${version}`,
+      `${fieldName} must equal ${MIDGARD_NATIVE_TX_VERSION.toString()}`,
+      `actual=${version.toString()}`,
     );
   }
   return version;

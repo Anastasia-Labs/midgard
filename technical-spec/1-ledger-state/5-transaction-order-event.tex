@@ -5,46 +5,86 @@
 \section{Transaction Order event}
 \label{h:transaction-order-event}
 
-A forced transaction set is a finite map from transaction order ID to the compact transaction order source value:
+A canonical V1 forced transaction set is a finite map from transaction order ID
+to the authenticated forced-inclusion source value:
 \begin{align*}
-    \T{ForcedTransactionSet} &\coloneq \T{Map(TxOrderId, ForcedInclusionTx)} \\
+    \T{ForcedTransactionSetV1} &\coloneq \T{Map(TxOrderId, ForcedInclusionTxV1)} \\
       &\coloneq \Bigl\{
-        (k_i: \T{TxOrderId}, v_i: \T{ForcedInclusionTx}) \mid \forall i \neq j.\; k_i \neq k_j
+        (k_i: \T{TxOrderId}, v_i: \T{ForcedInclusionTxV1}) \mid \forall i \neq j.\; k_i \neq k_j
     \Bigr\}
 \end{align*}
 
 Transaction orders are events on L1 as an alternative to the L2 transaction submission to operators.
 Similar to a deposit or withdrawal event, a transaction order in a Midgard block acknowledges that a user has created an L1 utxo at the Midgard L1 transaction order address, obligating the operator to include the given L2 transaction.
 The transaction order payload does not carry an operator validity classification.
-In turn, the operator sets \code{MidgardTxValidity} when including the order in a block.
+In turn, the operator records a typed \code{OperatorVerdictV1} when including the order in a block.
 This invalidity claim itself can then be subject to fraud proofs if the operator had stated incorrectly.
 \begingroup
 \allowdisplaybreaks{}
 \begin{align*}
-    \T{TxOrderEvent} &\coloneq \T{(TxOrderId, MidgardTxCompactWithoutValidity)} \\
+    \T{TxOrderEventV1} &\coloneq \T{(TxOrderId, TxOrderPayloadV1)} \\
     \T{TxOrderId} &\coloneq \T{OutputRef} \\
-    \T{ForcedInclusionTx} &\coloneq \left\{
+    \T{ForcedInclusionTxV1} &\coloneq \left\{
     \begin{array}{ll}
-        \T{tx\_compact} : & \T{MidgardTxCompactWithoutValidity} \\
-        \T{operator\_validity} : & \T{MidgardTxValidity}
+        \T{tx\_id} : & \T{TxId} \\
+        \T{submitted\_source} : & \T{ForcedTxProofSourceV1} \\
+        \T{verdict} : & \T{OperatorVerdictV1}
     \end{array} \right\}
 \end{align*}
 \endgroup
 
-The \code{TxOrderId} of a transaction order event corresponds to one of the inputs spent by the user in the L1 transaction that created the transaction order utxo on L1 (more specifically, it's the hash of its serialized output-reference).
+The \code{TxOrderId} of a transaction order event corresponds to one of the inputs spent by the user in the L1 transaction that created the transaction order utxo on L1 (the authentication NFT's name is derived from that reference, while the event key remains the reference itself).
 This key is needed to identify the L1 transaction order utxo, and ensure that each order is unique.
 The forced transaction source root is keyed by this L1 order identity, not by the L2 transaction ID.
 This permits multiple L1 orders for the same L2 transaction to be represented and challenged independently.
-The L2 transaction ID is derived from \code{tx\_compact.body}; it is not repeated in \code{ForcedInclusionTx}.
-The transaction validity interval is also part of the compact body, so transaction-order due checks use that validity range rather than a separate inclusion timestamp.
+The L2 transaction ID is derived from the compact transaction body and is
+repeated as \code{tx\_id} inside \code{ForcedInclusionTxV1} so the source value
+authenticates its own key-independent transaction identity.  The compact,
+witness-set, and field-length CBOR values are carried by the nested
+\code{ForcedTxProofSourceV1}; there is no alternate \code{compact\_tx} or
+\code{field\_preimage\_hashes} projection.
+The order payload is \code{TxOrderPayloadV1}\{\code{tx\_id}, \code{transaction\_commitment}, \code{submitted\_source}\}.
+The submitted full transaction is exactly the three-element array
+\code{[1, body, witness\_set]}; its compact likewise has three elements and
+no validity scalar. The submission commitment uses the domain
+\code{MidgardForcedTxProofSourceV1}. The operator's verdict is the only
+committed validity decision. Changing it preserves the original submitted
+source and transaction ID. Normal transactions retain their native encoding.
+Settlement authenticates the exact order key and unchanged submission source;
+a matching body ID alone does not authenticate substituted witnesses.
+The optimistic L1 order datum also retains a separate \code{inclusion\_time}.
+Due checks use that inclusion time and the transaction validity interval; the unresolved interval-unit conformance issue is described in \cref{h:deviations-from-cardano-transaction-types}.
 
 The effect of a valid included transaction order on a block's utxo set is identical to a valid L2 transaction request.
 It removes all of the transaction's inputs from the ledger and adds all of its outputs.
 Invalid included transaction orders are represented as forced transaction trace steps whose operator validity classification is challengeable.
 
-The current transition-trace launch gate intentionally supports only invalid/no-op forced transaction steps in production block construction.
-An operator must not commit an effectful \code{TxIsValid} forced transaction trace step until the forced-transaction ledger deltas and proof preimages needed by the one-step verifier are available.
-The Aiken transition-trace proof validator rejects the unsupported valid-forced redeemer path, so this is a fail-closed deployment restriction rather than an alternate validity rule.
+Current order authentication uses the common field-carriage mechanism rather than the retired fragment/receipt chain.
+The mint redeemer carries one \code{FieldCarriageV1} for each nonempty committed field, in ascending field-index order.
+The validator reconstructs and authenticates the compact proof source and its commitment, opens every nonempty field through \code{authenticated\_whole\_field\_view}, and checks each declared byte length.
+An empty field must declare the canonical one-byte empty encoding and consumes no carriage entry; the carriage vector must be exhausted exactly.
+
+Inline material is present in the order-authentication redeemer.
+Raw and certified material is read from prior L1 publications; the whole-field door reassembles and hashes certified chunks for this availability check.
+Availability after authentication is based on retained L1 history and content digests.
+The order datum does not retain fragment or receipt references, and spending the order does not require burning field-receipt NFTs.
+Published wallet-controlled carriage can be reclaimed by its owner; later consumers must still recover and authenticate the original bytes.
+
+This is the current implementation boundary, not maximum-shape liveness acceptance.
+The whole-field mint path still traverses variable-width field envelopes, so byte bounds alone do not establish that every admitted field shape fits the L1 execution budget.
+Release acceptance must measure or provide a bounded route for that frontier.
+
+The canonical V1 validation trace uses the same machine for normal and forced
+transactions. A valid forced transaction therefore applies the exact accepted
+ledger delta, while an invalid forced transaction commits an exact no-op.
+An operator verdict that differs from the L1-computed terminal verdict is a
+fault in either direction.
+
+Canonical V1 contains no valid-forced rejection gate. The accepted-effectful
+and rejected-no-op paths are both part of the canonical validation machine and
+are bound to the forced source, terminal verdict, and resulting ledger root.
+Activation remains fail closed until concrete validator-hash-bound release
+evidence covers both paths.
 
 \Cref{h:transaction-order} describes the lifecycle of a transaction order request in further detail.
 

@@ -6,8 +6,8 @@
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { slotToUnixTimeForLucidOrEmulatorFallback } from "@/lucid-time.js";
-import { alignUnixTimeToSlotBoundary } from "@/workers/utils/commit-end-time.js";
+import { slotToUnixTimeForLucidOrEmulatorFallback } from "../../lucid-time.js";
+import { alignUnixTimeToSlotBoundary } from "../../workers/utils/commit-end-time.js";
 
 /**
  * Resolves the current wall-clock time for the active Lucid context.

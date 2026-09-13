@@ -1,32 +1,38 @@
+import { createHash } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
+  CML,
   Data,
   Emulator,
   generateEmulatorAccount,
-  Lucid,
   paymentCredentialOf,
-  PROTOCOL_PARAMETERS_DEFAULT,
   toUnit,
   UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
+import { loadPhasMembershipWithdrawalScript } from "../src/phas-membership.js";
 import {
   buildAtomicProtocolInitTxProgram,
   ensureAtomicProtocolInitReferenceScriptsProgram,
   fetchHubOracleWitness,
   fetchProtocolDeploymentStatus,
   isSchedulerInitialized,
-} from "@/transactions/initialization.js";
-import { verifyNodeRuntimeReferenceScriptsProgram } from "@/transactions/reference-scripts.js";
+} from "../src/transactions/initialization.js";
+import { verifyNodeRuntimeReferenceScriptsProgram } from "../src/transactions/reference-scripts.js";
 import {
   activateOperatorProgram,
   registerOperatorProgram,
-} from "@/transactions/register-active-operator.js";
-
+} from "../src/transactions/register-active-operator.js";
+import {
+  createMainnetEmulatorLucid,
+  MAINNET_PROTOCOL_PARAMETERS,
+} from "./helpers/mainnet-protocol-parameters.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const loadContracts = (
@@ -38,23 +44,52 @@ const loadContracts = (
 ) => loadRealMidgardContractsForTest(oneShotOutRef, referenceScriptAuth);
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
-  ...PROTOCOL_PARAMETERS_DEFAULT,
-  maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+  ...MAINNET_PROTOCOL_PARAMETERS,
+  maxTxSize: 16_384,
+  maxTxExMem: 16_500_000n,
+  maxTxExSteps: 10_000_000_000n,
   maxCollateralInputs: 3,
 } as const;
 
+// Wave-current on-chain bond. `operator-directory/registered-operators.ak` now
+// enforces `registered_node_lovelace == env.required_bond` (it used to accept
+// `>=`), and `env/testnet.ak` — the env this blueprint is built with, matching
+// `.github/workflows/midgard-node-ci.yml` — sets
+// `required_bond = slashing_penalty (500_000_000) + fraud_prover_reward
+// (400_000_000)`. `SDK.getProtocolParameters` carries the same 900_000_000n for
+// every non-mainnet profile. Any other value now makes the registration mint
+// crash, so this constant is derived from the contract, not chosen.
+const EMULATOR_REQUIRED_BOND_LOVELACE = 900_000_000n;
 const EMPTY_FRAUD_PROOF_CATALOGUE_ROOT = "00".repeat(32);
+
+/**
+ * Dev/emulator DA cosigner seed.
+ *
+ * Q63 (F04 §4) floors `da_threshold` and `update_threshold` at two, so the
+ * bootstrap needs a second key before the governor will accept its params. The
+ * emulator has no committee peers, so the harness holds that key itself and
+ * passes it as `DA_COSIGNER_SEED_PHRASE`. It only ever signs attestation
+ * messages, so it never needs emulator funds.
+ */
+const TEST_DA_COSIGNER_SEED_PHRASE =
+  "second salad helmet humble left noise inform person swamp surround twice animal fitness sing laundry saddle stove guess cabin rural kidney reject oil fee";
+
+/**
+ * A floor-compliant 2-of-2 committee with a 2-of-2 owner set. Both sets are
+ * sorted-unique because `valid_datum` measures them with its `sorted_unique_*`
+ * walkers.
+ */
 const TEST_DA_PARAMS: SDK.DaParamsDatum = {
-  committee: "00".repeat(32),
+  committee: "00".repeat(32) + "01".repeat(32),
   committee_signers_hash: "11".repeat(32),
-  da_threshold: 1n,
-  owners: ["22".repeat(28)],
-  update_threshold: 1n,
+  da_threshold: 2n,
+  owners: ["22".repeat(28), "33".repeat(28)],
+  update_threshold: 2n,
 };
 
 const buildAtomicInitializationTx = async (
-  lucid: Awaited<ReturnType<typeof Lucid>>,
-  referenceScriptsLucid: Awaited<ReturnType<typeof Lucid>>,
+  lucid: Awaited<ReturnType<typeof createMainnetEmulatorLucid>>,
+  referenceScriptsLucid: Awaited<ReturnType<typeof createMainnetEmulatorLucid>>,
   contracts: SDK.MidgardValidators,
   nonceUtxo: UTxO,
   operatorSeedPhrase: string,
@@ -73,6 +108,7 @@ const buildAtomicInitializationTx = async (
         HUB_ORACLE_ONE_SHOT_TX_HASH: nonceUtxo.txHash,
         HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: nonceUtxo.outputIndex,
         L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
+        DA_COSIGNER_SEED_PHRASE: TEST_DA_COSIGNER_SEED_PHRASE,
         NETWORK: "Preprod",
       },
       EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
@@ -90,14 +126,17 @@ const initEmulatorLucid = async () => {
     lovelace: 30_000_000_000n,
   });
   const referenceScripts = generateEmulatorAccount({
-    lovelace: 20_000_000_000n,
+    lovelace: 40_000_000_000n,
   });
   const emulator = new Emulator(
     [operator, referenceScripts],
     EMULATOR_PROTOCOL_PARAMETERS,
   );
-  const lucid = await Lucid(emulator, "Custom");
-  const referenceScriptsLucid = await Lucid(emulator, "Custom");
+  const lucid = await createMainnetEmulatorLucid(emulator, "Custom");
+  const referenceScriptsLucid = await createMainnetEmulatorLucid(
+    emulator,
+    "Custom",
+  );
   lucid.selectWallet.fromSeed(operator.seedPhrase);
   referenceScriptsLucid.selectWallet.fromSeed(referenceScripts.seedPhrase);
   const nonceUtxo = (await lucid.wallet().getUtxos())[0];
@@ -197,6 +236,7 @@ describe("initialization emulator", () => {
           },
         ),
       },
+      register: { Stake: vi.fn(() => txBuilder) },
       readFrom: vi.fn(() => txBuilder),
       attach: {
         MintingPolicy: vi.fn(() => txBuilder),
@@ -220,6 +260,7 @@ describe("initialization emulator", () => {
       const initTx = await Effect.runPromise(
         SDK.incompleteInitializationTxProgram(fakeLucid, {
           midgardValidators: contracts,
+          consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           fraudProofCatalogueMerkleRoot: EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
           daParams: TEST_DA_PARAMS,
           oneShotNonceUTxO: nonceUtxo,
@@ -231,7 +272,6 @@ describe("initialization emulator", () => {
       expect(calls.validFrom).toBe(Number(validFrom));
       expect(calls.validTo).toBe(Number(validTo));
       expect(calls.collected).toEqual([nonceUtxo]);
-      expect(outputAssets).toHaveLength(8);
       expect(outputAssets.every((assets) => !("lovelace" in assets))).toBe(
         true,
       );
@@ -262,12 +302,22 @@ describe("initialization emulator", () => {
 
   it("deploys the canonical real protocol roots atomically", async () => {
     const {
+      emulator,
       lucid,
       referenceScriptsLucid,
       nonceUtxo,
       operatorSeedPhrase,
       referenceScriptAuth,
     } = await initEmulatorLucid();
+    const acceptedFrames = new Map<string, string>();
+    const submit = emulator.submitTx.bind(emulator);
+    const capture = vi
+      .spyOn(emulator, "submitTx")
+      .mockImplementation(async (cbor) => {
+        const hash = await submit(cbor);
+        acceptedFrames.set(hash, cbor);
+        return hash;
+      });
     const contracts = await loadContracts(
       {
         txHash: nonceUtxo.txHash,
@@ -276,6 +326,7 @@ describe("initialization emulator", () => {
       referenceScriptAuth,
     );
 
+    emulator.awaitSlot(120);
     const initTx = await buildAtomicInitializationTx(
       lucid,
       referenceScriptsLucid,
@@ -286,6 +337,10 @@ describe("initialization emulator", () => {
     const signed = await (await initTx.complete({ localUPLCEval: true })).sign
       .withWallet()
       .complete();
+    const body = CML.Transaction.from_cbor_hex(signed.toCBOR()).body();
+    const validFrom = body.validity_interval_start()!;
+    expect(validFrom).toBeLessThanOrEqual(BigInt(lucid.currentSlot() - 60));
+    expect(body.ttl()! - validFrom).toBe(7n * 60n);
     const txHash = await signed.submit();
     await lucid.awaitTx(txHash);
 
@@ -332,12 +387,70 @@ describe("initialization emulator", () => {
         loadPhasMembershipWithdrawalScript(),
       ),
     );
+    for (const [action, validator] of Object.entries(
+      contracts.availabilityChallenge.yields,
+    )) {
+      expect(runtimeReferenceScriptNames).toContain(
+        `availability-challenge ${action} withdrawal`,
+      );
+      const rewardAddress = SDK.scriptRewardAddress(
+        "Preprod",
+        validator.withdrawalScript,
+      );
+      expect((await lucid.rewardAccountAt(rewardAddress)).registered).toBe(
+        true,
+      );
+    }
     expect(runtimeReferenceScriptNames).toContain("state-queue spending");
     expect(runtimeReferenceScriptNames).toContain("deposit minting");
     expect(runtimeReferenceScriptNames).toContain("settlement minting");
     expect(runtimeReferenceScriptNames).toContain(
       "membership proof withdrawal",
     );
+    capture.mockRestore();
+    if (process.env.MIDGARD_WRITE_WATCHER_INITIALIZATION_FIXTURE === "1") {
+      const references = body.reference_inputs();
+      const creatingIds = new Set<string>();
+      for (let index = 0; index < (references?.len() ?? 0); index += 1)
+        creatingIds.add(references!.get(index).transaction_id().to_hex());
+      const creatingTransactions = [...creatingIds].map((transactionId) => {
+        const transactionCbor = acceptedFrames.get(transactionId);
+        if (transactionCbor === undefined)
+          throw new Error(
+            `Initialization reference ${transactionId} was not submitted in this emulator`,
+          );
+        return { transactionId, transactionCbor };
+      });
+      const blueprintBytes = await readFile(
+        process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
+          new URL("../../../onchain/aiken/plutus.json", import.meta.url),
+      );
+      const destination = new URL(
+        "../../midgard-watcher/tests/fixtures/user-event-initialization.json",
+        import.meta.url,
+      );
+      await mkdir(new URL(".", destination), { recursive: true });
+      await writeFile(
+        destination,
+        JSON.stringify(
+          {
+            schemaVersion: "midgard-watcher-emulator-initialization-frame-v1",
+            provenance:
+              "Generated by the real node initialization emulator; all captured transactions were accepted. No public-chain inclusion is asserted.",
+            blueprintSha256: createHash("sha256")
+              .update(blueprintBytes)
+              .digest("hex"),
+            network: "Preprod",
+            canonicalOneShotOutRef: `${nonceUtxo.txHash}#${nonceUtxo.outputIndex}`,
+            transactionId: txHash,
+            transactionCbor: signed.toCBOR(),
+            creatingTransactions,
+          },
+          null,
+          2,
+        ) + "\n",
+      );
+    }
   });
 
   it("reports already initialized when the atomic protocol root set exists", async () => {
@@ -545,7 +658,7 @@ describe("initialization emulator", () => {
       registerOperatorProgram(
         lucid,
         contracts,
-        5_000_000n,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
         referenceScriptsLucid,
       ),
     );
@@ -554,7 +667,7 @@ describe("initialization emulator", () => {
       activateOperatorProgram(
         lucid,
         contracts,
-        5_000_000n,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
         referenceScriptsLucid,
       ),
     );

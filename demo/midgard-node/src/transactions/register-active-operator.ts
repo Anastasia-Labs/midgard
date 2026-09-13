@@ -6,7 +6,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   activateLayoutToLogString,
-  activeAppendAnchorWitness,
   getAssetNameByPolicy,
   nodeKeyEquals,
   type NodeWithDatum,
@@ -25,32 +24,37 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { Lucid, MidgardContracts, NodeConfig } from "@/services/index.js";
+import {
+  configuredContractDeploymentInfoPath,
+  readFinalizedDeploymentIdentity,
+  verifyConfiguredDeploymentManifestProgram,
+} from "../commands/contract-deployment-info.js";
+import { Lucid, MidgardContracts } from "../services/index.js";
+import { compareOutRefs } from "../tx-context.js";
+import { alignedUnixTimeStrictlyAfter } from "../workers/utils/commit-end-time.js";
 import {
   referenceScriptTargetsByCommand,
   resolveReferenceScriptTargetsProgram,
   resolveSpendableWalletUtxos,
   selectWalletFundingUtxos,
   utxoOutRefKey,
-} from "@/transactions/reference-scripts.js";
+} from "./reference-scripts.js";
 import {
   alignUnixTimeMsToSlotBoundary,
   currentTimeMsForLucidOrEmulatorFallback,
   resolveCurrentTimeMs,
-} from "@/transactions/register-active-operator/clock.js";
+} from "./register-active-operator/clock.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
-} from "@/transactions/utils.js";
-import { compareOutRefs } from "@/tx-context.js";
-import { alignedUnixTimeStrictlyAfter } from "@/workers/utils/commit-end-time.js";
-export type { ReferenceScriptCommandName } from "@/transactions/reference-scripts.js";
+} from "./utils.js";
+export type { ReferenceScriptCommandName } from "./reference-scripts.js";
 export {
   deployReferenceScriptCommandProgram,
   REFERENCE_SCRIPT_COMMAND_NAMES,
-} from "@/transactions/reference-scripts.js";
+} from "./reference-scripts.js";
 
 const REGISTERED_ACTIVATION_DELAY_MS = 30n;
 const ACTIVATION_VALIDITY_WINDOW_MS = 120_000n;
@@ -93,8 +97,8 @@ type OperatorLifecycleMode =
 const summarizeOnChainScriptFailure = (cause: unknown): string | null => {
   const message = String(cause);
   const scriptHashMatch = message.match(/ScriptHash[^0-9a-f]*([0-9a-f]{56})/i);
-  const scriptInfoMatch = message.match(/ScriptInfo:\\s*([^\\\\n\"]+)/i);
-  const reasonMatch = message.match(/Caused by:\\s*([^\\\\n\"]+)/i);
+  const scriptInfoMatch = message.match(/ScriptInfo:\\s*([^\\\\n"]+)/i);
+  const reasonMatch = message.match(/Caused by:\\s*([^\\\\n"]+)/i);
   const txIdMatch = message.match(/TxId:\\s*([0-9a-f]{64})/i);
   if (
     scriptHashMatch === null &&
@@ -431,6 +435,16 @@ const toLifecycleResult = (
     return txHashes;
   });
 
+/**
+ * Activation on behalf of another operator. On-chain activation is
+ * permissionless, so the wallet behind `lucid` only pays the fee while the
+ * registered bond moves into the activated node unchanged. Registration and
+ * deregistration still require the operator's own wallet.
+ */
+type PermissionlessActivation = {
+  readonly operatorKeyHash: string;
+};
+
 const operatorLifecycleProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -438,6 +452,7 @@ const operatorLifecycleProgram = (
   mode: OperatorLifecycleMode,
   referenceScriptsLucid: LucidEvolution = lucid,
   referenceScriptsAddress?: string,
+  permissionlessActivation?: PermissionlessActivation,
 ): Effect.Effect<
   OperatorLifecycleTxHashes,
   | SDK.StateQueueError
@@ -447,7 +462,18 @@ const operatorLifecycleProgram = (
   | TxSubmitError
 > =>
   Effect.gen(function* () {
-    const operatorKeyHash = yield* getOperatorKeyHash(lucid);
+    if (permissionlessActivation !== undefined && mode !== "activate-only") {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Permissionless operator activation supports only the activate-only lifecycle mode",
+          cause: mode,
+        }),
+      );
+    }
+    const operatorKeyHash =
+      permissionlessActivation?.operatorKeyHash ??
+      (yield* getOperatorKeyHash(lucid));
     const usesWallClockTime = lucid.config().network === "Custom";
     const hubOracleRefInput = yield* fetchHubOracleRefInput(lucid, contracts);
     const hubOracleDatum = yield* decodeHubOracleDatum(hubOracleRefInput);
@@ -1021,16 +1047,16 @@ const operatorLifecycleProgram = (
       );
     }
 
-    const activeAppendAnchor = activeNodes.find(({ datum }) =>
-      activeAppendAnchorWitness(datum, operatorKeyHash),
+    const activeInsertionAnchor = activeNodes.find(({ datum }) =>
+      orderedNotMemberWitness(datum, operatorKeyHash),
     );
-    if (activeAppendAnchor === undefined) {
+    if (activeInsertionAnchor === undefined) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
           message:
-            "Failed to find active-operators append anchor for activation",
+            "Failed to find active-operators ordered insertion anchor for activation",
           cause:
-            "Current operator key must be lexicographically greater than the active-operators tail key",
+            "No active-operators node proves strict ordered non-membership for the operator key",
         }),
       );
     }
@@ -1166,7 +1192,7 @@ const operatorLifecycleProgram = (
         retiredNotMemberWitness: retiredNotMemberWitnessForActivate,
         registeredNode,
         registeredAnchor,
-        activeAppendAnchor,
+        activeInsertionAnchor,
         activationFundingInputs,
         validFrom,
         validTo,
@@ -1174,6 +1200,7 @@ const operatorLifecycleProgram = (
         activeNodeUnit,
         transferredOperatorAssets,
         updatedRegisteredAnchorDatum,
+        requireOperatorSignature: permissionlessActivation === undefined,
         layout,
         onLayout: (layout) => {
           activateLayout = layout;
@@ -1324,6 +1351,41 @@ export const activateOperatorProgram = (
     })),
   );
 
+/**
+ * Activate an eligible registered operator from any funded wallet. The
+ * registered node's activation time must already have elapsed unless the
+ * active set is empty; the caller's wallet pays only the fee.
+ */
+export const activateRegisteredOperatorProgram = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  requiredBondLovelace: bigint,
+  operatorKeyHash: string,
+  referenceScriptsLucid?: LucidEvolution,
+  referenceScriptsAddress?: string,
+): Effect.Effect<
+  ActivationTxHashes,
+  | SDK.StateQueueError
+  | SDK.LucidError
+  | TxConfirmError
+  | TxSignError
+  | TxSubmitError
+> =>
+  operatorLifecycleProgram(
+    lucid,
+    contracts,
+    requiredBondLovelace,
+    "activate-only",
+    referenceScriptsLucid,
+    referenceScriptsAddress,
+    { operatorKeyHash },
+  ).pipe(
+    Effect.map(({ registerTxHash, activateTxHash }) => ({
+      registerTxHash,
+      activateTxHash,
+    })),
+  );
+
 export const deregisterOperatorProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -1351,15 +1413,35 @@ export const deregisterOperatorProgram = (
     })),
   );
 
+const configuredReleaseRequiredBondProgram = Effect.gen(function* () {
+  const verification = yield* verifyConfiguredDeploymentManifestProgram;
+  if (!verification.ok) {
+    return yield* Effect.fail(
+      new Error(
+        `Operator lifecycle refused deployment manifest drift: ${verification.mismatches.join("; ")}`,
+      ),
+    );
+  }
+  const identity = yield* Effect.try({
+    try: () =>
+      readFinalizedDeploymentIdentity(configuredContractDeploymentInfoPath()),
+    catch: (cause) =>
+      new Error(
+        `Failed to load finalized deployment economics: ${String(cause)}`,
+      ),
+  });
+  return BigInt(identity.manifest.economics.requiredBondLovelace);
+});
+
 export const program = Effect.gen(function* () {
   const lucidService = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const nodeConfig = yield* NodeConfig;
+  const requiredBondLovelace = yield* configuredReleaseRequiredBondProgram;
   yield* lucidService.switchToOperatorsMainWallet;
   return yield* registerAndActivateOperatorProgram(
     lucidService.api,
     contracts,
-    nodeConfig.OPERATOR_REQUIRED_BOND_LOVELACE,
+    requiredBondLovelace,
     lucidService.referenceScriptsApi,
     lucidService.referenceScriptsAddress,
   );
@@ -1368,12 +1450,12 @@ export const program = Effect.gen(function* () {
 export const activateProgram = Effect.gen(function* () {
   const lucidService = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const nodeConfig = yield* NodeConfig;
+  const requiredBondLovelace = yield* configuredReleaseRequiredBondProgram;
   yield* lucidService.switchToOperatorsMainWallet;
   return yield* activateOperatorProgram(
     lucidService.api,
     contracts,
-    nodeConfig.OPERATOR_REQUIRED_BOND_LOVELACE,
+    requiredBondLovelace,
     lucidService.referenceScriptsApi,
     lucidService.referenceScriptsAddress,
   );

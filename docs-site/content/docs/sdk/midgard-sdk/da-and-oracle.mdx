@@ -4,17 +4,21 @@ description: "Building data-availability attestation/payload, hub-oracle, initia
 ---
 
 These modules cover data availability, the hub oracle, and protocol bootstrap/escape
-flows. As elsewhere in `midgard-sdk`, each module exports its datum/redeemer Schema
-types together with the transaction-builder programs.
+flows. Datum/redeemer schemas use Lucid `Data`; transaction programs and payload
+codecs are separate APIs.
 
 ## Data availability
 
 - **`da-attestation`**: build DA attestation transactions recording that block data is
   available. Exports `DaParamsDatum`, `DaAttestationDatum`, and constants such as
-  `DA_ATTESTATION_ASSET_NAME_PREFIX`, `DA_ATTESTATION_MESSAGE_PREFIX`, and
+  `DA_ATTESTATION_ASSET_NAME_PREFIX` and
   `EMPTY_ATTESTED_SIGNER_BITMAP`. Enforced on L1 by the
   [`da-attestation` validator](/docs/onchain/da-validators).
-- **`da-payload`**: build and handle the DA payload transactions.
+- **`da-payload`**: encode/decode retained payloads and validation witnesses;
+  this is payload data, not an L1 transaction builder.
+- **`availability-challenge`**: typed availability commitments, status, bond and
+  challenge schemas used by the attestation lifecycle. Deployment acceptance is
+  separate from the presence of these SDK types.
 
 ## Hub oracle and bootstrap
 
@@ -23,10 +27,11 @@ types together with the transaction-builder programs.
   helpers, `utxosToHubOracleUTxOs`, and `incompleteHubOracleInitTxProgram`.
 - **`initialization`**: one-time protocol initialization, via
   `incompleteInitializationTxProgram` and `unsignedInitializationTx`.
-- **`escape-hatch`**: the escape-hatch flow that lets users exit if operators stall.
+- **`escape-hatch`**: currently only the `ESCAPE_HATCH_ASSET_NAME` constant.
+  It does not implement a user force-exit or operator-halt recovery flow.
 
 ## Related
 
 - Implementation: [DA committee node](/docs/watchers/da-committee-node)
-- Node commands: `da-attested`, `prepare-hub-oracle-one-shot-nonce`, `init`, see the
+- Node reconciliation: `reconcile da-attested`; commands: `prepare-hub-oracle-one-shot-nonce`, `init`, see the
   [CLI reference](/docs/operators/node/cli-reference)

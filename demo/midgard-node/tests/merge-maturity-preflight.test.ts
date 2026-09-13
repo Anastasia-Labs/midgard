@@ -1,15 +1,16 @@
 import "./utils.js";
 
+import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Globals, NodeConfig } from "@/services/index.js";
-import { Lucid as LucidService } from "@/services/lucid.js";
-import { MidgardContracts } from "@/services/midgard-contracts.js";
+import { Globals, NodeConfig } from "../src/services/index.js";
+import { Lucid as LucidService } from "../src/services/lucid.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.js";
 import type {
   StateQueueSnapshot,
   StateQueueSnapshotReason,
-} from "@/services/state-queue-topology.js";
+} from "../src/services/state-queue-topology.js";
 
 const fetchStateQueueSnapshotProgramMock = vi.hoisted(() => vi.fn());
 const buildAndSubmitMergeTxMock = vi.hoisted(() => vi.fn());
@@ -18,16 +19,18 @@ const fetchCanonicalMergeCandidateReadinessMock = vi.hoisted(() => vi.fn());
 const tryWithLeaseMock = vi.hoisted(() => vi.fn());
 const revalidateMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/services/state-queue-topology.js", async (importOriginal) => {
+vi.mock("../src/services/state-queue-topology.js", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/services/state-queue-topology.js")>();
+    await importOriginal<
+      typeof import("../src/services/state-queue-topology.js")
+    >();
   return {
     ...actual,
     fetchStateQueueSnapshotProgram: fetchStateQueueSnapshotProgramMock,
   };
 });
 
-vi.mock("@/transactions/state-queue/merge-to-confirmed-state.js", () => ({
+vi.mock("../src/transactions/state-queue/merge-to-confirmed-state.js", () => ({
   buildAndSubmitMergeTx: buildAndSubmitMergeTxMock,
   captureMergeLocalLedgerGate: captureMergeLocalLedgerGateMock,
   fetchCanonicalMergeCandidateReadiness:
@@ -49,7 +52,7 @@ vi.mock("@/transactions/state-queue/merge-to-confirmed-state.js", () => ({
   }),
 }));
 
-vi.mock("@/database/index.js", async () => {
+vi.mock("../src/database/index.js", async () => {
   const { Effect: EffectModule } = await import("effect");
   return {
     MempoolDB: {
@@ -69,8 +72,8 @@ vi.mock("@/database/index.js", async () => {
   };
 });
 
-import { mergeAction, type MergeActionResult } from "@/fibers/merge.js";
-import { slotAwareDueWorkRegistry } from "@/fibers/slot-aware-due-work.js";
+import { mergeAction, type MergeActionResult } from "../src/fibers/merge.js";
+import { slotAwareDueWorkRegistry } from "../src/fibers/slot-aware-due-work.js";
 
 const fakeContracts = {
   stateQueue: {
@@ -133,16 +136,15 @@ const makeCandidate = (
     status === "skipped_oldest_block_not_mature"
       ? readyAfterUnixTime - 1_000
       : readyAfterUnixTime;
-  const currentDaAttestation =
+  const currentDaAvailability: SDK.DaAvailabilityStateQueueStatus =
     status === "skipped_oldest_block_unattested"
-      ? "11".repeat(28)
-      : "22".repeat(28);
+      ? SDK.NO_DA_ATTESTATION
+      : { Published: { terminal_commitment: "22".repeat(32) } };
   const firstBlockOutRef = `${identitySuffix.repeat(64).slice(0, 64)}#0`;
   const candidateIdentity = [
     firstBlockOutRef,
     headerHash,
-    currentDaAttestation,
-    "22".repeat(28),
+    SDK.daAvailabilityStateQueueStatusIdentity(currentDaAvailability),
     readyAfterUnixTime.toString(),
   ].join("|");
   return {
@@ -158,12 +160,11 @@ const makeCandidate = (
         status === "ready"
           ? `header=${headerHash}`
           : status === "skipped_oldest_block_unattested"
-            ? `header=${headerHash},current_da_attestation=${currentDaAttestation},required_da_attestation=${"22".repeat(28)}`
+            ? `header=${headerHash},current_da_availability=Unattested,required_da_availability=Attested|Published`
             : `header=${headerHash},ready_after=${readyAfterUnixTime.toString()},now=${nowUnixTime.toString()}`,
       firstBlockOutRef,
       candidateIdentity,
-      currentDaAttestation,
-      requiredDaAttestation: "22".repeat(28),
+      currentDaAvailability,
       validFromUnixTime: readyAfterUnixTime - 20_000,
       readyAfterUnixTime,
       nowUnixTime,
@@ -281,7 +282,12 @@ describe("merge maturity semantic preflight", () => {
 
     expect(result).toMatchObject({
       status: "skipped_oldest_block_unattested",
-      reason: expect.stringContaining("current_da_attestation="),
+      // The state-queue node's `da_attestation` is the
+      // `DaAvailabilityStateQueueStatus` enum now, so
+      // `classifyOldestQueuedBlockReadiness` reports the decoded availability
+      // kind under `current_da_availability=` (see `makeCandidate` above,
+      // which already builds the wave-current reason string).
+      reason: expect.stringContaining("current_da_availability="),
     });
     expect(tryWithLeaseMock).not.toHaveBeenCalled();
     expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();

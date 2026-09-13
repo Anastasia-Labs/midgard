@@ -8,23 +8,23 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { outputReferenceFromUTxO } from "@/common.js";
+import { outputReferenceFromUTxO } from "./common.js";
 import {
   type ActivateRedeemerLayout,
   type NodeWithDatum,
   type ReferenceScriptPublication,
   type RegisterRedeemerLayout,
-} from "@/operator-lifecycle/layout.js";
-import * as SDK from "@/operator-lifecycle/primitives.js";
+} from "./operator-lifecycle/layout.js";
+import * as SDK from "./operator-lifecycle/primitives.js";
 import {
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
-} from "@/tx-context-redeemer.js";
-import { outputDatumCborMatches } from "@/tx-output-utils.js";
+} from "./tx-context-redeemer.js";
+import { outputDatumCborMatches } from "./tx-output-utils.js";
 
-export * from "@/operator-lifecycle/layout.js";
+export * from "./operator-lifecycle/layout.js";
 
 const ACTIVE_OPERATOR_LIST_STATE_TRANSITION_REDEEMER = LucidData.to(
   "ListStateTransition",
@@ -271,7 +271,7 @@ export type ActivateOperatorTxConfig = {
   readonly retiredNotMemberWitness: NodeWithDatum;
   readonly registeredNode: NodeWithDatum;
   readonly registeredAnchor: NodeWithDatum;
-  readonly activeAppendAnchor: NodeWithDatum;
+  readonly activeInsertionAnchor: NodeWithDatum;
   readonly activationFundingInputs: readonly UTxO[];
   readonly validFrom: bigint;
   readonly validTo?: bigint;
@@ -279,6 +279,15 @@ export type ActivateOperatorTxConfig = {
   readonly activeNodeUnit: string;
   readonly transferredOperatorAssets: Assets;
   readonly updatedRegisteredAnchorDatum: SDK.LinkedListNodeView;
+  /**
+   * Activation is permissionless on-chain: neither operator-directory
+   * validator checks a signature for `ActivateOperator`. The operator's own
+   * node still requires its key by default so an operator-run activation
+   * cannot be replayed by a stranger's wallet snapshot; a third party that
+   * activates an eligible registration on the operator's behalf sets this to
+   * `false` and only pays the fee.
+   */
+  readonly requireOperatorSignature?: boolean;
   readonly layout?: ActivateRedeemerLayout;
   readonly onLayout?: (layout: ActivateRedeemerLayout) => void;
 };
@@ -353,7 +362,7 @@ const deriveActivateLayoutFromContext = ({
         address: config.contracts.activeOperators.spendingScriptAddress,
         datum: updatedActiveAnchorDatumCbor,
         unit: requirePolicyNftUnit(
-          config.activeAppendAnchor.utxo.assets,
+          config.activeInsertionAnchor.utxo.assets,
           config.contracts.activeOperators.policyId,
           "operator activation active anchor assets",
         ),
@@ -367,13 +376,13 @@ export const buildActivateOperatorTx = (
 ): TxBuilder => {
   const activatedNodeDatum: SDK.LinkedListNodeView = {
     key: { Key: { key: config.operatorKeyHash } },
-    next: config.activeAppendAnchor.datum.next,
+    next: config.activeInsertionAnchor.datum.next,
     data: encodeActiveOperatorDatumValue(
       null,
     ) as SDK.LinkedListNodeView["data"],
   };
   const updatedActiveAnchorDatum: SDK.LinkedListNodeView = {
-    ...config.activeAppendAnchor.datum,
+    ...config.activeInsertionAnchor.datum,
     next: { Key: { key: config.operatorKeyHash } },
   };
   const activatedNodeDatumCbor = encodeLinkedListNodeView(activatedNodeDatum);
@@ -411,8 +420,8 @@ export const buildActivateOperatorTx = (
           registered_operators_redeemer_index:
             layout.registeredOperatorsRedeemerIndex,
           active_operators_set_was_empty:
-            config.activeAppendAnchor.datum.key === "Empty" &&
-            config.activeAppendAnchor.datum.next === "Empty",
+            config.activeInsertionAnchor.datum.key === "Empty" &&
+            config.activeInsertionAnchor.datum.next === "Empty",
         },
       },
       SDK.ActiveOperatorMintRedeemer,
@@ -458,7 +467,7 @@ export const buildActivateOperatorTx = (
       LucidData.void(),
     )
     .collectFrom(
-      [config.activeAppendAnchor.utxo],
+      [config.activeInsertionAnchor.utxo],
       ACTIVE_OPERATOR_LIST_STATE_TRANSITION_REDEEMER,
     )
     .readFrom([
@@ -473,7 +482,7 @@ export const buildActivateOperatorTx = (
     tx = tx.validTo(Number(config.validTo));
   }
 
-  return tx.pay
+  tx = tx.pay
     .ToContract(
       config.contracts.activeOperators.spendingScriptAddress,
       {
@@ -488,7 +497,7 @@ export const buildActivateOperatorTx = (
         kind: "inline",
         value: updatedActiveAnchorDatumCbor,
       },
-      config.activeAppendAnchor.utxo.assets,
+      config.activeInsertionAnchor.utxo.assets,
     )
     .pay.ToContract(
       config.contracts.registeredOperators.spendingScriptAddress,
@@ -497,8 +506,10 @@ export const buildActivateOperatorTx = (
         value: updatedRegisteredAnchorDatumCbor,
       },
       config.registeredAnchor.utxo.assets,
-    )
-    .addSignerKey(config.operatorKeyHash);
+    );
+  return config.requireOperatorSignature === false
+    ? tx
+    : tx.addSignerKey(config.operatorKeyHash);
 };
 
 export type DeregisterRegisteredOperatorTxConfig = {

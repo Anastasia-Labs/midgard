@@ -7,6 +7,10 @@
  */
 import { isZeroAssets, normalizeAssets } from "@al-ft/midgard-core/assets";
 import {
+  encodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardProofSubmission,
+} from "@al-ft/midgard-core/cek-proof";
+import {
   decodeMidgardAddressBytes,
   encodeMidgardAddressText,
   midgardAddressFromText,
@@ -27,7 +31,20 @@ import { Effect } from "effect";
 import {
   parseAdditionalAssetSpecs,
   parseLovelaceAmount,
-} from "@/asset-specs.js";
+} from "../asset-specs.js";
+import * as MempoolDB from "../database/mempool.js";
+import * as MempoolLedgerDB from "../database/mempoolLedger.js";
+import * as TxRejectionsDB from "../database/txRejections.js";
+import { DatabaseError } from "../database/utils/common.js";
+import {
+  ContractDeploymentIdentity,
+  Database as DatabaseService,
+  Lucid,
+  NodeConfig as NodeConfigService,
+  WriteBehind,
+} from "../services/index.js";
+import { sleep } from "../sleep.js";
+import { compareOutRefs, outRefLabel } from "../tx-context.js";
 import {
   decodeNodeUtxo,
   defaultMidgardNodeEndpoint,
@@ -38,23 +55,12 @@ import {
   parseNodeEndpoint,
   type ResolvedWalletSeedPhrase,
   walletNetworkFromId,
-} from "@/commands/command-utils.js";
+} from "./command-utils.js";
 import {
   buildTerminalDrainTx,
   buildTransferTxWithMinFee,
   type BuiltTransferTx,
-} from "@/commands/transfer-build-core.js";
-import * as MempoolDB from "@/database/mempool.js";
-import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
-import * as TxRejectionsDB from "@/database/txRejections.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import {
-  Database as DatabaseService,
-  Lucid,
-  NodeConfig as NodeConfigService,
-  WriteBehind,
-} from "@/services/index.js";
-import { compareOutRefs, outRefLabel } from "@/tx-context.js";
+} from "./transfer-build-core.js";
 
 export {
   buildTerminalDrainTx,
@@ -65,7 +71,7 @@ export {
   makeTransferMidgard,
   type PrivateKeyInput,
   type TransferNetworkName,
-} from "@/commands/transfer-build-core.js";
+} from "./transfer-build-core.js";
 
 export type SubmissionMode = "api" | "local";
 
@@ -122,9 +128,6 @@ export const FANOUT_NATIVE_TRANSFER_SUBMIT_RETRY_POLICY = {
 } as const satisfies NativeTransferSubmitRetryPolicy;
 
 class RetryableNativeTransferSubmitError extends Error {}
-
-const sleep = (delayMs: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, delayMs));
 
 const isDurableAdmissionFailure = (status: number, body: string): boolean => {
   if (status !== 500) return false;
@@ -403,6 +406,10 @@ export const submitNativeTransferTx = (
       };
       validateRetryPolicy(policy);
       const txBytes = Buffer.from(txHex, "hex");
+      const submissionBytes = encodeMidgardProofSubmission({
+        transactionCbor: txBytes,
+        programMaterial: [],
+      });
       for (let attempt = 1; attempt <= policy.maxAttempts; attempt += 1) {
         const controller =
           requestTimeoutMs === undefined ? undefined : new AbortController();
@@ -416,9 +423,9 @@ export const submitNativeTransferTx = (
             response = await fetch(`${nodeEndpoint}/submit`, {
               method: "POST",
               headers: {
-                "content-type": "application/cbor",
+                "content-type": "application/vnd.midgard.v1+cbor",
               },
-              body: txBytes,
+              body: submissionBytes,
               ...(controller === undefined
                 ? {}
                 : { signal: controller.signal }),
@@ -496,9 +503,10 @@ export const submitNativeTransferTx = (
 /**
  * Converts a built transfer into the queue-entry shape expected by validation.
  */
-const toQueuedTx = (built: BuiltTransferTx): QueuedTx => ({
+export const toQueuedTx = (built: BuiltTransferTx): QueuedTx => ({
   txId: built.txId,
   txCbor: built.txCbor,
+  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
   arrivalSeq: 0n,
   createdAt: new Date(),
 });
@@ -512,10 +520,15 @@ export const submitNativeTransferLocally = (
 ): Effect.Effect<
   { readonly txId: string; readonly status: string },
   Error | DatabaseError,
-  DatabaseService | NodeConfigService | Lucid | WriteBehind
+  | DatabaseService
+  | NodeConfigService
+  | ContractDeploymentIdentity
+  | Lucid
+  | WriteBehind
 > =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfigService;
+    const deploymentIdentity = yield* ContractDeploymentIdentity;
     const { api: lucid } = yield* Lucid;
     const phaseA = yield* runPhaseAValidation([toQueuedTx(built)], {
       expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
@@ -523,6 +536,7 @@ export const submitNativeTransferLocally = (
       minFeeB: nodeConfig.MIN_FEE_B,
       concurrency: 1,
       strictnessProfile: nodeConfig.VALIDATION_STRICTNESS_PROFILE,
+      consensusProfile: deploymentIdentity.consensusProfile,
     });
 
     const preStateEntries = yield* MempoolLedgerDB.retrieveSpendable;
@@ -592,10 +606,15 @@ const prepareL2TransferWithBuiltProgram = ({
 }): Effect.Effect<
   { readonly prepared: PreparedL2Transfer; readonly built: BuiltTransferTx },
   Error | DatabaseError,
-  DatabaseService | NodeConfigService | Lucid | WriteBehind
+  | DatabaseService
+  | NodeConfigService
+  | ContractDeploymentIdentity
+  | Lucid
+  | WriteBehind
 > =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfigService;
+    const deploymentIdentity = yield* ContractDeploymentIdentity;
     const nodeNetworkId = networkIdFromName(nodeConfig.NETWORK);
     if (config.networkId !== nodeNetworkId) {
       return yield* Effect.fail(
@@ -657,6 +676,7 @@ const prepareL2TransferWithBuiltProgram = ({
           networkId: config.networkId,
           minFeeA: nodeConfig.MIN_FEE_A,
           minFeeB: nodeConfig.MIN_FEE_B,
+          consensusProfile: deploymentIdentity.consensusProfile,
         }),
       catch: (cause) =>
         toError(cause, "Failed to build Midgard-native transfer"),
@@ -685,7 +705,11 @@ export const prepareL2TransferProgram = (args: {
 }): Effect.Effect<
   PreparedL2Transfer,
   Error | DatabaseError,
-  DatabaseService | NodeConfigService | Lucid | WriteBehind
+  | DatabaseService
+  | NodeConfigService
+  | ContractDeploymentIdentity
+  | Lucid
+  | WriteBehind
 > =>
   prepareL2TransferWithBuiltProgram(args).pipe(
     Effect.map(({ prepared }) => prepared),
@@ -693,41 +717,95 @@ export const prepareL2TransferProgram = (args: {
 
 /** Builds and signs an all-input, exact-zero source sweep without submitting. */
 export const prepareL2TerminalDrainProgram = ({
-  destinationAddress, nodeEndpoint, requestTimeoutMs, networkId, feeCap,
-  maxFeeIterations, resolvedWalletSeedPhrase, assertWalletAddress,
+  destinationAddress,
+  nodeEndpoint,
+  requestTimeoutMs,
+  networkId,
+  feeCap,
+  maxFeeIterations,
+  resolvedWalletSeedPhrase,
+  assertWalletAddress,
 }: {
-  readonly destinationAddress: string; readonly nodeEndpoint: string;
-  readonly requestTimeoutMs?: number; readonly networkId: bigint;
-  readonly feeCap?: bigint; readonly maxFeeIterations?: number;
+  readonly destinationAddress: string;
+  readonly nodeEndpoint: string;
+  readonly requestTimeoutMs?: number;
+  readonly networkId: bigint;
+  readonly feeCap?: bigint;
+  readonly maxFeeIterations?: number;
   readonly resolvedWalletSeedPhrase: ResolvedWalletSeedPhrase;
   readonly assertWalletAddress?: (walletAddress: string) => void;
-}): Effect.Effect<PreparedL2TerminalDrain, Error | DatabaseError, DatabaseService | NodeConfigService | Lucid | WriteBehind> =>
+}): Effect.Effect<
+  PreparedL2TerminalDrain,
+  Error | DatabaseError,
+  | DatabaseService
+  | NodeConfigService
+  | ContractDeploymentIdentity
+  | Lucid
+  | WriteBehind
+> =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfigService;
+    const deploymentIdentity = yield* ContractDeploymentIdentity;
     const nodeNetworkId = networkIdFromName(nodeConfig.NETWORK);
-    if (networkId !== nodeNetworkId) return yield* Effect.fail(new Error("Terminal drain network id does not match configured Midgard node network."));
+    if (networkId !== nodeNetworkId)
+      return yield* Effect.fail(
+        new Error(
+          "Terminal drain network id does not match configured Midgard node network.",
+        ),
+      );
     const wallet = yield* Effect.try({
-      try: () => walletFromSeed(resolvedWalletSeedPhrase.seedPhrase, { network: walletNetworkFromId(networkId) }),
-      catch: (cause) => toError(cause, "Failed to derive terminal drain wallet"),
+      try: () =>
+        walletFromSeed(resolvedWalletSeedPhrase.seedPhrase, {
+          network: walletNetworkFromId(networkId),
+        }),
+      catch: (cause) =>
+        toError(cause, "Failed to derive terminal drain wallet"),
     });
     const senderAddress = wallet.address;
     yield* Effect.sync(() => assertWalletAddress?.(senderAddress));
-    if (BigInt(getAddressDetails(destinationAddress).networkId) !== networkId) return yield* Effect.fail(new Error("Terminal drain destination network id mismatch."));
-    const availableUtxos = yield* fetchNodeUtxos(nodeEndpoint, senderAddress, requestTimeoutMs);
-    if (availableUtxos.length === 0) return yield* Effect.fail(new Error("No Midgard L2 UTxOs found for terminal drain source " + senderAddress + "."));
+    if (BigInt(getAddressDetails(destinationAddress).networkId) !== networkId)
+      return yield* Effect.fail(
+        new Error("Terminal drain destination network id mismatch."),
+      );
+    const availableUtxos = yield* fetchNodeUtxos(
+      nodeEndpoint,
+      senderAddress,
+      requestTimeoutMs,
+    );
+    if (availableUtxos.length === 0)
+      return yield* Effect.fail(
+        new Error(
+          "No Midgard L2 UTxOs found for terminal drain source " +
+            senderAddress +
+            ".",
+        ),
+      );
     const built = yield* Effect.tryPromise({
-      try: () => buildTerminalDrainTx({
-        senderAddress, destinationAddress, signer: wallet.paymentKey, availableUtxos,
-        network: nodeConfig.NETWORK, networkId, minFeeA: nodeConfig.MIN_FEE_A, minFeeB: nodeConfig.MIN_FEE_B,
-        ...(feeCap === undefined ? {} : { feeCap }),
-        ...(maxFeeIterations === undefined ? {} : { maxFeeIterations }),
-      }),
-      catch: (cause) => toError(cause, "Failed to build terminal drain transaction"),
+      try: () =>
+        buildTerminalDrainTx({
+          senderAddress,
+          destinationAddress,
+          signer: wallet.paymentKey,
+          availableUtxos,
+          network: nodeConfig.NETWORK,
+          networkId,
+          minFeeA: nodeConfig.MIN_FEE_A,
+          minFeeB: nodeConfig.MIN_FEE_B,
+          consensusProfile: deploymentIdentity.consensusProfile,
+          ...(feeCap === undefined ? {} : { feeCap }),
+          ...(maxFeeIterations === undefined ? {} : { maxFeeIterations }),
+        }),
+      catch: (cause) =>
+        toError(cause, "Failed to build terminal drain transaction"),
     });
     return {
-      txId: built.txIdHex, signedTxCbor: built.txHex, senderAddress, destinationAddress,
+      txId: built.txIdHex,
+      signedTxCbor: built.txHex,
+      senderAddress,
+      destinationAddress,
       selectedInputs: built.selectedInputs.map(outRefLabel),
-      requestedLovelace: built.requestedAssets.lovelace ?? 0n, feeLovelace: built.fee,
+      requestedLovelace: built.requestedAssets.lovelace ?? 0n,
+      feeLovelace: built.fee,
       signedTxBytes: built.txCbor.length,
     };
   });
@@ -746,7 +824,11 @@ export const submitL2TransferProgram = ({
 }): Effect.Effect<
   SubmitL2TransferResult,
   Error | DatabaseError,
-  DatabaseService | NodeConfigService | Lucid | WriteBehind
+  | DatabaseService
+  | NodeConfigService
+  | ContractDeploymentIdentity
+  | Lucid
+  | WriteBehind
 > =>
   Effect.gen(function* () {
     const { prepared, built } = yield* prepareL2TransferWithBuiltProgram({

@@ -7,13 +7,13 @@ import {
   shutdownSpeculativeCommitSession,
   spawnSpeculativeSessionForTest,
   type SpeculativeCommitWorkerPort,
-} from "@/fibers/speculative-commit-builder.js";
-import type { SpeculativeCandidateSummary } from "@/fibers/speculative-commit-state.js";
+} from "../src/fibers/speculative-commit-builder.js";
+import type { SpeculativeCandidateSummary } from "../src/fibers/speculative-commit-state.js";
 import type {
   SpeculativeCommitWorkerInstruction,
   WorkerOutput,
-} from "@/workers/utils/commit-block-header.js";
-import { WorkerError } from "@/workers/utils/common.js";
+} from "../src/workers/utils/commit-block-header.js";
+import { WorkerError } from "../src/workers/utils/common.js";
 
 const candidate: SpeculativeCandidateSummary = {
   candidateId: "late-candidate",

@@ -3,7 +3,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient, SqlError } from "@effect/sql";
 import { Data, Effect } from "effect";
 
-import { Database } from "@/services/database.js";
+import { Database } from "../../services/database.js";
 
 /**
  * Shared building blocks for the Midgard node's SQL table adapters.

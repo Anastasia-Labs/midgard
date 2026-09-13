@@ -5,14 +5,17 @@ use aiken/primitive/bytearray
 use env
 use midgard/common/types.{MerkleRoot, Proof}
 use midgard/ledger_state
+use midgard/mpf_prefix_fixture as prefix_fixture
+use midgard/mpf_proof_v1 as canonical_mpf
 
 pub type RootDomain {
   WithdrawalsRootDomain
-  ForcedTransactionsRootDomain
-  TransactionsRootDomain
+  ForcedTransactionsV1RootDomain
+  TransactionsV1RootDomain
   DepositsRootDomain
   TransitionTraceRootDomain
   EventToStepRootDomain
+  ValidationTracesRootDomain
 }
 
 pub type RootCountProof {
@@ -157,8 +160,12 @@ pub fn verify_root_non_membership_raw(
   proof: Proof,
 ) -> Bool {
   expect phas_root_count_is_consistent(root, count)
-  expect _inserted =
-    mpf.insert(mpf_from_midgard_root(root), key_bytes, env.empty, proof)
+  expect
+    canonical_mpf.does_not_have(
+      mpf.root(mpf_from_midgard_root(root)),
+      key_bytes,
+      proof,
+    )
   True
 }
 
@@ -231,6 +238,7 @@ pub fn verify_indexed_trace_proof(
       cbor.serialise(witness.value),
     ),
     witness.key == witness.value.step_index,
+    ledger_state.transition_step_v1_is_valid(witness.value),
     witness.key >= 0,
     witness.key < witness.count,
   }
@@ -274,4 +282,24 @@ pub fn verify_event_to_step_proof(
         cbor.serialise(non_membership.key),
       )
   }
+}
+
+test canonical_fork_exclusion() {
+  let v = prefix_fixture.fork()
+  verify_root_non_membership_raw(v.after, 2, v.key, v.proof)
+}
+
+test canonical_leaf_exclusion() {
+  let v = prefix_fixture.leaf()
+  verify_root_non_membership_raw(v.after, 2, v.key, v.proof)
+}
+
+test canonical_fork_rejects_dropped_prefix_root() fail {
+  let v = prefix_fixture.fork()
+  verify_root_non_membership_raw(
+    prefix_fixture.dropped_fork_prefix_root,
+    2,
+    v.key,
+    v.proof,
+  )
 }

@@ -1,13 +1,14 @@
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { Option } from "effect";
 
 import {
   Columns as TxColumns,
   EntryWithTimeStamp,
-} from "@/database/utils/tx.js";
-import type { SubmitSlotSnapshot } from "@/local-ledger-slot.js";
-import { planSubmitTiming } from "@/transactions/submit-timing.js";
-import { slotAwareDueWorkFromSubmitTiming } from "@/transactions/submit-timing-due-work.js";
-import type { CommitEndTimeFit } from "@/workers/utils/commit-end-time.js";
+} from "../../database/utils/tx.js";
+import type { SubmitSlotSnapshot } from "../../local-ledger-slot.js";
+import { planSubmitTiming } from "../../transactions/submit-timing.js";
+import { slotAwareDueWorkFromSubmitTiming } from "../../transactions/submit-timing-due-work.js";
+import type { CommitEndTimeFit } from "./commit-end-time.js";
 
 export type SuccessfulCommitBatch = {
   readonly txsToInsertImmutable: readonly EntryWithTimeStamp[];
@@ -68,11 +69,12 @@ export type PlannedCommitBatchSelection = {
 };
 
 export const DEFAULT_COMMIT_BATCH_BUDGET_LIMITS: CommitBatchBudgetLimits = {
-  maxL2TxCount: 10_000,
-  maxCanonicalTxBytes: 32 * 1024 * 1024,
-  maxLedgerOpCount: 40_000,
-  maxTransitionStepCount: 40_000,
-  maxDaPayloadBytes: 64 * 1024 * 1024,
+  maxL2TxCount: MIDGARD_CONSENSUS_LIMITS.maxL2TransactionCount,
+  maxCanonicalTxBytes:
+    MIDGARD_CONSENSUS_LIMITS.maxCanonicalTransactionBytesPerBlock,
+  maxLedgerOpCount: MIDGARD_CONSENSUS_LIMITS.maxLedgerOperationCount,
+  maxTransitionStepCount: MIDGARD_CONSENSUS_LIMITS.maxTransitionStepCount,
+  maxDaPayloadBytes: MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
   maxCommitTxBytes: 128 * 1024,
   maxEstimatedCommitBuildMs: 30_000,
   estimatedLedgerOpsPerTx: 2,
@@ -113,9 +115,7 @@ export const updateCommitBuildEwma = ({
   ) {
     return clampCommitBuildMsPerTx(previousMsPerTx);
   }
-  const sample = clampCommitBuildMsPerTx(
-    measuredBuildMs / processedTxCount,
-  );
+  const sample = clampCommitBuildMsPerTx(measuredBuildMs / processedTxCount);
   return clampCommitBuildMsPerTx(
     alpha * sample + (1 - alpha) * previousMsPerTx,
   );
@@ -479,8 +479,7 @@ export const planCommitBatchBudgets = ({
     const nextPlan: CommitBatchPlan = {
       selectedTxCount,
       selectedTxBytes: nextSelectedTxBytes,
-      selectedLedgerOpCount:
-        selectedTxCount * limits.estimatedLedgerOpsPerTx,
+      selectedLedgerOpCount: selectedTxCount * limits.estimatedLedgerOpsPerTx,
       selectedTransitionStepCount:
         selectedTxCount * limits.estimatedTransitionStepsPerTx,
       estimatedDaPayloadBytes:
@@ -501,10 +500,9 @@ export const planCommitBatchBudgets = ({
     selectedTxBytes = nextSelectedTxBytes;
   }
 
-  const candidateTxs =
-    candidateSelection.candidateTxs.length > 0 && selected.length === 0
-      ? [candidateSelection.candidateTxs[0]!]
-      : selected;
+  // Empty is the only safe result when the first candidate does not fit. The
+  // former "always include one" fallback silently exceeded consensus bounds.
+  const candidateTxs = selected;
   const finalPlan = estimateCommitBatchPlan(candidateTxs, limits, stopReason);
   return {
     candidateSelection: buildCommitTxCandidateSelection(
@@ -527,7 +525,7 @@ export const planSchedulerAwareCommitSelection = ({
   currentBlockStartTimeMs,
   nowMs,
   minimumCurrentWindowBudgetMs,
-  productionMinimumFutureBufferMs,
+  productionMinimumFutureBufferMs: minimumFutureBufferMs,
   currentWindowCommitEndTimeFit,
 }: {
   readonly candidateSelection: CommitTxCandidateSelection;
@@ -581,7 +579,7 @@ export const planSchedulerAwareCommitSelection = ({
   const commitEndTimeFitExceedsSchedulerWindow =
     currentWindowCommitEndTimeFit === undefined ||
     currentWindowCommitEndTimeFit.status === "exceeds_cap" ||
-    currentWindowCommitEndTimeFit.resolvedEndTime >
+    currentWindowCommitEndTimeFit.resolvedEndTime - 1 >
       currentSchedulerWindow.endTimeMs;
   if (
     !commitEndTimeFitUsesSchedulerCap ||
@@ -596,7 +594,7 @@ export const planSchedulerAwareCommitSelection = ({
           ? currentWindowCommitEndTimeFit.reason
           : !commitEndTimeFitUsesSchedulerCap
             ? `commit_end_time_fit_cap_mismatch=${String(currentWindowCommitEndTimeFit.maximumEndTimeMs)}`
-            : "commit_end_time_fit_exceeds_scheduler_window";
+            : "commit_inclusive_end_time_fit_exceeds_scheduler_window";
     return {
       candidateSelection,
       userEventOnlyEndTime,
@@ -604,7 +602,7 @@ export const planSchedulerAwareCommitSelection = ({
       status: "current_scheduler_end_time_floor_exceeds_window",
       prunedTxCount: 0,
       originalTxCount: candidateSelection.candidateTxs.length,
-      reason: `resolved_end_time_ms=${resolvedEndTimeMs.toString()},current_scheduler_end_ms=${currentSchedulerWindow.endTimeMs.toString()},minimum_future_buffer_ms=${(productionMinimumFutureBufferMs ?? 0).toString()},remaining_current_window_ms=${remainingCurrentWindowMs.toString()},${fitReason}`,
+      reason: `resolved_valid_to_ms=${resolvedEndTimeMs.toString()},resolved_inclusive_end_time_ms=${typeof resolvedEndTimeMs === "number" ? (resolvedEndTimeMs - 1).toString() : "missing"},current_scheduler_end_ms=${currentSchedulerWindow.endTimeMs.toString()},minimum_future_buffer_ms=${(minimumFutureBufferMs ?? 0).toString()},remaining_current_window_ms=${remainingCurrentWindowMs.toString()},${fitReason}`,
     };
   }
 
@@ -630,7 +628,7 @@ export const planSchedulerAwareCommitSelection = ({
     prunedTxCount,
     originalTxCount: candidateSelection.candidateTxs.length,
     blockEndTimeCapMs: currentSchedulerWindow.endTimeMs,
-    reason: `scheduler_out_ref=${currentSchedulerWindow.schedulerOutRef},current_scheduler_end_ms=${currentSchedulerWindow.endTimeMs.toString()},resolved_end_time_ms=${currentWindowCommitEndTimeFit.resolvedEndTime.toString()},pruned_tx_count=${prunedTxCount.toString()}`,
+    reason: `scheduler_out_ref=${currentSchedulerWindow.schedulerOutRef},current_scheduler_end_ms=${currentSchedulerWindow.endTimeMs.toString()},resolved_valid_to_ms=${currentWindowCommitEndTimeFit.resolvedEndTime.toString()},resolved_inclusive_end_time_ms=${(currentWindowCommitEndTimeFit.resolvedEndTime - 1).toString()},pruned_tx_count=${prunedTxCount.toString()}`,
   };
 };
 

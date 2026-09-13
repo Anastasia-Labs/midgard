@@ -89,12 +89,11 @@ pub fn get_datum(
   scheduler_policy_id: ScriptHash,
   scheduler_ref_input_index: Int,
 ) -> SchedDatum {
-  expect scheduler_datum: SchedDatum =
-    utils.get_authentic_input_datum_with_nft_at(
-      reference_inputs,
-      scheduler_policy_id,
-      asset_name,
-      scheduler_ref_input_index,
-    )
+  expect scheduler_datum: SchedDatum = utils.get_authentic_input_datum_with_nft_at(
+    reference_inputs,
+    scheduler_policy_id,
+    asset_name,
+    scheduler_ref_input_index,
+  )
   scheduler_datum
 }

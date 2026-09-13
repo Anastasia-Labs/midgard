@@ -12,6 +12,8 @@ import {
 } from "../scripts/verify-phase4-pipelined-report.mjs";
 import {
   canonicalJsonSha256,
+  decodePhase4EnvironmentArtifactV1,
+  decodePhase4EnvironmentDocumentV1,
   PHASE4_ENVIRONMENT_ARTIFACT_SCHEMA,
 } from "../scripts/phase4-environment-fingerprint-lib.mjs";
 
@@ -20,6 +22,7 @@ const hash = (digit) => digit.repeat(64);
 const environmentFingerprint = () => {
   const document = {
     schemaVersion: "midgard-phase4-environment-v1",
+    capturedAtIso: "2026-07-14T05:00:00.000Z",
     node: {
       cpuSet: "0-7",
       nanoCpus: 4_000_000_000,
@@ -41,14 +44,28 @@ const environmentFingerprint = () => {
       memoryLimitBytes: 8_589_934_592,
     },
     provider: { kind: "Kupmios", routeSha256: hash("8") },
-    deploymentManifest: { sha256: hash("9") },
+    deploymentManifest: {
+      path: "/evidence/contract-deployment-info.json",
+      sha256: hash("9"),
+    },
     clockOffsetMs: 0,
   };
-  return {
-    path: "/evidence/environment.json",
-    sha256: hash("7"),
-    artifactSchemaVersion: PHASE4_ENVIRONMENT_ARTIFACT_SCHEMA,
+  const artifact = {
+    schemaVersion: PHASE4_ENVIRONMENT_ARTIFACT_SCHEMA,
     documentSha256: canonicalJsonSha256(document),
+    document,
+  };
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "phase4-environment-"),
+  );
+  const artifactPath = path.join(directory, "environment.json");
+  const artifactBytes = Buffer.from(`${JSON.stringify(artifact, null, 2)}\n`);
+  fs.writeFileSync(artifactPath, artifactBytes);
+  return {
+    path: artifactPath,
+    sha256: createHash("sha256").update(artifactBytes).digest("hex"),
+    artifactSchemaVersion: PHASE4_ENVIRONMENT_ARTIFACT_SCHEMA,
+    documentSha256: artifact.documentSha256,
     document,
   };
 };
@@ -64,7 +81,7 @@ const reportFixture = ({
   daQueueSlope = -0.001,
 } = {}) => ({
   benchmark: "midgard-l2-throughput",
-  version: 2,
+  version: 1,
   scenario: PHASE4_ONE_HOUR_SCENARIO,
   scenarioClass: "B",
   metadata: {
@@ -140,15 +157,65 @@ const reportFixture = ({
 });
 
 describe("Phase 4 pipelined one-hour report verifier", () => {
+  it("decodes only the exact canonical Phase 4 environment V1 artifact", () => {
+    const fingerprint = environmentFingerprint();
+    const artifact = {
+      schemaVersion: fingerprint.artifactSchemaVersion,
+      documentSha256: fingerprint.documentSha256,
+      document: fingerprint.document,
+    };
+    expect(decodePhase4EnvironmentArtifactV1(artifact)).toEqual(artifact);
+    expect(decodePhase4EnvironmentDocumentV1(artifact.document)).toEqual(
+      artifact.document,
+    );
+
+    const mutations = [
+      { ...artifact, schemaVersion: "midgard-phase4-environment-artifact-v2" },
+      { ...artifact, unexpected: true },
+      {
+        ...artifact,
+        document: { ...artifact.document, capturedAtIso: undefined },
+      },
+      {
+        ...artifact,
+        document: { ...artifact.document, capturedAtIso: "2026-07-14" },
+      },
+      {
+        ...artifact,
+        document: {
+          ...artifact.document,
+          node: { ...artifact.document.node, cpuSet: "0,1,2,3,4,5,6,7" },
+        },
+      },
+      {
+        ...artifact,
+        document: {
+          ...artifact.document,
+          provider: { ...artifact.document.provider, unknown: true },
+        },
+      },
+      {
+        schemaVersion: "midgard-phase4-local-genesis-ledger-v1",
+        documentSha256: artifact.documentSha256,
+        document: artifact.document,
+      },
+    ];
+    for (const mutation of mutations) {
+      expect(() => decodePhase4EnvironmentArtifactV1(mutation)).toThrow();
+    }
+  });
+
   it("passes the Stage C target verdict and binds the full source identity", () => {
-    const result = evaluatePhase4PipelinedReport(reportFixture());
+    const report = reportFixture();
+    const result = evaluatePhase4PipelinedReport(report);
     expect(result).toMatchObject({
       passed: true,
       verdict: "stage_c_target_met",
       artifactIdentity: {
         sourceTreeSha256: hash("4"),
         sourceTreeFileCount: 123,
-        environmentFingerprintSha256: hash("7"),
+        environmentFingerprintSha256:
+          report.config.phase4.environmentFingerprint.sha256,
       },
     });
     expect(result.metrics.stageCThroughputTps).toBeCloseTo(2_631.5789, 3);
@@ -212,6 +279,51 @@ describe("Phase 4 pipelined one-hour report verifier", () => {
     );
   });
 
+  it("fails closed on unknown, missing, and noncanonical environment fields even with an attacker-selected digest", () => {
+    const mutations = [
+      (document) => {
+        document.unknown = true;
+      },
+      (document) => {
+        delete document.capturedAtIso;
+      },
+      (document) => {
+        document.node.unknown = true;
+      },
+      (document) => {
+        document.capturedAtIso = "2026-07-14T05:00:00Z";
+      },
+      (document) => {
+        document.node.cpuSet = "0,1,2,3,4,5,6,7";
+      },
+    ];
+    for (const mutate of mutations) {
+      const report = reportFixture();
+      const fingerprint = report.config.phase4.environmentFingerprint;
+      mutate(fingerprint.document);
+      fingerprint.documentSha256 = hash("f");
+      const result = evaluatePhase4PipelinedReport(report);
+      expect(result.passed).toBe(false);
+      expect(result.reasons).toContain(
+        "Phase 4 environment fingerprint artifact is missing or invalid",
+      );
+    }
+  });
+
+  it("fails closed on an unknown, missing, or byte-unbound environment wrapper field", () => {
+    const reports = [reportFixture(), reportFixture(), reportFixture()];
+    reports[0].config.phase4.environmentFingerprint.unknown = true;
+    delete reports[1].config.phase4.environmentFingerprint.path;
+    reports[2].config.phase4.environmentFingerprint.sha256 = hash("f");
+    for (const report of reports) {
+      const result = evaluatePhase4PipelinedReport(report);
+      expect(result.passed).toBe(false);
+      expect(result.reasons).toContain(
+        "Phase 4 environment fingerprint artifact is missing or invalid",
+      );
+    }
+  });
+
   it("fails an overlapping or wrong CPU allocation", () => {
     const report = reportFixture();
     const fingerprint = report.config.phase4.environmentFingerprint;
@@ -219,7 +331,9 @@ describe("Phase 4 pipelined one-hour report verifier", () => {
     fingerprint.documentSha256 = canonicalJsonSha256(fingerprint.document);
     const result = evaluatePhase4PipelinedReport(report);
     expect(result.passed).toBe(false);
-    expect(result.reasons).toContain("node resource profile is invalid");
+    expect(result.reasons).toContain(
+      "Phase 4 environment fingerprint artifact is missing or invalid",
+    );
   });
 
   it("fails an undersized memory allocation", () => {
@@ -229,7 +343,9 @@ describe("Phase 4 pipelined one-hour report verifier", () => {
     fingerprint.documentSha256 = canonicalJsonSha256(fingerprint.document);
     const result = evaluatePhase4PipelinedReport(report);
     expect(result.passed).toBe(false);
-    expect(result.reasons).toContain("postgres resource profile is invalid");
+    expect(result.reasons).toContain(
+      "Phase 4 environment fingerprint artifact is missing or invalid",
+    );
   });
 
   it("fails a missing or incorrect CPU quota", () => {
@@ -240,7 +356,7 @@ describe("Phase 4 pipelined one-hour report verifier", () => {
     const result = evaluatePhase4PipelinedReport(report);
     expect(result.passed).toBe(false);
     expect(result.reasons).toContain(
-      "loadGenerator resource profile is invalid",
+      "Phase 4 environment fingerprint artifact is missing or invalid",
     );
   });
 

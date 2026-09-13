@@ -8,6 +8,7 @@
     "esModuleInterop": true,
     "module": "NodeNext",
     "moduleResolution": "nodenext",
+    "customConditions": ["midgard-source"],
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "noEmitOnError": true,
@@ -19,11 +20,7 @@
     "sourceMap": true,
     "strict": true,
     "target": "es2020",
-    "outDir": "dist",
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"]
-    }
+    "outDir": "dist"
   },
   "ts-node": {
     "esm": true,

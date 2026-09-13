@@ -11,7 +11,8 @@ it completely before changing live state.
 4. [DA manifests and watcher](#da-manifests-and-watcher)
 5. [Node, deposit, and L2 activity](#node-deposit-and-l2-activity)
 6. [DA, finality, and automatic merge](#da-finality-and-automatic-merge)
-7. [Final evidence](#final-evidence)
+7. [State-correction and recovery acceptance](#state-correction-and-recovery-acceptance)
+8. [Final evidence](#final-evidence)
 
 ## Shared preparation
 
@@ -20,6 +21,10 @@ Start from the repository root. Keep local Preprod provider state intact.
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 NODE_DIR="$REPO_ROOT/demo/midgard-node"
+# The e2e step runner, service supervisor, finalizer, and stress commands live
+# in the tooling binary; operator commands stay on the node's dist/index.js.
+TOOLS_DIR="$REPO_ROOT/demo/midgard-node-tools"
+TOOLS_CLI="$TOOLS_DIR/dist/index.js"
 DA_NODE_DIR="$REPO_ROOT/demo/da-committee-node"
 cd "$NODE_DIR"
 
@@ -42,11 +47,27 @@ Verify `.env` without printing seed phrases:
   and
 - `DA_LIBP2P_PRIVATE_KEY_SOURCE` matches the producer manifest identity.
 
-Build the current CLI and start only the local provider plumbing needed by host
-commands. Compose dependencies start Cardano node and bootstrap services.
+Check release readiness before submitting any deployment transaction or resetting
+state. The current source has `MIDGARD_RELEASE_EVIDENCE_DIGEST = null` in
+`demo/midgard-core/src/consensus-profile.ts`, so the assertion below fails and this
+live sequence is blocked. The dedicated public retained-DA reader enforces the
+same assertion at startup. Resume only after release evidence is accepted and
+its digest is compiled into the release; do not substitute a made-up digest or
+bypass the assertion. Passing it is a prerequisite, not proof that the remaining
+acceptance gates have passed.
+
+Build core so this check reads the current packaged source, then build the
+operator and tooling CLIs and start the local provider plumbing. Compose
+dependencies start Cardano node and bootstrap services.
 
 ```bash
+pnpm --dir "$REPO_ROOT/demo/midgard-core" build || exit 1
+node --input-type=module -e '
+  import { assertMidgardConsensusReleaseReady } from "@al-ft/midgard-core/consensus-profile";
+  assertMidgardConsensusReleaseReady();
+' || exit 1
 pnpm build
+pnpm --dir "$TOOLS_DIR" build
 $COMPOSE up -d cardano-node-ogmios kupo
 node dist/index.js l1-provider-preflight --json
 ```
@@ -100,7 +121,7 @@ The local Kupmios stack must be healthy before this transaction.
 ```bash
 HUB_ORACLE_NONCE_LOG="logs/$RUN_ID/hub-oracle-nonce.log"
 HUB_ORACLE_NONCE_STEP="$E2E_STEP_DIR/hub-oracle-nonce.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id hub-oracle-nonce \
   --cwd "$NODE_DIR" \
   --raw-log "$HUB_ORACLE_NONCE_LOG" \
@@ -150,7 +171,7 @@ deployment identity.
 ```bash
 REFERENCE_LOG="logs/$RUN_ID/reference-scripts.log"
 REFERENCE_STEP="$E2E_STEP_DIR/reference-scripts.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id reference-scripts \
   --cwd "$NODE_DIR" \
   --raw-log "$REFERENCE_LOG" \
@@ -180,7 +201,7 @@ identities.
 ```bash
 INIT_LOG="logs/$RUN_ID/init-protocol.log"
 INIT_STEP="$E2E_STEP_DIR/init-protocol.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id init-protocol \
   --cwd "$NODE_DIR" \
   --raw-log "$INIT_LOG" \
@@ -193,15 +214,15 @@ node dist/index.js e2e-run-step \
 
 INIT_TX_HASH="$(node --input-type=module -e '
   import { readFileSync } from "node:fs";
-  const summary = JSON.parse(readFileSync(process.argv[1], "utf8"));
-  const hash = summary?.parsedJson?.initTxHash
-    ?? summary?.parsedJson?.txHash
-    ?? summary?.observedTxHashes?.[0];
-  if (typeof hash !== "string" || !/^[0-9a-f]{64}$/i.test(hash)) {
-    throw new Error("init step summary contains no transaction hash");
+  const manifest = JSON.parse(readFileSync(process.argv[1], "utf8"));
+  const step = manifest.steps?.initProtocol;
+  const hash = step?.txHash;
+  if (step?.status !== "complete" || typeof hash !== "string"
+      || !/^[0-9a-f]{64}$/i.test(hash)) {
+    throw new Error("deployment manifest has no completed init transaction");
   }
   process.stdout.write(hash.toLowerCase());
-' "$INIT_STEP")"
+' deploymentInfo/contract-deployment-info.json)"
 
 node dist/index.js reconcile deployment-manifest \
   --out deploymentInfo/contract-deployment-info.json \
@@ -210,7 +231,7 @@ node dist/index.js reconcile deployment-manifest \
 
 OPERATOR_LOG="logs/$RUN_ID/operator-lifecycle.log"
 OPERATOR_STEP="$E2E_STEP_DIR/operator-lifecycle.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id operator-lifecycle \
   --cwd "$NODE_DIR" \
   --raw-log "$OPERATOR_LOG" \
@@ -226,7 +247,7 @@ that exact recovery state. Do not deregister or rewrite SQL to recover.
 
 ## DA manifests and watcher
 
-Generate three manifests from the finalized v2 contract deployment manifest:
+Generate three manifests from the finalized canonical contract deployment manifest:
 
 - a producer runtime manifest for the producer container;
 - a producer host-preflight manifest used while the producer is stopped; and
@@ -239,7 +260,7 @@ Set an explicit funded L1 submitter key source without printing it. Supported
 forms include `seed:<mnemonic>` and `file:<path-containing-a-supported-source>`.
 Keep this wallet distinct from the operator and DA signer.
 
-The command block below is the default legacy 1-of-1 profile. If `.env`
+The command block below is the local development 1-of-1 example. If `.env`
 configures a larger committee or threshold, supply one `--committee-member`
 entry per configured member, generate a target-specific watcher manifest for
 each signer, and start enough watcher instances to reach the configured
@@ -259,9 +280,12 @@ CONTRACT_INFO="$NODE_DIR/deploymentInfo/contract-deployment-info.json"
 PRODUCER_MANIFEST="$NODE_DIR/deploymentInfo/da-libp2p-producer-manifest.json"
 PRODUCER_PREFLIGHT_MANIFEST="$NODE_DIR/deploymentInfo/da-libp2p-producer-host-preflight-manifest.json"
 WATCHER_MANIFEST="$DA_NODE_DIR/run/$RUN_ID-watcher-manifest.json"
-WATCHER_DB="$DA_NODE_DIR/run/$RUN_ID-watcher-store.json"
+# Provision the committee database and a distinct SELECT-only public reader
+# as described in the DA committee guide before starting either process.
+: "${DA_COMMITTEE_DATABASE_URL:?set the committee PostgreSQL writer connection}"
 PRODUCER_LIBP2P_KEY_SOURCE="${DA_PRODUCER_LIBP2P_KEY_SOURCE:-seed:0000000000000000000000000000000000000000000000000000000000000001}"
 WATCHER_LIBP2P_KEY_SOURCE="${DA_WATCHER_LIBP2P_KEY_SOURCE:-seed:0000000000000000000000000000000000000000000000000000000000000002}"
+PUBLIC_RETAINED_LIBP2P_KEY_SOURCE="${DA_RETAINED_LIBP2P_KEY_SOURCE:?set a dedicated non-signer libp2p identity}"
 DA_THRESHOLD="${DA_THRESHOLD:-1}"
 mkdir -p "$DA_NODE_DIR/run" "$DA_NODE_DIR/db"
 
@@ -281,6 +305,7 @@ NODE
 COMMON_MANIFEST_ARGS=(
   --contract-deployment-info "$CONTRACT_INFO"
   --producer-libp2p-key-source "$PRODUCER_LIBP2P_KEY_SOURCE"
+  --public-retained-da-libp2p-key-source "$PUBLIC_RETAINED_LIBP2P_KEY_SOURCE"
   --threshold "$DA_THRESHOLD"
   --committee-member "0,$DA_VKEY,$WATCHER_LIBP2P_KEY_SOURCE,committee+retrieval+coordinator"
   --network "${NETWORK:-Preprod}"
@@ -327,6 +352,11 @@ if [ -z "${DA_COMMITTEE_HEX:-}" ]; then
   unset DA_COMMITTEE_HEX
 fi
 
+# Committee configuration rejects public-reader credentials and cohosting.
+unset WATCHER_DB_PATH DA_PUBLIC_RETAINED_DA_ENABLED \
+  DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE DA_PUBLIC_RETAINED_DA_DATABASE_URL \
+  DA_PUBLIC_RETAINED_DA_DATABASE_ROLE
+
 DA_WATCHER_ENV=(
   "MIDGARD_NETWORK=${NETWORK:-Preprod}"
   "MIDGARD_DEPLOYMENT_MANIFEST_PATH=$WATCHER_MANIFEST"
@@ -339,7 +369,7 @@ DA_WATCHER_ENV=(
   "DA_THRESHOLD=$DA_THRESHOLD"
   "DA_L1_SUBMISSION_ENABLED=true"
   "L1_SUBMITTER_KEY_SOURCE=$DA_L1_SUBMITTER_KEY_SOURCE"
-  "WATCHER_DB_PATH=$WATCHER_DB"
+  "WATCHER_DATABASE_URL=$DA_COMMITTEE_DATABASE_URL"
   "WATCHER_API_HOST=127.0.0.1"
   "WATCHER_API_PORT=8787"
   "WATCHER_POLL_INTERVAL_MS=15000"
@@ -348,7 +378,7 @@ export "${DA_WATCHER_ENV[@]}"
 
 DA_WALLET_PREFLIGHT_LOG="logs/$RUN_ID/da-l1-wallet-preflight.log"
 DA_WALLET_PREFLIGHT_STEP="$E2E_STEP_DIR/da-l1-wallet-preflight.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id da-l1-wallet-preflight \
   --cwd "$NODE_DIR" \
   --raw-log "$DA_WALLET_PREFLIGHT_LOG" \
@@ -361,12 +391,25 @@ node dist/index.js e2e-run-step \
 Stop if the submitter wallet is not ready. Fund the distinct submitter wallet,
 wait for confirmation, and rerun the preflight.
 
-Start the watcher before probing producer-to-committee reachability:
+Start the watcher before probing producer-to-committee reachability.
+The committee uses PostgreSQL so the dedicated public retained-DA reader can
+read the same retained payload/header tables with a separate SELECT-only role.
+A JSON file store cannot support that public-reader path.
+
+After the committee starts and initializes its tables, start the dedicated
+`midgard-public-retained-da` process in a separately managed environment using the
+[DA committee guide](../../../../docs-site/content/docs/watchers/da-committee-node.mdx).
+Use the watcher manifest, the same contract manifest, the dedicated
+`PUBLIC_RETAINED_LIBP2P_KEY_SOURCE`, and the read-only database role. Never pass
+committee signer, provider, submitter, or writer-store credentials to that
+process. Its readiness must be established by a real public libp2p retrieval;
+it does not expose the committee's HTTP `/readyz` endpoint. Preserve its process,
+log, role, and retrieval evidence with the run.
 
 ```bash
 DA_NODE_LOG="logs/$RUN_ID/da-committee-node.log"
 DA_NODE_PID="$DA_NODE_DIR/run/$RUN_ID-watcher.pid"
-node dist/index.js e2e-start-service \
+node "$TOOLS_CLI" e2e-start-service \
   --service da-committee-node \
   --cwd "$DA_NODE_DIR" \
   --raw-log "$DA_NODE_LOG" \
@@ -386,7 +429,7 @@ unset DA_WATCHER_ENV
 
 DA_LIBP2P_PREFLIGHT_LOG="logs/$RUN_ID/da-libp2p-bind-listen-preflight.log"
 DA_LIBP2P_PREFLIGHT_STEP="$E2E_STEP_DIR/da-libp2p-bind-listen-preflight.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id da-libp2p-bind-listen-preflight \
   --cwd "$NODE_DIR" \
   --raw-log "$DA_LIBP2P_PREFLIGHT_LOG" \
@@ -416,7 +459,7 @@ $COMPOSE up -d midgard-node
 
 READY_LOG="logs/$RUN_ID/midgard-node-ready.log"
 READY_STEP="$E2E_STEP_DIR/midgard-node-ready.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id midgard-node-ready \
   --cwd "$NODE_DIR" \
   --raw-log "$READY_LOG" \
@@ -466,7 +509,7 @@ DEST_B="$(node --input-type=module -e '
 
 DEPOSIT_LOG="logs/$RUN_ID/submit-deposit.log"
 DEPOSIT_STEP="$E2E_STEP_DIR/submit-deposit.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id submit-deposit \
   --cwd "$NODE_DIR" \
   --raw-log "$DEPOSIT_LOG" \
@@ -481,7 +524,7 @@ node dist/index.js e2e-run-step \
 
 PROJECT_DEPOSITS_LOG="logs/$RUN_ID/project-deposits.log"
 PROJECT_DEPOSITS_STEP="$E2E_STEP_DIR/project-deposits.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id project-deposits \
   --cwd "$NODE_DIR" \
   --raw-log "$PROJECT_DEPOSITS_LOG" \
@@ -497,6 +540,13 @@ If projection is empty, inspect `deposits_utxos.inclusion_time`. Wait until the
 record is due plus a small buffer, then rerun `project-deposits-once`. A deposit
 not yet due is not a failure.
 
+Before spending the deposit, wait for its block to commit, receive DA attestation,
+mature, and merge through the normal fibers. Confirm its settlement membership
+with `resolve-event-settlement-proof --kind deposit --event-id <event-id>`.
+A projected local UTxO alone is insufficient: deposits execute after transactions
+within a block, so the same block cannot introduce and spend that deposit.
+Retain the deposit block's confirmation and merge evidence with the run.
+
 ### Submit two baseline L2 transfers
 
 Require the watcher to remain ready first:
@@ -507,7 +557,7 @@ curl -sf http://127.0.0.1:8787/readyz
 
 L2_TRANSFER_A_LOG="logs/$RUN_ID/submit-l2-transfer-a.log"
 L2_TRANSFER_A_STEP="$E2E_STEP_DIR/submit-l2-transfer-a.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id submit-l2-transfer-a \
   --cwd "$NODE_DIR" \
   --raw-log "$L2_TRANSFER_A_LOG" \
@@ -518,7 +568,7 @@ node dist/index.js e2e-run-step \
 
 L2_TRANSFER_B_LOG="logs/$RUN_ID/submit-l2-transfer-b.log"
 L2_TRANSFER_B_STEP="$E2E_STEP_DIR/submit-l2-transfer-b.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id submit-l2-transfer-b \
   --cwd "$NODE_DIR" \
   --raw-log "$L2_TRANSFER_B_LOG" \
@@ -535,8 +585,10 @@ Poll until both are `committed`. Do not treat `accepted` as committed or final.
 
 For every committed header:
 
-1. Fetch `/da/payload/metadata?header_hash=<hash>`.
-2. Save `/da/payload?header_hash=<hash>` as a raw artifact.
+1. Retain the producer libp2p publication report for the header, including
+   deployment fingerprint, threshold, announcement topic, and per-peer results.
+2. Retain the exact payload bytes obtained through libp2p retrieval and their
+   digest. The operator HTTP server has no DA payload retrieval route.
 3. Query the watcher deployment/header status.
 4. Record payload hash/schema, watcher verification, attestation init,
    add-signatures, and apply transaction hashes.
@@ -552,9 +604,9 @@ DEPLOYMENT_FINGERPRINT="$(node --input-type=module -e '
     "deploymentInfo/contract-deployment-info.json",
     "utf8",
   ));
-  if (manifest.schemaVersion !== "midgard-deployment-manifest-v2"
+  if (manifest.schemaVersion !== "midgard-deployment-manifest-v1"
       || typeof manifest.manifestId !== "string") {
-    throw new Error("expected finalized v2 deployment manifest");
+    throw new Error("expected canonical deployment manifest");
   }
   process.stdout.write(manifest.manifestId.toLowerCase());
 ')"
@@ -568,7 +620,7 @@ Wait for the running merge fiber to empty the state queue:
 ```bash
 AUTOMATIC_MERGE_LOG="logs/$RUN_ID/await-automatic-merge.log"
 AUTOMATIC_MERGE_STEP="$E2E_STEP_DIR/await-automatic-merge.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id await-automatic-merge \
   --cwd "$NODE_DIR" \
   --raw-log "$AUTOMATIC_MERGE_LOG" \
@@ -604,6 +656,155 @@ NODE
 If it times out, inspect readiness, the state queue, mutation lease, unfinished
 jobs, scheduler refresh, commit/finality workers, and merge-fiber logs. Use
 `recovery.md`; never call `/merge` to manufacture success.
+
+## State-correction and recovery acceptance
+
+The baseline deposit/L2/merge flow is not Q57 acceptance. A fresh final-release
+run must also produce one
+`midgard-e2e-state-correction-acceptance-v1` aggregate. This aggregate is an
+index, not proof: none of its booleans or transaction hashes may become
+confirmed evidence on their own. The finalizer must independently load and
+reconcile the immutable workflow journals, authenticated terminal L1
+observations, raw recovery outputs, deployment manifest, blueprint, catalogue,
+parameters, release identity, economics, and final chain/queue observation.
+Until all of those independent sources are present and agree, every
+state-correction gate remains blocked. An absent, partial, inexact, cross-run,
+or incomplete aggregate fails outright.
+
+Each L1 observation must point to the unmodified raw Kupo match response, raw
+Ogmios block response, and raw Ogmios tip response used to derive its inclusion
+point and confirmation depth, with a recomputable SHA-256 for each file. The
+final snapshot must likewise point to the raw Kupo empty-state-queue response,
+one raw unspent quantity-one Kupo response for each permanent proof-token
+unit/outref, the raw Ogmios tip, and a complete raw node-database export. Kupo,
+Ogmios, and the database must agree. These captures are still claims: a
+non-artifact authority must re-read the configured live services and approve
+the derived facts. Mutually consistent files cannot substitute for that live
+read.
+
+Before any live drill, run the deterministic parser/gate rehearsal. It submits
+nothing and does not touch the deployment:
+
+```bash
+cd "$TOOLS_DIR"
+NODE_ENV=emulator pnpm exec vitest run \
+  tests/e2e-state-correction-acceptance.test.ts \
+  tests/e2e-state-correction-reconciliation.test.ts \
+  tests/e2e-state-correction-local-authority.test.ts
+cd "$NODE_DIR"
+```
+
+Set the artifact path now and preserve it with the run:
+
+```bash
+STATE_CORRECTION_EVIDENCE="logs/$RUN_ID/state-correction-acceptance.json"
+STATE_CORRECTION_MANIFEST="$CONTRACT_INFO"
+STATE_CORRECTION_BLUEPRINT="$REPO_ROOT/onchain/aiken/plutus.json"
+STATE_CORRECTION_CATALOGUE="logs/$RUN_ID/state-correction-catalogue.json"
+STATE_CORRECTION_PARAMETERS="logs/$RUN_ID/cardano-protocol-parameters.json"
+STATE_CORRECTION_RELEASE_EVIDENCE="logs/$RUN_ID/release-evidence.json"
+STATE_CORRECTION_FINAL_SNAPSHOT="logs/$RUN_ID/state-correction-final-snapshot.json"
+STATE_CORRECTION_WORKFLOW_JOURNAL_LIST="logs/$RUN_ID/state-correction-workflow-journals.txt"
+STATE_CORRECTION_L1_OBSERVATION_LIST="logs/$RUN_ID/state-correction-l1-observations.txt"
+STATE_CORRECTION_RECOVERY_OBSERVATION_LIST="logs/$RUN_ID/state-correction-recovery-observations.txt"
+```
+
+The three list files contain one absolute or run-relative path per line. Keep
+workflow journals in canonical family order, authenticated L1 observations in
+the order they were captured, and recovery observations in canonical recovery
+matrix order. The finalizer validates the semantic identities and exact sets;
+the list order does not grant trust.
+
+Use the canonical launch-scope order from the finalized deployment catalogue.
+For each family, the production watcher/workflow journal must do all of the
+following from public L1+DA only:
+
+1. detect the committed violation and record the violation and selected route;
+2. initialize and complete every proof step with mandatory reference scripts;
+3. confirm the permanent proof-token mint, its exact reference by the removal
+   transaction, and the same unit/outref still retained after removal;
+4. confirm state-queue removal and the corrected queue/root;
+5. observe the configured operator slash and prover reward, recording expected
+   and observed lovelace exactly; and
+6. resume verification from the final chain point.
+
+Use one drill instance as Q57, C83, and W45 evidence when it meets all three
+claims. Do not submit a second transaction merely to give another task ID its
+own hash. If an enabled family has no production watcher/workflow adapter,
+stop: the sweep is not runnable and must not be replaced with manual proof CLI
+steps or a hand-authored success record.
+
+The same artifact must record a real withdrawal through order, reserve, payout
+init, every payout add, and payout conclude. Hash the canonical expected and
+observed payout/reserve values independently, require exact destination and
+value equality, and retain the final paid chain point. The Q57 value digest is
+SHA-256 over UTF-8 canonical JSON of a unit-to-decimal-string object: omit zero
+quantities and sort keys lexicographically; use `lovelace` for ADA and the
+dotless lowercase `policy_id || asset_name` unit for native assets. The payout
+digest covers the exact output at the withdrawal destination. The reserve
+digest covers the aggregate value of every currently unspent output at the
+manifest-bound reserve validator address. The local authority re-reads the
+payout transaction through Ogmios, cross-checks its complete output vector
+against Kupo, and reads the current reserve UTxO set from Kupo. It must also
+record both forced-classification directions in this order:
+
+- valid block marked invalid, canonically restored to valid; and
+- invalid block marked valid, publicly detected and corrected to invalid.
+
+Both directions must be watcher-driven, route through the production workflow,
+and bind their evidence/correction transactions and final chain points.
+
+Finally, record the crash/rollback and fail-closed matrix in the exact order
+published by
+`REQUIRED_STATE_CORRECTION_RECOVERY_DRILL_IDS` in
+`e2e-state-correction-acceptance.ts`. It includes the fourteen before/after
+durable watcher crash boundaries, pre-finality and within-`k` finalized
+rollback paths, configured-source inconsistency, external-provider
+disagreement, missing DA, withholding, stale manifest, and the adapter rewind
+rehearsal against recorded live chain data. Every case requires:
+
+- zero duplicate submissions, lost evidence, false verified states, and
+  unrecoverable workflows;
+- fail-closed behavior and no manual repair; and
+- watcher readiness and verification resumption only after reconciliation.
+
+Do not manufacture a natural Preprod rollback. The local W44 matrix plus the
+recorded-live-data adapter rewind is the required rollback evidence. A
+naturally observed rollback is bonus evidence only.
+
+Write the aggregate only from confirmed workflow journal, provider, watcher,
+chain-point, manifest, blueprint, catalogue, parameter, release-evidence, and
+final-state observations. Preserve every underlying source separately and pass
+those immutable sources to the finalizer for its independent derivation. The
+aggregate parser requires exact keys and the canonical family/recovery order,
+but structural validity alone never satisfies a gate. Do not run the finalizer
+until state queue depth, unfinished mutation jobs, and pending finalizations
+are zero and watcher verification has resumed.
+
+Load every independent source explicitly. Empty lists are a hard failure:
+
+```bash
+mapfile -t STATE_CORRECTION_WORKFLOW_JOURNALS < "$STATE_CORRECTION_WORKFLOW_JOURNAL_LIST"
+mapfile -t STATE_CORRECTION_L1_OBSERVATIONS < "$STATE_CORRECTION_L1_OBSERVATION_LIST"
+mapfile -t STATE_CORRECTION_RECOVERY_OBSERVATIONS < "$STATE_CORRECTION_RECOVERY_OBSERVATION_LIST"
+
+[ "${#STATE_CORRECTION_WORKFLOW_JOURNALS[@]}" -gt 0 ]
+[ "${#STATE_CORRECTION_L1_OBSERVATIONS[@]}" -gt 0 ]
+[ "${#STATE_CORRECTION_RECOVERY_OBSERVATIONS[@]}" -gt 0 ]
+
+STATE_CORRECTION_WORKFLOW_ARGS=()
+for path in "${STATE_CORRECTION_WORKFLOW_JOURNALS[@]}"; do
+  STATE_CORRECTION_WORKFLOW_ARGS+=(--state-correction-workflow-journal "$path")
+done
+STATE_CORRECTION_L1_ARGS=()
+for path in "${STATE_CORRECTION_L1_OBSERVATIONS[@]}"; do
+  STATE_CORRECTION_L1_ARGS+=(--state-correction-l1-observation "$path")
+done
+STATE_CORRECTION_RECOVERY_ARGS=()
+for path in "${STATE_CORRECTION_RECOVERY_OBSERVATIONS[@]}"; do
+  STATE_CORRECTION_RECOVERY_ARGS+=(--state-correction-recovery-observation "$path")
+done
+```
 
 ## Final evidence
 
@@ -648,12 +849,13 @@ const find = (value) => {
   }
 };
 const hash = find(summary.parsedJson);
-if (hash) process.stdout.write(hash.toLowerCase());
+if (!hash) throw new Error(`no ${selector} transaction hash in ${summaryPath}`);
+process.stdout.write(hash.toLowerCase());
 NODE
 }
 
 HUB_ORACLE_NONCE_TX_HASH="$(step_tx_hash "$HUB_ORACLE_NONCE_STEP" txHash)"
-INIT_TX_HASH="$(step_tx_hash "$INIT_STEP" txHash)"
+# INIT_TX_HASH was read from the completed deployment-manifest init step.
 OPERATOR_REGISTRATION_TX_HASH="$(step_tx_hash "$OPERATOR_STEP" registerTxHash)"
 OPERATOR_ACTIVATION_TX_HASH="$(step_tx_hash "$OPERATOR_STEP" activateTxHash)"
 DEPOSIT_TX_HASH="$(step_tx_hash "$DEPOSIT_STEP" txHash)"
@@ -661,32 +863,34 @@ TX_A="$(step_tx_hash "$L2_TRANSFER_A_STEP" txId)"
 TX_B="$(step_tx_hash "$L2_TRANSFER_B_STEP" txId)"
 ```
 
-After automatic merge, obtain the two fresh header-commit transaction hashes
-from the fresh database. Fail if the run does not have exactly two distinct,
-confirmed header commits; do not invent labels or use unrelated hashes.
+After automatic merge, reconcile the confirmed header commits against the
+fresh run's deposit and L2 transactions. Assign `HEADER_COMMIT_A_TX_HASH` and
+`HEADER_COMMIT_B_TX_HASH` from those authenticated observations for the required
+`header-commit-a` and `header-commit-b` evidence labels. Record which header and
+source events each hash proves. Retain any additional commits separately.
 
-```bash
-mapfile -t HEADER_COMMIT_TX_HASHES < <(
-  $COMPOSE exec -T postgres \
-    psql -U postgres -d midgard -At \
-    -c "select encode(submitted_tx_hash, 'hex') from pending_block_finalizations where status = 'finalized' and submitted_tx_hash is not null order by created_at"
-)
-if [ "${#HEADER_COMMIT_TX_HASHES[@]}" -ne 2 ] \
-  || [ "${HEADER_COMMIT_TX_HASHES[0]}" = "${HEADER_COMMIT_TX_HASHES[1]}" ]; then
-  echo "expected exactly two distinct finalized header commits" >&2
-  exit 1
-fi
-HEADER_COMMIT_A_TX_HASH="${HEADER_COMMIT_TX_HASHES[0]}"
-HEADER_COMMIT_B_TX_HASH="${HEADER_COMMIT_TX_HASHES[1]}"
-```
+The finalizer requires those labels; it does not require exactly two total
+header commits in the database. Do not select the first two rows from an
+unfiltered table, truncate additional commits, or use unrelated transaction hashes.
 
 ### Generate the dashboard
+
+Capture the full container log for this run; a fixed recent-time window can
+omit an earlier failed attempt. For attach/resume, retain the existing raw
+logs as well and identify the run's start in the evidence.
+
+Require the reconciled commit observations before constructing the dashboard:
+
+```bash
+: "${HEADER_COMMIT_A_TX_HASH:?set from confirmed run evidence}"
+: "${HEADER_COMMIT_B_TX_HASH:?set from confirmed run evidence}"
+```
 
 Include every required step summary, including the DA bind/listen preflight.
 
 ```bash
 NODE_LOG="logs/$RUN_ID/midgard-node.log"
-$COMPOSE logs --no-color --since=60m midgard-node > "$NODE_LOG"
+$COMPOSE logs --no-color midgard-node > "$NODE_LOG"
 rg -i \
   "error|failed|failure|unknownOutput|crashed|abandon|ScriptIntegrityHashMismatch|hash mismatch" \
   "$NODE_LOG" || true
@@ -743,14 +947,32 @@ esac
 POSTGRES_HOST=127.0.0.1 \
 POSTGRES_PORT=5433 \
 ADMIN_API_KEY="${ADMIN_API_KEY:-localdev-admin}" \
-node dist/index.js e2e-finalize-summary \
+node "$TOOLS_CLI" e2e-finalize-summary \
   --mode "$SUMMARY_MODE" \
   --run-id "$RUN_ID" \
   --out-dir "logs/$RUN_ID" \
   --node-log "$NODE_LOG" \
+  --state-correction-evidence "$STATE_CORRECTION_EVIDENCE" \
+  --state-correction-deployment-manifest "$STATE_CORRECTION_MANIFEST" \
+  --state-correction-blueprint "$STATE_CORRECTION_BLUEPRINT" \
+  --state-correction-catalogue "$STATE_CORRECTION_CATALOGUE" \
+  --state-correction-parameters "$STATE_CORRECTION_PARAMETERS" \
+  --state-correction-release-evidence "$STATE_CORRECTION_RELEASE_EVIDENCE" \
+  --state-correction-final-snapshot "$STATE_CORRECTION_FINAL_SNAPSHOT" \
+  "${STATE_CORRECTION_WORKFLOW_ARGS[@]}" \
+  "${STATE_CORRECTION_L1_ARGS[@]}" \
+  "${STATE_CORRECTION_RECOVERY_ARGS[@]}" \
   "${STEP_SUMMARY_ARGS[@]}" \
   "${TX_ARGS[@]}"
 ```
+
+The command constructs its non-artifact authority from `L1_PROVIDER=Kupmios`,
+the configured loopback `L1_KUPO_KEY` and `L1_OGMIOS_KEY`, and the live node
+database. It forbids provider failover, re-reads every transaction from Kupo and
+its canonical Ogmios block, rejects a rollback before the captured tip, and
+re-reads the final queue and retained proof tokens. A remote endpoint, a missing
+local source, or a callback that merely rereads the evidence directory is a hard
+failure.
 
 For opt-in stress, follow `benchmark.md` and append the verified
 `--stress-summary` artifact.

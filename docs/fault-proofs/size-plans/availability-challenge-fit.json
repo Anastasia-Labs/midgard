@@ -1,0 +1,344 @@
+{
+  "schemaVersion": "midgard-availability-challenge-fit-v1",
+  "measuredOn": "2026-09-08",
+  "compiler": {
+    "version": "aiken v1.1.23+5adf783",
+    "revision": "5adf7837cbddb5d329fd51d9c0cd73f561eaf95c",
+    "binaryMd5": "ea9b39054f166e94771f838a662712f7",
+    "environment": "testnet",
+    "traceLevel": "none"
+  },
+  "blueprintSha256": "eaf17c21a8fe433f80815a588f73ca39c29f39e40af16649ef897ec0c632b375",
+  "ledger": {
+    "sourceUrl": "https://api.koios.rest/api/v1/epoch_params?_epoch_no=654",
+    "sourceResponseSha256": "e3fa59e983ffdffd868cb0a7214b8c9c491ff433f1233546db46afec54d72d0c",
+    "epoch": 654,
+    "protocolMajor": 11,
+    "maxSignedTransactionBytes": 16384,
+    "maxExecutionMemory": "16500000",
+    "maxExecutionCpu": "10000000000",
+    "plutusV3CostModelEntries": 350,
+    "evaluator": "@lucid-evolution/scalus-uplc@0.1.3",
+    "executionReservePercent": 20,
+    "referencePublicationReserveBytes": 512
+  },
+  "availabilityParameters": {
+    "chunkByteLength": 14020,
+    "trancheByteLength": 4194304,
+    "maxTrancheCount": 16,
+    "daBondLovelace": "12000000000",
+    "challengerBondLovelace": "12000000000",
+    "maxOpenFeeLovelace": "2000000",
+    "maxPublicationFeeLovelace": "2000000",
+    "maxSettlementFeeLovelace": "2000000",
+    "maxCloseFeeLovelace": "2000000",
+    "maxTimeoutFeeLovelace": "3000000"
+  },
+  "referencePublication": {
+    "oneShotOutRef": {
+      "txHash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "outputIndex": 0
+    },
+    "referenceScriptAuthPolicy": {
+      "policyId": "61fe99d6bc736007a58457927151c9b2e21df96ba1d8dfb670f7aa70",
+      "mintingScriptCBOR": "8205193840",
+      "expiresAtSlot": 14400,
+      "expiresAtUnixTime": 1788891251579,
+      "timelockDurationMs": 14400000
+    },
+    "roles": [
+      {
+        "name": "availability-challenge spending",
+        "scriptType": "PlutusV3",
+        "appliedScriptHash": "674addd2fd6cf1763a12837fc67eeb4d23bdce25fd511af60e7c6f68",
+        "serializedScriptBytes": 8135,
+        "completeSignedTransactionBytes": 8642,
+        "l1ByteMarginBytes": 7742,
+        "feeLovelace": 535805,
+        "fits": true,
+        "txHash": "a03234c06d73276628cce93ba0b697ba63f6c49d9aaf8158e8c033ae160bb2fc",
+        "outputIndex": 1
+      },
+      {
+        "name": "availability-challenge minting",
+        "scriptType": "PlutusV3",
+        "appliedScriptHash": "674addd2fd6cf1763a12837fc67eeb4d23bdce25fd511af60e7c6f68",
+        "serializedScriptBytes": 8135,
+        "completeSignedTransactionBytes": 8640,
+        "l1ByteMarginBytes": 7744,
+        "feeLovelace": 535717,
+        "fits": true,
+        "txHash": "55b18f2e60d4e16428dcbc56ab9cb7e0b77487a2cf12f271d9a62181c72ca3d4",
+        "outputIndex": 1
+      },
+      {
+        "name": "availability-challenge bond withdrawal",
+        "scriptType": "PlutusV3",
+        "appliedScriptHash": "26771d79e68b8da3bb5a7272e4b513168bcf5d6ea659ec0c259830d9",
+        "serializedScriptBytes": 5966,
+        "completeSignedTransactionBytes": 6481,
+        "l1ByteMarginBytes": 9903,
+        "feeLovelace": 440721,
+        "fits": true,
+        "txHash": "76a459975867ee1a7099d3124e5dabe16fb8d6518f376511e5a4613026c673ff",
+        "outputIndex": 1
+      },
+      {
+        "name": "availability-challenge open withdrawal",
+        "scriptType": "PlutusV3",
+        "appliedScriptHash": "071ac899a168c43dd3b801677d29a0406d1254be0045d7f6f6570fd5",
+        "serializedScriptBytes": 7893,
+        "completeSignedTransactionBytes": 8408,
+        "l1ByteMarginBytes": 7976,
+        "feeLovelace": 525509,
+        "fits": true,
+        "txHash": "45c7d9946ec654772bb342c970f610d4f3bfcf34e0f13ab61a76625ef3df627e",
+        "outputIndex": 1
+      },
+      {
+        "name": "availability-challenge settle withdrawal",
+        "scriptType": "PlutusV3",
+        "appliedScriptHash": "715c581523e73f8016072b04df9f28eeb0bf281dc82f4eac1b6a2275",
+        "serializedScriptBytes": 7186,
+        "completeSignedTransactionBytes": 7705,
+        "l1ByteMarginBytes": 8679,
+        "feeLovelace": 494577,
+        "fits": true,
+        "txHash": "9dbea8e8c487cace7e1c6f3f50b18c43d8e4e432a4dfbbc79cbbb20b0857136f",
+        "outputIndex": 1
+      },
+      {
+        "name": "availability-challenge close withdrawal",
+        "scriptType": "PlutusV3",
+        "appliedScriptHash": "59be2d4eefb6f516153bb2513b6b5525ffbecd437c48cdabbb0de6f2",
+        "serializedScriptBytes": 6540,
+        "completeSignedTransactionBytes": 7057,
+        "l1ByteMarginBytes": 9327,
+        "feeLovelace": 466065,
+        "fits": true,
+        "txHash": "7e86dd99c13d62ebc17dae080793712b6d60039fbb67d80246d394620a231fda",
+        "outputIndex": 1
+      },
+      {
+        "name": "availability-challenge timeout withdrawal",
+        "scriptType": "PlutusV3",
+        "appliedScriptHash": "698ed5810ff64d0b07c6d8a3c36c0f0f53cf35d4a2c6ac06590c7de4",
+        "serializedScriptBytes": 6024,
+        "completeSignedTransactionBytes": 6543,
+        "l1ByteMarginBytes": 9841,
+        "feeLovelace": 443449,
+        "fits": true,
+        "txHash": "b531256c2e23a884d027ba805c8791ce5e660e111f0eee8996fb004552d66805",
+        "outputIndex": 1
+      }
+    ],
+    "broaderNodeRosterCount": 513,
+    "broaderNodeRosterMaximumSignedBytes": 16032
+  },
+  "lifecycle": {
+    "scenarioCount": 4,
+    "signedAndSubmittedTransactionCount": 704,
+    "onchainRefusalCount": 9,
+    "scenarios": [
+      {
+        "scenario": "happy",
+        "transactionCount": 23,
+        "largestTransaction": {
+          "name": "publish chunk 0",
+          "signedBytes": 15525,
+          "memory": "700094",
+          "steps": "307594829",
+          "outputs": 2,
+          "fee": "2000000",
+          "referenceInputCount": 1,
+          "referencedScriptBytes": 8135,
+          "uniqueReferencedScriptBytes": 8135
+        },
+        "highestMemory": {
+          "name": "attestation apply and retained bond mint",
+          "signedBytes": 1949,
+          "memory": "2046229",
+          "steps": "794772061",
+          "outputs": 3,
+          "fee": "1055632",
+          "referenceInputCount": 8,
+          "referencedScriptBytes": 39750,
+          "uniqueReferencedScriptBytes": 30448
+        },
+        "highestCpu": {
+          "name": "attestation apply and retained bond mint",
+          "signedBytes": 1949,
+          "memory": "2046229",
+          "steps": "794772061",
+          "outputs": 3,
+          "fee": "1055632",
+          "referenceInputCount": 8,
+          "referencedScriptBytes": 39750,
+          "uniqueReferencedScriptBytes": 30448
+        },
+        "mostReferencedScriptBytes": {
+          "name": "attestation apply and retained bond mint",
+          "signedBytes": 1949,
+          "memory": "2046229",
+          "steps": "794772061",
+          "outputs": 3,
+          "fee": "1055632",
+          "referenceInputCount": 8,
+          "referencedScriptBytes": 39750,
+          "uniqueReferencedScriptBytes": 30448
+        }
+      },
+      {
+        "scenario": "no-response",
+        "transactionCount": 21,
+        "largestTransaction": {
+          "name": "publish da-attestation spending",
+          "signedBytes": 9707,
+          "memory": "0",
+          "steps": "0",
+          "outputs": 3,
+          "fee": "582665",
+          "referenceInputCount": 0,
+          "referencedScriptBytes": 0,
+          "uniqueReferencedScriptBytes": 0
+        },
+        "highestMemory": {
+          "name": "timeout and unavailable head removal",
+          "signedBytes": 1731,
+          "memory": "3372992",
+          "steps": "1217259287",
+          "outputs": 5,
+          "fee": "3000000",
+          "referenceInputCount": 8,
+          "referencedScriptBytes": 41084,
+          "uniqueReferencedScriptBytes": 32949
+        },
+        "highestCpu": {
+          "name": "timeout and unavailable head removal",
+          "signedBytes": 1731,
+          "memory": "3372992",
+          "steps": "1217259287",
+          "outputs": 5,
+          "fee": "3000000",
+          "referenceInputCount": 8,
+          "referencedScriptBytes": 41084,
+          "uniqueReferencedScriptBytes": 32949
+        },
+        "mostReferencedScriptBytes": {
+          "name": "timeout and unavailable head removal",
+          "signedBytes": 1731,
+          "memory": "3372992",
+          "steps": "1217259287",
+          "outputs": 5,
+          "fee": "3000000",
+          "referenceInputCount": 8,
+          "referencedScriptBytes": 41084,
+          "uniqueReferencedScriptBytes": 32949
+        }
+      },
+      {
+        "scenario": "maximum",
+        "transactionCount": 337,
+        "largestTransaction": {
+          "name": "maximum full tranche chunk 24",
+          "signedBytes": 15945,
+          "memory": "1287137",
+          "steps": "501447358",
+          "outputs": 2,
+          "fee": "2000000",
+          "referenceInputCount": 1,
+          "referencedScriptBytes": 8135,
+          "uniqueReferencedScriptBytes": 8135
+        },
+        "highestMemory": {
+          "name": "maximum commitment timeout and queue correction",
+          "signedBytes": 1735,
+          "memory": "4156825",
+          "steps": "1476594633",
+          "outputs": 5,
+          "fee": "3000000",
+          "referenceInputCount": 8,
+          "referencedScriptBytes": 41084,
+          "uniqueReferencedScriptBytes": 32949
+        },
+        "highestCpu": {
+          "name": "open 16 tranches",
+          "signedBytes": 10199,
+          "memory": "4032278",
+          "steps": "1726095109",
+          "outputs": 19,
+          "fee": "2000000",
+          "referenceInputCount": 5,
+          "referencedScriptBytes": 25986,
+          "uniqueReferencedScriptBytes": 17851
+        },
+        "mostReferencedScriptBytes": {
+          "name": "maximum commitment timeout and queue correction",
+          "signedBytes": 1735,
+          "memory": "4156825",
+          "steps": "1476594633",
+          "outputs": 5,
+          "fee": "3000000",
+          "referenceInputCount": 8,
+          "referencedScriptBytes": 41084,
+          "uniqueReferencedScriptBytes": 32949
+        }
+      },
+      {
+        "scenario": "full-response",
+        "transactionCount": 323,
+        "largestTransaction": {
+          "name": "full response tranche 0 chunk 24",
+          "signedBytes": 15949,
+          "memory": "1287137",
+          "steps": "501447358",
+          "outputs": 2,
+          "fee": "2000000",
+          "referenceInputCount": 1,
+          "referencedScriptBytes": 8135,
+          "uniqueReferencedScriptBytes": 8135
+        },
+        "highestMemory": {
+          "name": "attestation apply and retained bond mint",
+          "signedBytes": 2034,
+          "memory": "2097690",
+          "steps": "812568775",
+          "outputs": 3,
+          "fee": "1063668",
+          "referenceInputCount": 8,
+          "referencedScriptBytes": 39750,
+          "uniqueReferencedScriptBytes": 30448
+        },
+        "highestCpu": {
+          "name": "attestation apply and retained bond mint",
+          "signedBytes": 2034,
+          "memory": "2097690",
+          "steps": "812568775",
+          "outputs": 3,
+          "fee": "1063668",
+          "referenceInputCount": 8,
+          "referencedScriptBytes": 39750,
+          "uniqueReferencedScriptBytes": 30448
+        },
+        "mostReferencedScriptBytes": {
+          "name": "attestation apply and retained bond mint",
+          "signedBytes": 2034,
+          "memory": "2097690",
+          "steps": "812568775",
+          "outputs": 3,
+          "fee": "1063668",
+          "referenceInputCount": 8,
+          "referencedScriptBytes": 39750,
+          "uniqueReferencedScriptBytes": 30448
+        }
+      }
+    ]
+  },
+  "scopeNotes": [
+    "Availability lifecycle begins with explicit preexisting hub, queue, DA-parameter and correction-lock genesis fixtures; all attestation and availability state is produced by evaluated ledger transactions.",
+    "The maximum 64 MiB commitment scenario fully publishes one 300-chunk tranche, partially publishes the second, settles all 16 tranches and times out with queue removal. It does not publish all 64 MiB.",
+    "The separate 4 MiB + 1 byte scenario publishes and reassembles all 301 chunks across two tranches, settles both, and closes.",
+    "Scenario deployment identities are rederived in each test with generated public actor identities. Rerun current-blueprint tests for release acceptance; this saved summary is not itself a release gate.",
+    "Operational challenger commands, watcher/indexer integration, recovery and live Preprod acceptance remain separate work."
+  ]
+}

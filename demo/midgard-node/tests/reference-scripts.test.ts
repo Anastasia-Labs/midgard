@@ -1,5 +1,6 @@
 import "./utils.js";
 
+import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { referenceScriptAuthTokenName } from "@al-ft/midgard-sdk";
 import {
   type Assets,
@@ -10,7 +11,7 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
   buildReferenceScriptDeploymentPlan,
   buildReferenceScriptSweepPlan,
@@ -23,7 +24,8 @@ import {
   referenceScriptWalletStatusProgram,
   resolveSpendableWalletUtxos,
   verifyNodeRuntimeReferenceScriptsProgram,
-} from "@/transactions/reference-scripts.js";
+} from "../src/transactions/reference-scripts.js";
+import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const REFERENCE_SCRIPT_ADDRESS = "addr_test1reference";
 const RETURN_ADDRESS = "addr_test1return";
@@ -63,6 +65,27 @@ const mkUtxo = ({
 });
 
 describe("node-runtime reference-script registry", () => {
+  it("publishes exactly every manifest role for the real contract set", async () => {
+    const contracts = await loadRealMidgardContractsForTest({
+      txHash: txHashFixture("0"),
+      outputIndex: 0,
+    });
+    const targets = nodeRuntimeReferenceScriptTargets(contracts);
+
+    expect(targets.map(({ name }) => name).sort()).toEqual(
+      Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).sort(),
+    );
+    expect(
+      targets.find(({ name }) => name === "V1 field-preimage certificate")
+        ?.script,
+    ).toEqual(contracts.fieldPreimageCertificate.spendingScript);
+    expect(
+      targets.find(
+        ({ name }) => name === "V1 field-preimage certificate minting",
+      )?.script,
+    ).toEqual(contracts.fieldPreimageCertificate.mintingScript);
+  });
+
   it("exposes node-runtime as the primary deployment command", () => {
     expect(REFERENCE_SCRIPT_COMMAND_NAMES[0]).toEqual("node-runtime");
     expect(REFERENCE_SCRIPT_COMMAND_NAMES).toContain("node-runtime");
@@ -105,6 +128,34 @@ describe("node-runtime reference-script registry", () => {
     expect(names).toContain("reserve observer");
     expect(names).toContain("payout spending");
     expect(names).toContain("payout minting");
+    expect(
+      names.filter((name) => name.startsWith("V1 validation-trace ")).sort(),
+    ).toEqual(
+      Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE)
+        .filter((name) => name.startsWith("V1 validation-trace "))
+        .sort(),
+    );
+    const registeredFraudProofNames = names.filter((name) =>
+      name.startsWith("V1 fraud-proof "),
+    );
+    // Node-runtime publishes EVERY `V1 fraud-proof ` role the canonical
+    // manifest declares. This is stated as the set rather than as a count
+    // because it is a coverage requirement, not a pin to maintain: a manifest
+    // is only valid when `validateReferenceScripts` finds a confirmed
+    // reference script for every declared role, so a family the registry does
+    // not enumerate is a deployment that cannot pass startup verification. A
+    // count let that gap sit as a stale number; the set names it.
+    expect([...registeredFraudProofNames].sort()).toEqual(
+      Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE)
+        .filter((role) => role.startsWith("V1 fraud-proof "))
+        .sort(),
+    );
+    expect(registeredFraudProofNames).toContain(
+      "V1 fraud-proof missing-signature step-04",
+    );
+    expect(registeredFraudProofNames).toContain(
+      "V1 fraud-proof missing-native-script-tx step-06",
+    );
   });
 
   it("derives protocol-init as a strict subset of node-runtime", async () => {

@@ -1,15 +1,21 @@
-import { Effect } from "effect";
-import { afterEach, describe, expect, it } from "vitest";
+import "./utils.js";
 
-import { shouldRunMpfPayloadAudit } from "@/fibers/mpf-payload-audit.js";
+import { Effect } from "effect";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { shouldRunMpfPayloadAudit } from "../src/fibers/mpf-payload-audit.js";
 import {
   configureCommitMpfRuntime,
   getMpfScratchBuild,
   setMpfScratchBuild,
-} from "@/workers/utils/mpf.js";
+} from "../src/mpf/index.js";
+import { NodeConfig } from "../src/services/config.js";
 
 describe("commit MPF runtime configuration", () => {
-  afterEach(() => setMpfScratchBuild("insert"));
+  afterEach(() => {
+    setMpfScratchBuild("insert");
+    vi.unstubAllEnvs();
+  });
 
   it("applies scratch configuration for Architecture G paths that do not call makeMpfs", async () => {
     await Effect.runPromise(
@@ -30,5 +36,17 @@ describe("commit MPF runtime configuration", () => {
     expect(shouldRunMpfPayloadAudit("every_block")).toBe(true);
     expect(shouldRunMpfPayloadAudit("periodic")).toBe(true);
     expect(shouldRunMpfPayloadAudit("off")).toBe(false);
+  });
+
+  it("rejects an unknown MPF engine identifier", async () => {
+    vi.stubEnv("MPF_ENGINE", "architecture_h");
+
+    await expect(
+      Effect.runPromise(
+        Effect.gen(function* () {
+          return yield* NodeConfig;
+        }).pipe(Effect.provide(NodeConfig.layer)),
+      ),
+    ).rejects.toThrow(/MPF_ENGINE/);
   });
 });

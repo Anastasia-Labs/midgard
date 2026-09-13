@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   resolveStateQueueMutationLeaseRequest,
   type StateQueueMutationLeaseEndpointStore,
-} from "@/commands/listen-router.js";
-import { StateQueueMutationLeasesDB } from "@/database/index.js";
+} from "../src/commands/listen-router.js";
+import { StateQueueMutationLeasesDB } from "../src/database/index.js";
 
 type FakeLeaseEntry = StateQueueMutationLeasesDB.Entry;
 

@@ -4,7 +4,7 @@ description: "How the Midgard node runs: the HTTP API, its persistent state, and
 ---
 
 `demo/midgard-node` is a server application with GET and POST endpoints for
-interacting with Midgard. It is the demo off-chain runtime that ties the
+interacting with Midgard. It is the operator runtime that ties the
 protocol together: it serves the HTTP API, validates and enqueues submitted
 Midgard-native transactions, maintains durable database and MPF state, and runs
 the long-running background fibers that keep the node progressing.
@@ -61,10 +61,10 @@ mutually consistent.
   or remotely reachable environment.
 
 <Callout type="warn" title="Do not split-brain the state stores">
-Never combine a fresh local database with previously deployed on-chain protocol
-state. If local DBs or durable node state are wiped, the on-chain contracts must
-be redeployed from a clean genesis/deployment flow first. See the
-[state-reset rules](/docs/operators/node/compatibility-rules).
+  Never combine a fresh local database with previously deployed on-chain
+  protocol state. If local DBs or durable node state are wiped, the on-chain
+  contracts must be redeployed from a clean genesis/deployment flow first. See
+  the [state-reset rules](/docs/operators/node/compatibility-rules).
 </Callout>
 
 ## Component diagram
@@ -76,54 +76,55 @@ flowchart TB
     B[Benchmark and stress runners]
   end
 
-  subgraph node [midgard-node process]
-    H[HTTP API server<br/>listen-router.ts]
-    subgraph fibers [Background fibers]
-      FC[block-commitment]
-      FK[block-confirmation]
-      FM[merge]
-      FD[fetch-and-insert deposits]
-      FW[fetch-and-insert withdrawals]
-      FT[fetch-and-insert tx-order]
-      FP[project-deposits-to-mempool-ledger]
-      FR[retention-sweeper]
-      FQ[tx-queue-processor]
-      FMM[monitor-mempool<br/>--with-monitoring only]
-    end
-    subgraph state [Local state]
-      PG[(PostgreSQL views)]
-      MPF[(LevelDB MPF roots)]
-    end
-  end
+subgraph node [midgard-node process]
+H[HTTP API server<br/>listen-router.ts]
+subgraph fibers [Background fibers]
+FC[block-commitment]
+FK[block-confirmation]
+FM[merge]
+FD[fetch-and-insert deposits]
+FW[fetch-and-insert withdrawals]
+FT[fetch-and-insert tx-order]
+FP[project-deposits-to-mempool-ledger]
+FR[retention-sweeper]
+FQ[tx-queue-processor]
+FMM[monitor-mempool<br/>--with-monitoring only]
+end
+subgraph state [Local state]
+PG[(PostgreSQL views)]
+MPF[(LevelDB MPF roots)]
+end
+end
 
-  L1[(Cardano L1<br/>via Kupmios)]
+L1[(Cardano L1<br/>via Kupmios)]
 
-  W -->|POST /submit, GET /utxos| H
-  B -->|/submit, /tx-status| H
-  H --> PG
-  FQ --> PG
-  FC --> MPF
-  FC --> PG
-  FC -->|commit block header| L1
-  FK -->|confirm commitment| L1
-  FM -->|merge to confirmed| L1
-  FD -->|read deposit UTxOs| L1
-  FW -->|read withdrawal UTxOs| L1
-  FT -->|read tx-order UTxOs| L1
-  FP --> PG
-  FR --> PG
+W -->|POST /submit, GET /utxos| H
+B -->|/submit, /tx-status| H
+H --> PG
+FQ --> PG
+FC --> MPF
+FC --> PG
+FC -->|commit block header| L1
+FK -->|confirm commitment| L1
+FM -->|merge to confirmed| L1
+FD -->|read deposit UTxOs| L1
+FW -->|read withdrawal UTxOs| L1
+FT -->|read tx-order UTxOs| L1
+FP --> PG
+FR --> PG
 `} />
 
 ## Entry points
 
 The node exposes one long-running entry point plus many one-shot CLI commands.
 
-- `pnpm listen` (or `node dist/index.js listen`) builds and starts the HTTP
-  server plus every background fiber. Pass `-m` / `--with-monitoring` to enable
+- `pnpm listen` builds and starts the HTTP server and configured background
+  fibers. `node dist/index.js listen` starts an already built distribution. Pass `-m` / `--with-monitoring` to enable
   Prometheus metrics and OpenTelemetry spans.
 - The remaining subcommands are one-shot operations: deployment, operator
   lifecycle, deposit/withdrawal flows, reserve/payout, reconciliation, audit,
-  benchmarks, and DA libp2p tooling.
+  and DA libp2p tooling. Benchmark and E2E orchestration commands use the
+  separate `midgard-node-tools` binary.
 
 See the [CLI reference](/docs/operators/node/cli-reference) for the complete,
 grouped list, and the [HTTP API](/docs/operators/node/server-http-api) page for
@@ -135,18 +136,40 @@ When `listen` runs, the node performs a strict startup sequence before it begins
 serving traffic. This is where correctness is enforced:
 
 <Steps>
-<Step>Initialize the database and verify/apply schema state.</Step>
-<Step>Verify the configured deployment manifest and protocol deployment status; auto-initialize only an empty deployment when startup policy allows it (never over partial or externally provisioned state).</Step>
-<Step>Seed the latest local block boundary from the state-queue tip and reconcile confirmed-ledger and commit MPFs against the on-chain root.</Step>
-<Step>Hydrate any pending block-finalization journal, then refuse to serve if unfinished local mutation jobs remain.</Step>
-<Step>Run deposit, withdrawal, and tx-order catch-up, then backfill any missing DA payloads from finalized journals.</Step>
-<Step>Launch the HTTP server and all background fibers concurrently.</Step>
+  <Step>
+    Preflight DA identity and verify that explicit migrations already brought
+    the database to the exact supported schema. Startup does not apply
+    migrations.
+  </Step>
+  <Step>
+    Verify the configured deployment manifest and protocol deployment status;
+    auto-initialize only an empty deployment when startup policy allows it
+    (never over partial or externally provisioned state).
+  </Step>
+  <Step>
+    Seed the latest local block boundary from the state-queue tip and reconcile
+    confirmed-ledger and commit MPFs against the on-chain root.
+  </Step>
+  <Step>
+    Hydrate any pending block-finalization journal, then refuse to serve if
+    unfinished local mutation jobs remain.
+  </Step>
+  <Step>
+    Run deposit, withdrawal and tx-order catch-up and deposit projection
+    reconciliation. Attempt a bounded DA payload backfill from finalized
+    journals; a backfill error is logged rather than silently counted as
+    completion.
+  </Step>
+  <Step>
+    Refresh the admission gauge, initialize the configured native MPF owner, and
+    launch the HTTP server and configured background services concurrently.
+  </Step>
 </Steps>
 
 <Callout type="info" title="Readiness vs. liveness">
-`GET /healthz` only confirms the process is up. `GET /readyz` is the real signal:
-it checks worker heartbeats, durable admission backlog and age, unfinished local
-mutation jobs, unresolved block submissions, database connectivity, provider
-reachability, and state-queue mutation-lease state, returning `503` until the
-node is genuinely ready.
+  `GET /healthz` only confirms the process is up. `GET /readyz` is the real
+  signal: it checks worker heartbeats, durable admission backlog and age,
+  unfinished local mutation jobs, unresolved block submissions, database
+  connectivity, provider reachability, and state-queue mutation-lease state,
+  returning `503` until the node is genuinely ready.
 </Callout>

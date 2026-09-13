@@ -10,20 +10,14 @@ Operators are expected to serve such APIs in a publicly accessible and employ su
 
 Users' L2 transactions follow the data structure defined in \cref{h:midgard-transaction-types}.
 In particular, users can freely set transaction time-validity intervals according to their preferences.
-As long as there is a non-empty overlap between a transaction's time-validity interval and a block's event interval, the transaction can be included in the block.
-Since event intervals are adjacent to each other, a user's valid transaction request can only miss the ledger in two cases:
-\begin{itemize}
-    \item The operator censors it (see mitigation in \cref{h:transaction-order}).
-    \item The operator commits the last block overlapping with the transaction before receiving the transaction request.\footnote{Note that this case does not preclude transactions with short time-validity intervals from succeeding.
-      For example, a transaction post-dated a couple of minutes in the future can still be included in a block even if its validity interval's duration is one millisecond.}
-\end{itemize}
+The original interval-overlap design permits inclusion when the transaction interval overlaps the block event interval.
+Current transaction validation instead requires the selected \code{block\_slot} to lie inside the transaction interval, and the node derives that slot from the block end time.
+This is a conformance difference, including the POSIX-versus-slot unit issue in \cref{h:deviations-from-cardano-transaction-types}; overlap alone is not sufficient for current admission.
 
-By contrast, L1 transactions on Cardano can fail in several other time-related ways.
-Ouroboros blocks only occupy every 20th one-second slot on average and have limited transaction capacity.
-This means that users often have to set longer transaction validity intervals than they want and wait for many block confirmations of their tx before relying on its outcomes.
-
-However, while on Cardano L1 two transactions with non-overlapping validity intervals cannot be included in the same block, the analogous L2 transactions \emph{can} be included in a Midgard block if its event interval overlaps each transaction.
-Thus, transaction validity intervals on Midgard define only the relation between transactions and blocks but do not necessarily imply a temporal precedence relation between transactions.
+Durable submission does not guarantee validation, inclusion, or confirmation.
+A request can be rejected for ledger or execution rules, conflict with another request, outlive its validity interval, remain queued under capacity constraints, or be censored.
+The L1 transaction-order mechanism supplies the separate forced-inclusion path while valid block production and the required challenge machinery remain available.
+Current point-based validation also does not support the earlier claim that two disjoint transaction intervals can both be accepted solely because one block event interval overlaps each.
 
 \notebox{Which other information should we include here for L2 transaction requests?}\todo
 

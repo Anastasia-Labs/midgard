@@ -1,3 +1,16 @@
+/**
+ * `double-spend` evidence builder.
+ *
+ * **Re-derived-adjacent, and checked to be unaffected by #604.** This module
+ * emits *evidence* — canonical item lists, compact structures and inclusion
+ * proofs — and constructs no datum or redeemer, so the #575 rebind left its
+ * output shape alone. What changed is downstream: the submitters that consume
+ * this evidence now also take the disputed transaction's compact CBOR, which
+ * this module already emits as part of its inclusion argument. The banner it
+ * used to carry is gone because the family is re-derived, not because the
+ * module was skipped.
+ */
+
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -6,23 +19,34 @@ import {
   computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardSpendInputItem,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardNativeTxCanonical,
   encodeMidgardNativeTxCompact,
+  encodeMidgardSpendInputItem,
   formatUnknownError,
   materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
+  type MidgardNativeTxProofSource,
+  type MidgardTxInput,
+  verifyMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
 import {
+  commitCountedRootProgram,
   EMPTY_MERKLE_TREE_ROOT,
+  type L2TransactionSource,
+  L2TransactionSourceSchema,
   type NativeTxCompact as NativeTxCompactData,
   type OutputReference as OutputReferenceData,
+  ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
-import { CML } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
 import {
   parseHex,
@@ -44,18 +68,57 @@ export type PrepareDoubleSpendCliConfig = {
   readonly tx1Id?: string;
   readonly tx2Id?: string;
   readonly outputDir?: string;
-  readonly allowIncompatibleOutput?: boolean;
 };
 
 export type NodeTransactionPayload = {
   readonly nodeTxId: string;
   readonly txCbor: string;
+  /** Exact source leaf when supplied by retained DA; derivation must agree. */
+  readonly l2TransactionSourceCbor?: string;
+};
+
+export const deriveL2TransactionSourceCbor = (
+  canonicalTxCbor: Uint8Array,
+): string => {
+  const proofSource =
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalTxCbor);
+  const txId = computeMidgardNativeTxId(
+    decodeMidgardNativeTxFullFromCanonicalCbor(canonicalTxCbor),
+  ).toString("hex");
+  return encodeL2TransactionSourceValue({ txId, proofSource });
+};
+
+export const encodeL2TransactionSourceValue = ({
+  txId,
+  proofSource,
+}: {
+  readonly txId: string;
+  readonly proofSource: MidgardNativeTxProofSource;
+}): string => {
+  const normalizedTxId = parseHex(txId, "transaction source tx id", 32);
+  verifyMidgardNativeTxProofSource({
+    transactionId: Buffer.from(normalizedTxId, "hex"),
+    source: proofSource,
+  });
+  const sourceValue: L2TransactionSource = {
+    tx_id: normalizedTxId,
+    source: {
+      compact_cbor: proofSource.compactCbor.toString("hex"),
+      witness_set_compact_cbor:
+        proofSource.witnessSetCompactCbor.toString("hex"),
+      field_preimage_lengths_cbor:
+        proofSource.fieldPreimageLengthsCbor.toString("hex"),
+    },
+  };
+  return Data.to(sourceValue as never, L2TransactionSourceSchema as never);
 };
 
 export type PreparedTxInclusionJson = {
   readonly nativeTxId: string;
   readonly nativeTx: NativeTxCompactData;
   readonly nativeTxCompactCbor: string;
+  /** Canonical Data(L2TransactionSource) bytes opened by membership. */
+  readonly l2TransactionSourceCbor: string;
   // Raw transactions MPF root the membership proof opens; authenticated on-chain
   // against the header's counted `transactions_root`.
   readonly transactionsPhasRoot: string;
@@ -76,17 +139,12 @@ export type PreparedDoubleSpendOutput = {
   readonly headerHash: string;
   readonly txCount: number;
   readonly doubleSpentInput: OutputReferenceData;
-  readonly compatibility: {
-    readonly canUseSubmitStepCommands: boolean;
-    readonly reasons: readonly string[];
-  };
   readonly commitmentEncodings: {
     readonly nativeNode: {
       readonly transactionsRoot: string;
     };
     readonly expectedTransactionsRoot?: {
       readonly value: string;
-      readonly matchesNativeNodeRoot: boolean;
     };
   };
   readonly tx1: PreparedDoubleSpendTx;
@@ -108,14 +166,12 @@ export type PrepareDoubleSpendFromFileConfig = {
   readonly tx1Id?: string;
   readonly tx2Id?: string;
   readonly outputDir?: string;
-  readonly allowIncompatibleOutput?: boolean;
 };
 
 export type PrepareSampleDoubleSpendConfig = {
   readonly headerHash: string;
   readonly expectedTransactionsRoot?: string;
   readonly outputDir?: string;
-  readonly allowIncompatibleOutput?: boolean;
 };
 
 export type DecodedTransactionMaterial = {
@@ -124,8 +180,10 @@ export type DecodedTransactionMaterial = {
   readonly nativeTx: MidgardNativeTxFull;
   readonly nativeTxCompact: NativeTxCompactData;
   readonly inputs: readonly OutputReferenceData[];
+  readonly referenceInputs: readonly OutputReferenceData[];
   readonly spendInputCbors: readonly string[];
   readonly nativeCompactCbor: string;
+  readonly l2TransactionSourceCbor: string;
 };
 
 export type TrieView = {
@@ -269,13 +327,16 @@ export const fetchNodeBlockTransactions = async ({
 const bytesHex = (bytes: Uint8Array): string =>
   Buffer.from(bytes).toString("hex");
 
+/**
+ * The §5.3 field-0/1 item encoding — `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`,
+ * a fixed 38 bytes — matching on-chain `ledger_outref_key` /
+ * `encode_midgard_tx_input`, not CML's minimal-index `TransactionInput` CBOR.
+ */
 const transactionInputCbor = (txHash: string, outputIndex: bigint): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(txHash),
-      outputIndex,
-    ).to_cbor_bytes(),
-  );
+  encodeMidgardSpendInputItem({
+    txId: Buffer.from(txHash, "hex"),
+    outputIndex: Number(outputIndex),
+  });
 
 const sampleNativeTx = (
   inputs: readonly Buffer[],
@@ -334,25 +395,27 @@ export const makeSampleDoubleSpendTransactions =
     ];
   };
 
+/**
+ * Decodes the §5.3 field-0/1 item form — `82 ‖ 58 20 tx_id(32) ‖ 19
+ * index_be16`, a fixed 38 bytes — the same bytes on-chain
+ * `decode_midgard_tx_input_cbor` accepts. CML's minimal-index
+ * `TransactionInput` CBOR is deliberately rejected.
+ */
 const outputReferenceFromNativeInput = (
   bytes: Uint8Array,
   label: string,
 ): OutputReferenceData => {
-  let input: CML.TransactionInput;
+  let input: MidgardTxInput;
   try {
-    input = CML.TransactionInput.from_cbor_bytes(bytes);
+    input = decodeMidgardSpendInputItem(bytes);
   } catch (cause) {
     throw new Error(
-      `${label} is not a valid Cardano TxOutRef CBOR: ${formatUnknownError(cause)}`,
+      `${label} is not a valid Midgard §5.3 TxOutRef CBOR: ${formatUnknownError(cause)}`,
     );
   }
-  const outputIndex = input.index();
-  if (outputIndex < 0n) {
-    throw new Error(`${label}.outputIndex must be non-negative.`);
-  }
   return {
-    transactionId: input.transaction_id().to_hex(),
-    outputIndex,
+    transactionId: Buffer.from(input.txId).toString("hex"),
+    outputIndex: BigInt(input.outputIndex),
   };
 };
 
@@ -396,20 +459,40 @@ export const decodeTransactionMaterial = async (
     nativeTx.body.spendInputsPreimageCbor,
     `tx ${nodeTxId} spend_inputs`,
   );
+  const referenceInputs = decodeNativeInputPreimage(
+    nativeTx.body.referenceInputsPreimageCbor,
+    `tx ${nodeTxId} reference_inputs`,
+  );
   const spendInputCbors = decodeNativeInputCbors(
     nativeTx.body.spendInputsPreimageCbor,
     `tx ${nodeTxId} spend_inputs`,
   );
+  const l2TransactionSourceCbor = deriveL2TransactionSourceCbor(
+    Buffer.from(txCbor, "hex"),
+  );
+  if (
+    payload.l2TransactionSourceCbor !== undefined &&
+    parseHex(
+      payload.l2TransactionSourceCbor,
+      `tx ${nodeTxId} transaction source CBOR`,
+    ) !== l2TransactionSourceCbor
+  ) {
+    throw new Error(
+      `Transaction source mismatch for ${nodeTxId}: retained DA value does not match the exact native proof-source derivation.`,
+    );
+  }
   return {
     nodeTxId,
     txCbor,
     nativeTx,
     nativeTxCompact: nativeTxFromCoreCompact(nativeTx.compact),
     inputs,
+    referenceInputs,
     spendInputCbors,
     nativeCompactCbor: encodeMidgardNativeTxCompact(nativeTx.compact).toString(
       "hex",
     ),
+    l2TransactionSourceCbor,
   };
 };
 
@@ -529,9 +612,9 @@ export const buildTrieView = async (
   };
 };
 
-export const nativeTrieItem = (tx: DecodedTransactionMaterial) => ({
+export const transactionSourceTrieItem = (tx: DecodedTransactionMaterial) => ({
   key: Buffer.from(tx.nodeTxId, "hex"),
-  value: Buffer.from(tx.nativeCompactCbor, "hex"),
+  value: Buffer.from(tx.l2TransactionSourceCbor, "hex"),
 });
 
 export const requireProof = (
@@ -564,6 +647,7 @@ const prepareTx = ({
     nativeTxId: tx.nodeTxId,
     nativeTx: tx.nativeTxCompact,
     nativeTxCompactCbor: tx.nativeCompactCbor,
+    l2TransactionSourceCbor: tx.l2TransactionSourceCbor,
     transactionsPhasRoot,
     txMembershipProofCbor: proofCbor,
   },
@@ -572,42 +656,39 @@ const prepareTx = ({
   doubleSpentInputIndex,
 });
 
-export const compatibilityReasons = ({
-  nativeRoot,
+export const requireTransactionsRootMatch = async ({
+  sourceRoot,
   expectedTransactionsRoot,
+  count,
 }: {
-  readonly nativeRoot: string;
+  readonly sourceRoot: string;
   readonly expectedTransactionsRoot?: string;
-}): readonly string[] => {
-  const reasons: string[] = [];
-  if (
-    expectedTransactionsRoot !== undefined &&
-    expectedTransactionsRoot !== nativeRoot
-  ) {
-    reasons.push(
-      `Expected transactions root ${expectedTransactionsRoot} does not match the native node transaction root ${nativeRoot}.`,
+  readonly count: bigint;
+}): Promise<void> => {
+  if (expectedTransactionsRoot === undefined) {
+    return;
+  }
+  const committedRoot = await Effect.runPromise(
+    commitCountedRootProgram({
+      domain: ROOT_DOMAINS.transactionsV1,
+      phasRoot: sourceRoot,
+      count,
+    }),
+  );
+  if (expectedTransactionsRoot !== committedRoot) {
+    throw new Error(
+      `Expected V1 transactions root ${expectedTransactionsRoot} does not match the counted L2TransactionSourceV1 root ${committedRoot} derived from raw PHAS root ${sourceRoot} at count ${count.toString()}.`,
     );
   }
-  return reasons;
 };
 
 const writePreparedFiles = async ({
   output,
   outputDir,
-  allowIncompatibleOutput,
 }: {
   readonly output: PreparedDoubleSpendOutput;
   readonly outputDir: string;
-  readonly allowIncompatibleOutput: boolean;
 }): Promise<PreparedDoubleSpendOutput["files"]> => {
-  if (
-    !output.compatibility.canUseSubmitStepCommands &&
-    !allowIncompatibleOutput
-  ) {
-    throw new Error(
-      "Refusing to write submit-step material because the selected block is not compatible with the current fault-proof ABI. Pass --allow-incompatible-output to write diagnostic files anyway.",
-    );
-  }
   await mkdir(outputDir, { recursive: true });
   const paths = {
     tx1InclusionPath: join(outputDir, "tx1-inclusion.json"),
@@ -630,7 +711,6 @@ const writePreparedFiles = async ({
         tx2NodeTxId: output.tx2.nodeTxId,
         tx1DoubleSpentInputIndex: output.tx1.doubleSpentInputIndex,
         tx2DoubleSpentInputIndex: output.tx2.doubleSpentInputIndex,
-        compatibility: output.compatibility,
         commitmentEncodings: output.commitmentEncodings,
       }),
     ),
@@ -658,7 +738,6 @@ export const prepareDoubleSpendFromTransactions = async ({
   tx1Id,
   tx2Id,
   outputDir,
-  allowIncompatibleOutput = false,
 }: {
   readonly headerHash: string;
   readonly transactions: readonly NodeTransactionPayload[];
@@ -666,7 +745,6 @@ export const prepareDoubleSpendFromTransactions = async ({
   readonly tx1Id?: string;
   readonly tx2Id?: string;
   readonly outputDir?: string;
-  readonly allowIncompatibleOutput?: boolean;
 }): Promise<PreparedDoubleSpendOutput> => {
   const normalizedHeaderHash = parseHex(headerHash, "--header-hash", 28);
   const normalizedExpectedRoot =
@@ -677,39 +755,37 @@ export const prepareDoubleSpendFromTransactions = async ({
     transactions.map(decodeTransactionMaterial),
   );
   const pair = resolveDoubleSpendPair({ transactions: decoded, tx1Id, tx2Id });
-  const nativeTrie = await buildTrieView(decoded.map(nativeTrieItem));
+  const sourceTrie = await buildTrieView(
+    decoded.map(transactionSourceTrieItem),
+  );
   const tx1Proof = requireProof(
-    nativeTrie,
-    nativeTrieItem(pair.tx1).key,
+    sourceTrie,
+    transactionSourceTrieItem(pair.tx1).key,
     "tx1",
   );
   const tx2Proof = requireProof(
-    nativeTrie,
-    nativeTrieItem(pair.tx2).key,
+    sourceTrie,
+    transactionSourceTrieItem(pair.tx2).key,
     "tx2",
   );
-  const reasons = compatibilityReasons({
-    nativeRoot: nativeTrie.root,
+  await requireTransactionsRootMatch({
+    sourceRoot: sourceTrie.root,
     expectedTransactionsRoot: normalizedExpectedRoot,
+    count: BigInt(decoded.length),
   });
   const baseOutput: PreparedDoubleSpendOutput = {
     headerHash: normalizedHeaderHash,
     txCount: decoded.length,
     doubleSpentInput: pair.doubleSpentInput,
-    compatibility: {
-      canUseSubmitStepCommands: reasons.length === 0,
-      reasons,
-    },
     commitmentEncodings: {
       nativeNode: {
-        transactionsRoot: nativeTrie.root,
+        transactionsRoot: sourceTrie.root,
       },
       ...(normalizedExpectedRoot === undefined
         ? {}
         : {
             expectedTransactionsRoot: {
               value: normalizedExpectedRoot,
-              matchesNativeNodeRoot: normalizedExpectedRoot === nativeTrie.root,
             },
           }),
     },
@@ -717,13 +793,13 @@ export const prepareDoubleSpendFromTransactions = async ({
       tx: pair.tx1,
       doubleSpentInputIndex: pair.tx1DoubleSpentInputIndex,
       proofCbor: tx1Proof,
-      transactionsPhasRoot: nativeTrie.root,
+      transactionsPhasRoot: sourceTrie.root,
     }),
     tx2: prepareTx({
       tx: pair.tx2,
       doubleSpentInputIndex: pair.tx2DoubleSpentInputIndex,
       proofCbor: tx2Proof,
-      transactionsPhasRoot: nativeTrie.root,
+      transactionsPhasRoot: sourceTrie.root,
     }),
   };
   if (outputDir === undefined) {
@@ -732,7 +808,6 @@ export const prepareDoubleSpendFromTransactions = async ({
   const files = await writePreparedFiles({
     output: baseOutput,
     outputDir,
-    allowIncompatibleOutput,
   });
   return { ...baseOutput, files };
 };
@@ -752,7 +827,6 @@ export const prepareDoubleSpendFromNode = async (
     tx1Id: config.tx1Id,
     tx2Id: config.tx2Id,
     outputDir: config.outputDir,
-    allowIncompatibleOutput: config.allowIncompatibleOutput,
   });
 };
 
@@ -769,7 +843,6 @@ export const prepareDoubleSpendFromFile = async (
     tx1Id: config.tx1Id,
     tx2Id: config.tx2Id,
     outputDir: config.outputDir,
-    allowIncompatibleOutput: config.allowIncompatibleOutput,
   });
 };
 
@@ -782,7 +855,6 @@ export const prepareSampleDoubleSpend = async (
     transactions,
     expectedTransactionsRoot: config.expectedTransactionsRoot,
     outputDir: config.outputDir,
-    allowIncompatibleOutput: config.allowIncompatibleOutput,
   });
   if (config.outputDir === undefined) {
     return output;

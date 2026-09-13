@@ -1,12 +1,12 @@
 import {
   chmod,
+  type FileHandle,
   link,
   mkdir,
   open,
   rename,
   rm,
   unlink,
-  type FileHandle,
 } from "node:fs/promises";
 import { dirname } from "node:path";
 

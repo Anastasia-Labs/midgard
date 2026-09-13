@@ -8,13 +8,16 @@ import {
   absoluteArg,
   evaluateClosureIdentity,
   evaluateClosureIdentityArtifacts,
+  evaluateExactClosureIdentityShape,
+  evaluateExactSourceIdentityShape,
+  hasExactV1JsonKeys,
   sameSourceIdentity,
   SHA256,
   sha256File,
 } from "./phase3-architecture-g-closure-lib.mjs";
 
 export const PHASE3_LIVE_E2E_SCHEMA =
-  "midgard-phase3-architecture-g-clean-live-e2e-v2";
+  "midgard-phase3-architecture-g-clean-live-e2e-v1";
 export const PHASE3_LIVE_E2E_SCENARIO =
   "phase3-architecture-g-clean-live-e2e-recovery-v1";
 export const PHASE3_LIVE_E2E_AUTHORIZATION = "architecture-g-clean-live-e2e-v1";
@@ -38,6 +41,17 @@ const TX_HASH = /^[0-9a-f]{64}$/u;
 const OWNER_EPOCH = /^[0-9a-f]{32}$/u;
 const positiveInteger = (value) => Number.isSafeInteger(value) && value > 0;
 const zeroInteger = (value) => Number.isSafeInteger(value) && value === 0;
+const canonicalAbsolutePath = (value) =>
+  typeof value === "string" &&
+  path.isAbsolute(value) &&
+  path.resolve(value) === value;
+const exactShape = (value, keys, label, reasons) => {
+  if (!hasExactV1JsonKeys(value, keys)) {
+    reasons.push(`${label} must use the exact V1 keys`);
+    return false;
+  }
+  return true;
+};
 const ready = (value) =>
   value?.httpStatus === 200 &&
   value?.ready === true &&
@@ -57,8 +71,7 @@ const containsForbiddenEvidence = (value) => {
 
 const validateArtifact = (artifact, label, checkArtifacts, reasons) => {
   if (
-    typeof artifact?.path !== "string" ||
-    !path.isAbsolute(artifact.path) ||
+    !canonicalAbsolutePath(artifact?.path) ||
     !SHA256.test(artifact?.sha256 ?? "") ||
     !Number.isSafeInteger(artifact?.bytes) ||
     artifact.bytes < 0
@@ -95,6 +108,182 @@ const validateSecretScannedLog = (artifact, label, reasons) => {
     scan.retainedLineCount < 0
   ) {
     reasons.push(`${label} was not retained through a clean secret scan`);
+  }
+};
+
+const validateReadyShape = (value, label, reasons) => {
+  exactShape(value, ["httpStatus", "ready", "reasons"], label, reasons);
+};
+
+const validateStepEvidenceShape = (stepId, evidence, reasons) => {
+  const check = (value, keys, label) => exactShape(value, keys, label, reasons);
+  switch (stepId) {
+    case "fresh-deployment-preflight":
+      check(
+        evidence,
+        [
+          "runMode",
+          "engine",
+          "localUplc",
+          "provider",
+          "cleanDeployment",
+          "readiness",
+        ],
+        `${stepId} evidence`,
+      );
+      validateReadyShape(evidence?.readiness, `${stepId} readiness`, reasons);
+      break;
+    case "deposit-projection":
+      check(
+        evidence,
+        [
+          "txHash",
+          "eventId",
+          "confirmed",
+          "projected",
+          "balanceBeforeLovelace",
+          "balanceAfterLovelace",
+        ],
+        `${stepId} evidence`,
+      );
+      break;
+    case "l2-submit":
+      check(
+        evidence,
+        ["transactions", "submissionErrors"],
+        `${stepId} evidence`,
+      );
+      for (const [index, transaction] of (Array.isArray(evidence?.transactions)
+        ? evidence.transactions
+        : []
+      ).entries()) {
+        check(
+          transaction,
+          ["txHash", "status"],
+          `${stepId} transaction ${index.toString()}`,
+        );
+      }
+      break;
+    case "da-attestation":
+      check(evidence, ["headers"], `${stepId} evidence`);
+      for (const [index, header] of (Array.isArray(evidence?.headers)
+        ? evidence.headers
+        : []
+      ).entries()) {
+        check(
+          header,
+          [
+            "headerHash",
+            "payloadMetadataSha256",
+            "payloadCborSha256",
+            "watcherStatus",
+            "attestationTxHashes",
+          ],
+          `${stepId} header ${index.toString()}`,
+        );
+      }
+      break;
+    case "merge-finalization":
+      check(
+        evidence,
+        [
+          "automaticMerge",
+          "committedTxHashes",
+          "finalizedHeaderHashes",
+          "stateQueueDepth",
+          "unfinishedMutationJobs",
+        ],
+        `${stepId} evidence`,
+      );
+      break;
+    case "db-balance":
+      check(evidence, ["counts", "balanceAssertions"], `${stepId} evidence`);
+      check(
+        evidence?.counts,
+        [
+          "consumedDeposits",
+          "acceptedAdmissions",
+          "immutableRows",
+          "confirmedLedgerRows",
+          "mempoolRows",
+          "processedMempoolRows",
+          "blockRows",
+          "unfinishedMutationJobs",
+        ],
+        `${stepId} counts`,
+      );
+      for (const [index, assertion] of (Array.isArray(
+        evidence?.balanceAssertions,
+      )
+        ? evidence.balanceAssertions
+        : []
+      ).entries()) {
+        check(
+          assertion,
+          ["addressHash", "expectedLovelace", "actualLovelace"],
+          `${stepId} assertion ${index.toString()}`,
+        );
+      }
+      break;
+    case "owner-child-restart":
+      check(
+        evidence,
+        [
+          "signal",
+          "ownerPidBefore",
+          "ownerPidAfter",
+          "nodePid",
+          "childRestartsBefore",
+          "childRestartsAfter",
+          "nodeProcessRestarted",
+          "readinessRestored",
+        ],
+        `${stepId} evidence`,
+      );
+      break;
+    case "post-submit-recovery":
+      check(
+        evidence,
+        [
+          "headerHash",
+          "submissionTxHash",
+          "baseRoot",
+          "candidateRoot",
+          "eventLogDigest",
+          "ownerBinarySha256",
+          "replayEventCount",
+          "killedAfterSubmission",
+          "killedBeforePromotion",
+          "ownerEpochBefore",
+          "ownerEpochAfter",
+          "authoritativeMarkerAfter",
+          "replayedCandidateRoot",
+          "journalStatus",
+          "l2Status",
+          "auditDivergence",
+          "recoveryLogMarker",
+        ],
+        `${stepId} evidence`,
+      );
+      break;
+    case "final-readiness":
+      check(
+        evidence,
+        [
+          "node",
+          "da",
+          "allL2Committed",
+          "stateQueueDepth",
+          "unfinishedMutationJobs",
+          "unexpectedErrorCount",
+        ],
+        `${stepId} evidence`,
+      );
+      validateReadyShape(evidence?.node, `${stepId} node readiness`, reasons);
+      validateReadyShape(evidence?.da, `${stepId} DA readiness`, reasons);
+      break;
+    default:
+      break;
   }
 };
 
@@ -296,6 +485,44 @@ export const evaluatePhase3LiveE2EReport = (
   { checkArtifacts = true } = {},
 ) => {
   const reasons = [];
+  exactShape(
+    report,
+    [
+      "schemaVersion",
+      "scenario",
+      "authorization",
+      "startedAtMs",
+      "completedAtMs",
+      "identity",
+      "sourceAtCompletion",
+      "commandManifest",
+      "steps",
+      "verdict",
+    ],
+    "live E2E report",
+    reasons,
+  );
+  reasons.push(...evaluateExactClosureIdentityShape(report?.identity));
+  reasons.push(
+    ...evaluateExactSourceIdentityShape(
+      report?.sourceAtCompletion,
+      "completion source identity",
+    ),
+  );
+  exactShape(
+    report?.commandManifest,
+    ["path", "sha256", "bytes"],
+    "command-manifest artifact identity",
+    reasons,
+  );
+  if (
+    !Number.isSafeInteger(report?.startedAtMs) ||
+    report.startedAtMs <= 0 ||
+    !Number.isSafeInteger(report?.completedAtMs) ||
+    report.completedAtMs < report.startedAtMs
+  ) {
+    reasons.push("live E2E report interval is not canonical");
+  }
   if (report?.schemaVersion !== PHASE3_LIVE_E2E_SCHEMA) {
     reasons.push("unexpected live E2E report schema");
   }
@@ -336,6 +563,29 @@ export const evaluatePhase3LiveE2EReport = (
       ) {
         reasons.push("command manifest schema or authorization is invalid");
       }
+      exactShape(
+        commandManifest,
+        ["schemaVersion", "authorization", "binding", "steps"],
+        "command manifest",
+        reasons,
+      );
+      exactShape(
+        commandManifest?.binding,
+        ["runtimeSha256", "deploymentSha256", "phase1Sha256", "ownerSha256"],
+        "command-manifest binding",
+        reasons,
+      );
+      for (const [index, commandStep] of (Array.isArray(commandManifest?.steps)
+        ? commandManifest.steps
+        : []
+      ).entries()) {
+        exactShape(
+          commandStep,
+          ["id", "command", "args", "cwd", "timeoutMs"],
+          `command-manifest step ${index.toString()}`,
+          reasons,
+        );
+      }
       validateBinding(
         commandManifest?.binding,
         report?.identity,
@@ -357,6 +607,81 @@ export const evaluatePhase3LiveE2EReport = (
   };
   for (const [index, stepId] of PHASE3_LIVE_STEP_IDS.entries()) {
     const step = steps[index];
+    exactShape(
+      step,
+      [
+        "id",
+        "driver",
+        "exitCode",
+        "signal",
+        "timedOut",
+        "driverStable",
+        "completed",
+        "stdout",
+        "stderr",
+        "resultArtifact",
+        "result",
+      ],
+      `${stepId} step`,
+      reasons,
+    );
+    exactShape(
+      step?.driver,
+      ["path", "sha256", "args", "cwd", "timeoutMs"],
+      `${stepId} driver`,
+      reasons,
+    );
+    exactShape(
+      step?.result,
+      [
+        "schemaVersion",
+        "stepId",
+        "verdict",
+        "completed",
+        "binding",
+        "startedAtMs",
+        "completedAtMs",
+        "evidence",
+      ],
+      `${stepId} result`,
+      reasons,
+    );
+    exactShape(
+      step?.result?.binding,
+      ["runtimeSha256", "deploymentSha256", "phase1Sha256", "ownerSha256"],
+      `${stepId} binding`,
+      reasons,
+    );
+    exactShape(
+      step?.resultArtifact,
+      ["path", "sha256", "bytes"],
+      `${stepId} result artifact`,
+      reasons,
+    );
+    for (const [label, log] of [
+      ["stdout", step?.stdout],
+      ["stderr", step?.stderr],
+    ]) {
+      exactShape(
+        log,
+        ["path", "sha256", "bytes", "secretScan"],
+        `${stepId} ${label} artifact`,
+        reasons,
+      );
+      exactShape(
+        log?.secretScan,
+        [
+          "schemaVersion",
+          "passed",
+          "sensitiveLineCount",
+          "oversizedLineCount",
+          "retainedLineCount",
+        ],
+        `${stepId} ${label} secret scan`,
+        reasons,
+      );
+    }
+    validateStepEvidenceShape(stepId, step?.result?.evidence, reasons);
     if (
       step?.id !== stepId ||
       step?.result?.schemaVersion !== PHASE3_LIVE_STEP_SCHEMA ||
@@ -384,13 +709,12 @@ export const evaluatePhase3LiveE2EReport = (
       reasons.push(`${stepId} result interval is invalid`);
     }
     if (
-      typeof step?.driver?.path !== "string" ||
-      !path.isAbsolute(step.driver.path) ||
+      !canonicalAbsolutePath(step?.driver?.path) ||
       !SHA256.test(step?.driver?.sha256 ?? "") ||
       !Array.isArray(step?.driver?.args) ||
-      typeof step?.driver?.cwd !== "string" ||
-      !path.isAbsolute(step.driver.cwd) ||
-      !Number.isSafeInteger(step?.driver?.timeoutMs)
+      !canonicalAbsolutePath(step?.driver?.cwd) ||
+      !Number.isSafeInteger(step?.driver?.timeoutMs) ||
+      step.driver.timeoutMs <= 0
     ) {
       reasons.push(`${stepId} driver identity is malformed`);
     }

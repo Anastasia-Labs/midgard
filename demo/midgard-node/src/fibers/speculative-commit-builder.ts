@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Duration, Effect, Metric, Option, Queue, Ref, Runtime } from "effect";
 import { Worker } from "worker_threads";
@@ -9,18 +10,42 @@ import {
   MpfEngineStateDB,
   PendingBlockFinalizationsDB,
   StateQueueMutationLeasesDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { reachPipelinedCommitCrashCheckpoint } from "@/e2e/pipelined-commit-crash-checkpoint.js";
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { reachPipelinedCommitCrashCheckpoint } from "../e2e/pipelined-commit-crash-checkpoint.js";
+import { canonicalSlotConfigForLucid } from "../lucid-time.js";
+import {
+  type CommitSubmitWake,
+  ContractDeploymentIdentity,
+  Database,
+  Globals,
+  Lucid,
+  MidgardContracts,
+  NodeConfig,
+  type NodeConfigDep,
+  withL1ControlPlane,
+} from "../services/index.js";
+import {
+  fetchStateQueueSnapshotProgram,
+  refreshStateQueueGlobalsFromSnapshot,
+} from "../services/state-queue-topology.js";
+import { stateQueueBaseHeaderHash } from "../workers/commit-block-header/state-queue.js";
+import {
+  deserializeStateQueueUTxO,
+  type SpeculativeCommitWorkerInstruction,
+  type WorkerInput,
+  type WorkerOutput,
+} from "../workers/utils/commit-block-header.js";
+import { WorkerError } from "../workers/utils/common.js";
 import {
   promoteOrRecoverNativeMpf,
   publishCommitMempoolLedgerMutation,
-} from "@/fibers/block-commitment.js";
+} from "./block-commitment.js";
 import {
   publishFinalizedDaPayloadBestEffort,
   runAfterL1ControlPlaneRelease,
-} from "@/fibers/da-publication-trigger.js";
-import { resolveWorkerEntry } from "@/fibers/resolve-worker-entry.js";
+} from "./da-publication-trigger.js";
+import { resolveWorkerEntry } from "./resolve-worker-entry.js";
 import {
   barrierWatermarksAreFresh,
   reduceSpeculativeCommitState,
@@ -29,30 +54,8 @@ import {
   type SpeculativeCandidateSummary,
   type SpeculativeCommitState,
   type SpeculativeInvalidationReason,
-} from "@/fibers/speculative-commit-state.js";
-import { makeAwaitedWorkerTerminator } from "@/fibers/worker-lifecycle.js";
-import {
-  type CommitSubmitWake,
-  Database,
-  Globals,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-  type NodeConfigDep,
-  withL1ControlPlane,
-} from "@/services/index.js";
-import {
-  fetchStateQueueSnapshotProgram,
-  refreshStateQueueGlobalsFromSnapshot,
-} from "@/services/state-queue-topology.js";
-import { stateQueueBaseHeaderHash } from "@/workers/commit-block-header/state-queue.js";
-import {
-  deserializeStateQueueUTxO,
-  type SpeculativeCommitWorkerInstruction,
-  type WorkerInput,
-  type WorkerOutput,
-} from "@/workers/utils/commit-block-header.js";
-import { WorkerError } from "@/workers/utils/common.js";
+} from "./speculative-commit-state.js";
+import { makeAwaitedWorkerTerminator } from "./worker-lifecycle.js";
 
 const speculativeBuildDuration = Metric.timer(
   "speculative_build_duration_ms",
@@ -142,6 +145,7 @@ type SubmitSpeculativeCandidateInstruction = Extract<
 
 const authenticateForeignTipEvidence = (
   liveTail: SubmitSpeculativeCandidateInstruction["confirmedBlock"],
+  _consensusProfile: MidgardConsensusProfile,
 ) =>
   Effect.gen(function* () {
     const tail = yield* deserializeStateQueueUTxO(liveTail);
@@ -178,13 +182,33 @@ export const persistAuthenticatedForeignTipMismatch = ({
   expectedHeaderHash,
   liveTail,
   assertedForeignHeaderHash,
+  consensusProfile,
 }: {
   readonly expectedHeaderHash: string;
   readonly liveTail: SubmitSpeculativeCandidateInstruction["confirmedBlock"];
   readonly assertedForeignHeaderHash?: string;
+  readonly consensusProfile: MidgardConsensusProfile;
 }) =>
   Effect.gen(function* () {
-    const evidence = yield* authenticateForeignTipEvidence(liveTail);
+    const deploymentIdentity = yield* ContractDeploymentIdentity;
+    if (
+      deploymentIdentity.deploymentMarker === undefined ||
+      deploymentIdentity.consensusProfile.profileId !==
+        consensusProfile.profileId
+    ) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: ForeignTipReconciliationsDB.tableName,
+          message:
+            "Foreign-tip persistence requires the exact active deployment marker and consensus profile",
+          cause: "missing_or_mismatched_deployment_identity",
+        }),
+      );
+    }
+    const evidence = yield* authenticateForeignTipEvidence(
+      liveTail,
+      consensusProfile,
+    );
     if (
       assertedForeignHeaderHash !== undefined &&
       evidence.headerHash !== assertedForeignHeaderHash
@@ -203,6 +227,8 @@ export const persistAuthenticatedForeignTipMismatch = ({
       foreignHeaderHash: evidence.headerHash,
       replacedBaseHeaderHash: expectedHeaderHash,
       foreignHeader: evidence.header,
+      consensusProfile,
+      deploymentMarker: deploymentIdentity.deploymentMarker,
     });
     return true;
   });
@@ -211,11 +237,13 @@ export const recordForeignTipMismatchBeforeInvalidation = <E, R>({
   expectedHeaderHash,
   confirmedHeaderHash,
   confirmedTip,
+  consensusProfile,
   invalidateCandidate,
 }: {
   readonly expectedHeaderHash: string;
   readonly confirmedHeaderHash: string;
   readonly confirmedTip: SubmitSpeculativeCandidateInstruction["confirmedBlock"];
+  readonly consensusProfile: MidgardConsensusProfile;
   readonly invalidateCandidate: Effect.Effect<void, E, R>;
 }) =>
   Effect.gen(function* () {
@@ -223,6 +251,7 @@ export const recordForeignTipMismatchBeforeInvalidation = <E, R>({
       expectedHeaderHash,
       liveTail: confirmedTip,
       assertedForeignHeaderHash: confirmedHeaderHash,
+      consensusProfile,
     });
     if (!recorded) {
       return yield* Effect.fail(
@@ -245,15 +274,18 @@ export const decideSpeculativeInstructionForLiveTip = ({
   expectedHeaderHash,
   liveTail,
   submitInstruction,
+  consensusProfile,
 }: {
   readonly expectedHeaderHash: string;
   readonly liveTail: SubmitSpeculativeCandidateInstruction["confirmedBlock"];
   readonly submitInstruction: SubmitSpeculativeCandidateInstruction;
+  readonly consensusProfile: MidgardConsensusProfile;
 }) =>
   Effect.gen(function* () {
     const mismatchRecorded = yield* persistAuthenticatedForeignTipMismatch({
       expectedHeaderHash,
       liveTail,
+      consensusProfile,
     });
     if (!mismatchRecorded) return submitInstruction;
     return {
@@ -640,11 +672,12 @@ export const runSpeculativeCommitBuilderOnce = (
 ): Effect.Effect<
   void,
   WorkerError | DatabaseError,
-  Globals | Database | NodeConfig
+  Globals | Database | Lucid | NodeConfig
 > =>
   Effect.gen(function* () {
     const globals = yield* Globals;
     const config = yield* NodeConfig;
+    const lucid = yield* Lucid;
     if (
       !config.SPECULATIVE_COMMIT_BUILD ||
       hasActiveSpeculativeCommitSession()
@@ -753,6 +786,7 @@ export const runSpeculativeCommitBuilderOnce = (
             record[
               PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME
             ].getTime(),
+          forcedValidationSlotConfig: canonicalSlotConfigForLucid(lucid.api),
           ledgerStoreLeaseOwner: `commit:${randomUUID()}`,
           localFinalizationPending: false,
           mempoolTxsCountSoFar: 0,
@@ -973,7 +1007,12 @@ export const submitSpeculativeCandidateOnConfirmation = (
   | SDK.HashingError
   | SDK.LucidError
   | Error,
-  Globals | Database | NodeConfig | Lucid | MidgardContracts
+  | Globals
+  | Database
+  | NodeConfig
+  | Lucid
+  | MidgardContracts
+  | ContractDeploymentIdentity
 > =>
   Effect.gen(function* () {
     const {
@@ -1017,10 +1056,12 @@ export const submitSpeculativeCandidateOnConfirmation = (
             config.SPECULATIVE_REBUILD_MAX_ATTEMPTS,
           );
           if (nextState._tag === "Invalidated") {
+            const contracts = yield* MidgardContracts;
             yield* recordForeignTipMismatchBeforeInvalidation({
               expectedHeaderHash: state.baseHeaderHash,
               confirmedHeaderHash,
               confirmedTip,
+              consensusProfile: contracts.consensusProfile,
               invalidateCandidate: invalidateSpeculativeCommitCandidate(
                 globals,
                 config,
@@ -1073,6 +1114,7 @@ export const submitSpeculativeCandidateOnConfirmation = (
                   yield* decideSpeculativeInstructionForLiveTip({
                     expectedHeaderHash: confirmedHeaderHash,
                     liveTail: snapshot.tailCommitBase.utxo,
+                    consensusProfile: contracts.consensusProfile,
                     submitInstruction: {
                       type: "SubmitSpeculativeCandidate",
                       confirmedBlock: snapshot.tailCommitBase.utxo,
@@ -1142,7 +1184,7 @@ export const submitSpeculativeCandidateOnConfirmation = (
 export const speculativeCommitBuilderFiber: Effect.Effect<
   void,
   never,
-  Globals | Database | NodeConfig
+  Globals | Database | Lucid | NodeConfig
 > = Effect.gen(function* () {
   const globals = yield* Globals;
   const config = yield* NodeConfig;
@@ -1193,7 +1235,12 @@ export const speculativeCommitBuilderFiber: Effect.Effect<
 export const speculativeCommitSubmitterFiber: Effect.Effect<
   void,
   never,
-  Globals | Database | NodeConfig | Lucid | MidgardContracts
+  | Globals
+  | Database
+  | NodeConfig
+  | Lucid
+  | MidgardContracts
+  | ContractDeploymentIdentity
 > = Effect.gen(function* () {
   const globals = yield* Globals;
   yield* Effect.logInfo("🟦 Speculative commit submitter wake fiber started.");

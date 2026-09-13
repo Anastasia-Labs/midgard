@@ -14,32 +14,32 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
-import { formatJson, parseEventId } from "@/commands/command-utils.js";
-import {
-  type EventSettlementProofResolution,
-  resolveEventSettlementProofProgram,
-} from "@/commands/event-settlement-proof.js";
-import { addressDataToBech32 } from "@/commands/withdrawal-utils.js";
-import * as WithdrawalsDB from "@/database/withdrawals.js";
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
+import * as WithdrawalsDB from "../database/withdrawals.js";
+import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import {
   Database,
   Lucid,
   MidgardContracts,
   NodeConfig,
-} from "@/services/index.js";
+} from "../services/index.js";
 import {
   fetchReferenceScriptUtxosProgram,
   type ReferenceScriptTarget,
-} from "@/transactions/reference-scripts.js";
+} from "../transactions/reference-scripts.js";
 import {
   type ReservePayoutReferenceScripts,
   submitAbsorbConfirmedDepositToReserveProgram,
   submitAddReserveFundsToPayoutProgram,
   submitConcludePayoutProgram,
   submitInitializePayoutProgram,
-} from "@/transactions/reserve-payout.js";
-import { outRefLabel } from "@/tx-context.js";
+} from "../transactions/reserve-payout.js";
+import { outRefLabel } from "../tx-context.js";
+import { formatJson, parseEventId } from "./command-utils.js";
+import {
+  type EventSettlementProofResolution,
+  resolveEventSettlementProofProgram,
+} from "./event-settlement-proof.js";
+import { addressDataToBech32 } from "./withdrawal-utils.js";
 
 export type EventIdConfig = {
   readonly eventId: string;

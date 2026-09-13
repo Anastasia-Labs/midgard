@@ -1,9 +1,11 @@
 import { decodeSingleCbor, encodeCbor } from "./cbor.js";
-import { computeHash32, ensureHash32, type Hash32 } from "./hash.js";
+import { ensureHash32, type Hash32 } from "./hash.js";
 import type {
   MidgardNativeTxBodyCanonical,
   MidgardNativeTxBodyCompact,
 } from "./native.js";
+import { MIDGARD_NATIVE_NETWORK_ID_NONE } from "./native-constants.js";
+import { midgardFieldCommitment } from "./native-tx-field-access.js";
 import {
   asFixedArray,
   asSigned,
@@ -41,6 +43,20 @@ type NativeTxBodyCanonicalValue = readonly [
   Hash32,
   bigint,
 ];
+
+const asNativeNetworkId = (value: unknown, fieldName: string): bigint => {
+  const networkId = asUnsigned(value, fieldName);
+  if (
+    networkId !== 0n &&
+    networkId !== 1n &&
+    networkId !== MIDGARD_NATIVE_NETWORK_ID_NONE
+  ) {
+    throw new Error(
+      `${fieldName} must be 0, 1, or ${MIDGARD_NATIVE_NETWORK_ID_NONE.toString(10)}`,
+    );
+  }
+  return networkId;
+};
 
 export const encodeNativeTxBodyCompactValue = (
   body: MidgardNativeTxBodyCompact,
@@ -80,7 +96,7 @@ export const encodeNativeTxBodyCompactValue = (
     body.auxiliaryDataHash,
     "transaction_body_compact.auxiliary_data_hash",
   ),
-  asUnsigned(body.networkId, "transaction_body_compact.network_id"),
+  asNativeNetworkId(body.networkId, "transaction_body_compact.network_id"),
 ];
 
 export const decodeNativeTxBodyCompactValue = (
@@ -100,7 +116,7 @@ export const decodeNativeTxBodyCompactValue = (
     mintHash: hashItem(v, 8, fieldName),
     scriptIntegrityHash: hashItem(v, 9, fieldName),
     auxiliaryDataHash: hashItem(v, 10, fieldName),
-    networkId: asUnsigned(v[11], `${fieldName}[11]`),
+    networkId: asNativeNetworkId(v[11], `${fieldName}[11]`),
   };
 };
 
@@ -124,7 +140,7 @@ export const encodeNativeTxBodyCanonicalValue = (
     "transaction_body.script_integrity_hash",
   ),
   ensureHash32(body.auxiliaryDataHash, "transaction_body.auxiliary_data_hash"),
-  asUnsigned(body.networkId, "transaction_body.network_id"),
+  asNativeNetworkId(body.networkId, "transaction_body.network_id"),
 ];
 
 export const decodeNativeTxBodyCanonicalValue = (
@@ -144,22 +160,48 @@ export const decodeNativeTxBodyCanonicalValue = (
     mintPreimageCbor: bytesItem(v, 8, fieldName),
     scriptIntegrityHash: hashItem(v, 9, fieldName),
     auxiliaryDataHash: hashItem(v, 10, fieldName),
-    networkId: asUnsigned(v[11], `${fieldName}[11]`),
+    networkId: asNativeNetworkId(v[11], `${fieldName}[11]`),
   };
 };
 
+/**
+ * The six body field commitments, `docs/spec/midgard-tx.md` §4.
+ *
+ * Each one is a plain `blake2b_256` over the field's §5.1 preimage bytes: no
+ * domain tag, no version prefix, no field index in the hash input. That is the
+ * whole derivation — {@link midgardFieldCommitment} is `computeHash32`, and a
+ * watcher recomputing these needs the raw bytes and nothing else.
+ *
+ * **The preimage is not re-validated here, deliberately.** §4's commitment is
+ * defined over bytes, and the Aiken twins hash first and walk the grammar
+ * separately (`verify_canonical_mint_preimage_cbor` is the pattern: one
+ * `field_commitment` check, then an in-place walk). Making this function decode
+ * would put a §5.1 parse on the honest path of every transaction — the cost the
+ * reversion exists to remove — and would give the format a second verdict on
+ * canonicality. Callers that need the grammar checked use
+ * {@link decodeMidgardFieldPreimageV1} or the per-field readers in
+ * `native-tx-field-item-decoders.ts`; producers that build the bytes go
+ * through `encodeMidgardFieldPreimageForFieldV1`, which cannot emit a
+ * non-canonical preimage.
+ *
+ * Field identity is positional (§4), so fields 0/1 and 3/4 alias on identical
+ * content; the positional-identity invariant is what makes that safe, and it is
+ * enforced at the verification entry points, not here.
+ */
 export const deriveNativeTxBodyCompact = (
   body: MidgardNativeTxBodyCanonical,
 ): MidgardNativeTxBodyCompact => ({
-  spendInputsHash: computeHash32(body.spendInputsPreimageCbor),
-  referenceInputsHash: computeHash32(body.referenceInputsPreimageCbor),
-  outputsHash: computeHash32(body.outputsPreimageCbor),
+  spendInputsHash: midgardFieldCommitment(body.spendInputsPreimageCbor),
+  referenceInputsHash: midgardFieldCommitment(body.referenceInputsPreimageCbor),
+  outputsHash: midgardFieldCommitment(body.outputsPreimageCbor),
   fee: body.fee,
   validityIntervalStart: body.validityIntervalStart,
   validityIntervalEnd: body.validityIntervalEnd,
-  requiredObserversHash: computeHash32(body.requiredObserversPreimageCbor),
-  requiredSignersHash: computeHash32(body.requiredSignersPreimageCbor),
-  mintHash: computeHash32(body.mintPreimageCbor),
+  requiredObserversHash: midgardFieldCommitment(
+    body.requiredObserversPreimageCbor,
+  ),
+  requiredSignersHash: midgardFieldCommitment(body.requiredSignersPreimageCbor),
+  mintHash: midgardFieldCommitment(body.mintPreimageCbor),
   scriptIntegrityHash: body.scriptIntegrityHash,
   auxiliaryDataHash: body.auxiliaryDataHash,
   networkId: body.networkId,

@@ -1,8 +1,8 @@
 import { Effect } from "effect";
 
-import { clearTable, DatabaseError } from "@/database/utils/common.js";
-import * as Tx from "@/database/utils/tx.js";
-import { Database } from "@/services/database.js";
+import { Database } from "../services/database.js";
+import { clearTable, DatabaseError } from "./utils/common.js";
+import * as Tx from "./utils/tx.js";
 
 export const tableName = "processed_mempool";
 

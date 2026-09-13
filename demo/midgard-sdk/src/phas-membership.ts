@@ -7,9 +7,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { scriptRewardAddress } from "@/cardano-addresses.js";
-import { LucidError, UnspecifiedNetworkError } from "@/errors.js";
-import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
+import { scriptRewardAddress } from "./cardano-addresses.js";
+import { LucidError, UnspecifiedNetworkError } from "./errors.js";
+import { completeTxWithLocalUPLCEvalProgram } from "./tx-completion.js";
 
 export const PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE =
   "phas.membership.withdraw";
@@ -18,6 +18,12 @@ export type PhasMembershipBlueprint = {
   readonly validators: readonly {
     readonly title: string;
     readonly compiledCode: string;
+    /**
+     * The blueprint's declared parameter list, carried so the loader can
+     * refuse to deploy `compiledCode` bare the moment the validator grows a
+     * parameter (#610). Absent means the validator declares none.
+     */
+    readonly parameters?: readonly unknown[];
   }[];
 };
 
@@ -56,6 +62,7 @@ export const parsePhasMembershipBlueprint = (
       const candidate = validator as {
         readonly title?: unknown;
         readonly compiledCode?: unknown;
+        readonly parameters?: unknown;
       };
       if (typeof candidate.title !== "string") {
         throw new Error(`validators[${index}].title must be a string`);
@@ -68,9 +75,20 @@ export const parsePhasMembershipBlueprint = (
           `validators[${index}].compiledCode must be a non-empty string`,
         );
       }
+      if (
+        candidate.parameters !== undefined &&
+        !Array.isArray(candidate.parameters)
+      ) {
+        throw new Error(
+          `validators[${index}].parameters must be an array when present`,
+        );
+      }
       return {
         title: candidate.title,
         compiledCode: candidate.compiledCode,
+        ...(candidate.parameters === undefined
+          ? {}
+          : { parameters: candidate.parameters as readonly unknown[] }),
       };
     }),
   };
@@ -85,6 +103,17 @@ export const phasMembershipWithdrawalScriptFromBlueprint = (
   if (matches.length !== 1) {
     throw new Error(
       `Expected exactly one ${PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE} validator in blueprint, found ${matches.length}`,
+    );
+  }
+  // The zero-arity door (#610). This loader deploys `compiledCode` bare, so
+  // it is only sound while the validator declares no parameters: a declared
+  // parameter deployed unapplied is the #605 under-application shape — an
+  // always-succeeds script standing where an authenticated one should be.
+  // Fail closed here instead of letting a future blueprint change through.
+  const declaredParameters = matches[0]!.parameters ?? [];
+  if (declaredParameters.length !== 0) {
+    throw new Error(
+      `${PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE} declares ${declaredParameters.length} parameter(s) but this loader deploys compiledCode bare; route it through the parameter-applying blueprint helper instead of widening this zero-arity door (#610)`,
     );
   }
   return {

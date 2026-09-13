@@ -1,0 +1,26 @@
+diff --git a/dist/index.d.cts b/dist/index.d.cts
+index a32596d955c879c61eba4a4cd6b7d4f549a77808..789ab32141b448cdf985939061d9066ba4c61b02 100644
+--- a/dist/index.d.cts
++++ b/dist/index.d.cts
+@@ -309,6 +309,8 @@ interface Wallet {
+     address(): Promise<Address>;
+     rewardAddress(): Promise<RewardAddress | null>;
+     getUtxos(): Promise<UTxO[]>;
++    /** Explicit wallet collateral candidates, separate from ordinary coin selection. */
++    getCollateral?(): Promise<UTxO[]>;
+     getUtxosCore(): Promise<Array<CML.TransactionUnspentOutput>>;
+     getDelegation(): Promise<Delegation>;
+     signTx(tx: CML.Transaction): Promise<CML.TransactionWitnessSet>;
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index a32596d955c879c61eba4a4cd6b7d4f549a77808..789ab32141b448cdf985939061d9066ba4c61b02 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -309,6 +309,8 @@ interface Wallet {
+     address(): Promise<Address>;
+     rewardAddress(): Promise<RewardAddress | null>;
+     getUtxos(): Promise<UTxO[]>;
++    /** Explicit wallet collateral candidates, separate from ordinary coin selection. */
++    getCollateral?(): Promise<UTxO[]>;
+     getUtxosCore(): Promise<Array<CML.TransactionUnspentOutput>>;
+     getDelegation(): Promise<Delegation>;
+     signTx(tx: CML.Transaction): Promise<CML.TransactionWitnessSet>;

@@ -4,7 +4,7 @@ Server application with GET and POST endpoints for interacting with Midgard.
 
 ## What This Package Does
 
-`midgard-node` is the demo off-chain runtime that ties the protocol together.
+`midgard-node` is the off-chain node runtime that ties the protocol together.
 It is responsible for:
 
 - serving the HTTP API used by wallets, tests, and local tooling,
@@ -38,8 +38,8 @@ It is responsible for:
   ledger entries, immutable transactions, address history, and rejection logs.
 - `LEDGER_MPF_DB_PATH` and `TRANSACTIONS_MPF_DB_PATH` point at the LevelDB
   directories used to persist MPF-backed state roots across restarts.
-- `pnpm build` regenerates `src/generated/midgard-sdk-types.d.ts` by syncing
-  the built SDK declarations before bundling the node.
+- `pnpm build` bundles the node entry point and worker entry points with tsup;
+  workspace imports resolve through package exports.
 - `ADMIN_API_KEY` gates the admin-only HTTP surface; keep it set in any shared
   or remotely reachable environment.
 - Accepted `mempool` and `mempool_ledger` rows, spent-input deletion, consumed
@@ -57,7 +57,7 @@ It is responsible for:
 
 Before using live preprod e2e as a debugging loop for builder, wallet,
 validity-window, worker, DA, or post-submit recovery changes, run the focused
-feedback ladder in [TX_PREP_FEEDBACK_LADDER.md](./docs/TX_PREP_FEEDBACK_LADDER.md).
+checks in the [e2e acceptance skill](../../.agents/skills/midgard-e2e-acceptance/SKILL.md).
 The package-level shortcuts are:
 
 ```sh
@@ -86,7 +86,8 @@ quite easily.
    sudo dockerd
    ```
 
-2. Pack the `midgard-sdk` tarball (see [here](../midgard-sdk/README.md)).
+2. Use the Node.js and pnpm versions declared in `demo/package.json`.
+   Workspace SDK dependencies resolve through pnpm; no SDK tarball is needed.
 
 3. Prepare your `.env` file. You can use `.env.example` as your starting point:
 
@@ -109,11 +110,8 @@ quite easily.
    pnpm install --frozen-lockfile
    ```
 
-   1. If the install fails with an incorrect SHA, that most likely means
-      `midgard-sdk` was updated recently, but `pnpm-lock.yaml` still expects the
-      old hash. Update the SHA value inside the `pnpm-lock.yaml` file with the
-      new one.
-   2. Rerun `pnpm install --frozen-lockfile`. Now it should install correctly.
+   Resolve dependency or lockfile drift through the workspace package manifests
+   and pnpm. Do not manually replace integrity hashes in the lockfile.
 
 5. Build the midgard-node:
 
@@ -214,16 +212,10 @@ most up to date `midgard-node`:
 # Optional
 nix develop
 
-# Bundle the SDK
-cd ../midgard-sdk
-pnpm install
-pnpm repack
-
-# Go back to `midgard-node` and force reinstallation of the SDK (faster than
-# `pnpm install --force`)
-cd ../midgard-node
-rm -rf node_modules
-pnpm install
+# From demo/midgard-node, install the pinned workspace dependencies.
+pnpm install --frozen-lockfile
+pnpm build
+node dist/index.js db:migrate
 pnpm listen
 ```
 
@@ -248,17 +240,14 @@ pnpm listen
 - `pnpm submit:l2-transfer`: build and submit a Midgard-native user transfer.
 - `node dist/index.js project-deposits-once`: fetch L1 deposit events once and
   project newly visible deposits into the local Midgard ledger view.
-- `node dist/index.js create-l2-wallet`: create persisted local stress-wallet
-  seed records plus env/argument helper files for parallel fanout benchmarks.
-- `node dist/index.js stress-wallets:prepare`: fund, project, and verify
-  persisted stress wallets before parallel fanout benchmarks.
-- `node dist/index.js stress-wallets:fanout`: create resumable funding edges
-  for a large prepared wallet set.
-- `node dist/index.js stress-corpus-generate` and `stress-corpus-verify`:
-  create and stream-verify the signed NDJSON transaction corpus used by
-  repeatable benchmarks.
 - `pnpm audit:blocks-immutable`: inspect immutable block state and related
   persistence.
+- The e2e step runner, service supervisor, run finalizer, stress-wallet
+  tooling, corpus generator/verifier, bounded L2 stress harness, and the Phase
+  4 local-devnet acceptance gate are `midgard-node-tools` commands
+  (`../midgard-node-tools/dist/index.js`); see
+  [`../midgard-node-tools/README.md`](../midgard-node-tools/README.md). None
+  of them ship in this operator binary.
 - `pnpm stress:valid`: run the high-throughput valid-transaction submitter.
 
 ### Confirmation polling default
@@ -310,8 +299,8 @@ The main listener exposes a small operator-facing API. Common routes include:
 
 - `/deposit/build` for building unsigned L1 deposit transactions from a
   caller-supplied wallet view,
-- `/submit` for submitting raw Midgard canonical transaction CBOR with
-  `Content-Type: application/cbor`,
+- `/submit` for submitting the canonical V1 proof-submission envelope with
+  `Content-Type: application/vnd.midgard.v1+cbor`,
 - `/utxo` for querying one spendable Midgard mempool-ledger UTxO by raw
   TxOutRef CBOR hex,
 - `/utxos` for querying spendable Midgard mempool-ledger UTxOs either by
@@ -339,6 +328,15 @@ docker compose run --rm midgard-node-tests
 cd midgard-node
 pnpm test
 ```
+
+The suite needs a Postgres server it can create sharded databases on
+(`POSTGRES_HOST`/`POSTGRES_PORT`/`POSTGRES_USER`/`POSTGRES_PASSWORD`, default
+`127.0.0.1:5433`, `postgres`/`postgres`). `scripts/start-test-postgres.sh` at
+the repository root starts one with the settings the tests assert
+(`synchronous_commit=on`), reusing any server already listening on the port.
+`pnpm test` builds the workspace packages' `dist/` first because the
+crash-probe tests spawn plain `node` child processes that load those packages
+from `dist/`.
 
 ## Submit A Midgard L2 Transfer
 
@@ -465,8 +463,12 @@ Each entry has the shape:
 
 ```json
 {
-  "schemaVersion": "midgard-deployment-manifest-v2",
+  "schemaVersion": "midgard-deployment-manifest-v1",
   "manifestId": "...",
+  "consensusProfile": {
+    "profileId": "midgard-consensus-v1",
+    "protocolVersion": 1
+  },
   "network": "Preprod",
   "referenceScriptDeployAddress": "addr_test...",
   "hubOracleOneShot": {
@@ -523,12 +525,12 @@ deployment must be audited before production use: for every token name listed in
 `referenceScriptAuthPolicy.tokenNames`, exactly one token under
 `referenceScriptAuthPolicy.policyId` must exist.
 
-`deployment-status` reports both the v2 manifest verification result and live
+`deployment-status` reports both the V1 manifest verification result and live
 protocol deployment status. If a present manifest disagrees with configured
 network, one-shot outref, or reference-script deploy address, startup refuses to
 attach until config is corrected or a fresh redeploy is explicit.
 
-`init` now always writes the manifest. By default it goes to the repository root
+`init` now always writes the manifest. By default it goes to the node working directory
 at `deploymentInfo/contract-deployment-info.json`. If you want to override that
 path, pass:
 
@@ -539,58 +541,10 @@ node dist/index.js init \
 
 ## Parallel Fanout Stress Wallets
 
-Parallel fanout stress uses independent L2 wallets so concurrent workers do not
-race on the same wallet UTxO. Generate a larger pool once, source the generated
-env file, then prepare the subset needed for a run:
-
-```sh
-cd midgard-node
-pnpm build
-
-node dist/index.js create-l2-wallet \
-  --count 128 \
-  --out-dir .stress-wallets
-
-. .stress-wallets/stress-wallets.env
-
-node dist/index.js stress-wallets:prepare \
-  --count 64 \
-  --lovelace-per-wallet 12000000 \
-  --out-dir .stress-wallets
-```
-
-`stress-wallets:prepare` reads existing wallet JSON files, creates missing files
-only when `--create-missing` is passed, submits one deposit for each wallet that
-does not already have sufficient spendable L2 funding, runs deposit projection,
-and verifies each wallet through the node's `/utxos?address=...` endpoint. The
-wallet directory contains private seed phrases and is gitignored.
-
-After preparation, pass the generated argument file to the stress runner. Use 16
-as the first serious concurrency target, then 32 and 64:
-
-```sh
-STRESS_WALLET_ARGS="$(tr '\n' ' ' < .stress-wallets/stress-wallets.args)"
-
-node dist/index.js e2e-stress-l2-throughput \
-  --mode parallel-fanout \
-  --count 256 \
-  --concurrency 16 \
-  $STRESS_WALLET_ARGS
-
-node dist/index.js e2e-stress-l2-throughput \
-  --mode parallel-fanout \
-  --count 512 \
-  --concurrency 32 \
-  --unsafe-allow-large-stress \
-  $STRESS_WALLET_ARGS
-
-node dist/index.js e2e-stress-l2-throughput \
-  --mode parallel-fanout \
-  --count 1024 \
-  --concurrency 64 \
-  --unsafe-allow-large-stress \
-  $STRESS_WALLET_ARGS
-```
+Stress-wallet creation, funding, fan-out, and the bounded
+`e2e-stress-l2-throughput` harness moved to `midgard-node-tools`; see
+[`../midgard-node-tools/README.md`](../midgard-node-tools/README.md). They
+drive this node from the outside and are not part of its binary.
 
 ## Valid Throughput Stress Test
 
@@ -601,20 +555,22 @@ accepted, committed, and merge rates from client and Prometheus evidence. The
 `e2e-stress-l2-throughput` CLI separately collects SQL-grounded stage metrics
 for functional/e2e stress runs.
 
-Generate the corpus from already prepared stress-wallet snapshots, then verify
+Generate the corpus from already prepared stress-wallet snapshots with the
+tooling CLI (built with `pnpm --dir ../midgard-node-tools build`), then verify
 it before use:
 
 ```sh
 cd demo/midgard-node
+TOOLS_CLI=../midgard-node-tools/dist/index.js
 
-node dist/index.js stress-corpus-generate \
+node "$TOOLS_CLI" stress-corpus-generate \
   --target-rate-tps 2500 \
   --duration-ms 300000 \
   --wallets-dir .stress-wallets \
   --out-dir corpus/accept-2500 \
   --yes
 
-node dist/index.js stress-corpus-verify \
+node "$TOOLS_CLI" stress-corpus-verify \
   --corpus-path corpus/accept-2500/corpus.ndjson \
   --rebuild-wallets-dir .stress-wallets
 ```
@@ -667,8 +623,8 @@ Additional run matrix:
 
 Notes:
 
-- Corpus mode reads canonical transaction bytes from NDJSON and submits raw
-  CBOR to `/submit` with `Content-Type: application/cbor`.
+- Corpus mode reads canonical transaction bytes from NDJSON and submits a
+  canonical proof-submission envelope to `/submit` with `Content-Type: application/vnd.midgard.v1+cbor`.
 - The legacy no-corpus mode still reads test wallets and `/utxos`; do not use
   that mode for repeatable acceptance or regression evidence.
 - It uses pooled Undici HTTP clients and supports `STRESS_MODE=closed`,
@@ -729,30 +685,23 @@ ACTIVITY_METRICS_ENDPOINT=http://127.0.0.1:9464/metrics
 
 ## DA Payload Hardening and Rollout
 
-DA payload storage and transport accept two durable formats: schema 2 is the
-historical raw canonical `DaPayloadV2` CBOR; schema 3 is a canonical envelope
-containing the exact inner schema-2 bytes, their decoded length and SHA-256,
-and either identity or zstd content.
+DA payload storage and transport accept one durable format:
+`DaPayloadEnvelope`. It contains exact `DaPayload` bytes, their decoded
+length and SHA-256, and an explicit `identity` or `zstd` content encoding.
+Raw payload storage, an `off` mode, and format inference are rejected.
 
 Both the stored/transmitted envelope and its declared and actual decoded
 content are capped by the pinned DA protocol limit. Zstd decoding uses
 `maxOutputLength`, then verifies exact length and inner SHA-256 before the
 existing strict payload validator runs. Midgard node and committee runtimes
-therefore require Node.js 22.15 or newer.
-
-Roll out decoder-first: deploy the schema-3 decoder to every producer,
-committee member, watcher, and proof reader; leave
-`MIDGARD_DA_PAYLOAD_ENVELOPE=off`; canary `identity`; then enable `zstd` only
-after committee capability is confirmed. The immediate producer rollback is
-`MIDGARD_DA_PAYLOAD_ENVELOPE=off`. Decoders remain schema-2/schema-3 capable so
-already stored envelopes stay readable.
+therefore require the Node.js version floor declared in `demo/package.json` (currently 22.16).
 
 Retained-payload and fault-proof consumers preserve the stored artifact as the
 hash identity. They carry `payloadSchemaVersion` from retained metadata, verify
 the stored-byte SHA-256, and then use the pinned-bound envelope unwrap before
-strictly decoding the inner `DaPayloadV2`. Fault-proof callers should use
-`reconstructRetainedDaPayloadV2` when starting from a retained libp2p result;
-the package's decoder-first guard rejects new direct stored-byte V2 decoders.
+strictly decoding the inner `DaPayload`. Fault-proof callers should use
+`fetchRetainedDaPayloadByHeaderHash` followed by `reconstructDaPayload`;
+unsupported or malformed envelope and payload versions fail closed.
 
 Publication returns once the manifest threshold accepts. Slow peers continue
 as detached, bounded stragglers. The `da_payload_publications` durable outbox
@@ -776,5 +725,4 @@ acceptance threshold deliberately have no environment override.
 
 - [Root repository guide](../../README.md)
 - [Midgard SDK guide](../midgard-sdk/README.md)
-- [Preprod deposit and send-tx runbook](./docs/PREPROD_DEPOSIT_AND_SEND_TX.md)
 - [Technical specification guide](../../technical-spec/README.md)

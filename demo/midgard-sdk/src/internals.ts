@@ -1,3 +1,4 @@
+import { type LucidDataSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   Address,
   Assets as LucidAssets,
@@ -14,7 +15,7 @@ import {
   DataCoercionError,
   LucidError,
   UnauthenticUtxoError,
-} from "@/errors.js";
+} from "./errors.js";
 
 const getSingleAssetApartFromAda = (
   assets: LucidAssets,
@@ -77,11 +78,11 @@ export type AuthenticUTxO<TDatum, TExtra = undefined> = {
   utxo: UTxO;
   datum: TDatum;
   assetName: string;
-} & ([TExtra] extends [undefined] ? {} : TExtra);
+} & ([TExtra] extends [undefined] ? Record<never, never> : TExtra);
 
 export const getDatumFromUTxO = <TDatum>(
   nodeUTxO: UTxO,
-  schema: any,
+  schema: LucidDataSchema,
 ): Effect.Effect<TDatum, DataCoercionError> =>
   Effect.gen(function* () {
     const datumCBOR = nodeUTxO.datum;
@@ -95,7 +96,7 @@ export const getDatumFromUTxO = <TDatum>(
     }
 
     return yield* Effect.try({
-      try: () => Data.from(datumCBOR, schema),
+      try: () => Data.from(datumCBOR, schema) as TDatum,
       catch: (e) =>
         new DataCoercionError({
           message: `Could not coerce UTxO's datum to the expected datum type`,
@@ -113,7 +114,7 @@ type AuthenticUTxOBase<TDatum> = {
 const utxoToAuthenticUTxOBase = <TDatum>(
   utxo: UTxO,
   nftPolicy: string,
-  schema: any,
+  schema: LucidDataSchema,
 ): Effect.Effect<
   AuthenticUTxOBase<TDatum>,
   DataCoercionError | UnauthenticUtxoError
@@ -137,7 +138,7 @@ export const authenticateUTxO: {
   <TDatum>(
     utxo: UTxO,
     nftPolicy: string,
-    schema: any,
+    schema: LucidDataSchema,
   ): Effect.Effect<
     AuthenticUTxO<TDatum>,
     DataCoercionError | UnauthenticUtxoError
@@ -145,7 +146,7 @@ export const authenticateUTxO: {
   <TDatum, TExtra>(
     utxo: UTxO,
     nftPolicy: string,
-    schema: any,
+    schema: LucidDataSchema,
     extraFields: (datum: TDatum, utxo: UTxO) => TExtra,
   ): Effect.Effect<
     AuthenticUTxO<TDatum, TExtra>,
@@ -154,7 +155,7 @@ export const authenticateUTxO: {
 } = <TDatum, TExtra>(
   utxo: UTxO,
   nftPolicy: string,
-  schema: any,
+  schema: LucidDataSchema,
   extraFields?: (datum: TDatum, utxo: UTxO) => TExtra,
 ) =>
   Effect.gen(function* () {
@@ -187,18 +188,18 @@ export const authenticateUTxOs: {
   <TDatum>(
     utxos: UTxO[],
     nftPolicy: string,
-    schema: any,
+    schema: LucidDataSchema,
   ): Effect.Effect<AuthenticUTxO<TDatum>[]>;
   <TDatum, TExtra>(
     utxos: UTxO[],
     nftPolicy: string,
-    schema: any,
+    schema: LucidDataSchema,
     extraFields: (datum: TDatum, utxo: UTxO) => TExtra,
   ): Effect.Effect<AuthenticUTxO<TDatum, TExtra>[]>;
 } = <TDatum, TExtra>(
   utxos: UTxO[],
   nftPolicy: string,
-  schema: any,
+  schema: LucidDataSchema,
   extraFields?: (datum: TDatum, utxo: UTxO) => TExtra,
 ) => {
   const effects = utxos.map((utxo) =>

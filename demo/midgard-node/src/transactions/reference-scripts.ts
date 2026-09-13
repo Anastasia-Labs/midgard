@@ -14,20 +14,21 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
-import { runProviderStepWithRetry } from "@/provider-retry.js";
+import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "../deployment-manifest.js";
+import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
+import { runProviderStepWithRetry } from "../provider-retry.js";
+import { compareOutRefs, outRefLabel } from "../tx-context.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
-} from "@/transactions/utils.js";
+} from "./utils.js";
 import {
   hasPositiveNonLovelaceAsset,
   isPlainAdaOnlyUtxo,
   lovelaceOf,
-} from "@/transactions/wallet-hygiene.js";
-import { compareOutRefs, outRefLabel } from "@/tx-context.js";
+} from "./wallet-hygiene.js";
 
 export type ReferenceScriptTarget = SDK.ReferenceScriptTarget;
 
@@ -975,6 +976,18 @@ const publishMissingReferenceScriptTargets = (
   | TxSubmitError
 > =>
   Effect.gen(function* () {
+    yield* Effect.try({
+      try: () =>
+        SDK.assertReferenceScriptRawBodiesFitL1Envelope(missingTargets),
+      catch: (cause) =>
+        cause instanceof SDK.StateQueueError
+          ? cause
+          : new SDK.StateQueueError({
+              message:
+                "Failed to admit raw reference-script bodies for L1 publication",
+              cause,
+            }),
+    });
     const orderedFundingCandidates = orderWalletFundingUtxos(
       fundingCandidateUtxos,
     );
@@ -1121,6 +1134,345 @@ const publishMissingReferenceScriptTargets = (
     );
   });
 
+const REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES = [
+  "fabricatedDeposit",
+  "fabricatedWithdrawal",
+  "nativeScriptDecoding",
+  "missingSignature",
+  "missingNativeScriptTx",
+  "withdrawnReferenceInput",
+  "canonicalDecodability",
+  "committedFieldShape",
+  "minFee",
+  "withdrawalMistag",
+  "doubleWithdraw",
+  "crossBlockDuplicateEvent",
+  "l2TxMistag",
+  "withdrawnInput",
+  "valueNotPreserved",
+  "inputSetUniqueness",
+  "mintAuthorization",
+  "networkId",
+  "missingNativeScriptUtxo",
+  "nativeScriptInvalid",
+  "minAda",
+  "fieldPreimageLengthMismatch",
+  "fieldItemWidthIllegal",
+  "witnessScriptDecoding",
+  "scriptIntegrityHashMissing",
+  "transactionOutputNonCanonical",
+  "mintItemNonCanonical",
+  "resolvedOutputNonCanonical",
+  "mintDeclaredAssetLimit",
+  "spendInputSignerMissing",
+  "protectedOutputSignerMissing",
+  "observersForbiddenOnUntaggedNetwork",
+  "observerOrderInvalid",
+  "redeemerCanonicity",
+  "outputReferenceScriptDecoding",
+  "executionSourceScriptDecoding",
+  "receivePurposeLanguage",
+  "unusedScriptWitness",
+  "missingScriptSource",
+  "missingRedeemer",
+  "unusedRedeemer",
+  "executionNativeScriptInvalid",
+  "scriptIntegrityHashMismatch",
+  "distinctAssetAccumulationLimit",
+] as const satisfies readonly (keyof SDK.FaultProofContracts)[];
+
+const TRANSITION_TRACE_FINAL_CONTRACT_NAMES = [
+  "fraudProofTransitionTraceControl",
+  "fraudProofTransitionTraceSource",
+  "fraudProofTransitionTraceWithdrawal",
+  "fraudProofTransitionTraceForced",
+  "fraudProofTransitionTraceAcceptedTransaction",
+  "fraudProofTransitionTraceDeposit",
+  "fraudProofTransitionTraceL1Event",
+  "fraudProofTransitionTraceDuplicate",
+] as const;
+
+const REFERENCE_SCRIPT_ROLE_BY_CONTRACT_NAME: ReadonlyMap<string, string> =
+  new Map<string, string>(
+    Object.entries(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+      ([role, contractName]) => [contractName, role] as const,
+    ),
+  );
+
+const upperFirst = (value: string): string =>
+  `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+
+/**
+ * Chains whose canonical contract names are NOT `…Step{index + 1}`.
+ *
+ * The generic rule below assumes a chain's Nth compiled step is the Nth
+ * declared step, which stops being true the moment a family inserts a lettered
+ * step (`step_02a`) or appends a set of named entries after its numbered ones.
+ * Getting that wrong is worse than failing to publish: `abiRegisteredChainSteps`
+ * only asks whether a NAME is declared, so an off-by-one still finds a real
+ * role and publishes one family member's script under another member's role.
+ *
+ * Each array is the family's `steps` order from `midgard-sdk`, so index N here
+ * is the validator at index N there. Adding a step to a chain means adding it
+ * in the same position here.
+ */
+const FAULT_PROOF_STEP_CONTRACT_NAMES: Partial<
+  Record<
+    (typeof REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES)[number],
+    readonly string[]
+  >
+> = {
+  nativeScriptDecoding: [
+    "fraudProofNativeScriptDecoding",
+    "fraudProofNativeScriptDecodingStep02",
+    "fraudProofNativeScriptDecodingStep03OpenSubject",
+    "fraudProofNativeScriptDecodingStep03BindDescriptor",
+    "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
+    "fraudProofNativeScriptDecodingStep04",
+  ],
+  fieldPreimageLengthMismatch: [
+    "fraudProofFieldPreimageLengthMismatch",
+    "fraudProofFieldPreimageLengthMismatchStep02Accepted",
+    "fraudProofFieldPreimageLengthMismatchStep02Forced",
+    "fraudProofFieldPreimageLengthMismatchStep03",
+  ],
+  scriptIntegrityHashMissing: [
+    "fraudProofScriptIntegrityHashMissing",
+    "fraudProofScriptIntegrityHashMissingStep02",
+    "fraudProofScriptIntegrityHashMissingStep03",
+    "fraudProofScriptIntegrityHashMissingScriptGrammar",
+    "fraudProofScriptIntegrityHashMissingScriptScan",
+    "fraudProofScriptIntegrityHashMissingRedeemerGrammar",
+    "fraudProofScriptIntegrityHashMissingStep04",
+  ],
+  missingRedeemer: [
+    "fraudProofMissingRedeemer",
+    "fraudProofMissingRedeemerStep02",
+    "fraudProofMissingRedeemerStep02a",
+    "fraudProofMissingRedeemerStep02b",
+    "fraudProofMissingRedeemerStep03",
+    "fraudProofMissingRedeemerStep04",
+    "fraudProofMissingRedeemerStep05",
+  ],
+  unusedRedeemer: [
+    "fraudProofUnusedRedeemer",
+    "fraudProofUnusedRedeemerStep02",
+    "fraudProofUnusedRedeemerStep02a",
+    "fraudProofUnusedRedeemerStep02b",
+    "fraudProofUnusedRedeemerStep02c",
+    "fraudProofUnusedRedeemerStep03",
+    "fraudProofUnusedRedeemerStep04",
+    "fraudProofUnusedRedeemerStep05",
+    "fraudProofUnusedRedeemerStep06",
+  ],
+  executionNativeScriptInvalid: [
+    "fraudProofExecutionNativeScriptInvalid",
+    "fraudProofExecutionNativeScriptInvalidStep02",
+    "fraudProofExecutionNativeScriptInvalidStep03",
+    "fraudProofExecutionNativeScriptInvalidStep04",
+    "fraudProofExecutionNativeScriptInvalidStep05",
+    "fraudProofExecutionNativeScriptInvalidStep06",
+    "fraudProofExecutionNativeScriptInvalidAcceptedReconstructionInit",
+    "fraudProofExecutionNativeScriptInvalidAcceptedSpendPrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedMintPrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedObserverPrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedReceivePrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedInlineSource",
+    "fraudProofExecutionNativeScriptInvalidAcceptedReferenceSource",
+  ],
+};
+
+const faultProofStepContractName = (
+  category: (typeof REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES)[number],
+  stepIndex: number,
+): string => {
+  const declared = FAULT_PROOF_STEP_CONTRACT_NAMES[category];
+  if (declared !== undefined) {
+    const name = declared[stepIndex];
+    if (name === undefined) {
+      throw new Error(
+        `${category} exposes an unexpected step index ${stepIndex.toString()}`,
+      );
+    }
+    return name;
+  }
+  return `fraudProof${upperFirst(category)}${
+    stepIndex === 0 ? "" : `Step${(stepIndex + 1).toString().padStart(2, "0")}`
+  }`;
+};
+
+const manifestReferenceScriptTarget = (
+  contractName: string,
+  script: SDK.ReferenceScriptTarget["script"],
+): ReferenceScriptTarget => {
+  const name = REFERENCE_SCRIPT_ROLE_BY_CONTRACT_NAME.get(contractName);
+  if (name === undefined) {
+    throw new Error(
+      `Contract is missing a canonical reference-script role: ${contractName}`,
+    );
+  }
+  referenceScriptAuthTokenNameText(name);
+  return { name, script };
+};
+
+const registeredFraudProofReferenceScriptTargets = (
+  contracts: SDK.MidgardValidators,
+): readonly ReferenceScriptTarget[] => [
+  ...REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES.flatMap((category) =>
+    contracts.fraudProofContracts[category].steps.map((validator, stepIndex) =>
+      manifestReferenceScriptTarget(
+        faultProofStepContractName(category, stepIndex),
+        validator.spendingScript,
+      ),
+    ),
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofTransitionTrace",
+    contracts.fraudProofContracts.transitionTrace.route.spendingScript,
+  ),
+  ...contracts.fraudProofContracts.transitionTrace.finals.map(
+    (validator, index) =>
+      manifestReferenceScriptTarget(
+        TRANSITION_TRACE_FINAL_CONTRACT_NAMES[index],
+        validator.spendingScript,
+      ),
+  ),
+  // The network-id forced (wrongful-rejection) door and the resumable output
+  // scan it hands off to are applied like every other step but are
+  // deliberately not members of `steps`, so the chain walk above never reaches
+  // them. They still have to be published: both legs spend from their own
+  // script addresses and `validateReferenceScripts` requires a confirmed
+  // reference script for every declared role.
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionAcceptedSource",
+    contracts.fraudProofContracts.valueNotPreserved.unionAcceptedSource
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionForcedSource",
+    contracts.fraudProofContracts.valueNotPreserved.unionForcedSource
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionEvent",
+    contracts.fraudProofContracts.valueNotPreserved.unionEvent.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionPreState",
+    contracts.fraudProofContracts.valueNotPreserved.unionPreState
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionInputs",
+    contracts.fraudProofContracts.valueNotPreserved.unionInputs.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionInputValue",
+    contracts.fraudProofContracts.valueNotPreserved.unionInputValue
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionAssets",
+    contracts.fraudProofContracts.valueNotPreserved.unionAssets.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionFieldGrammar",
+    contracts.fraudProofContracts.valueNotPreserved.unionFieldGrammar
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionOutputs",
+    contracts.fraudProofContracts.valueNotPreserved.unionOutputs.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionOutputScan",
+    contracts.fraudProofContracts.valueNotPreserved.unionOutputScan
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionMint",
+    contracts.fraudProofContracts.valueNotPreserved.unionMint.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionUpdate",
+    contracts.fraudProofContracts.valueNotPreserved.unionUpdate.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofValueNotPreservedUnionTerminal",
+    contracts.fraudProofContracts.valueNotPreserved.unionTerminal
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofMissingSignatureForcedStep",
+    contracts.fraudProofContracts.missingSignature.forcedStep.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofMissingSignatureForcedSigner",
+    contracts.fraudProofContracts.missingSignature.forcedSigner.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofMissingSignatureForcedWitness",
+    contracts.fraudProofContracts.missingSignature.forcedWitness.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofNetworkIdForcedStep",
+    contracts.fraudProofContracts.networkId.forcedStep.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofNetworkIdForcedScan",
+    contracts.fraudProofContracts.networkId.forcedScan.spendingScript,
+  ),
+];
+
+const legacyFraudProofReferenceScriptTargets = (
+  contracts: SDK.MidgardValidators,
+): readonly ReferenceScriptTarget[] => {
+  const families = [
+    ["fraudProofDoubleSpend", contracts.fraudProofContracts.doubleSpend],
+    [
+      "fraudProofNonExistentInput",
+      contracts.fraudProofContracts.nonExistentInput,
+    ],
+    [
+      "fraudProofNonExistentInputNoIndex",
+      contracts.fraudProofContracts.nonExistentInputNoIndex,
+    ],
+    ["fraudProofInvalidRange", contracts.fraudProofContracts.invalidRange],
+    ["fraudProofZeroInput", contracts.fraudProofContracts.zeroInput],
+    ["fraudProofDaHashPreimage", contracts.fraudProofContracts.daHashPreimage],
+    [
+      "fraudProofNoReferenceInput",
+      contracts.fraudProofContracts.noReferenceInput,
+    ],
+    [
+      "fraudProofReferenceInputNoIdx",
+      contracts.fraudProofContracts.referenceInputNoIdx,
+    ],
+    [
+      "fraudProofInvalidSignature",
+      contracts.fraudProofContracts.invalidSignature,
+    ],
+  ] as const;
+  // Step 01 is included: `chain.steps[0]` IS `chain.firstStep`, and
+  // `contract-deployment-info.ts` gives that script the
+  // `V1 fraud-proof <family> step-01` manifest role. Publishing from step 02
+  // onwards left those nine roles declared by the manifest but never deployed,
+  // and `validateReferenceScripts` requires a confirmed reference script for
+  // every role in `DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES`.
+  return families.flatMap(([firstStepContractName, chain]) =>
+    chain.steps.map((validator, stepIndex) =>
+      manifestReferenceScriptTarget(
+        stepIndex === 0
+          ? firstStepContractName
+          : `${firstStepContractName}Step${(stepIndex + 1)
+              .toString()
+              .padStart(2, "0")}`,
+        validator.spendingScript,
+      ),
+    ),
+  );
+};
+
 export const nodeRuntimeReferenceScriptTargets = (
   contracts: SDK.MidgardValidators,
 ): readonly ReferenceScriptTarget[] => [
@@ -1165,6 +1517,26 @@ export const nodeRuntimeReferenceScriptTargets = (
     script: contracts.stateQueue.mintingScript,
   },
   {
+    name: "state-queue commit withdrawal",
+    script: contracts.stateQueue.yields.commit.withdrawalScript,
+  },
+  {
+    name: "state-queue unattested-timeout withdrawal",
+    script: contracts.stateQueue.yields.unattestedTimeout.withdrawalScript,
+  },
+  {
+    name: "state-queue unavailable-timeout withdrawal",
+    script: contracts.stateQueue.yields.unavailableTimeout.withdrawalScript,
+  },
+  {
+    name: "state-queue fraud-removal withdrawal",
+    script: contracts.stateQueue.yields.fraudRemoval.withdrawalScript,
+  },
+  {
+    name: "state-queue merge withdrawal",
+    script: contracts.stateQueue.yields.merge.withdrawalScript,
+  },
+  {
     name: "registered-operators spending",
     script: contracts.registeredOperators.spendingScript,
   },
@@ -1191,6 +1563,22 @@ export const nodeRuntimeReferenceScriptTargets = (
   {
     name: "fraud-proof-catalogue minting",
     script: contracts.fraudProofCatalogue.mintingScript,
+  },
+  {
+    name: "V1 fraud-proof computation-thread minting",
+    script: contracts.computationThread.mintingScript,
+  },
+  {
+    name: "V1 fraud-proof token minting",
+    script: contracts.fraudProof.mintingScript,
+  },
+  {
+    name: "V1 MPF chunked-verify withdrawal",
+    script: contracts.chunkedVerify.withdrawalScript,
+  },
+  {
+    name: "V1 MPF pexcludes withdrawal",
+    script: contracts.pexcludes.withdrawalScript,
   },
   {
     name: "deposit minting",
@@ -1232,6 +1620,969 @@ export const nodeRuntimeReferenceScriptTargets = (
     name: "payout minting",
     script: contracts.payout.mintingScript,
   },
+  {
+    name: "availability-challenge spending",
+    script: contracts.availabilityChallenge.spendingScript,
+  },
+  {
+    name: "availability-challenge minting",
+    script: contracts.availabilityChallenge.mintingScript,
+  },
+  {
+    name: "availability-challenge bond withdrawal",
+    script: contracts.availabilityChallenge.yields.bond.withdrawalScript,
+  },
+  {
+    name: "availability-challenge open withdrawal",
+    script: contracts.availabilityChallenge.yields.open.withdrawalScript,
+  },
+  {
+    name: "availability-challenge settle withdrawal",
+    script: contracts.availabilityChallenge.yields.settle.withdrawalScript,
+  },
+  {
+    name: "availability-challenge close withdrawal",
+    script: contracts.availabilityChallenge.yields.close.withdrawalScript,
+  },
+  {
+    name: "availability-challenge timeout withdrawal",
+    script: contracts.availabilityChallenge.yields.timeout.withdrawalScript,
+  },
+
+  manifestReferenceScriptTarget(
+    "fieldPreimageCertificateSpend",
+    contracts.fieldPreimageCertificate.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fieldPreimageCertificateMint",
+    contracts.fieldPreimageCertificate.mintingScript,
+  ),
+  // Under the always-succeeds contract set the CEK validator is the tx-order
+  // spend script. Do not publish that stand-in as a distinct deployed script.
+  ...(contracts.cekProgramMaterial.spendingScriptHash ===
+  contracts.txOrder.spendingScriptHash
+    ? []
+    : [
+        {
+          name: "V1 immutable CEK program-material publication",
+          script: contracts.cekProgramMaterial.spendingScript,
+        },
+      ]),
+  ...(contracts.fraudProofs.validationTraceDispute === undefined
+    ? []
+    : [
+        {
+          name: "V1 validation-trace dispute",
+          script: contracts.fraudProofs.validationTraceDispute.spendingScript,
+        },
+        {
+          name: "V1 validation-trace source",
+          script:
+            contracts.fraudProofs.validationTraceDispute.source.spendingScript,
+        },
+        {
+          name: "V1 validation-trace game",
+          script:
+            contracts.fraudProofs.validationTraceDispute.game.spendingScript,
+        },
+        {
+          name: "V1 validation-trace boundary",
+          script:
+            contracts.fraudProofs.validationTraceDispute.boundary
+              .spendingScript,
+        },
+        {
+          name: "V1 validation-trace timeout",
+          script:
+            contracts.fraudProofs.validationTraceDispute.timeout.spendingScript,
+        },
+        {
+          name: "V1 validation-trace award",
+          script:
+            contracts.fraudProofs.validationTraceDispute.award.spendingScript,
+        },
+      ]),
+  ...legacyFraudProofReferenceScriptTargets(contracts),
+  ...registeredFraudProofReferenceScriptTargets(contracts),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreSettle",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages.settle
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreCompute",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages.compute
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreMachine",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages.machine
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreMapConversion",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .mapConversion.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreDirectScalar",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .directScalar.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreDirectStructured",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .directStructured.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreDirectScalarBudget",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .directScalarBudget.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreDirectStructuredBudget",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .directStructuredBudget.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreDirectScalarRoots",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .directScalarRoots.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreDirectStructuredRoots",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .directStructuredRoots.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreSemanticPair",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticPair.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreSemanticListConstruct",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticListConstruct.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreSemanticListSelect",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticListSelect.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreSemanticChoose",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticChoose.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreSemanticDataConstruct",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticDataConstruct.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreSemanticDataScalar",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticDataScalar.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreSemanticDataMisc",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticDataMisc.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreSemanticBudget",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticBudget.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreSemanticRoots",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticRoots.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreSemanticResult",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticResult.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreMapStartNodes",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .mapStartNodes.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreMapStartBudget",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .mapStartBudget.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreMapStartRoots",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .mapStartRoots.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreSemanticFailureMaterial",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticFailureMaterial.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreSemanticFailureRoots",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .semanticFailureRoots.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreBlsFinal",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages.blsFinal
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreBlsBudget",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages.blsBudget
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreBlsRoots",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages.blsRoots
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreFailureBudget",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .failureBudget.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreFailureKnown",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .failureKnown.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreTypeFailureKinds",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .typeFailureKinds.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekCoreTypeFailureRoots",
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages
+      .typeFailureRoots.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeResolveInputsInitialSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[26]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeResolveInputsFinishSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[27]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeResolveInputsMembershipBeginSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[28]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeResolveInputsMembershipStepSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[29]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeResolveInputsMembershipFinalizeSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[30]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeResolveInputsNonMembershipSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[31]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesNonOutputSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[32]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesOutputProofBeginSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[33]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesOutputProofStepSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[34]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesOutputProofFinalizeSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[35]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesOutputProofFinishSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[36]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageZeroBeginSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[37]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageZeroFinishSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[38]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageZeroHashBlockSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[39]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageZeroHashAdvanceSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[40]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageZeroHashTerminalSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[41]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageNineMismatchSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[42]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageNineNativeMatchSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[43]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageNineEffectfulMatchSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[44]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageNineMissingSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[45]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageOneFinishSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[46]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageOneRedeemerSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[47]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageElevenFinishSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[48]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageElevenSourceSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[49]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageTwelveFinishSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[50]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageTwelveRedeemerSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[51]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageTenMissingSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[52]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageTenMismatchSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[53]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageTenMatchSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[54]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageEightFinishSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[55]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageEightPurposeSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[56]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageSevenObserverSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[57]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageSevenReceiveSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[58]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageSevenFinishSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[59]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemTraversalNormalizer",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.traversalNormalizer.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemOuterNormalizer",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.outerNormalizer.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemSourceAuthenticator",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.sourceAuthenticator.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemFoldMapExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[0].spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemFinalizeFrameExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[1].spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemOpenHeaderExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[2].spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemOpenTailExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[3].spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemHeadScalarExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[4].spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemHeadSequenceExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[5].spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemHeadMapExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[6].spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemHeadLargeConstructorExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[7].spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemAttachIntegerExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[8].spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemAttachBytesExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[9].spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemFoldListExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[10].spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemAdvanceIntegerExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[11].spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemAdvanceBytesExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[12].spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemAdvanceLargeConstructorExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[13].spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemAdvanceLargeFieldsExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[14].spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemCloseExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[15].spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemFinishDataExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[16].spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemInvalidHeaderExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[17].spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemInvalidTailExecutor",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.executors[18].spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeRedeemerItemSettlement",
+    contracts.fraudProofContracts.validationTraceDispute
+      .scriptSourcesStageOneRedeemerStages.settlement.spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[90]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageTwoAdvanceWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageTwoAdvance.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageThreeReplayWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageThreeReplay.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageThreeFinishWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageThreeFinish.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageFourBeginWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageFourBegin.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageFourFinishWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageFourFinish.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageSixBeginPolicyWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageSixBeginPolicy.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageSixFoldAssetWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageSixFoldAsset.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesStageSixFinishWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesStageSixFinish.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesObserverItemWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesObserverItem.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesObserverBoundWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesObserverBound.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeScriptSourcesRedeemerDescriptorWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .scriptSourcesRedeemerDescriptor.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofStructureWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofStructure.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofValueWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofValue.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofDatumFoldMapWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumFoldMap.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofDatumFinalizeFrameWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumFinalizeFrame.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofDatumHeadScalarWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumHeadScalar.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofDatumAttachIntegerWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumAttachInteger.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofDatumFoldListWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumFoldList.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofDatumAdvanceIntegerWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumAdvanceInteger.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofReferenceScriptWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofReferenceScript.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofScriptHashWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofScriptHash.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofNativeScriptWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofNativeScript.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofStructureAssetsWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofStructureAssets.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofStructureOptionalWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofStructureOptional.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofStructureFinishWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofStructureFinish.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofDatumHeadSequenceWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumHeadSequence.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofDatumHeadMapWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumHeadMap.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofDatumHeadLargeConstructorWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumHeadLargeConstructor.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofDatumAttachBytesWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumAttachBytes.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofDatumAdvanceBytesWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumAdvanceBytes.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofDatumFinishWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumFinish.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofDatumLargeConstructorWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumLargeConstructor.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofDatumLargeFieldsWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumLargeFields.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofDatumCloseWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofDatumClose.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofSpanWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofSpan.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofScalarIntegerWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofScalarInteger.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputProofScalarBytesWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputProofScalarBytes.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputDescriptorScanFactsWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputDescriptorScanFacts.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputDescriptorReferenceScriptWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputDescriptorReferenceScript.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputDescriptorDatumSummaryWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputDescriptorDatumSummary.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeLedgerOutputDescriptorValueSummaryWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .ledgerOutputDescriptorValueSummary.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[10]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseANativeScriptsItemSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[11]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseANativeScriptsTokenHeadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[12]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseANativeScriptsAllOrAnyContainerFramePayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[13]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseANativeScriptsAllOrAnyEmptyContainerPayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[14]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseANativeScriptsAtLeastContainerFramePayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[15]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseANativeScriptsAtLeastEmptyContainerPayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[16]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseANativeScriptsTimelockPayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[17]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseANativeScriptsSignatureMembershipPayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[18]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseANativeScriptsSignatureEmptyPayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[19]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseANativeScriptsSignatureBelowFirstPayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[20]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseANativeScriptsSignatureAboveLastPayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[21]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseANativeScriptsSignatureBetweenPayloadSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[22]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseANativeScriptsFrameSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[23]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseAScriptPreconditionsFinalizeSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[24]
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseAScriptPreconditionsItemSemantic",
+    contracts.fraudProofContracts.validationTraceDispute.semanticResolvers[25]
+      .spendingScript,
+  ),
+
+  ...SDK.cekContextReferenceScripts(
+    contracts.fraudProofContracts.validationTraceDispute.cekContextStages,
+    contracts.fraudProofContracts.validationTraceDispute.cekContextItemStages,
+  ).map(({ deploymentEntry, validator }) =>
+    manifestReferenceScriptTarget(deploymentEntry, validator.spendingScript),
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekMaterialTraversal",
+    contracts.fraudProofContracts.validationTraceDispute.cekMaterialTraversal
+      .spendingScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekMaterialProgramTaskWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .cekMaterialProgramTask.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekMaterialDataTaskWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .cekMaterialDataTask.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekSelectionAuthenticateWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .cekSelectionAuthenticate.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekSelectionSuccessorWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .cekSelectionSuccessor.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekSelectionMaterialProgramWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .cekSelectionMaterialProgram.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeCekSelectionMaterialDataWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .cekSelectionMaterialData.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseANativeItemNativeWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .phaseANativeItemNative.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputePhaseANativeItemForeignWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .phaseANativeItemForeign.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "validationTraceDisputeValueAndMintAssetFoldWithdraw",
+    contracts.fraudProofContracts.validationTraceDispute.yields
+      .valueAndMintAssetFold.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.l2Open
+      .withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.l2Summaries
+      .withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.l2Replay
+      .withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofTransitionTraceAcceptedTransactionClaimStructureWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.claimStructure
+      .withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofTransitionTraceAcceptedTransactionClaimSourceWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.claimSource
+      .withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofTransitionTraceAcceptedTransactionClaimEndpointsWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.claimEndpoints
+      .withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofTransitionTraceDepositProjectionWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.depositProjection
+      .withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofTransitionTraceDepositSummariesWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.depositSummaries
+      .withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofTransitionTraceAcceptedTransactionL2AssemblyWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.l2Assembly
+      .withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofTransitionTraceAcceptedTransactionL2ScanWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.l2Scan
+      .withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofTransitionTraceAcceptedTransactionL2ValueWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.l2Value
+      .withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofTransitionTraceDepositAssemblyWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.depositAssembly
+      .withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofTransitionTraceDepositScanWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.depositScan
+      .withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofTransitionTraceDepositValueWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.depositValue
+      .withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofTransitionTraceDepositReplayWithdraw",
+    contracts.fraudProofContracts.transitionTrace.yields.depositReplay
+      .withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofMinAdaStep02TxWithdraw",
+    contracts.fraudProofContracts.minAda.yields.tx.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofMinAdaStep02UtxoWithdraw",
+    contracts.fraudProofContracts.minAda.yields.utxo.withdrawalScript,
+  ),
+  {
+    name: "correction-lock spending",
+    script: contracts.correctionLock.spendingScript,
+  },
 ];
 
 export const referenceScriptTargetsByCommand = (
@@ -1264,6 +2615,26 @@ export const referenceScriptTargetsByCommand = (
     {
       name: "state-queue minting",
       script: contracts.stateQueue.mintingScript,
+    },
+    {
+      name: "state-queue commit withdrawal",
+      script: contracts.stateQueue.yields.commit.withdrawalScript,
+    },
+    {
+      name: "state-queue unattested-timeout withdrawal",
+      script: contracts.stateQueue.yields.unattestedTimeout.withdrawalScript,
+    },
+    {
+      name: "state-queue unavailable-timeout withdrawal",
+      script: contracts.stateQueue.yields.unavailableTimeout.withdrawalScript,
+    },
+    {
+      name: "state-queue fraud-removal withdrawal",
+      script: contracts.stateQueue.yields.fraudRemoval.withdrawalScript,
+    },
+    {
+      name: "state-queue merge withdrawal",
+      script: contracts.stateQueue.yields.merge.withdrawalScript,
     },
     {
       name: "registered-operators minting",
@@ -1311,6 +2682,14 @@ export const referenceScriptTargetsByCommand = (
       name: "da-attestation minting",
       script: contracts.daAttestation.mintingScript,
     },
+    {
+      name: "availability-challenge minting",
+      script: contracts.availabilityChallenge.mintingScript,
+    },
+    {
+      name: "availability-challenge bond withdrawal",
+      script: contracts.availabilityChallenge.yields.bond.withdrawalScript,
+    },
   ],
   "state-queue": [
     {
@@ -1320,6 +2699,30 @@ export const referenceScriptTargetsByCommand = (
     {
       name: "state-queue minting",
       script: contracts.stateQueue.mintingScript,
+    },
+    {
+      name: "state-queue commit withdrawal",
+      script: contracts.stateQueue.yields.commit.withdrawalScript,
+    },
+    {
+      name: "state-queue unattested-timeout withdrawal",
+      script: contracts.stateQueue.yields.unattestedTimeout.withdrawalScript,
+    },
+    {
+      name: "state-queue unavailable-timeout withdrawal",
+      script: contracts.stateQueue.yields.unavailableTimeout.withdrawalScript,
+    },
+    {
+      name: "state-queue fraud-removal withdrawal",
+      script: contracts.stateQueue.yields.fraudRemoval.withdrawalScript,
+    },
+    {
+      name: "state-queue merge withdrawal",
+      script: contracts.stateQueue.yields.merge.withdrawalScript,
+    },
+    {
+      name: "correction-lock spending",
+      script: contracts.correctionLock.spendingScript,
     },
   ],
   scheduler: [

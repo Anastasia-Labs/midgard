@@ -28,7 +28,7 @@ describe("emulator submit-slot snapshot", () => {
     const baseSlot = emulator.slot;
     const baseTimeMs = emulator.now();
 
-    await emulator.awaitSlot(16 * 60);
+    emulator.awaitSlot(16 * 60);
     const snapshot = deriveEmulatorSubmitSlotSnapshot({
       currentSlot: emulator.slot,
       observedAtMs: emulator.now(),
@@ -43,7 +43,7 @@ describe("emulator submit-slot snapshot", () => {
   it("maps builder validTo to the live absolute slot after a late Lucid creation", async () => {
     const account = generateEmulatorAccount({ lovelace: 50_000_000n });
     const emulator = new Emulator([account]);
-    await emulator.awaitSlot(16 * 60);
+    emulator.awaitSlot(16 * 60);
 
     const lucid = await Lucid(emulator, "Custom");
     lucid.selectWallet.fromSeed(account.seedPhrase);

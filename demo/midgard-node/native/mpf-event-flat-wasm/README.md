@@ -1,126 +1,31 @@
-# Architecture F MPF prototype
+# Native MPF owner and WASM differential oracle
 
-This crate is the fail-closed prototype for Throughput Phase 3's native/WASM
-contingency. It does not change a production default and is not linked into the
-commit worker.
+Status: Active
 
-The intended build wiring is:
+Last reviewed: 2026-09-07 (integration and build commands).
 
-```sh
-wasm-pack build --target nodejs --release \
-  --out-dir ../../.architecture-f-wasm \
-  native/mpf-event-flat-wasm
-```
+This Rust crate supplies the native `architecture-g-owner` binary used by the
+node's MPF service and the WASM differential oracle. Runtime integration lives
+in `../../src/services/mpf-native-owner/`; the commit path uses it through
+`../../src/mpf/transition-trace.ts`. This is no longer an unintegrated prototype.
 
-The checked-in `Makefile` pins the lockfile for `make check`, `make build`, and
-`make differential`; the expanded commands above make the generated boundary
-and output directory explicit for audit review.
-
-The generated directory is ignored. A production integration may consume it
-only through a pinned, reproducible build step that checks the Rust/Cargo lock,
-WASM SHA-256, ABI version, and differential corpus before bundling.
-
-After building, the independent adversarial differential and the two exact
-prototype probes are:
+From this directory:
 
 ```sh
-node scripts/mpf-event-flat-wasm-prototype.mjs
-node scripts/mpf-event-flat-wasm-prototype.mjs \
-  --level=/tmp/midgard-mpf-growth-event-flat-e-100000-level \
-  --utxos=100000 --txs=10000
-node scripts/mpf-event-flat-wasm-prototype.mjs \
-  --level=/tmp/midgard-mpf-growth-event-flat-e-1000000-level \
-  --utxos=1000000 --txs=10000
+make check
+make build
+make differential
 ```
 
-The first command checks the hard-coded Forestry corpus roots for empty events,
-delete/reinsert, collapse, split, and long hashed paths, and corrupts one raw
-record to prove the call fails closed. The Level probes assert the fixture
-marker and expected candidate root, re-read the unchanged marker, and report
-raw-fetch, binary-encode, WASM, artifact, RSS, and conservative projection
-timings. Their shared `scratchRootUpperMs` is the larger sum of both parallel
-workers' CPU time plus serialization from the preceding exact pair, so it
-overstates the unchanged scratch-root wall rather than hiding it.
+The Makefile uses locked Cargo dependencies. The WASM output is generated in
+`../../.architecture-f-wasm`. From `demo/midgard-node`, build the runtime binary
+with `pnpm run native:mpf-owner:build`. The configured owner path is defined in
+`src/services/config.ts`; package/release verification must bind the binary and
+ABI to the deployed node. Prototype benchmark scripts remain measurement tools,
+not startup or recovery procedures.
 
-## Architecture G retained-session gate
-
-Architecture G supersedes the plan's earlier rejection of a full-memory MPF
-alternative only as a measured decision point. The tradeoff is materially
-different now: a compact native owner (not a JS object graph), a marker-keyed
-authenticated cache whose contents are never authoritative, explicit rebuild
-on marker/schema/digest mismatch, and Architecture F evidence that repeated raw
-authentication plus artifact reconstruction—not canonical mutation alone—is
-the dominant size-dependent work. Canonical Forestry hashing and Level's root
-marker remain unchanged.
-
-The minimal retained-session prototype deliberately does not load the full
-ledger or integrate a service. It authenticates the exact touched closure into
-a retained session during reported setup, forks an isolated generation, then
-times only fixed binary event encoding plus sequential canonical mutation and
-the mandatory root stream. It byte-compares every event root to the one-shot
-engine and final known Forestry root, and re-reads the unchanged fixture marker:
-
-```sh
-node scripts/mpf-event-flat-wasm-prototype.mjs \
-  --session \
-  --level=/tmp/midgard-mpf-growth-event-flat-e-100000-level \
-  --utxos=100000 --txs=10000
-node scripts/mpf-event-flat-wasm-prototype.mjs \
-  --session \
-  --level=/tmp/midgard-mpf-growth-event-flat-e-1000000-level \
-  --utxos=1000000 --txs=10000
-```
-
-Setup/authentication is outside this narrow hot-path projection but is not
-outside operational acceptance. Before any production wiring, a later gate
-must load and authenticate the complete marker-reachable index, measure startup
-wall/RSS and bounded steady-state memory, prove restart/journal replay after
-crashes at every submission/promotion boundary, and reject the design if those
-recovery/liveness bounds are not operationally acceptable.
-
-Retained-session event streams (`MEGO` v1) bind counts, caps, base root, and
-ordered bytes under BLAKE2b-256. Root streams (`MEGR` v1) bind base/candidate and
-all event roots. A session permits at most two active generations; stale/base
-mismatched handles, malformed caps, corruption, and failed mutations are
-fail-closed, with append-only rollback to the pre-call root/node watermark.
-
-## Native64 full-index operational prototype
-
-The `architecture-g-owner` binary is the next bounded gate, not production
-commit wiring. A Node exporter opens each named Level fixture read-only, records
-the durable marker, streams every content-addressed record into the canonical
-binary ABI, re-reads the marker, and closes the database. The native64 owner
-then content-authenticates every record, proves the complete closure is a
-single marker-rooted tree with each leaf at its key-derived path, and compacts
-it into sparse pools for prefixes, edges, branch Merkle caches, keys, and
-values. It refuses more than 2,000,000 records, 512 MiB encoded input, or 2 GiB
-estimated/observed resident memory.
-
-```sh
-cargo build --release --locked \
-  --manifest-path native/mpf-event-flat-wasm/Cargo.toml \
-  --bin architecture-g-owner
-node scripts/mpf-architecture-g-owner-prototype.mjs --utxos=100000
-node scripts/mpf-architecture-g-owner-prototype.mjs --utxos=1000000
-```
-
-The harness performs separate-process prepare/recover replay using the same
-digest-bound event log, validates marker-matched sidecar restart, forces corrupt
-and stale sidecar rebuilds, rejects a corrupt replay log, simulates isolated
-fork/discard/promote and stale-generation rejection without writing either
-fixture, and finally reopens/closes Level to prove clean lock release. The
-sidecar is a cache: it contains the marker-bound canonical export under a file
-digest, is written by fsync-plus-rename, and is discarded/rebuilt on any
-mismatch. Level remains authoritative.
-
-A production deployment would bundle two artifacts from the same locked Rust
-source: the existing WASM differential oracle and a platform-specific native64
-owner binary. The node would launch one supervised owner per ledger store,
-transfer exclusive Level ownership to it, use a versioned local binary RPC
-instead of benchmark files, persist the replay log in the pending-finalization
-journal, pin binary/ABI/sidecar schema hashes in release metadata, and expose
-startup/rebuild/RSS/lease metrics. None of those deployment changes are part of
-this prototype.
+The following describes the one-shot differential ABI; the native service's
+RPC, journal, and recovery implementation is maintained alongside the runtime.
 
 ## Binary ABI v1
 
@@ -130,20 +35,20 @@ without an ambiguous packed-tail representation.
 
 Input header (72 bytes):
 
-| Offset | Field |
-| ---: | --- |
-| 0 | `MEF6` magic |
-| 4 | `u16 version = 1` |
-| 6 | `u16 flags = 0` |
-| 8 | `u32 max_records` |
-| 12 | `u32 max_events` |
-| 16 | `u32 max_ops` |
-| 20 | `u32 max_input_bytes` |
-| 24 | `u32 max_output_bytes` |
-| 28 | `u32 record_count` |
-| 32 | `u32 event_count` |
-| 36 | `u32 op_count` |
-| 40 | `base_root[32]` |
+| Offset | Field                  |
+| -----: | ---------------------- |
+|      0 | `MEF6` magic           |
+|      4 | `u16 version = 1`      |
+|      6 | `u16 flags = 0`        |
+|      8 | `u32 max_records`      |
+|     12 | `u32 max_events`       |
+|     16 | `u32 max_ops`          |
+|     20 | `u32 max_input_bytes`  |
+|     24 | `u32 max_output_bytes` |
+|     28 | `u32 record_count`     |
+|     32 | `u32 event_count`      |
+|     36 | `u32 op_count`         |
+|     40 | `base_root[32]`        |
 
 Each authenticated raw record is `kind:u8, hash[32], prefix_len:u8,
 prefix[prefix_len]`. A leaf continues with `key_len:u16, value_len:u32, key,
@@ -170,14 +75,15 @@ marker to `base_root` before Level reads and again before accepting output; a
 marker change discards the entire result. The receiver authenticates and stages
 the returned closure before one atomic nodes-plus-marker promotion.
 
-The prototype currently emits a compact sparse full-record delta, not the
+The one-shot differential ABI emits a compact sparse full-record delta, not the
 smaller predecessor-patch representation. That is deliberate: the growth gate
 must be demonstrated before adding a more complex transfer encoding.
 
 ## Memory model
 
 The call owns one immutable raw proof plus append-only generated nodes. Opaque
-untouched children remain 32-byte commitments. Production wiring must budget
-`input + output + ~1.8 KiB * arena_nodes + leaf key/value bytes`, reject before
-the configured cap, and free the whole WASM instance or result on error. There
+untouched children remain 32-byte commitments. Caller memory accounting must include the input, output, arena nodes, and leaf
+key/value allocations. The byte caps do not by themselves bound total process
+RSS. Callers must reject before their configured memory cap and free the whole
+WASM instance or result on error. There
 is no cache across base-root markers and no fail-open JS hashing fallback.

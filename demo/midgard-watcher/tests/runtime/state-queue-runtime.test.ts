@@ -1,0 +1,482 @@
+import { describe, expect, it, vi } from "vitest";
+
+import type { WatcherFaultDecisionBridge } from "../../src/fault-proofs/fault-decision-bridge.js";
+import type {
+  WatcherAuthenticatedStateQueueObservation,
+  WatcherStateQueueObservationSource,
+} from "../../src/indexers/authenticated-state-queue-observation.js";
+import type { WatcherLocalKupmiosNativeObservation } from "../../src/l1/local-kupmios-native-observation.js";
+import type { WatcherNativeBlockAdmission } from "../../src/l1/native-block-admission.js";
+import { createWatcherStateQueueRuntime } from "../../src/runtime/state-queue-runtime.js";
+import type { WatcherSqliteStateQueueObservationStore } from "../../src/storage/sqlite-durable-backend.js";
+
+const point = (blockNo: number, byte: string) =>
+  Object.freeze({
+    blockHash: byte.repeat(32),
+    blockNo: blockNo.toString(),
+    slot: (blockNo * 10).toString(),
+    chainPointId: `${byte === "ff" ? "ee" : "ff"}`.repeat(32),
+  });
+
+const observation = (
+  blockNo: number,
+  byte: string,
+  previousObservationDigest: string | null,
+): WatcherAuthenticatedStateQueueObservation =>
+  Object.freeze({
+    observationDigest: byte.repeat(32),
+    previousObservationDigest,
+    nativePoint: Object.freeze({
+      ...point(blockNo, byte),
+      parentBlockHash: "00".repeat(32),
+      finalityDepth: "30",
+    }),
+  }) as WatcherAuthenticatedStateQueueObservation;
+
+const nativeBlock = (
+  blockNo: number,
+  byte: string,
+): WatcherNativeBlockAdmission =>
+  Object.freeze({
+    blockHash: byte.repeat(32),
+    blockNo: blockNo.toString(),
+    slot: (blockNo * 10).toString(),
+  }) as WatcherNativeBlockAdmission;
+
+const localObservation = Object.freeze(
+  {},
+) as WatcherLocalKupmiosNativeObservation;
+
+const bridge = () => {
+  const invalidateForRollback = vi.fn();
+  const prepareForRecovery = vi.fn(async () => ({
+    observationDigest: "00".repeat(32),
+    decisionDigests: Object.freeze([]),
+    target: null,
+  }));
+  const reconcileAndDispatch = vi.fn(async () => ({
+    observationDigest: "00".repeat(32),
+    decisionDigests: Object.freeze([]),
+    target: null,
+  }));
+  return {
+    invalidateForRollback,
+    prepareForRecovery,
+    reconcileAndDispatch,
+    value: Object.freeze({
+      invalidateForRollback,
+      prepareForRecovery,
+      reconcileAndDispatch,
+    }) as unknown as WatcherFaultDecisionBridge,
+  };
+};
+
+describe("production state-queue runtime V1", () => {
+  it("durably revokes a raw-L1-rejected cache suffix before native replay", async () => {
+    const before = observation(100, "51", null);
+    const rejected = observation(102, "52", before.observationDigest);
+    let persisted: readonly unknown[] = Object.freeze([before, rejected]);
+    const rollbackTo = vi.fn(async () => {
+      persisted = Object.freeze([before]);
+    });
+    const store: WatcherSqliteStateQueueObservationStore = {
+      readAll: async () => persisted,
+      append: async () => "appended",
+      rollbackTo,
+    };
+    const restore = vi.fn(async ({ persistedObservations }) => ({
+      previous: before,
+      discardedObservationCount: persistedObservations.length === 2 ? 1 : 0,
+      replayIntersection: point(100, "51"),
+      catchupBoundary: Object.freeze({
+        ...point(103, "53"),
+        finalityDepth: "30",
+        ogmiosTipBlockNo: "103",
+      }),
+    }));
+    const source: WatcherStateQueueObservationSource = {
+      restore,
+      bootstrap: async () => {
+        throw new Error("nonempty cache must restore");
+      },
+      observe: async ({ previous }) => previous,
+      resolveRetainedHeader: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const runtime = await createWatcherStateQueueRuntime({
+      store,
+      source,
+    });
+    expect(rollbackTo).toHaveBeenCalledWith({
+      kind: "point",
+      blockHash: "51".repeat(32),
+      slot: "1000",
+    });
+    expect(restore).toHaveBeenCalledTimes(2);
+    expect(runtime.current()).toBe(before);
+    expect(runtime.replayIntersection).toEqual(point(100, "51"));
+  });
+
+  it("starts at the exact reauthenticated cursor and catches an offline queue mutation", async () => {
+    const before = observation(100, "11", null);
+    const after = observation(102, "22", before.observationDigest);
+    const appended: WatcherAuthenticatedStateQueueObservation[] = [];
+    const store: WatcherSqliteStateQueueObservationStore = {
+      readAll: async () => Object.freeze([before]),
+      append: async (value) => {
+        appended.push(value);
+        return "appended";
+      },
+      rollbackTo: async () => undefined,
+    };
+    const source: WatcherStateQueueObservationSource = {
+      restore: async () => ({
+        previous: before,
+        discardedObservationCount: 0,
+        replayIntersection: point(100, "11"),
+        catchupBoundary: Object.freeze({
+          ...point(102, "22"),
+          finalityDepth: "30",
+          ogmiosTipBlockNo: "102",
+        }),
+      }),
+      bootstrap: async () => {
+        throw new Error("nonempty cache must restore");
+      },
+      observe: async ({ nativeBlock: block, previous }) =>
+        block.blockNo === "102" ? after : previous,
+      resolveRetainedHeader: async () => {
+        throw new Error("not used");
+      },
+    };
+    const decisionBridge = bridge();
+    const runtime = await createWatcherStateQueueRuntime({
+      store,
+      source,
+    });
+    expect(runtime.replayIntersection).toEqual(point(100, "11"));
+    const hooks = runtime.bindFaultDecisionBridge(decisionBridge.value);
+
+    await hooks.onFinalized({
+      nativeBlock: nativeBlock(101, "33"),
+      localObservation,
+      relevance: "touched",
+    });
+    expect(appended).toEqual([]);
+    expect(runtime.current()).toBe(before);
+
+    await hooks.onFinalized({
+      nativeBlock: nativeBlock(102, "22"),
+      localObservation,
+      relevance: "touched",
+    });
+    await expect(runtime.caughtUp).resolves.toBeUndefined();
+    expect(appended).toEqual([after]);
+    expect(runtime.current()).toBe(after);
+    expect(decisionBridge.reconcileAndDispatch).toHaveBeenLastCalledWith(after);
+  });
+
+  it("revokes synchronously before rollback persistence and restores only retained authority", async () => {
+    const before = observation(100, "44", null);
+    let releaseRollback!: () => void;
+    const rollbackGate = new Promise<void>((resolve) => {
+      releaseRollback = resolve;
+    });
+    const events: string[] = [];
+    const store: WatcherSqliteStateQueueObservationStore = {
+      readAll: async () => Object.freeze([before]),
+      append: async () => "appended",
+      rollbackTo: async () => {
+        events.push("rollback_started");
+        await rollbackGate;
+        events.push("rollback_finished");
+      },
+    };
+    const source: WatcherStateQueueObservationSource = {
+      restore: async () => ({
+        previous: before,
+        discardedObservationCount: 0,
+        replayIntersection: point(100, "44"),
+        catchupBoundary: Object.freeze({
+          ...point(100, "44"),
+          finalityDepth: "30",
+          ogmiosTipBlockNo: "100",
+        }),
+      }),
+      bootstrap: async () => {
+        throw new Error("not used");
+      },
+      observe: async ({ previous }) => previous,
+      resolveRetainedHeader: async () => {
+        throw new Error("not used");
+      },
+    };
+    const decisionBridge = bridge();
+    decisionBridge.invalidateForRollback.mockImplementation(() => {
+      events.push("revoked");
+    });
+    const runtime = await createWatcherStateQueueRuntime({
+      store,
+      source,
+    });
+    const availability = {
+      invalidateForRollback: () => {
+        events.push("availability_revoked");
+      },
+      reconcile: async () => {
+        events.push("availability_recovered");
+      },
+    };
+    const hooks = runtime.bindFaultDecisionBridge(
+      decisionBridge.value,
+      availability,
+    );
+    const rollingBack = hooks.onRollback({
+      kind: "point",
+      blockHash: "44".repeat(32),
+      slot: "1000",
+    });
+    expect(events).toEqual([
+      "revoked",
+      "availability_revoked",
+      "rollback_started",
+    ]);
+    expect(decisionBridge.prepareForRecovery).not.toHaveBeenCalled();
+
+    releaseRollback();
+    await rollingBack;
+    expect(events).toEqual([
+      "revoked",
+      "availability_revoked",
+      "rollback_started",
+      "rollback_finished",
+      "availability_recovered",
+    ]);
+    expect(decisionBridge.prepareForRecovery).toHaveBeenCalledWith(before);
+  });
+
+  it("dispatches availability at fresh finalized points even when the queue cursor is unchanged", async () => {
+    const before = observation(100, "44", null);
+    const current = observation(101, "45", before.observationDigest);
+    const append = vi.fn(async () => "appended" as const);
+    const source: WatcherStateQueueObservationSource = {
+      restore: async () => ({
+        previous: before,
+        discardedObservationCount: 0,
+        replayIntersection: point(100, "44"),
+        catchupBoundary: {
+          ...point(100, "44"),
+          finalityDepth: "30",
+          ogmiosTipBlockNo: "130",
+        },
+      }),
+      bootstrap: async () => {
+        throw new Error("not used");
+      },
+      observe: async () => before,
+      latestFinalizedObservation: () => current,
+      resolveRetainedHeader: async () => {
+        throw new Error("not used");
+      },
+    };
+    const runtime = await createWatcherStateQueueRuntime({
+      source,
+      store: {
+        readAll: async () => [before],
+        append,
+        rollbackTo: async () => undefined,
+      },
+    });
+    const decisionBridge = bridge();
+    const reconcile = vi.fn(async () => undefined);
+    const hooks = runtime.bindFaultDecisionBridge(decisionBridge.value, {
+      reconcile,
+      invalidateForRollback: () => undefined,
+    });
+    await hooks.onFinalized({
+      nativeBlock: nativeBlock(101, "45"),
+      localObservation,
+      relevance: "touched",
+    });
+    expect(append).not.toHaveBeenCalled();
+    expect(runtime.current()).toBe(before);
+    expect(reconcile).toHaveBeenCalledWith(current, true);
+    expect(decisionBridge.reconcileAndDispatch).toHaveBeenCalledWith(current);
+    expect(reconcile.mock.invocationCallOrder[0]).toBeLessThan(
+      decisionBridge.reconcileAndDispatch.mock.invocationCallOrder[0]!,
+    );
+  });
+  it("replays the finalized block already recorded as the durable cursor without re-observing it", async () => {
+    // A crash between appending the observation and recording block progress
+    // makes the coordinator deliver the same finalized block again on restart.
+    const before = observation(100, "44", null);
+    const current = observation(101, "45", before.observationDigest);
+    const observe = vi.fn(async () => {
+      throw new Error(
+        "state-queue observation predecessor is foreign or non-monotone",
+      );
+    });
+    const append = vi.fn(async () => "appended" as const);
+    const source: WatcherStateQueueObservationSource = {
+      restore: async () => ({
+        previous: current,
+        discardedObservationCount: 0,
+        replayIntersection: point(101, "45"),
+        catchupBoundary: {
+          ...point(101, "45"),
+          finalityDepth: "30",
+          ogmiosTipBlockNo: "131",
+        },
+      }),
+      bootstrap: async () => {
+        throw new Error("not used");
+      },
+      observe,
+      resolveRetainedHeader: async () => {
+        throw new Error("not used");
+      },
+    };
+    const runtime = await createWatcherStateQueueRuntime({
+      source,
+      store: {
+        readAll: async () => [before, current],
+        append,
+        rollbackTo: async () => undefined,
+      },
+    });
+    const decisionBridge = bridge();
+    const reconcile = vi.fn(async () => undefined);
+    const hooks = runtime.bindFaultDecisionBridge(decisionBridge.value, {
+      reconcile,
+      invalidateForRollback: () => undefined,
+    });
+    await hooks.onFinalized({
+      nativeBlock: nativeBlock(101, "45"),
+      localObservation,
+      relevance: "touched",
+    });
+    expect(observe).not.toHaveBeenCalled();
+    expect(append).not.toHaveBeenCalled();
+    expect(runtime.current()).toBe(current);
+    expect(reconcile).toHaveBeenCalledWith(current, true);
+    expect(decisionBridge.reconcileAndDispatch).toHaveBeenCalledWith(current);
+    await expect(
+      hooks.onFinalized({
+        nativeBlock: nativeBlock(101, "46"),
+        localObservation,
+        relevance: "touched",
+      }),
+    ).rejects.toThrow("non-monotone");
+  });
+
+  it.each([
+    { blockNo: 102, byte: "33", reason: "foreign" },
+    { blockNo: 103, byte: "22", reason: "skipped" },
+  ])(
+    "refuses a $reason historical catch-up point with the Ogmios tip ahead",
+    async ({ blockNo, byte, reason }) => {
+      const before = observation(100, "11", null);
+      const source: WatcherStateQueueObservationSource = {
+        restore: async () => ({
+          previous: before,
+          discardedObservationCount: 0,
+          replayIntersection: point(100, "11"),
+          catchupBoundary: {
+            ...point(102, "22"),
+            finalityDepth: "30",
+            ogmiosTipBlockNo: "132",
+          },
+        }),
+        bootstrap: async () => {
+          throw new Error("nonempty cache must restore");
+        },
+        observe: async ({ previous }) => previous,
+        resolveRetainedHeader: async () => {
+          throw new Error("not used");
+        },
+      };
+      const store: WatcherSqliteStateQueueObservationStore = {
+        readAll: async () => [before],
+        append: async () => "appended",
+        rollbackTo: async () => undefined,
+      };
+      const runtime = await createWatcherStateQueueRuntime({ store, source });
+      const decisionBridge = bridge();
+      const hooks = runtime.bindFaultDecisionBridge(decisionBridge.value);
+      await expect(
+        hooks.onFinalized({
+          nativeBlock: nativeBlock(blockNo, byte),
+          localObservation,
+          relevance: "touched",
+        }),
+      ).rejects.toThrow(reason);
+      await expect(runtime.caughtUp).rejects.toThrow(reason);
+      expect(decisionBridge.reconcileAndDispatch).not.toHaveBeenCalled();
+    },
+  );
+
+  it("advances a quiet block through the catch-up boundary without touching the queue", async () => {
+    const before = observation(100, "44", null);
+    const observe = vi.fn(async () => before);
+    const append = vi.fn(async () => "appended" as const);
+    const source: WatcherStateQueueObservationSource = {
+      restore: async () => ({
+        previous: before,
+        discardedObservationCount: 0,
+        replayIntersection: point(100, "44"),
+        catchupBoundary: {
+          ...point(101, "45"),
+          finalityDepth: "30",
+          ogmiosTipBlockNo: "131",
+        },
+      }),
+      bootstrap: async () => {
+        throw new Error("not used");
+      },
+      observe,
+      resolveRetainedHeader: async () => {
+        throw new Error("not used");
+      },
+    };
+    const runtime = await createWatcherStateQueueRuntime({
+      source,
+      store: {
+        readAll: async () => [before],
+        append,
+        rollbackTo: async () => undefined,
+      },
+    });
+    const decisionBridge = bridge();
+    const reconcile = vi.fn(async () => undefined);
+    const hooks = runtime.bindFaultDecisionBridge(decisionBridge.value, {
+      reconcile,
+      invalidateForRollback: () => undefined,
+    });
+    await hooks.onFinalized({
+      nativeBlock: nativeBlock(101, "45"),
+      localObservation: null,
+      relevance: "quiet",
+    });
+    await expect(runtime.caughtUp).resolves.toBeUndefined();
+    await hooks.onFinalized({
+      nativeBlock: nativeBlock(102, "46"),
+      localObservation: null,
+      relevance: "quiet",
+    });
+    expect(observe).not.toHaveBeenCalled();
+    expect(append).not.toHaveBeenCalled();
+    expect(reconcile).not.toHaveBeenCalled();
+    expect(decisionBridge.reconcileAndDispatch).not.toHaveBeenCalled();
+    expect(runtime.current()).toBe(before);
+
+    await expect(
+      hooks.onFinalized({
+        nativeBlock: nativeBlock(103, "47"),
+        localObservation: null,
+        relevance: "touched",
+      }),
+    ).rejects.toThrow("touched block finalized without a local observation");
+  });
+});

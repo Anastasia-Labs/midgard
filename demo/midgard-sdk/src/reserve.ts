@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 // Lucid encodes one-constructor enums from the field record directly; the
@@ -18,5 +19,6 @@ export type ReserveSpendRedeemer = {
   payout_spend_redeemer_index: bigint;
   hub_ref_input_index: bigint;
 };
-export const ReserveSpendRedeemer =
-  ReserveSpendRedeemerSchema as unknown as ReserveSpendRedeemer;
+export const ReserveSpendRedeemer = asDataType<ReserveSpendRedeemer>(
+  ReserveSpendRedeemerSchema,
+);
