@@ -1661,7 +1661,7 @@ export const createNetworkIdWorkflowAdapter = (
           correction: {
             removalTxHash,
             removedStateQueueOutRef: requireString(
-              intent.actionInput.stateQueueBlockOutRef,
+              intent.actionInput.nextRemovalOutRef,
               "removed state-queue out-ref",
             ),
             fraudulentHeaderAbsent: true,
@@ -1686,13 +1686,16 @@ export const createNetworkIdWorkflowAdapter = (
       }
       return {
         kind: "action_required",
+        // The production funding reservation permit binds the slash authority
+        // to the removal action through the shared `nextRemovalOutRef` and
+        // `fraudProofOutRef` names.
         action: action("remove", {
-          stateQueueBlockOutRef:
+          nextRemovalOutRef:
             rawStage?.kind === "proof_token"
               ? rawStage.nextRemovalOutRef
               : stateQueueOutRef,
           targetStateQueueBlockOutRef: stateQueueOutRef,
-          proofOutRef,
+          fraudProofOutRef: proofOutRef,
           requiresMutationLease:
             rawStage?.kind === "proof_token" &&
             rawStage.nextRemovalOutRef !== rawStage.stateQueueBlockOutRef
@@ -2300,7 +2303,7 @@ export const createNetworkIdWorkflowAdapter = (
             if (
               !workflowTransactionInputOutRefs(transaction.signed).includes(
                 requireString(
-                  context.action.input.stateQueueBlockOutRef,
+                  context.action.input.nextRemovalOutRef,
                   "next removal out-ref",
                 ),
               )
@@ -2314,7 +2317,7 @@ export const createNetworkIdWorkflowAdapter = (
                 transaction.signed,
               ).includes(
                 requireString(
-                  context.action.input.proofOutRef,
+                  context.action.input.fraudProofOutRef,
                   "permanent proof-token out-ref",
                 ),
               )
@@ -2566,7 +2569,7 @@ export const createNetworkIdWorkflowAdapter = (
                     : rawStage.kind === "removed" ||
                       (rawStage.kind === "proof_token" &&
                         rawStage.nextRemovalOutRef !==
-                          context.action.input.stateQueueBlockOutRef);
+                          context.action.input.nextRemovalOutRef);
         const intendedTransactionConfirmed =
           await config.rawL1.transactionConfirmed({
             headerHash: prepared.headerHash,

@@ -1373,34 +1373,71 @@ const assertRuntimeTransactionBound = async ({
         ? 0n
         : BigInt(economics.inactivitySlashingPenaltyLovelace));
     const reward = BigInt(economics.fraudProverRewardLovelace);
-    if (
-      state.currentActionKind !== "remove" ||
-      actionKind(action) !== "remove" ||
-      action.input.stage !== "remove" ||
-      state.currentActionDigest !==
-        computeDeploymentManifestJsonDigest(action) ||
-      action.input.nextRemovalOutRef !== slash.removedStateQueueOutRef ||
-      action.input.fraudProofOutRef !== slash.fraudProofOutRef ||
-      slash.category !== state.category ||
-      slash.headerHash !== actuation.headerHash ||
-      slash.deploymentFingerprint !== policy.deploymentFingerprint ||
-      slash.economicsPolicyDigest !== policy.economicsPolicyDigest ||
-      slash.rewardAddress !== state.snapshot.walletAddress ||
-      BigInt(slash.operatorBondLovelace) !== bond ||
-      BigInt(slash.rewardLovelace) !== reward ||
-      BigInt(slash.exactFeeLovelace) !== bond - reward ||
-      body.fee() !== bond - reward ||
-      fundingOutRefs.length !== 0 ||
-      slash.inputs.length !== bodyInputs.length ||
-      slash.inputs.some((input, index) => input.outRef !== bodyInputs[index]) ||
-      !bodyInputs.includes(slash.operatorOutRef) ||
-      !bodyInputs.includes(slash.removedStateQueueOutRef) ||
-      !workflowTransactionReferenceInputOutRefs(signed).includes(
-        slash.fraudProofOutRef,
-      )
+    // The removal action names the out-refs it spends and references under
+    // the shared `nextRemovalOutRef` / `fraudProofOutRef` vocabulary; its kind
+    // is read through `actionKind` (either `actionKind` or `stage`). A refusal
+    // names the differing checks so an operator can act on it.
+    const differing = (
+      [
+        ["current action kind", state.currentActionKind === "remove"],
+        ["action kind", actionKind(action) === "remove"],
+        [
+          "action digest",
+          state.currentActionDigest ===
+            computeDeploymentManifestJsonDigest(action),
+        ],
+        [
+          "nextRemovalOutRef",
+          action.input.nextRemovalOutRef === slash.removedStateQueueOutRef,
+        ],
+        [
+          "fraudProofOutRef",
+          action.input.fraudProofOutRef === slash.fraudProofOutRef,
+        ],
+        ["category", slash.category === state.category],
+        ["header hash", slash.headerHash === actuation.headerHash],
+        [
+          "deployment fingerprint",
+          slash.deploymentFingerprint === policy.deploymentFingerprint,
+        ],
+        [
+          "economics policy digest",
+          slash.economicsPolicyDigest === policy.economicsPolicyDigest,
+        ],
+        [
+          "reward address",
+          slash.rewardAddress === state.snapshot.walletAddress,
+        ],
+        ["operator bond", BigInt(slash.operatorBondLovelace) === bond],
+        ["reward", BigInt(slash.rewardLovelace) === reward],
+        ["exact fee", BigInt(slash.exactFeeLovelace) === bond - reward],
+        ["body fee", body.fee() === bond - reward],
+        ["funding inputs", fundingOutRefs.length === 0],
+        [
+          "authority inputs",
+          slash.inputs.length === bodyInputs.length &&
+            slash.inputs.every(
+              (input, index) => input.outRef === bodyInputs[index],
+            ),
+        ],
+        ["operator input", bodyInputs.includes(slash.operatorOutRef)],
+        [
+          "removed state-queue input",
+          bodyInputs.includes(slash.removedStateQueueOutRef),
+        ],
+        [
+          "fraud proof reference input",
+          workflowTransactionReferenceInputOutRefs(signed).includes(
+            slash.fraudProofOutRef,
+          ),
+        ],
+      ] as const
     )
+      .filter(([, holds]) => !holds)
+      .map(([name]) => name);
+    if (differing.length > 0)
       throw new Error(
-        "fraud slash funding authority differs from its exact removal action or economics",
+        `fraud slash funding authority differs from its exact removal action or economics (${differing.join(", ")})`,
       );
   }
   if (signedBytes > BigInt(parameters.maxTxSize))
