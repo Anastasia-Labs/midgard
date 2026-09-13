@@ -274,9 +274,10 @@ Previously implemented portions of a combined gate still need release verificati
       [manual recovery](fault-proofs/manual-recovery-runbook.md) runbooks externally.
       The [automatic watcher journeys](fault-proofs/automatic-watcher-journeys.md)
       harness is the acceptance vehicle for this gate on a real devnet. As of
-      2026-09-12 one of the 54 non-interactive families (`transitionTrace`) has a
-      completed live journey on the merged code's 55-family deployment; the rest
-      are locally verified, running, blocked on owner rulings, or unrun. Watcher
+      2026-09-13 five of the 54 non-interactive families (`transitionTrace`,
+      `zeroInput`, `invalidRange`, `invalidSignature`, `mintAuthorization`) have
+      a completed live journey on the merged code's 55-family deployment; the
+      rest are locally verified, running, blocked on owner rulings, or unrun. Watcher
       installation covers all 55 source categories; installation is not
       acceptance.
 - [ ] Expose machine-readable rule/reject-code to family, script hashes, DA needs,

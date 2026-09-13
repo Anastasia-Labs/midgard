@@ -148,11 +148,13 @@ the L1 order authenticates the immutable submission and the operator's
   `demo/midgard-node-tools/devnet/watcher-journeys/`. It launches this package's
   built `dist/cli.js` against a fresh Cardano devnet and drives each
   non-interactive family from committed header to healthy successor. As of
-  2026-09-12 only `transitionTrace` has completed that journey, on the
-  forced-submission-merged code against its 55-family deployment; the other
-  53 non-interactive families are verified locally, in progress on that
-  harness, or still blocked, not live-accepted. The interactive
-  `validationTraceDispute` family is installed but outside that harness.
+  2026-09-13 five families have completed that journey on the
+  forced-submission-merged code against its 55-family deployment:
+  `transitionTrace`, `zeroInput`, `invalidRange`, `invalidSignature`, and
+  `mintAuthorization`. The other 49 non-interactive families are verified
+  locally, in progress on that harness, or still blocked, not live-accepted.
+  The interactive `validationTraceDispute` family is installed but outside
+  that harness.
 - `pnpm run typecheck`, `pnpm run lint`, and `pnpm test` check this package.
   The journey harness runs the built `dist`; rebuild before a live run or the
   child process executes stale code while the test process reads source.
