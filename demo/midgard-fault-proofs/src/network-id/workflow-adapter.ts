@@ -63,6 +63,7 @@ import {
 import { nativeTxFromCoreCompact } from "../submit-step-01.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
+import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
 import { NETWORK_ID_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
@@ -72,6 +73,7 @@ import {
   releaseFinalityAuthorityFromDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
+import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import type {
   FraudProofWorkflowJournalStore,
   FraudProofWorkflowTerminal,
@@ -79,16 +81,11 @@ import type {
 } from "../workflow/journal.js";
 import {
   createLocalKupmiosHttpOgmiosRawSource,
+  type LocalKupmiosHttpOgmiosSourceConfig,
   readAdmittedLocalKupmiosSignedTransactionRecovery,
   rebroadcastAdmittedLocalKupmiosSignedTransaction,
-  type LocalKupmiosHttpOgmiosSourceConfig,
 } from "../workflow/local-kupmios-http-ogmios-source.js";
 import { createLocalKupmiosFraudProofRawL1SnapshotAuthority } from "../workflow/local-kupmios-raw-l1-authority.js";
-import {
-  reconcileSignedWorkflowTransaction,
-  type SignedTransactionRecoveryObservation,
-  type SignedWorkflowTransaction,
-} from "../workflow/signed-transaction-reconciliation.js";
 import {
   createFraudProofWorkflowRegistry,
   FRAUD_PROOF_WORKFLOW_ADAPTER,
@@ -106,6 +103,7 @@ import {
 import {
   deriveAuthenticatedStateQueueHeaderObservationFromRawL1,
   deriveFraudProofRawL1FamilyStage,
+  deriveRetainedStateQueueHeaderObservationFromRawL1,
   type FraudProofRawL1FamilyDefinition,
   type FraudProofRawL1FamilyStage,
   fraudProofRawL1SnapshotRequestForFamily,
@@ -122,6 +120,11 @@ import {
 import type { VerifiedFraudProofReleaseEconomicsPolicy } from "../workflow/release-economics-policy.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "../workflow/release-finality-policy.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
+import {
+  reconcileSignedWorkflowTransaction,
+  type SignedTransactionRecoveryObservation,
+  type SignedWorkflowTransaction,
+} from "../workflow/signed-transaction-reconciliation.js";
 import {
   bindWorkflowPreflightTransaction,
   captureLocallyEvaluatedTransaction,
@@ -764,6 +767,9 @@ export interface NetworkIdRawL1ObservationPort {
   observeHeader?(input: {
     readonly headerHash: string;
   }): Promise<AuthenticatedStateQueueHeaderObservation>;
+  observeRetainedHeader?(input: {
+    readonly headerHash: string;
+  }): Promise<AuthenticatedStateQueueHeaderObservation>;
   transactionConfirmed?(input: {
     readonly headerHash: string;
     readonly txHash: string;
@@ -785,7 +791,9 @@ export const createNetworkIdRawL1ObservationPort = ({
   readonly definition: FraudProofRawL1FamilyDefinition & {
     readonly category: "networkId";
   };
-}): NetworkIdRawL1ObservationPort => {
+}): NetworkIdRawL1ObservationPort & {
+  readonly publications: FraudProofAuthenticatedPublicationObserver;
+} => {
   if (
     authority.authorityVersion !== FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY ||
     definition.computationThread.steps.length !== 2
@@ -804,6 +812,7 @@ export const createNetworkIdRawL1ObservationPort = ({
       value: await authority.capture(request),
       request,
       releaseFinality,
+      observationDepth: "inclusion",
     });
   };
   return {
@@ -817,6 +826,11 @@ export const createNetworkIdRawL1ObservationPort = ({
       ),
     observeHeader: async ({ headerHash }) =>
       await deriveAuthenticatedStateQueueHeaderObservationFromRawL1({
+        snapshot: await capture(headerHash),
+        definition,
+      }),
+    observeRetainedHeader: async ({ headerHash }) =>
+      await deriveRetainedStateQueueHeaderObservationFromRawL1({
         snapshot: await capture(headerHash),
         definition,
       }),
@@ -848,18 +862,19 @@ export const createNetworkIdLocalKupmiosL1ObservationPort = ({
   const rawSource = createLocalKupmiosHttpOgmiosRawSource({
     ...source,
     releaseFinality,
+    observationDepth: "inclusion",
   });
   const port = createNetworkIdRawL1ObservationPort({
     authority: createLocalKupmiosFraudProofRawL1SnapshotAuthority({
       source: rawSource,
       releaseFinality,
+      observationDepth: "inclusion",
     }),
     releaseFinality,
     releaseEconomics,
     definition,
   });
-  return Object.freeze({
-    ...port,
+  const recovery = {
     observeSignedTransaction: (input: SignedWorkflowTransaction) =>
       readAdmittedLocalKupmiosSignedTransactionRecovery({
         ...input,
@@ -876,15 +891,29 @@ export const createNetworkIdLocalKupmiosL1ObservationPort = ({
         ...input,
         source: rawSource,
       }),
+  };
+  return Object.freeze({
+    ...port,
+    ...recovery,
+    publications: Object.freeze({ ...port.publications, ...recovery }),
   });
 };
 
 /** Independent second raw-L1 observation for terminal admission. */
 export const createNetworkIdAuthenticatedL1TerminalVerifier = (
   l1: NetworkIdRawL1ObservationPort,
-): FraudProofWorkflowTerminalVerifier => ({
-  verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-  verify: async ({ identity, candidate, releaseFinality }) => {
+): FraudProofWorkflowTerminalVerifier => {
+  const verify = async (
+    {
+      identity,
+      candidate,
+      releaseFinality,
+    }: Parameters<FraudProofWorkflowTerminalVerifier["verify"]>[0],
+    inclusionOnly: boolean,
+  ): Promise<FraudProofWorkflowTerminal> => {
+    const minimumDepth = inclusionOnly
+      ? 1
+      : releaseFinality.policy.confirmationDepth;
     if (identity.target.kind !== "state_queue_header") {
       throw new Error(
         "network-id terminal requires a state-queue header target",
@@ -898,22 +927,35 @@ export const createNetworkIdAuthenticatedL1TerminalVerifier = (
         "authenticated L1 still reports unfinished network-id correction",
       );
     }
-    if (JSON.stringify(stage.terminal) !== JSON.stringify(candidate)) {
+    const facts = (terminal: FraudProofWorkflowTerminal) => ({
+      ...terminal,
+      observedAt: { ...terminal.observedAt, confirmationDepth: 0 },
+    });
+    if (
+      JSON.stringify(facts(stage.terminal)) !== JSON.stringify(facts(candidate))
+    ) {
       throw new Error(
         "network-id terminal candidate differs from independent L1 observation",
       );
     }
     if (
+      stage.terminal.observedAt.confirmationDepth < minimumDepth ||
+      candidate.observedAt.confirmationDepth < minimumDepth ||
       stage.terminal.observedAt.confirmationDepth <
-      releaseFinality.policy.confirmationDepth
+        candidate.observedAt.confirmationDepth
     ) {
       throw new Error(
-        `authenticated network-id terminal depth is below release finality: required=${releaseFinality.policy.confirmationDepth.toString()} actual=${stage.terminal.observedAt.confirmationDepth.toString()}`,
+        `authenticated network-id terminal depth is below release finality: required=${minimumDepth.toString()} actual=${stage.terminal.observedAt.confirmationDepth.toString()}`,
       );
     }
-    return stage.terminal;
-  },
-});
+    return candidate;
+  };
+  return {
+    verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
+    verify: (input) => verify(input, false),
+    verifyIncluded: (input) => verify(input, true),
+  };
+};
 
 export type NetworkIdWorkflowAdapterConfig = {
   readonly lucid: LucidEvolution;
@@ -2048,7 +2090,7 @@ export const createNetworkIdWorkflowAdapter = (
             scanUtxo === undefined ||
             outRefLabel(scanUtxo) !== threadOutRef
           ) {
-            throw new Error(
+            throw new WorkflowActionChangedError(
               "network-id forced scan thread moved away from the journaled batch out-ref",
             );
           }
@@ -2059,7 +2101,7 @@ export const createNetworkIdWorkflowAdapter = (
             context.action.input.scanOrdinal !==
               networkIdForcedScanStepOrdinal(step).toString()
           ) {
-            throw new Error(
+            throw new WorkflowActionChangedError(
               "network-id forced scan action is no longer the batch the live thread state is waiting for",
             );
           }
@@ -2177,7 +2219,7 @@ export const createNetworkIdWorkflowAdapter = (
             context.action.input.chunkOutRefs !==
             publications.map((utxo) => outRefLabel(utxo)).join(",")
           ) {
-            throw new Error(
+            throw new WorkflowActionChangedError(
               "network-id certification action changed the observed chunks",
             );
           }
@@ -2688,9 +2730,10 @@ export const runOrResumeManifestBoundNetworkIdWorkflow = async ({
       "manifest-bound network-id workflow omitted raw L1 header derivation",
     );
   }
-  const observation = await observeHeader({
-    headerHash: workflow.binding.definition.headerHash,
-  });
+  const observation = await observeFraudProofWorkflowHeader(
+    { observeHeader, observeRetainedHeader: rawL1?.observeRetainedHeader },
+    { headerHash: workflow.binding.definition.headerHash },
+  );
   return await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     observation,

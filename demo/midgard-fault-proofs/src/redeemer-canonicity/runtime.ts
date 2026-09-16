@@ -36,7 +36,7 @@ import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scr
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
-  workflowActuationDecisionDigest,
+  workflowActuationAuthorizingDecisionDigest,
   workflowJournalIsReconciliationOnly,
 } from "../workflow/actuation-permit.js";
 import {
@@ -724,7 +724,10 @@ export const executeManifestBoundRedeemerCanonicityWorkflow = async ({
   readonly runtime: RedeemerCanonicityRuntimeDependencies;
 }): Promise<FraudProofWorkflowRunResult> => {
   const journal = runtime.journal;
-  if (workflowActuationDecisionDigest(journal) !== workflow.decisionDigest)
+  if (
+    workflowActuationAuthorizingDecisionDigest(journal) !==
+    workflow.decisionDigest
+  )
     throw new Error("redeemerCanonicity journal changed decision digest");
   if (workflowJournalIsReconciliationOnly(journal))
     return await resumeRecordedFraudProofWorkflow({

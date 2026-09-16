@@ -73,7 +73,15 @@ export const verifyTransitionTraceJourneyOutputPlan = (
 export interface JourneyCadence {
   slotLengthSeconds: number;
   activeSlotsCoeff: number;
+  /** Release finality depth; it budgets the final evidence stamp only. */
   confirmationDepth: number;
+  /**
+   * Depth at which the watcher acts on an observation. Every action stage
+   * (fault staging, the proof chain, the honest successor, healthy
+   * processing) is budgeted from this depth. Defaults to the release depth,
+   * which is the pre-inclusion-gating behavior.
+   */
+  actionDepth?: number;
   /** Separate preparation budget; retained fixture retries need no fresh preparation. */
   fixtureStagingAllowanceMs?: number;
 }
@@ -175,6 +183,7 @@ export const journeyTimingForPlan = (
     slotLengthSeconds,
     activeSlotsCoeff,
     confirmationDepth,
+    actionDepth = confirmationDepth,
     fixtureStagingAllowanceMs = 0,
   }: JourneyCadence,
 ) => {
@@ -186,15 +195,21 @@ export const journeyTimingForPlan = (
     activeSlotsCoeff > 1 ||
     !Number.isSafeInteger(confirmationDepth) ||
     confirmationDepth < 1 ||
+    !Number.isSafeInteger(actionDepth) ||
+    actionDepth < 1 ||
+    actionDepth > confirmationDepth ||
     !Number.isSafeInteger(fixtureStagingAllowanceMs) ||
     fixtureStagingAllowanceMs < 0
   ) {
     throw new Error("Invalid journey cadence or staging allowance");
   }
-  const expectedConfirmationPerTransactionMs =
-    (confirmationDepth * slotLengthSeconds * 1000) / activeSlotsCoeff;
-  // Two times the ideal cadence mean is a finite allowance, not a finality guarantee.
-  // Node outages or sustained underproduction still terminate at the outer deadline.
+  const idealDepthMs = (depth: number) =>
+    (depth * slotLengthSeconds * 1000) / activeSlotsCoeff;
+  // An action waits for inclusion at the action depth, not for release finality.
+  const expectedConfirmationPerTransactionMs = idealDepthMs(actionDepth);
+  // Two times the ideal cadence mean is a finite allowance, not an inclusion
+  // guarantee. Node outages or sustained underproduction still terminate at
+  // the outer deadline.
   const confirmationAllowancePerTransactionMs = Math.ceil(
     2 * expectedConfirmationPerTransactionMs,
   );
@@ -207,6 +222,14 @@ export const journeyTimingForPlan = (
     healthySuccessorObservationMs: 1_800_000,
     successorRegistrationMs: Number(REGISTRATION_DURATION_MS),
     fixtureStagingMs: fixtureStagingAllowanceMs,
+    /**
+     * The one release-finality wait in a journey: the completed terminal is
+     * re-observed at the release depth and stamped as the finalized anchor.
+     * The terminal is already on chain, so this is a single confirmation
+     * window at the release depth plus its RPC allowance.
+     */
+    finalizedEvidenceStampMs:
+      Math.ceil(2 * idealDepthMs(confirmationDepth)) + 30_000,
   });
   const transactionAllowanceMs =
     confirmationAllowancePerTransactionMs +
@@ -222,7 +245,8 @@ export const journeyTimingForPlan = (
     allowances.automaticDecisionMs +
     allowances.healthySuccessorObservationMs +
     allowances.successorRegistrationMs +
-    allowances.fixtureStagingMs;
+    allowances.fixtureStagingMs +
+    allowances.finalizedEvidenceStampMs;
   // Node timers above this limit wrap down to approximately one millisecond.
   if (
     !Number.isSafeInteger(journeyTimeoutMs) ||
@@ -232,7 +256,12 @@ export const journeyTimingForPlan = (
   }
   return {
     plan,
-    cadence: { slotLengthSeconds, activeSlotsCoeff, confirmationDepth },
+    cadence: {
+      slotLengthSeconds,
+      activeSlotsCoeff,
+      confirmationDepth,
+      actionDepth,
+    },
     expectedConfirmationMs:
       plan.dependentTransactions * expectedConfirmationPerTransactionMs,
     confirmationAllowanceMs:
@@ -270,6 +299,8 @@ const object = (value: unknown, label: string): Record<string, unknown> => {
 
 export interface ReadJourneyTimingOptions {
   authenticatedConfirmationDepth?: number;
+  /** Depth the journey watcher acts at; the manifest depth when omitted. */
+  actionDepth?: number;
   fixtureStagingAllowanceMs?: number;
 }
 
@@ -309,6 +340,7 @@ export const readJourneyCadence = async (
     slotLengthSeconds: genesis.slotLength,
     activeSlotsCoeff: genesis.activeSlotsCoeff,
     confirmationDepth,
+    actionDepth: options.actionDepth,
     fixtureStagingAllowanceMs: options.fixtureStagingAllowanceMs,
   };
 };
@@ -480,12 +512,14 @@ export type TransitionTraceJourneyExecutionTiming = JourneyExecutionTiming;
 export const readJourneyExecutionTiming = async (
   runDirectory: string,
   category: string,
+  options: ReadJourneyTimingOptions = {},
 ) => {
-  const timing = await readJourneyTiming(runDirectory, category);
+  const timing = await readJourneyTiming(runDirectory, category, options);
   const capturedTip = await readJourneyTimingTip(runDirectory);
   return journeyExecutionTiming(timing, capturedTip, performance.now());
 };
 
 export const readTransitionTraceJourneyExecutionTiming = async (
   runDirectory: string,
-) => readJourneyExecutionTiming(runDirectory, "transitionTrace");
+  options: ReadJourneyTimingOptions = {},
+) => readJourneyExecutionTiming(runDirectory, "transitionTrace", options);

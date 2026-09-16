@@ -4,14 +4,16 @@ import {
 } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
 
+import { EmulatorSequencer } from "./tests/support/emulator-sequencer.js";
+
 /**
  * How many test files may run at once. Overridable with
  * `MIDGARD_FAULT_PROOF_FORKS`; anything that is not a positive integer falls
  * back to the default.
  *
- * 8 was measured on a 32-core box at ~1 GB resident per fork: 292 s at 6
- * forks, 253 s at 8, and 16 forks only added CPU contention (tests' summed CPU
- * time rose 1.7× for a 6% wall-clock gain).
+ * The 434-case emulator stage on a 32-CPU/61-GiB host took 23.1 minutes at
+ * four forks and 21.2 at eight, with peak aggregate RSS of 6.5 and 10.1 GiB.
+ * See docs/fault-proofs/testing-status.md for scope and measurements.
  */
 const DEFAULT_MAX_FORKS = 8;
 
@@ -32,6 +34,7 @@ export default defineConfig({
   test: {
     reporters: "verbose",
     include: ["./tests/**/*.test.{ts,tsx}"],
+    sequence: { sequencer: EmulatorSequencer },
     // The one-process-per-file requirement, and why `isolate` must stay
     // `true`, are stated once in `isolatedForksPool`; 7c7162cb reverting
     // `singleFork` here is the same story.

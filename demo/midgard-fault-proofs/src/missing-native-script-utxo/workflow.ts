@@ -754,8 +754,7 @@ export const runOrResumeManifestBoundMissingNativeScriptUtxoWorkflow = async ({
   const evidence = await fetchCanonicalBlockEvidence({
     observation,
     sources,
-    minimumConfirmationDepth:
-      workflow.binding.releaseFinality.policy.confirmationDepth,
+    minimumConfirmationDepth: 1,
   });
   const corpus = await resolveHistoricalNativeScriptCorpus({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,

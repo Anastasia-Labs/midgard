@@ -299,6 +299,17 @@ export type FraudProofWorkflowJournalEvent =
       readonly txHash: string;
     }
   | {
+      /** Current chain state requires this previously submitted action again. */
+      readonly kind: "reobserved";
+      readonly actionId: string;
+      readonly txHash: string;
+    }
+  | {
+      readonly kind: "terminal_included";
+      readonly terminal: FraudProofWorkflowTerminal;
+      readonly terminalDigest: string;
+    }
+  | {
       readonly kind: "completed";
       readonly terminal: FraudProofWorkflowTerminal;
       readonly terminalDigest: string;
@@ -749,6 +760,24 @@ export const validateFraudProofWorkflowJournal = ({
       );
       return;
     }
+    if (event.kind === "reobserved") {
+      requireExactKeys(
+        event,
+        ["kind", "actionId", "txHash"],
+        "journal reobservation",
+      );
+      requireTxHash(event.txHash, "journal reobservation txHash");
+      const intent = latestIntentByAction.get(event.actionId);
+      if (intent?.txHash !== event.txHash)
+        throw new Error("journal reobservation lacks its exact signed intent");
+      // Submission history remains intact. Only the current reconciliation cursor
+      // moves back; later attempts must be observed again before they are reused.
+      unresolvedSubmissionByAction.clear();
+      unresolvedSubmissionByAction.set(event.actionId, "pending");
+      confirmedReconciliationByAction.delete(event.actionId);
+      confirmedTransactionHashes.delete(event.txHash);
+      return;
+    }
     if (event.kind === "reconciled") {
       const unresolvedState = unresolvedSubmissionByAction.get(event.actionId);
       if (
@@ -832,7 +861,7 @@ export const validateFraudProofWorkflowJournal = ({
       unresolvedSubmissionByAction.delete(event.actionId);
       return;
     }
-    if (event.kind === "completed") {
+    if (event.kind === "completed" || event.kind === "terminal_included") {
       requireExactKeys(
         event,
         ["kind", "terminal", "terminalDigest"],
@@ -989,7 +1018,7 @@ export const validateFraudProofWorkflowJournal = ({
           "journal terminal must retain and exactly reference the permanent proof token",
         );
       }
-      completed = true;
+      completed = event.kind === "completed";
       return;
     }
     if (event.kind === "stalled") {

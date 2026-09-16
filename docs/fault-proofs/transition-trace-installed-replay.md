@@ -62,6 +62,8 @@ proof and removal; honest/substituted evidence must refuse.
 
 - [Installed lifecycles](../../demo/midgard-fault-proofs/tests/transition-trace-installed-lifecycle.test.ts)
 - [Direct final lifecycles](../../demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-final.test.ts)
+- [Maximum accepted-output assets](../../demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-final-many-assets.test.ts)
+- [Maximum deposit assets at depth 64](../../demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-final-deep-deposit.test.ts)
 - [Forced-source subvariants](../../demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-subvariants.test.ts)
 
 Capture new publication and execution measurements for the release artifact.

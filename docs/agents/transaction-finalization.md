@@ -26,3 +26,13 @@ or tip estimate, so edge-triggered lower bounds can produce
 - If a submit error returns authoritative provider slot evidence such as
   `data.currentSlot`, recovery should wait against that slot delta rather than
   trusting an optimistic local tip estimate.
+
+## Dependent Output Visibility
+
+Exact transaction confirmation can precede provider output visibility. When the
+next operation requires outputs from a node transaction, pass their resolved
+`requiredOutputIndexes` to the submission helper. It checks those exact signed
+outputs through the provider with a bounded retry; a fixed propagation sleep is
+not a readiness check. Only declare outputs the next operation needs, since
+unrelated recipients may already have spent theirs. A visibility timeout after
+confirmation requires reconciliation of that transaction before rebuilding.

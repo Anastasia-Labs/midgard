@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, normalize } from "node:path";
 import { createInterface } from "node:readline";
 
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
+  computeFraudProofReleaseFinalityPolicyDigest,
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowTerminal,
   validateFraudProofWorkflowJournal,
@@ -44,6 +45,8 @@ export type JourneyEvidenceDeployment = Pick<
 >;
 type JourneyResult = {
   status: string;
+  executionPolicy?: "authenticated-inclusion";
+  nativeEvidencePath?: string;
   category: JourneyCategory;
   deploymentFingerprint: string;
   completion: FraudProofWorkflowTerminal;
@@ -57,6 +60,33 @@ type JourneyResult = {
       launchScope: { complete: boolean };
     };
   };
+};
+
+/** A finalized stamp can name a later session than the provisional result. */
+export const readJourneyNativeEvidencePath = async (directory: string) => {
+  for (const filename of ["finalized-evidence-stamp.json", "result.json"]) {
+    const path = join(directory, filename);
+    if (!existsSync(path)) continue;
+    const record = await readJourneyArtifact<{ nativeEvidencePath?: unknown }>(
+      path,
+    );
+    if (
+      filename === "result.json" &&
+      !Object.hasOwn(record, "nativeEvidencePath")
+    )
+      continue;
+    const nativeEvidencePath = record.nativeEvidencePath;
+    assert(
+      typeof nativeEvidencePath === "string" &&
+        isAbsolute(nativeEvidencePath) &&
+        normalize(nativeEvidencePath) === nativeEvidencePath,
+      `${filename} has an invalid native evidence path`,
+    );
+    return nativeEvidencePath;
+  }
+  const retained = join(directory, "native-chain.ndjson");
+  assert(existsSync(retained), "No retained native evidence path is available");
+  return retained;
 };
 
 const sha256 = (bytes: string | Uint8Array) =>
@@ -246,15 +276,86 @@ export const verifyJourneyResultEvidence = async (
       "Retained header hash changed",
     );
   assert.equal(result.successor, successor.headerHash);
-  assert.equal(successor.header.prevHeaderHash, staged.predecessor.headerHash);
+  const successorPredecessor = existsSync(
+    join(directory, "successor-predecessor.json"),
+  )
+    ? await readJourneyArtifact<JourneySuccessor>(
+        join(directory, "successor-predecessor.json"),
+      )
+    : staged.predecessor;
+  assert.equal(
+    await Effect.runPromise(SDK.hashBlockHeader(successorPredecessor.header)),
+    successorPredecessor.headerHash,
+  );
+  assert.equal(
+    successor.header.prevHeaderHash,
+    successorPredecessor.headerHash,
+  );
   const saved = await readJourneyArtifact<FraudProofWorkflowJournalEntry[]>(
     join(directory, "completed-workflow.json"),
   );
   assert(saved.length > 0, "Workflow journal is empty");
-  const entries = validateFraudProofWorkflowJournal({
+  let entries = validateFraudProofWorkflowJournal({
     workflowId: saved[0]!.workflowId,
     entries: saved,
   });
+  let nativeEvidencePath = await readJourneyNativeEvidencePath(directory);
+  if (result.executionPolicy === "authenticated-inclusion") {
+    const provisional = [...entries]
+      .reverse()
+      .find(
+        ({ event }) =>
+          event.kind === "terminal_included" || event.kind === "completed",
+      )?.event;
+    assert(
+      provisional?.kind === "terminal_included" ||
+        provisional?.kind === "completed",
+    );
+    assert.equal(
+      canonicalDigest(result.completion),
+      canonicalDigest(provisional.terminal),
+    );
+    const stamp = await readJourneyArtifact<{
+      category: JourneyCategory;
+      headerHash: string;
+      deploymentFingerprint: string;
+      releaseFinalityPolicyDigest: string;
+      finalityDepth: number;
+      terminal: FraudProofWorkflowTerminal;
+      nativeEvidencePath: string;
+    }>(join(directory, "finalized-evidence-stamp.json"));
+    assert.equal(stamp.category, category);
+    assert.equal(stamp.headerHash, staged.current.headerHash);
+    assert.equal(stamp.deploymentFingerprint, fingerprint);
+    assert.equal(
+      stamp.finalityDepth,
+      deployment.manifest.l1Finality.confirmationDepth,
+    );
+    assert.equal(
+      stamp.releaseFinalityPolicyDigest,
+      computeFraudProofReleaseFinalityPolicyDigest(
+        deployment.manifest.l1Finality,
+      ),
+    );
+    entries = validateFraudProofWorkflowJournal({
+      workflowId: saved[0]!.workflowId,
+      entries: await readJourneyArtifact<FraudProofWorkflowJournalEntry[]>(
+        join(directory, "finalized-workflow.json"),
+      ),
+    });
+    assert.deepEqual(
+      entries.slice(0, saved.length),
+      saved,
+      "Final journal changed the provisional history",
+    );
+    const completed = entries.at(-1)!.event;
+    assert(completed.kind === "completed");
+    assert.equal(
+      canonicalDigest(stamp.terminal),
+      canonicalDigest(completed.terminal),
+    );
+    nativeEvidencePath = stamp.nativeEvidencePath;
+  }
   assert.equal(entries[0]!.identity.deploymentFingerprint, fingerprint);
   assert.equal(entries[0]!.identity.category, category);
   assert.deepEqual(entries[0]!.identity.target, {
@@ -265,11 +366,12 @@ export const verifyJourneyResultEvidence = async (
   assert.equal(terminal.kind, "completed", "Workflow has not completed");
   if (terminal.kind !== "completed")
     throw new Error("Workflow has not completed");
-  assert.equal(
-    canonicalDigest(result.completion),
-    canonicalDigest(terminal.terminal),
-    "Result changed the validated terminal",
-  );
+  if (result.executionPolicy !== "authenticated-inclusion")
+    assert.equal(
+      canonicalDigest(result.completion),
+      canonicalDigest(terminal.terminal),
+      "Result changed the validated terminal",
+    );
   const completion = terminal.terminal;
   const decisions = await readDecisions(runDirectory, fingerprint);
   const fault = decisions.find(
@@ -280,7 +382,7 @@ export const verifyJourneyResultEvidence = async (
     "Intended automatic fault decision is missing",
   );
   assert.equal(entries[0]!.identity.decisionDigest, fault.decisionDigest);
-  for (const block of [staged.predecessor, successor]) {
+  for (const block of [staged.predecessor, successorPredecessor, successor]) {
     const decision = decisions.find(
       (value) => value.headerHash === block.headerHash,
     );
@@ -298,9 +400,7 @@ export const verifyJourneyResultEvidence = async (
     fault.payloadEnvelopeSha256,
     sha256(staged.current.payloadEnvelopeCbor),
   );
-  const canonical = await readJourneyCanonicalTransactions(
-    join(directory, "native-chain.ndjson"),
-  );
+  const canonical = await readJourneyCanonicalTransactions(nativeEvidencePath);
   const transaction = (hash: string) => {
     const found = canonical.transactions.get(hash);
     assert(

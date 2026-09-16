@@ -194,6 +194,6 @@ describe("fault-proof supervisor over a run that failed before its journal", () 
       ROLLBACK_GENERATION,
     );
     await supervisor.close();
-    expect({ recovered, modes }).toEqual({ recovered: 1, modes: ["resume"] });
+    expect({ recovered, modes }).toEqual({ recovered: 1, modes: ["run"] });
   }, 60_000);
 });

@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 
 import {
   createFileTimeoutCorrectionJournalStore,
+  createLocalKupmiosTimeoutCorrectionRecovery,
   STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS,
   submitUnattestedTimeoutCorrection,
 } from "@al-ft/midgard-fault-proofs";
@@ -20,6 +21,10 @@ import {
   contractDeploymentInfoPathOverride,
 } from "../environment.js";
 import {
+  observeAttestationTimeoutQueue,
+  timeoutCorrectionJournalNeedsRecovery,
+} from "../services/attestation-timeout-observation.js";
+import {
   ContractDeploymentIdentity,
   createDatabaseStateQueueCorrectionObserverStore,
   Database,
@@ -35,45 +40,6 @@ import {
 export const ATTESTATION_TIMEOUT_ALERT_LEAD_MS =
   STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS;
 const TIMEOUT_CORRECTION_LEASE_HOLDER = "attestation_timeout_removal";
-
-export type AttestationTimeoutObservation =
-  | { readonly status: "queue-empty" | "head-attested" }
-  | {
-      readonly status: "waiting" | "near-timeout" | "timed-out";
-      readonly headerHash: string;
-      readonly deadlineMs: bigint;
-      readonly remainingMs: bigint;
-    };
-
-/** Read-only head classification; the watcher never owns correction writes. */
-export const observeAttestationTimeoutHead = (
-  queue: readonly SDK.StateQueueUTxO[],
-  nowMs: bigint,
-): Effect.Effect<AttestationTimeoutObservation, SDK.DataCoercionError> =>
-  Effect.gen(function* () {
-    const head = queue[1];
-    if (head === undefined) {
-      return { status: "queue-empty" } as const;
-    }
-    const node = yield* SDK.getStateQueueNodeFromStateQueueDatum(head.datum);
-    if (node.da_attestation !== SDK.NO_DA_ATTESTATION) {
-      return { status: "head-attested" } as const;
-    }
-    const headerHash = yield* SDK.headerHashFromStateQueueUTxO(head);
-    const deadlineMs = node.header.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS;
-    const remainingMs = deadlineMs - nowMs;
-    return {
-      status:
-        remainingMs <= 0n
-          ? "timed-out"
-          : remainingMs <= ATTESTATION_TIMEOUT_ALERT_LEAD_MS
-            ? "near-timeout"
-            : "waiting",
-      headerHash,
-      deadlineMs,
-      remainingMs,
-    } as const;
-  });
 
 export const attestationTimeoutCorrectionAction = (): Effect.Effect<
   void,
@@ -208,20 +174,49 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
         `State-queue correction observer reconciled admitted=${observerResult.admittedTransactionHashes.join(",") || "none"},retracted=${observerResult.retractedTransactionHashes.join(",") || "none"},post_finality_incidents=${observerResult.postFinalityRollbackTransactionHashes.join(",") || "none"}.`,
       );
     }
-    const observation = yield* observeAttestationTimeoutHead(
+    const journalPath =
+      attestationTimeoutJournalPathOverride() ??
+      resolve(
+        dirname(nodeConfig.LEDGER_MPF_DB_PATH),
+        "attestation-timeout-correction-v1.json",
+      );
+    const journalStore = createFileTimeoutCorrectionJournalStore(journalPath);
+    const retainedJournal = yield* Effect.tryPromise({
+      try: () => journalStore.load(),
+      catch: (cause) => cause,
+    });
+    const resumeRetainedJournal = timeoutCorrectionJournalNeedsRecovery(
+      retainedJournal,
+      queue,
+    );
+    const observation = yield* observeAttestationTimeoutQueue(
       queue,
       BigInt(Date.now()),
+      ATTESTATION_TIMEOUT_ALERT_LEAD_MS,
     );
+    const lock = yield* SDK.fetchCorrectionLockUTxOProgram(lucid.api, {
+      correctionLockAddress: contracts.correctionLock.spendingScriptAddress,
+      hubOraclePolicyId: contracts.hubOracle.policyId,
+    });
+    const resumeLockedTimeout =
+      lock.datum !== "Idle" &&
+      lock.datum.Locked.correction_identity === "AttestationTimeout";
     if (
-      observation.status === "queue-empty" ||
-      observation.status === "head-attested" ||
-      observation.status === "waiting"
+      !resumeLockedTimeout &&
+      !resumeRetainedJournal &&
+      (observation.status === "queue-empty" ||
+        observation.status === "queue-attested" ||
+        observation.status === "waiting")
     ) {
       return;
     }
-    if (observation.status === "near-timeout") {
+    if (
+      !resumeLockedTimeout &&
+      !resumeRetainedJournal &&
+      observation.status === "near-timeout"
+    ) {
       yield* Effect.logWarning(
-        `State-queue head is nearing its DA-attestation timeout (header=${observation.headerHash},deadline_ms=${observation.deadlineMs.toString()},remaining_ms=${observation.remainingMs.toString()}).`,
+        `Pending state-queue block is nearing its DA-attestation timeout (header=${observation.headerHash},deadline_ms=${observation.deadlineMs.toString()},remaining_ms=${observation.remainingMs.toString()}).`,
       );
       return;
     }
@@ -230,16 +225,10 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
     if (deploymentInfoPath === undefined) {
       return yield* Effect.fail(
         new Error(
-          "Timed-out unattested state-queue head requires MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH for authenticated reference-script identities.",
+          "Timed-out unattested state-queue block requires MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH for authenticated reference-script identities.",
         ),
       );
     }
-    const journalPath =
-      attestationTimeoutJournalPathOverride() ??
-      resolve(
-        dirname(nodeConfig.LEDGER_MPF_DB_PATH),
-        "attestation-timeout-correction-v1.json",
-      );
     const deploymentInfo = yield* Effect.tryPromise({
       try: async () =>
         JSON.parse(await readFile(deploymentInfoPath, "utf8")) as unknown,
@@ -276,9 +265,14 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
                   paymentKeyHash: paymentCredential.hash,
                   selectWallet: () => undefined,
                 },
-                journalStore:
-                  createFileTimeoutCorrectionJournalStore(journalPath),
+                journalStore,
                 awaitConfirmation: true,
+                recovery: createLocalKupmiosTimeoutCorrectionRecovery({
+                  deploymentManifest: deploymentIdentity.manifest,
+                  kupoUrl: nodeConfig.L1_KUPO_KEY,
+                  ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
+                  network: nodeConfig.NETWORK,
+                }),
               }),
             catch: (cause) => cause,
           });

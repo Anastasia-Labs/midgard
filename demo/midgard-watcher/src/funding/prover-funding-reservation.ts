@@ -27,6 +27,8 @@ const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const ACTION_KIND = /^[a-z][a-zA-Z0-9_.:-]{0,127}$/u;
 const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 
+export class WatcherProverFundingUnavailableError extends Error {}
+
 export type WatcherProverFundingReservationInput = Readonly<{
   outRef: string;
   role: "funding" | "collateral";
@@ -77,6 +79,22 @@ export type WatcherProverFundingReservationRecord = Readonly<{
 
 export type WatcherProverFundingReservationStore = Readonly<{
   readAll(): Promise<readonly unknown[]>;
+  /** Includes resolved handoffs and lineage, not just the current pending attempt. */
+  hasSignedHistory?(input: {
+    readonly reservationId: string;
+  }): Promise<boolean>;
+  readReobservationInputs?(input: {
+    readonly reservationId: string;
+    readonly transactionHash: string;
+  }): Promise<
+    readonly Pick<WatcherProverFundingReservationInput, "outRef" | "role">[]
+  >;
+  reobserveTransition?(input: {
+    readonly plan: WatcherProverFundingReservationPlan;
+    readonly expectedRevision: string;
+    readonly transactionHash: string;
+    readonly inputs: readonly WatcherProverFundingReservationInput[];
+  }): Promise<WatcherProverFundingReservationRecord>;
   readAbandonmentHandoff(input: {
     readonly reservationId: string;
   }): Promise<unknown | null>;
@@ -93,8 +111,13 @@ export type WatcherProverFundingReservationStore = Readonly<{
     readonly reservationId: string;
     readonly outRef: string;
   }): Promise<unknown | null>;
+  /** Clear a never-submitted reservation only if its complete snapshot still matches. */
+  releaseUnused?(
+    record: WatcherProverFundingReservationRecord,
+  ): Promise<boolean>;
   reserve(
     plan: WatcherProverFundingReservationPlan,
+    expectedIdleRevision?: string,
   ): Promise<"reserved" | "unchanged">;
   prepareTransition(input: {
     readonly handoff: WorkflowFundingSubmissionHandoff;
@@ -118,6 +141,10 @@ export type WatcherProverFundingReservationStore = Readonly<{
     readonly plan: WatcherProverFundingReservationPlan;
     readonly expectedRevision: string;
     readonly transitionDigest: string;
+  }): Promise<WatcherProverFundingReservationRecord>;
+  releaseIdle?(input: {
+    readonly plan: WatcherProverFundingReservationPlan;
+    readonly expectedRevision: string;
   }): Promise<WatcherProverFundingReservationRecord>;
   acknowledgeAbandonment(input: {
     readonly plan: WatcherProverFundingReservationPlan;
@@ -539,7 +566,9 @@ const selectCollateral = (input: {
     if (total >= input.required) break;
   }
   if (total < input.required) {
-    throw new Error("prover wallet has insufficient plain-Ada collateral");
+    throw new WatcherProverFundingUnavailableError(
+      "prover wallet has insufficient plain-Ada collateral",
+    );
   }
   return Object.freeze(selected.sort(compareOutRef));
 };
@@ -646,7 +675,7 @@ export const planWatcherProverFundingReservation = (input: {
     .filter((candidate) => !collateralOutRefs.has(candidate.outRef))
     .sort(compareOutRef);
   if (funding.length === 0)
-    throw new Error(
+    throw new WatcherProverFundingUnavailableError(
       "prover wallet has no available funding inputs after collateral reservation",
     );
   const fundingAssets = new Map<string, bigint>();

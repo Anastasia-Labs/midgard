@@ -50,6 +50,7 @@ type ResolvedBlockRuntime = Readonly<{
   nativeBlock: WatcherNativeBlockAdmission;
   localObservation: WatcherLocalKupmiosNativeObservation;
   rawSource: LocalKupmiosFraudProofRawSource;
+  minimumConfirmationDepth: number;
   sourceDetails: NonNullable<
     ReturnType<typeof localKupmiosHttpOgmiosRawSourceDetails>
   >;
@@ -72,9 +73,13 @@ const assertLiveObservation = ({
   nativeBlock,
   localObservation,
   sourceDetails,
+  minimumConfirmationDepth,
 }: Pick<
   ResolvedBlockRuntime,
-  "nativeBlock" | "localObservation" | "sourceDetails"
+  | "nativeBlock"
+  | "localObservation"
+  | "sourceDetails"
+  | "minimumConfirmationDepth"
 >): void => {
   assertWatcherLocalKupmiosNativeObservation(localObservation, nativeBlock);
   const transportDetails = localObservation.transportAttestations
@@ -112,7 +117,7 @@ const assertLiveObservation = ({
     point.blockHash !== nativeBlock.blockHash ||
     point.slot !== nativeBlock.slot ||
     point.blockNo !== nativeBlock.blockNo ||
-    BigInt(point.depth) < BigInt(sourceDetails.confirmationDepth)
+    BigInt(point.depth) < BigInt(minimumConfirmationDepth)
   ) {
     throw new Error(
       "resolved block chain point/finality differs from native admission",
@@ -157,7 +162,7 @@ export const resolveWatcherBlockObservationTransactions = async (
         source: runtime.rawSource,
         txHash,
         expectedInclusionPoint: runtime.evidence.rawBlock.point,
-        minimumConfirmationDepth: runtime.sourceDetails.confirmationDepth,
+        minimumConfirmationDepth: runtime.minimumConfirmationDepth,
       });
       const transactionIndex =
         runtime.nativeBlock.transactionIds.indexOf(txHash);
@@ -169,7 +174,7 @@ export const resolveWatcherBlockObservationTransactions = async (
         raw.inclusionPoint.blockHash !== point.blockHash ||
         raw.inclusionPoint.slot !== point.slot ||
         raw.inclusionPoint.blockNo !== point.blockNo ||
-        raw.confirmationDepth < runtime.sourceDetails.confirmationDepth
+        raw.confirmationDepth < runtime.minimumConfirmationDepth
       ) {
         throw new Error(
           "resolved transaction differs from the admitted block point",
@@ -208,7 +213,9 @@ export const resolveWatcherBlockObservationTransactions = async (
 export const createWatcherResolvedBlockObservationSource = ({
   deploymentIdentity,
   rawSource,
+  minimumConfirmationDepth = 30,
 }: {
+  readonly minimumConfirmationDepth?: 1 | 30;
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly rawSource: LocalKupmiosFraudProofRawSource;
 }): WatcherResolvedBlockObservationSource => {
@@ -226,7 +233,12 @@ export const createWatcherResolvedBlockObservationSource = ({
       if (this !== source) {
         throw new Error("resolved block observation source was not admitted");
       }
-      const live = { nativeBlock, localObservation, sourceDetails };
+      const live = {
+        nativeBlock,
+        localObservation,
+        sourceDetails,
+        minimumConfirmationDepth,
+      };
       assertLiveObservation(live);
       const point = Object.freeze({
         blockHash: nativeBlock.blockHash,
@@ -277,8 +289,7 @@ export const createWatcherResolvedBlockObservationSource = ({
             deploymentIdentityDigest: deploymentIdentity.manifestId,
             sourceId: sourceDetails.sourceId,
             finalityDepth: localObservation.block.chainPoint.depth,
-            minimumConfirmationDepth:
-              sourceDetails.confirmationDepth.toString(),
+            minimumConfirmationDepth: minimumConfirmationDepth.toString(),
             rawBlock,
           }),
         }),

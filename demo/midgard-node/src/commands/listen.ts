@@ -58,6 +58,7 @@ import {
   mergeFiber,
   monitorMempoolFiber,
   mpfPayloadAuditFiber,
+  operatorWatchdogFiber,
   projectDepositsToMempoolLedger,
   projectDepositsToMempoolLedgerFiber,
   refreshAdmissionBacklogGauge,
@@ -561,6 +562,9 @@ export const runNode = (
         ),
         blockConfirmationFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
+        ),
+        operatorWatchdogFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
         ),
         nodeConfig.SPECULATIVE_COMMIT_BUILD
           ? userEventBarrierRefresherFiber(

@@ -291,6 +291,7 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
         value: await rawL1.capture(snapshotRequest),
         request: snapshotRequest,
         releaseFinality: binding.releaseFinality,
+        observationDepth: "inclusion",
       });
       return snapshot.transactions.flatMap((transaction) =>
         decodeOperatorRevealProofsFromWitnessSet(transaction.witnessSetCbor),

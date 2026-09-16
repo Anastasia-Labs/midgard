@@ -8,10 +8,13 @@ import {
   fieldPreimagePublicationDatumCbor,
   MIDGARD_FIELD_INDEX,
 } from "@al-ft/midgard-sdk";
-import type {
-  LucidEvolution,
-  MintingPolicy,
-  UTxO,
+import {
+  Emulator,
+  generateEmulatorAccount,
+  Lucid,
+  type LucidEvolution,
+  type MintingPolicy,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
@@ -42,6 +45,7 @@ import {
   type JournalJsonObject,
 } from "../src/workflow/journal.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
+import type { SignedTransactionRecoveryObservation } from "../src/workflow/signed-transaction-reconciliation.js";
 import {
   type LocallyEvaluatedTransaction,
   workflowPreflightTransaction,
@@ -670,7 +674,7 @@ describe("Q38 tier-3 workflow action chains", () => {
           ...context,
           action: {
             actionId: `${ordinal}:${THREAD_OUT_REF}`,
-            input: { stage: ordinal },
+            input: { stage: ordinal, threadOutRef: THREAD_OUT_REF },
           },
         }),
       ).resolves.toEqual({ kind: "pending", txHash });
@@ -693,6 +697,134 @@ describe("Q38 tier-3 workflow action chains", () => {
       ).resolves.toEqual({ kind: "pending", txHash });
     }
   });
+
+  it.each(["init", "step_01", "step_02", "step_03", "step_04"] as const)(
+    "doubleSpend reconciles %s through canonical signed recovery after only its queue reference changes",
+    async (actionStage) => {
+      const account = generateEmulatorAccount({ lovelace: 100_000_000n });
+      const lucid = await Lucid(new Emulator([account]), "Custom");
+      lucid.selectWallet.fromSeed(account.seedPhrase);
+      const signed = await (
+        await lucid
+          .newTx()
+          .pay.ToAddress(account.address, { lovelace: 5_000_000n })
+          .complete({ localUPLCEval: true })
+      ).sign
+        .withWallet()
+        .complete();
+      const transaction = {
+        transactionHash: signed.toHash(),
+        signedTransactionCborHex: signed.toCBOR(),
+      };
+      const currentQueueOutRef = `${h32(0xa1)}#0`;
+      let stage: DoubleSpendWorkflowStage =
+        actionStage === "init"
+          ? { kind: "not_started", stateQueueBlockOutRef: currentQueueOutRef }
+          : {
+              kind: actionStage,
+              threadOutRef: THREAD_OUT_REF,
+              stateQueueBlockOutRef: currentQueueOutRef,
+            };
+      const point = {
+        slot: "1000",
+        blockNo: "50",
+        blockHash: h32(0xa2),
+        pointId: h32(0xa3),
+      };
+      let status: SignedTransactionRecoveryObservation["status"] =
+        "invalidated";
+      const observeSignedTransaction = vi.fn(async () => ({
+        ...transaction,
+        status,
+        canonicalPoint: point,
+        releaseFinalPoint: point,
+        inputs: [],
+        reason: "Authenticated signed-input outcome",
+      }));
+      const authorizeResubmission = vi.fn(async () => {});
+      const rebroadcastSignedTransaction = vi.fn<
+        NonNullable<
+          NonNullable<
+            DoubleSpendConstrainedWorkflowAdapterConfig["l1"]
+          >["rebroadcastSignedTransaction"]
+        >
+      >(async ({ authorizeResubmission, ...recorded }) => {
+        await authorizeResubmission(recorded);
+        return recorded.transactionHash;
+      });
+      const adapter = createDoubleSpendConstrainedWorkflowAdapter({
+        l1: {
+          transactionConfirmed: async () => false,
+          observeSignedTransaction,
+          rebroadcastSignedTransaction,
+          observe: async () => ({
+            provenance: {
+              trustClass: "authenticated_cardano_l1",
+              sourceId: "local-node-test",
+              grade: "security",
+            },
+            stage,
+          }),
+        },
+      } as unknown as DoubleSpendConstrainedWorkflowAdapterConfig);
+      const context = {
+        identity: workflowIdentity("doubleSpend"),
+        workflowId: h32(0x51),
+        artifact: { headerHash: HEADER_HASH },
+        entries: [],
+        action: {
+          actionId: `${actionStage}:${STATE_QUEUE_OUT_REF}`,
+          input: {
+            stage: actionStage,
+            stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+            threadOutRef: THREAD_OUT_REF,
+          },
+        },
+        txHash: transaction.transactionHash,
+        signedTransactionCborHex: transaction.signedTransactionCborHex,
+        authorizeResubmission,
+      } as const;
+      await expect(adapter.reconcile(context)).resolves.toEqual({
+        kind: "not_found",
+      });
+      expect(observeSignedTransaction).toHaveBeenLastCalledWith(transaction);
+      expect(rebroadcastSignedTransaction).not.toHaveBeenCalled();
+      status = "expired";
+      await expect(adapter.reconcile(context)).resolves.toEqual({
+        kind: "not_found",
+      });
+      status = "pending";
+      await expect(adapter.reconcile(context)).resolves.toEqual({
+        kind: "pending",
+        txHash: transaction.transactionHash,
+      });
+      status = "rebroadcast";
+      await expect(adapter.reconcile(context)).resolves.toEqual({
+        kind: "pending",
+        txHash: transaction.transactionHash,
+      });
+      expect(authorizeResubmission).toHaveBeenCalledExactlyOnceWith(
+        transaction,
+      );
+      expect(rebroadcastSignedTransaction).toHaveBeenCalledTimes(1);
+      status = "conflict";
+      await expect(adapter.reconcile(context)).resolves.toEqual({
+        kind: "conflict",
+        reason: "Authenticated signed-input outcome",
+      });
+      // Changing the owned computation thread is not a reference-only update.
+      observeSignedTransaction.mockClear();
+      stage = {
+        kind: actionStage === "init" ? "step_01" : actionStage,
+        threadOutRef: `${h32(0xa4)}#0`,
+        stateQueueBlockOutRef: currentQueueOutRef,
+      };
+      await expect(adapter.reconcile(context)).resolves.toMatchObject({
+        kind: "conflict",
+      });
+      expect(observeSignedTransaction).not.toHaveBeenCalled();
+    },
+  );
 
   // Regression: the production funding reservation permit reads the signed
   // body back off the in-memory preflight, so a preflight that forgets to bind

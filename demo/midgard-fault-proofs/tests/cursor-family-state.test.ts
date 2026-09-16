@@ -41,6 +41,102 @@ const actionFor = (ordinal: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8, ref: string) => {
 };
 
 describe("production cursor-family authenticated state V1", () => {
+  it("recovers a changed header reference only while the exact computation step remains current", async () => {
+    const initial = cursorFamilyObservation({
+      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
+      headerHash,
+      provenance,
+      stage: {
+        kind: "step",
+        step: 1,
+        threadOutRef: outRef("11"),
+        stateQueueBlockOutRef: outRef("10"),
+      },
+    });
+    if (initial.kind !== "action_required") throw new Error("missing step");
+    const input = {
+      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
+      headerHash,
+      provenance,
+      action: initial.action,
+      txHash: hash("55"),
+      stage: {
+        kind: "step",
+        step: 1,
+        threadOutRef: outRef("11"),
+        stateQueueBlockOutRef: outRef("20"),
+      },
+      transactionConfirmed: async () => false,
+    } as const;
+    await expect(reconcileCursorFamilyAction(input)).resolves.toEqual({
+      kind: "pending",
+      txHash: hash("55"),
+    });
+    const recovery = {
+      ...input,
+      recoverUnconfirmedTransaction: async () =>
+        ({ kind: "not_found" }) as const,
+    };
+    await expect(reconcileCursorFamilyAction(recovery)).resolves.toEqual({
+      kind: "not_found",
+    });
+    await expect(
+      reconcileCursorFamilyAction({
+        ...recovery,
+        stage: { ...input.stage, threadOutRef: outRef("12") },
+      }),
+    ).resolves.toMatchObject({ kind: "conflict" });
+    await expect(
+      reconcileCursorFamilyAction({
+        ...recovery,
+        stage: { ...input.stage, step: 2 },
+      }),
+    ).resolves.toMatchObject({ kind: "conflict" });
+    await expect(
+      reconcileCursorFamilyAction({
+        ...recovery,
+        transactionConfirmed: async () => true,
+      }),
+    ).resolves.toMatchObject({ kind: "conflict" });
+  });
+
+  it("reconciles signed init after the authenticated header output is recreated", async () => {
+    const spec = MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC;
+    const initial = cursorFamilyObservation({
+      spec,
+      headerHash,
+      provenance,
+      stage: { kind: "not_started", stateQueueBlockOutRef: outRef("10") },
+    });
+    if (initial.kind !== "action_required") throw new Error("missing init");
+    const input = {
+      spec,
+      headerHash,
+      provenance,
+      action: initial.action,
+      txHash: hash("55"),
+      stage: { kind: "not_started", stateQueueBlockOutRef: outRef("20") },
+      transactionConfirmed: async () => false,
+    } as const;
+    await expect(reconcileCursorFamilyAction(input)).resolves.toEqual({
+      kind: "pending",
+      txHash: hash("55"),
+    });
+    await expect(
+      reconcileCursorFamilyAction({
+        ...input,
+        recoverUnconfirmedTransaction: async () => ({ kind: "not_found" }),
+      }),
+    ).resolves.toEqual({ kind: "not_found" });
+    await expect(
+      reconcileCursorFamilyAction({
+        ...input,
+        transactionConfirmed: async () => true,
+        recoverUnconfirmedTransaction: async () => ({ kind: "not_found" }),
+      }),
+    ).resolves.toMatchObject({ kind: "conflict" });
+  });
+
   it("keeps known transactions pending while finalized state is unchanged", async () => {
     for (const stage of [
       { kind: "not_started" as const, stateQueueBlockOutRef: outRef("10") },

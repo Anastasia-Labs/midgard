@@ -51,6 +51,52 @@ type QueueState = Readonly<{
   state: "queued" | "active" | "finished";
 }>;
 
+const transitionPredecessor = (
+  kind: Exclude<QueueEvent["kind"], "enqueued">,
+): QueueState["state"] => {
+  switch (kind) {
+    case "started":
+      return "queued";
+    case "finished":
+    case "requeued":
+      return "active";
+    case "reopened":
+      return "finished";
+    default:
+      throw new Error("fault-proof queue transition kind is invalid");
+  }
+};
+
+const validateTransition = (
+  prior: QueueState | undefined,
+  jobIdentityDigest: string,
+  observedAtMs: string,
+  kind: Exclude<QueueEvent["kind"], "enqueued">,
+): QueueState => {
+  if (!HEX_32.test(jobIdentityDigest)) {
+    throw new Error("fault-proof queue transition identity digest is invalid");
+  }
+  if (!NATURAL.test(observedAtMs)) {
+    throw new Error("fault-proof queue transition observation time is invalid");
+  }
+  const expectedState = transitionPredecessor(kind);
+  if (prior === undefined) {
+    throw new Error(
+      `fault-proof queue ${kind} has no admitted predecessor: ${jobIdentityDigest}`,
+    );
+  }
+  if (prior.state !== expectedState) {
+    throw new Error(
+      `fault-proof queue ${kind} requires ${expectedState} predecessor, found ${prior.state}: ${jobIdentityDigest}`,
+    );
+  }
+  // Authenticated revisions establish event order. Wall time can move backward
+  // during clock synchronization, including between enqueue and completion.
+  // Keep the actual timestamps and original queue age without treating their
+  // relative order as authority to execute a transition.
+  return prior;
+};
+
 export type WatcherFaultProofQueueJournal = Readonly<{
   register(
     identity: WatcherFaultProofQueueIdentity,
@@ -184,22 +230,12 @@ export const openWatcherFaultProofQueueJournal = async (input: {
         Object.freeze({ queuedAtMs: event.queuedAtMs, state: "queued" }),
       );
     } else {
-      if (
-        !HEX_32.test(event.jobIdentityDigest) ||
-        !NATURAL.test(event.observedAtMs)
-      ) {
-        throw new Error("fault-proof queue transition is invalid");
-      }
-      const prior = states.get(event.jobIdentityDigest);
-      if (
-        prior === undefined ||
-        (event.kind === "reopened" && prior.state !== "finished") ||
-        BigInt(event.observedAtMs) < BigInt(prior.queuedAtMs)
-      ) {
-        throw new Error(
-          "fault-proof queue transition has no admitted predecessor",
-        );
-      }
+      const prior = validateTransition(
+        states.get(event.jobIdentityDigest),
+        event.jobIdentityDigest,
+        event.observedAtMs,
+        event.kind,
+      );
       const state =
         event.kind === "started"
           ? "active"
@@ -265,14 +301,12 @@ export const openWatcherFaultProofQueueJournal = async (input: {
     observedAtMs: string,
     kind: "started" | "finished",
   ): Promise<void> => {
-    const prior = states.get(jobIdentityDigest);
-    if (
-      prior === undefined ||
-      !NATURAL.test(observedAtMs) ||
-      BigInt(observedAtMs) < BigInt(prior.queuedAtMs)
-    ) {
-      throw new Error("fault-proof queue transition authority is invalid");
-    }
+    const prior = validateTransition(
+      states.get(jobIdentityDigest),
+      jobIdentityDigest,
+      observedAtMs,
+      kind,
+    );
     await append(Object.freeze({ kind, jobIdentityDigest, observedAtMs }));
     states.set(
       jobIdentityDigest,
@@ -304,8 +338,6 @@ export const openWatcherFaultProofQueueJournal = async (input: {
           });
         }
         if (prior?.state === "active" || prior?.state === "finished") {
-          if (BigInt(observedAtMs) < BigInt(prior.queuedAtMs))
-            throw new Error("fault-proof queue requeue time is invalid");
           await append(
             Object.freeze({
               kind: prior.state === "finished" ? "reopened" : "requeued",

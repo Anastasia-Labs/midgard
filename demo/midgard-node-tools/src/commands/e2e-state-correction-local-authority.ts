@@ -25,7 +25,6 @@ import {
   parseReleaseL1FinalityPolicy,
   type ReleaseL1FinalityPolicy,
 } from "./e2e-release-finality-policy.js";
-import type { StateCorrectionAvailabilityChallengeCapability } from "./e2e-state-correction-acceptance.js";
 import type { StateCorrectionIndependentAuthority } from "./e2e-state-correction-reconciliation.js";
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -117,7 +116,6 @@ export type LocalAuthorityDeployment = {
   readonly reserveAddress: string;
   readonly finalityPolicy: ReleaseL1FinalityPolicy;
   readonly economicsPolicy: ReleaseEconomicsPolicy;
-  readonly availabilityChallengeCapability: StateCorrectionAvailabilityChallengeCapability;
 };
 
 type ReleaseEconomicsPolicy = {
@@ -1178,8 +1176,5 @@ export const loadLocalAuthorityDeployment = async (
     } as SpendingValidator),
     finalityPolicy: parseReleaseL1FinalityPolicy(manifest.l1Finality),
     economicsPolicy: releaseEconomicsPolicyFromDeploymentManifest(manifest),
-    // Q58 is deliberately absent from the strict V1 manifest schema. This
-    // loader cannot promote a caller/config assertion into release authority.
-    availabilityChallengeCapability: "missing",
   };
 };

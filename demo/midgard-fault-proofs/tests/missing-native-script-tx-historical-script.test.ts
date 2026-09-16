@@ -200,6 +200,20 @@ describe("missing-native-script authenticated historical resolver V1", () => {
     expect(history.confirmCanonicalHistory).toHaveBeenCalledTimes(2);
   });
 
+  it("accepts an authenticated publication prerequisite before release finality", async () => {
+    const { expectedScriptHash, response } = fixture();
+    const history = source({ response });
+    const evidence = await resolveHistoricalNativeScriptEvidence({
+      roster: roster("local_node", [history]),
+      expectedScriptHash,
+      throughPoint: response.inclusionPoint,
+      releaseFinality,
+    });
+    expect(evidence.confirmationDepth).toBe(1);
+    expect(evidence.finalityPolicyDigest).toBe(releaseFinality.policyDigest);
+    expect(history.confirmCanonicalHistory).toHaveBeenCalledOnce();
+  });
+
   it("rejects forged or context-substituted persisted evidence", async () => {
     const { expectedScriptHash, response } = fixture();
     const history = source({ response });
@@ -214,6 +228,7 @@ describe("missing-native-script authenticated historical resolver V1", () => {
       { ...evidence, unknown: true },
       { ...evidence, confirmationDepth: evidence.confirmationDepth + 1 },
       { ...evidence, evidenceDigest: "ff".repeat(32) },
+      { ...evidence, throughPoint: point("201", "40", "66".repeat(32)) },
       { ...evidence, applicationOverlayDigest: "fe".repeat(32) },
       {
         ...evidence,
@@ -258,16 +273,93 @@ describe("missing-native-script authenticated historical resolver V1", () => {
         releaseFinality,
       }),
     ).rejects.toThrow("schema/source mode mismatch");
-    await expect(
-      admitHistoricalNativeScriptEvidence({
-        value: evidence,
+  });
+
+  it.each([
+    ["advancing tip", point("220", "41", "61".repeat(32))],
+    ["replaced tip", point("200", "39", "62".repeat(32))],
+    ["rollback below the original tip", point("180", "35", "63".repeat(32))],
+  ] as const)(
+    "revalidates persisted publication at the current %s without resealing provenance",
+    async (_label, currentPoint) => {
+      const { expectedScriptHash, response } = fixture();
+      const providers = ["a", "b"].map((id, index) =>
+        source({
+          sourceMode: "external_providers",
+          sourceId: `provider-${id}`,
+          operatorIdentitySha256: (index === 0 ? "51" : "52").repeat(32),
+          response,
+        }),
+      );
+      const installedRoster = roster("external_providers", providers);
+      const original = await resolveHistoricalNativeScriptEvidence({
         roster: installedRoster,
         expectedScriptHash,
-        throughPoint: point("201", "40", "66".repeat(32)),
+        throughPoint,
         releaseFinality,
-      }),
-    ).rejects.toThrow("changed the pinned historical boundary");
-  });
+      });
+      for (const provider of providers)
+        vi.mocked(provider.confirmCanonicalHistory).mockImplementation(
+          async (request) => ({
+            canonical: request.throughPoint.pointId === currentPoint.pointId,
+            ...request,
+          }),
+        );
+      const readmitted = await admitHistoricalNativeScriptEvidence({
+        value: JSON.parse(JSON.stringify(original)),
+        roster: installedRoster,
+        expectedScriptHash,
+        throughPoint: currentPoint,
+        releaseFinality,
+      });
+      expect(readmitted).toEqual(original);
+      expect(readmitted.evidenceDigest).toBe(original.evidenceDigest);
+      expect(readmitted.throughPoint).toEqual(throughPoint);
+      for (const provider of providers) {
+        expect(
+          provider.resolveReferenceScriptPublication,
+        ).toHaveBeenLastCalledWith(
+          expect.objectContaining({ throughPoint: currentPoint }),
+        );
+        expect(provider.confirmCanonicalHistory).toHaveBeenLastCalledWith({
+          inclusionPoint,
+          throughPoint: currentPoint,
+        });
+      }
+      response.inclusionPoint = point("110", "11", "65".repeat(32));
+      await expect(
+        admitHistoricalNativeScriptEvidence({
+          value: original,
+          roster: installedRoster,
+          expectedScriptHash,
+          throughPoint: currentPoint,
+          releaseFinality,
+        }),
+      ).rejects.toThrow("changed after live roster reconfirmation");
+      response.inclusionPoint = inclusionPoint;
+      vi.mocked(providers[1]!.confirmCanonicalHistory).mockImplementation(
+        async (request) => ({ canonical: false, ...request }),
+      );
+      await expect(
+        admitHistoricalNativeScriptEvidence({
+          value: original,
+          roster: installedRoster,
+          expectedScriptHash,
+          throughPoint: currentPoint,
+          releaseFinality,
+        }),
+      ).rejects.toThrow("rolled back during resolution");
+      await expect(
+        admitHistoricalNativeScriptEvidence({
+          value: original,
+          roster: installedRoster,
+          expectedScriptHash,
+          throughPoint: point("90", "9", "64".repeat(32)),
+          releaseFinality,
+        }),
+      ).rejects.toThrow("publication after the boundary");
+    },
+  );
 
   it("rejects substituted preimages, outrefs, boundaries, and DA corroboration", async () => {
     const { expectedScriptHash, response } = fixture();

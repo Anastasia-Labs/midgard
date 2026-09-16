@@ -245,6 +245,8 @@ export const createWatcherL1AvailabilityPayloadSource = (input: {
     details.blueprintHash !== input.identity.blueprintHash
   )
     throw new Error("L1 payload history differs from verified deployment");
+  const minimumConfirmationDepth =
+    details.observationDepth === "inclusion" ? 1 : 30;
   const sourceId = `watcher-l1-availability/${input.identity.manifestId}`;
   const sourcePeerId = "cardano-l1";
   const cache = new Map<
@@ -259,10 +261,11 @@ export const createWatcherL1AvailabilityPayloadSource = (input: {
       assertWatcherStateQueueObservation(observation);
       if (
         observation.deploymentIdentityDigest !== input.identity.manifestId ||
-        BigInt(observation.nativePoint.finalityDepth) < 30n
+        BigInt(observation.nativePoint.finalityDepth) <
+          BigInt(minimumConfirmationDepth)
       ) {
         throw new Error(
-          "L1 payload history requires the exact finalized deployment observation",
+          "L1 payload history requires the authenticated deployment observation",
         );
       }
       const header = observation.finalizedHeaders.find(
@@ -320,7 +323,7 @@ export const createWatcherL1AvailabilityPayloadSource = (input: {
                     source: input.rawSource,
                     txHash,
                     expectedInclusionPoint: inclusionPoint,
-                    minimumConfirmationDepth: 30,
+                    minimumConfirmationDepth,
                   }),
                 ),
               );

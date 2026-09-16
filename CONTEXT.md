@@ -5,6 +5,29 @@ language of its L1 dispute machinery and compact-transaction commitments.
 
 ## Language
 
+### Operator participation and fraud correction
+
+**Operator identity**:
+The signing identity accountable for an operator's commitments. The same
+identity can participate again through a later registration after an earlier
+bond has been slashed.
+_Avoid_: bond identity
+
+**Operator registration**:
+An application to participate as an operator, backed by a bond. A later
+registration by the same operator identity supplies a new bond.
+
+**Operator bond**:
+The collateral securing an operator's participation, which can remain at risk
+after retirement. A new bond from a later registration is distinct from an
+earlier slashed bond, even when both belong to the same operator identity.
+_Avoid_: operator identity
+
+**Fraud slash**:
+The forfeiture of a particular operator bond to pay the protocol penalty and
+prover reward for fraud. It does not permanently prohibit the operator
+identity from registering again.
+
 ### Dispute access model (flat field-hash commitments)
 
 **Field preimage**:

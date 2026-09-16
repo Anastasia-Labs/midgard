@@ -158,6 +158,8 @@ export type NodeConfigDep = {
   WAIT_BETWEEN_BLOCK_COMMITMENT: number;
   WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
   SPECULATIVE_COMMIT_BUILD: boolean;
+  OPERATOR_WATCHDOG_ENABLED: boolean;
+  OPERATOR_WATCHDOG_PATIENCE_MS: number;
   SPECULATIVE_REBUILD_MAX_ATTEMPTS: number;
   USER_EVENT_BARRIER_REFRESH_MS: number;
   USER_EVENT_BARRIER_MAX_STALENESS_MS: number;
@@ -421,6 +423,22 @@ const makeConfig = Effect.gen(function* () {
   const speculativeCommitBuild = yield* Config.boolean(
     "SPECULATIVE_COMMIT_BUILD",
   ).pipe(Config.withDefault(false));
+  const operatorWatchdogEnabled = yield* Config.boolean(
+    "OPERATOR_WATCHDOG_ENABLED",
+  ).pipe(Config.withDefault(true));
+  const operatorWatchdogPatienceMs = yield* Config.integer(
+    "OPERATOR_WATCHDOG_PATIENCE_MS",
+  ).pipe(
+    Config.withDefault(120_000),
+    Config.mapAttempt((value) => {
+      if (!Number.isSafeInteger(value) || value < 0) {
+        throw new Error(
+          "OPERATOR_WATCHDOG_PATIENCE_MS must be a non-negative safe integer",
+        );
+      }
+      return value;
+    }),
+  );
   const speculativeRebuildMaxAttempts = yield* boundedValidationInteger(
     "SPECULATIVE_REBUILD_MAX_ATTEMPTS",
     3,
@@ -1336,6 +1354,8 @@ const makeConfig = Effect.gen(function* () {
     WAIT_BETWEEN_BLOCK_COMMITMENT: waitBetweenBlockCommitment,
     WAIT_BETWEEN_BLOCK_CONFIRMATION: waitBetweenBlockConfirmation,
     SPECULATIVE_COMMIT_BUILD: speculativeCommitBuild,
+    OPERATOR_WATCHDOG_ENABLED: operatorWatchdogEnabled,
+    OPERATOR_WATCHDOG_PATIENCE_MS: operatorWatchdogPatienceMs,
     SPECULATIVE_REBUILD_MAX_ATTEMPTS: speculativeRebuildMaxAttempts,
     USER_EVENT_BARRIER_REFRESH_MS: userEventBarrierRefreshMs,
     USER_EVENT_BARRIER_MAX_STALENESS_MS: userEventBarrierMaxStalenessMs,

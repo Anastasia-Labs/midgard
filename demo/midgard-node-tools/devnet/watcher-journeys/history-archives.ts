@@ -25,6 +25,11 @@ import type {
 } from "midgard-watcher";
 
 import { writeJourneyFile } from "./artifacts.js";
+import {
+  readJourneyHistoryPublishedPort,
+  startJourneyHistoryTransport,
+  verifyJourneyHistoryTransport,
+} from "./history-archive-transport.js";
 
 const writeArchiveRecord = async (
   path: string,
@@ -184,9 +189,15 @@ export const startJourneyHistoryArchives = async (input: {
   const certificates: string[] = [];
   const directories: string[] = [];
   const containers: string[] = [];
+  const targets = new Map<string, number>();
+  let transport:
+    | Awaited<ReturnType<typeof startJourneyHistoryTransport>>
+    | undefined;
   const docker = (...args: string[]) =>
     execFileSync("docker", args, { encoding: "utf8", timeout: 30_000 }).trim();
   const close = async () => {
+    await transport?.close();
+    transport = undefined;
     for (const container of containers.splice(0))
       docker("stop", "--time", "5", container);
   };
@@ -235,6 +246,14 @@ export const startJourneyHistoryArchives = async (input: {
           throw new Error(
             "Archive container is already running or belongs to a different directory",
           );
+        if (
+          !details.HostConfig.PortBindings?.["8443/tcp"]?.some(
+            (binding: { HostIp: string }) => binding.HostIp === "127.0.0.1",
+          )
+        )
+          throw new Error(
+            "Retained archive container has no loopback-published 8443/tcp port; preserve it offline and provision a published archive at the same container IP",
+          );
         docker("start", container);
       } else {
         docker(
@@ -244,6 +263,8 @@ export const startJourneyHistoryArchives = async (input: {
           container,
           "--network",
           `${input.composeProject}_default`,
+          "--publish",
+          "127.0.0.1::8443",
           "--user",
           `${process.getuid!()}:${process.getgid!()}`,
           "--volume",
@@ -254,11 +275,16 @@ export const startJourneyHistoryArchives = async (input: {
         );
       }
       containers.push(container);
-      const network = JSON.parse(docker("inspect", container))[0]
-        .NetworkSettings.Networks[`${input.composeProject}_default`];
+      const settings = JSON.parse(docker("inspect", container))[0]
+        .NetworkSettings;
+      const network = settings.Networks[`${input.composeProject}_default`];
       const ip = network.IPAddress;
       if (typeof ip !== "string" || !isIPv4(ip))
         throw new Error("Archive has no isolated container IP");
+      targets.set(
+        `${ip}:8443`,
+        readJourneyHistoryPublishedPort(settings.Ports["8443/tcp"]),
+      );
       const pendingCertificate = join(directory, "certificate.pending.pem");
       execFileSync(
         "openssl",
@@ -304,8 +330,16 @@ export const startJourneyHistoryArchives = async (input: {
     }
     const caPath = join(input.runDirectory, "history/archive-ca.pem");
     await writeFile(caPath, certificates.join("\n"));
+    transport = await startJourneyHistoryTransport(targets);
+    for (const provider of providers)
+      await verifyJourneyHistoryTransport({
+        endpoint: provider.authorityEndpoint,
+        caPath,
+        environment: transport.environment,
+      });
     return {
       caPath,
+      transportEnvironment: transport.environment,
       configuration: {
         sourceMode: "external_provider_quorum",
         consistencyPolicy: "exact_bytes_all_providers_v1",

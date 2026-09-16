@@ -1,18 +1,12 @@
 import { createHash } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
-import { join } from "node:path";
 
 import {
   assertWorkflowActuationPermitIdentity,
   authenticatedStateQueueObservationDigest,
-  computeFraudProofWorkflowId,
   createWorkflowActuationPermitController,
-  createWorkflowReconciliationPermitController,
-  DirectoryFraudProofWorkflowJournalStore,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEntry,
   type HeaderDecision,
-  type WorkflowActuationPermit,
+  LocalKupmiosCheckpointChangedError,
   type WorkflowActuationPermitController,
 } from "@al-ft/midgard-fault-proofs";
 import {
@@ -32,6 +26,7 @@ import {
   type WatcherStateQueueHeaderObservation,
   type WatcherStateQueueObservationSource,
 } from "../indexers/authenticated-state-queue-observation.js";
+import type { WatcherNativeBlockAdmission } from "../l1/native-block-admission.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
 import { watcherSameCanonicalJson } from "../storage/durable-store.js";
 import {
@@ -44,19 +39,17 @@ import {
   type WatcherFaultProofApplication,
   type WatcherInstalledWorkflowCategory,
 } from "./fault-proof-application.js";
+import type { WatcherFaultProofProgressRequest } from "./fault-proof-progress-authority.js";
 import {
-  enqueueWatcherFaultDecision,
   type WatcherFaultProofDeadline,
   watcherFaultProofDeadline,
-  type WatcherFaultProofJob,
-  type WatcherFaultProofReconciliation,
   type WatcherFaultProofSupervisor,
 } from "./fault-proof-supervisor.js";
 
 export const WATCHER_FAULT_DECISION_BRIDGE_SCHEMA_VERSION =
   "midgard-watcher-production-fault-decision-bridge-v1" as const;
 
-const RELEASE_CONFIRMATION_DEPTH = 30;
+const ACTION_CONFIRMATION_DEPTH = 1;
 const MAXIMUM_CLASSIFICATION_CONCURRENCY = 64;
 
 export type WatcherFaultDecisionTarget = Readonly<{
@@ -80,12 +73,18 @@ export type WatcherFaultDecisionBridge = Readonly<{
   prepareForRecovery(
     observation: WatcherAuthenticatedStateQueueObservation,
   ): Promise<WatcherFaultDecisionBridgeResult>;
-  /** Scans durable workflows only after a fresh opaque decision is prepared. */
-  recoverExisting(): Promise<number>;
+  /** Forwards prepared queue authority to the supervisor during startup. */
+  recoverExisting(
+    input?: Readonly<{ nativeProgress: WatcherNativeBlockAdmission }>,
+  ): Promise<number>;
   /** Reconciles one finalized queue cursor and schedules its one allowed fault. */
   reconcileAndDispatch(
     observation: WatcherAuthenticatedStateQueueObservation,
   ): Promise<WatcherFaultDecisionBridgeResult>;
+  /** Retries only a queue whose public DA or predecessor attachment is pending. */
+  retryDeferredClassification(
+    observation: WatcherAuthenticatedStateQueueObservation,
+  ): Promise<void>;
   /** Schedules the target selected by the most recent successful prepare. */
   dispatchPrepared(): Promise<unknown> | null;
   /** Invalidates all runnable authority synchronously on native rollback. */
@@ -96,17 +95,6 @@ export type WatcherFaultDecisionBridge = Readonly<{
   invalidateForHistoryChange(): void;
   /** Revokes all runnable authority before production shutdown can await I/O. */
   invalidateForShutdown(): void;
-  /** Called immediately before any new or resumed workflow may execute. */
-  isJobPermitted(
-    job: Pick<
-      WatcherFaultProofJob,
-      | "mode"
-      | "category"
-      | "headerHash"
-      | "decisionDigest"
-      | "rollbackGeneration"
-    >,
-  ): boolean;
   status(): Readonly<{
     observationDigest: string | null;
     target: WatcherFaultDecisionTarget | null;
@@ -122,7 +110,7 @@ type BridgeDependencies = Readonly<{
   /** Availability observations are reconciled before this bridge is invoked. */
   pendingAvailabilityHeaders?(
     observation: WatcherAuthenticatedStateQueueObservation,
-  ): ReadonlySet<string>;
+  ): ReadonlySet<string> | Promise<ReadonlySet<string>>;
   assertObservation(
     observation: WatcherAuthenticatedStateQueueObservation,
   ): void;
@@ -132,9 +120,6 @@ type BridgeDependencies = Readonly<{
   /** Pins classifier configuration; omitted dependencies disable decision reuse. */
   classificationContextIdentity?(): Promise<string>;
   readRecords(): Promise<readonly WatcherPersistedFaultDecisionRecord[]>;
-  loadExistingExecution?(
-    decision: Extract<HeaderDecision, { decision: "fault_detected" }>,
-  ): Promise<readonly FraudProofWorkflowJournalEntry[]>;
   append(
     decision: HeaderDecision,
   ): Promise<WatcherPersistedFaultDecisionRecord>;
@@ -152,19 +137,9 @@ type BridgeDependencies = Readonly<{
   operationsSink?: WatcherOperationsSink;
   nowMs?(): bigint;
   monotonicNowMs?(): number;
-  enqueue(
-    decision: HeaderDecision,
-    actuationPermit: WorkflowActuationPermit,
-    deadline: WatcherFaultProofDeadline,
-    rollbackGeneration: string,
-  ): Promise<unknown>;
-  recover(
-    decision: HeaderDecision | null,
-    actuationPermit: WorkflowActuationPermit | null,
-    deadline: WatcherFaultProofDeadline | null,
-    rollbackGeneration: string,
-    reconciliations?: readonly WatcherFaultProofReconciliation[],
-  ): Promise<number>;
+  requestProgress(request: WatcherFaultProofProgressRequest): Promise<void>;
+  revokeAuthority(reason: string): void;
+  unfinishedObjectiveCount(): number;
   retainDecisionAuthorities(decisionDigest: string | null): void;
   decisionUsesLocalEventHistory(decisionDigest: string): boolean;
 }>;
@@ -192,12 +167,10 @@ const confirmationDepth = (value: string): number => {
   }
   const parsed = BigInt(value);
   if (
-    parsed < BigInt(RELEASE_CONFIRMATION_DEPTH) ||
+    parsed < BigInt(ACTION_CONFIRMATION_DEPTH) ||
     parsed > BigInt(Number.MAX_SAFE_INTEGER)
   ) {
-    throw new Error(
-      "state-queue header confirmation depth differs from the release policy",
-    );
+    throw new Error("state-queue header is not included");
   }
   return Number(parsed);
 };
@@ -423,10 +396,9 @@ const createBridge = (input: {
   let targetDecision: HeaderDecision | null = null;
   let targetDeadline: WatcherFaultProofDeadline | null = null;
   let actuationController: WorkflowActuationPermitController | null = null;
-  const reconciliationControllers =
-    new Set<WorkflowActuationPermitController>();
   let preparedResult: WatcherFaultDecisionBridgeResult | null = null;
   let serial: Promise<void> = Promise.resolve();
+  let classificationDeferred = false;
   type ClassificationBinding = Readonly<{
     contextIdentity: string;
     predecessor: WatcherStateQueueHeaderObservation | undefined;
@@ -439,9 +411,7 @@ const createBridge = (input: {
   const invalidate = (reason: string): void => {
     input.dependencies.retainDecisionAuthorities(null);
     actuationController?.revoke(reason);
-    for (const controller of reconciliationControllers)
-      controller.revoke(reason);
-    reconciliationControllers.clear();
+    input.dependencies.revokeAuthority(reason);
     actuationController = null;
     classificationEpoch += 1;
     rollbackGeneration += 1;
@@ -451,6 +421,7 @@ const createBridge = (input: {
     targetDeadline = null;
     preparedResult = null;
     targetClassification = null;
+    classificationDeferred = false;
   };
 
   const prepare = async (
@@ -463,7 +434,7 @@ const createBridge = (input: {
       );
     }
     const pendingAvailability =
-      input.dependencies.pendingAvailabilityHeaders?.(candidate) ??
+      (await input.dependencies.pendingAvailabilityHeaders?.(candidate)) ??
       new Set<string>();
     for (const headerHash of pendingAvailability) {
       const header = candidate.finalizedHeaders.find(
@@ -486,10 +457,8 @@ const createBridge = (input: {
       actuationController !== null &&
       !observationPreservesTarget(candidate, target)
     ) {
-      actuationController.restrictToReconciliation(
-        "state_queue_target_changed",
-      );
-      reconciliationControllers.add(actuationController);
+      // A new observation replaces classification context, not an invocation's
+      // permit. The supervisor retains active attempts until they return.
       actuationController = null;
       rollbackGeneration += 1;
       observation = null;
@@ -612,7 +581,7 @@ const createBridge = (input: {
               !(error instanceof WatcherRetainedHeaderAttestationPendingError)
             )
               throw error;
-            // The predecessor's public DA attachment is not release-final
+            // The predecessor's public DA attachment is not included
             // yet. Classification of this header and every later one waits
             // for the next observation; earlier headers keep their decisions
             // so target selection still runs over a fully classified prefix.
@@ -715,6 +684,14 @@ const createBridge = (input: {
           }
           classifications[index] = decision;
         } catch (error) {
+          if (error instanceof LocalKupmiosCheckpointChangedError) {
+            // Capture drift is an incomplete classification, not fault evidence.
+            // Preserve only the classified prefix and retry this suffix on the
+            // next canonical wake through the existing deferred path.
+            deferredFromIndex = Math.min(deferredFromIndex, index);
+            classifications[index] = null;
+            continue;
+          }
           classificationFailed = true;
           classificationFailure = error;
           if (verificationSubjectDigest !== null) {
@@ -851,20 +828,11 @@ const createBridge = (input: {
         (reusedTargetDecision !== null &&
           selectedDecision === reusedTargetDecision))
     ) {
-      actuationController?.restrictToReconciliation(
-        "state_queue_target_changed",
-      );
       throw new Error(
         "retained classification cannot mint replacement fault submission authority",
       );
     }
     if (!preservesActuation) {
-      if (actuationController !== null) {
-        actuationController.restrictToReconciliation(
-          "state_queue_target_changed",
-        );
-        reconciliationControllers.add(actuationController);
-      }
       rollbackGeneration += 1;
       actuationController =
         selectedDecision === null
@@ -882,6 +850,9 @@ const createBridge = (input: {
       pendingAvailability.size === 0 && selected !== null
         ? (classifiedBindings.get(selected.headerHash) ?? null)
         : null;
+    classificationDeferred =
+      pendingAvailability.size > 0 ||
+      deferredFromIndex < candidate.finalizedHeaders.length;
     preparedResult = Object.freeze({
       observationDigest: candidate.observationDigest,
       decisionDigests: Object.freeze(
@@ -913,23 +884,7 @@ const createBridge = (input: {
       // Keep reconciliation and its exact selected decision inside the same
       // serializer turn. A later prepare/rollback must not replace globals in
       // the gap between prepare resolution and enqueue.
-      if (dispatch) {
-        const exactDecision = targetDecision;
-        const exactController = actuationController;
-        const exactDeadline = targetDeadline;
-        if (
-          exactDecision !== null &&
-          exactController !== null &&
-          exactDeadline !== null
-        ) {
-          await input.dependencies.enqueue(
-            exactDecision,
-            exactController.permit,
-            exactDeadline,
-            rollbackGeneration.toString(),
-          );
-        }
-      }
+      if (dispatch) await dispatchPrepared();
       return prepared;
     });
     serial = result.then(
@@ -939,100 +894,48 @@ const createBridge = (input: {
     return result;
   };
 
-  const dispatchPrepared = (): Promise<unknown> | null => {
-    if (
-      target === null ||
-      targetDecision === null ||
-      observation === null ||
-      actuationController === null ||
-      targetDeadline === null
-    ) {
-      return null;
-    }
-    const exactDecision = targetDecision;
-    const exactController = actuationController;
-    const exactGeneration = rollbackGeneration.toString();
-    return input.dependencies.enqueue(
-      exactDecision,
-      exactController.permit,
-      targetDeadline,
-      exactGeneration,
-    );
+  const dispatchPrepared = (
+    nativeProgress?: WatcherNativeBlockAdmission,
+  ): Promise<void> | null => {
+    if (observation === null) return null;
+    input.dependencies.assertObservation(observation);
+    return input.dependencies.requestProgress({
+      observation,
+      ...(nativeProgress === undefined ? {} : { nativeProgress }),
+      rollbackGeneration: rollbackGeneration.toString(),
+      ...(targetDecision?.decision === "fault_detected" &&
+      actuationController !== null &&
+      targetDeadline !== null
+        ? {
+            fault: {
+              decision: targetDecision,
+              actuationPermit: actuationController.permit,
+              deadline: targetDeadline,
+            },
+          }
+        : {}),
+    });
   };
 
   return Object.freeze({
     schemaVersion: WATCHER_FAULT_DECISION_BRIDGE_SCHEMA_VERSION,
     prepareForRecovery: async (candidate) =>
       await serializedPrepare(candidate, false),
-    recoverExisting: async () => {
-      if (observation === null) {
+    recoverExisting: async (progress) => {
+      const request = dispatchPrepared(progress?.nativeProgress);
+      if (request === null)
         throw new Error(
           "fault-proof recovery requires a fresh authenticated queue reconciliation",
         );
-      }
-      const recoveryObservation = observation;
-      const recoveryEpoch = classificationEpoch;
-      const recoveryGeneration = rollbackGeneration;
-      const assertRecoveryCurrent = (): void => {
-        if (
-          observation !== recoveryObservation ||
-          classificationEpoch !== recoveryEpoch ||
-          rollbackGeneration !== recoveryGeneration
-        )
-          throw new Error(
-            "queue authority changed during existing workflow recovery",
-          );
-        input.dependencies.assertObservation(recoveryObservation);
-      };
-      const reconciliations: WatcherFaultProofReconciliation[] = [];
-      if (input.dependencies.loadExistingExecution !== undefined) {
-        const seen = new Set<string>();
-        for (const { decision } of await input.dependencies.readRecords()) {
-          assertRecoveryCurrent();
-          if (
-            decision.decision !== "fault_detected" ||
-            seen.has(decision.decisionDigest) ||
-            observation.finalizedHeaders.some(
-              (header) => header.headerHash === decision.headerHash,
-            )
-          )
-            continue;
-          seen.add(decision.decisionDigest);
-          const entries =
-            await input.dependencies.loadExistingExecution(decision);
-          assertRecoveryCurrent();
-          if (
-            entries.length === 0 ||
-            entries.some(({ event }) => event.kind === "completed") ||
-            !entries.some(({ event }) => event.kind === "submission_intent")
-          )
-            continue;
-          const controller = createWorkflowReconciliationPermitController({
-            decision,
-            deploymentFingerprint,
-            entries,
-            rollbackGeneration: rollbackGeneration.toString(),
-          });
-          reconciliationControllers.add(controller);
-          reconciliations.push({
-            category: decision.category as WatcherInstalledWorkflowCategory,
-            headerHash: decision.headerHash,
-            decisionDigest: decision.decisionDigest,
-            actuationPermit: controller.permit,
-          });
-        }
-      }
-      assertRecoveryCurrent();
-      return await input.dependencies.recover(
-        targetDecision,
-        actuationController?.permit ?? null,
-        targetDeadline,
-        rollbackGeneration.toString(),
-        reconciliations,
-      );
+      await request;
+      return input.dependencies.unfinishedObjectiveCount();
     },
     reconcileAndDispatch: async (candidate) => {
       return await serializedPrepare(candidate, true);
+    },
+    retryDeferredClassification: async (candidate) => {
+      await serial;
+      if (classificationDeferred) await serializedPrepare(candidate, true);
     },
     dispatchPrepared,
     invalidateForRollback: () => invalidate("native_chain_rollback"),
@@ -1047,43 +950,6 @@ const createBridge = (input: {
     },
     invalidateForHistoryChange: () => invalidate("local_event_history_change"),
     invalidateForShutdown: () => invalidate("watcher_shutdown"),
-    isJobPermitted: (job) => {
-      if (observation === null) {
-        throw new Error(
-          "fault-proof runner has no current authenticated state-queue authority",
-        );
-      }
-      input.dependencies.assertObservation(observation);
-      for (const controller of reconciliationControllers) {
-        try {
-          const identity = assertWorkflowActuationPermitIdentity({
-            permit: controller.permit,
-            category: job.category,
-            rollbackGeneration: job.rollbackGeneration,
-          });
-          if (
-            job.mode === "resume" &&
-            identity.authority === "reconciliation" &&
-            identity.headerHash === job.headerHash &&
-            identity.decisionDigest === job.decisionDigest &&
-            identity.deploymentFingerprint === deploymentFingerprint
-          )
-            return true;
-        } catch {
-          // A different execution/generation never grants this job authority.
-        }
-      }
-      return (
-        target !== null &&
-        target.category === job.category &&
-        target.headerHash === job.headerHash &&
-        target.decisionDigest === job.decisionDigest &&
-        rollbackGeneration.toString() === job.rollbackGeneration &&
-        observation.finalizedHeaders.some(
-          ({ headerHash }) => headerHash === job.headerHash,
-        )
-      );
-    },
     status: () =>
       Object.freeze({
         observationDigest: observation?.observationDigest ?? null,
@@ -1124,7 +990,7 @@ export const createWatcherFaultDecisionBridge = async (input: {
       observationDigest: async (candidate) =>
         await authenticatedStateQueueObservationDigest({
           observation: candidate,
-          minimumConfirmationDepth: RELEASE_CONFIRMATION_DEPTH,
+          minimumConfirmationDepth: ACTION_CONFIRMATION_DEPTH,
         }),
       classificationContextIdentity: async () => {
         const path = await realpath(input.runtimeConfigPath);
@@ -1136,26 +1002,6 @@ export const createWatcherFaultDecisionBridge = async (input: {
           .digest("hex");
       },
       readRecords: journal.readAll,
-      loadExistingExecution: async (decision) => {
-        const workflowId = computeFraudProofWorkflowId({
-          schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-          deploymentFingerprint: decision.deploymentFingerprint,
-          category: decision.category,
-          target: {
-            kind: "state_queue_header",
-            headerHash: decision.headerHash,
-          },
-          decisionDigest: decision.decisionDigest,
-        });
-        return await new DirectoryFraudProofWorkflowJournalStore(
-          join(
-            input.journalDirectory,
-            "fault-proofs",
-            decision.category,
-            decision.headerHash,
-          ),
-        ).load(workflowId);
-      },
       append: journal.appendLiveDecision,
       assertActuationPermitIdentity: assertWorkflowActuationPermitIdentity,
       createActuationController: (decision, rollbackGeneration) =>
@@ -1175,33 +1021,10 @@ export const createWatcherFaultDecisionBridge = async (input: {
         ? {}
         : { operationsSink: input.operationsSink }),
       ...(input.nowMs === undefined ? {} : { nowMs: input.nowMs }),
-      enqueue: async (
-        decision,
-        actuationPermit,
-        deadline,
-        rollbackGeneration,
-      ) =>
-        await enqueueWatcherFaultDecision({
-          supervisor: input.supervisor,
-          decision,
-          actuationPermit,
-          deadline,
-          rollbackGeneration,
-        }),
-      recover: async (
-        decision,
-        actuationPermit,
-        deadline,
-        rollbackGeneration,
-        reconciliations,
-      ) =>
-        await input.supervisor.recoverExisting(
-          decision,
-          actuationPermit ?? undefined,
-          deadline ?? undefined,
-          rollbackGeneration,
-          reconciliations,
-        ),
+      requestProgress: input.supervisor.requestProgress,
+      revokeAuthority: input.supervisor.revokeAuthority,
+      unfinishedObjectiveCount: () =>
+        input.supervisor.status().unfinishedObjectiveCount,
     }),
   });
 };

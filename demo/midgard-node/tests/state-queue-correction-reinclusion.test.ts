@@ -29,12 +29,12 @@ const externalTimeoutTransition = ({
           yield_to_ref_input_index: 0n,
           timed_out_header_hash: target,
           removal_approach: {
-            RemoveTimedOutHead: {
-              confirmed_state_input_outref: {
+            RemoveLastUnattestedBlock: {
+              predecessor_input_outref: {
                 transactionId: h32("0"),
                 outputIndex: 0n,
               },
-              confirmed_state_output_index: 0n,
+              predecessor_output_index: 0n,
             },
           },
         },
@@ -44,8 +44,8 @@ const externalTimeoutTransition = ({
           yield_to_ref_input_index: 0n,
           timed_out_header_hash: target,
           removal_approach: {
-            PruneTimedOutBlockDescendant: {
-              confirmed_state_ref_input_index: 0n,
+            PruneUnattestedBlockDescendant: {
+              predecessor_ref_input_index: 0n,
               timed_out_node_input_outref: {
                 transactionId: h32("1"),
                 outputIndex: 0n,

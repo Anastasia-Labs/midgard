@@ -5,6 +5,7 @@ import {
   computeFraudProofRawL1RollbackCursor,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
+  type FraudProofL1ObservationDepth,
   type FraudProofRawL1Point,
   type FraudProofRawL1SnapshotAuthority,
   type FraudProofRawL1SnapshotRequest,
@@ -45,7 +46,9 @@ export interface LocalKupmiosFraudProofRawSource {
   readonly sourceId: string;
   readonly kupoHttpUrl: string;
   readonly ogmiosWebSocketUrl: string;
-  readBoundary(): Promise<unknown>;
+  readBoundary(input?: {
+    readonly observationDepth?: FraudProofL1ObservationDepth;
+  }): Promise<unknown>;
   /** Exact ordered raw block capture for independently authenticated readers. */
   readBlockAtPoint(input: {
     readonly point: FraudProofRawL1Point;
@@ -427,9 +430,11 @@ const confirmPinnedPoint = async ({
 export const createLocalKupmiosFraudProofRawL1SnapshotAuthority = ({
   source,
   releaseFinality,
+  observationDepth = "release_finality",
 }: {
   readonly source: LocalKupmiosFraudProofRawSource;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+  readonly observationDepth?: FraudProofL1ObservationDepth;
 }): FraudProofRawL1SnapshotAuthority => {
   if (source.sourceVersion !== LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE) {
     throw new Error("local Kupmios raw source has an unsupported version");
@@ -438,7 +443,9 @@ export const createLocalKupmiosFraudProofRawL1SnapshotAuthority = ({
   assertLoopback(source.kupoHttpUrl, "Kupo URL");
   assertLoopback(source.ogmiosWebSocketUrl, "Ogmios URL");
   const captureOnce = async (request: FraudProofRawL1SnapshotRequest) => {
-    const boundary = parseBoundary(await source.readBoundary());
+    const boundary = parseBoundary(
+      await source.readBoundary({ observationDepth }),
+    );
     const scopes = await settleLocalKupmiosReads(
       request.scopes.map(async (scope) => ({
         ...scope,
@@ -537,13 +544,14 @@ export const createLocalKupmiosFraudProofRawL1SnapshotAuthority = ({
       value: snapshot,
       request,
       releaseFinality,
+      observationDepth,
     });
   };
   return {
     authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
     capture: (request: FraudProofRawL1SnapshotRequest) =>
       withLocalKupmiosSourceCapture(source, async () => {
-        // Each readBoundary discards source caches and pins a fresh release-final
+        // Each readBoundary discards source caches and pins a fresh authenticated
         // boundary. Failed attempt data never escapes this exclusive capture.
         for (let attempt = 0; ; attempt += 1) {
           try {

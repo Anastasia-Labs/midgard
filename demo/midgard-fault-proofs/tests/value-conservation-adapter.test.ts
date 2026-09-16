@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { createValueConservationAdapter } from "../src/value-not-preserved/adapter.js";
+import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
 import {
   computeFraudProofWorkflowId,
   DirectoryFraudProofWorkflowJournalStore,
@@ -115,6 +116,16 @@ const fixture = () => {
   return { make, lease, resume, confirmed, capture };
 };
 describe("value conservation durable adapter", () => {
+  it("yields a stale unsigned action before capturing a replacement transaction", async () => {
+    const f = fixture();
+    await expect(
+      f.make().preflight({
+        ...context,
+        action: { ...action, input: { ...action.input, index: 8 } },
+      }),
+    ).rejects.toBeInstanceOf(WorkflowActionChangedError);
+    expect(f.capture).not.toHaveBeenCalled();
+  });
   it("resumes a fsynced intent and exact mutation lease through a fresh adapter", async () => {
     const f = fixture();
     const adapter = f.make();

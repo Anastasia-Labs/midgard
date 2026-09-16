@@ -164,6 +164,29 @@ export const AttestationTimeoutRemovalApproach =
     AttestationTimeoutRemovalApproachSchema,
   );
 
+export const UnattestedTimeoutRemovalApproachSchema = Data.Enum([
+  Data.Object({
+    PruneUnattestedBlockDescendant: Data.Object({
+      predecessor_ref_input_index: Data.Integer(),
+      timed_out_node_input_outref: OutputReferenceSchema,
+      timed_out_node_output_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    RemoveLastUnattestedBlock: Data.Object({
+      predecessor_input_outref: OutputReferenceSchema,
+      predecessor_output_index: Data.Integer(),
+    }),
+  }),
+]);
+export type UnattestedTimeoutRemovalApproach = Data.Static<
+  typeof UnattestedTimeoutRemovalApproachSchema
+>;
+export const UnattestedTimeoutRemovalApproach =
+  asDataType<UnattestedTimeoutRemovalApproach>(
+    UnattestedTimeoutRemovalApproachSchema,
+  );
+
 export const StateQueueRedeemerSchema = Data.Enum([
   Data.Object({
     InitV1: Data.Object({
@@ -198,7 +221,7 @@ export const StateQueueRedeemerSchema = Data.Enum([
     RemoveUnattestedBlockAfterTimeout: Data.Object({
       yield_to_ref_input_index: Data.Integer(),
       timed_out_header_hash: HeaderHashSchema,
-      removal_approach: AttestationTimeoutRemovalApproachSchema,
+      removal_approach: UnattestedTimeoutRemovalApproachSchema,
     }),
   }),
   Data.Object({
@@ -1515,7 +1538,7 @@ export type StateQueueTimeoutRemovalReferenceScriptUTxOs = Pick<
 >;
 
 type StateQueueTimeoutRemovalCommonParams = {
-  readonly timedOutHeadUTxO: StateQueueUTxO;
+  readonly timedOutBlockUTxO: StateQueueUTxO;
   readonly additionalInputs?: readonly UTxO[];
   readonly additionalRefInputs?: readonly UTxO[];
   readonly hubOracleRefInput: UTxO;
@@ -1529,15 +1552,15 @@ type StateQueueTimeoutRemovalCommonParams = {
   readonly referenceScripts?: StateQueueTimeoutRemovalReferenceScriptUTxOs;
 };
 
-export type StateQueuePruneTimedOutDescendantParams =
+export type StateQueuePruneUnattestedDescendantParams =
   StateQueueTimeoutRemovalCommonParams & {
-    readonly confirmedStateRefInput: StateQueueUTxO;
+    readonly predecessorRefInput: StateQueueUTxO;
     readonly removedDescendantUTxO: StateQueueUTxO;
   };
 
-export type StateQueueRemoveTimedOutHeadParams =
+export type StateQueueRemoveLastUnattestedBlockParams =
   StateQueueTimeoutRemovalCommonParams & {
-    readonly confirmedStateUTxO: StateQueueUTxO;
+    readonly predecessorUTxO: StateQueueUTxO;
   };
 
 const requireBlockHeaderHash = (
@@ -1645,17 +1668,17 @@ const timeoutRemovalBaseTx = ({
 
 /**
  * Permissionlessly prunes the immediate descendant of the authenticated,
- * unattested timed-out head. The root is retained as a reference input, while
- * the head is spent and continued with the descendant's successor link.
+ * unattested timed-out block. Its predecessor is retained as a reference input,
+ * while the target is spent and continued with the descendant's successor link.
  */
-export const incompletePruneTimedOutBlockDescendantTxProgram = (
+export const incompletePruneUnattestedBlockDescendantTxProgram = (
   lucid: LucidEvolution,
   config: StateQueueFetchConfig,
-  params: StateQueuePruneTimedOutDescendantParams,
+  params: StateQueuePruneUnattestedDescendantParams,
 ): TxBuilder => {
   const timedOutHeaderHash = requireBlockHeaderHash(
-    params.timedOutHeadUTxO,
-    "timed-out head",
+    params.timedOutBlockUTxO,
+    "timed-out block",
   );
   const correctionIdentity: CorrectionIdentity = "AttestationTimeout";
   requireCorrectionLockForTarget(
@@ -1668,23 +1691,22 @@ export const incompletePruneTimedOutBlockDescendantTxProgram = (
     "timed-out descendant",
   );
   if (
-    params.confirmedStateRefInput.datum.key !== "Empty" ||
-    params.confirmedStateRefInput.datum.next === "Empty" ||
-    params.confirmedStateRefInput.datum.next.Key.key !== timedOutHeaderHash ||
-    params.timedOutHeadUTxO.datum.next === "Empty" ||
-    params.timedOutHeadUTxO.datum.next.Key.key !== removedHeaderHash
+    params.predecessorRefInput.datum.next === "Empty" ||
+    params.predecessorRefInput.datum.next.Key.key !== timedOutHeaderHash ||
+    params.timedOutBlockUTxO.datum.next === "Empty" ||
+    params.timedOutBlockUTxO.datum.next.Key.key !== removedHeaderHash
   ) {
     throw new Error(
-      "Timed-out descendant pruning requires root -> timed-out head -> immediate descendant topology",
+      "Timed-out descendant pruning requires predecessor -> timed-out block -> immediate descendant topology",
     );
   }
-  const continuedHeadDatum = encodeLinkedListNodeView({
-    ...params.timedOutHeadUTxO.datum,
+  const continuedTargetDatum = encodeLinkedListNodeView({
+    ...params.timedOutBlockUTxO.datum,
     next: params.removedDescendantUTxO.datum.next,
   });
-  const continuedHeadUnit = toUnit(
+  const continuedTargetUnit = toUnit(
     config.stateQueuePolicyId,
-    params.timedOutHeadUTxO.assetName,
+    params.timedOutBlockUTxO.assetName,
   );
   const assetsToBurn: Assets = {
     [toUnit(config.stateQueuePolicyId, params.removedDescendantUTxO.assetName)]:
@@ -1701,22 +1723,22 @@ export const incompletePruneTimedOutBlockDescendantTxProgram = (
           ),
           timed_out_header_hash: timedOutHeaderHash,
           removal_approach: {
-            PruneTimedOutBlockDescendant: {
-              confirmed_state_ref_input_index: requireReferenceInputIndex(
+            PruneUnattestedBlockDescendant: {
+              predecessor_ref_input_index: requireReferenceInputIndex(
                 ctx,
-                params.confirmedStateRefInput.utxo,
-                "timed-out removal confirmed-state root",
+                params.predecessorRefInput.utxo,
+                "timed-out removal predecessor",
               ),
               timed_out_node_input_outref: outputReferenceFromUTxO(
-                params.timedOutHeadUTxO.utxo,
+                params.timedOutBlockUTxO.utxo,
               ),
               timed_out_node_output_index: requireUniqueOutputIndex(
                 ctx.outputs,
                 (output) =>
                   output.address === config.stateQueueAddress &&
-                  outputDatumCborMatches(output, continuedHeadDatum) &&
-                  (output.assets[continuedHeadUnit] ?? 0n) === 1n,
-                "timed-out removal continued head",
+                  outputDatumCborMatches(output, continuedTargetDatum) &&
+                  (output.assets[continuedTargetUnit] ?? 0n) === 1n,
+                "timed-out removal continued target",
               ),
             },
           },
@@ -1729,16 +1751,16 @@ export const incompletePruneTimedOutBlockDescendantTxProgram = (
     config,
     params,
     collectedStateQueueInputs: [
-      params.timedOutHeadUTxO.utxo,
+      params.timedOutBlockUTxO.utxo,
       params.removedDescendantUTxO.utxo,
     ],
     continuedOutput: {
-      datum: continuedHeadDatum,
-      assets: params.timedOutHeadUTxO.utxo.assets,
+      datum: continuedTargetDatum,
+      assets: params.timedOutBlockUTxO.utxo.assets,
     },
     assetsToBurn,
     mintRedeemer,
-    requiredReferenceInputs: [params.confirmedStateRefInput.utxo],
+    requiredReferenceInputs: [params.predecessorRefInput.utxo],
     correctionLockOutputDatum: {
       Locked: {
         target_header_hash: timedOutHeaderHash,
@@ -1748,15 +1770,15 @@ export const incompletePruneTimedOutBlockDescendantTxProgram = (
   });
 };
 
-/** Remove the terminal unattested head and continue the singleton root. */
-export const incompleteRemoveUnattestedHeadAfterTimeoutTxProgram = (
+/** Remove a terminal unattested target and preserve its immediate predecessor. */
+export const incompleteRemoveLastUnattestedBlockTxProgram = (
   lucid: LucidEvolution,
   config: StateQueueFetchConfig,
-  params: StateQueueRemoveTimedOutHeadParams,
+  params: StateQueueRemoveLastUnattestedBlockParams,
 ): TxBuilder => {
   const timedOutHeaderHash = requireBlockHeaderHash(
-    params.timedOutHeadUTxO,
-    "timed-out head",
+    params.timedOutBlockUTxO,
+    "timed-out block",
   );
   const correctionIdentity: CorrectionIdentity = "AttestationTimeout";
   requireCorrectionLockForTarget(
@@ -1765,25 +1787,25 @@ export const incompleteRemoveUnattestedHeadAfterTimeoutTxProgram = (
     correctionIdentity,
   );
   if (
-    params.confirmedStateUTxO.datum.key !== "Empty" ||
-    params.confirmedStateUTxO.datum.next === "Empty" ||
-    params.confirmedStateUTxO.datum.next.Key.key !== timedOutHeaderHash ||
-    params.timedOutHeadUTxO.datum.next !== "Empty"
+    params.predecessorUTxO.datum.next === "Empty" ||
+    params.predecessorUTxO.datum.next.Key.key !== timedOutHeaderHash ||
+    params.timedOutBlockUTxO.datum.next !== "Empty"
   ) {
     throw new Error(
-      "Timed-out head removal requires a terminal block linked directly from the confirmed-state root",
+      "Unattested timeout removal requires a terminal target linked directly from its predecessor",
     );
   }
-  const continuedRootDatum = encodeLinkedListNodeView({
-    ...params.confirmedStateUTxO.datum,
+  const continuedPredecessorDatum = encodeLinkedListNodeView({
+    ...params.predecessorUTxO.datum,
     next: "Empty",
   });
-  const continuedRootUnit = toUnit(
+  const continuedPredecessorUnit = toUnit(
     config.stateQueuePolicyId,
-    params.confirmedStateUTxO.assetName,
+    params.predecessorUTxO.assetName,
   );
   const assetsToBurn: Assets = {
-    [toUnit(config.stateQueuePolicyId, params.timedOutHeadUTxO.assetName)]: -1n,
+    [toUnit(config.stateQueuePolicyId, params.timedOutBlockUTxO.assetName)]:
+      -1n,
   };
   const mintRedeemer = ((ctx) =>
     Data.to(
@@ -1796,17 +1818,17 @@ export const incompleteRemoveUnattestedHeadAfterTimeoutTxProgram = (
           ),
           timed_out_header_hash: timedOutHeaderHash,
           removal_approach: {
-            RemoveTimedOutHead: {
-              confirmed_state_input_outref: outputReferenceFromUTxO(
-                params.confirmedStateUTxO.utxo,
+            RemoveLastUnattestedBlock: {
+              predecessor_input_outref: outputReferenceFromUTxO(
+                params.predecessorUTxO.utxo,
               ),
-              confirmed_state_output_index: requireUniqueOutputIndex(
+              predecessor_output_index: requireUniqueOutputIndex(
                 ctx.outputs,
                 (output) =>
                   output.address === config.stateQueueAddress &&
-                  outputDatumCborMatches(output, continuedRootDatum) &&
-                  (output.assets[continuedRootUnit] ?? 0n) === 1n,
-                "timed-out removal continued confirmed-state root",
+                  outputDatumCborMatches(output, continuedPredecessorDatum) &&
+                  (output.assets[continuedPredecessorUnit] ?? 0n) === 1n,
+                "timed-out removal continued predecessor",
               ),
             },
           },
@@ -1819,12 +1841,12 @@ export const incompleteRemoveUnattestedHeadAfterTimeoutTxProgram = (
     config,
     params,
     collectedStateQueueInputs: [
-      params.confirmedStateUTxO.utxo,
-      params.timedOutHeadUTxO.utxo,
+      params.predecessorUTxO.utxo,
+      params.timedOutBlockUTxO.utxo,
     ],
     continuedOutput: {
-      datum: continuedRootDatum,
-      assets: params.confirmedStateUTxO.utxo.assets,
+      datum: continuedPredecessorDatum,
+      assets: params.predecessorUTxO.utxo.assets,
     },
     assetsToBurn,
     mintRedeemer,

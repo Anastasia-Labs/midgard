@@ -191,7 +191,6 @@ for (const [text, needle, label] of [
     "--state-correction-blueprint <path>",
     "--state-correction-catalogue <path>",
     "--state-correction-parameters <path>",
-    "--state-correction-release-evidence <path>",
     "--state-correction-workflow-journal <directory>",
     "--state-correction-l1-observation <path>",
     "--state-correction-recovery-observation <path>",
@@ -230,6 +229,16 @@ for (const [text, needle, label] of [
     documents.live,
     "tests/e2e-state-correction-local-authority.test.ts",
     "non-state-changing local Kupmios authority rehearsal",
+  ],
+  [
+    stateCorrectionAuthoritySource,
+    "finalityPolicy: parseReleaseL1FinalityPolicy(manifest.l1Finality)",
+    "manifest-bound release finality authority",
+  ],
+  [
+    stateCorrectionAuthoritySource,
+    "economicsPolicy: releaseEconomicsPolicyFromDeploymentManifest(manifest)",
+    "manifest-bound release economics authority",
   ],
   [
     stateCorrectionAuthoritySource,

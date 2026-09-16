@@ -2,6 +2,7 @@ import type {
   StateQueueMutationLease,
   StateQueueMutationLeaseCoordinator,
 } from "../remove-fraudulent-block.js";
+import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import {
   journalJsonDigest,
   type JournalJsonObject,
@@ -85,7 +86,7 @@ export const createValueConservationAdapter = ({
         observed.kind !== "action_required" ||
         journalJsonDigest(observed.action) !== journalJsonDigest(context.action)
       )
-        throw new Error(
+        throw new WorkflowActionChangedError(
           "value conservation: requested action differs from authenticated current checkpoint",
         );
       const transactionKey = key(context);

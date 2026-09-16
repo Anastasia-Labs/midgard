@@ -28,7 +28,6 @@ import {
   type E2EStateCorrectionAcceptance,
   parseE2EStateCorrectionAcceptance,
   stateCorrectionAcceptanceEvidence,
-  stateCorrectionLocalReadinessEvidence,
 } from "./e2e-state-correction-acceptance.js";
 import {
   createLocalKupmiosStateCorrectionAuthority,
@@ -901,10 +900,6 @@ export const finalizeE2ESummaryProgram = (
           ? {}
           : { evidencePath: stateCorrectionEvidencePath }),
       });
-    const stateCorrectionReadiness = stateCorrectionLocalReadinessEvidence({
-      availabilityChallengeCapability:
-        stateCorrectionDeployment?.availabilityChallengeCapability ?? "missing",
-    });
     const transactions = [
       ...(options.transactions ?? []),
       ...stressEvidence.transactions,
@@ -1046,7 +1041,6 @@ export const finalizeE2ESummaryProgram = (
           },
           ...stressEvidence.db,
           ...stateCorrectionEvidence.db,
-          ...stateCorrectionReadiness,
         ],
         cleanRunGates: [
           ...requiredFresh.cleanRunGates,

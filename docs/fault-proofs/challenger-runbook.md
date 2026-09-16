@@ -37,8 +37,16 @@ environment variables here.
 The current production process launcher admits only the `acceptance` mode on
 Preprod with a `local_node` source. Its finality policy fixes confirmation depth
 and automatic pre-finality rollback depth at 30, and post-finality recovery depth
-at 2,160. Generic nested configuration types do not enable additional launcher
-modes. Follow the watcher process configuration for these exact values.
+at 2,160. Confirmation depth 30 is the anchor depth: it governs finalized audit
+anchors, incident records and evidence stamps. Proof actions proceed on
+authenticated inclusion at fixed depth 1. There is no runtime action-depth
+configuration field. A rollback invalidates cached authority and re-observes
+canonical state. Reconcile
+outstanding submissions before retrying suitable signed bytes or rebuilding with
+current inputs under fresh authority. Terminal inclusion remains recoverable until
+anchoring, and unresolved attempts retain their input exclusions. Generic nested
+configuration types do not enable additional launcher modes. Follow the watcher
+process configuration for these exact values.
 
 The challenger path requires:
 

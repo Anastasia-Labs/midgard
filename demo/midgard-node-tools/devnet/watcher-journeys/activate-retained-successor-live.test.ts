@@ -23,7 +23,7 @@ import { Effect } from "effect";
 import { activateOperatorProgram } from "midgard-node/transactions/register-active-operator";
 import {
   loadWatcherVerifiedDeploymentAuthority,
-  parseWatcherConfig,
+  parseWatcherProcessConfig,
   watcherDeploymentReleaseFinalityAuthority,
 } from "midgard-watcher";
 import { expect, it } from "vitest";
@@ -121,12 +121,15 @@ it.skipIf(runDirectory === undefined || !selected)(
     );
     const references = [...context.deployment.references.entries()];
     expect(references).toHaveLength(517);
-    const config = parseWatcherConfig(
-      JSON.parse(await readFile(join(directory, "watcher.json"), "utf8")),
+    const processConfig = parseWatcherProcessConfig(
+      JSON.parse(
+        await readFile(join(directory, "watcher-process.json"), "utf8"),
+      ),
     );
+    const config = processConfig.watcherConfig;
     const authority = await loadWatcherVerifiedDeploymentAuthority({
-      path: join(directory, "deployment-authority.json"),
-      ruleBundlePath: join(directory, "rules.json"),
+      path: processConfig.deploymentAuthorityPath,
+      ruleBundlePath: processConfig.ruleBundlePath,
     });
     const releaseFinality = await watcherDeploymentReleaseFinalityAuthority(
       authority.deploymentIdentity,

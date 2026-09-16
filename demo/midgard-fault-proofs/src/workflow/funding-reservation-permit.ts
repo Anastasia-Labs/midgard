@@ -111,7 +111,10 @@ export type WorkflowFundingSubmissionHandoff = WorkflowFundingJournalHandoff &
 
 export type WorkflowFundingCompletionHandoff = WorkflowFundingJournalHandoff &
   Readonly<{
-    completion: Extract<FraudProofWorkflowJournalEvent, { kind: "completed" }>;
+    completion: Extract<
+      FraudProofWorkflowJournalEvent,
+      { kind: "completed" | "terminal_included" }
+    >;
   }>;
 
 export type WorkflowFundingAbandonmentHandoff = WorkflowFundingJournalHandoff &
@@ -135,6 +138,12 @@ export interface WorkflowFundingReservationPort {
   readPendingHandoff(): Promise<unknown>;
   readCompletionHandoff(): Promise<unknown>;
   readAbandonmentHandoff(): Promise<unknown>;
+  /** Re-select a recorded attempt for reconciliation after canonical re-observation. */
+  /** Null means another unresolved attempt currently owns the required inputs. */
+  reobserve?(input: {
+    readonly expectedRevision: string;
+    readonly transactionHash: string;
+  }): Promise<unknown>;
   resolveInputs(outRefs: readonly string[]): Promise<readonly UTxO[]>;
   /** Exact confirmed output from this reservation, or null if it has no lineage. */
   resolveConfirmedInput(input: { readonly outRef: string }): Promise<unknown>;
@@ -157,6 +166,12 @@ export interface WorkflowFundingReservationPort {
     readonly transactionHash: string;
     readonly handoff: WorkflowFundingAbandonmentHandoff;
   }): Promise<unknown>;
+  releaseIdle?(input: { readonly expectedRevision: string }): Promise<unknown>;
+  /** Refill an idle reservation under fresh submission authority; null means unavailable. */
+  refreshIdle?(input: {
+    readonly expectedRevision: string;
+    readonly releaseStaleInputs: boolean;
+  }): Promise<unknown>;
   acknowledgeAbandonment(input: {
     readonly expectedRevision: string;
     readonly handoff: WorkflowFundingAbandonmentHandoff;
@@ -175,6 +190,13 @@ export interface WorkflowFundingReservationPermit {
   readonly permitVersion: typeof WORKFLOW_FUNDING_RESERVATION_PERMIT;
 }
 
+export class WorkflowFundingReservationUnavailableError extends Error {
+  constructor() {
+    super("prover funding is temporarily unavailable for a fresh transaction");
+    this.name = "WorkflowFundingReservationUnavailableError";
+  }
+}
+
 type PermitState = {
   readonly category: FraudProofCatalogueCategoryName;
   readonly policy: WorkflowRuntimeFundingPolicy | undefined;
@@ -189,6 +211,7 @@ type PermitState = {
   currentFundingOutRefs: readonly string[];
   currentCollateralOutRefs: readonly string[];
   pendingTransactionHash: string | undefined;
+  idleReleaseAuthorized: boolean;
   preparedTransaction:
     | Readonly<{ signed: TxSigned; cborHex: string }>
     | undefined;
@@ -681,7 +704,11 @@ export const assertWorkflowFundingAbandonmentHandoffJournal = (input: {
   const latest = prefix
     .map(({ event }) => event)
     .reverse()
-    .find((event) => event.kind === "submission_intent");
+    .find(
+      (event) =>
+        event.kind === "submission_intent" &&
+        event.txHash === handoff.submissionIntent.txHash,
+    );
   if (
     latest === undefined ||
     journalJsonDigest(normalizeJournalJson(latest)) !==
@@ -695,10 +722,23 @@ export const assertWorkflowFundingAbandonmentHandoffJournal = (input: {
     1 -
     [...prefix]
       .reverse()
-      .findIndex(({ event }) => event.kind === "submission_intent");
+      .findIndex(
+        ({ event }) =>
+          event.kind === "submission_intent" &&
+          event.txHash === handoff.submissionIntent.txHash,
+      );
+  const reopenedFromEnd = [...prefix]
+    .reverse()
+    .findIndex(
+      ({ event }) =>
+        event.kind === "reobserved" &&
+        event.txHash === handoff.submissionIntent.txHash,
+    );
+  const reopenedIndex =
+    reopenedFromEnd < 0 ? -1 : prefix.length - 1 - reopenedFromEnd;
   if (
     prefix
-      .slice(intentIndex + 1)
+      .slice(Math.max(intentIndex, reopenedIndex) + 1)
       .some(
         ({ event }) =>
           event.kind === "confirmed" ||
@@ -736,7 +776,8 @@ export const parseWorkflowFundingCompletionHandoff = (
     "funding completion event",
   );
   if (
-    completion.kind !== "completed" ||
+    (completion.kind !== "completed" &&
+      completion.kind !== "terminal_included") ||
     !isPlainObject(completion.terminal) ||
     typeof completion.terminalDigest !== "string" ||
     !DIGEST.test(completion.terminalDigest) ||
@@ -749,7 +790,7 @@ export const parseWorkflowFundingCompletionHandoff = (
   return Object.freeze({
     ...identity,
     completion: Object.freeze({
-      kind: "completed",
+      kind: completion.kind,
       terminal: structuredClone(
         completion.terminal,
       ) as WorkflowFundingCompletionHandoff["completion"]["terminal"],
@@ -802,6 +843,56 @@ export const reconcileWorkflowFundingSubmissionHandoff = (input: {
         "funding handoff conflicts with an existing journal action",
       );
   }
+  const latestIntent = [...observed]
+    .reverse()
+    .find(
+      (event) =>
+        event.kind === "submission_intent" &&
+        event.actionId === handoff.submissionIntent.actionId,
+    );
+  if (
+    latestIntent !== undefined &&
+    journalJsonDigest(normalizeJournalJson(latestIntent)) !==
+      journalJsonDigest(normalizeJournalJson(handoff.submissionIntent))
+  )
+    throw new Error(
+      "funding handoff was superseded by a later submission intent",
+    );
+  if (
+    observed.some(
+      (event) => event.kind === "confirmed" || event.kind === "reobserved",
+    )
+  ) {
+    const latest = [...observed]
+      .reverse()
+      .find(
+        (event) =>
+          "actionId" in event &&
+          event.actionId === handoff.submissionIntent.actionId,
+      );
+    if (latest?.kind === "reconciled" && latest.outcome === "not_found")
+      throw new Error(
+        "funding handoff cannot reopen a resolved absent attempt",
+      );
+    const cursor = [...observed].reverse().find((event) => "actionId" in event);
+    // Restoring the pending funding cursor is durable before the journal write.
+    // The selected attempt may be a confirmed ancestor or its still-pending
+    // descendant, whose journal cursor currently points at the recovered parent.
+    return Object.freeze(
+      latest?.kind === "confirmed" ||
+        (cursor !== undefined &&
+          "actionId" in cursor &&
+          cursor.actionId !== handoff.submissionIntent.actionId)
+        ? [
+            {
+              kind: "reobserved" as const,
+              actionId: handoff.submissionIntent.actionId,
+              txHash: handoff.submissionIntent.txHash,
+            },
+          ]
+        : [],
+    );
+  }
   for (const event of observed.slice(expected.length)) {
     if (
       !("actionId" in event) ||
@@ -829,6 +920,15 @@ export const assertWorkflowFundingCompletionHandoffJournal = (input: {
   const tail = input.entries
     .slice(handoff.expectedJournalSequence)
     .filter(({ event }) => event.kind !== "stalled");
+  if (handoff.completion.kind === "terminal_included") {
+    if (
+      tail[0] !== undefined &&
+      journalJsonDigest(normalizeJournalJson(tail[0].event)) !==
+        journalJsonDigest(normalizeJournalJson(handoff.completion))
+    )
+      throw new Error("funding inclusion handoff conflicts with its journal");
+    return;
+  }
   if (
     tail.length > 1 ||
     (tail[0] !== undefined &&
@@ -894,9 +994,8 @@ const parseSnapshot = (value: unknown): WorkflowFundingReservationSnapshot => {
     activeInputs.map(({ outRef }) => outRef),
     "production funding reservation active inputs",
   );
-  if (record.state === "active" && activeInputs.length === 0) {
-    throw new Error("active production funding reservation has no inputs");
-  }
+  // An active reservation may yield idle inputs after authenticated abandonment.
+  // Submission funding selection still requires sufficient reserved inputs.
   // Conflicted leases stay quarantined until canonical lineage is resolved.
   if (record.state === "released" && activeInputs.length !== 0) {
     throw new Error("released production funding reservation retains inputs");
@@ -962,21 +1061,22 @@ const exactUtxos = ({
   }
   const expected = snapshot.activeInputs.map(({ outRef }) => outRef);
   const actual = [...resolved.keys()].sort();
-  if (
-    actual.length !== expected.length ||
-    actual.some((outRef, index) => outRef !== expected[index])
-  ) {
+  if (actual.some((outRef) => !expected.includes(outRef))) {
     throw new Error(
       "production funding resolver changed the reserved input set",
     );
   }
   for (const reserved of snapshot.activeInputs) {
-    const utxo = resolved.get(reserved.outRef)!;
+    const utxo = resolved.get(reserved.outRef);
+    if (utxo === undefined) continue;
     if (utxo.address !== snapshot.walletAddress) {
       throw new Error("production funding resolver returned a foreign address");
     }
     const lovelace = utxo.assets.lovelace;
-    if (lovelace?.toString() !== reserved.lovelace) {
+    if (
+      typeof lovelace !== "bigint" ||
+      lovelace.toString() !== reserved.lovelace
+    ) {
       throw new Error("production funding resolver changed reserved lovelace");
     }
     const actualAssets = Object.entries(utxo.assets)
@@ -986,6 +1086,7 @@ const exactUtxos = ({
       actualAssets.length !== reserved.assets.length ||
       actualAssets.some(
         ([unit, quantity], index) =>
+          typeof quantity !== "bigint" ||
           unit !== reserved.assets[index]!.unit ||
           quantity.toString() !== reserved.assets[index]!.quantity,
       )
@@ -993,6 +1094,8 @@ const exactUtxos = ({
       throw new Error("production funding resolver changed reserved assets");
     }
   }
+  if (actual.length !== expected.length)
+    throw new WorkflowFundingReservationUnavailableError();
   return resolved;
 };
 
@@ -1156,6 +1259,7 @@ export const createWorkflowFundingReservationPermit = async ({
   category,
   runner,
   policy,
+  reservationPolicy = policy,
   actuationPermit,
   rollbackGeneration,
   port,
@@ -1163,6 +1267,8 @@ export const createWorkflowFundingReservationPermit = async ({
   readonly category: FraudProofCatalogueCategoryName;
   readonly runner: WorkflowAdapterRunner;
   readonly policy: WorkflowRuntimeFundingPolicy;
+  /** Existing leases retain their original identity under an additive roster correction. */
+  readonly reservationPolicy?: WorkflowRuntimeFundingPolicy;
   readonly actuationPermit: WorkflowActuationPermit;
   readonly rollbackGeneration: string;
   readonly port: WorkflowFundingReservationPort;
@@ -1174,6 +1280,36 @@ export const createWorkflowFundingReservationPermit = async ({
   });
   assertWorkflowRuntimeFundingPolicyRunner({ policy, runner, category });
   const funding = readWorkflowRuntimeFundingPolicy(policy);
+  assertWorkflowRuntimeFundingPolicyRunner({
+    policy: reservationPolicy,
+    runner,
+    category,
+  });
+  const reservedFunding = readWorkflowRuntimeFundingPolicy(reservationPolicy);
+  if (
+    computeDeploymentManifestJsonDigest({
+      ...funding,
+      contracts: [],
+      policyDigest: "",
+    }) !==
+      computeDeploymentManifestJsonDigest({
+        ...reservedFunding,
+        contracts: [],
+        policyDigest: "",
+      }) ||
+    reservedFunding.contracts.some(
+      (prior) =>
+        !funding.contracts.some(
+          (current) =>
+            current.address === prior.address &&
+            current.scriptHash === prior.scriptHash &&
+            current.role === prior.role,
+        ),
+    )
+  )
+    throw new Error(
+      "funding reservation policy is not an additive contract roster extension",
+    );
   const snapshot = parseSnapshot(await port.load());
   const maximumCollateralInputs = Number(funding.maximumCollateralInputs);
   if (
@@ -1181,7 +1317,7 @@ export const createWorkflowFundingReservationPermit = async ({
     snapshot.deploymentFingerprint !== funding.deploymentFingerprint ||
     snapshot.decisionDigest !== actuation.executionDecisionDigest ||
     snapshot.rollbackGeneration !== rollbackGeneration ||
-    snapshot.policyDigest !== funding.policyDigest ||
+    snapshot.policyDigest !== reservedFunding.policyDigest ||
     snapshot.fundingPaymentKeyHash !== funding.fundingPaymentKeyHash ||
     (snapshot.state !== "active" && snapshot.state !== "released")
   )
@@ -1237,6 +1373,7 @@ export const createWorkflowFundingReservationPermit = async ({
     currentFundingOutRefs: Object.freeze([]),
     currentCollateralOutRefs: Object.freeze([]),
     pendingTransactionHash: undefined,
+    idleReleaseAuthorized: false,
     preparedTransaction: undefined,
   });
   return permit;
@@ -1294,7 +1431,29 @@ export const beginWorkflowFundingReservationAction = async ({
     throw new Error(
       "funding abandonment outcome awaits journal acknowledgment",
     );
-  await refresh(state);
+  let staleInputs = false;
+  try {
+    await refresh(state);
+  } catch (error) {
+    if (!(error instanceof WorkflowFundingReservationUnavailableError))
+      throw error;
+    staleInputs = true;
+  }
+  if (
+    (staleInputs || state.snapshot.activeInputs.length === 0) &&
+    state.port.refreshIdle !== undefined
+  ) {
+    const refreshed = await state.port.refreshIdle({
+      expectedRevision: state.snapshot.revision,
+      releaseStaleInputs: state.idleReleaseAuthorized,
+    });
+    if (refreshed === null)
+      throw new WorkflowFundingReservationUnavailableError();
+    state.snapshot = parseStateSnapshot(state, refreshed);
+    await refresh(state);
+  } else if (staleInputs) {
+    throw new WorkflowFundingReservationUnavailableError();
+  }
   assertFundingSubmissionAuthority(state);
   if (state.snapshot.state !== "active")
     throw new Error("production funding reservation is not active");
@@ -1942,6 +2101,7 @@ export const prepareWorkflowFundingReservationTransaction = async ({
     }),
   );
   state.pendingTransactionHash = transactionHash;
+  state.idleReleaseAuthorized = false;
   state.preparedTransaction = Object.freeze({
     signed,
     cborHex: transition.signedTransactionCborHex,
@@ -2132,6 +2292,30 @@ export const confirmWorkflowFundingReservationTransaction = async (input: {
   readonly transactionHash: string;
 }): Promise<void> => await applyTransition({ ...input, outcome: "confirmed" });
 
+export const reobserveWorkflowFundingReservationTransaction = async (input: {
+  readonly journal: object;
+  readonly transactionHash: string;
+}): Promise<boolean> => {
+  const state = stateForJournal(input.journal);
+  if (state === undefined) return true;
+  state.idleReleaseAuthorized = false;
+  if (state.port.reobserve === undefined)
+    throw new Error("funding authority cannot reconcile a reobserved action");
+  const observed = await state.port.reobserve({
+    expectedRevision: state.snapshot.revision,
+    transactionHash: input.transactionHash,
+  });
+  if (observed === null) return false;
+  state.snapshot = parseStateSnapshot(state, observed);
+  state.pendingTransactionHash = input.transactionHash;
+  state.preparedTransaction = undefined;
+  state.currentActionKind = undefined;
+  state.currentActionDigest = undefined;
+  state.currentFundingOutRefs = Object.freeze([]);
+  state.currentCollateralOutRefs = Object.freeze([]);
+  return true;
+};
+
 export const abandonWorkflowFundingReservationTransaction = async (input: {
   readonly journal: object;
   readonly transactionHash: string;
@@ -2165,6 +2349,69 @@ export const abandonWorkflowFundingReservationTransaction = async (input: {
   state.pendingTransactionHash = input.transactionHash;
 };
 
+const journalHasOnlyResolvedFundingAttempts = (
+  entries: readonly FraudProofWorkflowJournalEntry[],
+): boolean => {
+  const resolved = new Map<string, boolean>();
+  for (const { event } of entries) {
+    if (event.kind === "submission_intent") resolved.set(event.txHash, false);
+    else if (
+      "txHash" in event &&
+      event.txHash !== undefined &&
+      resolved.has(event.txHash)
+    ) {
+      if (event.kind === "confirmed") resolved.set(event.txHash, true);
+      else if (event.kind === "reconciled")
+        resolved.set(event.txHash, event.outcome === "not_found");
+      else if (
+        event.kind === "reobserved" ||
+        event.kind === "submitted" ||
+        event.kind === "rebroadcast_intent" ||
+        event.kind === "submission_ambiguous"
+      )
+        resolved.set(event.txHash, false);
+    }
+  }
+  return [...resolved.values()].every(Boolean);
+};
+
+export const releaseIdleWorkflowFundingReservation = async (input: {
+  readonly journal: FraudProofWorkflowJournalStore;
+  readonly workflowId: string;
+}): Promise<void> => {
+  const state = stateForJournal(input.journal);
+  if (state?.port.releaseIdle === undefined) return;
+  const entries = await input.journal.load(input.workflowId);
+  validateFraudProofWorkflowJournal({ workflowId: input.workflowId, entries });
+  state.idleReleaseAuthorized = journalHasOnlyResolvedFundingAttempts(entries);
+  const latestIntent = [...entries]
+    .reverse()
+    .find(({ event }) => event.kind === "submission_intent")?.event;
+  if (
+    !state.idleReleaseAuthorized ||
+    latestIntent?.kind !== "submission_intent" ||
+    !entries.some(
+      ({ event }) =>
+        event.kind === "reconciled" &&
+        event.outcome === "not_found" &&
+        (workflowActuationPermitIsReconciliationOnly(state.actuationPermit) ||
+          event.txHash === latestIntent.txHash),
+    )
+  )
+    return;
+  assertWorkflowActuationPermitIdentity({
+    permit: state.actuationPermit,
+    category: state.category,
+    rollbackGeneration: state.snapshot.rollbackGeneration,
+  });
+  state.snapshot = parseStateSnapshot(
+    state,
+    await state.port.releaseIdle({
+      expectedRevision: state.snapshot.revision,
+    }),
+  );
+};
+
 export const acknowledgeWorkflowFundingAbandonment = async (input: {
   readonly journal: FraudProofWorkflowJournalStore;
   readonly handoff: WorkflowFundingAbandonmentHandoff;
@@ -2172,10 +2419,11 @@ export const acknowledgeWorkflowFundingAbandonment = async (input: {
   const state = stateForJournal(input.journal);
   if (state === undefined) return;
   const handoff = parseWorkflowFundingAbandonmentHandoff(input.handoff);
+  const entries = await input.journal.load(handoff.workflowId);
   if (
     !assertWorkflowFundingAbandonmentHandoffJournal({
       handoff,
-      entries: await input.journal.load(handoff.workflowId),
+      entries,
     })
   )
     throw new Error(
@@ -2252,54 +2500,62 @@ export const restrictWorkflowFundingSigner = ({
   ) {
     throw new Error("production signer differs from funding reservation");
   }
+  const assertCurrentAction = (): void => {
+    assertFundingSubmissionAuthority(state);
+    if (state.currentActionKind === undefined)
+      throw new Error("production signer used before a reserved action began");
+  };
   return Object.freeze({
     ...signer,
     selectWallet: (lucid: LucidEvolution): void => {
-      assertFundingSubmissionAuthority(state);
-      if (state.currentActionKind === undefined) {
-        throw new Error(
-          "production signer used before a reserved action began",
-        );
-      }
+      // Installing the API is safe before a resumed action has begun; every
+      // funding read, transaction signature and submission checks its authority.
       signer.selectWallet(lucid);
       const original = lucid.wallet();
-      const funding = state.currentFundingOutRefs.map(
-        (outRef) => state.resolvedInputs.get(outRef)!,
-      );
-      const collateral = state.currentCollateralOutRefs.map(
-        (outRef) => state.resolvedInputs.get(outRef)!,
-      );
+      // Builders may retain this Lucid wallet across prerequisite transactions.
+      // Read the action refreshed by begin(), rather than the preceding action's
+      // candidates, which may already have been spent by a publication.
+      const inputs = (role: "funding" | "collateral"): readonly UTxO[] => {
+        assertCurrentAction();
+        const outRefs =
+          role === "funding"
+            ? state.currentFundingOutRefs
+            : state.currentCollateralOutRefs;
+        return outRefs.map((outRef) => state.resolvedInputs.get(outRef)!);
+      };
       const addressHex = CML.Address.from_bech32(signer.address).to_hex();
       const api: WalletApi = Object.freeze({
         getNetworkId: async () =>
           CML.Address.from_bech32(signer.address).to_raw_bytes()[0]! & 0x0f,
         getUtxos: async () =>
-          funding.map((utxo) => utxoToCore(utxo).to_cbor_hex()),
-        getBalance: async () => balanceCbor(funding),
+          inputs("funding").map((utxo) => utxoToCore(utxo).to_cbor_hex()),
+        getBalance: async () => balanceCbor(inputs("funding")),
         getUsedAddresses: async () => [addressHex],
         getUnusedAddresses: async () => [],
         getChangeAddress: async () => addressHex,
         getRewardAddresses: async () => [],
         signTx: async (tx) => {
-          assertFundingSubmissionAuthority(state);
+          assertCurrentAction();
           return (
             await original.signTx(CML.Transaction.from_cbor_hex(tx))
           ).to_cbor_hex();
         },
-        signData: async (address, payload) =>
-          await original.signMessage(
+        signData: async (address, payload) => {
+          assertCurrentAction();
+          return await original.signMessage(
             CML.Address.from_hex(address).to_bech32(),
             payload,
-          ),
+          );
+        },
         submitTx: async (tx) => {
-          assertFundingSubmissionAuthority(state);
+          assertCurrentAction();
           return await original.submitTx(tx);
         },
         getCollateral: async () =>
-          collateral.map((utxo) => utxoToCore(utxo).to_cbor_hex()),
+          inputs("collateral").map((utxo) => utxoToCore(utxo).to_cbor_hex()),
         experimental: Object.freeze({
           getCollateral: async () =>
-            collateral.map((utxo) => utxoToCore(utxo).to_cbor_hex()),
+            inputs("collateral").map((utxo) => utxoToCore(utxo).to_cbor_hex()),
           on: () => undefined,
           off: () => undefined,
         }),
@@ -2379,6 +2635,7 @@ export const unsafeCreateWorkflowFundingReservationPermitForTest = ({
     actuationPermit,
     port,
     maximumCollateralInputs: 0,
+    idleReleaseAuthorized: false,
     snapshot,
     resolvedInputs: new Map(),
     boundJournal: undefined,

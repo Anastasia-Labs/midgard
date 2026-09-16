@@ -41,6 +41,8 @@ import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scr
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
+  workflowActuationDecisionDigest,
+  workflowJournalIsReconciliationOnly,
 } from "../workflow/actuation-permit.js";
 import {
   WORKFLOW_ADAPTER_RUNNER,
@@ -54,6 +56,7 @@ import {
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
 import {
+  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
   type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
@@ -284,6 +287,8 @@ export const loadManifestBoundMintItemNonCanonicalConfig = async (
 
 export type MintItemNonCanonicalStage = Readonly<{
   fraudulentBlockOutRef: string;
+  nextRemovalOutRef?: string;
+  fraudProofOutRef?: string;
   threadOutRef?: string;
   threadUtxo?: UTxO;
   threadToken?: Readonly<{ unit: string; fraudulentHeaderHash: string }>;
@@ -461,7 +466,11 @@ export const createMintItemNonCanonicalRawL1StageResolver =
           "mintItemNonCanonical removal requires raw-L1 proof token",
         );
       }
-      return { fraudulentBlockOutRef: stage.stateQueueBlockOutRef };
+      return {
+        fraudulentBlockOutRef: stage.stateQueueBlockOutRef,
+        nextRemovalOutRef: stage.nextRemovalOutRef,
+        fraudProofOutRef: stage.fraudProofOutRef,
+      };
     }
     const expectedStep =
       action === "submitStep01"
@@ -569,7 +578,11 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
               : action === "submitStep04"
                 ? (["step04", "proven"] as const)
                 : (["proven", "removed"] as const);
-    if (action !== "submitStep02" && action !== "submitStep03")
+    if (
+      action !== "submitStep02" &&
+      action !== "submitStep03" &&
+      action !== "removeDescendants"
+    )
       await centralJournal?.begin(
         action,
         familyIdentity,
@@ -821,6 +834,30 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
         outputReference: null,
       };
     }
+    const removalIdentity = (resolved: MintItemNonCanonicalStage) => ({
+      nextRemovalOutRef: required(
+        resolved.nextRemovalOutRef,
+        "authenticated next removal out-ref",
+      ),
+      fraudProofOutRef: required(
+        resolved.fraudProofOutRef,
+        "authenticated fraud proof out-ref",
+      ),
+    });
+    const removalTargetStage = (
+      resolved: MintItemNonCanonicalStage,
+    ): MintItemStage =>
+      resolved.nextRemovalOutRef === resolved.fraudulentBlockOutRef
+        ? "removed"
+        : "proven";
+    await centralJournal?.begin(
+      action,
+      familyIdentity,
+      "proven",
+      removalTargetStage(stage),
+      removalIdentity(stage),
+    );
+    let removalsPrepared = 0;
     const result = await submitRemoveFraudulentBlock({
       lucid: config.lucid,
       blueprint: config.binding.blueprint,
@@ -840,12 +877,27 @@ export const createManifestBoundMintItemNonCanonicalSubmission = ({
       awaitConfirmation: true,
       validFrom: stage.validFrom,
       validTo: stage.validTo,
-      preSubmitBoundary: centralJournal?.boundary(
-        action,
-        familyIdentity,
-        transition[0],
-        transition[1],
-      ),
+      preSubmitBoundary:
+        centralJournal === undefined
+          ? undefined
+          : async (transaction) => {
+              // The removal builder may consume several descendants. Each physical
+              // transaction gets its own authenticated action and durable intent.
+              const current =
+                removalsPrepared === 0
+                  ? stage
+                  : await resolveStage({ action, evidence });
+              if (removalsPrepared > 0)
+                await centralJournal.reconcile("proven");
+              await centralJournal.boundary(
+                action,
+                familyIdentity,
+                "proven",
+                removalTargetStage(current),
+                removalIdentity(current),
+              )(transaction);
+              removalsPrepared += 1;
+            },
     });
     return {
       stage: "removed" as const,
@@ -1060,8 +1112,39 @@ export const executeManifestBoundMintItemNonCanonicalWorkflow = async ({
   readonly workflow: ManifestBoundMintItemNonCanonicalWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<MintItemStage> => {
+}) => {
   const headerHash = workflow.binding.definition.headerHash;
+  const centralJournal = createMintItemNonCanonicalCentralJournalAdapter({
+    store: journal,
+    deploymentFingerprint: workflow.binding.deploymentFingerprint,
+    headerHash,
+    // Fresh observation authority retains the original durable execution.
+    decisionDigest:
+      workflowActuationDecisionDigest(journal) ?? workflow.decisionDigest,
+    transactionConfirmed: async (txHash) =>
+      await workflow.l1.transactionConfirmed({ headerHash, txHash }),
+  });
+  const finish = async (
+    terminal: Parameters<typeof centralJournal.finish>[0]["candidate"],
+  ) => {
+    await centralJournal.reconcile("removed");
+    return await centralJournal.finish({
+      candidate: terminal,
+      releaseFinality: workflow.binding.releaseFinality,
+      verifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(
+        workflow.l1,
+      ),
+    });
+  };
+  const observed = await workflow.l1.observe({ headerHash });
+  if (observed.stage.kind === "removed")
+    return await finish(observed.stage.terminal);
+  if (workflowJournalIsReconciliationOnly(journal))
+    return {
+      kind: "pending" as const,
+      resumeOnObservation: true,
+      reason: "existing mint-item correction is not yet removed",
+    };
   const canonical = await fetchCanonicalBlockEvidence({
     observation: await observeFraudProofWorkflowHeader(workflow.l1, {
       headerHash,
@@ -1073,14 +1156,6 @@ export const executeManifestBoundMintItemNonCanonicalWorkflow = async ({
   const source = await deriveMintItemNonCanonicalAuthenticatedSource({
     block: canonical,
     evidence,
-  });
-  const centralJournal = createMintItemNonCanonicalCentralJournalAdapter({
-    store: journal,
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    headerHash,
-    decisionDigest: workflow.decisionDigest,
-    transactionConfirmed: async (txHash) =>
-      await workflow.l1.transactionConfirmed({ headerHash, txHash }),
   });
   const runtime = createManifestBoundMintItemNonCanonicalRuntime({
     config: workflow.config,
@@ -1096,7 +1171,14 @@ export const executeManifestBoundMintItemNonCanonicalWorkflow = async ({
     stateQueueMutationLeaseCoordinator:
       workflow.stateQueueMutationLeaseCoordinator,
   });
-  return await runtime.runOrResume(evidence);
+  const result = await runtime.runOrResume(evidence);
+  if (result !== "removed") return result;
+  const removed = await workflow.l1.observe({ headerHash });
+  if (removed.stage.kind !== "removed")
+    throw new Error(
+      "mintItemNonCanonical removal changed before terminal verification",
+    );
+  return await finish(removed.stage.terminal);
 };
 
 export type LoadedMintItemNonCanonicalWorkflow = Readonly<{

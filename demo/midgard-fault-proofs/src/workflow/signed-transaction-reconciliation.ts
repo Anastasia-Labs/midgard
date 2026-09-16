@@ -15,6 +15,7 @@ export type SignedTransactionRecoveryObservation = SignedWorkflowTransaction &
       | "pending"
       | "rebroadcast"
       | "expired"
+      | "invalidated"
       | "conflict"
       | "unknown";
     canonicalPoint: FraudProofRawL1Point;
@@ -71,7 +72,8 @@ export const inspectSignedWorkflowTransaction = (
   };
 };
 
-/** The family state machine calls this only while its exact predecessor remains current. */
+/** The family calls this while its computation predecessor remains current;
+ * authenticated input replacement can make an older signed body impossible. */
 export const reconcileSignedWorkflowTransaction = async ({
   transactionHash,
   signedTransactionCborHex,
@@ -121,7 +123,8 @@ export const reconcileSignedWorkflowTransaction = async ({
     throw new Error(
       "Signed recovery observation substituted the durable transaction",
     );
-  if (observed.status === "expired") return { kind: "not_found" };
+  if (observed.status === "expired" || observed.status === "invalidated")
+    return { kind: "not_found" };
   if (observed.status === "conflict")
     return { kind: "conflict", reason: observed.reason };
   if (observed.status === "unknown")
@@ -139,18 +142,27 @@ export const reconcileSignedWorkflowTransaction = async ({
     rebroadcast !== undefined &&
     authorizeResubmission !== undefined
   ) {
+    let authorized = false;
+    let submitted: string;
     try {
-      const submitted = await rebroadcast({ ...input, authorizeResubmission });
-      if (submitted !== transactionHash)
-        throw new Error("Rebroadcast changed recorded transaction hash");
+      submitted = await rebroadcast({
+        ...input,
+        authorizeResubmission: async (signed) => {
+          await authorizeResubmission(signed);
+          authorized = true;
+        },
+      });
     } catch (cause) {
       // A rejected authorization submits nothing. An ambiguous acknowledgement
       // retains the same signed intent for the next canonical reconciliation.
+      if (authorized) return pending;
       return {
         kind: "unknown",
         reason: `Recorded transaction rebroadcast remains unresolved: ${String(cause)}`,
       };
     }
+    if (submitted !== transactionHash)
+      throw new Error("Rebroadcast changed recorded transaction hash");
   }
   return pending;
 };

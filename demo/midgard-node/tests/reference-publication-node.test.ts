@@ -88,7 +88,7 @@ it.skipIf(runDirectory === undefined)(
         throw new Error("Probe publisher needs confirmed funding");
       prepared = {
         nonce: { txHash: nonce.txHash, outputIndex: nonce.outputIndex },
-        authPolicy: SDK.createReferenceScriptAuthPolicy(
+        authPolicy: await SDK.createReferenceScriptAuthPolicy(
           lucid,
           Date.now(),
           probe === "expired" ? 8_137 : 15 * 60_000 + 137,

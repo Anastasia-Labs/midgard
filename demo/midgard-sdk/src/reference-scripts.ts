@@ -5,6 +5,7 @@ import {
   coreToTxOutput,
   Data,
   fromText,
+  getAddressDetails,
   type LucidEvolution,
   mintingPolicyToId,
   type Script,
@@ -821,7 +822,7 @@ export type ReferenceScriptAuthPolicyDeploymentInfo = {
   };
   readonly tokenNames: Readonly<Record<ReferenceScriptAuthTokenTarget, string>>;
   readonly postTimelockAudit: {
-    readonly required: true;
+    readonly required: boolean;
     readonly rule: string;
   };
 };
@@ -918,16 +919,31 @@ export const referenceScriptAuthUnit = (
   targetName: string,
 ): string => toUnit(policyId, referenceScriptAuthTokenName(targetName));
 
-export const createReferenceScriptAuthPolicy = (
+export const createReferenceScriptAuthPolicy = async (
   lucid: LucidEvolution,
   nowMs: number = Date.now(),
   timelockDurationMs: number = REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
-): ReferenceScriptAuthPolicy => {
+): Promise<ReferenceScriptAuthPolicy> => {
+  const { paymentCredential } = getAddressDetails(
+    await lucid.wallet().address(),
+  );
+  if (paymentCredential?.type !== "Key") {
+    throw new Error(
+      "Reference-script publisher must have a payment key credential",
+    );
+  }
   const expiresAtUnixTime = nowMs + timelockDurationMs;
   const expiresAtSlot = lucid.unixTimeToSlot(expiresAtUnixTime);
-  const nativeScript = CML.NativeScript.new_script_invalid_hereafter(
-    BigInt(expiresAtSlot),
+  const conditions = CML.NativeScriptList.new();
+  conditions.add(
+    CML.NativeScript.new_script_pubkey(
+      CML.Ed25519KeyHash.from_hex(paymentCredential.hash),
+    ),
   );
+  conditions.add(
+    CML.NativeScript.new_script_invalid_hereafter(BigInt(expiresAtSlot)),
+  );
+  const nativeScript = CML.NativeScript.new_script_all(conditions);
   const mintingScript: Script = {
     type: "Native",
     script: nativeScript.to_cbor_hex(),
@@ -943,7 +959,10 @@ export const createReferenceScriptAuthPolicy = (
 };
 
 export const referenceScriptAuthPolicyFromDeploymentInfo = (
-  deploymentInfo: ReferenceScriptAuthPolicyDeploymentInfo,
+  deploymentInfo: Pick<
+    ReferenceScriptAuthPolicyDeploymentInfo,
+    "policyId" | "nativeScript"
+  >,
 ): ReferenceScriptAuthPolicy => ({
   mintingScriptCBOR: deploymentInfo.nativeScript.cborHex,
   mintingScript: {
@@ -1028,6 +1047,15 @@ export const referenceScriptAuthPolicyDeploymentInfo = (
   if (policy.mintingScript.type !== "Native") {
     throw new Error("Reference-script auth policy must be a native script");
   }
+  const nativeScript = CML.NativeScript.from_cbor_hex(
+    policy.mintingScript.script,
+  );
+  const conditions = nativeScript.as_script_all()?.native_scripts();
+  const publisherAuthorized =
+    conditions?.len() === 2 &&
+    conditions.get(0).as_script_pubkey() !== undefined &&
+    conditions.get(1).as_script_invalid_hereafter()?.after() ===
+      BigInt(policy.expiresAtSlot);
   return {
     policyId: policy.policyId,
     nativeScript: {
@@ -1039,8 +1067,10 @@ export const referenceScriptAuthPolicyDeploymentInfo = (
     },
     tokenNames: REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
     postTimelockAudit: {
-      required: true,
-      rule: "After the timelock expires, verify there is exactly one role token under this policy for every listed token name before treating the deployment as production-ready.",
+      required: !publisherAuthorized,
+      rule: publisherAuthorized
+        ? "After publication confirms, verify exactly one role token per listed token name and its expected reference script. The publisher payment key is trusted not to authorize additional minting until policy expiry."
+        : "After the timelock expires, verify there is exactly one role token under this policy for every listed token name before treating the deployment as production-ready.",
     },
   };
 };

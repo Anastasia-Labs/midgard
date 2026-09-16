@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { decodeMidgardNativeScript } from "@al-ft/midgard-core/codec/native-script";
 import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_CONSENSUS_PROFILE_DIGEST,
@@ -196,6 +197,15 @@ export const buildDaDeploymentFixture = async (
   const referenceScriptAuthPolicyId =
     referenceScriptAuthContract.scriptHash as string;
   const nativeScriptCbor = referenceScriptAuthScript.cborHex;
+  const { script: nativeScript } = decodeMidgardNativeScript(
+    Buffer.from(nativeScriptCbor, "hex"),
+  );
+  if (nativeScript.type !== "before") {
+    throw new Error(
+      "DA codec fixture requires a historical time-only auth policy",
+    );
+  }
+  const expiresAtSlot = Number(nativeScript.slot);
   contracts.fraudProofCatalogueMint = {
     ...contracts.fraudProofCatalogueMint,
     fraudProofCatalogue: await buildCanonicalFraudProofCatalogueFixture({
@@ -375,8 +385,8 @@ export const buildDaDeploymentFixture = async (
       nativeScript: {
         type: "Native",
         cborHex: nativeScriptCbor,
-        expiresAtSlot: 1,
-        expiresAtUnixTime: 1,
+        expiresAtSlot,
+        expiresAtUnixTime: expiresAtSlot,
         timelockDurationMs: 1,
       },
       tokenNames: DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,

@@ -23,7 +23,11 @@ import {
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   referenceScriptAuthUnit,
 } from "@al-ft/midgard-sdk";
-import { validatorToScriptHash } from "@lucid-evolution/lucid";
+import {
+  credentialToAddress,
+  scriptFromNative,
+  validatorToScriptHash,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -43,7 +47,7 @@ import {
 import { buildFraudProofCatalogueDeploymentInfo } from "../src/transactions/initialization.js";
 import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge.js";
 
-const NATIVE_SCRIPT_CBOR = `8200581c${"00".repeat(28)}`;
+const NATIVE_SCRIPT_CBOR = "820501";
 const NATIVE_SCRIPT_HASH = validatorToScriptHash({
   type: "Native",
   script: NATIVE_SCRIPT_CBOR,
@@ -299,6 +303,67 @@ describe("V1 deployment manifest", () => {
     expect(parseDeploymentManifestValue(canonicalManifest())).toEqual(
       canonicalManifest(),
     );
+  });
+
+  it("accepts publisher-signed authority with a distinct script reference recipient", () => {
+    const identity = canonicalIdentity();
+    const publisherKeyHash = "ab".repeat(28);
+    const policy = scriptFromNative({
+      type: "all",
+      scripts: [
+        { type: "sig", keyHash: publisherKeyHash },
+        {
+          type: "before",
+          slot: identity.referenceScriptAuthPolicy.nativeScript.expiresAtSlot,
+        },
+      ],
+    });
+    const policyId = validatorToScriptHash(policy);
+    const referenceScriptDeployAddress = credentialToAddress("Preview", {
+      type: "Script",
+      hash: "cd".repeat(28),
+    });
+    const manifest = withId({
+      ...identity,
+      referenceScriptDeployAddress,
+      referenceScriptAuthPolicy: {
+        ...identity.referenceScriptAuthPolicy,
+        policyId,
+        nativeScript: {
+          ...identity.referenceScriptAuthPolicy.nativeScript,
+          cborHex: policy.script,
+        },
+        postTimelockAudit: {
+          required: false,
+          rule: "Audit after publisher-authorized publication completes.",
+        },
+      },
+      contracts: {
+        ...identity.contracts,
+        referenceScriptAuthMint: {
+          ...identity.contracts.referenceScriptAuthMint,
+          contract: { type: "Native", cborHex: policy.script },
+          scriptHash: policyId,
+        },
+      },
+      referenceScripts: Object.fromEntries(
+        Object.entries(identity.referenceScripts).map(([role, reference]) => [
+          role,
+          {
+            ...reference,
+            scriptHash:
+              role === "reference-script-auth minting"
+                ? policyId
+                : reference.scriptHash,
+            roleUnit: referenceScriptAuthUnit(
+              policyId,
+              role as keyof typeof REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
+            ),
+          },
+        ]),
+      ),
+    });
+    expect(parseDeploymentManifestValue(manifest)).toEqual(manifest);
   });
 
   it("rejects finalization before availability reward registration completes", () => {

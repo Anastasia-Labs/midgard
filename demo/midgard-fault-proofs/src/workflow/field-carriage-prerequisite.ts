@@ -38,6 +38,7 @@ import {
   fieldPreimageCertificateAddress,
 } from "../field-opening.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import { WorkflowActionChangedError } from "./action-changed.js";
 import type {
   FraudProofWorkflowJournalEntry,
   JournalJsonObject,
@@ -59,6 +60,10 @@ import {
   FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
   type FraudProofAuthenticatedPublicationObserver,
 } from "./raw-l1-publication-observation.js";
+import {
+  reconcileSignedWorkflowTransaction,
+  type SignedWorkflowTransaction,
+} from "./signed-transaction-reconciliation.js";
 import {
   bindWorkflowPreflightTransaction,
   captureLocallyEvaluatedTransaction,
@@ -198,6 +203,10 @@ export interface FieldCarriagePrerequisitePort<
     readonly artifact: JournalJsonObject;
     readonly txHash?: string;
     readonly durableRecovery?: JournalJsonObject;
+    readonly signedTransactionCborHex?: string;
+    readonly authorizeResubmission?: (
+      input: SignedWorkflowTransaction,
+    ) => Promise<void>;
   }): Promise<FraudProofWorkflowReconcileResult>;
 }
 
@@ -750,7 +759,9 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     address,
     datumCbor,
     unit,
+    utxos,
   }: {
+    readonly utxos: readonly UTxO[];
     readonly headerHash: string;
     readonly kind: "field_publication" | "field_certificate";
     readonly address: string;
@@ -760,7 +771,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     readonly kind: "absent" | "pending" | "confirmed";
     readonly utxo?: UTxO;
   }> => {
-    const matches = (await lucid.utxosAt(address))
+    const matches = utxos
       .filter(
         (utxo) =>
           utxo.datum === datumCbor &&
@@ -806,10 +817,12 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     if (required === null || required.planned.plan.tier === "Inline") {
       return { kind: "not_required" as const };
     }
+    const publicationUtxos = await lucid.utxosAt(signer.address);
     for (const [index, datumCbor] of required.publicationDatums.entries()) {
       const observed = await candidate({
         headerHash,
         kind: "field_publication",
+        utxos: publicationUtxos,
         address: signer.address,
         datumCbor,
         unit: null,
@@ -828,7 +841,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       if (observed.kind === "pending") {
         return {
           kind: "pending" as const,
-          reason: `${category} field publication ${index.toString()} is not release-final`,
+          reason: `${category} field publication ${index.toString()} is not authenticated on the current chain`,
         };
       }
     }
@@ -838,6 +851,13 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     const certificate = await candidate({
       headerHash,
       kind: "field_certificate",
+      utxos: await lucid.utxosAt(
+        fieldPreimageCertificateAddress({
+          network,
+          certificatePolicyId:
+            certifiedRequirement(required).certificate.policyId,
+        }),
+      ),
       address: fieldPreimageCertificateAddress({
         network,
         certificatePolicyId:
@@ -860,7 +880,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       ? { kind: "satisfied" as const }
       : {
           kind: "pending" as const,
-          reason: `${category} field certificate is not release-final`,
+          reason: `${category} field certificate is not authenticated on the current chain`,
         };
   };
   const exactAction = async ({
@@ -970,11 +990,13 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
           requirement: required,
         });
       }
+      const publicationUtxos = await lucid.utxosAt(signer.address);
       const resolved: UTxO[] = [];
       for (const datumCbor of required.publicationDatums) {
         const observed = await candidate({
           headerHash,
           kind: "field_publication",
+          utxos: publicationUtxos,
           address: signer.address,
           datumCbor,
           unit: null,
@@ -995,6 +1017,13 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       const observed = await candidate({
         headerHash,
         kind: "field_certificate",
+        utxos: await lucid.utxosAt(
+          fieldPreimageCertificateAddress({
+            network,
+            certificatePolicyId:
+              certifiedRequirement(required).certificate.policyId,
+          }),
+        ),
         address: fieldPreimageCertificateAddress({
           network,
           certificatePolicyId:
@@ -1052,11 +1081,13 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
           }),
         };
       }
+      const publicationUtxos = await lucid.utxosAt(signer.address);
       const chunkUtxos: UTxO[] = [];
       for (const datumCbor of parsed.requirement.publicationDatums) {
         const observed = await candidate({
           headerHash,
           kind: "field_publication",
+          utxos: publicationUtxos,
           address: signer.address,
           datumCbor,
           unit: null,
@@ -1114,7 +1145,14 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
         }),
       };
     },
-    reconcile: async ({ headerHash, action, txHash, durableRecovery }) => {
+    reconcile: async ({
+      headerHash,
+      action,
+      txHash,
+      durableRecovery,
+      signedTransactionCborHex,
+      authorizeResubmission,
+    }) => {
       if (txHash === undefined || !TX_HASH.test(txHash))
         return {
           kind: "conflict",
@@ -1160,7 +1198,16 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       }
       // A known submitted hash can be absent until the release-final cursor
       // catches up. Keep its journaled output and funding reservation pending.
-      return { kind: "pending", txHash };
+      return signedTransactionCborHex === undefined ||
+        publications.observeSignedTransaction === undefined
+        ? { kind: "pending", txHash }
+        : reconcileSignedWorkflowTransaction({
+            transactionHash: txHash,
+            signedTransactionCborHex,
+            observe: publications.observeSignedTransaction,
+            rebroadcast: publications.rebroadcastSignedTransaction,
+            authorizeResubmission,
+          });
     },
   };
   return Object.freeze(port);
@@ -1247,7 +1294,7 @@ export const withFieldCarriagePrerequisite = <
           entries: context.entries,
         });
         if (inspection.kind === "required" || inspection.kind === "pending") {
-          throw new Error(
+          throw new WorkflowActionChangedError(
             `${category} proof step cannot bypass authenticated field carriage`,
           );
         }
@@ -1258,7 +1305,9 @@ export const withFieldCarriagePrerequisite = <
       }
       const observed = await base.observe(context);
       if (observed.kind !== "action_required") {
-        throw new Error(`${category} field prerequisite has no base action`);
+        throw new WorkflowActionChangedError(
+          `${category} field prerequisite has no base action`,
+        );
       }
       const inspection = await prerequisite.inspect({
         headerHash: context.identity.target.headerHash,
@@ -1270,7 +1319,7 @@ export const withFieldCarriagePrerequisite = <
         inspection.kind !== "required" ||
         !sameJson(inspection.action, context.action)
       ) {
-        throw new Error(
+        throw new WorkflowActionChangedError(
           `${category} field prerequisite differs from current requirement`,
         );
       }
@@ -1351,6 +1400,12 @@ export const withFieldCarriagePrerequisite = <
       }
       return await prerequisite.reconcile({
         headerHash: context.identity.target.headerHash,
+        ...(context.signedTransactionCborHex === undefined
+          ? {}
+          : { signedTransactionCborHex: context.signedTransactionCborHex }),
+        ...(context.authorizeResubmission === undefined
+          ? {}
+          : { authorizeResubmission: context.authorizeResubmission }),
         action: context.action,
         artifact: context.artifact,
         ...(context.txHash === undefined ? {} : { txHash: context.txHash }),

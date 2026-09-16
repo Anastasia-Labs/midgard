@@ -1,422 +1,63 @@
 import {
+  acceptedVerdictSubject,
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   castConfirmedStateToData,
-  castStateQueueNodeToData,
   encodeLinkedListNodeView,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
+  FraudProofComputationThreadStepDatum,
   FraudProofTokenDatum,
-  hashBlockHeader,
   makeGenesisConfirmedState,
-  NO_DA_ATTESTATION,
+  RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
 } from "@al-ft/midgard-sdk";
-import {
-  CML,
-  credentialToAddress,
-  Data,
-  keyHashToCredential,
-  scriptHashToCredential,
-  toUnit,
-} from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { CML, Data, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  DISTINCT_ASSET_ACCUMULATION_STEP_DATUM_SCHEMAS,
+  DistinctAssetStep02DatumSchema,
+  DistinctAssetStep03DatumSchema,
+  DistinctAssetStep04DatumSchema,
+  DistinctAssetStep05DatumSchema,
+  DistinctAssetStep06DatumSchema,
+} from "../src/distinct-asset-accumulation-limit/schemas.js";
+import {
   computeFraudProofRawL1PointId,
-  computeFraudProofRawL1RollbackCursor,
-  computeFraudProofReleaseEconomicsPolicyDigest,
+  computeFraudProofWorkflowId,
   deriveAuthenticatedStateQueueHeaderObservationFromRawL1,
+  deriveFraudProofRawL1CompletedTerminal,
   deriveFraudProofRawL1FamilyStage,
   deriveRetainedStateQueueHeaderObservationFromRawL1,
-  FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
-  FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
+  FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofFamilyL1ObservationPort,
   type FraudProofRawL1FamilyDefinition,
   type FraudProofRawL1Snapshot,
   type FraudProofRawL1Utxo,
+  type FraudProofWorkflowJournalEntry,
+  type FraudProofWorkflowTerminal,
+  journalJsonDigest,
   observeFraudProofWorkflowHeader,
   StateQueueHeaderNotLiveError,
-  type VerifiedFraudProofReleaseEconomicsPolicy,
+  verifyCompletedFraudProofWorkflow,
 } from "../src/workflow/index.js";
-import { makeHeader } from "./support/emulator/header-fixtures.js";
-
-const hash32 = (byte: string): string => byte.repeat(32);
-const policy = (byte: string): string => byte.repeat(28);
-const OPERATOR = policy("11");
-const PROVER = policy("12");
-const DEPLOYMENT = hash32("13");
-const RELEASE = hash32("14");
-const FINALITY = hash32("15");
-const SOURCE = "local-kupmios-family-test";
-
-const economicsPolicy = {
-  profile: "bounded-acceptance-v1",
-  requiredBondLovelace: "900000000",
-  slashingPenaltyLovelace: "500000000",
-  fraudProverRewardLovelace: "400000000",
-  inactivitySlashingPenaltyLovelace: "100000000",
-  proverCollateralFloorLovelace: "5000000",
-} as const;
-
-const releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy = {
-  schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
-  deploymentIdentityDigest: DEPLOYMENT,
-  blueprintHash: RELEASE,
-  policyDigest: computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
-  policy: economicsPolicy,
-};
-
-const scriptAddress = (byte: string): string =>
-  credentialToAddress("Preview", scriptHashToCredential(policy(byte)));
-
-const value = (assets: Readonly<Record<string, bigint>>): CML.Value => {
-  const multiasset = CML.MultiAsset.new();
-  for (const [unit, quantity] of Object.entries(assets)) {
-    if (unit === "lovelace") continue;
-    multiasset.set(
-      CML.ScriptHash.from_hex(unit.slice(0, 56)),
-      CML.AssetName.from_hex(unit.slice(56)),
-      quantity,
-    );
-  }
-  return CML.Value.new(assets.lovelace ?? 0n, multiasset);
-};
-
-const output = ({
-  address,
-  assets,
-  datum,
-}: {
-  readonly address: string;
-  readonly assets: Readonly<Record<string, bigint>>;
-  readonly datum?: string;
-}): CML.TransactionOutput =>
-  CML.TransactionOutput.new(
-    CML.Address.from_bech32(address),
-    value(assets),
-    datum === undefined
-      ? undefined
-      : CML.DatumOption.new_datum(CML.PlutusData.from_cbor_hex(datum)),
-  );
-
-const raw = (
-  outRef: string,
-  transactionOutput: CML.TransactionOutput,
-): FraudProofRawL1Utxo => ({
-  outRef,
-  outputCbor: transactionOutput.to_canonical_cbor_hex(),
-  datumCbor:
-    transactionOutput.datum()?.as_datum()?.to_canonical_cbor_hex() ?? null,
-  referenceScriptCbor: null,
-});
-
-const input = (outRef: string): CML.TransactionInput => {
-  const [txHash, index] = outRef.split("#");
-  return CML.TransactionInput.new(
-    CML.TransactionHash.from_hex(txHash!),
-    BigInt(index!),
-  );
-};
-
-const fixture = async ({
-  descendant = false,
-  partial = false,
-  duplicateReward = false,
-} = {}) => {
-  const header = makeHeader(OPERATOR, Date.now());
-  const headerHash = await Effect.runPromise(hashBlockHeader(header));
-  const statePolicy = policy("21");
-  const threadPolicy = policy("22");
-  const proofPolicy = policy("23");
-  const activePolicy = policy("24");
-  const retiredPolicy = policy("25");
-  const stateAddress = scriptAddress("31");
-  const proofAddress = scriptAddress("32");
-  const activeAddress = scriptAddress("33");
-  const retiredAddress = scriptAddress("34");
-  const stateUnit = toUnit(
-    statePolicy,
-    `${STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${headerHash}`,
-  );
-  const rootUnit = toUnit(statePolicy, STATE_QUEUE_ROOT_ASSET_NAME);
-  const assetName = `${FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.doubleSpend}${headerHash}`;
-  const threadUnit = toUnit(threadPolicy, assetName);
-  const proofUnit = toUnit(proofPolicy, assetName);
-  const activeUnit = toUnit(
-    activePolicy,
-    `${ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX}${OPERATOR}`,
-  );
-  const targetDatum = encodeLinkedListNodeView({
-    key: { Key: { key: headerHash } },
-    next: "Empty",
-    data: castStateQueueNodeToData({
-      header,
-      da_attestation: NO_DA_ATTESTATION,
-    }) as never,
-  });
-  const rootDatum = encodeLinkedListNodeView({
-    key: "Empty",
-    next: "Empty",
-    data: castConfirmedStateToData(makeGenesisConfirmedState(0n)) as never,
-  });
-  const proofDatum = Data.to({ fraud_prover: PROVER }, FraudProofTokenDatum);
-  const targetOutRef = `${hash32("41")}#0`;
-  const bondOutRef = `${hash32("42")}#0`;
-  const proofOutRef = `${hash32("43")}#0`;
-  const target = raw(
-    targetOutRef,
-    output({
-      address: stateAddress,
-      assets: { lovelace: 3_000_000n, [stateUnit]: 1n },
-      datum: targetDatum,
-    }),
-  );
-  const bond = raw(
-    bondOutRef,
-    output({
-      address: activeAddress,
-      assets: {
-        lovelace: partial ? 800_000_000n : 900_000_000n,
-        [activeUnit]: 1n,
-      },
-      datum: Data.to("" as never, Data.Bytes()),
-    }),
-  );
-  const proof = raw(
-    proofOutRef,
-    output({
-      address: proofAddress,
-      assets: { lovelace: 3_000_000n, [proofUnit]: 1n },
-      datum: proofDatum,
-    }),
-  );
-  const rewardAddress = credentialToAddress(
-    "Preview",
-    keyHashToCredential(PROVER),
-  );
-  const slashOutputs = CML.TransactionOutputList.new();
-  slashOutputs.add(
-    output({
-      address: stateAddress,
-      assets: descendant
-        ? { lovelace: 3_000_000n, [stateUnit]: 1n }
-        : { lovelace: 3_000_000n, [rootUnit]: 1n },
-      datum: descendant ? targetDatum : rootDatum,
-    }),
-  );
-  if (duplicateReward) {
-    slashOutputs.add(
-      output({
-        address: rewardAddress,
-        assets: { lovelace: 400_000_000n },
-      }),
-    );
-  }
-  slashOutputs.add(
-    output({
-      address: rewardAddress,
-      assets: { lovelace: 400_000_000n },
-    }),
-  );
-  const inputs = CML.TransactionInputList.new();
-  inputs.add(input(targetOutRef));
-  inputs.add(input(bondOutRef));
-  const slashBody = CML.TransactionBody.new(
-    inputs,
-    slashOutputs,
-    partial ? 400_000_000n : 500_000_000n,
-  );
-  const references = CML.TransactionInputList.new();
-  references.add(input(proofOutRef));
-  slashBody.set_reference_inputs(references);
-  if (!descendant) {
-    const mint = CML.Mint.new();
-    mint.set(
-      CML.ScriptHash.from_hex(statePolicy),
-      CML.AssetName.from_hex(stateUnit.slice(56)),
-      -1n,
-    );
-    slashBody.set_mint(mint);
-  }
-  const slashTxHash = CML.hash_transaction(slashBody).to_hex();
-  const continuedTarget = raw(`${slashTxHash}#0`, slashOutputs.get(0));
-  let removalBody = slashBody;
-  let removalTxHash = slashTxHash;
-  let root = continuedTarget;
-  if (descendant) {
-    const finalInputs = CML.TransactionInputList.new();
-    finalInputs.add(input(continuedTarget.outRef));
-    const finalOutputs = CML.TransactionOutputList.new();
-    finalOutputs.add(
-      output({
-        address: stateAddress,
-        assets: { lovelace: 3_000_000n, [rootUnit]: 1n },
-        datum: rootDatum,
-      }),
-    );
-    removalBody = CML.TransactionBody.new(finalInputs, finalOutputs, 200_000n);
-    const finalReferences = CML.TransactionInputList.new();
-    finalReferences.add(input(proofOutRef));
-    removalBody.set_reference_inputs(finalReferences);
-    const finalMint = CML.Mint.new();
-    finalMint.set(
-      CML.ScriptHash.from_hex(statePolicy),
-      CML.AssetName.from_hex(stateUnit.slice(56)),
-      -1n,
-    );
-    removalBody.set_mint(finalMint);
-    removalTxHash = CML.hash_transaction(removalBody).to_hex();
-    root = raw(`${removalTxHash}#0`, finalOutputs.get(0));
-  }
-  const pointInput = {
-    slot: "1000",
-    blockHash: hash32("51"),
-    blockNo: "71",
-  };
-  const point = {
-    ...pointInput,
-    pointId: computeFraudProofRawL1PointId(pointInput),
-  };
-  const tipInput = {
-    slot: "1030",
-    blockHash: hash32("52"),
-    blockNo: "100",
-  };
-  const tip = {
-    ...tipInput,
-    pointId: computeFraudProofRawL1PointId(tipInput),
-  };
-  const stepAddresses = ["35", "36", "37", "38"].map(scriptAddress);
-  const definition: FraudProofRawL1FamilyDefinition = {
-    category: "doubleSpend",
-    categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.doubleSpend,
-    headerHash,
-    proverCredential: PROVER,
-    stateQueue: { policyId: statePolicy, address: stateAddress },
-    computationThread: {
-      policyId: threadPolicy,
-      steps: stepAddresses.map((address, index) => ({
-        role: `computation_thread_step_0${(index + 1).toString()}` as
-          | "computation_thread_step_01"
-          | "computation_thread_step_02"
-          | "computation_thread_step_03"
-          | "computation_thread_step_04",
-        address,
-        datumSchema: FraudProofTokenDatum,
-      })),
-    },
-    proofToken: { policyId: proofPolicy, address: proofAddress },
-    operatorDirectory: {
-      activePolicyId: activePolicy,
-      activeAddress,
-      retiredPolicyId: retiredPolicy,
-      retiredAddress,
-    },
-    schedulerAddress: scriptAddress("39"),
-  };
-  const snapshot: FraudProofRawL1Snapshot = {
-    schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
-    deploymentIdentityDigest: DEPLOYMENT,
-    blueprintHash: RELEASE,
-    finalityPolicyDigest: FINALITY,
-    headerHash,
-    provenance: {
-      trustClass: "authenticated_cardano_l1",
-      sourceId: SOURCE,
-      grade: "security",
-      sourceMode: "local_kupo_ogmios",
-      kupoCheckpoint: point,
-      ogmiosTip: tip,
-    },
-    cursor: {
-      point,
-      tip,
-      confirmationDepth: 30,
-      rollbackCursor: computeFraudProofRawL1RollbackCursor({
-        deploymentIdentityDigest: DEPLOYMENT,
-        blueprintHash: RELEASE,
-        finalityPolicyDigest: FINALITY,
-        sourceId: SOURCE,
-        pointId: point.pointId,
-      }),
-    },
-    scopes: [
-      { role: "state_queue", address: stateAddress, utxos: [root] },
-      ...stepAddresses.map((address, index) => ({
-        role: `computation_thread_step_0${(index + 1).toString()}` as const,
-        address,
-        utxos: [],
-      })),
-      { role: "permanent_proof_token", address: proofAddress, utxos: [proof] },
-      { role: "active_operator_directory", address: activeAddress, utxos: [] },
-      {
-        role: "retired_operator_directory",
-        address: retiredAddress,
-        utxos: [],
-      },
-      { role: "scheduler", address: definition.schedulerAddress, utxos: [] },
-    ] as FraudProofRawL1Snapshot["scopes"],
-    historyUnits: [stateUnit, threadUnit, proofUnit],
-    history: [
-      {
-        unit: stateUnit,
-        fromGenesis: true,
-        completeThroughPointId: point.pointId,
-        transactionHashes: descendant
-          ? [slashTxHash, removalTxHash]
-          : [removalTxHash],
-      },
-      {
-        unit: threadUnit,
-        fromGenesis: true,
-        completeThroughPointId: point.pointId,
-        transactionHashes: [],
-      },
-      {
-        unit: proofUnit,
-        fromGenesis: true,
-        completeThroughPointId: point.pointId,
-        transactionHashes: [],
-      },
-    ],
-    transactions: [
-      {
-        txHash: slashTxHash,
-        bodyCbor: slashBody.to_canonical_cbor_hex(),
-        witnessSetCbor: CML.TransactionWitnessSet.new().to_canonical_cbor_hex(),
-        redeemersCbor: null,
-        isValid: true,
-        inclusionPoint: point,
-        confirmationDepth: 30,
-        resolvedInputs: [target, bond],
-        resolvedReferenceInputs: [proof],
-      },
-      ...(descendant
-        ? [
-            {
-              txHash: removalTxHash,
-              bodyCbor: removalBody.to_canonical_cbor_hex(),
-              witnessSetCbor:
-                CML.TransactionWitnessSet.new().to_canonical_cbor_hex(),
-              redeemersCbor: null,
-              isValid: true as const,
-              inclusionPoint: point,
-              confirmationDepth: 30,
-              resolvedInputs: [continuedTarget],
-              resolvedReferenceInputs: [proof],
-            },
-          ]
-        : []),
-    ],
-  };
-  return {
-    snapshot,
-    definition,
-    removalTxHash,
-    rewardOutRef: `${slashTxHash}#1`,
-  };
-};
+import {
+  DEPLOYMENT,
+  fixture,
+  hash32,
+  input,
+  OPERATOR,
+  output,
+  policy,
+  PROVER,
+  raw,
+  releaseEconomics,
+  releaseFinality,
+  scriptAddress,
+} from "./support/raw-l1-terminal-fixture.js";
+import { rollBackTerminalFixture } from "./support/raw-l1-terminal-fixture.js";
 
 describe("raw L1 live header observation", () => {
   it("binds a live header to its NFT mint even after a later transaction re-created its output", async () => {
@@ -847,6 +488,73 @@ describe("raw L1 family terminal economics", () => {
     });
   });
 
+  it.each([
+    { bondStatus: "active", newStatus: "active", operatorCredential: OPERATOR },
+    {
+      bondStatus: "active",
+      newStatus: "retired",
+      operatorCredential: OPERATOR,
+    },
+    {
+      bondStatus: "retired",
+      newStatus: "active",
+      operatorCredential: OPERATOR,
+    },
+    {
+      bondStatus: "retired",
+      newStatus: "retired",
+      operatorCredential: OPERATOR,
+    },
+    {
+      bondStatus: "active",
+      newStatus: "active",
+      operatorCredential: policy("62"),
+    },
+  ] as const)(
+    "reobserves the same slash of a $bondStatus bond with a new $newStatus bond for $operatorCredential",
+    async ({ bondStatus, newStatus, operatorCredential }) => {
+      const { snapshot, definition } = await fixture({ bondStatus });
+      const observe = (current: FraudProofRawL1Snapshot) =>
+        deriveFraudProofRawL1FamilyStage({
+          snapshot: current,
+          definition,
+          releaseEconomics,
+        });
+      const original = await observe(snapshot);
+      const newBond = raw(
+        `${hash32("61")}#0`,
+        output({
+          address:
+            newStatus === "active"
+              ? definition.operatorDirectory.activeAddress
+              : definition.operatorDirectory.retiredAddress,
+          assets: {
+            lovelace: 900_000_000n,
+            [toUnit(
+              newStatus === "active"
+                ? definition.operatorDirectory.activePolicyId
+                : definition.operatorDirectory.retiredPolicyId,
+              (newStatus === "active"
+                ? ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX
+                : RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX) + operatorCredential,
+            )]: 1n,
+          },
+          datum: Data.to("" as never, Data.Bytes()),
+        }),
+      );
+      const rejoined: FraudProofRawL1Snapshot = {
+        ...snapshot,
+        scopes: snapshot.scopes.map((scope) =>
+          scope.role === `${newStatus}_operator_directory`
+            ? { ...scope, utxos: [newBond] }
+            : scope,
+        ),
+      };
+
+      await expect(observe(rejoined)).resolves.toEqual(original);
+    },
+  );
+
   it("rejects a substituted release economics identity", async () => {
     const value = await fixture();
     await expect(
@@ -860,6 +568,107 @@ describe("raw L1 family terminal economics", () => {
       }),
     ).rejects.toThrow(/economics identity does not match/u);
   });
+
+  it.each(["active", "retired"] as const)(
+    "rejects a slash that did not burn the %s bond token",
+    async (bondStatus) => {
+      const value = await fixture({ bondStatus, burnBond: false });
+      await expect(
+        deriveFraudProofRawL1FamilyStage({ ...value, releaseEconomics }),
+      ).rejects.toThrow(/slash did not burn the consumed operator bond token/u);
+    },
+  );
+
+  it("reopens correction after a rollback and rederives the terminal after reinclusion", async () => {
+    const { snapshot, definition } = await fixture();
+    const observe = (current: FraudProofRawL1Snapshot) =>
+      deriveFraudProofRawL1FamilyStage({
+        snapshot: current,
+        definition,
+        releaseEconomics,
+      });
+    const terminal = await observe(snapshot);
+    expect(terminal.kind).toBe("removed");
+    const [target, bond] = snapshot.transactions[0]!.resolvedInputs;
+    const root = raw(
+      `${hash32("63")}#0`,
+      output({
+        address: definition.stateQueue.address,
+        assets: {
+          lovelace: 3_000_000n,
+          [toUnit(definition.stateQueue.policyId, STATE_QUEUE_ROOT_ASSET_NAME)]:
+            1n,
+        },
+        datum: encodeLinkedListNodeView({
+          key: "Empty",
+          next: { Key: { key: definition.headerHash } },
+          data: castConfirmedStateToData(
+            makeGenesisConfirmedState(0n),
+          ) as never,
+        }),
+      }),
+    );
+    const rolledBack: FraudProofRawL1Snapshot = {
+      ...snapshot,
+      transactions: [],
+      history: snapshot.history.map((entry) => ({
+        ...entry,
+        transactionHashes: [],
+      })),
+      scopes: snapshot.scopes.map((scope) => {
+        if (scope.role === "state_queue")
+          return { ...scope, utxos: [root, target!] };
+        if (scope.role === "active_operator_directory")
+          return { ...scope, utxos: [bond!] };
+        return scope;
+      }),
+    };
+    await expect(
+      deriveFraudProofRawL1CompletedTerminal({
+        snapshot: rolledBack,
+        definition,
+        releaseEconomics,
+      }),
+    ).resolves.toBeNull();
+    await expect(observe(rolledBack)).resolves.toMatchObject({
+      kind: "proof_token",
+      stateQueueBlockOutRef: target!.outRef,
+      nextRemovalOutRef: target!.outRef,
+    });
+    await expect(observe(snapshot)).resolves.toEqual(terminal);
+  });
+
+  it.each(["active", "retired"] as const)(
+    "rejects a slash that continued its %s bond token in another output",
+    async (bondStatus) => {
+      const value = await fixture({ bondStatus, continueBond: true });
+      await expect(
+        deriveFraudProofRawL1FamilyStage({ ...value, releaseEconomics }),
+      ).rejects.toThrow(/slash continued an operator bond token/u);
+    },
+  );
+
+  it.each(["active", "retired"] as const)(
+    "rejects a snapshot that still lists the consumed %s bond as live",
+    async (bondStatus) => {
+      const value = await fixture({ bondStatus });
+      const bond = value.snapshot.transactions[0]!.resolvedInputs[1]!;
+      await expect(
+        deriveFraudProofRawL1FamilyStage({
+          ...value,
+          snapshot: {
+            ...value.snapshot,
+            scopes: value.snapshot.scopes.map((scope) =>
+              scope.role === `${bondStatus}_operator_directory`
+                ? { ...scope, utxos: [bond] }
+                : scope,
+            ),
+          },
+          releaseEconomics,
+        }),
+      ).rejects.toThrow(/consumed operator bond remains live/u);
+    },
+  );
 
   it("keeps final removal separate from an earlier descendant slash", async () => {
     const value = await fixture({ descendant: true });
@@ -911,5 +720,396 @@ describe("raw L1 family terminal economics", () => {
         releaseEconomics,
       }),
     ).rejects.toThrow(/one exact ADA-only enterprise reward/u);
+  });
+});
+
+describe("distinct-asset computation datum recovery", () => {
+  it.each([
+    [1, FraudProofComputationThreadStepDatum],
+    [2, DistinctAssetStep02DatumSchema],
+    [3, DistinctAssetStep03DatumSchema],
+    [4, DistinctAssetStep04DatumSchema],
+    [5, DistinctAssetStep05DatumSchema],
+    [6, DistinctAssetStep06DatumSchema],
+  ] as const)(
+    "observes validator %i with its builder datum and preserves prover/schema checks",
+    async (step, builderSchema) => {
+      const value = await fixture();
+      const definition: FraudProofRawL1FamilyDefinition = {
+        ...value.definition,
+        category: "distinctAssetAccumulationLimit",
+        categoryId:
+          FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.distinctAssetAccumulationLimit,
+        computationThread: {
+          ...value.definition.computationThread,
+          steps: DISTINCT_ASSET_ACCUMULATION_STEP_DATUM_SCHEMAS.map(
+            (datumSchema, index) => ({
+              role: `computation_thread_step_0${index + 1}` as FraudProofRawL1FamilyDefinition["computationThread"]["steps"][number]["role"],
+              address: scriptAddress((0x35 + index).toString(16)),
+              datumSchema,
+            }),
+          ),
+        },
+      };
+      const bound = {
+        subject: acceptedVerdictSubject(hash32("71")),
+        validation_traces_root: hash32("72"),
+        validation_trace_count: 1n,
+        coordinate: { fold: 2n, primary_index: 0n, asset_index: 0n },
+      };
+      const datum = Data.to(
+        {
+          fraud_prover: PROVER,
+          data:
+            step === 1
+              ? null
+              : step === 2
+                ? bound
+                : {
+                    bound,
+                    control: null,
+                    stage: BigInt(step - 3),
+                    decisive_fault_holds: true,
+                  },
+        } as never,
+        builderSchema as never,
+      );
+      const threadUnit = toUnit(
+        definition.computationThread.policyId,
+        definition.categoryId + definition.headerHash,
+      );
+      const thread = raw(
+        `${hash32("73")}#0`,
+        output({
+          address: definition.computationThread.steps[step - 1]!.address,
+          assets: { lovelace: 3_000_000n, [threadUnit]: 1n },
+          datum,
+        }),
+      );
+      const target = value.snapshot.transactions[0]!.resolvedInputs[0]!;
+      const root = raw(
+        `${hash32("74")}#0`,
+        output({
+          address: definition.stateQueue.address,
+          assets: {
+            lovelace: 3_000_000n,
+            [toUnit(
+              definition.stateQueue.policyId,
+              STATE_QUEUE_ROOT_ASSET_NAME,
+            )]: 1n,
+          },
+          datum: encodeLinkedListNodeView({
+            key: "Empty",
+            next: { Key: { key: definition.headerHash } },
+            data: castConfirmedStateToData(
+              makeGenesisConfirmedState(0n),
+            ) as never,
+          }),
+        }),
+      );
+      const snapshot: FraudProofRawL1Snapshot = {
+        ...value.snapshot,
+        historyUnits: [
+          toUnit(
+            definition.stateQueue.policyId,
+            STATE_QUEUE_NODE_ASSET_NAME_PREFIX + definition.headerHash,
+          ),
+          threadUnit,
+          toUnit(
+            definition.proofToken.policyId,
+            definition.categoryId + definition.headerHash,
+          ),
+        ],
+        scopes: [
+          ...value.snapshot.scopes
+            .filter(({ role }) => !role.startsWith("computation_thread_step_"))
+            .map((scope) =>
+              scope.role === "state_queue"
+                ? { ...scope, utxos: [root, target] }
+                : scope.role === "permanent_proof_token"
+                  ? { ...scope, utxos: [] }
+                  : scope,
+            ),
+          ...definition.computationThread.steps.map((entry, index) => ({
+            role: entry.role,
+            address: entry.address,
+            utxos: index === step - 1 ? [thread] : [],
+          })),
+        ],
+      };
+      await expect(
+        deriveFraudProofRawL1FamilyStage({
+          snapshot,
+          definition,
+          releaseEconomics,
+        }),
+      ).resolves.toMatchObject({
+        kind: "step",
+        step,
+        threadOutRef: thread.outRef,
+      });
+      await expect(
+        deriveFraudProofRawL1FamilyStage({
+          snapshot,
+          definition: { ...definition, proverCredential: policy("ff") },
+          releaseEconomics,
+        }),
+      ).rejects.toThrow("owned by another fraud prover");
+      if (step > 1) {
+        const malformed = raw(
+          thread.outRef,
+          output({
+            address: definition.computationThread.steps[step - 1]!.address,
+            assets: { lovelace: 3_000_000n, [threadUnit]: 1n },
+            datum: Data.to(
+              { fraud_prover: PROVER, data: 42n },
+              FraudProofComputationThreadStepDatum,
+            ),
+          }),
+        );
+        await expect(
+          deriveFraudProofRawL1FamilyStage({
+            snapshot: {
+              ...snapshot,
+              scopes: snapshot.scopes.map((scope) => ({
+                ...scope,
+                utxos: scope.utxos.map((utxo) =>
+                  utxo.outRef === thread.outRef ? malformed : utxo,
+                ),
+              })),
+            },
+            definition,
+            releaseEconomics,
+          }),
+        ).rejects.toThrow();
+      }
+    },
+  );
+});
+
+describe("read-only completed workflow verification", () => {
+  const completed = async () => {
+    const value = await fixture({ proofCreation: true });
+    const terminal = await deriveFraudProofRawL1CompletedTerminal({
+      ...value,
+      releaseEconomics,
+    });
+    if (terminal === null) throw new Error("fixture must be completed");
+    const identity = {
+      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+      deploymentFingerprint: DEPLOYMENT,
+      category: "doubleSpend" as const,
+      target: {
+        kind: "state_queue_header" as const,
+        headerHash: value.definition.headerHash,
+      },
+      decisionDigest: hash32("92"),
+    };
+    const workflowId = computeFraudProofWorkflowId(identity);
+    const entries: FraudProofWorkflowJournalEntry[] = [];
+    const append = (event: FraudProofWorkflowJournalEntry["event"]) =>
+      entries.push({
+        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+        workflowId,
+        identity,
+        sequence: entries.length,
+        recordedAt: "2026-09-16T12:00:00.000Z",
+        event,
+      });
+    append({ kind: "started" });
+    append({
+      kind: "prepared",
+      artifact: {},
+      artifactDigest: journalJsonDigest({}),
+    });
+    for (const txHash of [
+      terminal.proofToken.createdByTxHash,
+      terminal.correction.removalTxHash,
+    ]) {
+      append({
+        kind: "preflight_passed",
+        actionId: txHash,
+        txHash,
+        localEvaluator: "lucid",
+        referenceScripts: [],
+      });
+      append({
+        kind: "submission_intent",
+        actionId: txHash,
+        txHash,
+        attempt: 1,
+        actionInput: {},
+      });
+      append({ kind: "submitted", actionId: txHash, txHash, attempt: 1 });
+      append({
+        kind: "reconciled",
+        actionId: txHash,
+        txHash,
+        outcome: "confirmed",
+      });
+      append({ kind: "confirmed", actionId: txHash, txHash });
+    }
+    append({
+      kind: "completed",
+      terminal,
+      terminalDigest: journalJsonDigest(terminal),
+    });
+    const definition = {
+      ...value.definition,
+      computationThread: {
+        policyId: value.definition.computationThread.policyId,
+        steps: value.definition.computationThread.steps.map(
+          ({ role, address }) => ({ role, address }),
+        ),
+      },
+    };
+    const binding = {
+      deploymentFingerprint: DEPLOYMENT,
+      definition,
+      releaseFinality,
+      releaseEconomics,
+    };
+    return {
+      ...value,
+      terminal,
+      entries,
+      verify: (
+        snapshot = value.snapshot,
+        candidate: FraudProofWorkflowTerminal = terminal,
+      ) =>
+        verifyCompletedFraudProofWorkflow({
+          binding,
+          entries,
+          terminal: candidate,
+          decisionDigest: identity.decisionDigest,
+          authority: {
+            authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
+            capture: async () => snapshot,
+          },
+        }),
+    };
+  };
+
+  it("authenticates exact completed bytes and economics without thread decoders or journal mutations", async () => {
+    const value = await completed();
+    const saved = structuredClone(value.entries);
+    await expect(value.verify()).resolves.toEqual({
+      kind: "applicable",
+      terminal: value.terminal,
+    });
+    expect(value.entries).toEqual(saved);
+  });
+  it("invalidates completion when an authenticated rollback restores the target", async () => {
+    const value = await completed();
+    await expect(value.verify(rollBackTerminalFixture(value))).resolves.toEqual(
+      { kind: "pending", reason: "target_live" },
+    );
+  });
+  it("keeps completed verification pending when authenticated release depth regresses", async () => {
+    const value = await completed();
+    const point = value.snapshot.cursor.point;
+    const shallow = {
+      ...value.snapshot,
+      provenance: { ...value.snapshot.provenance, ogmiosTip: point },
+      cursor: { ...value.snapshot.cursor, tip: point, confirmationDepth: 1 },
+      transactions: value.snapshot.transactions.map((tx) => ({
+        ...tx,
+        confirmationDepth: 1,
+      })),
+    };
+    await expect(value.verify(shallow)).resolves.toEqual({
+      kind: "pending",
+      reason: "release_finality",
+    });
+  });
+  it.each(["headerHash", "economics", "proofToken"] as const)(
+    "rejects substituted durable %s",
+    async (field) => {
+      const value = await completed();
+      const changed =
+        field === "headerHash"
+          ? { ...value.terminal, headerHash: policy("99") }
+          : field === "economics"
+            ? {
+                ...value.terminal,
+                economics: {
+                  ...value.terminal.economics,
+                  proverRewardLovelace: "1",
+                },
+              }
+            : {
+                ...value.terminal,
+                proofToken: {
+                  ...value.terminal.proofToken,
+                  unit: policy("99"),
+                },
+              };
+      await expect(value.verify(value.snapshot, changed)).rejects.toThrow(
+        "durable terminal",
+      );
+    },
+  );
+  it.each(["economics", "proofToken", "anchor"] as const)(
+    "rejects self-consistent journal %s that contradicts authenticated L1",
+    async (field) => {
+      const value = await completed();
+      const changed =
+        field === "anchor"
+          ? {
+              ...value.terminal,
+              observedAt: {
+                ...value.terminal.observedAt,
+                blockHash: hash32("99"),
+              },
+            }
+          : field === "economics"
+            ? {
+                ...value.terminal,
+                economics: {
+                  ...value.terminal.economics,
+                  proverRewardLovelace: "1",
+                },
+              }
+            : {
+                ...value.terminal,
+                proofToken: {
+                  ...value.terminal.proofToken,
+                  unit: policy("99"),
+                },
+              };
+      const last = value.entries.at(-1)!;
+      value.entries[value.entries.length - 1] = {
+        ...last,
+        event: {
+          kind: "completed",
+          terminal: changed,
+          terminalDigest: journalJsonDigest(changed),
+        },
+      };
+      await expect(value.verify(value.snapshot, changed)).rejects.toThrow(
+        "authenticated L1 facts",
+      );
+    },
+  );
+  it("rejects changed raw proof output bytes rather than treating integrity failure as pending", async () => {
+    const value = await completed();
+    const tampered = {
+      ...value.snapshot,
+      scopes: value.snapshot.scopes.map((scope) =>
+        scope.role === "permanent_proof_token"
+          ? {
+              ...scope,
+              utxos: scope.utxos.map((utxo) => ({
+                ...utxo,
+                datumCbor: Data.to(
+                  { fraud_prover: policy("99") },
+                  FraudProofTokenDatum,
+                ),
+              })),
+            }
+          : scope,
+      ),
+    };
+    await expect(value.verify(tampered)).rejects.toThrow();
   });
 });

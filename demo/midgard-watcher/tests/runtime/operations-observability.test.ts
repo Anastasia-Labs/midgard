@@ -13,6 +13,7 @@ const supervisor = () => {
   let status: WatcherFaultProofSupervisorStatus = Object.freeze({
     phase: "accepting",
     recovered: true,
+    unfinishedObjectiveCount: 1,
     queuedJobCount: 1,
     activeJob: null,
     blockedJob: null,

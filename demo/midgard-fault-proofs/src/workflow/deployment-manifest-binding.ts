@@ -23,7 +23,10 @@ import {
   parseContractDeploymentReferenceScriptAuthPolicyId,
 } from "../inspect-contracts.js";
 import { resolveFaultProofDeploymentContracts } from "../runtime.js";
-import type { FraudProofRawL1FamilyDefinition } from "./raw-l1-family-derivation.js";
+import type {
+  FraudProofRawL1FamilyDefinition,
+  FraudProofRawL1TerminalDefinition,
+} from "./raw-l1-family-derivation.js";
 import type { FraudProofRawL1ComputationStepRole } from "./raw-l1-snapshot.js";
 import {
   computeFraudProofReleaseEconomicsPolicyDigest,
@@ -366,7 +369,7 @@ const releasePolicies = (
  * parsed blueprint/deployment-info pair is returned for transaction builders,
  * preventing a caller-selected network or parallel contract identity.
  */
-export const bindFraudProofWorkflowDeployment = async <
+const bindFraudProofDeployment = async <
   Category extends FraudProofCatalogueCategoryName,
 >({
   manifest: manifestValue,
@@ -383,7 +386,7 @@ export const bindFraudProofWorkflowDeployment = async <
   readonly category: Category;
   readonly headerHash: string;
   readonly proverCredential: string;
-  readonly stepDatumSchemas: readonly LucidDataSchema[];
+  readonly stepDatumSchemas: readonly LucidDataSchema[] | null;
 }): Promise<FraudProofWorkflowDeploymentBinding<Category>> => {
   const manifest = finalizedManifest(manifestValue);
   const blueprintHash = createHash("sha256")
@@ -444,9 +447,13 @@ export const bindFraudProofWorkflowDeployment = async <
     requireFraudProofSpend: true,
   });
   const chain = resolvedContracts.contracts[category];
-  if (chain === undefined || chain.steps.length !== stepDatumSchemas.length) {
+  if (
+    chain === undefined ||
+    (stepDatumSchemas !== null &&
+      chain.steps.length !== stepDatumSchemas.length)
+  ) {
     throw new Error(
-      `${category} deployment binding expected ${stepDatumSchemas.length.toString()} computation steps`,
+      `${category} deployment binding expected ${stepDatumSchemas?.length.toString() ?? "published"} computation steps`,
     );
   }
   const categoryIdentity = manifestContract(manifest, "fraudProofCatalogueMint")
@@ -573,7 +580,7 @@ export const bindFraudProofWorkflowDeployment = async <
         steps: chain.steps.map((step, index) => ({
           role: `computation_thread_step_${(index + 1).toString().padStart(2, "0")}` as FraudProofRawL1ComputationStepRole,
           address: step.spendingScriptAddress,
-          datumSchema: stepDatumSchemas[index]!,
+          datumSchema: stepDatumSchemas?.[index],
         })),
       },
       proofToken: {
@@ -601,5 +608,50 @@ export const bindFraudProofWorkflowDeployment = async <
       ),
     },
     resolvedContracts,
+  };
+};
+
+/** Full executable binding retains the exact per-step datum schema contract. */
+export const bindFraudProofWorkflowDeployment = <
+  Category extends FraudProofCatalogueCategoryName,
+>(
+  input: Omit<
+    Parameters<typeof bindFraudProofDeployment<Category>>[0],
+    "stepDatumSchemas"
+  > & {
+    readonly stepDatumSchemas: readonly LucidDataSchema[];
+  },
+): Promise<FraudProofWorkflowDeploymentBinding<Category>> =>
+  bindFraudProofDeployment(input);
+
+export type FraudProofTerminalDeploymentBinding = Pick<
+  FraudProofWorkflowDeploymentBinding<FraudProofCatalogueCategoryName>,
+  "deploymentFingerprint" | "releaseFinality" | "releaseEconomics"
+> & { readonly definition: FraudProofRawL1TerminalDefinition };
+
+/** Completion reads have no live-thread decoder or transaction capability. */
+export const bindFraudProofTerminalDeployment = async (
+  input: Omit<
+    Parameters<typeof bindFraudProofDeployment>[0],
+    "stepDatumSchemas"
+  >,
+): Promise<FraudProofTerminalDeploymentBinding> => {
+  const binding = await bindFraudProofDeployment({
+    ...input,
+    stepDatumSchemas: null,
+  });
+  return {
+    deploymentFingerprint: binding.deploymentFingerprint,
+    releaseFinality: binding.releaseFinality,
+    releaseEconomics: binding.releaseEconomics,
+    definition: {
+      ...binding.definition,
+      computationThread: {
+        policyId: binding.definition.computationThread.policyId,
+        steps: binding.definition.computationThread.steps.map(
+          ({ role, address }) => ({ role, address }),
+        ),
+      },
+    },
   };
 };

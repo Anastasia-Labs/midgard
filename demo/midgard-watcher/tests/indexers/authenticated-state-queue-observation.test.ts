@@ -616,6 +616,37 @@ describe("production state-queue observation source", () => {
     ).toThrow("exact permanent proof");
   });
 
+  it("derives inclusion checkpoints without labeling them release-final", () => {
+    const current = fixture();
+    const input = {
+      nativeBlock: current.nativeBlock,
+      localObservation: {
+        ...current.localObservation,
+        block: {
+          ...current.localObservation.block,
+          chainPoint: {
+            ...current.localObservation.block.chainPoint,
+            depth: "1",
+          },
+        },
+      },
+      authority: current.authority,
+      sourceId: "test-source",
+      previous: null,
+      rawTransactions: [{ ...current.raw, confirmationDepth: 1 }],
+    };
+    const included = unsafeDeriveWatcherStateQueueObservationForTest({
+      ...input,
+      minimumConfirmationDepth: 1,
+    });
+    expect(included.nativePoint.finalityDepth).toBe("1");
+    expect(included.checkpoints[0]!.finalityDepth).toBe("1");
+    expect(included.finalizedCorrectionLock!.finalityDepth).toBe("1");
+    expect(() =>
+      unsafeDeriveWatcherStateQueueObservationForTest(input),
+    ).toThrow("chain point/finality");
+  });
+
   it("derives the exact finalized Init queue and CorrectionLock genesis witness", () => {
     const current = fixture();
     const result = unsafeDeriveWatcherStateQueueObservationForTest({

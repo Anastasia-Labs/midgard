@@ -6,6 +6,10 @@ import {
   type FraudProofRawL1SnapshotAuthority,
 } from "./raw-l1-snapshot.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
+import type {
+  SignedTransactionRecoveryObservation,
+  SignedWorkflowTransaction,
+} from "./signed-transaction-reconciliation.js";
 
 export const FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER =
   "midgard-fraud-proof-authenticated-publication-observer-v1" as const;
@@ -16,6 +20,16 @@ export type FraudProofAuthenticatedPublicationObservation =
 
 export interface FraudProofAuthenticatedPublicationObserver {
   readonly observerVersion: typeof FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER;
+  observeSignedTransaction?(
+    input: SignedWorkflowTransaction,
+  ): Promise<SignedTransactionRecoveryObservation>;
+  rebroadcastSignedTransaction?(
+    input: SignedWorkflowTransaction & {
+      readonly authorizeResubmission: (
+        input: SignedWorkflowTransaction,
+      ) => Promise<void>;
+    },
+  ): Promise<string>;
   observeExact(input: {
     readonly headerHash: string;
     readonly kind: "proof_chunk" | "field_publication" | "field_certificate";
@@ -35,7 +49,7 @@ const mintQuantity = (body: CML.TransactionBody, unit: string): bigint => {
 };
 
 /**
- * Authenticates one content publication at a release-final Kupo/Ogmios point.
+ * Authenticates one content publication at an authenticated canonical Kupo/Ogmios point.
  * The expected out-ref is the hash journaled before network submission, so a
  * third party's same-content output cannot confirm an ambiguous local submit.
  */
@@ -68,6 +82,7 @@ export const createFraudProofAuthenticatedPublicationObserver = ({
         value: await authority.capture(request),
         request,
         releaseFinality,
+        observationDepth: "inclusion",
       });
       const scoped = snapshot.scopes[0];
       const candidate = scoped?.utxos.find(

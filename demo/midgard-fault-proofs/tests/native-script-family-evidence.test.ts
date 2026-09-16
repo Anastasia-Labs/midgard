@@ -21,12 +21,26 @@ import {
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
+import {
+  CML,
+  credentialToAddress,
+  keyHashToCredential,
+} from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   authenticateTransactionsInclusionRoots,
   canonicalBlockEvidenceFromVerifiedPayload,
 } from "../src/evidence/index.js";
+import {
+  admitHistoricalNativeScriptPreimage,
+  prepareHistoricalNativeScriptPreimage,
+} from "../src/missing-native-script-tx/historical-preimage.js";
+import {
+  createExternalHistoricalNativeScriptSourceRoster,
+  HISTORICAL_NATIVE_SCRIPT_EVIDENCE_SCHEMA_VERSION,
+  resolveHistoricalNativeScriptEvidence,
+} from "../src/missing-native-script-tx/historical-script.js";
 import {
   admitMissingNativeScriptUtxoArtifact,
   missingNativeScriptUtxoDetectionId,
@@ -55,7 +69,19 @@ import {
   resolveHistoricalNativeScriptCorpus,
   unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTest,
 } from "../src/workflow/historical-native-script-corpus.js";
+import {
+  computeFraudProofWorkflowId,
+  DirectoryFraudProofWorkflowJournalStore,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  journalJsonDigest,
+  normalizeJournalJson,
+} from "../src/workflow/journal.js";
 import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.js";
+import {
+  computeFraudProofReleaseFinalityPolicyDigest,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+} from "../src/workflow/release-finality-policy.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -295,6 +321,240 @@ const historySource = (
 };
 
 describe("Q33/Q34 retained-DA evidence", () => {
+  it("readmits historical preimages after the durable journal sorts nested keys", async () => {
+    const fixture = await buildCanonicalBlockFixture({
+      transactions: [
+        fixtureTransaction(nativeTx({ scripts: [nativeScript, nativeScript] })),
+      ],
+      prevHeaderHash: SDK.GENESIS_HEADER_HASH,
+    });
+    const corpus = await resolveHistoricalNativeScriptCorpus({
+      deploymentFingerprint: "11".repeat(32),
+      checkpointStore: authenticatedCheckpointStore(),
+      historySource: historySource([fixture]),
+      currentEvidence: await evidenceFromFixture(fixture),
+      sources: [retainedSource([fixture])],
+    });
+    const providerRoster = createHistoricalNativeScriptProviderRoster({
+      deploymentFingerprint: "11".repeat(32),
+      providers: [
+        {
+          sourceId: "archive-a",
+          authorityEndpoint: "https://archive-a.example.test",
+          operatorIdentitySha256: "aa".repeat(32),
+        },
+        {
+          sourceId: "archive-b",
+          authorityEndpoint: "https://archive-b.example.test",
+          operatorIdentitySha256: "bb".repeat(32),
+        },
+      ],
+    });
+    const policy = {
+      confirmationDepth: 30,
+      automaticRecoveryMaxDepth: 2160,
+      deepRollbackPolicy: "automated_rewind_replay_incident-v1",
+    } as const;
+    const releaseFinality = {
+      schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+      deploymentIdentityDigest: "11".repeat(32),
+      blueprintHash: "22".repeat(32),
+      policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
+      policy,
+    };
+    const roster = createExternalHistoricalNativeScriptSourceRoster({
+      providerRoster,
+      releaseFinality,
+    });
+    const pointBase = {
+      slot: "4242",
+      blockNo: "42",
+      blockHash: "77".repeat(32),
+    };
+    const throughPoint = {
+      ...pointBase,
+      pointId: computeFraudProofRawL1PointId(pointBase),
+    };
+    const script = CML.NativeScript.from_cbor_hex(
+      nativeScript.scriptBytes.toString("hex"),
+    );
+    const output = CML.TransactionOutput.new(
+      CML.Address.from_bech32(
+        credentialToAddress("Preview", keyHashToCredential("41".repeat(28))),
+      ),
+      CML.Value.from_coin(3_000_000n),
+      undefined,
+      CML.Script.new_native(script),
+    );
+    const outputs = CML.TransactionOutputList.new();
+    outputs.add(output);
+    const body = CML.TransactionBody.new(
+      CML.TransactionInputList.new(),
+      outputs,
+      170_000n,
+    );
+    const txHash = CML.hash_transaction(body).to_hex();
+    const expectedScriptHash = hashMidgardVersionedScript(nativeScript);
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input, init) => {
+        const url = new URL(String(input));
+        const provider = providerRoster.providers.find(
+          ({ authorityEndpoint }) => authorityEndpoint === url.origin,
+        )!;
+        const request = JSON.parse(String(init?.body));
+        return new Response(
+          JSON.stringify(
+            url.pathname.endsWith("/canonicality")
+              ? {
+                  canonical: true,
+                  inclusionPoint: request.inclusionPoint,
+                  throughPoint: request.throughPoint,
+                }
+              : {
+                  schemaVersion:
+                    HISTORICAL_NATIVE_SCRIPT_EVIDENCE_SCHEMA_VERSION,
+                  deploymentIdentityDigest:
+                    releaseFinality.deploymentIdentityDigest,
+                  blueprintHash: releaseFinality.blueprintHash,
+                  finalityPolicyDigest: releaseFinality.policyDigest,
+                  expectedScriptHash,
+                  sourceMode: "external_providers",
+                  sourceId: provider.sourceId,
+                  operatorIdentitySha256: provider.operatorIdentitySha256,
+                  scriptBytesHex: script.to_canonical_cbor_hex(),
+                  publicationOutRef: `${txHash}#0`,
+                  publicationOutputCbor: output.to_canonical_cbor_hex(),
+                  publicationTransactionBodyCbor: body.to_canonical_cbor_hex(),
+                  publicationTransactionIndex: 0,
+                  inclusionBlockTransactionIds: [txHash],
+                  inclusionPoint: throughPoint,
+                  throughPoint: request.throughPoint,
+                },
+          ),
+          { status: 200 },
+        );
+      });
+    try {
+      const corroboration = await resolveHistoricalNativeScriptEvidence({
+        roster,
+        expectedScriptHash,
+        throughPoint,
+        releaseFinality,
+      });
+      const artifact = prepareHistoricalNativeScriptPreimage({
+        corpus,
+        expectedHeaderHash: fixture.headerHash,
+        expectedScriptHash,
+        corroboration,
+      });
+      expect(artifact.occurrences).toHaveLength(2);
+      const directory = mkdtempSync(
+        "/var/tmp/midgard-native-preimage-journal-",
+      );
+      checkpointDirectories.push(directory);
+      const identity = {
+        schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+        deploymentFingerprint: "11".repeat(32),
+        category: "missingNativeScriptTx",
+        target: { kind: "state_queue_header", headerHash: fixture.headerHash },
+      } as const;
+      const workflowId = computeFraudProofWorkflowId(identity);
+      const base = {
+        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+        workflowId,
+        identity,
+        recordedAt: "2026-09-14T00:00:00.000Z",
+      };
+      const journal = new DirectoryFraudProofWorkflowJournalStore(directory);
+      await journal.append(
+        { ...base, sequence: 0, event: { kind: "started" } },
+        0,
+      );
+      const normalized = { historicalPreimage: normalizeJournalJson(artifact) };
+      await journal.append(
+        {
+          ...base,
+          sequence: 1,
+          event: {
+            kind: "prepared",
+            artifact: normalized,
+            artifactDigest: journalJsonDigest(normalized),
+          },
+        },
+        1,
+      );
+      const loaded = (
+        await new DirectoryFraudProofWorkflowJournalStore(directory).load(
+          workflowId,
+        )
+      )[1]!.event;
+      if (loaded.kind !== "prepared")
+        throw new Error("Expected durable prepared artifact");
+      expect(loaded.artifact.historicalPreimage).toEqual(artifact);
+      expect(JSON.stringify(loaded.artifact.historicalPreimage)).not.toBe(
+        JSON.stringify(artifact),
+      );
+      const admit = (value: unknown) =>
+        admitHistoricalNativeScriptPreimage({
+          value,
+          corpus,
+          expectedHeaderHash: fixture.headerHash,
+          expectedScriptHash,
+          roster,
+          throughPoint,
+          releaseFinality,
+        });
+      const admitted = await admit(loaded.artifact.historicalPreimage);
+      expect(admitted.artifact.artifactDigest).toBe(artifact.artifactDigest);
+      expect(admitted.corroboration.confirmationDepth).toBe(1);
+      expect(fetch).toHaveBeenCalledTimes(8);
+      const currentBase = {
+        slot: "4243",
+        blockNo: "43",
+        blockHash: "78".repeat(32),
+      };
+      const resumed = await admitHistoricalNativeScriptPreimage({
+        value: loaded.artifact.historicalPreimage,
+        corpus,
+        expectedHeaderHash: fixture.headerHash,
+        expectedScriptHash,
+        roster,
+        releaseFinality,
+        throughPoint: {
+          ...currentBase,
+          pointId: computeFraudProofRawL1PointId(currentBase),
+        },
+      });
+      expect(resumed.artifact).toEqual(artifact);
+      expect(resumed.artifact.artifactDigest).toBe(artifact.artifactDigest);
+      expect(fetch).toHaveBeenCalledTimes(12);
+
+      for (const changed of [
+        { ...artifact, occurrences: [...artifact.occurrences].reverse() },
+        {
+          ...artifact,
+          occurrences: artifact.occurrences.map((occurrence) => ({
+            ...occurrence,
+            extra: true,
+          })),
+        },
+        { ...artifact, corpusDigest: "ff".repeat(32) },
+        { ...artifact, artifactDigest: "ff".repeat(32) },
+        {
+          ...artifact,
+          historicalL1Corroboration: {
+            ...artifact.historicalL1Corroboration,
+            extra: true,
+          },
+        },
+      ])
+        await expect(admit(changed)).rejects.toThrow();
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
   it("rejects forged history providers and duplicated authority backends", () => {
     expect(() =>
       requireHistoricalNativeScriptHistoryAuthority({

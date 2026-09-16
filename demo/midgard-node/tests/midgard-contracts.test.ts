@@ -244,7 +244,7 @@ describe("midgard contracts registry", () => {
             Effect.provide(AlwaysSucceedsContract.Default),
           ),
         );
-        const nativeScriptCbor = `8200581c${"00".repeat(28)}`;
+        const nativeScriptCbor = "820501";
         const authPolicy = {
           policyId: validatorToScriptHash({
             type: "Native" as const,

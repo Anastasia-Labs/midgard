@@ -31,6 +31,7 @@ import {
 } from "../../src/funding/workflow-funding-profile-overlay.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
 import { WatcherPublicDaLibp2pTransport } from "../../src/storage/public-da-libp2p-transport.js";
+import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
 
 const AUTHORITY = makeWatcherDeploymentAuthorityFixture();
@@ -80,15 +81,6 @@ const SHARED_THREAD_REFERENCE_KEYS = [
   "computationThreadMint",
   "fraudProofMint",
 ] as const;
-
-/**
- * The two families that accuse an L1-observed event rather than a committed L2
- * block leaf, and therefore never prove PHAS membership.
- */
-const NON_PHAS_MEMBERSHIP_CATEGORIES = new Set<string>([
-  "fabricatedDeposit",
-  "fabricatedWithdrawal",
-]);
 
 const rawConfig = () => ({
   schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
@@ -410,15 +402,12 @@ describe("watcher production fault-proof application V1", () => {
         expect(rosterOutRefs.map(contractNameForOutRef).sort()).toEqual(
           [...resolvedContractNames].sort(),
         );
-        // Every fault-proof workflow drives a computation thread and mints the
-        // fraud proof; every family that accuses a committed L2 block leaf also
-        // proves PHAS membership.
+        // Every family authenticates catalogue membership during init, including
+        // the fabricated-event families whose later evidence comes from L1.
         expect(rosterKeys).toEqual(
           expect.arrayContaining([...SHARED_THREAD_REFERENCE_KEYS]),
         );
-        expect(rosterKeys.includes("phasMembershipWithdraw")).toBe(
-          !NON_PHAS_MEMBERSHIP_CATEGORIES.has(category),
-        );
+        expect(rosterKeys).toContain("phasMembershipWithdraw");
         expect(rosterKeys.length).toBeGreaterThan(
           SHARED_THREAD_REFERENCE_KEYS.length,
         );
@@ -667,4 +656,49 @@ describe("watcher production fault-proof application V1", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+});
+
+it("verifies completion deployment metadata without resolving wallet or admin secrets", async () => {
+  const deps = dependencies();
+  vi.mocked(deps.readText).mockImplementation(async (path) => {
+    if (path === "/etc/midgard/watcher.json")
+      return JSON.stringify(rawConfig());
+    if (path === BLUEPRINT_PATH) return "tampered-blueprint";
+    if (path === MANIFEST_PATH)
+      return JSON.stringify(AUTHORITY.signedIdentity.manifest);
+    if (path === DEPLOYMENT_INFO_PATH)
+      return JSON.stringify({
+        referenceScriptAuthPolicy: "02".repeat(28),
+        contracts: AUTHORITY.contracts,
+      });
+    throw new Error(`unexpected read ${path}`);
+  });
+  const application = unsafeCreateWatcherFaultProofApplicationForTest(
+    {
+      deploymentIdentity: AUTHORITY.result,
+      infrastructure: infrastructure(),
+      historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
+    },
+    deps,
+    {},
+  );
+  try {
+    await expect(
+      application.verifyCompleted({
+        runtimeConfigPath: "/etc/midgard/watcher.json",
+        category: "doubleSpend",
+        headerHash: HEADER,
+        decisionDigest: "cd".repeat(32),
+        entries: [],
+        terminal: fundingTerminal(HEADER, "aa".repeat(32), "bb".repeat(32)),
+      }),
+    ).rejects.toThrow(/blueprint/u);
+    expect(deps.resolveSigner).not.toHaveBeenCalled();
+    expect(deps.makeLucid).not.toHaveBeenCalled();
+    expect(deps.createLeaseCoordinator).not.toHaveBeenCalled();
+    expect(deps.resolveReferenceScript).not.toHaveBeenCalled();
+    expect(deps.constructWorkflow).not.toHaveBeenCalled();
+  } finally {
+    await application.close();
+  }
 });

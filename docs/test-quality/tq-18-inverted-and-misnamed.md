@@ -21,14 +21,12 @@ The original audit's counts and line references are not a current inventory.
 ## Confirmed source distinctions
 
 - [State-correction acceptance tests](../../demo/midgard-node-tools/tests/e2e-state-correction-acceptance.test.ts)
-  explicitly pass `availabilityChallengeCapability: "missing"`. A blocked
-  availability gate is correct for that fixture. The aggregate-evidence case
-  also remains blocked pending independent provenance; a complete-looking
-  aggregate is not authority. Preserve both fail-closed checks.
-- The same suite consults the compiled production workflow registry and pins
-  its current blocked state/missing count. Review that ambient-status portion
-  separately; a controlled readiness fixture or explicit installation
-  invariant may make its intended scope clearer.
+  keep the aggregate-evidence case blocked pending independent provenance; a
+  complete-looking aggregate is not authority. Preserve that fail-closed check.
+  The former local workflow/availability readiness gates and their
+  ambient-registry test were removed; executable coverage is enforced by the
+  watcher's startup launch-scope refusal and by the per-family journal
+  requirement in the aggregate.
 - [Consensus-profile tests](../../demo/midgard-core/tests/consensus-profile.test.ts)
   assert the currently absent release-evidence digest and that activation
   refuses. That is an explicit current-release gate. Do not make it

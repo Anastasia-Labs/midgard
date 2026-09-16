@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   HISTORICAL_NATIVE_SCRIPT_PREIMAGE,
@@ -252,10 +253,11 @@ export const admitHistoricalNativeScriptPreimage = async ({
     parsed.corpusDigest !== expected.corpusDigest ||
     parsed.checkpointDigest !== expected.checkpointDigest ||
     parsed.preimageDigest !== expected.preimageDigest ||
-    JSON.stringify(parsed.occurrences) !==
-      JSON.stringify(expected.occurrences) ||
-    JSON.stringify(parsed.historicalL1Corroboration) !==
-      JSON.stringify(expected.historicalL1Corroboration) ||
+    !isDeepStrictEqual(parsed.occurrences, expected.occurrences) ||
+    !isDeepStrictEqual(
+      parsed.historicalL1Corroboration,
+      expected.historicalL1Corroboration,
+    ) ||
     claimedDigest !== expected.artifactDigest
   ) {
     throw new Error(

@@ -72,7 +72,7 @@ export const makeFinalizedDeploymentManifestFixture =
       txHash: "ab".repeat(32),
       outputIndex: 0,
     });
-    const nativeScriptCbor = `8200581c${"00".repeat(28)}`;
+    const nativeScriptCbor = "820500";
     const referenceScriptAuthPolicy: ReferenceScriptAuthPolicyDeploymentInfo = {
       policyId: validatorToScriptHash({
         type: "Native",

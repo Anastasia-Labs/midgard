@@ -13,7 +13,6 @@ import {
   registerLayoutToLogString,
 } from "@al-ft/midgard-sdk";
 import {
-  Constr as LucidConstr,
   credentialToAddress,
   Data as LucidData,
   LucidEvolution,
@@ -24,14 +23,14 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  configuredContractDeploymentInfoPath,
-  readFinalizedDeploymentIdentity,
-  verifyConfiguredDeploymentManifestProgram,
-} from "../commands/contract-deployment-info.js";
 import { Lucid, MidgardContracts } from "../services/index.js";
 import { compareOutRefs } from "../tx-context.js";
 import { alignedUnixTimeStrictlyAfter } from "../workers/utils/commit-end-time.js";
+import { configuredOperatorEconomicsProgram } from "./operators/exit.js";
+import {
+  OperatorFundingShortfall,
+  requireOperatorFundingProgram,
+} from "./operators/funding-preflight.js";
 import {
   referenceScriptTargetsByCommand,
   resolveReferenceScriptTargetsProgram,
@@ -39,6 +38,7 @@ import {
   selectWalletFundingUtxos,
   utxoOutRefKey,
 } from "./reference-scripts.js";
+import { canActivateRegisteredOperatorImmediately } from "./register-active-operator/activation.js";
 import {
   alignUnixTimeMsToSlotBoundary,
   currentTimeMsForLucidOrEmulatorFallback,
@@ -65,9 +65,6 @@ const NODE_SET_FETCH_RETRY_DELAY = "2 seconds";
 const HUB_ORACLE_FETCH_MAX_RETRIES = 6;
 const HUB_ORACLE_FETCH_RETRY_DELAY = "1 second";
 const ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE = 25_000_000n;
-const REGISTERED_OPERATOR_DATUM_AIKEN_SCHEMA = LucidData.Object({
-  operator: LucidData.Bytes({ minLength: 28, maxLength: 28 }),
-});
 
 type ActivationTxHashes = {
   readonly registerTxHash: string | null;
@@ -128,82 +125,10 @@ const describeUnknownValue = (value: unknown): string => {
   }
 };
 
-const isRawLucidConstr = (
-  value: unknown,
-): value is { readonly index: number | bigint; readonly fields: unknown[] } =>
-  typeof value === "object" &&
-  value !== null &&
-  "index" in value &&
-  "fields" in value &&
-  (typeof value.index === "number" || typeof value.index === "bigint") &&
-  Array.isArray(value.fields);
-
-const normalizeLucidDataValue = (value: unknown): unknown => {
-  if (value instanceof LucidConstr) {
-    return value;
-  }
-  if (isRawLucidConstr(value)) {
-    return new LucidConstr(
-      Number(value.index),
-      value.fields.map(normalizeLucidDataValue),
-    );
-  }
-  if (Array.isArray(value)) {
-    return value.map(normalizeLucidDataValue);
-  }
-  if (value instanceof Map) {
-    return new Map(
-      [...value.entries()].map(([key, innerValue]) => [
-        normalizeLucidDataValue(key),
-        normalizeLucidDataValue(innerValue),
-      ]),
-    );
-  }
-  return value;
-};
-
-const posixTimeToNodeKey = (posixTime: bigint): string => {
-  if (posixTime < 0n) {
-    throw new Error("Registered-operator activation time cannot be negative");
-  }
-  const hex = posixTime.toString(16);
-  return hex.length % 2 === 0 ? hex : `0${hex}`;
-};
-
-const nodeKeyToPosixTime = (key: SDK.NodeKey): bigint | undefined => {
-  if (key === "Empty") {
-    return undefined;
-  }
-  return key.Key.key.length === 0 ? 0n : BigInt(`0x${key.Key.key}`);
-};
-
-const decodeRegisteredOperatorDatumValue = (
-  value: unknown,
-): SDK.RegisteredOperatorDatum | undefined => {
-  if (typeof value === "object" && value !== null) {
-    if ("operator" in value && typeof value.operator === "string") {
-      return {
-        operator: value.operator,
-      };
-    }
-  }
-  try {
-    const normalizedValue = normalizeLucidDataValue(value);
-    const parsed = LucidData.castFrom(
-      normalizedValue as never,
-      REGISTERED_OPERATOR_DATUM_AIKEN_SCHEMA as never,
-    ) as SDK.RegisteredOperatorDatum;
-    return parsed;
-  } catch {
-    return undefined;
-  }
-};
-
 const registeredNodeMatchesOperator = (
   node: SDK.LinkedListNodeView,
   operatorKeyHash: string,
-): boolean =>
-  decodeRegisteredOperatorDatumValue(node.data)?.operator === operatorKeyHash;
+): boolean => SDK.registeredNodeOperator(node) === operatorKeyHash;
 
 const linkPointsToKey = (
   node: SDK.LinkedListNodeView,
@@ -220,7 +145,7 @@ const summarizeNodeSetForDiagnostics = (
     key: datum.key,
     next: datum.next,
     data: datum.data,
-    registeredDatum: decodeRegisteredOperatorDatumValue(datum.data) ?? null,
+    registeredOperator: SDK.registeredNodeOperator(datum),
   }));
 
 const getOperatorKeyHash = (
@@ -457,6 +382,7 @@ const operatorLifecycleProgram = (
   OperatorLifecycleTxHashes,
   | SDK.StateQueueError
   | SDK.LucidError
+  | OperatorFundingShortfall
   | TxConfirmError
   | TxSignError
   | TxSubmitError
@@ -654,17 +580,12 @@ const operatorLifecycleProgram = (
             ...existingRegisteredAnchor.datum,
             next: existingRegisteredNode.datum.next,
           };
+        yield* requireOperatorFundingProgram(lucid, {
+          label: "deregister-operator",
+          lockedLovelace: 0n,
+        });
         const spendableWalletUtxosForDeregister =
           yield* resolveSpendableWalletUtxos(lucid, lifecycleScriptRefOutRefs);
-        if (spendableWalletUtxosForDeregister.length === 0) {
-          return yield* Effect.fail(
-            new SDK.StateQueueError({
-              message:
-                "No wallet funding UTxOs available for deregistration transaction",
-              cause: operatorKeyHash,
-            }),
-          );
-        }
         const deregisterUnsignedTx = yield* Effect.tryPromise({
           try: () =>
             SDK.buildDeregisterRegisteredOperatorTx({
@@ -775,9 +696,8 @@ const operatorLifecycleProgram = (
         );
       } else {
         return yield* Effect.fail(
-          new SDK.StateQueueError({
-            message:
-              "Activate-only flow requires an existing registered operator node",
+          new OperatorRegistrationRefusal({
+            message: `${mode} flow found no registered node for operator ${operatorKeyHash}; run register-operator first`,
             cause: operatorKeyHash,
           }),
         );
@@ -797,6 +717,33 @@ const operatorLifecycleProgram = (
       mode !== "activate-only" &&
       !resumeActivationFromExistingRegistration
     ) {
+      // On-chain, `RegisterOperator` proves non-membership of the active and
+      // retired lists only — never of the registered list — so a second
+      // registration for the same key is a transaction the ledger accepts and
+      // `SlashDuplicateOperator` then punishes by taking the bond. Refuse
+      // locally, naming the membership that already exists, before spending
+      // anything. This also covers the retired list, which the skip checks
+      // above do not look at.
+      yield* Effect.try({
+        try: () =>
+          SDK.assertOperatorNotInDirectory(
+            {
+              registered: currentRegisteredNodes,
+              active: activeNodes,
+              retired: retiredNodes,
+            },
+            operatorKeyHash,
+          ),
+        catch: (cause) =>
+          new OperatorRegistrationRefusal({
+            message:
+              cause instanceof Error
+                ? cause.message
+                : `Operator ${operatorKeyHash} is already in the operator directory`,
+            cause,
+          }),
+      });
+
       const registeredRootNode = currentRegisteredNodes.find(
         ({ datum }) => datum.key === "Empty",
       );
@@ -841,7 +788,8 @@ const operatorLifecycleProgram = (
       );
       const registrationTime =
         registerValidTo - 1n + REGISTERED_ACTIVATION_DELAY_MS;
-      const registrationNodeKey = posixTimeToNodeKey(registrationTime);
+      const registrationNodeKey =
+        SDK.posixTimeToRegisteredNodeKey(registrationTime);
       const prependedNodeDatum: SDK.LinkedListNodeView = {
         key: { Key: { key: registrationNodeKey } },
         next: registeredRootNode.datum.next,
@@ -861,17 +809,13 @@ const operatorLifecycleProgram = (
       const registerMintAssets = {
         [registeredNodeUnit]: 1n,
       };
+      yield* requireOperatorFundingProgram(lucid, {
+        label: "register-operator",
+        lockedLovelace: requiredBondLovelace,
+        feeHeadroomLovelace: ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE,
+      });
       const spendableWalletUtxosForRegister =
         yield* resolveSpendableWalletUtxos(lucid, lifecycleScriptRefOutRefs);
-      if (spendableWalletUtxosForRegister.length === 0) {
-        return yield* Effect.fail(
-          new SDK.StateQueueError({
-            message:
-              "No wallet funding UTxOs available for registration transaction",
-            cause: operatorKeyHash,
-          }),
-        );
-      }
       const registerFundingInputs = selectWalletFundingUtxos(
         spendableWalletUtxosForRegister,
         requiredBondLovelace + ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE,
@@ -972,7 +916,13 @@ const operatorLifecycleProgram = (
             cause,
           }),
       });
-      registerTxHash = yield* handleSignSubmit(lucid, registerUnsignedTx);
+      registerTxHash = yield* handleSignSubmit(lucid, registerUnsignedTx, {
+        label: "operator registration",
+        requiredOutputIndexes: [
+          Number(resolvedRegisterLayout.prependedNodeOutputIndex),
+          Number(resolvedRegisterLayout.anchorNodeOutputIndex),
+        ],
+      });
       let refreshedRegisteredNodeSet = false;
       for (
         let attempt = 0;
@@ -1073,7 +1023,9 @@ const operatorLifecycleProgram = (
       );
     }
 
-    const activationTime = nodeKeyToPosixTime(registeredNode.datum.key);
+    const activationTime = SDK.registeredNodeKeyToPosixTime(
+      registeredNode.datum.key,
+    );
     if (activationTime === undefined) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
@@ -1083,8 +1035,17 @@ const operatorLifecycleProgram = (
         }),
       );
     }
+    const immediateActivation = canActivateRegisteredOperatorImmediately(
+      activeInsertionAnchor,
+      registeredNode.datum,
+      contracts.activeOperators,
+    );
     const initialNow = yield* resolveCurrentTimeMs(lucid);
-    if (!usesWallClockTime && initialNow < activationTime) {
+    if (
+      !immediateActivation &&
+      !usesWallClockTime &&
+      initialNow < activationTime
+    ) {
       const waitMs = activationTime - initialNow + 1_000n;
       yield* Effect.logInfo(
         `Waiting ${waitMs.toString()}ms until operator activation time (ledger_now=${initialNow.toString()},activation_time=${activationTime.toString()})`,
@@ -1096,10 +1057,15 @@ const operatorLifecycleProgram = (
       readonly validTo?: bigint;
     } => {
       const currentTime = currentTimeMsForLucidOrEmulatorFallback(lucid);
-      const lowerBoundTarget = activationTime;
-      // Keep a finite lower bound at/after the required activation lower-bound:
-      // canonical registered-operator activation requires the whole interval to
-      // be after the activation time encoded in the registered node key.
+      const backdatedTime = currentTime - 60_000n;
+      const lowerBoundTarget = immediateActivation
+        ? backdatedTime > 0n
+          ? backdatedTime
+          : 0n
+        : activationTime;
+      // Ordinary activation remains bounded by the registration maturity time.
+      // The earliest registration may restore an authenticated empty active set
+      // immediately; backdate that lower bound to avoid provider slot races.
       // On custom networks (emulator), avoid an upper bound because wall-clock
       // slot estimation can drift from the emulator ledger tip during long
       // candidate retries and cause false "slot range" submit failures.
@@ -1141,17 +1107,13 @@ const operatorLifecycleProgram = (
     };
     delete transferredOperatorAssets[registeredNodeUnit];
 
+    yield* requireOperatorFundingProgram(lucid, {
+      label: "activate-operator",
+      lockedLovelace: 0n,
+      feeHeadroomLovelace: ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE,
+    });
     const spendableWalletUtxosForActivation =
       yield* resolveSpendableWalletUtxos(lucid, lifecycleScriptRefOutRefs);
-    if (spendableWalletUtxosForActivation.length === 0) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "No wallet funding UTxOs available for activation transaction",
-          cause: operatorKeyHash,
-        }),
-      );
-    }
     const activationFundingInputs = selectWalletFundingUtxos(
       spendableWalletUtxosForActivation,
       ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE,
@@ -1244,7 +1206,16 @@ const operatorLifecycleProgram = (
         }),
     });
     const activateSubmitResult = yield* Effect.either(
-      handleSignSubmit(lucid, activationUnsignedTx),
+      handleSignSubmit(lucid, activationUnsignedTx, {
+        label: "operator activation",
+        requiredOutputIndexes: [
+          Number(resolvedActivateLayout.activeOperatorsInsertedNodeOutputIndex),
+          Number(resolvedActivateLayout.activeOperatorsAnchorNodeOutputIndex),
+          Number(
+            resolvedActivateLayout.registeredOperatorsAnchorNodeOutputIndex,
+          ),
+        ],
+      }),
     );
     if (activateSubmitResult._tag === "Left") {
       const onChainFailureSummary = summarizeOnChainScriptFailure(
@@ -1266,6 +1237,14 @@ const operatorLifecycleProgram = (
     });
   });
 
+/**
+ * A refusal decided from the directory before anything is built or spent:
+ * the operator is already in the directory, or is not registered when the
+ * flow needs it to be. Shares the `StateQueueError` tag so the programs' error
+ * unions are unchanged; the CLI prints it as one line.
+ */
+export class OperatorRegistrationRefusal extends SDK.StateQueueError {}
+
 export const registerAndActivateOperatorProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -1276,6 +1255,7 @@ export const registerAndActivateOperatorProgram = (
   ActivationTxHashes,
   | SDK.StateQueueError
   | SDK.LucidError
+  | OperatorFundingShortfall
   | TxConfirmError
   | TxSignError
   | TxSubmitError
@@ -1306,6 +1286,7 @@ export const registerOperatorProgram = (
   RegistrationTxHashes,
   | SDK.StateQueueError
   | SDK.LucidError
+  | OperatorFundingShortfall
   | TxConfirmError
   | TxSignError
   | TxSubmitError
@@ -1333,6 +1314,7 @@ export const activateOperatorProgram = (
   ActivationTxHashes,
   | SDK.StateQueueError
   | SDK.LucidError
+  | OperatorFundingShortfall
   | TxConfirmError
   | TxSignError
   | TxSubmitError
@@ -1367,6 +1349,7 @@ export const activateRegisteredOperatorProgram = (
   ActivationTxHashes,
   | SDK.StateQueueError
   | SDK.LucidError
+  | OperatorFundingShortfall
   | TxConfirmError
   | TxSignError
   | TxSubmitError
@@ -1396,6 +1379,7 @@ export const deregisterOperatorProgram = (
   DeregistrationTxHashes,
   | SDK.StateQueueError
   | SDK.LucidError
+  | OperatorFundingShortfall
   | TxConfirmError
   | TxSignError
   | TxSubmitError
@@ -1413,25 +1397,10 @@ export const deregisterOperatorProgram = (
     })),
   );
 
-const configuredReleaseRequiredBondProgram = Effect.gen(function* () {
-  const verification = yield* verifyConfiguredDeploymentManifestProgram;
-  if (!verification.ok) {
-    return yield* Effect.fail(
-      new Error(
-        `Operator lifecycle refused deployment manifest drift: ${verification.mismatches.join("; ")}`,
-      ),
-    );
-  }
-  const identity = yield* Effect.try({
-    try: () =>
-      readFinalizedDeploymentIdentity(configuredContractDeploymentInfoPath()),
-    catch: (cause) =>
-      new Error(
-        `Failed to load finalized deployment economics: ${String(cause)}`,
-      ),
-  });
-  return BigInt(identity.manifest.economics.requiredBondLovelace);
-});
+const configuredReleaseRequiredBondProgram = Effect.map(
+  configuredOperatorEconomicsProgram,
+  (economics) => economics.requiredBondLovelace,
+);
 
 export const program = Effect.gen(function* () {
   const lucidService = yield* Lucid;

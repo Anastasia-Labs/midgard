@@ -5,6 +5,7 @@ import type {
   StateQueueMutationLease,
   StateQueueMutationLeaseCoordinator,
 } from "../remove-fraudulent-block.js";
+import { WorkflowActionChangedError } from "./action-changed.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import type { CompleteCanonicalReplayContext } from "./complete-replay.js";
 import {
@@ -362,7 +363,7 @@ export const createCursorFamilyWorkflowAdapter = <
         snapshot.workflow.kind !== "action_required" ||
         !sameJson(snapshot.workflow.action, action)
       ) {
-        throw new Error(
+        throw new WorkflowActionChangedError(
           `${category} preflight differs from authenticated current L1 state`,
         );
       }

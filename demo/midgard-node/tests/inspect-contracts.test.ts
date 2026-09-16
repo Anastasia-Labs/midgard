@@ -11,7 +11,11 @@ import {
   type FraudProofCatalogueDeploymentInfo,
   referenceScriptAuthPolicyDeploymentInfo,
 } from "@al-ft/midgard-sdk";
-import { Emulator, Lucid } from "@lucid-evolution/lucid";
+import {
+  Emulator,
+  generateEmulatorAccount,
+  Lucid,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -32,8 +36,13 @@ const buildInspectionFixture = async () => {
   const blueprintJson: unknown = JSON.parse(
     readFileSync(blueprintPath, "utf8"),
   );
-  const lucid = await Lucid(new Emulator([]), "Preprod");
-  const authPolicy = createReferenceScriptAuthPolicy(lucid, 1_900_000_000_000);
+  const publisher = generateEmulatorAccount({ lovelace: 10_000_000n });
+  const lucid = await Lucid(new Emulator([publisher]), "Preprod");
+  lucid.selectWallet.fromSeed(publisher.seedPhrase);
+  const authPolicy = await createReferenceScriptAuthPolicy(
+    lucid,
+    1_900_000_000_000,
+  );
   const appliedContracts = await loadRealMidgardContractsForTest(
     { txHash: "ab".repeat(32), outputIndex: 0 },
     authPolicy,

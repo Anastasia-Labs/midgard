@@ -16,7 +16,7 @@ import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scr
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
-  workflowActuationDecisionDigest,
+  workflowActuationAuthorizingDecisionDigest,
   workflowJournalIsReconciliationOnly,
 } from "../workflow/actuation-permit.js";
 import {
@@ -550,7 +550,10 @@ export const executeManifestBoundDistinctAssetAccumulationWorkflow = async ({
   sources: readonly RetainedDaPayloadSource[];
   journal: FraudProofWorkflowJournalStore;
 }): Promise<FraudProofWorkflowRunResult> => {
-  if (workflowActuationDecisionDigest(journal) !== workflow.decisionDigest)
+  if (
+    workflowActuationAuthorizingDecisionDigest(journal) !==
+    workflow.decisionDigest
+  )
     throw new Error(
       "distinctAssetAccumulationLimit journal changed decision digest",
     );

@@ -311,6 +311,35 @@ describe("raw L1 snapshot V1 admission", () => {
     );
   });
 
+  it("admits authenticated inclusion without changing the release policy", () => {
+    const value = fixture();
+    const included = mutable(value.snapshot);
+    // Move the observed tip back to the cursor while retaining all exact history.
+    included.cursor.tip = included.cursor.point;
+    included.provenance.ogmiosTip = included.cursor.point;
+    included.cursor.confirmationDepth = 1;
+    included.transactions[0]!.confirmationDepth = 2;
+    expect(() => admit(included, value.request)).toThrow(/observation depth/u);
+    const admitted = admitFraudProofRawL1Snapshot({
+      value: included,
+      request: value.request,
+      releaseFinality,
+      observationDepth: "inclusion",
+    });
+    expect(admitted.cursor.confirmationDepth).toBe(1);
+    expect(admitted.finalityPolicyDigest).toBe(releaseFinality.policyDigest);
+    expect(releaseFinality.policy.confirmationDepth).toBe(30);
+    included.transactions[0]!.bodyCbor = "00";
+    expect(() =>
+      admitFraudProofRawL1Snapshot({
+        value: included,
+        request: value.request,
+        releaseFinality,
+        observationDepth: "inclusion",
+      }),
+    ).toThrow();
+  });
+
   it("derives confirmation depth from inclusion, cursor, and tip points", () => {
     const value = fixture();
     const forgedTransaction = mutable(value.snapshot);

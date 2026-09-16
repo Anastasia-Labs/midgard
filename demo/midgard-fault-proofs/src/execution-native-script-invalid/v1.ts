@@ -43,7 +43,7 @@ import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scr
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
-  workflowActuationDecisionDigest,
+  workflowActuationAuthorizingDecisionDigest,
 } from "../workflow/actuation-permit.js";
 import {
   WORKFLOW_ADAPTER_RUNNER,
@@ -140,7 +140,7 @@ import {
 } from "./submit-step-01.js";
 import { submitExecutionNativeScriptInvalidStep02 } from "./submit-step-02.js";
 import { submitExecutionNativeScriptInvalidStep03 } from "./submit-step-03.js";
-import { submitExecutionNativeScriptInvalidStep04StartSignerScan } from "./submit-step-04.js";
+import { submitExecutionNativeScriptInvalidStep04 } from "./submit-step-04-route.js";
 import { submitExecutionNativeScriptInvalidStep05 } from "./submit-step-05.js";
 import { submitExecutionNativeScriptInvalidStep06 } from "./submit-step-06.js";
 import { EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC } from "./workflow-spec.js";
@@ -696,13 +696,14 @@ const captureExecutionNativeScriptInvalidAction = async ({
           referenceScriptUtxo: workflow.references.steps[2],
         });
       } else if (activeStage.step === 4) {
-        await submitExecutionNativeScriptInvalidStep04StartSignerScan({
+        await submitExecutionNativeScriptInvalidStep04({
           ...common,
           nativeTxCompactCbor: compactCbor,
           witnessSet,
           scriptItemCbor: Buffer.from(purpose.source.versionedItemCbor, "hex"),
           addressWitnessItems,
           referenceScriptUtxo: workflow.references.steps[3],
+          witnessReferenceScripts: workflow.references.witnesses,
         });
       } else if (activeStage.step === 5) {
         await submitExecutionNativeScriptInvalidStep05({
@@ -930,7 +931,7 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow =
     journal: FraudProofWorkflowJournalStore;
     decisionDigest: string;
   }): Promise<FraudProofWorkflowRunResult> => {
-    if (workflowActuationDecisionDigest(journal) !== decisionDigest)
+    if (workflowActuationAuthorizingDecisionDigest(journal) !== decisionDigest)
       throw new Error("executionNativeScriptInvalid journal decision changed");
     let fresh: PreparedExecutionNativeScriptInvalid | undefined;
     const prepareArtifact = async (

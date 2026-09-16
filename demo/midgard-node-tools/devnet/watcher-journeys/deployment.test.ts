@@ -16,9 +16,9 @@ import {
   queryLocalOgmiosProtocolParameters,
 } from "midgard-node/commands/contract-deployment-info";
 import {
+  awaitReferenceScriptPublicationReadiness,
   type PublishedWorkflowDeploymentResume,
   publishWorkflowDeploymentOnChain,
-  waitForPublicationAuthorityExpiry,
 } from "midgard-node/tests/helpers/published-workflow-deployment";
 import {
   type PublicationSchedule,
@@ -33,6 +33,8 @@ import {
   writeJourneyFile,
 } from "./artifacts.js";
 import { verifyJourneyConfiguration } from "./configuration.js";
+import { readOgmiosTipSlot } from "./ledger-tip.js";
+import { createLiveWorkflowChain } from "./live-chain.js";
 import { loadJourneyContext } from "./live-context.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
 
@@ -119,14 +121,16 @@ it.skipIf(runDirectory === undefined)(
       const prepared = await readJourneyArtifact<
         Pick<PublishedWorkflowDeploymentResume, "authPolicy">
       >(join(runDirectory, "work/deployment-prepared.json"));
-      const canonicalSlot = await waitForPublicationAuthorityExpiry({
-        expiresAtSlot: prepared.authPolicy.expiresAtSlot,
-        synchronize: () => synchronizePublicationIndexer(ogmiosUrl, kupoUrl),
-        awaitSlot: async (slots) => {
-          await pause(slots * slotConfig.slotLength);
-        },
-      });
       const publisher = reopened.deployment.publisherLucid;
+      const { canonicalSlot, authorityKind } =
+        await awaitReferenceScriptPublicationReadiness({
+          authPolicy: prepared.authPolicy,
+          publisherAddress: await publisher.wallet().address(),
+          synchronize: () => synchronizePublicationIndexer(ogmiosUrl, kupoUrl),
+          awaitSlot: async (slots) => {
+            await pause(slots * slotConfig.slotLength);
+          },
+        });
       const outputs = await publisher.utxosAt(
         await publisher.wallet().address(),
       );
@@ -151,9 +155,10 @@ it.skipIf(runDirectory === undefined)(
         ).toBe(true);
       }
       await writeJourneyArtifact(
-        join(runDirectory, "work/publication-closure.json"),
+        join(runDirectory, "work/publication-readiness.json"),
         {
           verifiedAt: new Date().toISOString(),
+          authorityKind,
           observedCanonicalSlot: canonicalSlot,
           authorityExpirySlot: prepared.authPolicy.expiresAtSlot,
           authorityPolicyId: prepared.authPolicy.policyId,
@@ -356,12 +361,11 @@ it.skipIf(runDirectory === undefined)(
       },
       operatorLucid,
       publisherLucid,
-      chain: {
-        now: Date.now,
-        awaitSlot: async (slots) => {
-          await pause(slots * slotConfig.slotLength);
-        },
-      },
+      chain: createLiveWorkflowChain({
+        lucid: operatorLucid,
+        slotLength: slotConfig.slotLength,
+        readTipSlot: () => readOgmiosTipSlot(ogmiosUrl),
+      }),
       protocolParameters: parameters.snapshot,
       publicationJournalPath: join(
         runDirectory,

@@ -23,6 +23,7 @@ import {
   makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { MidgardValidationPhase } from "@al-ft/midgard-core/validation-trace";
+import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -56,9 +57,11 @@ import { WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS } from "../support/deployment-
 
 const h32 = (byte: string): string => byte.repeat(64);
 
-const NATIVE_SCRIPT_CBOR = `8200581c${"00".repeat(28)}`;
-const NATIVE_SCRIPT_HASH =
-  "9dcfe5a661b6bc3af0999d06416d95842ba7c693dc0e246f5e0a5e33";
+const NATIVE_SCRIPT_CBOR = "820501";
+const NATIVE_SCRIPT_HASH = validatorToScriptHash({
+  type: "Native",
+  script: NATIVE_SCRIPT_CBOR,
+});
 const DA_VKEY = "44".repeat(32);
 const DA_SIGNERS_HASH =
   "0395256ce5d90f07504b614b9e70e29a06fdd69cef6b01f6018615164125a5c5";

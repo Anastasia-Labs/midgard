@@ -1,4 +1,6 @@
-import type { StateQueueUTxO } from "@al-ft/midgard-sdk";
+import { MIDGARD_PROTOCOL_VERSION } from "@al-ft/midgard-core";
+import * as SDK from "@al-ft/midgard-sdk";
+import { CML, credentialToAddress } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -6,282 +8,381 @@ import {
   planNextTimeoutCorrection,
   reconcileCompletedTimeoutCorrectionJournal,
   reconcileLastTimeoutCorrectionStep,
-  releaseTimeoutCorrectionLeaseBeforeYield,
+  recoverTimeoutCorrectionAttempt,
+  reopenRolledBackTimeoutCorrectionSteps,
+  selectTimeoutCorrectionTarget,
   type TimeoutCorrectionJournal,
+  type TimeoutCorrectionRecovery,
 } from "../src/remove-unattested-block.js";
-
-const txHash = (byte: string): string => byte.repeat(64);
-const headerHash = (byte: string): string => byte.repeat(56);
-const outRef = (byte: string, outputIndex = 0): string =>
-  `${txHash(byte)}#${outputIndex.toString()}`;
-
-const root = (byte = "a"): StateQueueUTxO =>
-  ({
-    assetName: "",
-    datum: { key: "Empty", next: "Empty", data: "d87980" },
-    utxo: {
-      txHash: txHash(byte),
-      outputIndex: 0,
-      address: "addr_test1root",
-      assets: { lovelace: 2_000_000n },
-    },
-  }) as StateQueueUTxO;
-
+import type { SignedTransactionRecoveryObservation } from "../src/workflow/signed-transaction-reconciliation.js";
+const h = (byte: string) => byte.repeat(28);
+const tx = (byte: string) => byte.repeat(32);
+const address = credentialToAddress("Preprod", { type: "Key", hash: h("dd") });
+const header: SDK.Header = {
+  prevUtxosRoot: "55".repeat(32),
+  utxosRoot: "55".repeat(32),
+  withdrawalsRoot: "55".repeat(32),
+  forcedTransactionsRoot: "55".repeat(32),
+  transactionsRoot: "55".repeat(32),
+  depositsRoot: "55".repeat(32),
+  transitionTraceRoot: "55".repeat(32),
+  eventToStepRoot: "55".repeat(32),
+  validationTracesRoot: "55".repeat(32),
+  withdrawalCount: 0n,
+  forcedTransactionCount: 0n,
+  l2TransactionCount: 0n,
+  depositCount: 0n,
+  totalEventCount: 0n,
+  transitionStepCount: 0n,
+  validationTraceCount: 0n,
+  startTime: 0n,
+  endTime: 1n,
+  blockSlot: 1n,
+  expectedNetworkId: 0n,
+  minFeeA: 44n,
+  minFeeB: 155381n,
+  prevHeaderHash: "66".repeat(28),
+  operatorVkey: "77".repeat(28),
+  protocolVersion: BigInt(MIDGARD_PROTOCOL_VERSION),
+};
 const block = (
   byte: string,
-  txByte = byte,
-  outputIndex = 0,
-): StateQueueUTxO => {
-  const hash = headerHash(byte);
-  return {
-    assetName: `000de140${hash}`,
-    datum: {
-      key: { Key: { key: hash } },
-      next: "Empty",
-      data: "d87980",
-    },
-    utxo: {
-      txHash: txHash(txByte),
-      outputIndex,
-      address: "addr_test1queue",
-      assets: { lovelace: 2_000_000n },
-    },
-  } as StateQueueUTxO;
-};
-
-const completedJournal = (): TimeoutCorrectionJournal => ({
-  version: 1,
-  targetHeaderHash: headerHash("1"),
-  targetDeadlineMs: "3600000",
-  steps: [
-    {
-      kind: "remove-head",
-      removedHeaderHash: headerHash("1"),
-      inputOutRefs: [outRef("a"), outRef("1"), outRef("c")],
-      txHash: txHash("f"),
-      status: "confirmed",
-    },
-  ],
-  completed: true,
+  endTime = 1n,
+  attested = false,
+): SDK.StateQueueUTxO => ({
+  assetName: SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + h(byte),
+  datum: {
+    key: { Key: { key: h(byte) } },
+    next: "Empty",
+    data: SDK.castStateQueueNodeToData({
+      header: { ...header, endTime },
+      da_attestation: attested
+        ? { Attested: { da_bond_asset_name: tx("ab") } }
+        : SDK.NO_DA_ATTESTATION,
+    }) as SDK.LinkedListNodeView["data"],
+  },
+  utxo: {
+    txHash: tx(byte),
+    outputIndex: 0,
+    address,
+    assets: { lovelace: 2_000_000n },
+  },
 });
-
-describe("attestation-timeout correction recovery", () => {
-  it("rejects malformed nested journal state instead of trusting the cast", () => {
-    expect(() =>
-      parseTimeoutCorrectionJournal({
-        ...completedJournal(),
-        steps: [{ kind: "remove-head", status: "confirmed" }],
-      }),
-    ).toThrow(/step 0 is invalid/);
-    expect(() =>
-      parseTimeoutCorrectionJournal({
-        ...completedJournal(),
-        steps: [
-          completedJournal().steps[0],
-          {
-            ...completedJournal().steps[0],
-            removedHeaderHash: headerHash("2"),
-          },
-        ],
-      }),
-    ).toThrow(/repeats transaction hash/);
-    expect(() =>
-      parseTimeoutCorrectionJournal({
-        ...completedJournal(),
-        steps: [{ ...completedJournal().steps[0], status: "submitted" }],
-      }),
-    ).toThrow(/Completed.*non-terminal/);
-    expect(() =>
-      parseTimeoutCorrectionJournal({
-        ...completedJournal(),
-        completedAuthority: true,
-      }),
-    ).toThrow(/Invalid.*journal/);
-    expect(() =>
-      parseTimeoutCorrectionJournal({
-        ...completedJournal(),
-        steps: [
-          {
-            ...completedJournal().steps[0],
-            providerConfirmed: true,
-          },
-        ],
-      }),
-    ).toThrow(/step 0 is invalid/);
-    expect(() =>
-      parseTimeoutCorrectionJournal({
-        ...completedJournal(),
-        completed: false,
-        steps: [{ ...completedJournal().steps[0], status: "accepted" }],
-      }),
-    ).toThrow(/non-canonical fields/);
-  });
-
-  it("reopens completion when a rollback restores the target head", () => {
-    const reconciled = reconcileCompletedTimeoutCorrectionJournal(
-      completedJournal(),
-      [root(), block("1")],
+const queue = (...nodes: SDK.StateQueueUTxO[]) => {
+  const root: SDK.StateQueueUTxO = {
+    ...block("aa"),
+    assetName: SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+    datum: { key: "Empty", next: "Empty", data: "d87980" },
+  };
+  const all = [root, ...nodes].map((node) => ({
+    ...node,
+    datum: { ...node.datum },
+  }));
+  for (let i = 0; i < all.length - 1; i++)
+    all[i]!.datum.next = all[i + 1]!.datum.key;
+  return all;
+};
+const journal = (
+  status: "prepared" | "submitted" | "confirmed" = "submitted",
+): TimeoutCorrectionJournal => {
+  const inputs = CML.TransactionInputList.new();
+  for (const byte of ["11", "22", "cc", "dd"])
+    inputs.add(
+      CML.TransactionInput.new(CML.TransactionHash.from_hex(tx(byte)), 0n),
     );
-    expect(reconciled).toMatchObject({
-      completed: false,
-      steps: [{ status: "superseded" }],
-    });
+  const body = CML.TransactionBody.new(
+    inputs,
+    CML.TransactionOutputList.new(),
+    1n,
+  );
+  body.set_validity_interval_start(10n);
+  body.set_ttl(20n);
+  const signed = CML.Transaction.new(
+    body,
+    CML.TransactionWitnessSet.new(),
+    true,
+  );
+  return {
+    version: 1,
+    targetHeaderHash: h("11"),
+    targetDeadlineMs: "3600001",
+    completed: false,
+    steps: [
+      {
+        kind: "prune-descendant",
+        removedHeaderHash: h("22"),
+        inputOutRefs: ["11", "22", "cc", "dd"].map((b) => `${tx(b)}#0`),
+        txHash: CML.hash_transaction(body).to_hex(),
+        signedCbor: signed.to_cbor_hex(),
+        validFromSlot: "10",
+        validToSlot: "20",
+        status,
+      },
+    ],
+  };
+};
+const canonicalPoint = {
+  pointId: "test:40",
+  slot: "40",
+  blockHash: tx("77"),
+  blockNo: "10",
+};
+const recovery = (status: SignedTransactionRecoveryObservation["status"]) => ({
+  observeSignedTransaction: vi.fn(
+    async (
+      signed: Parameters<
+        TimeoutCorrectionRecovery["observeSignedTransaction"]
+      >[0],
+    ): Promise<SignedTransactionRecoveryObservation> => ({
+      ...signed,
+      status,
+      reason: status,
+      canonicalPoint,
+      releaseFinalPoint: canonicalPoint,
+      inputs: [],
+    }),
+  ),
+  rebroadcastSignedTransaction: vi.fn(
+    async (
+      signed: Parameters<
+        TimeoutCorrectionRecovery["rebroadcastSignedTransaction"]
+      >[0],
+    ) => {
+      await signed.authorizeResubmission(signed);
+      return signed.transactionHash;
+    },
+  ),
+});
+const recover = (
+  source: TimeoutCorrectionRecovery | undefined,
+  nodes = queue(block("11"), block("22")),
+  pending = journal(),
+) =>
+  recoverTimeoutCorrectionAttempt({
+    journal: pending,
+    queue: nodes,
+    transactionStatus: "not_found",
+    recovery: source,
+    authorizeResubmission: vi.fn(async () => undefined),
   });
 
-  it("rotates a completed journal only after proving the old target absent", () => {
+describe("generalized attestation-timeout recovery", () => {
+  it("selects and prunes an expired interior target while preserving its attested prefix", async () => {
+    const nodes = queue(block("01", 1n, true), block("11"), block("22"));
     expect(
-      reconcileCompletedTimeoutCorrectionJournal(completedJournal(), [
-        root(),
-        block("2"),
-      ]),
-    ).toBeUndefined();
-    expect(() =>
-      reconcileCompletedTimeoutCorrectionJournal(completedJournal(), [
-        root(),
-        block("2"),
-        block("1"),
-      ]),
-    ).toThrow(/outside the canonical head position/);
-  });
-
-  it("replans from fresh topology after concurrent append or stale UTxOs", () => {
-    const target = headerHash("1");
-    const first = planNextTimeoutCorrection(
-      [root(), block("1", "1"), block("2", "2")],
-      target,
-    );
-    const refreshed = planNextTimeoutCorrection(
-      [root(), block("1", "3", 1), block("4", "4")],
-      target,
-    );
-    expect(first?.kind).toBe("prune-descendant");
-    expect(refreshed?.kind).toBe("prune-descendant");
-    expect(refreshed?.inputOutRefs).not.toEqual(first?.inputOutRefs);
-    expect(refreshed?.removed.assetName).toContain(headerHash("4"));
-  });
-
-  it("confirms an authenticated prune before deriving the next prune plan", () => {
-    const target = headerHash("1");
-    const pending: TimeoutCorrectionJournal = {
-      version: 1,
-      targetHeaderHash: target,
-      targetDeadlineMs: "3600000",
-      completed: false,
-      steps: [
-        {
-          kind: "prune-descendant",
-          removedHeaderHash: headerHash("2"),
-          inputOutRefs: [outRef("1"), outRef("2"), outRef("c")],
-          txHash: txHash("e"),
-          status: "submitted",
-        },
-      ],
-    };
-    const refreshedQueue = [root("a"), block("1", "9"), block("3", "3")];
-    const reconciled = reconcileLastTimeoutCorrectionStep(
-      pending,
-      refreshedQueue,
-      "confirmed",
-    );
-    expect(reconciled.disposition).toBe("confirmed");
-    expect(reconciled.journal.steps[0]?.status).toBe("confirmed");
-    expect(planNextTimeoutCorrection(refreshedQueue, target)).toMatchObject({
+      (await selectTimeoutCorrectionTarget(nodes, 4_000_000n, "Idle"))?.target,
+    ).toBe(nodes[2]);
+    const plan = planNextTimeoutCorrection(nodes, h("11"));
+    expect(plan).toMatchObject({
       kind: "prune-descendant",
-      removed: { assetName: `000de140${headerHash("3")}` },
+      predecessor: nodes[1],
+      target: nodes[2],
+      removed: nodes[3],
     });
+    expect(plan?.inputOutRefs).toEqual([`${tx("11")}#0`, `${tx("22")}#0`]);
+    expect(nodes[0]!.utxo.txHash).toBe(tx("aa"));
+    expect(nodes[1]!.utxo.txHash).toBe(tx("01"));
   });
-
-  it("confirms terminal head removal before accepting an undefined plan", () => {
-    const pending: TimeoutCorrectionJournal = {
-      ...completedJournal(),
-      completed: false,
-      steps: [
-        {
-          ...completedJournal().steps[0]!,
-          status: "submitted",
-        },
-      ],
-    };
-    const refreshedQueue = [root("9")];
-    const reconciled = reconcileLastTimeoutCorrectionStep(
-      pending,
-      refreshedQueue,
-      "confirmed",
-    );
-    expect(reconciled.disposition).toBe("confirmed");
-    expect(planNextTimeoutCorrection(refreshedQueue, headerHash("1"))).toBe(
-      undefined,
-    );
+  it("removes a tail through its immediate predecessor without consuming the root", () => {
+    const nodes = queue(block("01", 1n, true), block("11"));
+    const plan = planNextTimeoutCorrection(nodes, h("11"));
+    expect(plan).toMatchObject({
+      kind: "remove-block",
+      predecessor: nodes[1],
+      target: nodes[2],
+    });
+    expect(plan?.inputOutRefs).toEqual([`${tx("01")}#0`, `${tx("11")}#0`]);
   });
-
-  it("does not confirm when concurrent topology still carries the recorded header", () => {
-    const pending: TimeoutCorrectionJournal = {
-      version: 1,
-      targetHeaderHash: headerHash("1"),
-      targetDeadlineMs: "3600000",
-      completed: false,
-      steps: [
-        {
-          kind: "prune-descendant",
-          removedHeaderHash: headerHash("2"),
-          inputOutRefs: [outRef("1"), outRef("2"), outRef("c")],
-          txHash: txHash("e"),
-          status: "submitted",
-        },
-      ],
-    };
-    const reconciled = reconcileLastTimeoutCorrectionStep(
-      pending,
-      [root("9"), block("1", "8"), block("2", "7")],
-      "confirmed",
-    );
-    expect(reconciled.disposition).toBe("pending");
-    expect(reconciled.journal.steps[0]?.status).toBe("submitted");
-  });
-
-  it.each(["failed", "not_found"] as const)(
-    "always supersedes a %s transaction before replanning changed topology",
-    (status) => {
-      const target = headerHash("1");
-      const pending: TimeoutCorrectionJournal = {
-        version: 1,
-        targetHeaderHash: target,
-        targetDeadlineMs: "3600000",
-        completed: false,
-        steps: [
-          {
-            kind: "prune-descendant",
-            removedHeaderHash: headerHash("2"),
-            inputOutRefs: [outRef("1"), outRef("2"), outRef("c")],
-            txHash: txHash("e"),
-            status: "submitted",
+  it("resumes a locked later target ahead of another eligible timeout and rejects foreign locks", async () => {
+    const nodes = queue(block("01"), block("11"));
+    expect(
+      (
+        await selectTimeoutCorrectionTarget(nodes, 4_000_000n, {
+          Locked: {
+            target_header_hash: h("11"),
+            correction_identity: "AttestationTimeout",
           },
-        ],
-      };
-      const concurrentlyChangedQueue = [
-        root("9"),
-        block("1", "8"),
-        block("4", "4"),
-      ];
-      const reconciled = reconcileLastTimeoutCorrectionStep(
+        })
+      )?.target,
+    ).toBe(nodes[2]);
+    await expect(
+      selectTimeoutCorrectionTarget(nodes, 4_000_000n, {
+        Locked: {
+          target_header_hash: h("11"),
+          correction_identity: {
+            FraudProof: { fraud_proof_asset_name: tx("bb") },
+          },
+        },
+      }),
+    ).rejects.toThrow("another correction kind");
+  });
+  it("keeps attested blocks out of selection and uses the exact deadline boundary", async () => {
+    const nodes = queue(block("01", 1n, true), block("11"));
+    expect(
+      (await selectTimeoutCorrectionTarget(nodes, 3_600_000n, "Idle"))
+        ?.deadline,
+    ).toBe(3_600_001n);
+    expect(
+      (await selectTimeoutCorrectionTarget(nodes, 3_600_001n, "Idle"))?.target,
+    ).toBe(nodes[2]);
+    expect(
+      await selectTimeoutCorrectionTarget(
+        queue(block("01", 1n, true)),
+        4_000_000n,
+        "Idle",
+      ),
+    ).toBeUndefined();
+  });
+  it("rejects disconnected predecessor and descendant plans", () => {
+    const nodes = queue(block("01"), block("11"), block("22"));
+    nodes[1]!.datum.next = "Empty";
+    expect(() => planNextTimeoutCorrection(nodes, h("11"))).toThrow(
+      "predecessor",
+    );
+    nodes[1]!.datum.next = nodes[2]!.datum.key;
+    nodes[2]!.datum.next = "Empty";
+    expect(() => planNextTimeoutCorrection(nodes, h("11"))).toThrow(
+      "descendant",
+    );
+  });
+  it("checks exact signed transaction identity, full ordinary inputs and bounded validity", () => {
+    const valid = journal();
+    expect(parseTimeoutCorrectionJournal(valid)).toEqual(valid);
+    for (const patch of [
+      { txHash: tx("ff") },
+      { validToSlot: "21" },
+      { validFromSlot: "9" },
+      { inputOutRefs: valid.steps[0]!.inputOutRefs.slice(1) },
+      { signedCbor: "80" },
+    ])
+      expect(() =>
+        parseTimeoutCorrectionJournal({
+          ...valid,
+          steps: [{ ...valid.steps[0]!, ...patch }],
+        }),
+      ).toThrow();
+  });
+  it.each(["failed", "not_found", "unknown", "pending"] as const)(
+    "preserves %s despite changed queue hints",
+    (status) => {
+      const pending = journal();
+      const result = reconcileLastTimeoutCorrectionStep(
         pending,
-        concurrentlyChangedQueue,
+        queue(block("11")),
         status,
       );
-      expect(reconciled.disposition).toBe("superseded");
-      expect(reconciled.journal.steps[0]?.status).toBe("superseded");
-      expect(
-        planNextTimeoutCorrection(concurrentlyChangedQueue, target)?.removed
-          .assetName,
-      ).toContain(headerHash("4"));
+      expect(result.disposition).toBe("pending");
+      expect(result.journal).toBe(pending);
     },
   );
-
-  it("releases an acquired lease before yielding a resumable pending result", async () => {
-    const release = vi.fn(async () => undefined);
-    await expect(
-      releaseTimeoutCorrectionLeaseBeforeYield({ release }),
-    ).resolves.toBe(true);
-    expect(release).toHaveBeenCalledOnce();
+  it.each(["expired", "invalidated"] as const)(
+    "retires only canonically proven %s attempts",
+    async (status) => {
+      const source = recovery(status);
+      expect((await recover(source)).disposition).toBe("superseded");
+      expect(source.rebroadcastSignedTransaction).not.toHaveBeenCalled();
+    },
+  );
+  it("rebroadcasts exact bytes once after ambiguity without creating another intent", async () => {
+    const pending = journal();
+    const source = recovery("rebroadcast");
+    source.rebroadcastSignedTransaction.mockImplementationOnce(
+      async (signed) => {
+        await signed.authorizeResubmission(signed);
+        throw new Error("acknowledgement lost");
+      },
+    );
+    const result = await recover(
+      source,
+      queue(block("11"), block("22")),
+      pending,
+    );
+    expect(result.disposition).toBe("pending");
+    expect(result.journal).toBe(pending);
+    expect(source.rebroadcastSignedTransaction).toHaveBeenCalledOnce();
+    expect(
+      source.rebroadcastSignedTransaction.mock.calls[0]![0]
+        .signedTransactionCborHex,
+    ).toBe(pending.steps[0]!.signedCbor);
+  });
+  it("requires exact canonical inclusion and matching queue effects before confirmation", async () => {
+    const source = recovery("included");
+    expect((await recover(source)).disposition).toBe("pending");
+    const continued = block("11");
+    continued.utxo.txHash = tx("99");
+    expect((await recover(source, queue(continued))).disposition).toBe(
+      "confirmed",
+    );
+  });
+  it("preserves attempts on unavailable canonical evidence and rejects substituted identities", async () => {
+    const source = recovery("expired");
+    source.observeSignedTransaction.mockRejectedValueOnce(
+      new Error("node unavailable"),
+    );
+    expect((await recover(source)).disposition).toBe("pending");
+    expect((await recover(undefined)).disposition).toBe("pending");
+    source.observeSignedTransaction.mockImplementationOnce(async (signed) => ({
+      ...signed,
+      transactionHash: tx("ff"),
+      status: "expired",
+      reason: "substituted",
+      canonicalPoint,
+      releaseFinalPoint: canonicalPoint,
+      inputs: [],
+    }));
+    await expect(recover(source)).rejects.toThrow("substituted");
+  });
+  it("reopens a rollback-restored objective anywhere without discarding signed attempts", () => {
+    const completed = { ...journal("confirmed"), completed: true };
+    const restored = reconcileCompletedTimeoutCorrectionJournal(
+      completed,
+      queue(block("01", 1n, true), block("11"), block("22")),
+    );
+    expect(restored).toMatchObject({
+      completed: false,
+      steps: [
+        { status: "prepared", signedCbor: completed.steps[0]!.signedCbor },
+      ],
+    });
+    expect(
+      reconcileCompletedTimeoutCorrectionJournal(
+        completed,
+        queue(block("01", 1n, true)),
+      ),
+    ).toBeUndefined();
+  });
+  it("reopens reverted confirmed steps while the objective is still incomplete", async () => {
+    const retained = journal("confirmed");
+    const restoredQueue = queue(
+      block("01", 1n, true),
+      block("11"),
+      block("22"),
+    );
+    const reopened = reopenRolledBackTimeoutCorrectionSteps(
+      retained,
+      restoredQueue,
+    );
+    expect(reopened.completed).toBe(false);
+    expect(reopened.steps).toEqual([
+      { ...retained.steps[0], status: "prepared" },
+    ]);
+    const source = recovery("rebroadcast");
+    source.rebroadcastSignedTransaction.mockImplementationOnce(
+      async (signed) => {
+        await signed.authorizeResubmission(signed);
+        return signed.transactionHash;
+      },
+    );
+    const result = await recover(source, restoredQueue, reopened);
+    expect(result.disposition).toBe("pending");
+    expect(
+      source.rebroadcastSignedTransaction.mock.calls[0]![0]
+        .signedTransactionCborHex,
+    ).toBe(retained.steps[0]!.signedCbor);
+    const continued = block("11");
+    continued.utxo.txHash = tx("99");
+    expect(
+      reopenRolledBackTimeoutCorrectionSteps(retained, queue(continued)),
+    ).toBe(retained);
   });
 });

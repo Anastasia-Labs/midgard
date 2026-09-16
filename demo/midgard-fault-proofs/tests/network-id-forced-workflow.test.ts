@@ -57,6 +57,7 @@ import {
 } from "../src/network-id/wrongful-rejection.js";
 import type { ResolvedProverSigner } from "../src/runtime.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
+import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
 import {
   type CanonicalViolationDetection,
   classifyCanonicalBlockViolations,
@@ -296,12 +297,13 @@ const forcedHarness = ({
     address: FORCED_SCAN_ADDRESS,
     ...(forcedScanDatum === undefined ? {} : { datum: forcedScanDatum }),
   });
+  const scanUtxos = forcedScanDatum === undefined ? [] : [scanUtxo];
   const lucid = {
     utxosAtWithUnit: async (address: string) =>
       address === FORCED_STEP_ADDRESS && forcedDoorOccupied
         ? [forcedUtxo]
-        : address === FORCED_SCAN_ADDRESS && forcedScanDatum !== undefined
-          ? [scanUtxo]
+        : address === FORCED_SCAN_ADDRESS
+          ? scanUtxos
           : address === STATE_QUEUE_ADDRESS
             ? [utxo({ txHash: h32(0x73), address: STATE_QUEUE_ADDRESS })]
             : [],
@@ -380,6 +382,8 @@ const forcedHarness = ({
   ) as unknown as JournalJsonObject;
   return {
     artifact,
+    scanUtxos,
+    publicationObserver: config.rawL1!.publications!,
     adapter: createNetworkIdWorkflowAdapter(config),
     observe: async () =>
       await createNetworkIdWorkflowAdapter(config).observe({
@@ -628,6 +632,125 @@ describe("network-id forced (§5.2) production workflow", () => {
         walletUtxos: carriage,
       }).observe(),
     ).rejects.toThrow(/on no batch of the planned walk/u);
+  });
+
+  it("yields stale forced scan selections while rejecting duplicate or malformed fresh state", async () => {
+    const prepared = await forcedPrepared();
+    const opening = planNetworkIdOutputsOpening({
+      prepared,
+      owner: SIGNER.paymentKeyHash,
+      publish: true,
+    });
+    const carriage = opening.plan.publications.map((publication, index) =>
+      utxo({
+        txHash: h32(0x20 + index),
+        datum: fieldPreimagePublicationDatumCbor(publication.bytes),
+      }),
+    );
+    const harness = forcedHarness({
+      prepared,
+      stage: {
+        kind: "not_started",
+        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+      },
+      forcedDoorOccupied: false,
+      forcedScanDatum: scanDatum(prepared, "ready"),
+      walletUtxos: carriage,
+    });
+    const selected = await harness.observe();
+    if (selected.kind !== "action_required")
+      throw new Error("expected forced scan action");
+    const preflight = () =>
+      harness.adapter.preflight({
+        identity: workflowIdentity(prepared.headerHash),
+        workflowId: h32(0x51),
+        artifact: harness.artifact,
+        entries: [],
+        action: selected.action,
+      });
+    const original = harness.scanUtxos[0]!;
+    harness.scanUtxos[0] = { ...original, txHash: h32(0x79) };
+    await expect(preflight()).rejects.toBeInstanceOf(
+      WorkflowActionChangedError,
+    );
+    harness.scanUtxos.splice(0);
+    await expect(preflight()).rejects.toBeInstanceOf(
+      WorkflowActionChangedError,
+    );
+    const plan = planNetworkIdForcedScan({
+      outputsCarriagePlan: opening,
+      outputCount: opening.itemCount,
+    });
+    harness.scanUtxos.push({
+      ...original,
+      datum: scanDatum(prepared, {
+        scanningAt: hashNetworkIdForcedScanWalkCheckpoint(plan.initialWalk),
+      }),
+    });
+    await expect(preflight()).rejects.toBeInstanceOf(
+      WorkflowActionChangedError,
+    );
+    harness.scanUtxos[0] = { ...original, datum: "00" };
+    await expect(preflight()).rejects.not.toBeInstanceOf(
+      WorkflowActionChangedError,
+    );
+    harness.scanUtxos.splice(0, 1, original, { ...original, outputIndex: 1 });
+    await expect(preflight()).rejects.toThrow("duplicate forced-scan UTxOs");
+    await expect(preflight()).rejects.not.toBeInstanceOf(
+      WorkflowActionChangedError,
+    );
+  });
+
+  it("yields changed authenticated certification chunks but preserves publication authentication failures", async () => {
+    const prepared = await forcedPrepared({
+      outputNetworkIds: Array.from({ length: 600 }, () => 0),
+    });
+    const opening = planNetworkIdOutputsOpening({
+      prepared,
+      owner: SIGNER.paymentKeyHash,
+      publish: true,
+    });
+    expect(opening.plan.tier).toBe("Certified");
+    const carriage = opening.plan.publications.map((publication, index) =>
+      utxo({
+        txHash: h32(0x20 + index),
+        datum: fieldPreimagePublicationDatumCbor(publication.bytes),
+      }),
+    );
+    const harness = forcedHarness({
+      prepared,
+      stage: {
+        kind: "not_started",
+        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+      },
+      forcedDoorOccupied: false,
+      forcedScanDatum: scanDatum(prepared, "ready"),
+      walletUtxos: carriage,
+    });
+    const selected = await harness.observe();
+    if (selected.kind !== "action_required")
+      throw new Error("expected certification action");
+    expect(selected.action.input.kind).toBe("certify_field");
+    const preflight = () =>
+      harness.adapter.preflight({
+        identity: workflowIdentity(prepared.headerHash),
+        workflowId: h32(0x51),
+        artifact: harness.artifact,
+        entries: [],
+        action: selected.action,
+      });
+    carriage[0] = { ...carriage[0]!, txHash: h32(0x70) };
+    await expect(preflight()).rejects.toBeInstanceOf(
+      WorkflowActionChangedError,
+    );
+    expect(harness.publicationObserver.observeExact).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedOutRef: `${h32(0x70)}#0` }),
+    );
+    const failure = new Error("publication authentication failed");
+    vi.mocked(harness.publicationObserver.observeExact).mockRejectedValueOnce(
+      failure,
+    );
+    await expect(preflight()).rejects.toBe(failure);
   });
 
   // Regression: the production funding reservation permit reads the signed

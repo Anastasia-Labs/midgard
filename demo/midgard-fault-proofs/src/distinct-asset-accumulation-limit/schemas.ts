@@ -3,6 +3,7 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   ForcedInclusionTxV1Schema,
+  FraudProofComputationThreadStepDatum,
   FrontierPeakSchema,
   HeaderSchema,
   NativeTxInclusionCarriageSchema,
@@ -216,11 +217,12 @@ export const DistinctAssetStep06RedeemerSchema = faultProofStepRedeemerSchema(
     fraud_proof_mint_redeemer_index: Data.Integer(),
   }),
 );
+// Indexed by the validator holding the thread, including the initial datum.
 export const DISTINCT_ASSET_ACCUMULATION_STEP_DATUM_SCHEMAS = Object.freeze([
+  FraudProofComputationThreadStepDatum,
   DistinctAssetStep02DatumSchema,
   DistinctAssetStep03DatumSchema,
   DistinctAssetStep04DatumSchema,
   DistinctAssetStep05DatumSchema,
-  DistinctAssetStep06DatumSchema,
   DistinctAssetStep06DatumSchema,
 ] as const);

@@ -123,6 +123,9 @@ const createRuntime = async (input: {
     );
   }
   let previous = recovery.previous;
+  // Rebuilt from the finalized cursor and canonical suffix after every rollback.
+  let included = previous;
+  let classificationDirty = false;
   let catchupBoundary = recovery.catchupBoundary;
   if (persisted.length === 0) {
     const appended = await input.store.append(previous);
@@ -181,7 +184,7 @@ const createRuntime = async (input: {
       return catchupBoundary;
     },
     caughtUp: caughtUpPromise,
-    current: () => previous,
+    current: () => included,
     bindFaultDecisionBridge: (bridge, availability) => {
       if (bound) {
         throw new Error("state-queue runtime already has a decision bridge");
@@ -193,6 +196,7 @@ const createRuntime = async (input: {
           // workflows lose their exact generation authority immediately.
           bridge.invalidateForRollback();
           availability?.invalidateForRollback(point);
+          classificationDirty = false;
           await input.store.rollbackTo(point);
           const retained = await input.store.readAll();
           if (retained.length === 0) {
@@ -202,6 +206,7 @@ const createRuntime = async (input: {
           }
           const restored = await restoreAndRevokeDiscarded(retained);
           previous = restored.previous;
+          included = previous;
           if (!caughtUp) {
             catchupBoundary = restored.catchupBoundary;
             if (
@@ -217,6 +222,35 @@ const createRuntime = async (input: {
           await availability?.reconcile(previous, false);
           await bridge.prepareForRecovery(previous);
         },
+        onIncluded: async ({ nativeBlock, localObservation, relevance }) => {
+          if (!caughtUp || input.source.observeIncluded === undefined) return;
+          if (
+            BigInt(nativeBlock.blockNo) <= BigInt(included.nativePoint.blockNo)
+          )
+            return;
+          if (relevance === "touched") {
+            if (localObservation === null)
+              throw new Error(
+                "included queue block omitted authenticated observation",
+              );
+            included = await input.source.observeIncluded({
+              nativeBlock,
+              localObservation,
+              previous: included,
+            });
+            classificationDirty = true;
+            await bridge.reconcileAndDispatch(included);
+            classificationDirty = false;
+          } else if (classificationDirty) {
+            await bridge.reconcileAndDispatch(included);
+            classificationDirty = false;
+          } else {
+            await bridge.retryDeferredClassification(included);
+          }
+          // Incomplete submitted journals include terminals waiting for anchoring.
+          // Recovery schedules one reconciliation and releases the execution slot.
+          await bridge.recoverExisting({ nativeProgress: nativeBlock });
+        },
         onFinalized: async ({
           nativeBlock,
           localObservation,
@@ -227,10 +261,12 @@ const createRuntime = async (input: {
           relevance: WatcherBlockRelevance;
         }>) => {
           if (relevance === "quiet") {
-            // Nothing the queue tracks moved in this block: the cursor stays
-            // and no reconcile or dispatch runs. Work already selected keeps
-            // its own clock; the next touched block re-enters it.
+            // Keep queue evidence cached while waking yielded proofs on fresh
+            // canonical progress. Inclusion-capable sources wake once later in
+            // coordinator order, after finalized history has advanced.
             admitCatchupProgress(nativeBlock);
+            if (caughtUp && input.source.observeIncluded === undefined)
+              await bridge.recoverExisting({ nativeProgress: nativeBlock });
             return;
           }
           if (localObservation === null) {
@@ -269,7 +305,25 @@ const createRuntime = async (input: {
               ? previous
               : (input.source.latestFinalizedObservation?.() ?? previous);
           await availability?.reconcile(finalized, true);
-          await bridge.reconcileAndDispatch(finalized);
+          if (
+            BigInt(included.nativePoint.blockNo) <=
+            BigInt(previous.nativePoint.blockNo)
+          )
+            included = finalized;
+          classificationDirty = true;
+          // Canonical progress can finalize several older blocks before the
+          // coordinator delivers the next inclusion. Keep every history and
+          // availability update above, then classify their combined context
+          // once on that fresh inclusion (including a quiet block).
+          if (input.source.observeIncluded === undefined) {
+            await bridge.reconcileAndDispatch(included);
+            classificationDirty = false;
+          }
+          await bridge.recoverExisting(
+            input.source.observeIncluded === undefined
+              ? { nativeProgress: nativeBlock }
+              : undefined,
+          );
         },
       });
     },

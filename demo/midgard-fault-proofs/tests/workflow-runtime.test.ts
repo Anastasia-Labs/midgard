@@ -5,6 +5,9 @@ import { join } from "node:path";
 
 import {
   CML,
+  credentialToAddress,
+  Emulator,
+  Lucid,
   type Script,
   type TxSigned,
   type UTxO,
@@ -37,11 +40,16 @@ import {
   assertWorkflowFundingReservationReadyToSubmit,
   beginWorkflowFundingReservationAction,
   bindWorkflowFundingReservationJournal,
+  confirmWorkflowFundingReservationTransaction,
   createWorkflowFundingReservationPermit,
   prepareWorkflowFundingReservationTransaction,
+  releaseIdleWorkflowFundingReservation,
+  reobserveWorkflowFundingReservationTransaction,
+  restrictWorkflowFundingSigner,
   unsafeCreateWorkflowFundingReservationPermitForTest,
   unsafeWorkflowFundingReservationSelectedOutRefsForTest,
   type WorkflowFundingReservationSnapshot,
+  WorkflowFundingReservationUnavailableError,
   type WorkflowFundingSubmissionHandoff,
 } from "../src/workflow/funding-reservation-permit.js";
 import {
@@ -55,6 +63,8 @@ import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalEvent,
+  journalJsonDigest,
   MemoryFraudProofWorkflowJournalStore,
 } from "../src/workflow/journal.js";
 import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
@@ -70,7 +80,10 @@ import {
   WORKFLOW_RUNNER_FACTORIES,
   WORKFLOW_RUNTIME_CONFIG,
 } from "../src/workflow/runtime.js";
-import { readWorkflowRuntimeFundingPolicy } from "../src/workflow/runtime-funding-policy.js";
+import {
+  createWorkflowRuntimeFundingPolicy,
+  readWorkflowRuntimeFundingPolicy,
+} from "../src/workflow/runtime-funding-policy.js";
 import {
   bindWorkflowPreflightTransaction,
   workflowPreflightTransaction,
@@ -162,6 +175,7 @@ const admittedActuation = async () => {
     fundingReservationPermit,
     headerHash: decision.headerHash,
     revoke: controller.revoke,
+    restrictToReconciliation: controller.restrictToReconciliation,
   });
 };
 
@@ -217,6 +231,9 @@ const fundingReferenceScript = Object.freeze({
 const runtimeFunding = async (
   actionKind: "step-one" | "step-three" | "verify_source",
   options: Readonly<{
+    amendPolicy?: (
+      input: ReturnType<typeof runtimeFundingPolicyFixture>["constructorInput"],
+    ) => ReturnType<typeof createWorkflowRuntimeFundingPolicy>;
     governedReference?: Script;
     resolvedReference?: Script;
     useStage?: boolean;
@@ -225,10 +242,16 @@ const runtimeFunding = async (
     additionalInputs?: readonly UTxO[];
     confirmedInput?: UTxO;
     changedLineage?: boolean;
+    journal?: object;
+    reobserve?: () => Promise<unknown>;
+    refreshIdle?: (input: {
+      expectedRevision: string;
+      releaseStaleInputs: boolean;
+    }) => Promise<unknown>;
   }> = {},
 ) => {
   const actuation = await admittedActuation();
-  const { runner, policy } = runtimeFundingPolicyFixture({
+  const { runner, policy, constructorInput } = runtimeFundingPolicyFixture({
     deploymentFingerprint: DEPLOYMENT,
     fundingPaymentKeyHash: fundingKey.to_public().hash().to_hex(),
     referenceScripts:
@@ -273,7 +296,7 @@ const runtimeFunding = async (
     activeInputs,
   });
   let currentSnapshot: WorkflowFundingReservationSnapshot = snapshot;
-  const prepare = vi.fn(async () => snapshot);
+  const prepare = vi.fn(async () => currentSnapshot);
   const resolveInputs = vi.fn(async (outRefs: readonly string[]) =>
     outRefs.map((outRef) => {
       const additional = options.additionalInputs?.find(
@@ -297,13 +320,22 @@ const runtimeFunding = async (
       };
     }),
   );
+  const releaseIdle = vi.fn(async () => currentSnapshot);
   const permit = await createWorkflowFundingReservationPermit({
     category: "doubleSpend",
     runner,
-    policy,
+    policy: options.amendPolicy?.(constructorInput) ?? policy,
+    reservationPolicy: policy,
     actuationPermit: actuation.actuationPermit,
     rollbackGeneration: "7",
     port: {
+      ...(options.reobserve === undefined
+        ? {}
+        : { reobserve: options.reobserve }),
+      releaseIdle,
+      ...(options.refreshIdle === undefined
+        ? {}
+        : { refreshIdle: options.refreshIdle }),
       load: async () => currentSnapshot,
       resolveInputs,
       resolveConfirmedInput: async ({ outRef }) => {
@@ -335,13 +367,13 @@ const runtimeFunding = async (
         throw new Error("test action has no protocol input");
       },
       prepare,
-      confirm: async () => snapshot,
+      confirm: async () => currentSnapshot,
       abandon: async () => snapshot,
       markConflict: async () => snapshot,
       release: async () => snapshot,
     },
   });
-  const journal = Object.freeze({ actionKind });
+  const journal = options.journal ?? Object.freeze({ actionKind });
   bindWorkflowFundingReservationJournal({ journal, permit });
   const begin = () =>
     beginWorkflowFundingReservationAction({
@@ -353,6 +385,8 @@ const runtimeFunding = async (
     });
   if (options.begin !== false) await begin();
   return Object.freeze({
+    actuation,
+    releaseIdle,
     policy,
     begin,
     resolveInputs,
@@ -1066,6 +1100,152 @@ describe("compiled manifest-bound production runtime V1", () => {
     });
   });
 
+  it("refreshes a reused wallet after publication before admitting the next proof step", async () => {
+    const runtime = await runtimeFunding("step-one", {
+      collateral: true,
+      begin: false,
+    });
+    const lucid = await Lucid(new Emulator([]), "Preprod");
+    const signer = restrictWorkflowFundingSigner({
+      permit: runtime.permit,
+      signer: {
+        source: "funding-test",
+        address: fundingAddress,
+        paymentKeyHash: fundingKey.to_public().hash().to_hex(),
+        selectWallet: (instance) =>
+          instance.selectWallet.fromPrivateKey(fundingKey.to_bech32()),
+      },
+    });
+    const publication = {
+      actionId: "publish-field-carriage:step_02",
+      input: { actionKind: "publish_field_carriage" },
+    };
+    signer.selectWallet(lucid);
+    const wallet = lucid.wallet();
+    const getCollateral = wallet.getCollateral;
+    if (getCollateral === undefined)
+      throw new Error("reserved wallet omitted collateral API");
+    await expect(wallet.getUtxos()).rejects.toThrow(
+      "before a reserved action began",
+    );
+    await expect(getCollateral()).rejects.toThrow(
+      "before a reserved action began",
+    );
+    const premature = signedFundingTransaction({
+      inputOutRefs: [],
+      outputLovelace: 1_000_000n,
+    });
+    await expect(wallet.signTx(premature.toTransaction())).rejects.toThrow(
+      "before a reserved action began",
+    );
+    await expect(
+      wallet.submitTx(premature.toTransaction().to_cbor_hex()),
+    ).rejects.toThrow("before a reserved action began");
+    await beginWorkflowFundingReservationAction({
+      journal: runtime.journal,
+      action: publication,
+    });
+    const outRef = (utxo: UTxO) => `${utxo.txHash}#${utxo.outputIndex}`;
+    const previousInputs = await wallet.getUtxos();
+    const published = signedFundingTransaction({
+      inputOutRefs: previousInputs.map(outRef),
+      outputLovelace: 14_800_000n,
+    });
+    await runtime.prepareTransaction({
+      action: publication,
+      preflight: bindWorkflowPreflightTransaction(
+        Object.freeze({ txHash: published.toHash() }),
+        published,
+      ),
+    });
+    const change: UTxO = {
+      txHash: published.toHash(),
+      outputIndex: 0,
+      address: fundingAddress,
+      assets: { lovelace: 14_800_000n },
+    };
+    const collateral = await getCollateral();
+    const currentInputs = [change, ...collateral];
+    runtime.resolveInputs.mockImplementation(async (refs) =>
+      currentInputs.filter((utxo) => refs.includes(outRef(utxo))),
+    );
+    runtime.setSnapshot({
+      ...runtime.snapshot,
+      revision: "2",
+      activeInputs: [
+        {
+          outRef: outRef(change),
+          role: "funding" as const,
+          lovelace: "14800000",
+          assets: [],
+        },
+        ...runtime.snapshot.activeInputs.filter(
+          ({ role }) => role === "collateral",
+        ),
+      ].sort((left, right) => left.outRef.localeCompare(right.outRef)),
+    });
+    await confirmWorkflowFundingReservationTransaction({
+      journal: runtime.journal,
+      transactionHash: published.toHash(),
+    });
+    await expect(wallet.getUtxos()).rejects.toThrow(
+      "before a reserved action began",
+    );
+    await expect(getCollateral()).rejects.toThrow(
+      "before a reserved action began",
+    );
+    const step = { actionId: "step_02", input: { stage: "step_02" } };
+    const restarted = await Lucid(new Emulator([]), "Preprod");
+    signer.selectWallet(restarted);
+    await expect(restarted.wallet().getUtxos()).rejects.toThrow(
+      "before a reserved action began",
+    );
+    await beginWorkflowFundingReservationAction({
+      journal: runtime.journal,
+      action: step,
+    });
+    // The linear continuation builder reuses Lucid without selecting its signer again.
+    expect(lucid.wallet()).toBe(wallet);
+    expect(await wallet.getUtxos()).toEqual([change]);
+    expect(await restarted.wallet().getUtxos()).toEqual([change]);
+    expect(await getCollateral()).toEqual(collateral);
+    const signed = signedFundingTransaction({
+      inputOutRefs: (await wallet.getUtxos()).map(outRef),
+      outputLovelace: 14_600_000n,
+    });
+    await runtime.prepareTransaction({
+      action: step,
+      preflight: bindWorkflowPreflightTransaction(
+        Object.freeze({ txHash: signed.toHash() }),
+        signed,
+      ),
+    });
+    expect(runtime.prepare).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        transition: expect.objectContaining({
+          consumedOutRefs: [outRef(change)],
+        }),
+      }),
+    );
+    runtime.actuation.restrictToReconciliation("test rollback");
+    await expect(wallet.getUtxos()).rejects.toThrow("reconciliation-only");
+    await expect(getCollateral()).rejects.toThrow("reconciliation-only");
+    const resumed = await Lucid(new Emulator([]), "Preprod");
+    signer.selectWallet(resumed);
+    await expect(resumed.wallet().getUtxos()).rejects.toThrow(
+      "reconciliation-only",
+    );
+    await expect(
+      resumed.wallet().signTx(signed.toTransaction()),
+    ).rejects.toThrow("reconciliation-only");
+    await expect(
+      resumed.wallet().submitTx(signed.toTransaction().to_cbor_hex()),
+    ).rejects.toThrow("reconciliation-only");
+    await expect(
+      resumed.wallet().signMessage(fundingAddress, "00"),
+    ).rejects.toThrow("reconciliation-only");
+  });
+
   it("binds the actual signed body to durable leased wallet inputs", async () => {
     const runtime = await runtimeFunding("step-one");
     const action = { actionId: "step-one", input: { actionKind: "step-one" } };
@@ -1154,6 +1334,42 @@ describe("compiled manifest-bound production runtime V1", () => {
       }),
     ).rejects.toThrow("resolver changed reserved lovelace");
   });
+
+  it.each(["missing", "changed", "extra"] as const)(
+    "keeps a prepared signed attempt when inputs disappear, but rejects %s resolver substitution",
+    async (kind) => {
+      const runtime = await runtimeFunding("step-one");
+      const signed = signedFundingTransaction({
+        inputOutRefs: runtime.selected.fundingOutRefs,
+        outputLovelace: 14_800_000n,
+      });
+      await prepareRuntimeFunding(runtime, signed);
+      const present = (
+        await runtime.resolveInputs(runtime.selected.fundingOutRefs)
+      ).slice(1);
+      if (kind === "changed")
+        present[0] = { ...present[0]!, assets: { lovelace: 1n } };
+      if (kind === "extra")
+        present.push({ ...present[0]!, txHash: "ab".repeat(32) });
+      runtime.resolveInputs.mockResolvedValueOnce(present);
+      const check = assertWorkflowFundingReservationReadyToSubmit({
+        journal: runtime.journal,
+        transactionHash: signed.toHash(),
+      });
+      if (kind === "missing")
+        await expect(check).rejects.toBeInstanceOf(
+          WorkflowFundingReservationUnavailableError,
+        );
+      else
+        await expect(check).rejects.toThrow(
+          kind === "changed"
+            ? "changed reserved lovelace"
+            : "changed the reserved input set",
+        );
+      expect(runtime.prepare).toHaveBeenCalledOnce();
+      expect(runtime.releaseIdle).not.toHaveBeenCalled();
+    },
+  );
 
   it("admits every fixed factory only for its exact application category", () => {
     const categories = Object.keys(
@@ -1571,6 +1787,226 @@ describe("compiled manifest-bound production runtime V1", () => {
     }
   });
 
+  it("yields pending ownership contention even with a submission permit", async () => {
+    const actuation = await admittedActuation();
+    const journal = bindWorkflowActuationJournal({
+      journal: new MemoryFraudProofWorkflowJournalStore(),
+      permit: actuation.actuationPermit,
+      decisionDigest: actuation.decisionDigest,
+      deploymentFingerprint: DEPLOYMENT,
+      category: "doubleSpend",
+      headerHash: actuation.headerHash,
+    });
+    const result = {
+      kind: "pending",
+      resumeOnObservation: true,
+      reason: "funding is reserved",
+    };
+    const execute = vi.fn(async () => result);
+    await expect(
+      continuePendingWorkflow({
+        invocation: {
+          mode: "resume",
+          deploymentFingerprint: DEPLOYMENT,
+          category: "doubleSpend",
+          headerHash: actuation.headerHash,
+        },
+        journal,
+        execute,
+      }),
+    ).resolves.toBe(result);
+    expect(execute).toHaveBeenCalledExactlyOnceWith("resume");
+  });
+
+  it("treats only null funding reobservation as temporary contention", async () => {
+    const reobserve = vi.fn<() => Promise<unknown>>(async () => null);
+    const funding = await runtimeFunding("step-one", { reobserve });
+    const selected = unsafeWorkflowFundingReservationSelectedOutRefsForTest(
+      funding.permit,
+    );
+    await expect(
+      reobserveWorkflowFundingReservationTransaction({
+        journal: funding.journal,
+        transactionHash: "aa".repeat(32),
+      }),
+    ).resolves.toBe(false);
+    expect(
+      unsafeWorkflowFundingReservationSelectedOutRefsForTest(funding.permit),
+    ).toEqual(selected);
+    reobserve.mockResolvedValue(undefined);
+    await expect(
+      reobserveWorkflowFundingReservationTransaction({
+        journal: funding.journal,
+        transactionHash: "aa".repeat(32),
+      }),
+    ).rejects.toThrow();
+    const failure = new Error("malformed durable identity");
+    reobserve.mockRejectedValue(failure);
+    await expect(
+      reobserveWorkflowFundingReservationTransaction({
+        journal: funding.journal,
+        transactionHash: "aa".repeat(32),
+      }),
+    ).rejects.toBe(failure);
+  });
+
+  it.each([false, true])(
+    "authorizes stale idle refresh only after every signed descendant resolves, and reobservation revokes it (read-only: %s)",
+    async (readOnly) => {
+      const journal = new MemoryFraudProofWorkflowJournalStore();
+      const refreshIdle = vi.fn(
+        async (): Promise<WorkflowFundingReservationSnapshot> =>
+          funding.snapshot,
+      );
+      const funding = await runtimeFunding("step-one", {
+        journal,
+        refreshIdle,
+      });
+      const checkStaleRefresh = async (allowed: boolean) => {
+        if (readOnly) return;
+        funding.resolveInputs.mockResolvedValueOnce([]);
+        await funding.begin();
+        expect(refreshIdle).toHaveBeenLastCalledWith({
+          expectedRevision: funding.snapshot.revision,
+          releaseStaleInputs: allowed,
+        });
+      };
+      const identity: FraudProofWorkflowIdentity = {
+        schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+        deploymentFingerprint: DEPLOYMENT,
+        category: "doubleSpend",
+        decisionDigest: funding.actuation.decisionDigest,
+        target: {
+          kind: "state_queue_header",
+          headerHash: funding.actuation.headerHash,
+        },
+      };
+      const workflowId = computeFraudProofWorkflowId(identity);
+      const append = async (event: FraudProofWorkflowJournalEvent) => {
+        const sequence = (await journal.load(workflowId)).length;
+        await journal.append(
+          {
+            schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+            workflowId,
+            identity,
+            sequence,
+            recordedAt: new Date().toISOString(),
+            event,
+          },
+          sequence,
+        );
+      };
+      await append({ kind: "started" });
+      await append({
+        kind: "prepared",
+        artifact: {},
+        artifactDigest: journalJsonDigest({}),
+      });
+      const parentHash = "a1".repeat(32),
+        childHash = "a2".repeat(32);
+      for (const [actionId, txHash] of [
+        ["parent", parentHash],
+        ["child", childHash],
+      ] as const) {
+        await append({
+          kind: "preflight_passed",
+          actionId,
+          txHash,
+          localEvaluator: "test",
+          referenceScripts: [],
+        });
+        await append({
+          kind: "submission_intent",
+          actionId,
+          txHash,
+          attempt: 1,
+          actionInput: { actionKind: "step-one" },
+        });
+        await append({
+          kind: "reconciled",
+          actionId,
+          txHash,
+          outcome: "confirmed",
+        });
+        await append({ kind: "confirmed", actionId, txHash });
+      }
+      await append({
+        kind: "reobserved",
+        actionId: "child",
+        txHash: childHash,
+      });
+      await append({
+        kind: "reobserved",
+        actionId: "parent",
+        txHash: parentHash,
+      });
+      await append({
+        kind: "reconciled",
+        actionId: "parent",
+        txHash: parentHash,
+        outcome: "not_found",
+      });
+      if (readOnly)
+        funding.actuation.restrictToReconciliation(
+          "parent recovery owns execution slot",
+        );
+      await releaseIdleWorkflowFundingReservation({ journal, workflowId });
+      expect(funding.releaseIdle).not.toHaveBeenCalled();
+      await checkStaleRefresh(false);
+      await append({
+        kind: "reobserved",
+        actionId: "child",
+        txHash: childHash,
+      });
+      await append({
+        kind: "reconciled",
+        actionId: "child",
+        txHash: childHash,
+        outcome: "confirmed",
+      });
+      await append({ kind: "confirmed", actionId: "child", txHash: childHash });
+      await releaseIdleWorkflowFundingReservation({ journal, workflowId });
+      expect(funding.releaseIdle).toHaveBeenCalledTimes(readOnly ? 1 : 0);
+      await checkStaleRefresh(true);
+      await append({
+        kind: "reobserved",
+        actionId: "child",
+        txHash: childHash,
+      });
+      await releaseIdleWorkflowFundingReservation({ journal, workflowId });
+      expect(funding.releaseIdle).toHaveBeenCalledTimes(readOnly ? 1 : 0);
+      await checkStaleRefresh(false);
+    },
+  );
+
+  it("returns a pending reconciliation without occupying the execution slot", async () => {
+    const actuation = await admittedActuation();
+    const journal = bindWorkflowActuationJournal({
+      journal: new MemoryFraudProofWorkflowJournalStore(),
+      permit: actuation.actuationPermit,
+      decisionDigest: actuation.decisionDigest,
+      deploymentFingerprint: DEPLOYMENT,
+      category: "doubleSpend",
+      headerHash: actuation.headerHash,
+    });
+    actuation.restrictToReconciliation("target removed from canonical queue");
+    const result = { kind: "pending", reason: "terminal inclusion absent" };
+    const execute = vi.fn(async () => result);
+    await expect(
+      continuePendingWorkflow({
+        invocation: {
+          mode: "resume",
+          deploymentFingerprint: DEPLOYMENT,
+          category: "doubleSpend",
+          headerHash: actuation.headerHash,
+        },
+        journal,
+        execute,
+      }),
+    ).resolves.toBe(result);
+    expect(execute).toHaveBeenCalledExactlyOnceWith("resume");
+  });
+
   it("returns every non-pending continuation result unchanged", async () => {
     const actuation = await admittedActuation();
     const journal = bindWorkflowActuationJournal({
@@ -1582,6 +2018,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       headerHash: actuation.headerHash,
     });
     const values = [
+      { kind: "terminal_included" },
       { kind: "stalled" },
       { kind: "awaiting_counterparty" },
       { kind: "unknown-result" },
@@ -1795,4 +2232,131 @@ describe("compiled manifest-bound production runtime V1", () => {
     expect(sourceClose).toHaveBeenCalledOnce();
     expect(execute).not.toHaveBeenCalled();
   });
+});
+
+describe("additive reservation policy admission", () => {
+  it("keeps the original snapshot policy while validating newly admitted proof custody", async () => {
+    const address = credentialToAddress("Preprod", {
+      type: "Script",
+      hash: "d2".repeat(28),
+    });
+    const runtime = await runtimeFunding("step-one", {
+      amendPolicy: (input) =>
+        createWorkflowRuntimeFundingPolicy({
+          ...input,
+          contracts: [
+            ...input.contracts,
+            { address, scriptHash: "d2".repeat(28), role: "proof_thread" },
+          ],
+        }),
+    });
+    const output = CML.TransactionOutput.new(
+      CML.Address.from_bech32(address),
+      CML.Value.from_coin(2_000_000n),
+      CML.DatumOption.new_datum(CML.PlutusData.from_cbor_hex("00")),
+    );
+    const minimum = CML.min_ada_required(output, 4310n);
+    const signed = signedFundingTransaction({
+      inputOutRefs: runtime.selected.fundingOutRefs,
+      outputLovelace: 14_800_000n - minimum,
+      additionalOutputs: [
+        CML.TransactionOutput.new(
+          CML.Address.from_bech32(address),
+          CML.Value.from_coin(minimum),
+          CML.DatumOption.new_datum(CML.PlutusData.from_cbor_hex("00")),
+        ),
+      ],
+    });
+    await prepareRuntimeFunding(runtime, signed);
+    expect(runtime.prepare).toHaveBeenCalledOnce();
+    expect(runtime.snapshot.policyDigest).toBe(
+      readWorkflowRuntimeFundingPolicy(runtime.policy).policyDigest,
+    );
+  });
+
+  it.each([
+    "removed",
+    "role",
+    "key",
+    "protocol",
+    "economics",
+    "references",
+    "runner",
+  ] as const)(
+    "rejects %s changes under the additive reservation policy bridge",
+    async (change) => {
+      await expect(
+        runtimeFunding("step-one", {
+          amendPolicy: (input) =>
+            createWorkflowRuntimeFundingPolicy({
+              ...input,
+              ...(change === "removed"
+                ? {
+                    contracts: [
+                      {
+                        address: credentialToAddress("Preprod", {
+                          type: "Script",
+                          hash: "d2".repeat(28),
+                        }),
+                        scriptHash: "d2".repeat(28),
+                        role: "proof_thread",
+                      },
+                    ],
+                  }
+                : {}),
+              ...(change === "role"
+                ? {
+                    contracts: input.contracts.map((entry) => ({
+                      ...entry,
+                      role: "field_carrier" as const,
+                    })),
+                  }
+                : {}),
+              ...(change === "key"
+                ? { fundingPaymentKeyHash: "dc".repeat(28) }
+                : {}),
+              ...(change === "protocol"
+                ? {
+                    protocolParameters: {
+                      ...input.protocolParameters,
+                      minFeeB: "155382",
+                    },
+                  }
+                : {}),
+              ...(change === "economics"
+                ? {
+                    economics: {
+                      ...input.economics,
+                      blueprintHash: "ed".repeat(32),
+                    },
+                  }
+                : {}),
+              ...(change === "references"
+                ? {
+                    referenceScripts: [
+                      {
+                        outRef: `${"aa".repeat(32)}#0`,
+                        scriptHash: "aa".repeat(28),
+                      },
+                    ],
+                  }
+                : {}),
+              ...(change === "runner"
+                ? {
+                    runner: runtimeFundingPolicyFixture({
+                      deploymentFingerprint: DEPLOYMENT,
+                      fundingPaymentKeyHash: fundingKey
+                        .to_public()
+                        .hash()
+                        .to_hex(),
+                    }).runner,
+                  }
+                : {}),
+            }),
+        }),
+      ).rejects.toThrow(
+        change === "runner" ? /runner/ : /additive contract roster extension/,
+      );
+    },
+  );
 });

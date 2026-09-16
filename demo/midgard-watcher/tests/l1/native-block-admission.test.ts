@@ -4,7 +4,10 @@ import { requireOgmiosRawTransactionCbor } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission.js";
+import {
+  admitWatcherNativeRollForwardBlock,
+  assertWatcherNativeBlockAdmission,
+} from "../../src/l1/native-block-admission.js";
 import {
   parseWatcherNativeChainSyncEvent,
   WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
@@ -53,6 +56,10 @@ describe("native block admission", () => {
     if (event.kind !== "roll_forward")
       throw new Error("Expected captured block");
     const admitted = admitWatcherNativeRollForwardBlock(event);
+    expect(() => assertWatcherNativeBlockAdmission(admitted)).not.toThrow();
+    expect(() => assertWatcherNativeBlockAdmission({ ...admitted })).toThrow(
+      "not admitted",
+    );
     expect(admitted).toMatchObject({
       blockType: "7",
       protocolMajor: "12",
@@ -73,6 +80,10 @@ describe("native block admission", () => {
   it("independently derives the era, header identity, ancestry, height and ordered transaction ids", async () => {
     const event = await fixtureEvent();
     const admitted = admitWatcherNativeRollForwardBlock(event);
+    expect(() => assertWatcherNativeBlockAdmission(admitted)).not.toThrow();
+    expect(() => assertWatcherNativeBlockAdmission({ ...admitted })).toThrow(
+      "not admitted",
+    );
     expect(admitted).toMatchObject({
       ...FIXTURE_METADATA,
       protocolMajor: "10",

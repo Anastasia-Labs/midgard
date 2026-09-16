@@ -56,6 +56,7 @@ import {
   releaseFinalityAuthorityFromDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "./deployment-manifest-binding.js";
+import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
 import type {
   FraudProofWorkflowJournalEntry,
   FraudProofWorkflowJournalStore,
@@ -66,12 +67,15 @@ import type {
 import {
   createLocalKupmiosHttpOgmiosRawSource,
   type LocalKupmiosHttpOgmiosSourceConfig,
+  readAdmittedLocalKupmiosSignedTransactionRecovery,
+  rebroadcastAdmittedLocalKupmiosSignedTransaction,
 } from "./local-kupmios-http-ogmios-source.js";
 import { createLocalKupmiosFraudProofRawL1SnapshotAuthority } from "./local-kupmios-raw-l1-authority.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowAction,
   FraudProofWorkflowPreflight,
+  FraudProofWorkflowReconcileResult,
   FraudProofWorkflowTerminalVerifier,
 } from "./orchestrator.js";
 import {
@@ -85,6 +89,7 @@ import {
 import {
   deriveAuthenticatedStateQueueHeaderObservationFromRawL1,
   deriveFraudProofRawL1FamilyStage,
+  deriveRetainedStateQueueHeaderObservationFromRawL1,
   type FraudProofRawL1FamilyDefinition,
   fraudProofRawL1SnapshotRequestForFamily,
 } from "./raw-l1-family-derivation.js";
@@ -100,6 +105,10 @@ import {
 import type { VerifiedFraudProofReleaseEconomicsPolicy } from "./release-economics-policy.js";
 import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
+import {
+  reconcileSignedWorkflowTransaction,
+  type SignedWorkflowTransaction,
+} from "./signed-transaction-reconciliation.js";
 import {
   bindWorkflowPreflightTransaction,
   captureLocallyEvaluatedTransaction,
@@ -143,9 +152,16 @@ export type DoubleSpendWorkflowStage =
  * authentication boundary: production registration remains blocked until a
  * concrete raw local-node/provider implementation derives these facts.
  */
-export interface DoubleSpendL1ObservationPort {
+export interface DoubleSpendL1ObservationPort
+  extends Pick<
+    FraudProofAuthenticatedPublicationObserver,
+    "observeSignedTransaction" | "rebroadcastSignedTransaction"
+  > {
   readonly publications?: FraudProofAuthenticatedPublicationObserver;
   observeHeader?(input: {
+    readonly headerHash: string;
+  }): Promise<AuthenticatedStateQueueHeaderObservation>;
+  observeRetainedHeader?(input: {
     readonly headerHash: string;
   }): Promise<AuthenticatedStateQueueHeaderObservation>;
   transactionConfirmed?(input: {
@@ -174,7 +190,7 @@ export const createDoubleSpendRawL1ObservationPort = ({
   readonly definition: FraudProofRawL1FamilyDefinition & {
     readonly category: "doubleSpend";
   };
-}): DoubleSpendL1ObservationPort => {
+}) => {
   if (
     authority.authorityVersion !== FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY ||
     definition.computationThread.steps.length !== 4
@@ -193,6 +209,7 @@ export const createDoubleSpendRawL1ObservationPort = ({
       value: await authority.capture(request),
       request,
       releaseFinality,
+      observationDepth: "inclusion",
     });
   };
   return {
@@ -206,6 +223,11 @@ export const createDoubleSpendRawL1ObservationPort = ({
       ),
     observeHeader: async ({ headerHash }) =>
       await deriveAuthenticatedStateQueueHeaderObservationFromRawL1({
+        snapshot: await capture(headerHash),
+        definition,
+      }),
+    observeRetainedHeader: async ({ headerHash }) =>
+      await deriveRetainedStateQueueHeaderObservationFromRawL1({
         snapshot: await capture(headerHash),
         definition,
       }),
@@ -230,7 +252,7 @@ export const createDoubleSpendRawL1ObservationPort = ({
           : derived;
       return { provenance: snapshot.provenance, stage };
     },
-  };
+  } satisfies DoubleSpendL1ObservationPort;
 };
 
 /** Concrete loopback Kupo HTTP + Ogmios WS production construction. */
@@ -250,29 +272,69 @@ export const createDoubleSpendLocalKupmiosL1ObservationPort = ({
   const rawSource = createLocalKupmiosHttpOgmiosRawSource({
     ...source,
     releaseFinality,
+    observationDepth: "inclusion",
   });
-  return createDoubleSpendRawL1ObservationPort({
+  const port = createDoubleSpendRawL1ObservationPort({
     authority: createLocalKupmiosFraudProofRawL1SnapshotAuthority({
       source: rawSource,
       releaseFinality,
+      observationDepth: "inclusion",
     }),
     releaseFinality,
     releaseEconomics,
     definition,
+  });
+  const recovery = {
+    observeSignedTransaction: (input: SignedWorkflowTransaction) =>
+      readAdmittedLocalKupmiosSignedTransactionRecovery({
+        ...input,
+        source: rawSource,
+      }),
+    rebroadcastSignedTransaction: (
+      input: SignedWorkflowTransaction & {
+        readonly authorizeResubmission: (
+          input: SignedWorkflowTransaction,
+        ) => Promise<void>;
+      },
+    ) =>
+      rebroadcastAdmittedLocalKupmiosSignedTransaction({
+        ...input,
+        source: rawSource,
+      }),
+  };
+  return Object.freeze({
+    ...port,
+    ...recovery,
+    publications: Object.freeze({ ...port.publications, ...recovery }),
   });
 };
 
 const sameTerminal = (
   left: FraudProofWorkflowTerminal,
   right: FraudProofWorkflowTerminal,
-): boolean => JSON.stringify(left) === JSON.stringify(right);
+): boolean => {
+  const facts = (terminal: FraudProofWorkflowTerminal) => ({
+    ...terminal,
+    observedAt: { ...terminal.observedAt, confirmationDepth: 0 },
+  });
+  return JSON.stringify(facts(left)) === JSON.stringify(facts(right));
+};
 
 /** Second observation through the constrained integration port. */
 export const createDoubleSpendAuthenticatedL1TerminalVerifier = (
   l1: DoubleSpendL1ObservationPort,
-): FraudProofWorkflowTerminalVerifier => ({
-  verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-  verify: async ({ identity, candidate, releaseFinality }) => {
+): FraudProofWorkflowTerminalVerifier => {
+  const verify = async (
+    {
+      identity,
+      candidate,
+      releaseFinality,
+    }: Parameters<FraudProofWorkflowTerminalVerifier["verify"]>[0],
+    inclusionOnly: boolean,
+  ): Promise<FraudProofWorkflowTerminal> => {
+    const minimumDepth = inclusionOnly
+      ? 1
+      : releaseFinality.policy.confirmationDepth;
     if (identity.target.kind !== "state_queue_header") {
       throw new Error(
         "double-spend terminal requires a state-queue header target",
@@ -296,16 +358,23 @@ export const createDoubleSpendAuthenticatedL1TerminalVerifier = (
       );
     }
     if (
+      stage.terminal.observedAt.confirmationDepth < minimumDepth ||
+      candidate.observedAt.confirmationDepth < minimumDepth ||
       stage.terminal.observedAt.confirmationDepth <
-      releaseFinality.policy.confirmationDepth
+        candidate.observedAt.confirmationDepth
     ) {
       throw new Error(
-        `authenticated terminal depth is below the release threshold: required=${releaseFinality.policy.confirmationDepth.toString()} actual=${stage.terminal.observedAt.confirmationDepth.toString()} policy=${releaseFinality.policyDigest}`,
+        `authenticated terminal depth is below the release threshold: required=${minimumDepth.toString()} actual=${stage.terminal.observedAt.confirmationDepth.toString()} policy=${releaseFinality.policyDigest}`,
       );
     }
-    return stage.terminal;
-  },
-});
+    return candidate;
+  };
+  return {
+    verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
+    verify: (input) => verify(input, false),
+    verifyIncluded: (input) => verify(input, true),
+  };
+};
 
 export type DoubleSpendWorkflowReferenceScripts = {
   readonly steps: readonly [UTxO, UTxO, UTxO, UTxO];
@@ -1367,6 +1436,8 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       artifact,
       txHash,
       durableRecovery,
+      signedTransactionCborHex,
+      authorizeResubmission,
     }) => {
       if (txHash === undefined) {
         return { kind: "conflict", reason: "durable intent omitted tx hash" };
@@ -1411,6 +1482,36 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         }
         mutationLeaseByTxHash.set(txHash, mutationLease);
       }
+      const unconfirmed =
+        async (): Promise<FraudProofWorkflowReconcileResult> => {
+          const result =
+            signedTransactionCborHex === undefined ||
+            config.l1?.observeSignedTransaction === undefined
+              ? { kind: "pending" as const, txHash }
+              : await reconcileSignedWorkflowTransaction({
+                  transactionHash: txHash,
+                  signedTransactionCborHex,
+                  observe: config.l1.observeSignedTransaction,
+                  rebroadcast: config.l1.rebroadcastSignedTransaction,
+                  authorizeResubmission:
+                    authorizeResubmission === undefined
+                      ? undefined
+                      : async (signed) => {
+                          await mutationLease?.renew();
+                          await authorizeResubmission(signed);
+                        },
+                });
+          if (result.kind === "not_found") {
+            await mutationLease?.release();
+            mutationLeaseByTxHash.delete(txHash);
+          } else if (result.kind === "conflict") {
+            await mutationLease?.fail(result.reason);
+            mutationLeaseByTxHash.delete(txHash);
+          } else {
+            await mutationLease?.renew();
+          }
+          return result;
+        };
       const preparedArtifact = artifactFrom(artifact);
       const actionStage = requireJournalString(
         requested.input.stage,
@@ -1437,7 +1538,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
             chunks === undefined ||
             chunks.some((chunk) => chunk.utxo.txHash !== txHash)
           ) {
-            return { kind: "pending", txHash };
+            return await unconfirmed();
           }
           for (const chunk of chunks) {
             const observed = await publicationObserver.observeExact({
@@ -1447,8 +1548,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
               expectedOutRef: chunk.outRef,
               expectedDatumCbor: chunk.datumCbor,
             });
-            if (observed.kind !== "confirmed")
-              return { kind: "pending", txHash };
+            if (observed.kind !== "confirmed") return await unconfirmed();
           }
         } else {
           const proofFor = requireJournalString(
@@ -1472,7 +1572,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
                 utxo.txHash === txHash &&
                 utxo.datum === requested.input.publicationDatumCbor,
             );
-            if (candidate?.datum == null) return { kind: "pending", txHash };
+            if (candidate?.datum == null) return await unconfirmed();
             const observed = await publicationObserver.observeExact({
               headerHash: preparedArtifact.headerHash,
               kind: "field_publication",
@@ -1480,8 +1580,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
               expectedOutRef: `${candidate.txHash}#${candidate.outputIndex.toString()}`,
               expectedDatumCbor: candidate.datum,
             });
-            if (observed.kind !== "confirmed")
-              return { kind: "pending", txHash };
+            if (observed.kind !== "confirmed") return await unconfirmed();
           } else {
             const certificate = await resolveFaultProofFieldPreimageCertificate(
               {
@@ -1492,7 +1591,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
               },
             );
             if (certificate === undefined || certificate.txHash !== txHash) {
-              return { kind: "pending", txHash };
+              return await unconfirmed();
             }
             const certification = deriveFieldPreimageCertification(plan.plan);
             const observed = await publicationObserver.observeExact({
@@ -1506,8 +1605,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
               expectedDatumCbor: certification.datumCbor,
               expectedUnit: `${config.fieldPreimageCertificate.policyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`,
             });
-            if (observed.kind !== "confirmed")
-              return { kind: "pending", txHash };
+            if (observed.kind !== "confirmed") return await unconfirmed();
           }
         }
         return { kind: "confirmed", txHash };
@@ -1556,8 +1654,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         actionStage === "remove" &&
         observedStage.kind === "proof_token"
       ) {
-        await mutationLease?.renew();
-        return { kind: "pending", txHash };
+        return await unconfirmed();
       }
       if (stageAdvanced && !intendedTransactionConfirmed) {
         await mutationLease?.fail(
@@ -1575,10 +1672,17 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         mutationLeaseByTxHash.delete(txHash);
         return { kind: "confirmed", txHash };
       }
-      await mutationLease?.renew();
-      // Finalized-history absence cannot distinguish an accepted transaction
-      // awaiting depth from a rejected one. Keep the durable intent and inputs.
-      return { kind: "pending", txHash };
+      if (
+        "threadOutRef" in observedStage &&
+        requested.input.threadOutRef !== observedStage.threadOutRef
+      ) {
+        return {
+          kind: "conflict",
+          reason:
+            "double-spend computation thread changed without the journaled transaction",
+        };
+      }
+      return await unconfirmed();
     },
   };
 };
@@ -1643,9 +1747,13 @@ export const runOrResumeManifestBoundDoubleSpendWorkflow = async ({
       "manifest-bound double-spend workflow omitted raw L1 header derivation",
     );
   }
-  const observation = await observeHeader({
-    headerHash: workflow.binding.definition.headerHash,
-  });
+  const observation = await observeFraudProofWorkflowHeader(
+    {
+      observeHeader,
+      observeRetainedHeader: workflow.adapterConfig.l1.observeRetainedHeader,
+    },
+    { headerHash: workflow.binding.definition.headerHash },
+  );
   return await runOrResumeConstrainedDoubleSpendWorkflow({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     observation,

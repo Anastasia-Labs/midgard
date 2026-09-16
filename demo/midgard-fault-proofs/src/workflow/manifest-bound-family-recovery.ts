@@ -3,7 +3,7 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import {
-  workflowActuationDecisionDigest,
+  workflowActuationAuthorizingDecisionDigest,
   workflowJournalIsReconciliationOnly,
 } from "./actuation-permit.js";
 import {
@@ -107,7 +107,7 @@ export const executeManifestBoundFamilyRecovery = async <
   journal: FraudProofWorkflowJournalStore;
 }) => {
   const { category, headerHash } = binding.definition;
-  if (workflowActuationDecisionDigest(journal) !== decisionDigest)
+  if (workflowActuationAuthorizingDecisionDigest(journal) !== decisionDigest)
     throw new Error(
       `${category} journal actuation permit changed decision digest`,
     );

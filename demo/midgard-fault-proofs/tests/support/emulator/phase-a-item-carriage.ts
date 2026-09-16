@@ -55,7 +55,7 @@ export const preparePhaseAItemCarriage = async ({
     mintingScript: Script;
     spendingScriptAddress: string;
   };
-  authPolicy: ReturnType<typeof createReferenceScriptAuthPolicy>;
+  authPolicy: Awaited<ReturnType<typeof createReferenceScriptAuthPolicy>>;
   trace: DeterministicValidationMachineTrace;
   stateIndex: number;
   source: { compact_cbor: string; witness_set_compact_cbor: string };

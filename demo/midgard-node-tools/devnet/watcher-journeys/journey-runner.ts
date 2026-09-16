@@ -1,28 +1,20 @@
-import { createHash, randomBytes } from "node:crypto";
-import { appendFileSync, existsSync } from "node:fs";
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
 
-import { resolveProverSigner } from "@al-ft/midgard-fault-proofs";
+import { journalJsonDigest } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit } from "@lucid-evolution/lucid";
-import { startStateQueueMutationLeaseServer } from "midgard-node/tests/helpers/state-queue-mutation-lease-server";
 import {
-  makeWatcherFinalityPolicy,
   openWatcherFaultDecisionJournal,
-  parseWatcherConfig,
-  parseWatcherProcessConfig,
-  WATCHER_CONFIG_SCHEMA_VERSION,
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-  WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
-  watcherDeploymentReleaseFinalityAuthority,
 } from "midgard-watcher";
-import { createPublishedWatcherDeploymentAuthority } from "midgard-watcher/tests/support/published-deployment-authority";
 import { expect } from "vitest";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import {
+  finalizePendingJourneyEvidence,
   readJourneyWorkflowEntries,
   verifyJourneyCorrection,
 } from "./correction.js";
@@ -32,43 +24,36 @@ import type {
   JourneySuccessor,
   JourneySuccessorCheckpoint,
 } from "./fixture.js";
-import { startJourneyHistoryArchives } from "./history-archives.js";
 import { prepareDuplicateEventHistory } from "./history-settlement.js";
+import {
+  captureJourneyWorkflowBaseline,
+  type JourneySession,
+  openJourneySession,
+} from "./journey-session.js";
 import { readJourneyTiming } from "./journey-timing.js";
-import { JOURNEY_FINALITY_DEPTH, loadJourneyContext } from "./live-context.js";
-import { journeyNativeNodeQuery } from "./native-node.js";
-import { startJourneyNativeRecorder } from "./native-recorder.js";
-import { journeyPorts, launchJourneyWatcherProcess } from "./process.js";
+import { JOURNEY_ACTION_DEPTH, loadJourneyContext } from "./live-context.js";
 import { verifyJourneyPublicDa } from "./public-da-preflight.js";
 import { verifyJourneyResultEvidence } from "./readiness-evidence.js";
-import { startJourneyRetainedDa } from "./retained-da.js";
 import { measureJourneyStage } from "./stage-timing.js";
 import { prepareJourneyHistory } from "./staging.js";
-import { verifyJourneyWorkflowBindings } from "./workflow-binding-preflight.js";
 
-/** The watcher CLI's failed-closed exit status. */
-const WATCHER_FAILED_CLOSED_EXIT_CODE = 70;
-const WATCHER_RESTART_LIMIT = 12;
 const WATCHER_LAUNCH_TIMEOUT_MS = 1_800_000;
 
 type JourneyExecution =
-  | { kind: "journey"; fixture: JourneyFixture }
+  | { kind: "journey"; fixture: JourneyFixture; waitForAnchors: boolean }
   | { kind: "prepare_duplicate_event_history" };
 
 /** One shared service lifecycle for acceptance and genuine history prerequisites. */
 const runJourney = async (
   runDirectory: string,
   execution: JourneyExecution,
+  session: JourneySession,
 ) => {
-  const context = await loadJourneyContext(runDirectory);
-  const { deployment, provider, accounts, runEnv } = context;
-  if (execution.kind === "prepare_duplicate_event_history")
-    await verifyJourneyResultEvidence(
-      context.runDirectory,
-      join(context.runDirectory, "work/journeys/transition-trace"),
-      "transitionTrace",
-      deployment,
-    );
+  const { context } = session;
+  if (context.runDirectory !== runDirectory)
+    throw new Error("Journey session belongs to a different run directory");
+  await session.assertHealthy();
+  const { deployment, provider } = context;
   const category =
     execution.kind === "journey"
       ? execution.fixture.category
@@ -82,7 +67,6 @@ const runJourney = async (
     mkdir(directory, { recursive: true, mode: 0o700 }),
     mkdir(runtimeDirectory, { recursive: true, mode: 0o700 }),
   ]);
-  const cleanup: (() => Promise<void>)[] = [];
   let activeStage = "services";
   let diagnostics: (() => Promise<unknown>) | undefined;
   let succeeded = false;
@@ -138,183 +122,59 @@ const runJourney = async (
       }
     });
   try {
-    const authority = await stage("signed deployment authority", () =>
-      createPublishedWatcherDeploymentAuthority({
-        deployment,
-        directory,
-        // Every journey resumes the shared watcher runtime, whose saved
-        // user-event history binds the attesting trust root.
-        trustRootKeyPath: join(
-          context.runDirectory,
-          "work/journeys/deployment-trust-root.pem",
-        ),
-        fundingProfiles: [],
-        programCommitments: {
-          "computation-thread-policy-v1": createHash("sha256")
-            .update(
-              JSON.stringify({
-                computationThreadPolicyId:
-                  deployment.contracts.computationThread.policyId,
-              }),
-            )
-            .digest("hex"),
-        },
-      }),
-    );
-    const releaseFinality = await watcherDeploymentReleaseFinalityAuthority(
-      authority.deploymentAuthority.deploymentIdentity,
-    ).verifyForWorkflow({
-      deploymentFingerprint: deployment.manifest.manifestId,
-    });
+    const {
+      authority,
+      releaseFinality,
+      watcherConfig,
+      archives,
+      native,
+      retain,
+    } = session;
+    const reusedWatcher = session.watcherStarted();
+    const baselineStartedAt = new Date().toISOString();
+    const baseline =
+      execution.kind === "journey"
+        ? await captureJourneyWorkflowBaseline(
+            session.workflowJournalDirectory,
+            execution.fixture.category,
+          )
+        : undefined;
+    if (baseline !== undefined)
+      await writeJourneyArtifact(join(directory, "workflow-baseline.json"), {
+        startedAt: baselineStartedAt,
+        finishedAt: new Date().toISOString(),
+        category,
+        prefixes: [...baseline].map(([headerHash, entries]) => ({
+          headerHash,
+          workflowId: entries[0]?.workflowId ?? null,
+          entryCount: entries.length,
+          journalDigest: journalJsonDigest(entries),
+        })),
+      });
     const timing =
       execution.kind === "journey"
         ? await readJourneyTiming(context.runDirectory, category, {
             authenticatedConfirmationDepth:
               releaseFinality.policy.confirmationDepth,
+            actionDepth: JOURNEY_ACTION_DEPTH,
           })
         : undefined;
     if (timing !== undefined) {
       await writeJourneyArtifact(join(directory, "timing-plan.json"), timing);
       console.info("Live watcher confirmation budget", timing);
     }
-    const retainedDa = await startJourneyRetainedDa({
-      runDirectory: context.runDirectory,
-      runEnv,
-      deploymentFingerprint: deployment.manifest.manifestId,
-    });
-    cleanup.push(retainedDa.close);
-    const archives = await startJourneyHistoryArchives({
-      releaseFinality,
-      runDirectory: context.runDirectory,
-      composeProject: runEnv.MIDGARD_PHASE4_COMPOSE_PROJECT,
-      deploymentFingerprint: deployment.manifest.manifestId,
-    });
-    cleanup.push(archives.close);
-    const leaseServer = await startStateQueueMutationLeaseServer({
-      postgres: {
-        host: "127.0.0.1",
-        port: Number(runEnv.MIDGARD_PHASE4_POSTGRES_PORT),
-        username: runEnv.MIDGARD_PHASE4_POSTGRES_USER,
-        password: runEnv.MIDGARD_PHASE4_POSTGRES_PASSWORD,
-      },
-    });
-    cleanup.push(async () => {
-      await writeJourneyArtifact(
-        join(directory, "node-lease-inspection.json"),
-        await leaseServer.inspect(),
-      );
-      await leaseServer.close();
-    });
-    const secret = async (name: string, initial: string) => {
-      const path = join(context.runDirectory, "secrets", name);
-      if (!existsSync(path))
-        await writeFile(path, initial, { mode: 0o600, flag: "wx" });
-      return { kind: "file" as const, path };
-    };
-    const rollbackKey = await secret(
-      "watcher-rollback.key",
-      randomBytes(32).toString("hex"),
-    );
-    const proverKey = await secret(
-      "watcher-prover.seed",
-      accounts.publisher.seedPhrase,
-    );
-    const availabilityKey = await secret(
-      "watcher-availability.seed",
-      accounts.availability.seedPhrase,
-    );
-    const bearerKey = await secret(
-      "watcher-trusted-bearer.key",
-      randomBytes(32).toString("hex"),
-    );
-    const recordKey = await secret(
-      "watcher-trusted-record.key",
-      randomBytes(32).toString("hex"),
-    );
-    const nodeAdminKey = {
-      kind: "file" as const,
-      path: join(context.runDirectory, "secrets/journey-node-admin.key"),
-    };
-    await writeFile(nodeAdminKey.path, leaseServer.adminApiKey, {
-      mode: 0o600,
-    });
-    const nativeQuery = await journeyNativeNodeQuery(context.runDirectory);
-    if (nativeQuery.watcherConfig.l1.source.sourceMode !== "local_node")
-      throw new Error("Native node source required");
-    const watcherInput = {
-      schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
-      mode: "acceptance",
-      targetNetwork: "Custom",
-      customNetwork: context.customNetwork,
-      l1: {
-        source: {
-          ...nativeQuery.watcherConfig.l1.source,
-          queryServices: [
-            {
-              kind: "ogmios",
-              identity: "journey-ogmios",
-              endpoint: context.ogmiosUrl,
-            },
-            {
-              kind: "kupo",
-              identity: "journey-kupo",
-              endpoint: context.kupoUrl,
-            },
-          ],
-        },
-        requestTimeoutMs: 30_000,
-        maxConcurrency: 8,
-        finality: {
-          depth: JOURNEY_FINALITY_DEPTH,
-          rollback: {
-            beforeFinality: "rewind",
-            afterFinality: "quarantine",
-            maxDepth: JOURNEY_FINALITY_DEPTH,
-          },
-        },
-      },
-      da: {
-        peers: [retainedDa.peer],
-        requestTimeoutMs: 30_000,
-        maxConcurrency: 8,
-      },
-      storage: {
-        driver: "sqlite",
-        path: join(runtimeDirectory, "watcher.sqlite"),
-        rollbackAuthorityKeySource: rollbackKey,
-      },
-      proverWallet: { keySource: proverKey },
-      deadlines: {
-        daFetchMs: 60_000,
-        daPublishMs: 60_000,
-        proofConstructMs: 300_000,
-        proofSubmitMs: 120_000,
-      },
-    };
-    const watcherConfig = parseWatcherConfig(watcherInput);
-    const native = await stage("independent native chain recorder", () =>
-      startJourneyNativeRecorder({
-        directory,
-        watcherConfig,
-        binaryPath: nativeQuery.binaryPath,
-        onBlock: archives.retainNativeBlock,
-        onRollback: archives.rollbackNativeBlocks,
-      }),
-    );
-    cleanup.push(native.close);
-    const retain = async (
-      block: { headerHash: string; payloadEnvelopeCbor: Uint8Array },
-      txHash: string,
-    ) => {
-      const actual = await native.transaction(txHash);
-      await retainedDa.retain(block);
-      await archives.retain(block, actual.point);
-    };
     const fixtureStage: JourneyFixtureStage = {
       context,
       directory,
       historicalNativeScriptProviders: archives.configuration.providers,
       retain,
+      readConfirmedTransaction: native.transaction,
+      onHealthyPredecessor: async (headerHash) => {
+        // Binding and launch are awaited; the process then catches up while
+        // the fixture prepares its fault. Baseline capture already completed.
+        await session.ensureWatcher(headerHash);
+      },
+      readSignedCommitRecovery: session.readSignedCommitRecovery,
       onStage: (name) => {
         activeStage = name;
         console.info(`Live fixture: ${name}`);
@@ -338,10 +198,39 @@ const runJourney = async (
       succeeded = true;
       return;
     }
+    const headPath = join(context.runDirectory, "work/journeys/head.json");
+    if (!session.watcherStarted() && existsSync(headPath)) {
+      const head = await readJourneyArtifact<{
+        deploymentFingerprint: string;
+        block: JourneySuccessor;
+      }>(headPath);
+      if (
+        head.deploymentFingerprint !== deployment.manifest.manifestId ||
+        !/^[0-9a-f]{56}$/u.test(head.block.headerHash)
+      )
+        throw new Error(
+          "Watcher session readiness head belongs to a different deployment or is malformed",
+        );
+      // Startup binds all runners; actual classification still observes the live queue.
+      // A retained header hash remains a valid binding identity after its UTxO is removed.
+      await session.ensureWatcher(head.block.headerHash);
+    }
     const { fixture } = execution;
     const staged = await stage("invalid commitment and DA attestations", () =>
       fixture.stage(fixtureStage),
     );
+    // A watcher already running from an earlier family can correct the fault
+    // before its DA apply lands. That authenticated correction completes
+    // staging; the journey then observes the same removal it already knows.
+    await writeJourneyArtifact(join(directory, "staged-target.json"), {
+      category: fixture.category,
+      headerHash: staged.current.headerHash,
+      target: staged.target,
+    });
+    if (staged.target.kind === "corrected")
+      console.info(
+        `Live fixture: fault ${staged.current.headerHash} corrected by ${staged.target.removalTxHash} before DA apply; continuing without restart`,
+      );
     await stage("production public DA preflight", () =>
       verifyJourneyPublicDa({
         directory,
@@ -351,206 +240,26 @@ const runJourney = async (
         current: staged.current,
       }),
     );
-    await stage("independent actor funding", async () => {
-      const fundingPath = join(runtimeDirectory, "actor-funding.txt");
-      if (existsSync(fundingPath)) return;
-      const prover = resolveProverSigner({
-        network: "Custom",
-        walletSeedPhrase: accounts.publisher.seedPhrase,
-      }).address;
-      const availability = resolveProverSigner({
-        network: "Custom",
-        walletSeedPhrase: accounts.availability.seedPhrase,
-      }).address;
-      const publisherAddress = await deployment.publisherLucid
-        .wallet()
-        .address();
-      deployment.publisherLucid.overrideUTxOs(
-        (await provider.getUtxos(publisherAddress)).filter(
-          (utxo) =>
-            utxo.datum == null &&
-            utxo.datumHash == null &&
-            utxo.scriptRef == null &&
-            Object.keys(utxo.assets).every((unit) => unit === "lovelace"),
-        ),
-      );
-      const built = await deployment.publisherLucid
-        .newTx()
-        .pay.ToAddress(prover, { lovelace: 500_000_000n })
-        .pay.ToAddress(prover, { lovelace: 500_000_000n })
-        .pay.ToAddress(prover, { lovelace: 100_000_000n })
-        .pay.ToAddress(availability, { lovelace: 40_000_000_000n })
-        .pay.ToAddress(availability, { lovelace: 10_000_000n })
-        .complete({ localUPLCEval: true });
-      const txHash = await (await built.sign.withWallet().complete()).submit();
-      await provider.awaitTx(txHash, 500);
-      await native.transaction(txHash);
-      await writeFile(fundingPath, txHash);
-      deployment.publisherLucid.overrideUTxOs(
-        await provider.getUtxos(publisherAddress),
-      );
+    const running = await session.ensureWatcher(staged.current.headerHash);
+    const { config, requireLive, operations, trustedHeadRevision } = running;
+    diagnostics = running.diagnostics;
+    const workflowBaseline = baseline?.get(staged.current.headerHash) ?? [];
+    await writeJourneyArtifact(join(directory, "session.json"), {
+      sessionDirectory: session.directory,
+      watcherUse: reusedWatcher ? "reused" : "started",
+      authorityProcess: session.authorityObserve(),
+      configPath: running.configPath,
+      bindingPreflightPath: join(
+        session.directory,
+        "workflow-binding-preflight.json",
+      ),
+      nativeEvidencePath: native.nativeEvidencePath,
+      process: running.observe(),
     });
-    const policy = makeWatcherFinalityPolicy(
-      watcherConfig,
-      authority.deploymentAuthority.deploymentIdentity,
-    );
-    if (policy === null) throw new Error("Finality policy was not admitted");
-    const [authorityPort, operationsPort] = await journeyPorts(2);
-    const trustedHeadAuthorityEndpoint = `http://127.0.0.1:${authorityPort}`;
-    const operationsEndpoint = `http://127.0.0.1:${operationsPort}`;
-    const authorityConfigPath = join(directory, "authority-process.json");
-    await writeJourneyArtifact(authorityConfigPath, {
-      schemaVersion: "midgard-watcher-trusted-head-authority-process-config-v1",
-      directory: join(runtimeDirectory, "trusted-head"),
-      endpoint: trustedHeadAuthorityEndpoint,
-      policy,
-      recordAuthenticationKeySource: recordKey,
-      httpBearerSecretSource: bearerKey,
-    });
-    const authorityProcess = launchJourneyWatcherProcess({
-      command: "authority",
-      configPath: authorityConfigPath,
-      directory,
-      caPath: archives.caPath,
-    });
-    cleanup.push(authorityProcess.close);
-    diagnostics = async () => ({
-      authorityProcess: authorityProcess.observe(),
-    });
-    const bearer = (await readFile(bearerKey.path, "utf8")).trim();
-    await poll(
-      "trusted-head authority process",
-      async () => {
-        authorityProcess.assertHealthy();
-        const ready = await fetch(
-          `${trustedHeadAuthorityEndpoint}/v1/identity`,
-          {
-            headers: { authorization: `Bearer ${bearer}` },
-            signal: AbortSignal.timeout(5000),
-          },
-        )
-          .then((response) => response.ok)
-          .catch(() => false);
-        return ready ? true : undefined;
-      },
-      30_000,
-    );
-    const processInput = {
-      schemaVersion: WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
-      watcherConfig: watcherInput,
-      watcherRuntimeConfigPath: join(directory, "watcher.json"),
-      deploymentAuthorityPath: authority.authorityPath,
-      ruleBundlePath: authority.ruleBundlePath,
-      fundingProfileBundlePath: authority.fundingProfileBundlePath,
-      nativeChainSyncBinaryPath: nativeQuery.binaryPath,
-      trustedHeadAuthorityEndpoint,
-      operationsEndpoint,
-      httpBearerSecretSource: bearerKey,
-      workflowJournalDirectory: join(runtimeDirectory, "workflows"),
-      availability: {
-        keySource: availabilityKey,
-        journalPath: join(runtimeDirectory, "availability.sqlite"),
-        minimumFundingLovelace: "100000000",
-      },
-      readinessHeaderHash: staged.current.headerHash,
-      faultProofInfrastructure: {
-        manifestPath: authority.manifestPath,
-        blueprintPath: authority.blueprintPath,
-        deploymentInfoPath: authority.deploymentInfoPath,
-        midgardNodeUrl: leaseServer.url,
-        midgardNodeAdminKeySource: nodeAdminKey,
-        historicalNativeScriptHistory: archives.configuration,
-      },
-    };
-    const config = parseWatcherProcessConfig(processInput);
-    const configPath = join(directory, "watcher-process.json");
-    await writeJourneyArtifact(config.watcherRuntimeConfigPath, watcherInput);
-    await writeJourneyArtifact(configPath, processInput);
-    await stage("installed workflow binding preflight", () =>
-      verifyJourneyWorkflowBindings({
-        directory,
-        config,
-      }),
-    );
-    const workflowBaseline = await readJourneyWorkflowEntries({
-      workflowJournalDirectory: config.workflowJournalDirectory,
-      category: fixture.category,
-      headerHash: staged.current.headerHash,
-    });
-    const watcherLaunch = {
-      command: "start" as const,
-      configPath,
-      directory,
-      caPath: archives.caPath,
-    };
-    let watcher = launchJourneyWatcherProcess(watcherLaunch);
-    cleanup.push(() => watcher.close());
-    // The watcher fails closed on transient L1 conditions (Kupo checkpoint
-    // churn, Ogmios disconnects, retained-DA fetches) and exits 70. Its
-    // journal makes a restart resume the same workflow, so relaunch a bounded
-    // number of times; a stalled workflow still ends the journey through the
-    // journal, and any other exit remains fatal.
-    let watcherRestarts = 0;
-    const requireLive = () => {
-      native.assertHealthy();
-      authorityProcess.assertHealthy();
-      const observed = watcher.observe();
-      if (
-        observed.state === "exited" &&
-        observed.exitCode === WATCHER_FAILED_CLOSED_EXIT_CODE &&
-        watcherRestarts < WATCHER_RESTART_LIMIT
-      ) {
-        watcherRestarts += 1;
-        appendFileSync(
-          join(directory, "watcher-restarts.ndjson"),
-          `${JSON.stringify({ restartedAt: new Date().toISOString(), restart: watcherRestarts, previous: observed })}\n`,
-        );
-        console.warn(
-          `Live watcher exited failed-closed; relaunching (restart ${watcherRestarts}/${WATCHER_RESTART_LIMIT})`,
-          observed.tail.at(-1) ?? "",
-        );
-        watcher = launchJourneyWatcherProcess(watcherLaunch);
-        return;
-      }
-      watcher.assertHealthy();
-    };
-    const operations = async (path: string) => {
-      const response = await fetch(`${operationsEndpoint}${path}`, {
-        signal: AbortSignal.timeout(5000),
-      });
-      if (!response.ok)
-        throw new Error(`Operations HTTP returned ${response.status}`);
-      return await response.json();
-    };
-    diagnostics = async () => ({
-      process: watcher.observe(),
-      authorityProcess: authorityProcess.observe(),
-      status: await operations("/v1/status").catch(String),
-      metrics: await operations("/v1/metrics").catch(String),
-    });
-    const trustedHeadRevision = async (): Promise<string | null> => {
-      try {
-        const response = await fetch(
-          `${trustedHeadAuthorityEndpoint}/v1/trusted-head`,
-          {
-            headers: { authorization: `Bearer ${bearer}` },
-            signal: AbortSignal.timeout(5000),
-          },
-        );
-        if (!response.ok) return null;
-        const body = (await response.json()) as {
-          head?: { revision?: unknown };
-        };
-        return typeof body.head?.revision === "string"
-          ? body.head.revision
-          : null;
-      } catch {
-        return null;
-      }
-    };
+    await writeJourneyArtifact(join(directory, "watcher-process.json"), config);
     let nextStartupReport = 0;
     await pollWhileReplaying(
-      "normal watcher launcher",
+      reusedWatcher ? "shared watcher availability" : "normal watcher launcher",
       async () => {
         requireLive();
         let operationsError: string | undefined;
@@ -562,7 +271,7 @@ const runJourney = async (
         if (status !== undefined || Date.now() >= nextStartupReport) {
           const observation = {
             observedAt: new Date().toISOString(),
-            process: watcher.observe(),
+            process: running.observe(),
             operations:
               status === undefined
                 ? { reachable: false, error: operationsError }
@@ -621,8 +330,10 @@ const runJourney = async (
     );
     const completion = await verifyJourneyCorrection({
       workflowBaseline,
+      actionDepth: JOURNEY_ACTION_DEPTH,
       correctionTimeoutMs: timing?.correctionTimeoutMs,
       progressAllowanceMs: timing?.transactionAllowanceMs,
+      reconciliationAllowanceMs: timing?.allowances.finalizedEvidenceStampMs,
       context,
       native,
       workflowJournalDirectory: config.workflowJournalDirectory,
@@ -635,6 +346,13 @@ const runJourney = async (
       poll,
       stage,
     });
+    if (
+      staged.target.kind === "corrected" &&
+      staged.target.removalTxHash !== completion.correction.removalTxHash
+    )
+      throw new Error(
+        `Staging reconciled removal ${staged.target.removalTxHash} but the watcher's authenticated correction is ${completion.correction.removalTxHash}`,
+      );
     const { contracts } = deployment;
     const headerUnit = (hash: string) =>
       toUnit(
@@ -647,7 +365,7 @@ const runJourney = async (
       ? await readJourneyArtifact<JourneySuccessor>(successorPath)
       : await stage("honest successor commitment", async () =>
           staged.commitHonestSuccessor({
-            beforeCommit: retainedDa.retain,
+            beforeCommit: session.retainPayload,
             resume: existsSync(successorProgressPath)
               ? await readJourneyArtifact<JourneySuccessorCheckpoint>(
                   successorProgressPath,
@@ -695,15 +413,92 @@ const runJourney = async (
         block: successor,
       },
     );
+    const observedTerminal = (
+      await readJourneyWorkflowEntries({
+        workflowJournalDirectory: config.workflowJournalDirectory,
+        category: fixture.category,
+        headerHash: staged.current.headerHash,
+      })
+    ).find(
+      ({ event }) =>
+        (event.kind === "terminal_included" || event.kind === "completed") &&
+        event.terminal.correction.removalTxHash ===
+          completion.correction.removalTxHash,
+    );
+    if (observedTerminal === undefined)
+      throw new Error(
+        "Terminal observation disappeared from its immutable journal",
+      );
+    // Save the anchor request before the provisional verdict so restart cannot
+    // lose finality tracking after releasing this family's execution slot.
+    await writeJourneyArtifact(join(directory, "pending-evidence-stamp.json"), {
+      category: fixture.category,
+      headerHash: staged.current.headerHash,
+      deploymentFingerprint: deployment.manifest.manifestId,
+      terminalObservedAt: observedTerminal.recordedAt,
+      successorTxHash: successor.commitTxHash,
+      completedAtConfirmationDepth: completion.observedAt.confirmationDepth,
+      finalityDepth: releaseFinality.policy.confirmationDepth,
+      releaseFinalityPolicyDigest: releaseFinality.policyDigest,
+    });
     succeeded = true;
     await writeJourneyArtifact(join(directory, "result.json"), {
       status: "passed",
+      executionPolicy: "authenticated-inclusion",
+      proofExecution: workflowBaseline.some(
+        ({ event }) => event.kind === "completed",
+      )
+        ? "historical-completed-proof"
+        : "current-inclusion-policy",
+      evidenceStatus: "terminal-included-awaiting-anchor",
       category: fixture.category,
       deploymentFingerprint: deployment.manifest.manifestId,
       completion,
       successor: successor.headerHash,
       diagnostics: await diagnostics(),
+      nativeEvidencePath: native.nativeEvidencePath,
     });
+    const finalizeEvidence = () =>
+      finalizePendingJourneyEvidence({
+        journeysDirectory: join(context.runDirectory, "work/journeys"),
+        workflowJournalDirectory: config.workflowJournalDirectory,
+        deploymentFingerprint: deployment.manifest.manifestId,
+        releaseFinalityPolicyDigest: releaseFinality.policyDigest,
+        finalityDepth: releaseFinality.policy.confirmationDepth,
+        nativeEvidencePath: native.nativeEvidencePath,
+        authenticate: async (request, terminal) => {
+          const transactions = await Promise.all(
+            [
+              terminal.proofToken.createdByTxHash,
+              terminal.correction.removalTxHash,
+              request.successorTxHash,
+            ].map((txHash) => native.transaction(txHash)),
+          );
+          const observedBlockNo = native.observedBlockNo();
+          return (
+            observedBlockNo !== undefined &&
+            transactions.every(
+              ({ point }) =>
+                observedBlockNo - BigInt(point.blockNo) + 1n >=
+                BigInt(request.finalityDepth),
+            )
+          );
+        },
+      });
+    if (execution.waitForAnchors) {
+      await stage("finalized evidence stamps", () =>
+        poll(
+          "finalized evidence stamps",
+          async () => {
+            requireLive();
+            return (await finalizeEvidence()) === 0 ? true : undefined;
+          },
+          timing?.allowances.finalizedEvidenceStampMs,
+        ),
+      );
+    } else {
+      await finalizeEvidence();
+    }
   } catch (cause) {
     await writeJourneyArtifact(join(directory, "failure.json"), {
       activeStage,
@@ -715,7 +510,6 @@ const runJourney = async (
     });
     throw cause;
   } finally {
-    for (const close of cleanup.reverse()) await close();
     console.info(
       `Journey ${execution.kind} evidence retained at ${directory}; succeeded=${succeeded}`,
     );
@@ -723,11 +517,47 @@ const runJourney = async (
 };
 
 /** One process-driven acceptance path for every non-interactive family. */
-export const runAutonomousWatcherJourney = (
+export const runAutonomousWatcherJourney = async (
   runDirectory: string,
   fixture: JourneyFixture,
-) => runJourney(runDirectory, { kind: "journey", fixture });
+  options: { waitForAnchors?: boolean; session?: JourneySession } = {},
+) => {
+  const session = options.session ?? (await openJourneySession(runDirectory));
+  try {
+    await runJourney(
+      runDirectory,
+      {
+        kind: "journey",
+        fixture,
+        waitForAnchors: options.waitForAnchors ?? true,
+      },
+      session,
+    );
+  } catch (cause) {
+    await session.close();
+    throw cause;
+  } finally {
+    if (options.session === undefined) await session.close();
+  }
+};
 
 /** Start the real maturity clock after the verified trace baseline has completed. */
-export const prepareAutonomousWatcherHistory = (runDirectory: string) =>
-  runJourney(runDirectory, { kind: "prepare_duplicate_event_history" });
+export const prepareAutonomousWatcherHistory = async (runDirectory: string) => {
+  const context = await loadJourneyContext(runDirectory);
+  await verifyJourneyResultEvidence(
+    context.runDirectory,
+    join(context.runDirectory, "work/journeys/transition-trace"),
+    "transitionTrace",
+    context.deployment,
+  );
+  const session = await openJourneySession(runDirectory);
+  try {
+    await runJourney(
+      runDirectory,
+      { kind: "prepare_duplicate_event_history" },
+      session,
+    );
+  } finally {
+    await session.close();
+  }
+};

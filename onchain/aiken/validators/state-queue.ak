@@ -32,11 +32,13 @@ use midgard/state_queue.{
   AvailabilityStatusUpdate, BlockRemovalApproach, CommitBlockHeader, Deinit,
   HeaderView, InitV1, LinkedListMutation, MergeToConfirmedStateV1, MintRedeemer,
   OperatorAlreadySlashed, PruneTimedOutBlockDescendant,
-  RemoveFraudulentBlockHeader, RemoveFraudulentBlocksLink,
-  RemoveLastFraudulentBlock, RemoveTimedOutHead,
+  PruneUnattestedBlockDescendant, RemoveFraudulentBlockHeader,
+  RemoveFraudulentBlocksLink, RemoveLastFraudulentBlock,
+  RemoveLastUnattestedBlock, RemoveTimedOutHead,
   RemoveUnattestedBlockAfterTimeout, RemoveUnavailableBlockAfterTimeout,
   SlashActiveOperator, SlashRetiredOperator, SlashingApproach, SpendRedeemer,
-  StateQueueNode, commit_bound_header_time_is_valid, confirmed_state_asset_name,
+  StateQueueNode, UnattestedTimeoutRemovalApproach,
+  commit_bound_header_time_is_valid, confirmed_state_asset_name,
   da_attestation_timeout_v1, decode_header_view, finalize_linked_list,
   get_confirmed_state_root, get_state_queue_node, no_da_attestation,
 }
@@ -108,9 +110,8 @@ pub fn state_queue_head_allows_append_v1(
   validity_range: ValidityRange,
 ) -> Bool {
   let header = decode_header_view(head.header)
-  let (_, inclusive_tx_upper_bound) = utils.get_inclusive_bounds_of_a_short_validity_range(
-    validity_range,
-  )
+  let (_, inclusive_tx_upper_bound) =
+    utils.get_inclusive_bounds_of_a_short_validity_range(validity_range)
   and {
     header_v1_is_valid(header),
     when head.da_attestation is {
@@ -135,33 +136,36 @@ pub fn authenticated_queue_head_for_append_v1(
   confirmed_state_ref_input_index: Int,
   m_head_state_queue_node_ref_input_index: Option<Int>,
 ) -> StateQueueNode {
-  let head_header_hash = get_confirmed_state_root(
-    reference_inputs,
-    state_queue_policy_id,
-    confirmed_state_ref_input_index,
-    fn(confirmed_state, head_link) {
-      expect
-        confirmed_state_next_header_protocol_version_v1(confirmed_state) != None
-      expect Some(head_header_hash) = head_link
-      head_header_hash
-    },
-  )
-  let head_node = if head_header_hash == append_anchor_header_hash {
-    expect m_head_state_queue_node_ref_input_index == None
-    expect authenticated_head: StateQueueNode = append_anchor_data
-    authenticated_head
-  } else {
-    expect Some(head_ref_input_index) = m_head_state_queue_node_ref_input_index
-    get_state_queue_node(
+  let head_header_hash =
+    get_confirmed_state_root(
       reference_inputs,
       state_queue_policy_id,
-      head_ref_input_index,
-      fn(authenticated_head, authenticated_head_hash) {
-        expect authenticated_head_hash == head_header_hash
-        authenticated_head
+      confirmed_state_ref_input_index,
+      fn(confirmed_state, head_link) {
+        expect
+          confirmed_state_next_header_protocol_version_v1(confirmed_state) != None
+        expect Some(head_header_hash) = head_link
+        head_header_hash
       },
     )
-  }
+  let head_node =
+    if head_header_hash == append_anchor_header_hash {
+      expect m_head_state_queue_node_ref_input_index == None
+      expect authenticated_head: StateQueueNode = append_anchor_data
+      authenticated_head
+    } else {
+      expect Some(head_ref_input_index) =
+        m_head_state_queue_node_ref_input_index
+      get_state_queue_node(
+        reference_inputs,
+        state_queue_policy_id,
+        head_ref_input_index,
+        fn(authenticated_head, authenticated_head_hash) {
+          expect authenticated_head_hash == head_header_hash
+          authenticated_head
+        },
+      )
+    }
   let head_header_data: Data = head_node.header
   expect head_header_hash == utils.serialise_and_hash_28(head_header_data)
   head_node
@@ -356,12 +360,14 @@ pub fn merge_settlement_id_at_route(
   when m_settlement_redeemer_index is {
     None -> None
     Some(settlement_redeemer_index) -> {
-      let settlement_minting_redeemer_data = redeemers
-        |> utils.get_redeemer_at(
-            Mint(settlement_script_hash),
-            settlement_redeemer_index,
-          )
-      expect settlement.Spawn { settlement_id, .. }: settlement.MintRedeemer = settlement_minting_redeemer_data
+      let settlement_minting_redeemer_data =
+        redeemers
+          |> utils.get_redeemer_at(
+              Mint(settlement_script_hash),
+              settlement_redeemer_index,
+            )
+      expect settlement.Spawn { settlement_id, .. }: settlement.MintRedeemer =
+        settlement_minting_redeemer_data
       Some(settlement_id)
     }
   }
@@ -388,32 +394,34 @@ fn merge_to_confirmed_state(
   m_settlement_redeemer_index: Option<Int>,
   commitments: MergeCommitments,
 ) -> Bool {
-  let Transaction { inputs, outputs, mint, redeemers, validity_range, .. } = self
-  expect Some(continued_confirmed_state_output) = outputs
-    |> list.at(confirmed_state_output_index)
+  let Transaction { inputs, outputs, mint, redeemers, validity_range, .. } =
+    self
+  expect Some(continued_confirmed_state_output) =
+    outputs
+      |> list.at(confirmed_state_output_index)
 
   {
     let
-        _confirmed_state_input,
-        _confirmed_state_lovelace_change,
-        input_confirmed_state_data,
-        _input_header_node,
-        _input_header_lovelace,
-        input_header_node_key,
-        input_header_node_data,
-        _input_header_link,
-        output_confirmed_state_data
-      <- linked_list.fold_from_root(
-      anchor_root_input_outref: confirmed_state_input_outref,
-      continued_anchor_root_output: continued_confirmed_state_output,
-      inputs: inputs,
-      tx_mint: mint,
-    )
+      _confirmed_state_input,
+      _confirmed_state_lovelace_change,
+      input_confirmed_state_data,
+      _input_header_node,
+      _input_header_lovelace,
+      input_header_node_key,
+      input_header_node_data,
+      _input_header_link,
+      output_confirmed_state_data,
+    <-
+      linked_list.fold_from_root(
+        anchor_root_input_outref: confirmed_state_input_outref,
+        continued_anchor_root_output: continued_confirmed_state_output,
+        inputs: inputs,
+        tx_mint: mint,
+      )
 
     expect input_header_node_key == header_node_key
-    expect
-        StateQueueNode { header: input_header_data, da_attestation }: StateQueueNode
-      = input_header_node_data
+    expect StateQueueNode { header: input_header_data, da_attestation }: StateQueueNode =
+      input_header_node_data
     expect
       when da_attestation is {
         availability.Attested { .. } -> True
@@ -426,22 +434,19 @@ fn merge_to_confirmed_state(
     expect header_v1_is_valid(input_header)
     expect merge_commitments_match_header(commitments, input_header)
 
-    let inclusive_tx_lower_bound = utils.get_inclusive_lower_bound_of_interval(
-      validity_range,
-    )
+    let inclusive_tx_lower_bound =
+      utils.get_inclusive_lower_bound_of_interval(validity_range)
     expect
       inclusive_tx_lower_bound >= input_header.end_time + block_maturity_duration_v1
 
-    expect
-        ConfirmedState {
-          start_time: input_confirmed_state_start_time,
-          header_hash: input_confirmed_state_header_hash,
-          prev_header_hash: input_confirmed_state_prev_header_hash,
-          utxo_root: input_confirmed_state_utxo_root,
-          end_time: input_confirmed_state_end_time,
-          protocol_version: input_confirmed_state_protocol_version,
-        }
-      = input_confirmed_state_data
+    expect ConfirmedState {
+      start_time: input_confirmed_state_start_time,
+      header_hash: input_confirmed_state_header_hash,
+      prev_header_hash: input_confirmed_state_prev_header_hash,
+      utxo_root: input_confirmed_state_utxo_root,
+      end_time: input_confirmed_state_end_time,
+      protocol_version: input_confirmed_state_protocol_version,
+    } = input_confirmed_state_data
     expect
       Some(expected_protocol_version) == confirmed_state_next_header_protocol_version_v1(
         ConfirmedState {
@@ -453,14 +458,15 @@ fn merge_to_confirmed_state(
           protocol_version: input_confirmed_state_protocol_version,
         },
       )
-    let expected_output_confirmed_state_data: Data = ConfirmedState {
-      header_hash: header_node_key,
-      prev_header_hash: input_confirmed_state_header_hash,
-      utxo_root: input_header.utxos_root,
-      start_time: input_confirmed_state_start_time,
-      end_time: input_header.end_time,
-      protocol_version: input_header.protocol_version,
-    }
+    let expected_output_confirmed_state_data: Data =
+      ConfirmedState {
+        header_hash: header_node_key,
+        prev_header_hash: input_confirmed_state_header_hash,
+        utxo_root: input_header.utxos_root,
+        start_time: input_confirmed_state_start_time,
+        end_time: input_header.end_time,
+        protocol_version: input_header.protocol_version,
+      }
     expect output_confirmed_state_data == expected_output_confirmed_state_data
 
     if header_carries_l2_material(input_header) {
@@ -508,21 +514,21 @@ validator spend(
         state_queue_input_index,
         da_attestation_mint_redeemer_index,
       } -> {
-        expect Some(Input { output_reference, .. }) = tx.inputs
-          |> list.at(state_queue_input_index)
+        expect Some(Input { output_reference, .. }) =
+          tx.inputs
+            |> list.at(state_queue_input_index)
         expect output_reference == own_ref
 
-        let mint_redeemer_data = tx.redeemers
-          |> utils.get_redeemer_at(
-              Mint(da_attestation_policy_id),
-              da_attestation_mint_redeemer_index,
-            )
-        expect
-            da_attestation.ApplyToStateQueue {
-              state_queue_input_index: redeemer_state_queue_input_index,
-              ..
-            }: da_attestation.MintRedeemer
-          = mint_redeemer_data
+        let mint_redeemer_data =
+          tx.redeemers
+            |> utils.get_redeemer_at(
+                Mint(da_attestation_policy_id),
+                da_attestation_mint_redeemer_index,
+              )
+        expect da_attestation.ApplyToStateQueue {
+          state_queue_input_index: redeemer_state_queue_input_index,
+          ..
+        }: da_attestation.MintRedeemer = mint_redeemer_data
         redeemer_state_queue_input_index == state_queue_input_index
       }
       AvailabilityStatusUpdate {
@@ -530,8 +536,9 @@ validator spend(
         state_queue_output_index,
         availability_mint_redeemer_index,
       } -> {
-        expect Some(Input { output_reference, .. }) = tx.inputs
-          |> list.at(state_queue_input_index)
+        expect Some(Input { output_reference, .. }) =
+          tx.inputs
+            |> list.at(state_queue_input_index)
         expect output_reference == own_ref
 
         availability_status_update_is_authorized_v1(
@@ -562,11 +569,12 @@ pub fn availability_status_update_is_authorized_v1(
   state_queue_input_index: Int,
   state_queue_output_index: Int,
 ) -> Bool {
-  let redeemer_data = redeemers
-    |> utils.get_redeemer_at(
-        Mint(availability_policy_id),
-        availability_mint_redeemer_index,
-      )
+  let redeemer_data =
+    redeemers
+      |> utils.get_redeemer_at(
+          Mint(availability_policy_id),
+          availability_mint_redeemer_index,
+        )
   expect availability_redeemer: availability.MintRedeemerV1 = redeemer_data
   when availability_redeemer is {
     availability.MintBondFromAttestation {
@@ -616,27 +624,30 @@ pub fn remove_fraudulent_blocks_link_v1(
   fraudulent_node_input_outref: OutputReference,
   fraudulent_node_output_index: Int,
 ) -> Bool {
-  expect Some(fraudulent_node_output) = outputs
-    |> list.at(fraudulent_node_output_index)
+  expect Some(fraudulent_node_output) =
+    outputs
+      |> list.at(fraudulent_node_output_index)
   {
     let
-        _fraudulent_header_input,
-        _fraudulent_header_lovelace_change,
-        m_fraudulent_header_hash,
-        _fraudulent_header_data,
-        _removed_block_input,
-        _removed_node_lovelace,
-        _removed_node_header_hash,
-        removed_node_header_data,
-        _removed_node_link
-      <- linked_list.remove(
-      anchor_input_outref: fraudulent_node_input_outref,
-      continued_anchor_element_output: fraudulent_node_output,
-      inputs: inputs,
-      tx_mint: mint,
-    )
+      _fraudulent_header_input,
+      _fraudulent_header_lovelace_change,
+      m_fraudulent_header_hash,
+      _fraudulent_header_data,
+      _removed_block_input,
+      _removed_node_lovelace,
+      _removed_node_header_hash,
+      removed_node_header_data,
+      _removed_node_link,
+    <-
+      linked_list.remove(
+        anchor_input_outref: fraudulent_node_input_outref,
+        continued_anchor_element_output: fraudulent_node_output,
+        inputs: inputs,
+        tx_mint: mint,
+      )
     expect Some(fraudulent_blocks_header_hash) == m_fraudulent_header_hash
-    expect StateQueueNode { header: removed_node_header, .. }: StateQueueNode = removed_node_header_data
+    expect StateQueueNode { header: removed_node_header, .. }: StateQueueNode =
+      removed_node_header_data
     expect
       decode_header_view(removed_node_header).protocol_version == protocol_version_v1
     True
@@ -659,27 +670,30 @@ pub fn remove_last_fraudulent_block_v1(
   anchor_element_input_outref: OutputReference,
   anchor_element_output_index: Int,
 ) -> Bool {
-  expect Some(anchor_element_output) = outputs
-    |> list.at(anchor_element_output_index)
+  expect Some(anchor_element_output) =
+    outputs
+      |> list.at(anchor_element_output_index)
   {
     let
-        _anchor_input,
-        _anchor_lovelace_change,
-        _m_anchor_key,
-        _anchor_data,
-        _removed_node_input,
-        _removed_node_lovelace,
-        removed_node_header_hash,
-        removed_node_header_data,
-        removed_node_link
-      <- linked_list.remove(
-      anchor_input_outref: anchor_element_input_outref,
-      continued_anchor_element_output: anchor_element_output,
-      inputs: inputs,
-      tx_mint: mint,
-    )
+      _anchor_input,
+      _anchor_lovelace_change,
+      _m_anchor_key,
+      _anchor_data,
+      _removed_node_input,
+      _removed_node_lovelace,
+      removed_node_header_hash,
+      removed_node_header_data,
+      removed_node_link,
+    <-
+      linked_list.remove(
+        anchor_input_outref: anchor_element_input_outref,
+        continued_anchor_element_output: anchor_element_output,
+        inputs: inputs,
+        tx_mint: mint,
+      )
     expect fraudulent_blocks_header_hash == removed_node_header_hash
-    expect StateQueueNode { header: removed_node_header, .. }: StateQueueNode = removed_node_header_data
+    expect StateQueueNode { header: removed_node_header, .. }: StateQueueNode =
+      removed_node_header_data
     let removed_header_view = decode_header_view(removed_node_header)
     expect removed_header_view.operator_vkey == fraudulent_operator
     removed_node_link == None
@@ -701,9 +715,8 @@ pub fn unattested_block_timeout_elapsed_v1(
   validity_range: ValidityRange,
 ) -> Bool {
   let header = decode_header_view(node.header)
-  let inclusive_tx_lower_bound = utils.get_inclusive_lower_bound_of_interval(
-    validity_range,
-  )
+  let inclusive_tx_lower_bound =
+    utils.get_inclusive_lower_bound_of_interval(validity_range)
   and {
     authenticated_header_hash == timed_out_header_hash,
     authenticated_header_hash == crypto.blake2b_224(
@@ -715,10 +728,28 @@ pub fn unattested_block_timeout_elapsed_v1(
   }
 }
 
-/// Prune the current descendant of an unattested, timed-out head before the
-/// head itself is removed. The authenticated list link, not the descendant's
-/// operator, makes it invalid once its predecessor is removed.
-pub fn prune_timed_out_block_descendant_v1(
+/// Linked-list authentication supplies the NFT key and datum. Check their
+/// protocol identity before either referencing or continuing the predecessor.
+fn timeout_predecessor_is_valid_v1(key: Option<ByteArray>, data: Data) -> Bool {
+  when key is {
+    None -> {
+      expect confirmed_state: ConfirmedState = data
+      confirmed_state_next_header_protocol_version_v1(confirmed_state) != None
+    }
+    Some(header_hash) -> {
+      expect node: StateQueueNode = data
+      and {
+        header_hash == crypto.blake2b_224(builtin.serialise_data(node.header)),
+        header_v1_is_valid(decode_header_view(node.header)),
+      }
+    }
+  }
+}
+
+/// Prune the current descendant of an authenticated, expired unattested target.
+/// The predecessor may be the confirmed root or an immature queued block.
+/// Structural dependency, not descendant operator identity, authorizes pruning.
+pub fn prune_unattested_block_descendant_v1(
   state_queue_policy_id: PolicyId,
   inputs: List<Input>,
   outputs: List<Output>,
@@ -726,52 +757,53 @@ pub fn prune_timed_out_block_descendant_v1(
   mint: assets.Value,
   validity_range: ValidityRange,
   timed_out_header_hash: ByteArray,
-  confirmed_state_ref_input_index: Int,
+  predecessor_ref_input_index: Int,
   timed_out_node_input_outref: OutputReference,
   timed_out_node_output_index: Int,
 ) -> Bool {
-  // A timed-out node may authorize pruning only after it is the current head.
-  // The root NFT is a singleton; reading that UTxO as a reference input both
-  // authenticates the head link and makes a concurrent root merge/removal
-  // invalidate this transaction.
-  expect Some(Input { output: confirmed_state_output, .. }) = reference_inputs
-    |> list.at(confirmed_state_ref_input_index)
+  // Authenticate the immediate predecessor, without waiting for the healthy
+  // prefix to merge. Spending that predecessor invalidates this reference;
+  // the correction lock serializes competing suffix corrections and merges.
+  expect Some(Input { output: predecessor_output, .. }) =
+    reference_inputs
+      |> list.at(predecessor_ref_input_index)
   expect
     {
       let
-          _confirmed_state_address,
-          _confirmed_state_lovelace,
-          m_confirmed_state_key,
-          confirmed_state_data,
-          confirmed_state_link
-        <- linked_list.get_element_info(confirmed_state_output)
-      expect m_confirmed_state_key == None
-      expect confirmed_state: ConfirmedState = confirmed_state_data
-      expect
-        confirmed_state_next_header_protocol_version_v1(confirmed_state) != None
-      confirmed_state_link == Some(timed_out_header_hash)
+        _address,
+        _lovelace,
+        predecessor_key,
+        predecessor_data,
+        predecessor_link,
+      <- linked_list.get_element_info(predecessor_output)
+      and {
+        timeout_predecessor_is_valid_v1(predecessor_key, predecessor_data),
+        predecessor_link == Some(timed_out_header_hash),
+      }
     }
       |> finalize_linked_list(state_queue_policy_id)
 
-  expect Some(timed_out_node_output) = outputs
-    |> list.at(timed_out_node_output_index)
+  expect Some(timed_out_node_output) =
+    outputs
+      |> list.at(timed_out_node_output_index)
   {
     let
-        _timed_out_node_input,
-        _timed_out_node_lovelace_change,
-        m_timed_out_node_header_hash,
-        timed_out_node_data,
-        _removed_descendant_input,
-        _removed_descendant_lovelace,
-        _removed_descendant_header_hash,
-        removed_descendant_data,
-        _removed_descendant_link
-      <- linked_list.remove(
-      anchor_input_outref: timed_out_node_input_outref,
-      continued_anchor_element_output: timed_out_node_output,
-      inputs: inputs,
-      tx_mint: mint,
-    )
+      _timed_out_node_input,
+      _timed_out_node_lovelace_change,
+      m_timed_out_node_header_hash,
+      timed_out_node_data,
+      _removed_descendant_input,
+      _removed_descendant_lovelace,
+      _removed_descendant_header_hash,
+      removed_descendant_data,
+      _removed_descendant_link,
+    <-
+      linked_list.remove(
+        anchor_input_outref: timed_out_node_input_outref,
+        continued_anchor_element_output: timed_out_node_output,
+        inputs: inputs,
+        tx_mint: mint,
+      )
     expect Some(authenticated_header_hash) = m_timed_out_node_header_hash
     expect timed_out_node: StateQueueNode = timed_out_node_data
     expect
@@ -789,43 +821,42 @@ pub fn prune_timed_out_block_descendant_v1(
     |> finalize_linked_list(state_queue_policy_id)
 }
 
-/// Remove the timed-out block from the state-queue root after every descendant
-/// has been pruned. Requiring the removed link to be `None` prevents confirmed
-/// state from being re-linked directly to a transition built on the discarded
-/// block.
-pub fn remove_unattested_head_after_timeout_v1(
+/// Remove the terminal unattested target from its immediate predecessor.
+/// Retain the entire prefix, including an immature predecessor, without changing
+/// its committed data or value. Never splice a descendant across discarded state.
+pub fn remove_last_unattested_block_v1(
   state_queue_policy_id: PolicyId,
   inputs: List<Input>,
   outputs: List<Output>,
   mint: assets.Value,
   validity_range: ValidityRange,
   timed_out_header_hash: ByteArray,
-  confirmed_state_input_outref: OutputReference,
-  confirmed_state_output_index: Int,
+  predecessor_input_outref: OutputReference,
+  predecessor_output_index: Int,
 ) -> Bool {
-  expect Some(confirmed_state_output) = outputs
-    |> list.at(confirmed_state_output_index)
+  expect Some(predecessor_output) =
+    outputs
+      |> list.at(predecessor_output_index)
   {
     let
-        _confirmed_state_input,
-        _confirmed_state_lovelace_change,
-        m_confirmed_state_key,
-        confirmed_state_data,
-        _timed_out_node_input,
-        _timed_out_node_lovelace,
-        authenticated_header_hash,
-        timed_out_node_data,
-        timed_out_node_link
-      <- linked_list.remove(
-      anchor_input_outref: confirmed_state_input_outref,
-      continued_anchor_element_output: confirmed_state_output,
-      inputs: inputs,
-      tx_mint: mint,
-    )
-    expect m_confirmed_state_key == None
-    expect confirmed_state: ConfirmedState = confirmed_state_data
-    expect
-      confirmed_state_next_header_protocol_version_v1(confirmed_state) != None
+      _predecessor_input,
+      predecessor_lovelace_change,
+      predecessor_key,
+      predecessor_data,
+      _timed_out_node_input,
+      _timed_out_node_lovelace,
+      authenticated_header_hash,
+      timed_out_node_data,
+      timed_out_node_link,
+    <-
+      linked_list.remove(
+        anchor_input_outref: predecessor_input_outref,
+        continued_anchor_element_output: predecessor_output,
+        inputs: inputs,
+        tx_mint: mint,
+      )
+    expect timeout_predecessor_is_valid_v1(predecessor_key, predecessor_data)
+    expect predecessor_lovelace_change == 0
     expect timed_out_node: StateQueueNode = timed_out_node_data
     expect
       unattested_block_timeout_elapsed_v1(
@@ -873,13 +904,18 @@ pub fn prune_unavailable_block_descendant_v1(
   unavailable_node_input_outref: OutputReference,
   unavailable_node_output_index: Int,
 ) -> Bool {
-  expect Some(Input { output: confirmed_state_output, .. }) = reference_inputs
-    |> list.at(confirmed_state_ref_input_index)
+  expect Some(Input { output: confirmed_state_output, .. }) =
+    reference_inputs
+      |> list.at(confirmed_state_ref_input_index)
   expect
     {
-      let _address, _lovelace, m_key, confirmed_state_data, head_link <- linked_list.get_element_info(
-        confirmed_state_output,
-      )
+      let
+        _address,
+        _lovelace,
+        m_key,
+        confirmed_state_data,
+        head_link,
+      <- linked_list.get_element_info(confirmed_state_output)
       expect m_key == None
       expect confirmed_state: ConfirmedState = confirmed_state_data
       expect
@@ -888,25 +924,27 @@ pub fn prune_unavailable_block_descendant_v1(
     }
       |> finalize_linked_list(state_queue_policy_id)
 
-  expect Some(unavailable_node_output) = outputs
-    |> list.at(unavailable_node_output_index)
+  expect Some(unavailable_node_output) =
+    outputs
+      |> list.at(unavailable_node_output_index)
   {
     let
-        _anchor_input,
-        _anchor_lovelace_change,
-        m_anchor_header_hash,
-        anchor_node_data,
-        _removed_input,
-        _removed_lovelace,
-        _removed_header_hash,
-        removed_node_data,
-        _removed_link
-      <- linked_list.remove(
-      anchor_input_outref: unavailable_node_input_outref,
-      continued_anchor_element_output: unavailable_node_output,
-      inputs: inputs,
-      tx_mint: mint,
-    )
+      _anchor_input,
+      _anchor_lovelace_change,
+      m_anchor_header_hash,
+      anchor_node_data,
+      _removed_input,
+      _removed_lovelace,
+      _removed_header_hash,
+      removed_node_data,
+      _removed_link,
+    <-
+      linked_list.remove(
+        anchor_input_outref: unavailable_node_input_outref,
+        continued_anchor_element_output: unavailable_node_output,
+        inputs: inputs,
+        tx_mint: mint,
+      )
     expect Some(authenticated_header_hash) = m_anchor_header_hash
     expect anchor_node: StateQueueNode = anchor_node_data
     expect
@@ -932,25 +970,27 @@ pub fn remove_unavailable_head_v1(
   confirmed_state_input_outref: OutputReference,
   confirmed_state_output_index: Int,
 ) -> Bool {
-  expect Some(confirmed_state_output) = outputs
-    |> list.at(confirmed_state_output_index)
+  expect Some(confirmed_state_output) =
+    outputs
+      |> list.at(confirmed_state_output_index)
   {
     let
-        _root_input,
-        _root_lovelace_change,
-        m_root_key,
-        confirmed_state_data,
-        _removed_input,
-        _removed_lovelace,
-        authenticated_header_hash,
-        removed_node_data,
-        removed_link
-      <- linked_list.remove(
-      anchor_input_outref: confirmed_state_input_outref,
-      continued_anchor_element_output: confirmed_state_output,
-      inputs: inputs,
-      tx_mint: mint,
-    )
+      _root_input,
+      _root_lovelace_change,
+      m_root_key,
+      confirmed_state_data,
+      _removed_input,
+      _removed_lovelace,
+      authenticated_header_hash,
+      removed_node_data,
+      removed_link,
+    <-
+      linked_list.remove(
+        anchor_input_outref: confirmed_state_input_outref,
+        continued_anchor_element_output: confirmed_state_output,
+        inputs: inputs,
+        tx_mint: mint,
+      )
     expect m_root_key == None
     expect confirmed_state: ConfirmedState = confirmed_state_data
     expect
@@ -987,18 +1027,16 @@ pub fn validate_commit_block_header_v1(
   m_head_state_queue_node_ref_input_index: Option<Int>,
 ) -> Bool {
   let correction_lock_address = from_script(correction_lock_script_hash)
-  let
-      Transaction {
-        inputs,
-        outputs,
-        reference_inputs,
-        mint,
-        extra_signatories,
-        redeemers,
-        validity_range,
-        ..
-      }
-    = self
+  let Transaction {
+    inputs,
+    outputs,
+    reference_inputs,
+    mint,
+    extra_signatories,
+    redeemers,
+    validity_range,
+    ..
+  } = self
   // Commit the block header to the state queue, with the operator's
   // content:
   // 1. Let `operator` be a redeemer argument indicating the pub key hash
@@ -1006,28 +1044,31 @@ pub fn validate_commit_block_header_v1(
   // 2. The transaction must be signed by `operator`.
   expect operator |> utils.has_signed(extra_signatories)
 
-  expect Some(continued_anchor_element_output) = outputs
-    |> list.at(continued_latest_block_output_index)
-  expect Some(new_block_output) = outputs
-    |> list.at(new_block_output_index)
+  expect Some(continued_anchor_element_output) =
+    outputs
+      |> list.at(continued_latest_block_output_index)
+  expect Some(new_block_output) =
+    outputs
+      |> list.at(new_block_output_index)
 
   // 3. Indicated outputs must properly adhere to unordered linked list
   //    append requirements.
   {
     let
-        _anchor_input,
-        _anchor_lovelace_change,
-        m_anchor_key,
-        anchor_data,
-        _output_header_lovelace,
-        output_header_key,
-        output_node_data
-      <- linked_list.append_unordered(
-      continued_anchor_element_output: continued_anchor_element_output,
-      new_node_output: new_block_output,
-      inputs: inputs,
-      tx_mint: mint,
-    )
+      _anchor_input,
+      _anchor_lovelace_change,
+      m_anchor_key,
+      anchor_data,
+      _output_header_lovelace,
+      output_header_key,
+      output_node_data,
+    <-
+      linked_list.append_unordered(
+        continued_anchor_element_output: continued_anchor_element_output,
+        new_node_output: new_block_output,
+        inputs: inputs,
+        tx_mint: mint,
+      )
 
     expect
       correction_lock.references_idle(
@@ -1036,16 +1077,14 @@ pub fn validate_commit_block_header_v1(
         correction_lock_address,
       )
 
-    expect
-        StateQueueNode { header: output_header_data, da_attestation }: StateQueueNode
-      = output_node_data
+    expect StateQueueNode { header: output_header_data, da_attestation }: StateQueueNode =
+      output_node_data
     expect da_attestation == no_da_attestation
 
     // 4. The new block in state queue must have the hash of the header
     //    as its linked list key.
-    let output_header_hash = crypto.blake2b_224(
-      builtin.serialise_data(output_header_data),
-    )
+    let output_header_hash =
+      crypto.blake2b_224(builtin.serialise_data(output_header_data))
     expect output_header_key == output_header_hash
 
     // 5. New element's data must be `HeaderV1` with a valid time range.
@@ -1063,23 +1102,25 @@ pub fn validate_commit_block_header_v1(
     // scheduler:
     // 7. The transaction must include a reference input with the
     //    scheduler NFT. Let that input's datum be the `scheduler_state`.
-    expect scheduler.ActiveOperator { operator: scheduler_operator, .. } = scheduler.get_datum(
-      reference_inputs: reference_inputs,
-      scheduler_policy_id: scheduler_script_hash,
-      scheduler_ref_input_index: scheduler_ref_input_index,
-    )
+    expect scheduler.ActiveOperator { operator: scheduler_operator, .. } =
+      scheduler.get_datum(
+        reference_inputs: reference_inputs,
+        scheduler_policy_id: scheduler_script_hash,
+        scheduler_ref_input_index: scheduler_ref_input_index,
+      )
 
     // Update the operator's timestamp in the active operators set:
     // 9. The transaction must include an input, spent via the
     //    `UpdateBondHoldNewState` redeemer, of an `active_operators`
     //    node with a key matching the `operator`.
-    expect active_operators.UpdateBondHoldNewState { active_operator, .. } = utils.get_spending_redeemer_data_at(
-      active_operators_addr,
-      active_operators_input_index,
-      active_operators_redeemer_index,
-      inputs,
-      redeemers,
-    )
+    expect active_operators.UpdateBondHoldNewState { active_operator, .. } =
+      utils.get_spending_redeemer_data_at(
+        active_operators_addr,
+        active_operators_input_index,
+        active_operators_redeemer_index,
+        inputs,
+        redeemers,
+      )
     // 6, 8, 9. The header, authenticated scheduler state, and
     // authenticated active-operator spend must all name the redeemer
     // operator.
@@ -1102,15 +1143,17 @@ pub fn validate_commit_block_header_v1(
         // pruning spends/continues the same head, so an old append
         // conflicts; the upper-bound rule prevents a refetched append
         // from extending the queue after the deadline.
-        expect Some(confirmed_state_ref_input_index) = m_confirmed_state_ref_input_index
-        let head_node = authenticated_queue_head_for_append_v1(
-          reference_inputs,
-          own_policy_id,
-          header_hash,
-          anchor_data,
-          confirmed_state_ref_input_index,
-          m_head_state_queue_node_ref_input_index,
-        )
+        expect Some(confirmed_state_ref_input_index) =
+          m_confirmed_state_ref_input_index
+        let head_node =
+          authenticated_queue_head_for_append_v1(
+            reference_inputs,
+            own_policy_id,
+            header_hash,
+            anchor_data,
+            confirmed_state_ref_input_index,
+            m_head_state_queue_node_ref_input_index,
+          )
         expect
           state_queue_head_allows_append_v1(
             head_node,
@@ -1120,8 +1163,8 @@ pub fn validate_commit_block_header_v1(
 
         // 10a. New block must properly carry over data from previous
         //      block.
-        expect StateQueueNode { header: anchor_header_data, .. }: StateQueueNode
-          = anchor_data
+        expect StateQueueNode { header: anchor_header_data, .. }: StateQueueNode =
+          anchor_data
         let anchor_header = decode_header_view(anchor_header_data)
         expect
           commit_block_header_carries_previous_block_v1(
@@ -1141,16 +1184,14 @@ pub fn validate_commit_block_header_v1(
 
         // 10b. New block must properly carry over data from confirmed
         //      state.
-        expect
-            ConfirmedState {
-              header_hash,
-              prev_header_hash,
-              utxo_root,
-              start_time,
-              end_time,
-              protocol_version,
-            }
-          = anchor_data
+        expect ConfirmedState {
+          header_hash,
+          prev_header_hash,
+          utxo_root,
+          start_time,
+          end_time,
+          protocol_version,
+        } = anchor_data
         expect
           commit_block_header_carries_confirmed_state_v1(
             output_header,
@@ -1178,36 +1219,35 @@ pub fn validate_remove_unattested_v1(
   own_policy_id: PolicyId,
   self: Transaction,
   timed_out_header_hash: ByteArray,
-  removal_approach: AttestationTimeoutRemovalApproach,
+  removal_approach: UnattestedTimeoutRemovalApproach,
 ) -> Bool {
   let correction_lock_address = from_script(correction_lock_script_hash)
-  let
-      Transaction {
-        inputs,
-        outputs,
-        reference_inputs,
-        mint,
-        validity_range,
-        ..
-      }
-    = self
+  let Transaction {
+    inputs,
+    outputs,
+    reference_inputs,
+    mint,
+    validity_range,
+    ..
+  } = self
 
   // Q61: the state-queue node itself serializes DA attachment and
   // permissionless timeout correction. No operator-directory input,
   // slash redeemer, fraud proof, reward, or signature authorizes this
   // liveness path.
-  expect _correction_lock_input = correction_lock.unique_input(
-    inputs,
-    hub_oracle_script_hash,
-    correction_lock_address,
-  )
+  expect _correction_lock_input =
+    correction_lock.unique_input(
+      inputs,
+      hub_oracle_script_hash,
+      correction_lock_address,
+    )
   when removal_approach is {
-    PruneTimedOutBlockDescendant {
-      confirmed_state_ref_input_index,
+    PruneUnattestedBlockDescendant {
+      predecessor_ref_input_index,
       timed_out_node_input_outref,
       timed_out_node_output_index,
     } ->
-      prune_timed_out_block_descendant_v1(
+      prune_unattested_block_descendant_v1(
         own_policy_id,
         inputs: inputs,
         outputs: outputs,
@@ -1215,23 +1255,23 @@ pub fn validate_remove_unattested_v1(
         mint: mint,
         validity_range: validity_range,
         timed_out_header_hash: timed_out_header_hash,
-        confirmed_state_ref_input_index: confirmed_state_ref_input_index,
+        predecessor_ref_input_index: predecessor_ref_input_index,
         timed_out_node_input_outref: timed_out_node_input_outref,
         timed_out_node_output_index: timed_out_node_output_index,
       )
-    RemoveTimedOutHead {
-      confirmed_state_input_outref,
-      confirmed_state_output_index,
+    RemoveLastUnattestedBlock {
+      predecessor_input_outref,
+      predecessor_output_index,
     } ->
-      remove_unattested_head_after_timeout_v1(
+      remove_last_unattested_block_v1(
         own_policy_id,
         inputs: inputs,
         outputs: outputs,
         mint: mint,
         validity_range: validity_range,
         timed_out_header_hash: timed_out_header_hash,
-        confirmed_state_input_outref: confirmed_state_input_outref,
-        confirmed_state_output_index: confirmed_state_output_index,
+        predecessor_input_outref: predecessor_input_outref,
+        predecessor_output_index: predecessor_output_index,
       )
   }
 }
@@ -1248,17 +1288,19 @@ pub fn validate_remove_unavailable_v1(
 ) -> Bool {
   let correction_lock_address = from_script(correction_lock_script_hash)
   let Transaction { inputs, outputs, reference_inputs, mint, .. } = self
-  let lock_input = correction_lock.unique_input(
-    inputs,
-    hub_oracle_script_hash,
-    correction_lock_address,
-  )
-  let expected_lock = correction_lock.Locked {
-    target_header_hash: unavailable_header_hash,
-    correction_identity: correction_lock.AvailabilityChallenge {
-      challenge_asset_name,
-    },
-  }
+  let lock_input =
+    correction_lock.unique_input(
+      inputs,
+      hub_oracle_script_hash,
+      correction_lock_address,
+    )
+  let expected_lock =
+    correction_lock.Locked {
+      target_header_hash: unavailable_header_hash,
+      correction_identity: correction_lock.AvailabilityChallenge {
+        challenge_asset_name,
+      },
+    }
   expect
     when correction_lock.decode_datum(lock_input.output) is {
       correction_lock.Idle ->
@@ -1318,17 +1360,15 @@ pub fn validate_remove_fraudulent_v1(
   block_removal_approach: BlockRemovalApproach,
 ) -> Bool {
   let correction_lock_address = from_script(correction_lock_script_hash)
-  let
-      Transaction {
-        inputs,
-        outputs,
-        reference_inputs,
-        mint,
-        redeemers,
-        extra_signatories,
-        ..
-      }
-    = self
+  let Transaction {
+    inputs,
+    outputs,
+    reference_inputs,
+    mint,
+    redeemers,
+    extra_signatories,
+    ..
+  } = self
 
   // 0. Verify that fraud has been proved for the specified block header,
   //    and read the fraud prover off the same authentic reference input.
@@ -1340,18 +1380,23 @@ pub fn validate_remove_fraudulent_v1(
   //    because the prover it also yields is what the slashing arms route
   //    the reward to, and the fraud-proof datum is where F04 §2.3 says
   //    that identity lives.
-  let referenced_fraudulent_header_hash, fraud_prover <- fraud_proof.get_proven_fraud_record(
-    reference_inputs,
-    fraud_proof_script_hash,
-    fraud_proof_ref_input_index,
-  )
+  let
+    referenced_fraudulent_header_hash,
+    fraud_prover,
+  <-
+    fraud_proof.get_proven_fraud_record(
+      reference_inputs,
+      fraud_proof_script_hash,
+      fraud_proof_ref_input_index,
+    )
   expect referenced_fraudulent_header_hash == fraudulent_blocks_header_hash
 
-  expect _correction_lock_input = correction_lock.unique_input(
-    inputs,
-    hub_oracle_script_hash,
-    correction_lock_address,
-  )
+  expect _correction_lock_input =
+    correction_lock.unique_input(
+      inputs,
+      hub_oracle_script_hash,
+      correction_lock_address,
+    )
 
   // Slash the fraudulent operator:
   // 1. Let `slashing_approach` be a sum type indicating whether the
@@ -1367,17 +1412,20 @@ pub fn validate_remove_fraudulent_v1(
         //     `active_operators` set via the `SlashOperatorBadState`
         //     redeemer. The `slashed_operator` argument provided to that
         //     redeemer must match `fraudulent_operator`.
-        let slashing_reason_from_active_operators = operator_directory.cross_validate_slashing_reason(
-          fraudulent_operator,
-          active_operators_script_hash,
-          active_operators_redeemer_index,
-          fn(redeemer_data: Data) {
-            expect active_operators.SlashOperator { slashing_arguments, .. } = redeemer_data
-            slashing_arguments
-          },
-          redeemers,
-        )
-        expect SlashOperatorForBadState { .. } = slashing_reason_from_active_operators
+        let slashing_reason_from_active_operators =
+          operator_directory.cross_validate_slashing_reason(
+            fraudulent_operator,
+            active_operators_script_hash,
+            active_operators_redeemer_index,
+            fn(redeemer_data: Data) {
+              expect active_operators.SlashOperator { slashing_arguments, .. } =
+                redeemer_data
+              slashing_arguments
+            },
+            redeemers,
+          )
+        expect SlashOperatorForBadState { .. } =
+          slashing_reason_from_active_operators
 
         // 2a-i. This arm consumes the operator's bond, so it is the
         //       reward-bearing transaction: exactly
@@ -1400,17 +1448,20 @@ pub fn validate_remove_fraudulent_v1(
         //     `retired_operators` set via the `SlashOperatorBadState`
         //     redeemer. The `slashed_operator` argument provided to that
         //     redeemer must match `fraudulent_operator`.
-        let slashing_reason_from_retired_operators = operator_directory.cross_validate_slashing_reason(
-          fraudulent_operator,
-          retired_operators_script_hash,
-          retired_operators_redeemer_index,
-          fn(redeemer_data: Data) {
-            expect retired_operators.SlashOperator { slashing_arguments } = redeemer_data
-            slashing_arguments
-          },
-          redeemers,
-        )
-        expect SlashOperatorForBadState { .. } = slashing_reason_from_retired_operators
+        let slashing_reason_from_retired_operators =
+          operator_directory.cross_validate_slashing_reason(
+            fraudulent_operator,
+            retired_operators_script_hash,
+            retired_operators_redeemer_index,
+            fn(redeemer_data: Data) {
+              expect retired_operators.SlashOperator { slashing_arguments } =
+                redeemer_data
+              slashing_arguments
+            },
+            redeemers,
+          )
+        expect SlashOperatorForBadState { .. } =
+          slashing_reason_from_retired_operators
 
         // 2b-i. Same reward routing as the active arm: the retired
         //       operator's bond is the same single slashable tranche.
@@ -1579,14 +1630,15 @@ fn require_operational_yield_v1(
   self: Transaction,
 ) -> Bool {
   let Transaction { reference_inputs, withdrawals, redeemers, .. } = self
-  expect _yield_script_hash = state_queue_yield.require_authenticated_zero_yield(
-    reference_inputs,
-    withdrawals,
-    redeemers,
-    reference_script_auth_policy_id,
-    role_asset_name,
-    yield_to_ref_input_index,
-  )
+  expect _yield_script_hash =
+    state_queue_yield.require_authenticated_zero_yield(
+      reference_inputs,
+      withdrawals,
+      redeemers,
+      reference_script_auth_policy_id,
+      role_asset_name,
+      yield_to_ref_input_index,
+    )
   True
 }
 
@@ -1610,22 +1662,21 @@ validator mint(
         let Transaction { outputs, mint, validity_range, .. } = self
 
         expect Some(root_output) = outputs |> list.at(output_index)
-        let correction_lock_output = correction_lock.unique_output(
-          outputs,
-          hub_oracle_script_hash,
-          correction_lock_address,
-        )
+        let correction_lock_output =
+          correction_lock.unique_output(
+            outputs,
+            hub_oracle_script_hash,
+            correction_lock_address,
+          )
         expect
           correction_lock.decode_datum(correction_lock_output) == correction_lock.Idle
         expect
           quantity_of(mint, hub_oracle_script_hash, correction_lock.asset_name) == 1
-        let (_current_time_lower, current_time_upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
-          validity_range,
-        )
+        let (_current_time_lower, current_time_upper) =
+          utils.get_inclusive_bounds_of_a_short_validity_range(validity_range)
 
-        expect Some(expected_genesis_state) = genesis_confirmed_state_v1(
-          current_time_upper,
-        )
+        expect Some(expected_genesis_state) =
+          genesis_confirmed_state_v1(current_time_upper)
         let expected_root_data: Data = expected_genesis_state
 
         expect
@@ -1654,11 +1705,12 @@ validator mint(
         // 1. Hub oracle NFT must be getting burnt.
         expect quantity_of(mint, hub_oracle_script_hash, hub.asset_name) == -1
 
-        let correction_lock_input = correction_lock.unique_input(
-          inputs,
-          hub_oracle_script_hash,
-          correction_lock_address,
-        )
+        let correction_lock_input =
+          correction_lock.unique_input(
+            inputs,
+            hub_oracle_script_hash,
+            correction_lock_address,
+          )
         expect
           correction_lock.decode_datum(correction_lock_input.output) == correction_lock.Idle
         expect
@@ -1794,13 +1846,14 @@ test q49_l295_header_shape_control_and_interval_mutations() {
 
 test q49_l295_validation_context_scalar_control_and_mutations() {
   let control = q49_header_fixture()
-  let supported_network_and_runtime_values = HeaderV1 {
-    ..control,
-    block_slot: 1,
-    expected_network_id: 1,
-    min_fee_a: 44,
-    min_fee_b: 155_381,
-  }
+  let supported_network_and_runtime_values =
+    HeaderV1 {
+      ..control,
+      block_slot: 1,
+      expected_network_id: 1,
+      min_fee_a: 44,
+      min_fee_b: 155_381,
+    }
   and {
     commit_block_header_output_is_valid_v1(control),
     commit_block_header_output_is_valid_v1(supported_network_and_runtime_values),
@@ -1862,13 +1915,14 @@ test q49_l295_scheduled_operator_control_and_independent_mutations() {
 
 test q49_l295_previous_header_control_and_independent_mutations() {
   let previous = q49_header_fixture()
-  let output = HeaderV1 {
-    ..q49_header_fixture(),
-    prev_header_hash: q49_header_hash_b,
-    prev_utxos_root: previous.utxos_root,
-    start_time: previous.end_time,
-    end_time: previous.end_time + 100,
-  }
+  let output =
+    HeaderV1 {
+      ..q49_header_fixture(),
+      prev_header_hash: q49_header_hash_b,
+      prev_utxos_root: previous.utxos_root,
+      start_time: previous.end_time,
+      end_time: previous.end_time + 100,
+    }
   and {
     commit_block_header_carries_previous_block_v1(
       output,
@@ -1905,27 +1959,20 @@ test q49_l295_previous_header_control_and_independent_mutations() {
 
 test q49_l295_confirmed_genesis_control_and_independent_mutations() {
   expect Some(genesis) = genesis_confirmed_state_v1(100)
-  let output = HeaderV1 {
-    ..q49_header_fixture(),
-    prev_header_hash: q49_genesis_header_hash,
-    prev_utxos_root: env.empty_merkle_tree_root,
-  }
-  let malformed_header_hash = ConfirmedState {
-    ..genesis,
-    header_hash: q49_header_hash_a,
-  }
-  let malformed_prev_hash = ConfirmedState {
-    ..genesis,
-    prev_header_hash: q49_header_hash_a,
-  }
-  let malformed_utxo_root = ConfirmedState {
-    ..genesis,
-    utxo_root: q49_utxo_root_a,
-  }
-  let malformed_interval = ConfirmedState {
-    ..genesis,
-    end_time: genesis.start_time + 1,
-  }
+  let output =
+    HeaderV1 {
+      ..q49_header_fixture(),
+      prev_header_hash: q49_genesis_header_hash,
+      prev_utxos_root: env.empty_merkle_tree_root,
+    }
+  let malformed_header_hash =
+    ConfirmedState { ..genesis, header_hash: q49_header_hash_a }
+  let malformed_prev_hash =
+    ConfirmedState { ..genesis, prev_header_hash: q49_header_hash_a }
+  let malformed_utxo_root =
+    ConfirmedState { ..genesis, utxo_root: q49_utxo_root_a }
+  let malformed_interval =
+    ConfirmedState { ..genesis, end_time: genesis.start_time + 1 }
   and {
     commit_block_header_carries_confirmed_state_v1(output, genesis),
     !commit_block_header_carries_confirmed_state_v1(
@@ -1963,18 +2010,17 @@ test q49_l295_confirmed_genesis_control_and_independent_mutations() {
 }
 
 test q49_l295_confirmed_ordinary_control_and_independent_mutations() {
-  let ordinary = ConfirmedState {
-    header_hash: q49_header_hash_b,
-    prev_header_hash: q49_header_hash_a,
-    utxo_root: q49_utxo_root_a,
-    start_time: 0,
-    end_time: 100,
-    protocol_version: protocol_version_v1,
-  }
-  let output = HeaderV1 {
-    ..q49_header_fixture(),
-    prev_header_hash: q49_header_hash_b,
-  }
+  let ordinary =
+    ConfirmedState {
+      header_hash: q49_header_hash_b,
+      prev_header_hash: q49_header_hash_a,
+      utxo_root: q49_utxo_root_a,
+      start_time: 0,
+      end_time: 100,
+      protocol_version: protocol_version_v1,
+    }
+  let output =
+    HeaderV1 { ..q49_header_fixture(), prev_header_hash: q49_header_hash_b }
   and {
     commit_block_header_carries_confirmed_state_v1(output, ordinary),
     !commit_block_header_carries_confirmed_state_v1(

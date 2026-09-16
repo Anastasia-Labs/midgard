@@ -401,8 +401,11 @@ export const reconcileLinearFamilyAction = async ({
   }
   if (
     !included &&
-    parsed.stage === "remove" &&
-    admittedStage.kind === "proof_token"
+    ((parsed.stage === "remove" && admittedStage.kind === "proof_token") ||
+      (parsed.stage === "init" && admittedStage.kind === "not_started") ||
+      (admittedStage.kind === "step" &&
+        parsed.ordinal === admittedStage.step &&
+        parsed.inputOutRef === admittedStage.threadOutRef))
   ) {
     return recoverUnconfirmedTransaction === undefined
       ? { kind: "pending", txHash }

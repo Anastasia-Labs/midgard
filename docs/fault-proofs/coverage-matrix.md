@@ -2,12 +2,14 @@
 
 Status: Active
 
-Documentation disposition reviewed: 2026-09-07.
+Documentation disposition reviewed: 2026-09-12.
 
 The rule mapping below is a partial explanatory matrix, not an exhaustive
 category roster or a fresh test receipt. [Catalogue status](catalogue-status.md)
 owns the complete source inventory; [testing status](testing-status.md) scopes
-acceptance evidence. Later categories may refine a rule into narrower families.
+acceptance evidence; and the [remaining-gap tracker](remaining-gaps.md) owns
+known protocol statements that are impossible or only partially provable.
+Later categories may refine a rule into narrower families.
 
 This matrix distinguishes proof routes from release evidence. A compiled family is not release-complete
 until its evidence remains constructible, its transactions fit, its valid-block
@@ -56,29 +58,32 @@ negative passes, and its full correction lifecycle is exercised.
 
 These are intentionally not additional catalogue entries:
 
-| Concern                                                       | Disposition                                                                                             |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Separate required-signer membership family                    | Structural N/A: covered by the authenticated Signatures path and `missingSignature`                     |
-| ADA minting                                                   | Canonical ADA minting is unrepresentable; malformed empty-policy field-5 bytes are proved by `mintItemNonCanonical`                                      |
-| Negative output value                                         | Structural N/A under canonical output/value decoding                                                    |
-| Valid normal transaction made a no-op                         | Covered by accepted validation claim plus transition-trace binding                                      |
-| Valid forced transaction made a no-op or wrong forced verdict | Typed deterministic fault family or interactive execution dispute, plus transition-trace effect binding |
-| Shared large-field verification                               | `mpf-chunked-proof` support machinery, not a category                                                   |
-| Unattested head timeout                                       | Separate no-slash state-queue correction path                                                           |
-| Post-attestation data withholding                             | DA remedy/recovery problem, not a transaction fault category                                            |
+| Concern                                                       | Disposition                                                                                                         |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Separate required-signer membership family                    | Structural N/A: covered by the authenticated Signatures path and `missingSignature`                                 |
+| ADA minting                                                   | Canonical ADA minting is unrepresentable; malformed empty-policy field-5 bytes are proved by `mintItemNonCanonical` |
+| Negative output value                                         | Structural N/A under canonical output/value decoding                                                                |
+| Valid normal transaction made a no-op                         | Covered by accepted validation claim plus transition-trace binding                                                  |
+| Valid forced transaction made a no-op or wrong forced verdict | Typed deterministic fault family or interactive execution dispute, plus transition-trace effect binding             |
+| Shared large-field verification                               | `mpf-chunked-proof` support machinery, not a category                                                               |
+| Unattested commitment timeout                                 | Separate no-slash suffix correction at any pending queue position                                                   |
+| Post-attestation data withholding                             | DA remedy/recovery problem, not a transaction fault category                                                        |
 
 ## Cross-cutting gaps
 
 1. **Emulator catalogue closure:** verify every enabled family and maximum
    supported shape on the release blueprint. Use [testing status](testing-status.md)
-   for executable verification surfaces and evidence requirements.
+   for executable verification surfaces and evidence requirements. The
+   [gate scheduling change](testing-status.md#emulator-gate-performance) preserves
+   the exercised scenarios, assertions and protocol limits.
 2. **Autonomous application acceptance:** the watcher installs the source
    catalogue; release acceptance must verify admitted runners and complete
    correction on the intended deployment, not merely topology or classification.
 
 3. **Data lifetime:** every proof input must remain authentic and
    retrievable through the complete challenge window, including after event
-   NFT consumption or settlement.
+   NFT consumption or settlement. The unresolved on-chain event-history route
+   is tracked as [NIFP-03](remaining-gaps.md#nifp-03--event-proof-lifetime-is-not-closed).
 4. **Transaction fit:** every maximum-shape lifecycle must pass with the shared
    Van Rossem 16,384-byte, 16.5M-memory, and 10B-CPU emulator limits. Tests may
    not raise these limits to establish completion.
@@ -94,8 +99,9 @@ These are intentionally not additional catalogue entries:
 ## Security judgement
 
 The earlier “missing verifier family” gap for minimum Ada, missing predecessor
-native-script material, and invalid native scripts is closed in source. The
-highest remaining fault-proof risks are operational and evidentiary: a family
-that is not installed, cannot obtain retained evidence, exceeds an L1 limit, or
-has not been accepted against a real deployment can still fail to protect the
-optimistic reserve before maturity.
+native-script material, and invalid native scripts is closed in source. Known
+remaining protocol/category gaps are tracked in
+[remaining gaps](remaining-gaps.md). Operational and evidentiary risks also
+remain: a family that is not installed, cannot obtain retained evidence, exceeds
+an L1 limit, or has not been accepted against a real deployment can still fail
+to protect the optimistic reserve before maturity.

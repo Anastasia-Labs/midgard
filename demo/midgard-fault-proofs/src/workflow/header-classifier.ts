@@ -379,7 +379,8 @@ export const createHeaderClassifier = async ({
       ...(transitionTraceEventAuthority === undefined
         ? {}
         : { transitionTraceEventAuthority }),
-      confirmationDepth: releaseFinality.policy.confirmationDepth,
+      // Classification authorizes reversible fault-proof actions on inclusion.
+      confirmationDepth: 1,
       ...(settlementAuthority === undefined ? {} : { settlementAuthority }),
       ...(historicalReplayAuthority === undefined
         ? {}

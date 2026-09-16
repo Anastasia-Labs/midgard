@@ -17,6 +17,7 @@ import {
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   type DeploymentManifestCardanoProtocolParameters,
   verifyFinalizedDeploymentManifest,
+  verifyReferenceScriptPublicationAuthority,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -93,7 +94,10 @@ export const createPublishedWorkflowDeploymentAccounts =
  */
 export type PublishedWorkflowChain = Readonly<{
   now: () => number;
-  awaitSlot: (slots: number) => void | Promise<void>;
+  /** Elapsed polling delay; advances simulated slots in the emulator. */
+  delaySlots: (slots: number) => void | Promise<void>;
+  /** Wait until the canonical ledger reaches this absolute protocol time. */
+  awaitLedgerTime: (targetUnixTimeMs: number) => void | Promise<void>;
   /** Canonical tip height; absent where finality has no block depth. */
   blockHeight?: () => Promise<number>;
 }>;
@@ -130,6 +134,39 @@ export const waitForPublicationAuthorityExpiry = async ({
     if (canonicalSlot > expiresAtSlot) return canonicalSlot;
     await awaitSlot(Math.min(30, expiresAtSlot - canonicalSlot + 1));
   }
+};
+
+/** Publisher-authorized publication is ready for audit at inclusion. Historical
+ * time-only policies still require expiry before their issuance is fixed. */
+export const awaitReferenceScriptPublicationReadiness = async ({
+  authPolicy,
+  publisherAddress,
+  synchronize,
+  awaitSlot,
+}: Readonly<{
+  authPolicy: SDK.ReferenceScriptAuthPolicy;
+  publisherAddress: string;
+  synchronize: () => Promise<number>;
+  awaitSlot: (slots: number) => void | Promise<void>;
+}>) => {
+  const metadata = SDK.referenceScriptAuthPolicyDeploymentInfo(authPolicy);
+  const authority = verifyReferenceScriptPublicationAuthority({
+    cborHex: metadata.nativeScript.cborHex,
+    expiresAtSlot: metadata.nativeScript.expiresAtSlot,
+    publisherAddress,
+    postTimelockAuditRequired: metadata.postTimelockAudit.required,
+  });
+  const canonicalSlot =
+    authority.kind === "time-only"
+      ? await waitForPublicationAuthorityExpiry({
+          expiresAtSlot: authPolicy.expiresAtSlot,
+          synchronize,
+          awaitSlot,
+        })
+      : await synchronize();
+  if (!Number.isSafeInteger(canonicalSlot) || canonicalSlot < 0)
+    throw new Error("Invalid canonical slot while auditing publication");
+  return { canonicalSlot, authorityKind: authority.kind };
 };
 
 /** Persist initialization identity before submit; replay the exact signed bytes. */
@@ -322,7 +359,7 @@ export const publishWorkflowDeploymentOnChain = async ({
   }
   const authPolicy =
     resume?.authPolicy ??
-    SDK.createReferenceScriptAuthPolicy(
+    (await SDK.createReferenceScriptAuthPolicy(
       publisherLucid,
       chain.now(),
       publicationAuthorityLifetime(
@@ -330,7 +367,16 @@ export const publishWorkflowDeploymentOnChain = async ({
           .length,
         publicationSchedule,
       ),
-    );
+    ));
+  const walletAddress = await publisherLucid.wallet().address();
+  const authPolicyMetadata =
+    SDK.referenceScriptAuthPolicyDeploymentInfo(authPolicy);
+  verifyReferenceScriptPublicationAuthority({
+    cborHex: authPolicyMetadata.nativeScript.cborHex,
+    expiresAtSlot: authPolicyMetadata.nativeScript.expiresAtSlot,
+    publisherAddress: walletAddress,
+    postTimelockAuditRequired: authPolicyMetadata.postTimelockAudit.required,
+  });
   await onPrepared({ nonce, authPolicy });
   const contracts = await loadRealMidgardContractsForTest(nonce, authPolicy);
   const catalogue = await Effect.runPromise(
@@ -365,7 +411,6 @@ export const publishWorkflowDeploymentOnChain = async ({
     signedCborSha256: string;
     outRef: { txHash: string; outputIndex: number };
   }[] = [];
-  const walletAddress = await publisherLucid.wallet().address();
   if (
     !Number.isSafeInteger(publicationMaxTargetsPerBatch) ||
     publicationMaxTargetsPerBatch < 1 ||
@@ -391,7 +436,7 @@ export const publishWorkflowDeploymentOnChain = async ({
         : 15_872,
     synchronize: publicationSynchronize,
     wait: async () => {
-      await chain.awaitSlot(1);
+      await chain.delaySlots(1);
     },
     now: chain.now,
     priorPublications: resume?.publications,
@@ -517,12 +562,13 @@ export const publishWorkflowDeploymentOnChain = async ({
       "Initialized confirmed-state root differs from canonical genesis",
     );
   }
-  // Require canonical expiry before the final indexed uniqueness read. A wait
-  // may return before the chain advances, including after host clock changes.
-  await waitForPublicationAuthorityExpiry({
-    expiresAtSlot: authPolicy.expiresAtSlot,
+  // New policies require the publisher's signature. Audit confirmed references
+  // immediately; only historical time-only policies need an expiry barrier.
+  await awaitReferenceScriptPublicationReadiness({
+    authPolicy,
+    publisherAddress: walletAddress,
     synchronize: publicationSynchronize,
-    awaitSlot: chain.awaitSlot,
+    awaitSlot: chain.delaySlots,
   });
   const confirmedReferences = await publisherLucid.utxosAt(walletAddress);
   for (const role of expectedRoles) {
@@ -647,7 +693,11 @@ export const publishWorkflowDeployment = async (
     publisherLucid,
     chain: {
       now: () => emulator.now(),
-      awaitSlot: (slots) => emulator.awaitSlot(slots),
+      delaySlots: (slots) => emulator.awaitSlot(slots),
+      awaitLedgerTime: (targetUnixTimeMs) => {
+        const slots = Math.ceil((targetUnixTimeMs - emulator.now()) / 1000);
+        if (slots > 0) emulator.awaitSlot(slots);
+      },
     },
     protocolParameters: TEST_CARDANO_PROTOCOL_PARAMETERS,
     publicationMaxTargetsPerBatch: options.publicationMaxTargetsPerBatch,

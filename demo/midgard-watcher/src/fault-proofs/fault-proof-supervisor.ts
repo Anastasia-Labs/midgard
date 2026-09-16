@@ -4,11 +4,10 @@ import { join } from "node:path";
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
   assertWorkflowActuationPermitIdentity,
-  DirectoryFraudProofWorkflowJournalStore,
   type HeaderDecision,
   isWorkflowActuationRevokedError,
   requireRunnableHeaderFault,
-  validateFraudProofWorkflowJournal,
+  revokeWorkflowActuationPermit,
   type WorkflowActuationPermit,
   type WorkflowActuationRevokedError,
 } from "@al-ft/midgard-fault-proofs";
@@ -19,15 +18,29 @@ import {
   assertWatcherStateQueueHeaderObservation,
   type WatcherStateQueueHeaderObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
+import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
 import {
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   type WatcherInstalledWorkflowCategory,
 } from "./fault-proof-application.js";
+import type {
+  WatcherFaultProofExecution,
+  WatcherFaultProofExecutionAdmission,
+} from "./fault-proof-execution.js";
+import {
+  readWatcherProofExecution,
+  type WatcherProofExecution,
+} from "./fault-proof-objective-journal.js";
+import {
+  createWatcherFaultProofProgressAuthority,
+  type WatcherFaultProofProgressRequest,
+} from "./fault-proof-progress-authority.js";
 import {
   openWatcherFaultProofQueueJournal,
   watcherFaultProofQueueIdentityDigest,
   type WatcherFaultProofQueueJournal,
 } from "./fault-proof-queue-journal.js";
+export type { WatcherFaultProofProgressRequest } from "./fault-proof-progress-authority.js";
 
 export const WATCHER_FAULT_PROOF_SUPERVISOR_SCHEMA_VERSION =
   "midgard-watcher-production-fault-proof-supervisor-v1" as const;
@@ -81,6 +94,8 @@ export type WatcherFaultProofJob = Readonly<{
   decisionDigest: string;
   rollbackGeneration: string;
   deadline: WatcherFaultProofDeadline | null;
+  /** Wake-up revision, not part of the durable execution or queue identity. */
+  observationRevision?: string;
 }>;
 
 export type WatcherFaultProofReconciliation = Readonly<{
@@ -99,6 +114,7 @@ type UnsafeWatcherFaultProofJobForTest = Omit<
 export type WatcherFaultProofSupervisorStatus = Readonly<{
   phase: "accepting" | "blocked" | "closing" | "closed";
   recovered: boolean;
+  unfinishedObjectiveCount: number;
   queuedJobCount: number;
   activeJob: WatcherFaultProofJob | null;
   blockedJob: WatcherFaultProofJob | null;
@@ -110,13 +126,8 @@ export type WatcherFaultProofSupervisorStatus = Readonly<{
 export type WatcherFaultProofSupervisor = Readonly<{
   schemaVersion: typeof WATCHER_FAULT_PROOF_SUPERVISOR_SCHEMA_VERSION;
   done: Promise<void>;
-  recoverExisting(
-    decision: HeaderDecision | null,
-    actuationPermit?: WorkflowActuationPermit,
-    deadline?: WatcherFaultProofDeadline,
-    rollbackGeneration?: string,
-    reconciliations?: readonly WatcherFaultProofReconciliation[],
-  ): Promise<number>;
+  requestProgress(request: WatcherFaultProofProgressRequest): Promise<void>;
+  revokeAuthority(reason: string): void;
   status(): WatcherFaultProofSupervisorStatus;
   durableQueueStatus(): Readonly<{
     queuedJobCount: number;
@@ -128,6 +139,13 @@ export type WatcherFaultProofSupervisor = Readonly<{
 export type UnsafeWatcherFaultProofSupervisorForTest =
   WatcherFaultProofSupervisor &
     Readonly<{
+      recoverExisting(
+        decision: HeaderDecision | null,
+        actuationPermit?: WorkflowActuationPermit,
+        deadline?: WatcherFaultProofDeadline,
+        rollbackGeneration?: string,
+        reconciliations?: readonly WatcherFaultProofReconciliation[],
+      ): Promise<number>;
       unsafeRunOrResumeForTest(
         job: UnsafeWatcherFaultProofJobForTest,
       ): Promise<unknown>;
@@ -142,22 +160,22 @@ type SupervisorDependencies = Readonly<{
     input: Readonly<{
       job: WatcherFaultProofJob;
       actuationPermit: WorkflowActuationPermit | null;
+      admission: WatcherFaultProofExecutionAdmission;
     }>,
   ): Promise<unknown>;
+  verifyCompleted(
+    input: Readonly<{
+      job: WatcherFaultProofJob;
+      execution: WatcherProofExecution;
+      actuationPermit: WorkflowActuationPermit | null;
+    }>,
+  ): Promise<
+    Readonly<{ kind: "applicable" | "pending" | "retryable"; reason?: string }>
+  >;
   isActuationRevokedError(
     error: unknown,
   ): error is WorkflowActuationRevokedError;
 }>;
-
-const admittedDecisionEnqueueBySupervisor = new WeakMap<
-  object,
-  (
-    decision: HeaderDecision,
-    actuationPermit: WorkflowActuationPermit,
-    deadline: WatcherFaultProofDeadline,
-    rollbackGeneration: string,
-  ) => Promise<void>
->();
 
 const exactWorkflowDirectories = async (
   journalRoot: string,
@@ -297,6 +315,7 @@ const validateJob = (
     decisionDigest: job.decisionDigest,
     rollbackGeneration: job.rollbackGeneration,
     deadline,
+    observationRevision: job.observationRevision,
   });
 };
 
@@ -340,6 +359,13 @@ const createSupervisor = (input: {
       return journal;
     });
   const categories = Object.freeze([...input.dependencies.categories]);
+  const progressAuthority = createWatcherFaultProofProgressAuthority({
+    journalRoot: input.journalRoot,
+    deploymentFingerprint: input.deploymentFingerprint,
+    categories,
+  });
+  let progressSerial = Promise.resolve();
+  let authorityEpoch = 0;
   if (
     categories.length !== WATCHER_INSTALLED_WORKFLOW_CATEGORIES.length ||
     categories.some(
@@ -356,6 +382,7 @@ const createSupervisor = (input: {
   let recovery: Promise<number> | undefined;
   let queuedJobCount = 0;
   let activeJob: WatcherFaultProofJob | null = null;
+  let activeInvocationPermit: WorkflowActuationPermit | null = null;
   let blockedJob: WatcherFaultProofJob | null = null;
   type PendingJob = Readonly<{
     job: WatcherFaultProofJob;
@@ -370,7 +397,44 @@ const createSupervisor = (input: {
   let pump: Promise<void> = Promise.resolve();
   let pumping = false;
   const jobs = new Map<string, PendingJob>();
-  const seenTargets = new Set<string>();
+  // Authority generations are context for one objective, never another owner.
+  const pendingUpdates = new Map<
+    string,
+    Readonly<{
+      job: WatcherFaultProofJob;
+      actuationPermit: WorkflowActuationPermit | null;
+    }>
+  >();
+  const selectedExecutions = new Map<string, string>();
+  const processedContexts = new Map<string, string>();
+  const completedValidations = new Map<string, string>();
+  const rememberCompletion = (key: string, validation: string): void => {
+    completedValidations.delete(key);
+    completedValidations.set(key, validation);
+    if (completedValidations.size > MAX_RECOVERABLE_WORKFLOWS) {
+      const oldest = completedValidations.keys().next().value!;
+      completedValidations.delete(oldest);
+      selectedExecutions.delete(oldest);
+      processedContexts.delete(oldest);
+    }
+  };
+  type Update = Readonly<{
+    job: WatcherFaultProofJob;
+    actuationPermit: WorkflowActuationPermit | null;
+  }>;
+  const transportRetries = new Map<
+    string,
+    {
+      update: Update;
+      attempts: number;
+      timer: ReturnType<typeof setTimeout> | undefined;
+    }
+  >();
+  const contextKey = (job: WatcherFaultProofJob) =>
+    `${job.rollbackGeneration}:${job.observationRevision ?? job.decisionDigest}`;
+
+  const objectiveKey = (job: WatcherFaultProofJob) =>
+    `${job.category}\u0000${job.headerHash}`;
   let resolveDone!: () => void;
   let rejectDone!: (reason: Error) => void;
   const done = new Promise<void>((resolve, reject) => {
@@ -434,19 +498,10 @@ const createSupervisor = (input: {
 
   const runPending = async (entry: PendingJob): Promise<void> => {
     const { job, actuationPermit } = entry;
+    let invocationJob = job;
+    let invocationPermit = actuationPermit;
     if (phase === "blocked") {
       entry.reject(new Error("watcher fault-proof supervisor is blocked"));
-      return;
-    }
-    if (job.deadline !== null && remainingSafeStartMs(job) <= 0n) {
-      entry.reject(
-        block(
-          new Error(
-            `watcher fault-proof deadline is unsafe for ${job.category}/${job.headerHash}`,
-          ),
-          job,
-        ),
-      );
       return;
     }
     try {
@@ -459,15 +514,163 @@ const createSupervisor = (input: {
       return;
     }
     activeJob = job;
+    activeInvocationPermit = actuationPermit;
     let outcome: unknown;
     let failure: Error | undefined;
     try {
-      outcome = await input.dependencies.run({ job, actuationPermit });
+      // The queue may have waited while another observation completed the
+      // objective. Admission belongs immediately before funding and invocation.
+      if (actuationPermit !== null) {
+        const authority = assertWorkflowActuationPermitIdentity({
+          permit: actuationPermit,
+          category: job.category,
+          rollbackGeneration: job.rollbackGeneration,
+        });
+        if (
+          authority.deploymentFingerprint !== input.deploymentFingerprint ||
+          authority.headerHash !== job.headerHash ||
+          authority.decisionDigest !== job.decisionDigest
+        )
+          throw new Error(
+            "proof objective changed its admitted execution authority",
+          );
+      }
+      const key = objectiveKey(job);
+      const execution = await readWatcherProofExecution({
+        journalRoot: input.journalRoot,
+        deploymentFingerprint: input.deploymentFingerprint,
+        objective: job,
+        selectedWorkflowId: selectedExecutions.get(key),
+      });
+      if (execution !== undefined) {
+        selectedExecutions.set(key, execution.workflowId);
+        if (!input.exposeUnsafeRunnerForTest)
+          await progressAuthority.updateExecution({
+            objective: job,
+            execution,
+          });
+      }
+      const completed = execution?.entries.find(
+        ({ event }) => event.kind === "completed",
+      );
+      if (completed !== undefined && execution !== undefined) {
+        const validationKey = `${job.rollbackGeneration}:${watcherSha256CanonicalJson(execution.entries)}`;
+        const verification =
+          completedValidations.get(key) === validationKey
+            ? { kind: "applicable" as const }
+            : await input.dependencies.verifyCompleted({
+                job,
+                execution,
+                actuationPermit,
+              });
+        if (actuationPermit !== null)
+          assertWorkflowActuationPermitIdentity({
+            permit: actuationPermit,
+            category: job.category,
+            rollbackGeneration: job.rollbackGeneration,
+          });
+        if (verification.kind === "applicable") {
+          rememberCompletion(key, validationKey);
+          progressAuthority.markCompleted(job);
+          outcome = { kind: "completed", terminal: completed.event };
+        } else {
+          completedValidations.delete(key);
+          outcome =
+            verification.kind === "retryable"
+              ? verification
+              : {
+                  kind: "pending",
+                  resume: "await_observation",
+                  reason: verification.reason,
+                };
+        }
+      } else {
+        if (job.deadline !== null && remainingSafeStartMs(job) <= 0n) {
+          if (
+            input.exposeUnsafeRunnerForTest ||
+            execution === undefined ||
+            !execution.entries.some(
+              ({ event }) => event.kind === "submission_intent",
+            )
+          )
+            throw new Error(
+              `watcher fault-proof deadline is unsafe for ${job.category}/${job.headerHash}`,
+            );
+          invocationPermit = await progressAuthority.reconcileExecution({
+            objective: job,
+            execution,
+            rollbackGeneration: job.rollbackGeneration,
+          });
+          activeInvocationPermit = invocationPermit;
+          const authority = assertWorkflowActuationPermitIdentity({
+            permit: invocationPermit,
+            category: job.category,
+            rollbackGeneration: job.rollbackGeneration,
+          });
+          invocationJob = {
+            ...job,
+            mode: "resume",
+            deadline: null,
+            decisionDigest: authority.decisionDigest,
+          };
+        }
+        const admission: WatcherFaultProofExecutionAdmission = {
+          mode: execution === undefined ? "run" : "resume",
+          funding:
+            execution?.entries.some(
+              ({ event }) => event.kind === "submission_intent",
+            ) === true
+              ? "resume_only"
+              : "create_or_resume",
+        };
+        outcome = await input.dependencies.run({
+          job: { ...invocationJob, mode: admission.mode },
+          actuationPermit: invocationPermit,
+          admission,
+        });
+        if (!input.exposeUnsafeRunnerForTest) {
+          const updated = await readWatcherProofExecution({
+            journalRoot: input.journalRoot,
+            deploymentFingerprint: input.deploymentFingerprint,
+            objective: job,
+            selectedWorkflowId: selectedExecutions.get(key),
+          });
+          if (updated !== undefined) {
+            selectedExecutions.set(key, updated.workflowId);
+            await progressAuthority.updateExecution({
+              objective: job,
+              execution: updated,
+            });
+          }
+          if (
+            typeof outcome === "object" &&
+            outcome !== null &&
+            "kind" in outcome &&
+            outcome.kind === "completed"
+          ) {
+            if (updated?.entries.at(-1)?.event.kind !== "completed")
+              throw new Error(
+                "proof runner reported completion without a completed journal",
+              );
+            if (actuationPermit !== null)
+              assertWorkflowActuationPermitIdentity({
+                permit: actuationPermit,
+                category: job.category,
+                rollbackGeneration: job.rollbackGeneration,
+              });
+            rememberCompletion(
+              key,
+              `${job.rollbackGeneration}:${watcherSha256CanonicalJson(updated.entries)}`,
+            );
+            progressAuthority.markCompleted(job);
+          }
+        }
+      }
     } catch (error) {
       if (input.dependencies.isActuationRevokedError(error)) {
         if (
-          error.decisionDigest !== job.decisionDigest ||
-          error.rollbackGeneration !== job.rollbackGeneration
+          error.decisionDigest !== invocationJob.decisionDigest ||
+          error.rollbackGeneration !== invocationJob.rollbackGeneration
         ) {
           failure = block(
             new Error(
@@ -500,13 +703,62 @@ const createSupervisor = (input: {
           failure = block(error, job);
         }
       }
-      activeJob = null;
     }
     // Completion releases the in-memory deduplication entry. Keep it owned
     // until the durable finish is committed so an unchanged fault cannot
     // restart a completed runner while its reservation has already closed.
-    if (failure === undefined) entry.resolve(outcome);
-    else entry.reject(failure);
+    await serializeSchedule(async () => {
+      activeJob = null;
+      activeInvocationPermit = null;
+      const key = objectiveKey(job);
+      jobs.delete(key);
+      const pending = pendingUpdates.get(key);
+      pendingUpdates.delete(key);
+      if (failure !== undefined) {
+        entry.reject(failure);
+        return;
+      }
+      processedContexts.set(key, contextKey(job));
+      entry.resolve(outcome);
+      if (
+        typeof outcome === "object" &&
+        outcome !== null &&
+        "kind" in outcome &&
+        outcome.kind === "retryable"
+      ) {
+        const previous = transportRetries.get(key);
+        const retry = {
+          update: pending ?? { job, actuationPermit },
+          attempts: (previous?.attempts ?? 0) + 1,
+          timer: undefined as ReturnType<typeof setTimeout> | undefined,
+        };
+        transportRetries.set(key, retry);
+        if (phase === "accepting") {
+          const delay = Math.min(
+            30_000,
+            1_000 * 2 ** Math.min(retry.attempts - 1, 5),
+          );
+          retry.timer = setTimeout(() => {
+            void serializeSchedule(async () => {
+              retry.timer = undefined;
+              if (phase !== "accepting") return;
+              const latest = retry.update;
+              processedContexts.delete(key);
+              await handover(latest);
+            }).catch((error: unknown) => block(error, job));
+          }, delay);
+        }
+      } else {
+        const retry = transportRetries.get(key);
+        if (retry?.timer !== undefined) clearTimeout(retry.timer);
+        transportRetries.delete(key);
+        if (
+          pending !== undefined &&
+          (phase === "accepting" || phase === "closing")
+        )
+          await handover(pending);
+      }
+    });
   };
 
   const ensurePump = (): void => {
@@ -519,6 +771,8 @@ const createSupervisor = (input: {
           const entry = queue.shift()!;
           await runPending(entry);
         }
+      } catch (error) {
+        block(error, activeJob);
       } finally {
         pumping = false;
       }
@@ -529,7 +783,7 @@ const createSupervisor = (input: {
     rawJob: WatcherFaultProofJob | UnsafeWatcherFaultProofJobForTest,
     actuationPermit: WorkflowActuationPermit | null,
   ): Promise<Readonly<{ completion: Promise<unknown> }>> => {
-    if (phase !== "accepting") {
+    if (phase !== "accepting" && phase !== "closing") {
       throw new Error(`watcher fault-proof supervisor is ${phase}`);
     }
     const job = validateJob(
@@ -538,25 +792,35 @@ const createSupervisor = (input: {
       !input.exposeUnsafeRunnerForTest,
       actuationPermit,
     );
-    const key = `${job.category}\u0000${job.headerHash}\u0000${job.decisionDigest}\u0000${job.rollbackGeneration}`;
+    const key = objectiveKey(job);
     const existing = jobs.get(key);
     if (existing !== undefined) {
+      const latest = pendingUpdates.get(key)?.job ?? existing.job;
+      if (BigInt(job.rollbackGeneration) < BigInt(latest.rollbackGeneration))
+        return { completion: existing.completion };
       if (
+        existing.job.deadline !== null &&
+        job.deadline !== null &&
         JSON.stringify(existing.job.deadline) !== JSON.stringify(job.deadline)
       ) {
         throw new Error(
           "duplicate watcher fault-proof job changed its authenticated deadline",
         );
       }
+      if (
+        existing.job.decisionDigest !== job.decisionDigest ||
+        existing.job.rollbackGeneration !== job.rollbackGeneration ||
+        existing.job.observationRevision !== job.observationRevision
+      )
+        pendingUpdates.set(key, { job, actuationPermit });
       return Object.freeze({ completion: existing.completion });
     }
-    if (job.deadline !== null && remainingSafeStartMs(job) <= 0n) {
-      throw block(
-        new Error(
-          `watcher fault-proof deadline is unsafe for ${job.category}/${job.headerHash}`,
-        ),
-        job,
-      );
+    if (processedContexts.get(key) === contextKey(job))
+      return { completion: Promise.resolve(undefined) };
+    const retry = transportRetries.get(key);
+    if (retry?.timer !== undefined) {
+      retry.update = { job, actuationPermit };
+      return { completion: Promise.resolve(undefined) };
     }
     const identity = Object.freeze({
       category: job.category,
@@ -568,94 +832,11 @@ const createSupervisor = (input: {
       deploymentFingerprint: input.deploymentFingerprint,
       identity,
     });
-    let reopenFinished = false;
-    let completedForHeader = false;
-    if (job.mode === "resume" && actuationPermit !== null) {
-      const authority = assertWorkflowActuationPermitIdentity({
-        permit: actuationPermit,
-        category: job.category,
-        rollbackGeneration: job.rollbackGeneration,
-      });
-      if (
-        authority.deploymentFingerprint !== input.deploymentFingerprint ||
-        authority.headerHash !== job.headerHash ||
-        authority.decisionDigest !== job.decisionDigest
-      )
-        throw new Error(
-          "workflow recovery changed its admitted queue identity",
-        );
-      const directory = join(
-        input.journalRoot,
-        "fault-proofs",
-        job.category,
-        job.headerHash,
-      );
-      const store = new DirectoryFraudProofWorkflowJournalStore(directory);
-      const directories = await readdir(directory, { withFileTypes: true });
-      if (directories.length > MAX_RECOVERABLE_WORKFLOWS)
-        throw new Error("workflow execution recovery exceeds its bound");
-      let durableExecutions = 0;
-      for (const entry of directories) {
-        if (!entry.isDirectory() || !DEPLOYMENT_FINGERPRINT.test(entry.name))
-          throw new Error(
-            "workflow recovery directory has an invalid execution identity",
-          );
-        const entries = await store.load(entry.name);
-        const first = entries[0];
-        if (first === undefined) continue;
-        durableExecutions += 1;
-        validateFraudProofWorkflowJournal({
-          workflowId: entry.name,
-          entries,
-          expectedIdentity: first.identity,
-        });
-        if (
-          first.identity.deploymentFingerprint !==
-            input.deploymentFingerprint ||
-          first.identity.category !== job.category ||
-          first.identity.target.kind !== "state_queue_header" ||
-          first.identity.target.headerHash !== job.headerHash
-        )
-          throw new Error(
-            "workflow recovery directory has a foreign execution",
-          );
-        if (
-          authority.authority === "reconciliation" &&
-          first.identity.decisionDigest !== authority.executionDecisionDigest
-        )
-          continue;
-        if (
-          entries[1]?.event.kind === "prepared" &&
-          !entries.some(({ event }) => event.kind === "completed")
-        )
-          reopenFinished = true;
-        if (
-          authority.authority === "submission" &&
-          entries.some(({ event }) => event.kind === "completed")
-        )
-          completedForHeader = true;
-      }
-      // A finished registration with no durable execution recorded nothing
-      // it could have completed: an earlier run failed before its first
-      // journal entry, so the job must run again.
-      if (durableExecutions === 0) reopenFinished = true;
-    }
-    // This header already ran to its confirmed terminal: the proof token is
-    // permanent and the removal is release-final. A watcher replaying blocks
-    // that still list the header before its removal classifies the fault
-    // again under a fresh decision digest (the observation digest differs at
-    // every point); there is nothing left to prove, and funding recovery
-    // rightly refuses a new execution over a completed one.
-    if (completedForHeader) {
-      return Object.freeze({ completion: Promise.resolve(undefined) });
-    }
+    // Queue completion records scheduling only. The execution journal is
+    // admitted inside the worker, after it acquires ownership of this objective.
     const registration = await (
       await queueJournal
-    ).register(identity, now().toString(), { reopenFinished });
-    if (registration.finished) {
-      return Object.freeze({ completion: Promise.resolve(undefined) });
-    }
-    seenTargets.add(`${job.category}\u0000${job.headerHash}`);
+    ).register(identity, now().toString(), { reopenFinished: true });
     queuedJobCount += 1;
     let resolve!: (value: unknown) => void;
     let reject!: (error: Error) => void;
@@ -674,23 +855,39 @@ const createSupervisor = (input: {
     });
     jobs.set(key, entry);
     queue.push(entry);
-    void completion.finally(() => jobs.delete(key)).catch(() => undefined);
     ensurePump();
     return Object.freeze({ completion });
   };
 
+  const handover = async (update: Update): Promise<void> => {
+    try {
+      const scheduled = await scheduleImpl(update.job, update.actuationPermit);
+      void scheduled.completion.catch(() => undefined);
+    } catch (error) {
+      if (!input.dependencies.isActuationRevokedError(error)) throw error;
+      // A queued notification is not authority. Revocation while waiting is
+      // expected; the next admitted canonical observation can wake this slot.
+    }
+  };
+
   let scheduleSerial = Promise.resolve();
+  const serializeSchedule = <T>(operation: () => Promise<T>): Promise<T> => {
+    const result = scheduleSerial.then(operation);
+    scheduleSerial = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  };
   const schedule = (
     rawJob: WatcherFaultProofJob | UnsafeWatcherFaultProofJobForTest,
     actuationPermit: WorkflowActuationPermit | null,
   ): Promise<Readonly<{ completion: Promise<unknown> }>> => {
-    const operation = scheduleSerial.then(
-      async () => await scheduleImpl(rawJob, actuationPermit),
-    );
-    scheduleSerial = operation.then(
-      () => undefined,
-      () => undefined,
-    );
+    const operation = serializeSchedule(async () => {
+      if (phase !== "accepting")
+        throw new Error(`watcher fault-proof supervisor is ${phase}`);
+      return await scheduleImpl(rawJob, actuationPermit);
+    });
     return operation;
   };
 
@@ -699,10 +896,8 @@ const createSupervisor = (input: {
   ): Promise<unknown> =>
     schedule(rawJob, null).then(({ completion }) => completion);
 
-  const supervisor: WatcherFaultProofSupervisor = {
-    schemaVersion: WATCHER_FAULT_PROOF_SUPERVISOR_SCHEMA_VERSION,
-    done,
-    recoverExisting: async (
+  const recoverExisting: UnsafeWatcherFaultProofSupervisorForTest["recoverExisting"] =
+    async (
       decision,
       actuationPermit,
       deadline,
@@ -716,9 +911,6 @@ const createSupervisor = (input: {
             input.journalRoot,
             categories,
           );
-          for (const job of existing) {
-            seenTargets.add(`${job.category}\u0000${job.headerHash}`);
-          }
           if (!CANONICAL_NATURAL.test(rollbackGeneration)) {
             throw new Error(
               "fault-proof recovery rollback generation is malformed",
@@ -812,7 +1004,79 @@ const createSupervisor = (input: {
           throw block(error, null);
         }
       })();
-      return await recovery;
+      try {
+        return await recovery;
+      } finally {
+        recovery = undefined;
+      }
+    };
+
+  const supervisor: WatcherFaultProofSupervisor = {
+    schemaVersion: WATCHER_FAULT_PROOF_SUPERVISOR_SCHEMA_VERSION,
+    done,
+    requestProgress: (request) => {
+      if (phase !== "accepting")
+        return Promise.reject(
+          new Error(`watcher fault-proof supervisor is ${phase}`),
+        );
+      const epoch = authorityEpoch;
+      const operation = progressSerial.then(async () => {
+        if (phase === "blocked" || phase === "closed")
+          throw new Error(`watcher fault-proof supervisor is ${phase}`);
+        if (epoch !== authorityEpoch) return;
+        try {
+          const contexts = await progressAuthority.admit(request);
+          if (epoch !== authorityEpoch) return;
+          recovered = true;
+          for (const context of contexts) {
+            const { decision, actuationPermit, deadline, rollbackGeneration } =
+              context;
+            const scheduled = await serializeSchedule(() =>
+              scheduleImpl(
+                {
+                  mode: deadline === null ? "resume" : "run",
+                  category:
+                    decision.category as WatcherInstalledWorkflowCategory,
+                  headerHash: decision.headerHash,
+                  decisionDigest: decision.decisionDigest,
+                  rollbackGeneration,
+                  deadline,
+                  observationRevision: context.observationRevision,
+                },
+                actuationPermit,
+              ),
+            );
+            void scheduled.completion.catch(() => undefined);
+          }
+        } catch (error) {
+          if (input.dependencies.isActuationRevokedError(error)) return;
+          throw block(error, null);
+        }
+      });
+      progressSerial = operation.catch(() => undefined);
+      return operation;
+    },
+    revokeAuthority: (reason) => {
+      authorityEpoch += 1;
+      if (activeInvocationPermit !== null)
+        revokeWorkflowActuationPermit(activeInvocationPermit, reason);
+      for (const { actuationPermit } of jobs.values())
+        if (actuationPermit !== null)
+          revokeWorkflowActuationPermit(actuationPermit, reason);
+      for (const { actuationPermit } of pendingUpdates.values())
+        if (actuationPermit !== null)
+          revokeWorkflowActuationPermit(actuationPermit, reason);
+      for (const { update } of transportRetries.values())
+        if (update.actuationPermit !== null)
+          revokeWorkflowActuationPermit(update.actuationPermit, reason);
+      progressAuthority.revokeAuthority(reason);
+      for (const key of completedValidations.keys())
+        selectedExecutions.delete(key);
+      completedValidations.clear();
+      processedContexts.clear();
+      for (const retry of transportRetries.values())
+        if (retry.timer !== undefined) clearTimeout(retry.timer);
+      transportRetries.clear();
     },
     status: () => {
       const earliestQueuedJob = queue.slice().sort(comparePending)[0]?.job;
@@ -839,6 +1103,7 @@ const createSupervisor = (input: {
       return Object.freeze({
         phase,
         recovered,
+        unfinishedObjectiveCount: progressAuthority.unfinishedCount(),
         queuedJobCount,
         activeJob,
         blockedJob,
@@ -856,6 +1121,9 @@ const createSupervisor = (input: {
     close: async () => {
       if (phase === "closed") return;
       if (phase === "accepting") phase = "closing";
+      for (const retry of transportRetries.values())
+        if (retry.timer !== undefined) clearTimeout(retry.timer);
+      await progressSerial;
       await scheduleSerial;
       await pump;
       if (phase !== "blocked") {
@@ -867,6 +1135,7 @@ const createSupervisor = (input: {
   const exposed = input.exposeUnsafeRunnerForTest
     ? Object.freeze({
         ...supervisor,
+        recoverExisting,
         unsafeRunOrResumeForTest: runOrResume,
         unsafeScheduleForTest: async (
           job: UnsafeWatcherFaultProofJobForTest,
@@ -875,68 +1144,7 @@ const createSupervisor = (input: {
         },
       })
     : Object.freeze(supervisor);
-  admittedDecisionEnqueueBySupervisor.set(
-    exposed,
-    async (decision, actuationPermit, deadline, rollbackGeneration) => {
-      if (!recovered) {
-        throw new Error(
-          "watcher fault-proof supervisor has not completed journal recovery",
-        );
-      }
-      if (!CANONICAL_NATURAL.test(rollbackGeneration)) {
-        throw new Error("fault-proof enqueue rollback generation is malformed");
-      }
-      const fault = requireRunnableHeaderFault(decision);
-      if (
-        fault.deploymentFingerprint !== input.deploymentFingerprint ||
-        fault.launchScope.length !== categories.length ||
-        fault.launchScope.some(
-          (category, index) => category !== categories[index],
-        )
-      ) {
-        throw new Error(
-          "runnable fault decision differs from the installed application identity",
-        );
-      }
-      const targetKey = `${fault.category}\u0000${fault.headerHash}`;
-      await schedule(
-        {
-          mode: seenTargets.has(targetKey) ? "resume" : "run",
-          category: fault.category as WatcherInstalledWorkflowCategory,
-          headerHash: fault.headerHash,
-          decisionDigest: fault.decisionDigest,
-          rollbackGeneration,
-          deadline,
-        },
-        actuationPermit,
-      );
-    },
-  );
   return exposed;
-};
-
-/**
- * The only production intake path for a newly classified fault. Category and
- * target are derived from the fault-proofs module's live opaque admission;
- * persisted envelopes and caller-authored jobs cannot pass this boundary.
- */
-export const enqueueWatcherFaultDecision = async (input: {
-  readonly supervisor: WatcherFaultProofSupervisor;
-  readonly decision: HeaderDecision;
-  readonly actuationPermit: WorkflowActuationPermit;
-  readonly deadline: WatcherFaultProofDeadline;
-  readonly rollbackGeneration: string;
-}): Promise<void> => {
-  const enqueue = admittedDecisionEnqueueBySupervisor.get(input.supervisor);
-  if (enqueue === undefined) {
-    throw new Error("watcher fault-proof supervisor is not module-admitted");
-  }
-  await enqueue(
-    input.decision,
-    input.actuationPermit,
-    input.deadline,
-    input.rollbackGeneration,
-  );
 };
 
 export const createWatcherFaultProofSupervisor = (input: {
@@ -944,12 +1152,7 @@ export const createWatcherFaultProofSupervisor = (input: {
   readonly deploymentFingerprint: string;
   readonly deadlineAlertHeadroomMs: number;
   readonly queueAuthenticationKey: Uint8Array;
-  readonly run: (
-    input: Readonly<{
-      job: WatcherFaultProofJob;
-      actuationPermit: WorkflowActuationPermit;
-    }>,
-  ) => Promise<unknown>;
+  readonly execution: WatcherFaultProofExecution;
 }): WatcherFaultProofSupervisor =>
   createSupervisor({
     journalRoot: input.journalRoot,
@@ -960,13 +1163,30 @@ export const createWatcherFaultProofSupervisor = (input: {
     exposeUnsafeRunnerForTest: false,
     dependencies: Object.freeze({
       categories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-      run: async ({ job, actuationPermit }) => {
+      run: async ({ job, actuationPermit, admission }) => {
         if (actuationPermit === null) {
           throw new Error(
             "production fault-proof runner omitted actuation authority",
           );
         }
-        return await input.run({ job, actuationPermit });
+        return await input.execution.execute({
+          job,
+          actuationPermit,
+          admission,
+        });
+      },
+      verifyCompleted: async (request) => {
+        if (request.actuationPermit === null)
+          throw new Error("completion validation omitted authority");
+        const event = request.execution.entries.at(-1)?.event;
+        if (event?.kind !== "completed")
+          throw new Error("completion admission omitted its durable terminal");
+        return await input.execution.verifyCompleted({
+          job: request.job,
+          entries: request.execution.entries,
+          terminal: event.terminal,
+          actuationPermit: request.actuationPermit,
+        });
       },
       isActuationRevokedError: isWorkflowActuationRevokedError,
     }),
@@ -996,6 +1216,7 @@ export const unsafeCreateWatcherFaultProofSupervisorForTest = (input: {
     dependencies: Object.freeze({
       categories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
       run: async ({ job }) => await input.run(job),
+      verifyCompleted: async () => ({ kind: "applicable" as const }),
       isActuationRevokedError:
         input.unsafeIsActuationRevokedErrorForTest ??
         isWorkflowActuationRevokedError,

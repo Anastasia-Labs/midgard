@@ -1,6 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
+  Data,
   Emulator,
   generateEmulatorAccount,
   Lucid,
@@ -10,7 +11,7 @@ import {
   UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   buildAtomicProtocolInitTxProgram,
@@ -23,6 +24,7 @@ import {
   registerAndActivateOperatorProgram,
   registerOperatorProgram,
 } from "../src/transactions/register-active-operator.js";
+import { inspectSignedTxValidityInterval } from "../src/transactions/utils.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
@@ -168,7 +170,7 @@ const buildOperatorLifecycleSnapshot =
     if (!nonceUtxo) {
       throw new Error("Expected at least one wallet UTxO in emulator");
     }
-    const referenceScriptAuth = createReferenceScriptAuthPolicy(
+    const referenceScriptAuth = await createReferenceScriptAuthPolicy(
       referenceScriptsLucid,
       emulator.now(),
       EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
@@ -395,6 +397,122 @@ const advanceEmulatorPastRegistrationDelay = (emulator: Emulator): void => {
 };
 
 describe("operator lifecycle emulator", () => {
+  it("early activation restores an empty set only for its earliest registration", async () => {
+    const {
+      emulator,
+      lucid,
+      referenceScriptsLucid,
+      contracts,
+      operatorKeyHash,
+      activeNodeUnit,
+    } = await initOperatorLifecycleFixture();
+    const second = generateEmulatorAccount({ lovelace: 0n });
+    const funding = await lucid
+      .newTx()
+      .pay.ToAddress(second.address, { lovelace: 4_000_000_000n })
+      .complete({ localUPLCEval: true });
+    await lucid.awaitTx(
+      await (await funding.sign.withWallet().complete()).submit(),
+    );
+    const secondLucid = await Lucid(emulator, "Custom");
+    secondLucid.selectWallet.fromSeed(second.seedPhrase);
+    for (const operatorLucid of [lucid, secondLucid]) {
+      await Effect.runPromise(
+        registerOperatorProgram(
+          operatorLucid,
+          contracts,
+          EMULATOR_REQUIRED_BOND_LOVELACE,
+          referenceScriptsLucid,
+        ),
+      );
+    }
+    const registeredNodes = await Promise.all(
+      (
+        await lucid.utxosAt(contracts.registeredOperators.spendingScriptAddress)
+      ).map((utxo) =>
+        Effect.runPromise(SDK.getLinkedListNodeViewFromUTxO(utxo)),
+      ),
+    );
+    const registration = registeredNodes.find(
+      (node) =>
+        node.key !== "Empty" &&
+        Data.castFrom(node.data, SDK.RegisteredOperatorDatum).operator ===
+          operatorKeyHash,
+    );
+    if (registration === undefined || registration.key === "Empty")
+      throw new Error("Missing first registration");
+    const firstActivationTime = BigInt(`0x${registration.key.Key.key}`);
+    expect(BigInt(emulator.now())).toBeLessThan(firstActivationTime);
+
+    // Force an early interval only in the adversarial builder: the deployed
+    // validator must reject a newer registration while the earliest is pending.
+    const originalBuild = SDK.buildActivateOperatorTx;
+    const rejectForcedEarlyActivation = async (expectedEmpty: boolean) => {
+      const build = vi
+        .spyOn(SDK, "buildActivateOperatorTx")
+        .mockImplementation((parameters) => {
+          expect(parameters.activeInsertionAnchor.datum.next === "Empty").toBe(
+            expectedEmpty,
+          );
+          expect(parameters.validFrom).toBeGreaterThan(BigInt(emulator.now()));
+          return originalBuild({
+            ...parameters,
+            validFrom: BigInt(Math.max(0, emulator.now() - 60_000)),
+          });
+        });
+      try {
+        await expect(
+          Effect.runPromise(
+            activateOperatorProgram(
+              secondLucid,
+              contracts,
+              EMULATOR_REQUIRED_BOND_LOVELACE,
+              referenceScriptsLucid,
+            ),
+          ),
+        ).rejects.toThrow(
+          "Failed to build activation transaction with final redeemer context",
+        );
+        expect(build).toHaveBeenCalled();
+      } finally {
+        build.mockRestore();
+      }
+    };
+    await rejectForcedEarlyActivation(true);
+
+    const submit = vi.spyOn(emulator, "submitTx");
+    try {
+      const activated = await Effect.runPromise(
+        activateOperatorProgram(
+          lucid,
+          contracts,
+          EMULATOR_REQUIRED_BOND_LOVELACE,
+          referenceScriptsLucid,
+        ),
+      );
+      expect(activated.activateTxHash).toHaveLength(64);
+      expect(BigInt(emulator.now())).toBeLessThan(firstActivationTime);
+      const submittedCbor = submit.mock.calls[0]?.[0];
+      if (submittedCbor === undefined)
+        throw new Error("Activation did not submit");
+      expect(
+        inspectSignedTxValidityInterval(submittedCbor).invalidBeforeSlot,
+      ).toBeLessThan(emulator.slot);
+      expect(
+        await lucid.utxosAtWithUnit(
+          contracts.activeOperators.spendingScriptAddress,
+          activeNodeUnit,
+        ),
+      ).toHaveLength(1);
+    } finally {
+      submit.mockRestore();
+    }
+
+    // The remaining registration is now earliest, but the active set is no
+    // longer empty: the same early interval must still fail on chain.
+    await rejectForcedEarlyActivation(false);
+  }, 180_000);
+
   it("activates operators before, between and after existing keys without duplicate activation", async () => {
     const { emulator, lucid, referenceScriptsLucid, contracts } =
       await initOperatorLifecycleFixture();
@@ -520,7 +638,7 @@ describe("operator lifecycle emulator", () => {
     if (!oneShotNonce) {
       throw new Error("Expected at least one operator wallet UTxO in emulator");
     }
-    const referenceScriptAuth = createReferenceScriptAuthPolicy(
+    const referenceScriptAuth = await createReferenceScriptAuthPolicy(
       referenceScriptsLucid,
       emulator.now(),
       EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
@@ -738,7 +856,9 @@ describe("operator lifecycle emulator", () => {
           referenceScriptsLucid,
         ),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(
+      /found no registered node for operator .*; run register-operator first/,
+    );
   });
 
   it("runs register-only then activate-only with fragmented wallet UTxOs to stress coin selection", async () => {

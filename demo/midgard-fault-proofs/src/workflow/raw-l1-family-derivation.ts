@@ -42,7 +42,7 @@ import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality
 
 type LucidDataSchema = Parameters<typeof Data.from>[1];
 
-export type FraudProofRawL1FamilyDefinition = {
+export type FraudProofRawL1TerminalDefinition = {
   readonly category: FraudProofCatalogueCategoryName;
   readonly categoryId: string;
   readonly headerHash: string;
@@ -56,7 +56,6 @@ export type FraudProofRawL1FamilyDefinition = {
     readonly steps: readonly {
       readonly role: FraudProofRawL1ComputationStepRole;
       readonly address: string;
-      readonly datumSchema: LucidDataSchema;
     }[];
   };
   readonly proofToken: {
@@ -70,6 +69,19 @@ export type FraudProofRawL1FamilyDefinition = {
     readonly retiredAddress: string;
   };
   readonly schedulerAddress: string;
+};
+
+/** Executable observation additionally authenticates each live thread datum. */
+export type FraudProofRawL1FamilyDefinition = Omit<
+  FraudProofRawL1TerminalDefinition,
+  "computationThread"
+> & {
+  readonly computationThread: {
+    readonly policyId: string;
+    readonly steps: readonly (FraudProofRawL1TerminalDefinition["computationThread"]["steps"][number] & {
+      readonly datumSchema: LucidDataSchema;
+    })[];
+  };
 };
 
 export type FraudProofRawL1FamilyStage =
@@ -134,7 +146,7 @@ const COMPUTATION_STEP_ROLES = Object.freeze([
 ] as const satisfies readonly FraudProofRawL1ComputationStepRole[]);
 
 const assertCanonicalComputationSteps = (
-  definition: FraudProofRawL1FamilyDefinition,
+  definition: FraudProofRawL1TerminalDefinition,
 ): void => {
   const steps = definition.computationThread.steps;
   if (
@@ -270,7 +282,7 @@ const stateQueueTopology = async ({
   definition,
 }: {
   readonly snapshot: FraudProofRawL1Snapshot;
-  readonly definition: FraudProofRawL1FamilyDefinition;
+  readonly definition: FraudProofRawL1TerminalDefinition;
 }): Promise<{
   readonly ordered: readonly StateQueueUTxO[];
   readonly target: StateQueueUTxO | undefined;
@@ -329,7 +341,7 @@ export const deriveAuthenticatedStateQueueHeaderObservationFromRawL1 = async ({
   definition,
 }: {
   readonly snapshot: FraudProofRawL1Snapshot;
-  readonly definition: FraudProofRawL1FamilyDefinition;
+  readonly definition: FraudProofRawL1TerminalDefinition;
 }): Promise<AuthenticatedStateQueueHeaderObservation> => {
   const topology = await stateQueueTopology({ snapshot, definition });
   if (topology.target === undefined) {
@@ -367,7 +379,7 @@ const uniqueStateQueueHeaderMint = ({
   definition,
 }: {
   readonly snapshot: FraudProofRawL1Snapshot;
-  readonly definition: FraudProofRawL1FamilyDefinition;
+  readonly definition: FraudProofRawL1TerminalDefinition;
 }): FraudProofRawL1Transaction => {
   const unit = toUnit(
     definition.stateQueue.policyId,
@@ -393,7 +405,7 @@ export const deriveRetainedStateQueueHeaderObservationFromRawL1 = async ({
   definition,
 }: {
   readonly snapshot: FraudProofRawL1Snapshot;
-  readonly definition: FraudProofRawL1FamilyDefinition;
+  readonly definition: FraudProofRawL1TerminalDefinition;
 }): Promise<AuthenticatedStateQueueHeaderObservation> => {
   const unit = toUnit(
     definition.stateQueue.policyId,
@@ -530,7 +542,7 @@ const operatorFromRemovedState = async ({
   definition,
 }: {
   readonly removed: FraudProofRawL1Utxo;
-  readonly definition: FraudProofRawL1FamilyDefinition;
+  readonly definition: FraudProofRawL1TerminalDefinition;
 }): Promise<string> => {
   if (rawToUtxo(removed).address !== definition.stateQueue.address) {
     throw new Error("removed state-queue input came from another address");
@@ -609,7 +621,7 @@ const operatorBondInputs = ({
   retiredUnit,
 }: {
   readonly transaction: FraudProofRawL1Transaction;
-  readonly definition: FraudProofRawL1FamilyDefinition;
+  readonly definition: FraudProofRawL1TerminalDefinition;
   readonly activeUnit: string;
   readonly retiredUnit: string;
 }): readonly FraudProofRawL1Utxo[] =>
@@ -634,7 +646,7 @@ const deriveTerminal = async ({
   releaseEconomics,
 }: {
   readonly snapshot: FraudProofRawL1Snapshot;
-  readonly definition: FraudProofRawL1FamilyDefinition;
+  readonly definition: FraudProofRawL1TerminalDefinition;
   readonly stateUnit: string;
   readonly proofUnit: string;
   readonly proof: FraudProofRawL1Utxo;
@@ -698,17 +710,36 @@ const deriveTerminal = async ({
     );
   }
   const slash = slashCandidates[0]!;
-  const currentOperatorTokens = [
-    ...scope(snapshot, "active_operator_directory").utxos.filter(
-      (candidate) => outputQuantity(candidate, activeUnit) !== 0n,
-    ),
-    ...scope(snapshot, "retired_operator_directory").utxos.filter(
-      (candidate) => outputQuantity(candidate, retiredUnit) !== 0n,
-    ),
-  ];
-  if (currentOperatorTokens.length > 0) {
+  const slashBody = CML.TransactionBody.from_cbor_hex(
+    slash.transaction.bodyCbor,
+  );
+  const bondUnit =
+    outputQuantity(slash.bondInput, activeUnit) === 1n
+      ? activeUnit
+      : retiredUnit;
+  // Directory tokens identify the operator, not a permanent bond lifetime.
+  // A later registration can mint the same unit again. Authenticate the end
+  // of this bond in its slash transaction instead of banning that identity
+  // from today's directory while the historical correction gains depth.
+  if (mintQuantity(slashBody, bondUnit) !== -1n) {
+    throw new Error("slash did not burn the consumed operator bond token");
+  }
+  if (
+    bodyOutputsContainUnit(slashBody, activeUnit) ||
+    bodyOutputsContainUnit(slashBody, retiredUnit)
+  ) {
+    throw new Error("slash continued an operator bond token");
+  }
+  if (
+    (["active_operator_directory", "retired_operator_directory"] as const).some(
+      (role) =>
+        scope(snapshot, role).utxos.some(
+          (candidate) => candidate.outRef === slash.bondInput.outRef,
+        ),
+    )
+  ) {
     throw new Error(
-      "fraudulent operator remains in an authenticated directory",
+      "consumed operator bond remains live in the raw L1 snapshot",
     );
   }
   const policy = verifiedEconomics.policy;
@@ -720,9 +751,7 @@ const deriveTerminal = async ({
     coreToTxOutput(
       CML.TransactionOutput.from_cbor_hex(slash.bondInput.outputCbor),
     ).assets.lovelace ?? 0n;
-  const slashFee = CML.TransactionBody.from_cbor_hex(
-    slash.transaction.bodyCbor,
-  ).fee();
+  const slashFee = slashBody.fee();
   const fullTranche = bondLovelace === requiredBond && slashFee === penalty;
   const partialTranche =
     bondLovelace === requiredBond - inactivityPenalty &&
@@ -806,7 +835,7 @@ export const fraudProofRawL1SnapshotRequestForFamily = ({
   definition,
   releaseFinality,
 }: {
-  readonly definition: FraudProofRawL1FamilyDefinition;
+  readonly definition: FraudProofRawL1TerminalDefinition;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
 }): FraudProofRawL1SnapshotRequest => {
   assertCanonicalComputationSteps(definition);
@@ -856,15 +885,13 @@ export const fraudProofRawL1SnapshotRequestForFamily = ({
   };
 };
 
-export const deriveFraudProofRawL1FamilyStage = async ({
+const authenticateFamilySnapshot = ({
   snapshot,
   definition,
-  releaseEconomics,
 }: {
   readonly snapshot: FraudProofRawL1Snapshot;
-  readonly definition: FraudProofRawL1FamilyDefinition;
-  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
-}): Promise<FraudProofRawL1FamilyStage> => {
+  readonly definition: FraudProofRawL1TerminalDefinition;
+}) => {
   assertCanonicalComputationSteps(definition);
   if (
     snapshot.headerHash !== definition.headerHash ||
@@ -888,6 +915,79 @@ export const deriveFraudProofRawL1FamilyStage = async ({
   ) {
     throw new Error("raw L1 snapshot changed the family authentication units");
   }
+  return { stateUnit, threadUnit, proofUnit };
+};
+
+/** Read-only completion applicability: a live authenticated target invalidates
+ * completion. No computation datum is decoded or used to authorize execution. */
+export const deriveFraudProofRawL1CompletedTerminal = async ({
+  snapshot,
+  definition,
+  releaseEconomics,
+}: {
+  readonly snapshot: FraudProofRawL1Snapshot;
+  readonly definition: FraudProofRawL1TerminalDefinition;
+  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+}): Promise<FraudProofWorkflowTerminal | null> => {
+  const { stateUnit, threadUnit, proofUnit } = authenticateFamilySnapshot({
+    snapshot,
+    definition,
+  });
+  const threads = definition.computationThread.steps.flatMap((step) => {
+    if (scope(snapshot, step.role).address !== step.address)
+      throw new Error("raw L1 terminal snapshot changed computation address");
+    const current = currentUnit({
+      snapshot,
+      role: step.role,
+      unit: threadUnit,
+    });
+    return current === undefined ? [] : [current];
+  });
+  if (threads.length > 1)
+    throw new Error("raw L1 snapshot has more than one live computation step");
+  const proof = currentUnit({
+    snapshot,
+    role: "permanent_proof_token",
+    unit: proofUnit,
+  });
+  if (proof !== undefined)
+    requireProofDatum({
+      raw: proof,
+      proverCredential: definition.proverCredential,
+    });
+  if (proof !== undefined && threads.length > 0)
+    throw new Error(
+      "raw L1 snapshot has both a computation thread and proof token",
+    );
+  const topology = await stateQueueTopology({ snapshot, definition });
+  if (topology.target !== undefined) return null;
+  if (proof === undefined || threads.length > 0)
+    throw new Error(
+      "fraudulent header disappeared without a retained proof token",
+    );
+  return deriveTerminal({
+    snapshot,
+    definition,
+    stateUnit,
+    proofUnit,
+    proof,
+    releaseEconomics,
+  });
+};
+
+export const deriveFraudProofRawL1FamilyStage = async ({
+  snapshot,
+  definition,
+  releaseEconomics,
+}: {
+  readonly snapshot: FraudProofRawL1Snapshot;
+  readonly definition: FraudProofRawL1FamilyDefinition;
+  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+}): Promise<FraudProofRawL1FamilyStage> => {
+  const { stateUnit, threadUnit, proofUnit } = authenticateFamilySnapshot({
+    snapshot,
+    definition,
+  });
   const threads = definition.computationThread.steps.flatMap((step, index) => {
     if (scope(snapshot, step.role).address !== step.address) {
       throw new Error(

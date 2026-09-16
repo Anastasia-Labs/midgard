@@ -1,13 +1,15 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   type FileHandle,
+  link,
   mkdir,
   open,
   readdir,
   readFile,
   realpath,
+  unlink,
 } from "node:fs/promises";
-import { isAbsolute, join, normalize } from "node:path";
+import { dirname, isAbsolute, join, normalize } from "node:path";
 
 import {
   COMPLETE_CANONICAL_REPLAY,
@@ -363,13 +365,23 @@ const productionStorage: UnsafeWatcherFaultDecisionJournalStorage =
       ),
     read: async (path) => Uint8Array.from(await readFile(path)),
     writeExclusive: async (path, bytes) => {
-      let handle: FileHandle | undefined;
+      // Stage outside the strictly scanned journal, on the same filesystem.
+      // Linking publishes complete, fsynced bytes without replacing a revision.
+      const temporaryPath = join(
+        dirname(dirname(path)),
+        `.fault-decision-${randomUUID()}.tmp`,
+      );
+      const handle = await open(temporaryPath, "wx", 0o600);
       try {
-        handle = await open(path, "wx", 0o600);
-        await handle.writeFile(bytes);
-        await handle.sync();
+        try {
+          await handle.writeFile(bytes);
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+        await link(temporaryPath, path);
       } finally {
-        await handle?.close();
+        await unlink(temporaryPath);
       }
     },
     syncDirectory,

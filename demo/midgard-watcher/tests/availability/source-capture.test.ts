@@ -9,6 +9,9 @@ import { createWatcherL1AvailabilityPayloadSource } from "../../src/availability
 import type { WatcherAuthenticatedStateQueueObservation } from "../../src/indexers/authenticated-state-queue-observation.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../../src/runtime/deployment-identity.js";
 
+const sourcePolicy = vi.hoisted(() => ({
+  observationDepth: "release_finality" as "release_finality" | "inclusion",
+}));
 const io = vi.hoisted(() => ({
   pin: vi.fn(),
   address: vi.fn(),
@@ -22,6 +25,7 @@ vi.mock("@al-ft/midgard-fault-proofs", async (original) => ({
   localKupmiosHttpOgmiosRawSourceDetails: () => ({
     deploymentIdentityDigest: "11".repeat(32),
     blueprintHash: "22".repeat(32),
+    observationDepth: sourcePolicy.observationDepth,
   }),
   pinAdmittedLocalKupmiosBoundaryAtPoint: io.pin,
   readAdmittedLocalKupmiosAddressUtxosAtPoint: io.address,
@@ -113,6 +117,7 @@ const intent = () => {
   } as unknown as AvailabilityOperationIntent;
 };
 beforeEach(() => {
+  sourcePolicy.observationDepth = "release_finality";
   for (const mock of Object.values(io)) mock.mockReset();
   io.pin.mockResolvedValue(undefined);
   io.address.mockResolvedValue([]);
@@ -121,6 +126,53 @@ beforeEach(() => {
 });
 
 describe("availability captures sharing a local source", () => {
+  it.each(["inclusion", "release_finality"] as const)(
+    "reads published proof payload at %s authority without changing availability actuation",
+    async (observationDepth) => {
+      sourcePolicy.observationDepth = observationDepth;
+      const { source } = fixture();
+      const current = {
+        ...observation(10),
+        nativePoint: { ...observation(10).nativePoint, finalityDepth: "1" },
+        finalizedHeaders: [
+          {
+            headerHash: "77".repeat(28),
+            daAvailability: {
+              Published: { terminal_commitment: "88".repeat(32) },
+            },
+          },
+        ],
+      } as unknown as WatcherAuthenticatedStateQueueObservation;
+      const payloadSource = createWatcherL1AvailabilityPayloadSource({
+        identity,
+        deployment,
+        rawSource: source,
+        lucid: { slotToUnixTime: (slot) => slot * 1000 },
+        currentObservation: () => current,
+      });
+      io.history.mockResolvedValue({
+        transactions: [
+          { txHash: "first", inclusionPoint: observation(1).nativePoint },
+        ],
+      });
+      io.transaction.mockRejectedValue(
+        new Error("authenticated payload reader reached"),
+      );
+      await expect(
+        payloadSource.fetchPayloadByHeaderHash("77".repeat(28)),
+      ).rejects.toThrow(
+        observationDepth === "inclusion"
+          ? "authenticated payload reader reached"
+          : "authenticated deployment observation",
+      );
+      if (observationDepth === "inclusion")
+        expect(io.transaction).toHaveBeenCalledWith(
+          expect.objectContaining({ minimumConfirmationDepth: 1 }),
+        );
+      else expect(io.transaction).not.toHaveBeenCalled();
+    },
+  );
+
   it("pins an operation only after a concurrent snapshot has finished all address reads", async () => {
     const { intake } = fixture();
     const started = deferred();

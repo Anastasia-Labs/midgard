@@ -97,8 +97,8 @@ const authenticatedTransition = (txHash = transactionHash) =>
               yield_to_ref_input_index: 0n,
               timed_out_header_hash: target,
               removal_approach: {
-                PruneTimedOutBlockDescendant: {
-                  confirmed_state_ref_input_index: 0n,
+                PruneUnattestedBlockDescendant: {
+                  predecessor_ref_input_index: 0n,
                   timed_out_node_input_outref: {
                     transactionId: h32("1"),
                     outputIndex: 0n,
@@ -694,8 +694,8 @@ describe("node-owned state-queue correction observer", () => {
           yield_to_ref_input_index: 0n,
           timed_out_header_hash: target,
           removal_approach: {
-            PruneTimedOutBlockDescendant: {
-              confirmed_state_ref_input_index: 0n,
+            PruneUnattestedBlockDescendant: {
+              predecessor_ref_input_index: 0n,
               timed_out_node_input_outref: {
                 transactionId: h32("1"),
                 outputIndex: 0n,
@@ -1092,8 +1092,8 @@ describe("node-owned state-queue correction observer", () => {
                   yield_to_ref_input_index: 0n,
                   timed_out_header_hash: target,
                   removal_approach: {
-                    PruneTimedOutBlockDescendant: {
-                      confirmed_state_ref_input_index: 0n,
+                    PruneUnattestedBlockDescendant: {
+                      predecessor_ref_input_index: 0n,
                       timed_out_node_input_outref: {
                         transactionId: item.inputs[0]!.slice(0, 64),
                         outputIndex: BigInt(item.inputs[0]!.split("#")[1]!),

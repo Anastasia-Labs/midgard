@@ -784,6 +784,15 @@ describe("strict watcher configuration", () => {
     );
   });
 
+  it("rejects a configurable action depth while preserving the release finality policy", () => {
+    const input = validLocalNodeConfig();
+    const finality = parseWatcherConfig(input).l1.finality;
+    Object.assign(input.l1.finality, { actionDepth: 1 });
+    rejected(() => parseWatcherConfig(input), "unknown_field", "$.l1.finality");
+    expect(finality.depth).toBe(input.l1.finality.depth);
+    expect(finality).not.toHaveProperty("actionDepth");
+  });
+
   it("rejects unknown fields at every trust boundary", () => {
     const cases: ReadonlyArray<
       readonly [string, (input: ReturnType<typeof validConfig>) => void]

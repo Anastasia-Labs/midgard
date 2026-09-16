@@ -28,6 +28,16 @@ and `@lucid-evolution__wallet@0.2.2.patch` exposes a CIP-30 wallet's collateral
 through it. Both JavaScript module formats and both type declaration formats
 are covered by their respective patches.
 
+The Lucid patch also reuses the last successful default Aiken evaluation within
+one public transaction completion, including its internal fee, collateral, and
+delayed-redeemer replays. Reuse requires exact transaction bytes, ordered input
+and output CBOR bytes, cost models, CPU and memory budgets, and slot parameters.
+The retained request and result bytes are detached; each hit decodes fresh
+redeemer values. A changed request clears the entry, failures are not retained,
+and separate completions do not share results. Explicit custom evaluators and
+provider evaluation keep their existing behavior. All convergence checks and
+application of the evaluated execution units still run.
+
 The production SDK lifecycle tests in
 `midgard-node/tests/availability-challenge-sdk-lifecycle.test.ts` verify signed
 transactions with nonzero measured execution, fee refusal, and mainnet transaction

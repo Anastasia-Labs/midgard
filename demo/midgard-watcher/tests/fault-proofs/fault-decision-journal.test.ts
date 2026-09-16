@@ -1,18 +1,21 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import * as fs from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   openWatcherFaultDecisionJournal,
   unsafeOpenWatcherFaultDecisionJournalForTest,
 } from "../../src/fault-proofs/fault-decision-journal.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
-import {
-  enqueueWatcherFaultDecision,
-  unsafeCreateWatcherFaultProofSupervisorForTest,
-} from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
+import { progressObservation } from "../support/fault-proof-progress-observation.js";
+
+vi.mock("node:fs/promises", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:fs/promises")>()),
+}));
 
 const directories: string[] = [];
 const DEPLOYMENT = "dd".repeat(32);
@@ -73,6 +76,7 @@ const healthyDecision = (): Readonly<Record<string, unknown>> => {
 };
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     directories
       .splice(0)
@@ -81,6 +85,79 @@ afterEach(async () => {
 });
 
 describe("production fault decision journal", () => {
+  it("exposes only complete records to a fresh reader during a delayed write", async () => {
+    const root = await directory();
+    const input = {
+      directory: root,
+      deploymentFingerprint: DEPLOYMENT,
+      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+    };
+    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest(input);
+    const first =
+      await journal.unsafeAppendDecisionEnvelopeForTest(faultDecision());
+    let markWriteStarted!: () => void;
+    let releaseWrite!: () => void;
+    const writeStarted = new Promise<void>((resolve) => {
+      markWriteStarted = resolve;
+    });
+    const writeGate = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    const originalOpen = fs.open;
+    vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+      const handle = await originalOpen(...args);
+      if (args[1] === "wx") {
+        const originalWrite = handle.writeFile.bind(handle);
+        vi.spyOn(handle, "writeFile").mockImplementationOnce(async (bytes) => {
+          if (!(bytes instanceof Uint8Array))
+            throw new Error("fixture expects bytes");
+          const middle = Math.floor(bytes.length / 2);
+          await originalWrite(bytes.subarray(0, middle));
+          markWriteStarted();
+          await writeGate;
+          await originalWrite(bytes.subarray(middle));
+        });
+      }
+      return handle;
+    });
+    const append =
+      journal.unsafeAppendDecisionEnvelopeForTest(healthyDecision());
+    try {
+      await writeStarted;
+      const reader = await openWatcherFaultDecisionJournal(input);
+      expect(await reader.readAll()).toEqual([first]);
+    } finally {
+      releaseWrite();
+      await append;
+    }
+    const reader = await openWatcherFaultDecisionJournal(input);
+    expect((await reader.readAll()).map(({ revision }) => revision)).toEqual([
+      "0",
+      "1",
+    ]);
+    expect(await readdir(root)).toEqual(["fault-decisions"]);
+  });
+
+  it("never overwrites an existing revision when independent writers collide", async () => {
+    const root = await directory();
+    const input = {
+      directory: root,
+      deploymentFingerprint: DEPLOYMENT,
+      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+    };
+    const first = await unsafeOpenWatcherFaultDecisionJournalForTest(input);
+    const second = await unsafeOpenWatcherFaultDecisionJournalForTest(input);
+    await first.unsafeAppendDecisionEnvelopeForTest(faultDecision());
+    const path = join(root, "fault-decisions", "00000000000000000000.json");
+    const original = await readFile(path);
+    await expect(
+      second.unsafeAppendDecisionEnvelopeForTest(healthyDecision()),
+    ).rejects.toMatchObject({ code: "EEXIST" });
+    expect(await readFile(path)).toEqual(original);
+    expect(await first.audit()).toEqual(await first.readAll());
+    expect(await readdir(root)).toEqual(["fault-decisions"]);
+  });
+
   it("admits out-ref detection identifiers without relaxing violation identifiers", async () => {
     const journal = await unsafeOpenWatcherFaultDecisionJournalForTest({
       directory: await directory(),
@@ -125,6 +202,8 @@ describe("production fault decision journal", () => {
     });
     const [persisted] = await reopened.readAll();
     expect(persisted?.decision.decision).toBe("fault_detected");
+    if (persisted?.decision.decision !== "fault_detected")
+      throw new Error("fixture must retain a fault");
     await expect(
       reopened.appendLiveDecision(persisted!.decision),
     ).rejects.toThrow("was not module-admitted");
@@ -139,19 +218,21 @@ describe("production fault decision journal", () => {
     });
     await supervisor.recoverExisting(null);
     await expect(
-      enqueueWatcherFaultDecision({
-        supervisor,
-        decision: persisted!.decision,
-        actuationPermit: Object.freeze({
-          permitVersion: "midgard-production-workflow-actuation-permit-v1",
-        }),
-        deadline: Object.freeze({
-          headerHash: persisted!.decision.headerHash,
-          headerEndTimeMs: "0",
-          maturityAtMs: "604800000",
-          latestSafeStartAtMs: "302400000",
-        }),
+      supervisor.requestProgress({
+        observation: progressObservation({ deploymentFingerprint: DEPLOYMENT }),
         rollbackGeneration: "0",
+        fault: {
+          decision: persisted!.decision,
+          actuationPermit: Object.freeze({
+            permitVersion: "midgard-production-workflow-actuation-permit-v1",
+          }),
+          deadline: Object.freeze({
+            headerHash: persisted!.decision.headerHash,
+            headerEndTimeMs: "0",
+            maturityAtMs: "604800000",
+            latestSafeStartAtMs: "302400000",
+          }),
+        },
       }),
     ).rejects.toThrow("was not module-admitted");
     expect(calls).toBe(0);

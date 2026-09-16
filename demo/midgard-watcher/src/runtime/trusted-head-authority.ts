@@ -9,7 +9,10 @@ import {
 } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { isAbsolute, join, normalize } from "node:path";
-import { setImmediate as yieldScan } from "node:timers/promises";
+import {
+  setImmediate as yieldScan,
+  setTimeout as retryDelay,
+} from "node:timers/promises";
 
 import {
   parseWatcherFinalityPolicy,
@@ -529,6 +532,9 @@ const replyJson = (
   response.writeHead(status, {
     "content-type": "application/json",
     "cache-control": "no-store",
+    // Classification can block the caller beyond this server's idle timeout.
+    // Do not leave a pooled socket for the next, non-retriable CAS to reuse.
+    connection: "close",
   });
   response.end(watcherCanonicalJson(value));
 };
@@ -645,23 +651,45 @@ export const createWatcherTrustedHeadAuthorityClient = (input: {
     return head;
   };
   const call = async (path: string, init?: RequestInit): Promise<unknown> => {
-    const response = await fetch(`${endpoint}${path}`, {
-      ...init,
-      headers: {
-        authorization: `Bearer ${httpSecret}`,
-        ...(init?.body === undefined
-          ? {}
-          : { "content-type": "application/json" }),
-      },
-      signal: AbortSignal.timeout(input.requestTimeoutMs),
-    });
-    const value = (await response.json()) as unknown;
-    if (!response.ok && response.status !== 409) {
-      throw new Error(
-        `trusted-head authority request failed with ${response.status.toString()}`,
-      );
+    // Only the two idempotent reads may retry transport loss. One deadline
+    // includes every attempt, response body and pause; CAS is never retried.
+    const signal = AbortSignal.timeout(input.requestTimeoutMs);
+    for (let attempt = 0; ; attempt += 1) {
+      let response: Response | undefined;
+      try {
+        response = await fetch(`${endpoint}${path}`, {
+          ...init,
+          headers: {
+            authorization: `Bearer ${httpSecret}`,
+            ...(init?.body === undefined
+              ? {}
+              : { "content-type": "application/json" }),
+          },
+          signal,
+        });
+        const value = (await response.json()) as unknown;
+        if (!response.ok && response.status !== 409) {
+          throw new Error(
+            `trusted-head authority request failed with ${response.status.toString()}`,
+          );
+        }
+        return value;
+      } catch (error) {
+        const cause = error instanceof TypeError ? error.cause : undefined;
+        if (
+          init !== undefined ||
+          attempt >= 2 ||
+          signal.aborted ||
+          (response !== undefined && !response.ok) ||
+          !(cause instanceof Error) ||
+          !("code" in cause) ||
+          typeof cause.code !== "string" ||
+          !["UND_ERR_SOCKET", "ECONNRESET", "EPIPE"].includes(cause.code)
+        )
+          throw error;
+        await retryDelay(100 * 2 ** attempt, undefined, { signal });
+      }
     }
-    return value;
   };
   return Object.freeze({
     readRecordAuthenticationKeyId: async () => {

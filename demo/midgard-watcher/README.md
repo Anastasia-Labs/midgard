@@ -114,6 +114,17 @@ bound 2160. `Custom` admits an explicitly bound isolated devnet, the network the
 automatic watcher journeys run against; it is not a relaxation of finality or
 rollback policy. The authority process enforces the same policy.
 
+`$.l1.finality.depth` stays the manifest's release depth and governs anchoring:
+finalized audit anchors, incident records and evidence stamps. Fault-proof
+state-queue observation, classification dispatch and proof-step submission use
+fixed authenticated inclusion depth 1. This is not a runtime configuration field
+and does not change the release finality policy or manifest digest. On rollback, invalidate cached authority, re-observe canonical
+state, reconcile outstanding submissions, then resume under fresh authority.
+Reuse suitable signed bytes or rebuild when necessary. Terminal inclusion
+releases the execution slot while the existing journal retains reconciliation
+state until anchoring. Wallet selection excludes unresolved attempts; it does
+not assume all old-fork inputs are available or hold all capital until finality.
+
 Local authority binds the Cardano node socket, node/genesis configuration, and
 genesis identity; the native chain-sync process provides ordered chain evidence.
 Configured query services are subordinate to that authority. Authenticated
@@ -148,10 +159,14 @@ the L1 order authenticates the immutable submission and the operator's
   `demo/midgard-node-tools/devnet/watcher-journeys/`. It launches this package's
   built `dist/cli.js` against a fresh Cardano devnet and drives each
   non-interactive family from committed header to healthy successor. As of
-  2026-09-13 five families have completed that journey on the
+  2026-09-13 ten families have completed that journey on the
   forced-submission-merged code against its 55-family deployment:
-  `transitionTrace`, `zeroInput`, `invalidRange`, `invalidSignature`, and
-  `mintAuthorization`. The other 49 non-interactive families are verified
+  `transitionTrace`, `zeroInput`, `invalidRange`, `invalidSignature`,
+  `mintAuthorization`, `minFee`, `spendInputSignerMissing`,
+  `protectedOutputSignerMissing`, `observersForbiddenOnUntaggedNetwork`, and
+  `inputSetUniqueness`. Those retained passes used per-step finality waits;
+  subsequent inclusion-policy passes require their own recorded provenance.
+  The other non-interactive families are verified
   locally, in progress on that harness, or still blocked, not live-accepted.
   The interactive `validationTraceDispute` family is installed but outside
   that harness.

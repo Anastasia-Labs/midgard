@@ -52,7 +52,14 @@ export const deriveWatcherAttestationTimeoutObservation = ({
   const snapshot: WatcherStateQueueSnapshot | null =
     parseWatcherStateQueueSnapshot(rawSnapshot);
   if (snapshot === null) return null;
-  const head = snapshot.queue[0];
+  // Earlier applied headers do not hide a later expired unattested suffix.
+  const head =
+    snapshot.queue
+      .filter((header) => header.daAttestationPolicyId === null)
+      .reduce<
+        WatcherStateQueueSnapshot["queue"][number] | undefined
+      >((earliest, header) => (earliest === undefined || BigInt(header.endTime) < BigInt(earliest.endTime) ? header : earliest), undefined) ??
+    snapshot.queue[0];
   if (head === undefined) {
     return {
       status: "queue_empty",

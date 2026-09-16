@@ -56,6 +56,14 @@ export type WatcherChainCoordinatorDependencies = Readonly<{
 }>;
 
 export type WatcherChainCoordinatorHooks = Readonly<{
+  /** Canonical inclusion is reversible and never advances durable finality. */
+  onIncluded?(
+    input: Readonly<{
+      nativeBlock: WatcherNativeBlockAdmission;
+      localObservation: WatcherLocalKupmiosNativeObservation | null;
+      relevance: WatcherBlockRelevance;
+    }>,
+  ): Promise<void>;
   /** Must revoke actuation authority synchronously before its first await. */
   onRollback(point: WatcherNativeChainSyncPoint): Promise<void>;
   /**
@@ -100,14 +108,6 @@ const depthAtTip = (
 
 const pointKey = (blockHash: string, slot: string): string =>
   `${blockHash}@${slot}`;
-
-const samePoint = (
-  point: WatcherNativeChainSyncPoint,
-  block: WatcherNativeBlockAdmission,
-): boolean =>
-  point.kind === "point" &&
-  point.blockHash === block.blockHash &&
-  point.slot === block.slot;
 
 const canonicalPathFromHistory = (input: {
   readonly history: readonly WatcherMultiProviderConsistency[];
@@ -835,6 +835,8 @@ const createCoordinator = (input: {
     throw new Error("watcher canonical buffer did not converge");
   };
 
+  const includedHooked = new Set<string>();
+
   return Object.freeze({
     schemaVersion: WATCHER_CHAIN_COORDINATOR_SCHEMA_VERSION,
     handle: async (event) => {
@@ -873,6 +875,7 @@ const createCoordinator = (input: {
       if (event.kind === "roll_backward") {
         // The production hook invalidates the in-memory actuation generation
         // before awaiting its durable cache rollback.
+        includedHooked.clear();
         await input.hooks.onRollback(event.point);
         replayBoundary = null;
         retainedReplay = null;
@@ -900,7 +903,7 @@ const createCoordinator = (input: {
           if (
             point.kind === "origin" ||
             BigInt(block.slot) > BigInt(point.slot) ||
-            samePoint(point, block)
+            (block.slot === point.slot && block.blockHash !== point.blockHash)
           ) {
             forget(key);
           }
@@ -951,6 +954,38 @@ const createCoordinator = (input: {
       if (relevanceOf(block) === "touched") await observe(block, event);
       if (!(await replayRetainedPrefix(event))) return;
       await advanceCanonical(event);
+      if (input.hooks.onIncluded !== undefined) {
+        // Replay the volatile suffix in native order. Finalized processing keeps
+        // its own cursor and may still be waiting on its oldest pending block.
+        let includedParent = effectiveHead;
+        for (const candidate of [...buffered.values()].sort((left, right) =>
+          BigInt(left.blockNo) < BigInt(right.blockNo) ? -1 : 1,
+        )) {
+          if (
+            includedParent !== null &&
+            (candidate.prevHash !== includedParent.blockHash ||
+              BigInt(candidate.blockNo) !==
+                BigInt(includedParent.blockNo) + 1n ||
+              BigInt(candidate.slot) <= BigInt(includedParent.slot))
+          )
+            throw new Error(
+              "included native suffix is not contiguous with canonical progress",
+            );
+          includedParent = headOf(candidate);
+          const candidateKey = pointKey(candidate.blockHash, candidate.slot);
+          if (includedHooked.has(candidateKey)) continue;
+          const relevance = relevanceOf(candidate);
+          await input.hooks.onIncluded({
+            nativeBlock: candidate,
+            relevance,
+            localObservation:
+              relevance === "touched" ? await observe(candidate, event) : null,
+          });
+          includedHooked.add(candidateKey);
+        }
+        for (const includedKey of includedHooked)
+          if (!buffered.has(includedKey)) includedHooked.delete(includedKey);
+      }
       const minimumBlockNo = BigInt(block.blockNo) - 2_160n;
       for (const [bufferedKey, candidate] of buffered) {
         if (BigInt(candidate.blockNo) < minimumBlockNo) forget(bufferedKey);

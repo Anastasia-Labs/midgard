@@ -78,6 +78,79 @@ const policy = Object.freeze({
 }) as WatcherFinalityPolicy;
 
 describe("production native-chain coordinator", () => {
+  it("delivers the canonical suffix on inclusion while durable finality waits", async () => {
+    const first = block("1", "0", "100", "10");
+    const second = block("2", "1", "101", "11");
+    const replacement = block("3", "1", "102", "11");
+    let state = finalityState("unobserved");
+    const included: string[] = [];
+    const finalized: string[] = [];
+    const coordinator = unsafeCreateWatcherChainCoordinatorForTest(
+      {
+        policy,
+        durable: {
+          readFinality: () => state,
+          read: () => ({ currentFinalityState: state, currentStore: {} }),
+          persistCanonicalProgress: async () => {
+            state = finalityState("pending", first);
+            return {
+              persistence: "committed",
+              finalityResult: { action: "observe_pending" },
+            };
+          },
+        } as unknown as WatcherDurableRuntime,
+        observation: {
+          observe: async () => ({
+            block: {},
+            consistency: {},
+            transportAttestations: [],
+          }),
+        } as unknown as WatcherLocalKupmiosNativeObservationRuntime,
+        hooks: {
+          onRollback: async () => undefined,
+          onIncluded: async ({ nativeBlock }) => {
+            included.push(nativeBlock.blockHash);
+          },
+          onFinalized: async ({ nativeBlock }) => {
+            finalized.push(nativeBlock.blockNo);
+          },
+        },
+      },
+      {
+        admitRollForward: (event) =>
+          event.blockHash === first.blockHash
+            ? first
+            : event.blockHash === second.blockHash
+              ? second
+              : replacement,
+      },
+    );
+    await coordinator.handle(forward(first));
+    await coordinator.handle(forward(second));
+    expect(included).toEqual([first.blockHash, second.blockHash]);
+    expect(finalized).toEqual([]);
+    expect(state.phase).toBe("pending");
+    await coordinator.handle({
+      schemaVersion: "midgard-watcher-native-chain-sync-v1",
+      kind: "roll_backward",
+      point: { kind: "point", blockHash: first.blockHash, slot: first.slot },
+      tip: {
+        kind: "point",
+        blockHash: replacement.blockHash,
+        slot: replacement.slot,
+        blockNo: replacement.blockNo,
+      },
+    });
+    await coordinator.handle(forward(replacement));
+    expect(included).toEqual([
+      first.blockHash,
+      second.blockHash,
+      first.blockHash,
+      replacement.blockHash,
+    ]);
+    expect(finalized).toEqual([]);
+  });
+
   it("treats only the initial exact intersection acknowledgement as startup when finality is unobserved", async () => {
     const first = block("2", "1", "102", "12");
     const replacement = block("3", "1", "103", "12");

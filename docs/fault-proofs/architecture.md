@@ -2,7 +2,7 @@
 
 Status: Active
 
-Last reviewed: 2026-09-07 (catalogue and runtime wiring).
+Last reviewed: 2026-09-16 (objective supervision and recovery).
 
 ## End-to-end path
 
@@ -27,6 +27,48 @@ The system uses two proof shapes:
 
 `transitionTrace` is a separate routed family for boundary, link, event,
 source, duplicate, omission, window, count, and one-step transition faults.
+
+## Watcher proof progress
+
+The watcher supervisor owns one execution slot per deployment, family, and
+target header. Callers submit authenticated observations and optional admitted
+fault evidence through `requestProgress`; resolution acknowledges admission,
+not proof completion. Decision digests and rollback generations are authority
+context for that objective, not separate executions.
+
+Each slot holds one invocation and one coalesced pending update. Releasing the
+slot and handing over pending work use the same serialized boundary as intake.
+A new observation does not mutate the running permit. Explicit loss of chain
+authority revokes active and pending permits; handover revalidates authority.
+
+Immediately before funding, the supervisor validates the selected workflow
+journal. Retained signed attempts reuse their reservation and exact transaction
+records. Provisional completion continues authenticated finality verification.
+A completed journal is acknowledged only after canonical terminal verification,
+without opening a signer, allocating funding, or invoking the runner. Its
+cached verification is bound to the journal revision and canonical generation.
+After the new-start deadline, an existing signed attempt can still reconcile
+under a separate read-only permit; the deadline does not authorize a fresh spend.
+
+Unfinished objectives are indexed from existing records at restart. Canonical
+observations wake affected work; identical observations do not spin the worker.
+Admitted native blocks also wake pending finality when queue evidence is
+unchanged. This progress marker grants no transaction or finality authority;
+the runner still authenticates the retained attempt and terminal observations.
+Typed transport failures use capped exponential backoff, and temporary funding
+unavailability waits for another observation. Corrupt records, foreign execution
+identities, and authentication failures remain actionable hard failures.
+
+Active execution decisions stay pinned in memory; a bounded recent cache covers
+late observations of completed objectives. A genuine cache miss opens a fresh
+authenticated journal snapshot, since another journal handle may have appended
+decisions since startup. Repeated completion checks reuse validated identities.
+Decision records are published atomically after their bytes are synced, so a
+concurrent authenticated reader sees only complete records.
+
+The workflow journal and signed records remain authoritative. The queue journal
+records scheduling activity: a finished queue entry never proves completion of
+the objective. No separate persistent objective state machine is introduced.
 
 ## Catalogue and deployment identity
 
@@ -107,8 +149,27 @@ a 900 ADA required bond, 500 ADA slash penalty, 400 ADA prover reward, and
 10,000 ADA respectively. Independent parameter review, exact live balance
 conservation, and duplicate-claim idempotency remain release gates.
 
-An unattested head has a separate one-hour, no-slash correction path. That path
-is a DA/liveness remedy, not a fault-proof category.
+An unattested commitment anywhere in the pending queue has a separate no-slash
+correction path once the transaction's inclusive lower bound reaches its
+immutable header end time plus one hour. Its immediate predecessor may be the
+confirmed root or an immature queued commitment. Both the target and its queue
+links are authenticated by the state-queue policy.
+
+The first removal consumes the correction lock, preventing appends and merges
+from extending or moving the queue during correction. Each pruning transaction
+removes the target's immediate descendant and retains the lock for that target.
+Once the target has no descendants, terminal removal preserves its predecessor's
+data and value, clears that predecessor's next link, and releases the lock. A
+terminal target can be removed in one transaction with the lock returning to
+Idle. The earlier prefix remains intact; maturity is not a prerequisite for
+discarding the suffix. Attested targets and premature removal reject.
+
+The operator node scans all pending commitments and drives this permissionless,
+resumable action; the watcher observes and alerts. Recovery retains signed
+attempts before submission, reconciles their exact effects against the canonical
+chain, and rebuilds only when the previous attempt is definitively invalidated.
+Availability-challenge timeout removal retains its separate head-only rules.
+This DA/liveness remedy does not prove fraud or slash the operator.
 
 ## Off-chain workflow runtime
 

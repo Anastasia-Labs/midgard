@@ -16,6 +16,7 @@ import {
 import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import { createFraudProofFamilyLocalKupmiosL1ObservationPort } from "../workflow/family-l1-observation.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { LocalKupmiosCheckpointChangedError } from "../workflow/local-kupmios-raw-l1-authority.js";
 import {
   admitFraudProofRawL1Snapshot,
   computeFraudProofRawL1SnapshotEvidenceDigest,
@@ -116,6 +117,7 @@ export const captureTransitionTraceL1Events = async ({
       value: await authority.capture(request),
       request,
       releaseFinality: finality,
+      observationDepth: "inclusion",
     });
   };
   const hubScope = { role: "hub_oracle", address: hubAddress } as const;
@@ -173,43 +175,56 @@ export const captureTransitionTraceL1Events = async ({
       for (const unit of Object.keys(utxo(raw).assets))
         if (unit.startsWith(definition.policy)) units.add(unit);
     }
-  const snapshot = await capture(scopes, [...units].sort());
-  const finalHub = readHub(snapshot);
-  if (hub.outRef !== finalHub.outRef || hub.datum !== finalHub.datum)
-    throw new Error(
-      "Transition replay hub changed while admitting event history",
-    );
-  const events: TransitionTraceL1Event[] = [];
-  for (const definition of definitions)
-    for (const raw of snapshot.scopes.find(
-      (scope) => scope.role === definition.role,
-    )!.utxos) {
-      const event = utxo(raw);
-      const tokens = Object.entries(event.assets).filter(([unit]) =>
-        unit.startsWith(definition.policy),
-      );
-      if (tokens.length === 0) continue;
-      if (
-        tokens.length !== 1 ||
-        tokens[0]![1] !== 1n ||
-        !units.has(tokens[0]![0]) ||
-        event.datum == null
-      )
+  const captureCoveredEvents = async () => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const snapshot = await capture(scopes, [...units].sort());
+      const finalHub = readHub(snapshot);
+      if (hub.outRef !== finalHub.outRef || hub.datum !== finalHub.datum)
         throw new Error(
-          "Transition replay event NFT coverage changed or is ambiguous",
+          "Transition replay hub changed while admitting event history",
         );
-      // Strict datum decoding rejects arbitrary deposits to a user-event address.
-      if (definition.kind === "deposit")
-        Data.from(event.datum, SDK.DepositDatum);
-      else if (definition.kind === "withdrawal")
-        Data.from(event.datum, SDK.WithdrawalOrderDatum);
-      else Data.from(event.datum, SDK.TxOrderDatum);
-      events.push({
-        kind: definition.kind,
-        utxo: event,
-        assetName: tokens[0]![0].slice(56),
-      });
+      const events: TransitionTraceL1Event[] = [];
+      const newUnits = new Set<string>();
+      for (const definition of definitions)
+        for (const raw of snapshot.scopes.find(
+          (scope) => scope.role === definition.role,
+        )!.utxos) {
+          const event = utxo(raw);
+          const tokens = Object.entries(event.assets).filter(([unit]) =>
+            unit.startsWith(definition.policy),
+          );
+          if (tokens.length === 0) continue;
+          if (
+            tokens.length !== 1 ||
+            tokens[0]![1] !== 1n ||
+            event.datum == null
+          )
+            throw new Error(
+              "Transition replay event NFT coverage is ambiguous",
+            );
+          // Validate every event before treating incomplete coverage as drift.
+          if (definition.kind === "deposit")
+            Data.from(event.datum, SDK.DepositDatum);
+          else if (definition.kind === "withdrawal")
+            Data.from(event.datum, SDK.WithdrawalOrderDatum);
+          else Data.from(event.datum, SDK.TxOrderDatum);
+          if (!units.has(tokens[0]![0])) newUnits.add(tokens[0]![0]);
+          events.push({
+            kind: definition.kind,
+            utxo: event,
+            assetName: tokens[0]![0].slice(56),
+          });
+        }
+      if (newUnits.size === 0) return { snapshot, finalHub, events };
+      // Address discovery and history acquisition pin independent snapshots.
+      // A new NFT requires its full history at a newly admitted common point.
+      for (const unit of newUnits) units.add(unit);
     }
+    throw new LocalKupmiosCheckpointChangedError(
+      "Transition replay event NFT coverage kept growing during history acquisition",
+    );
+  };
+  const { snapshot, finalHub, events } = await captureCoveredEvents();
   const handle = Object.freeze({
     headerHash: base.headerHash,
     snapshotDigest: createHash("sha256")

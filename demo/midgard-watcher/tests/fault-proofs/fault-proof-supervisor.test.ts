@@ -9,6 +9,7 @@ import {
   unsafeCreateWatcherFaultProofSupervisorForTest,
   type WatcherFaultProofJob,
 } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { progressObservation } from "../support/fault-proof-progress-observation.js";
 
 const directories: string[] = [];
 const h28 = (byte: string): string => byte.repeat(28);
@@ -61,17 +62,32 @@ describe("production fault-proof supervisor", () => {
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       deadlineAlertHeadroomMs: 3_600_000,
       queueAuthenticationKey: Uint8Array.from({ length: 32 }, () => 0xa5),
-      run: async () => undefined,
+      execution: {
+        verifyCompleted: async () => {
+          throw new Error("unexpected completed execution");
+        },
+        execute: async () => ({
+          kind: "pending",
+          resume: "await_observation",
+          reason: "test observation",
+        }),
+      },
     });
     expect(Object.keys(supervisor).sort()).toEqual([
       "close",
       "done",
       "durableQueueStatus",
-      "recoverExisting",
+      "requestProgress",
+      "revokeAuthority",
       "schemaVersion",
       "status",
     ]);
-    await supervisor.recoverExisting(null);
+    await supervisor.requestProgress({
+      observation: progressObservation({
+        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      }),
+      rollbackGeneration: "0",
+    });
     await supervisor.close();
   });
 
@@ -102,9 +118,9 @@ describe("production fault-proof supervisor", () => {
     await supervisor.close();
 
     expect(observed).toEqual([
-      `resume:doubleSpend:${h28("aa")}`,
-      `resume:doubleSpend:${h28("cc")}`,
-      `resume:networkId:${h28("bb")}`,
+      `run:doubleSpend:${h28("aa")}`,
+      `run:doubleSpend:${h28("cc")}`,
+      `run:networkId:${h28("bb")}`,
     ]);
     expect(supervisor.status()).toMatchObject({
       phase: "closed",
@@ -160,7 +176,7 @@ describe("production fault-proof supervisor", () => {
     );
   });
 
-  it("deduplicates only an exact decision generation and serializes replacements", async () => {
+  it("keeps one pending update per objective and serializes other targets", async () => {
     const root = await directory();
     const first = deferred<string>();
     const starts: WatcherFaultProofJob[] = [];
@@ -201,19 +217,18 @@ describe("production fault-proof supervisor", () => {
       rollbackGeneration: "0",
     });
     await waitUntil(
-      () => starts.length === 1 && supervisor.status().queuedJobCount === 3,
+      () => starts.length === 1 && supervisor.status().queuedJobCount === 1,
     );
     expect(starts).toHaveLength(1);
-    expect(supervisor.status().queuedJobCount).toBe(3);
+    expect(supervisor.status().queuedJobCount).toBe(1);
 
     first.resolve("first");
     await expect(firstRun).resolves.toBe("first");
     await expect(duplicate).resolves.toBe("first");
-    await expect(replacement).resolves.toBe(h28("11"));
-    await expect(generationReplacement).resolves.toBe(h28("11"));
+    await expect(replacement).resolves.toBe("first");
+    await expect(generationReplacement).resolves.toBe("first");
     await expect(secondRun).resolves.toBe(h28("22"));
     expect(starts.map(({ category }) => category)).toEqual([
-      "doubleSpend",
       "doubleSpend",
       "doubleSpend",
       "networkId",

@@ -190,7 +190,7 @@ export const createAvailabilityFixture = async (
   );
   const preliminaryLucid = await createMainnetEmulatorLucid(preliminary);
   preliminaryLucid.selectWallet.fromPrivateKey(publisher.privateKey);
-  const authPolicy = SDK.createReferenceScriptAuthPolicy(
+  const authPolicy = await SDK.createReferenceScriptAuthPolicy(
     preliminaryLucid,
     preliminary.now(),
   );

@@ -63,11 +63,11 @@ const testReferenceScriptAuthPolicy = (
 ): ReferenceScriptAuthPolicyDeploymentInfo => ({
   policyId: validatorToScriptHash({
     type: "Native",
-    script: `8200581c${"00".repeat(28)}`,
+    script: "820500",
   }),
   nativeScript: {
     type: "Native",
-    cborHex: `8200581c${"00".repeat(28)}`,
+    cborHex: "820500",
     expiresAtSlot: 0,
     expiresAtUnixTime: 0,
     timelockDurationMs: 1,

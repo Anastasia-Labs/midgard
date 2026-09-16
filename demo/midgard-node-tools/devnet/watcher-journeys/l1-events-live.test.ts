@@ -13,7 +13,10 @@ import {
   captureTransitionTraceL1Events,
   requireTransitionTraceL1Events,
 } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-l1-events";
-import { loadWatcherSecretText, parseWatcherConfig } from "midgard-watcher";
+import {
+  loadWatcherSecretText,
+  parseWatcherProcessConfig,
+} from "midgard-watcher";
 import { expect, it } from "vitest";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
@@ -26,9 +29,11 @@ it.skipIf(runDirectory === undefined).each([false, true])(
   async (advanceHead) => {
     const context = await loadJourneyContext(runDirectory!);
     const directory = join(runDirectory!, "work/journeys/transition-trace");
-    const config = parseWatcherConfig(
-      JSON.parse(await readFile(join(directory, "watcher.json"), "utf8")),
-    );
+    const config = parseWatcherProcessConfig(
+      JSON.parse(
+        await readFile(join(directory, "watcher-process.json"), "utf8"),
+      ),
+    ).watcherConfig;
     const secret = await loadWatcherSecretText(config.proverWallet.keySource);
     const signer = resolveProverSigner(
       secret.startsWith("ed25519_sk")

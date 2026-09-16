@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { setTimeout as pause } from "node:timers/promises";
 
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
@@ -13,13 +12,12 @@ import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
 import { WatcherLocalKupmios } from "midgard-watcher";
 
-import { awaitLedgerTipSlot, readOgmiosTipSlot } from "./ledger-tip.js";
+import { readOgmiosTipSlot } from "./ledger-tip.js";
+import { createLiveWorkflowChain } from "./live-chain.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
 
 type Deployment = Awaited<ReturnType<typeof publishWorkflowDeploymentOnChain>>;
 
-/** Longest block gap the journeys tolerate while waiting for the ledger tip. */
-const LEDGER_TIP_WAIT_MS = 15 * 60_000;
 type PersistedDeployment = Omit<
   Deployment,
   "chain" | "operatorLucid" | "publisherLucid" | "references"
@@ -28,8 +26,22 @@ type PersistedDeployment = Omit<
 };
 
 /** Reopen run-owned artifacts and real providers after a stopped journey. */
-/** L1 depth the journey watcher requires before a block is finalized. */
+/**
+ * L1 depth the journey watcher requires before a block is finalized. Finality
+ * anchors evidence: the finalized audit anchor of a completed workflow, its
+ * incident records and its evidence stamp. It no longer gates the actions the
+ * journey drives.
+ */
 export const JOURNEY_FINALITY_DEPTH = 30;
+
+/**
+ * L1 depth at which the journey watcher acts on an observation. Once a step's
+ * inputs are in a block this deep, the next step is built and submitted; a
+ * rollback invalidates cached authority, re-observes canonical state, and
+ * reconciles submitted attempts before resuming. A valid attempt can reuse
+ * its signed bytes under fresh authorization. Release depth remains unchanged.
+ */
+export const JOURNEY_ACTION_DEPTH = 1;
 
 export const loadJourneyContext = async (runDirectory: string) => {
   if (!isAbsolute(runDirectory))
@@ -65,6 +77,8 @@ export const loadJourneyContext = async (runDirectory: string) => {
     kupoUrl,
     ogmiosUrl,
     await journeyNativeNodeQuery(runDirectory),
+    // Slow block inclusion must not abort an otherwise healthy shared session.
+    { awaitTxTimeoutMs: 10 * 60_000 },
   );
   const accounts: Record<
     "operator" | "publisher" | "cosigner" | "availability",
@@ -123,19 +137,11 @@ export const loadJourneyContext = async (runDirectory: string) => {
     operatorLucid,
     publisherLucid,
     chain: {
-      now: () => operatorLucid.slotToUnixTime(operatorLucid.currentSlot()),
-      awaitSlot: async (slots) => {
-        const targetSlot = operatorLucid.currentSlot() + slots;
-        await pause(slots * customNetwork.slotConfig.slotLength);
-        // Lower validity bounds are checked against the ledger tip, so a
-        // block gap would otherwise reject a transaction due by the clock.
-        await awaitLedgerTipSlot({
-          targetSlot,
-          readTipSlot: () => readOgmiosTipSlot(ogmiosUrl),
-          timeoutMs: LEDGER_TIP_WAIT_MS,
-          pollMs: customNetwork.slotConfig.slotLength,
-        });
-      },
+      ...createLiveWorkflowChain({
+        lucid: operatorLucid,
+        slotLength: customNetwork.slotConfig.slotLength,
+        readTipSlot: () => readOgmiosTipSlot(ogmiosUrl),
+      }),
       blockHeight: async () => {
         const response = await fetch(ogmiosUrl, {
           method: "POST",

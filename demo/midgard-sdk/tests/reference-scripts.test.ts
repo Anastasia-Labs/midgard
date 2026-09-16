@@ -2,7 +2,12 @@ import {
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import type { Assets, LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import {
+  type Assets,
+  credentialToAddress,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -160,11 +165,18 @@ describe("reference-script SDK boundary", () => {
     });
   });
 
-  it("creates restorable native auth-policy deployment info", () => {
+  it("creates restorable publisher-authorized native auth-policy deployment info", async () => {
     const lucid = {
       unixTimeToSlot: (time: number) => Math.floor(time / 1000),
+      wallet: () => ({
+        address: async () =>
+          credentialToAddress("Custom", {
+            type: "Key",
+            hash: "ab".repeat(28),
+          }),
+      }),
     } as unknown as LucidEvolution;
-    const policy = createReferenceScriptAuthPolicy(lucid, 1_000, 10_000);
+    const policy = await createReferenceScriptAuthPolicy(lucid, 1_000, 10_000);
     const info = referenceScriptAuthPolicyDeploymentInfo(policy);
     const restored = referenceScriptAuthPolicyFromDeploymentInfo(info);
 
@@ -174,6 +186,7 @@ describe("reference-script SDK boundary", () => {
       expiresAtUnixTime: 11_000,
       timelockDurationMs: 10_000,
     });
+    expect(info.postTimelockAudit.required).toBe(false);
   });
 
   it("derives role-token assets for publication outputs", () => {

@@ -17,18 +17,17 @@ export const JOURNEY_HISTORY_FIXTURES = [
       buildJourneyHistoryTransaction({ ...input, category }),
     ),
   ),
-  // Verified against real published L1 withdrawal events on an isolated
-  // emulator staging chain by history-event-cases.test.ts: installed selector,
-  // exact proof preparation and healthy control.
+  // Verified against real published L1 events on an isolated emulator chain
+  // by history-event-cases.test.ts: exact installed selection and healthy control.
   createWithdrawnInputJourneyFixture("withdrawnInput"),
   createWithdrawnInputJourneyFixture("withdrawnReferenceInput"),
-];
-
-/** Staging implementations awaiting real event material and full-scope gates. */
-export const JOURNEY_HISTORY_EVENT_FIXTURE_CANDIDATES = [
-  crossBlockDuplicateEventJourneyFixture,
   fabricatedDepositJourneyFixture,
   createWithdrawalJourneyFixture("fabricatedWithdrawal"),
   createWithdrawalJourneyFixture("withdrawalMistag"),
+];
+
+/** Existing fixtures whose faults are selected as an earlier family by the full catalogue. */
+export const JOURNEY_HISTORY_EVENT_FIXTURE_CANDIDATES = [
+  crossBlockDuplicateEventJourneyFixture,
   createWithdrawalJourneyFixture("doubleWithdraw"),
 ];

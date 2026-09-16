@@ -391,7 +391,7 @@ export const makeFaultProofEmulatorHarness = async ({
   if (nonceUtxo === undefined) {
     throw new Error("Expected funder wallet to expose a nonce UTxO");
   }
-  const referenceScriptAuth = createReferenceScriptAuthPolicy(
+  const referenceScriptAuth = await createReferenceScriptAuthPolicy(
     proverLucid,
     emulator.now(),
   );

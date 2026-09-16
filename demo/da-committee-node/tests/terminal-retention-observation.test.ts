@@ -92,7 +92,7 @@ const derive = (
           correctionIdentity: "AttestationTimeout",
           previousDatum: "Idle",
           nextDatum:
-            "RemoveTimedOutHead" in timeout.removal_approach
+            "RemoveLastUnattestedBlock" in timeout.removal_approach
               ? "Idle"
               : {
                   Locked: {
@@ -196,17 +196,17 @@ const timeout = (
         removal_approach:
           descendant === undefined
             ? {
-                RemoveTimedOutHead: {
-                  confirmed_state_input_outref: {
+                RemoveLastUnattestedBlock: {
+                  predecessor_input_outref: {
                     transactionId: continued.outRef.slice(0, 64),
                     outputIndex: BigInt(continued.outRef.split("#")[1]!),
                   },
-                  confirmed_state_output_index: 0n,
+                  predecessor_output_index: 0n,
                 },
               }
             : {
-                PruneTimedOutBlockDescendant: {
-                  confirmed_state_ref_input_index: 0n,
+                PruneUnattestedBlockDescendant: {
+                  predecessor_ref_input_index: 0n,
                   timed_out_node_input_outref: {
                     transactionId: continued.outRef.slice(0, 64),
                     outputIndex: BigInt(continued.outRef.split("#")[1]!),

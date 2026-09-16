@@ -203,7 +203,7 @@ export const runForcedValidationDisputeScenario = async (
   if (nonceUtxo === undefined) {
     throw new Error("Expected operator wallet to expose a nonce UTxO");
   }
-  const referenceScriptAuth = createReferenceScriptAuthPolicy(
+  const referenceScriptAuth = await createReferenceScriptAuthPolicy(
     challengerLucid,
     emulator.now(),
   );

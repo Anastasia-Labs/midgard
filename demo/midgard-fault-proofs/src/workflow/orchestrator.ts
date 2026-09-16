@@ -15,6 +15,7 @@ import {
   type FraudProofEvidence,
 } from "../evidence/fraud-proof-evidence.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
+import { WorkflowActionChangedError } from "./action-changed.js";
 import {
   assertWorkflowJournalActuation,
   workflowActuationDecisionDigest,
@@ -43,8 +44,11 @@ import {
   prepareWorkflowFundingReservationTransaction,
   readWorkflowFundingRecovery,
   reconcileWorkflowFundingSubmissionHandoff,
+  releaseIdleWorkflowFundingReservation,
   releaseWorkflowFundingReservation,
+  reobserveWorkflowFundingReservationTransaction,
   type WorkflowFundingCompletionHandoff,
+  WorkflowFundingReservationUnavailableError,
   type WorkflowFundingSubmissionHandoff,
 } from "./funding-reservation-permit.js";
 import {
@@ -63,6 +67,8 @@ import {
   normalizeJournalJson,
   validateFraudProofWorkflowJournal,
 } from "./journal.js";
+import { LocalKupmiosTransportUnavailableError } from "./local-kupmios-http-ogmios-source.js";
+import { LocalKupmiosCheckpointChangedError } from "./local-kupmios-raw-l1-authority.js";
 import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   type FraudProofReleaseFinalityAuthority,
@@ -112,7 +118,7 @@ export type FraudProofWorkflowPreflight = {
 
 export type FraudProofWorkflowObservation =
   | {
-      /** A prerequisite is visible but has not reached authenticated finality. */
+      /** A prerequisite is awaiting authenticated inclusion or availability. */
       readonly kind: "pending";
       readonly reason: string;
     }
@@ -155,6 +161,10 @@ export const FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER =
  */
 export interface FraudProofWorkflowTerminalVerifier {
   readonly verifierVersion: typeof FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER;
+  /** Authenticate reversible inclusion with the same checks except anchor depth. */
+  verifyIncluded?(
+    input: Parameters<FraudProofWorkflowTerminalVerifier["verify"]>[0],
+  ): Promise<FraudProofWorkflowTerminal>;
   verify(input: {
     readonly identity: FraudProofWorkflowIdentity;
     readonly workflowId: string;
@@ -170,6 +180,7 @@ export type WorkflowRawFamilyEvidence = Extract<
   FraudProofEvidence,
   {
     readonly kind:
+      | "field_preimage_length_mismatch"
       | "mint_declared_asset_limit"
       | "observers_forbidden_on_untagged_network";
   }
@@ -445,6 +456,7 @@ type WorkflowEvidenceBinding = JournalJsonObject &
     | {
         readonly route: "authenticated_raw_family";
         readonly category:
+          | "fieldPreimageLengthMismatch"
           | "mintDeclaredAssetLimit"
           | "observersForbiddenOnUntaggedNetwork";
         readonly headerHash: string;
@@ -487,6 +499,23 @@ const persistedArtifact = ({
     familyArtifact,
   }) as PersistedArtifactEnvelope;
 
+// Inclusion may move when the same commitment is re-included after rollback.
+// Keep the original locator in the journal for provenance; reuse proof material
+// only when every content/commitment field still matches fresh admitted evidence.
+const workflowEvidenceContentDigest = (
+  binding: WorkflowEvidenceBinding,
+): string => {
+  const { l1BlockHash, l1Slot, ...content } = binding;
+  if (
+    !/^[0-9a-f]{64}$/u.test(l1BlockHash) ||
+    !/^(0|[1-9][0-9]*)$/u.test(l1Slot)
+  )
+    throw new Error(
+      "workflow evidence binding has an invalid L1 source locator",
+    );
+  return journalJsonDigest(content);
+};
+
 const requirePreparedArtifact = ({
   entries,
   evidenceBinding,
@@ -507,8 +536,8 @@ const requirePreparedArtifact = ({
   }
   const envelope = prepared.event.artifact as PersistedArtifactEnvelope;
   if (
-    JSON.stringify(envelope.evidenceBinding) !==
-      JSON.stringify(evidenceBinding) ||
+    workflowEvidenceContentDigest(envelope.evidenceBinding) !==
+      workflowEvidenceContentDigest(evidenceBinding) ||
     envelope.releaseFinality.deploymentIdentityDigest !==
       releaseFinality.deploymentIdentityDigest ||
     envelope.releaseFinality.blueprintHash !== releaseFinality.blueprintHash ||
@@ -672,16 +701,18 @@ const normalizeNonNegativeLovelace = (value: string, field: string): string => {
   return value;
 };
 
-const normalizeTerminal = ({
+export const normalizeWorkflowTerminal = ({
   identity,
   terminal,
   entries,
   releaseFinality,
+  inclusionOnly = false,
 }: {
   readonly identity: FraudProofWorkflowIdentity;
   readonly terminal: FraudProofWorkflowTerminal;
   readonly entries: readonly FraudProofWorkflowJournalEntry[];
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+  readonly inclusionOnly?: boolean;
 }): FraudProofWorkflowTerminal => {
   if (terminal.schemaVersion !== FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION) {
     throw new Error("workflow terminal has an unsupported schema");
@@ -815,7 +846,7 @@ const normalizeTerminal = ({
   if (
     !Number.isSafeInteger(terminal.observedAt.confirmationDepth) ||
     terminal.observedAt.confirmationDepth <
-      releaseFinality.policy.confirmationDepth
+      (inclusionOnly ? 1 : releaseFinality.policy.confirmationDepth)
   ) {
     throw new Error(
       `terminal observation confirmation depth is below the release threshold: required=${releaseFinality.policy.confirmationDepth.toString()} actual=${String(terminal.observedAt.confirmationDepth)} policy=${releaseFinality.policyDigest}`,
@@ -908,6 +939,13 @@ export type FraudProofWorkflowRunResult =
       readonly classification: CanonicalBlockClassification;
     }
   | {
+      readonly kind: "terminal_included";
+      readonly workflowId: string;
+      readonly identity: FraudProofWorkflowIdentity;
+      readonly terminal: FraudProofWorkflowTerminal;
+      readonly entries: readonly FraudProofWorkflowJournalEntry[];
+    }
+  | {
       readonly kind: "completed";
       readonly workflowId: string;
       readonly identity: FraudProofWorkflowIdentity;
@@ -916,6 +954,8 @@ export type FraudProofWorkflowRunResult =
     }
   | {
       readonly kind: "pending" | "stalled";
+      /** Keep the objective active and resume on fresh chain observation. */
+      readonly resumeOnObservation?: true;
       readonly workflowId: string;
       readonly identity: FraudProofWorkflowIdentity;
       readonly reason: string;
@@ -1097,6 +1137,16 @@ const runAdmittedFraudProofWorkflow = async ({
       ...(phase === undefined ? {} : { phase }),
     };
   };
+  const resumeOnObservation = (
+    reason: string,
+  ): FraudProofWorkflowRunResult => ({
+    kind: "pending",
+    resumeOnObservation: true,
+    workflowId,
+    identity,
+    reason,
+    entries,
+  });
 
   if (entries.length === 0) {
     if (workflowJournalIsReconciliationOnly(journal))
@@ -1162,6 +1212,9 @@ const runAdmittedFraudProofWorkflow = async ({
       entries,
     });
 
+  // Limits bound work in this invocation, not the lifetime of the objective.
+  // Journal attempt numbers remain monotonic across automatic continuations.
+  const attemptsAtStart = entries;
   for (let actionNumber = 0; actionNumber < maxActions; actionNumber += 1) {
     fundingRecovery = await readWorkflowFundingRecovery(journal);
     if (fundingRecovery.abandonmentHandoff !== null)
@@ -1176,6 +1229,70 @@ const runAdmittedFraudProofWorkflow = async ({
       artifact: envelope.familyArtifact,
       entries,
     };
+
+    // The journal records submissions, not permanent progress. When the current
+    // chain asks for an older action, reconcile that exact intent first. This
+    // also covers restart after rollback without a separate per-family undo log.
+    const priorLifecycle = [...entries]
+      .reverse()
+      .find(({ event }) => event.kind !== "stalled")?.event;
+    let currentObservation: FraudProofWorkflowObservation | undefined;
+    if (
+      priorLifecycle?.kind !== "completed" &&
+      fundingRecovery.completionHandoff?.completion.kind !== "completed" &&
+      entries.some(({ event }) => event.kind === "confirmed")
+    ) {
+      assertWorkflowJournalActuation({
+        journal,
+        deploymentFingerprint,
+        category,
+        headerHash,
+        checkpoint: "before_observe",
+      });
+      const current = await adapter.observe(context);
+      currentObservation = current;
+      if (current.kind === "action_required") {
+        const intent = latestSubmissionIntent(entries, current.action.actionId);
+        const last = lastActionEvent(entries, current.action.actionId);
+        if (
+          intent !== undefined &&
+          (last?.kind === "confirmed" ||
+            (priorLifecycle !== undefined &&
+              "actionId" in priorLifecycle &&
+              priorLifecycle.actionId !== current.action.actionId &&
+              !(last?.kind === "reconciled" && last.outcome === "not_found")))
+        ) {
+          const fundingAvailable =
+            await reobserveWorkflowFundingReservationTransaction({
+              journal,
+              transactionHash: intent.txHash,
+            });
+          if (!fundingAvailable)
+            return {
+              kind: "pending",
+              resumeOnObservation: true,
+              workflowId,
+              identity,
+              entries,
+              reason:
+                "Required inputs remain reserved by another unresolved transaction",
+            };
+          assertWorkflowJournalActuation({
+            journal,
+            deploymentFingerprint,
+            category,
+            headerHash,
+            checkpoint: "before_reconcile",
+          });
+          await append({
+            kind: "reobserved",
+            actionId: intent.actionId,
+            txHash: intent.txHash,
+          });
+          continue;
+        }
+      }
+    }
 
     // Reconciliation precedes family-state observation. Otherwise a tx that
     // reached L1 immediately could make `observe` report completion before its
@@ -1206,6 +1323,7 @@ const runAdmittedFraudProofWorkflow = async ({
     const unresolvedEvent =
       fundingRecovery.abandonmentHandoff?.submissionIntent ??
       (latestJournalEvent?.kind === "submission_intent" ||
+      latestJournalEvent?.kind === "reobserved" ||
       latestJournalEvent?.kind === "submission_ambiguous" ||
       latestJournalEvent?.kind === "submitted" ||
       latestJournalEvent?.kind === "rebroadcast_intent" ||
@@ -1228,7 +1346,7 @@ const runAdmittedFraudProofWorkflow = async ({
       });
       const priorTxHash = lastKnownTxHash(entries, action.actionId);
       let reconciled: FraudProofWorkflowReconcileResult;
-      let rebroadcastLimit: string | undefined;
+      let rebroadcastAttempted = false;
       try {
         assertWorkflowJournalActuation({
           journal,
@@ -1249,7 +1367,8 @@ const runAdmittedFraudProofWorkflow = async ({
             : {
                 signedTransactionCborHex:
                   fundingRecovery.transition.signedTransactionCborHex,
-                ...(fundingRecovery.abandonmentHandoff !== null
+                ...(fundingRecovery.abandonmentHandoff !== null ||
+                workflowJournalIsReconciliationOnly(journal)
                   ? {}
                   : {
                       authorizeResubmission: async (transaction: {
@@ -1269,6 +1388,26 @@ const runAdmittedFraudProofWorkflow = async ({
                           throw new Error(
                             "rebroadcast changed the exact durable transaction intent",
                           );
+                        const previousBroadcast = [...entries]
+                          .reverse()
+                          .find(
+                            ({ event }) =>
+                              (event.kind === "submission_intent" ||
+                                event.kind === "rebroadcast_intent") &&
+                              event.txHash === intent.txHash,
+                          );
+                        // Historical observation catch-up can wake this same
+                        // objective repeatedly. Existing journal timestamps
+                        // bound network retries; they never establish absence.
+                        if (
+                          previousBroadcast !== undefined &&
+                          now().getTime() -
+                            Date.parse(previousBroadcast.recordedAt) <
+                            30_000
+                        )
+                          throw new Error(
+                            "Recorded transaction rebroadcast is waiting for its retry interval",
+                          );
                         const broadcasts =
                           1 +
                           entries.filter(
@@ -1276,10 +1415,6 @@ const runAdmittedFraudProofWorkflow = async ({
                               event.kind === "rebroadcast_intent" &&
                               event.txHash === intent.txHash,
                           ).length;
-                        if (broadcasts >= maxSubmissionAttempts) {
-                          rebroadcastLimit = `identical rebroadcast attempts exhausted for ${action.actionId}; exact intent remains unresolved`;
-                          throw new Error(rebroadcastLimit);
-                        }
                         await assertWorkflowFundingReservationReadyToSubmit({
                           journal,
                           transactionHash: intent.txHash,
@@ -1297,6 +1432,7 @@ const runAdmittedFraudProofWorkflow = async ({
                           txHash: intent.txHash,
                           attempt: broadcasts + 1,
                         });
+                        rebroadcastAttempted = true;
                         // Durability is asynchronous; revoke checks must follow it too.
                         assertWorkflowJournalActuation({
                           journal,
@@ -1317,23 +1453,31 @@ const runAdmittedFraudProofWorkflow = async ({
           checkpoint: "before_reconcile",
         });
       } catch (cause) {
+        // A capture exhausted its bounded retries because the canonical head
+        // moved. It establishes neither inclusion nor replacement authority;
+        // retain the exact signed intent and yield for a fresh observation.
+        if (cause instanceof LocalKupmiosCheckpointChangedError)
+          return resumeOnObservation(
+            `reconciliation awaits a stable boundary for ${action.actionId}: ${cause.message}`,
+          );
+        if (cause instanceof LocalKupmiosTransportUnavailableError) throw cause;
         return await stalled(
           `reconciliation failed for ${action.actionId}: ${formatUnknownError(cause)}`,
         );
       }
-      if (rebroadcastLimit !== undefined)
-        return await stalled(rebroadcastLimit);
       if (
         fundingRecovery.abandonmentHandoff !== null &&
         reconciled.kind !== "not_found"
-      )
-        return await stalled(
-          `abandoned transaction ${intent.txHash} no longer has authenticated expiry: ${reconciled.kind}; exact outcome remains unresolved`,
-        );
-      if (reconciled.kind === "unknown")
-        return await stalled(
-          `reconciliation remains unknown for ${action.actionId}: ${reconciled.reason}`,
-        );
+      ) {
+        const reason = `abandoned transaction ${intent.txHash} no longer has authenticated replacement evidence: ${reconciled.kind}; exact outcome remains unresolved`;
+        if (workflowJournalIsReconciliationOnly(journal))
+          return { kind: "pending", workflowId, identity, reason, entries };
+        return await stalled(reason);
+      }
+      if (reconciled.kind === "unknown") {
+        const reason = `reconciliation remains unknown for ${action.actionId}: ${reconciled.reason}`;
+        return resumeOnObservation(reason);
+      }
       if (reconciled.kind === "conflict") {
         await conflictWorkflowFundingReservationTransaction({
           journal,
@@ -1386,6 +1530,12 @@ const runAdmittedFraudProofWorkflow = async ({
           outcome: "pending",
           ...(txHash === undefined ? {} : { txHash }),
         });
+        // A fresh admitted observation may retry these exact bytes. Do not
+        // repeatedly rebroadcast them inside the runner's one-second poll loop.
+        if (rebroadcastAttempted)
+          return resumeOnObservation(
+            `recorded transaction for ${action.actionId} awaits canonical reconciliation`,
+          );
         return {
           kind: "pending",
           workflowId,
@@ -1432,7 +1582,10 @@ const runAdmittedFraudProofWorkflow = async ({
       });
       fundingRecovery = await readWorkflowFundingRecovery(journal);
       context = { ...context, entries };
+      currentObservation = undefined;
     }
+
+    await releaseIdleWorkflowFundingReservation({ journal, workflowId });
 
     assertWorkflowJournalActuation({
       journal,
@@ -1442,11 +1595,12 @@ const runAdmittedFraudProofWorkflow = async ({
       checkpoint: "before_observe",
     });
     const observation: FraudProofWorkflowObservation =
-      fundingRecovery.completionHandoff === null
-        ? await adapter.observe({
+      fundingRecovery.completionHandoff?.completion.kind !== "completed"
+        ? (currentObservation ??
+          (await adapter.observe({
             ...context,
             reconciliationOnly: workflowJournalIsReconciliationOnly(journal),
-          })
+          })))
         : {
             kind: "completed",
             terminal: fundingRecovery.completionHandoff.completion.terminal,
@@ -1462,6 +1616,10 @@ const runAdmittedFraudProofWorkflow = async ({
     }
     if (observation.kind === "completed") {
       let terminal: FraudProofWorkflowTerminal;
+      const inclusionOnly =
+        observation.terminal.observedAt.confirmationDepth <
+          releaseFinality.policy.confirmationDepth &&
+        terminalVerifier.verifyIncluded !== undefined;
       try {
         assertWorkflowJournalActuation({
           journal,
@@ -1470,9 +1628,13 @@ const runAdmittedFraudProofWorkflow = async ({
           headerHash,
           checkpoint: "before_terminal_verify",
         });
-        terminal = normalizeTerminal({
+        terminal = normalizeWorkflowTerminal({
           identity,
-          terminal: await terminalVerifier.verify({
+          terminal: await (
+            inclusionOnly
+              ? terminalVerifier.verifyIncluded!
+              : terminalVerifier.verify
+          )({
             identity,
             workflowId,
             releaseFinality,
@@ -1482,8 +1644,11 @@ const runAdmittedFraudProofWorkflow = async ({
           }),
           entries,
           releaseFinality,
+          inclusionOnly,
         });
-        if (fundingRecovery.completionHandoff !== null) {
+        if (
+          fundingRecovery.completionHandoff?.completion.kind === "completed"
+        ) {
           const saved = fundingRecovery.completionHandoff.completion.terminal;
           const withoutDepth = (value: FraudProofWorkflowTerminal) => ({
             ...value,
@@ -1501,7 +1666,7 @@ const runAdmittedFraudProofWorkflow = async ({
             throw new Error(
               "released workflow terminal facts changed on the canonical chain",
             );
-          terminal = normalizeTerminal({
+          terminal = normalizeWorkflowTerminal({
             identity,
             terminal: saved,
             entries,
@@ -1516,6 +1681,7 @@ const runAdmittedFraudProofWorkflow = async ({
           checkpoint: "before_terminal_verify",
         });
       } catch (cause) {
+        if (cause instanceof LocalKupmiosTransportUnavailableError) throw cause;
         return await stalled(
           `terminal verification failed: ${formatUnknownError(cause)}`,
         );
@@ -1523,15 +1689,27 @@ const runAdmittedFraudProofWorkflow = async ({
       const terminalDigest = journalJsonDigest(
         normalizeJournalJson(terminal, "workflow terminal"),
       );
+      const kind = inclusionOnly ? "terminal_included" : "completed";
+      const savedInclusion = fundingRecovery.completionHandoff;
+      if (
+        inclusionOnly &&
+        savedInclusion?.completion.kind === "terminal_included"
+      ) {
+        // Its signed actions and original inclusion handoff already survive a
+        // restart. Re-observe next time rather than persisting every depth tick.
+        return { kind, workflowId, identity, terminal, entries };
+      }
       if (entries.at(-1)?.event.kind !== "completed") {
-        const handoff: WorkflowFundingCompletionHandoff =
-          fundingRecovery.completionHandoff ?? {
-            workflowId,
-            identity,
-            preparedArtifactDigest: journalJsonDigest(envelope),
-            expectedJournalSequence: entries.length,
-            completion: { kind: "completed", terminal, terminalDigest },
-          };
+        const handoff: WorkflowFundingCompletionHandoff = (fundingRecovery
+          .completionHandoff?.completion.kind === kind
+          ? fundingRecovery.completionHandoff
+          : null) ?? {
+          workflowId,
+          identity,
+          preparedArtifactDigest: journalJsonDigest(envelope),
+          expectedJournalSequence: entries.length,
+          completion: { kind, terminal, terminalDigest },
+        };
         await releaseWorkflowFundingReservation({ journal, handoff });
         assertWorkflowJournalActuation({
           journal,
@@ -1540,10 +1718,10 @@ const runAdmittedFraudProofWorkflow = async ({
           headerHash,
           checkpoint: "before_terminal_verify",
         });
-        await append({ kind: "completed", terminal, terminalDigest });
+        await append({ kind, terminal, terminalDigest });
       }
       return {
-        kind: "completed",
+        kind,
         workflowId,
         identity,
         terminal,
@@ -1553,6 +1731,14 @@ const runAdmittedFraudProofWorkflow = async ({
     if (observation.kind === "conflict") {
       return await stalled(`chain conflict: ${observation.reason}`);
     }
+    if (workflowJournalIsReconciliationOnly(journal))
+      return {
+        kind: "pending",
+        workflowId,
+        identity,
+        entries,
+        reason: "Canonical workflow requires fresh submission authority",
+      };
     const action = validateAction(observation.action);
     const latest = lastActionEvent(entries, action.actionId);
     if (latest?.kind === "confirmed") {
@@ -1562,9 +1748,12 @@ const runAdmittedFraudProofWorkflow = async ({
     }
 
     const priorAttempts = attemptCount(entries, action.actionId);
-    if (priorAttempts >= maxSubmissionAttempts) {
-      return await stalled(
-        `submission attempts exhausted for ${action.actionId}`,
+    if (
+      priorAttempts - attemptCount(attemptsAtStart, action.actionId) >=
+      maxSubmissionAttempts
+    ) {
+      return resumeOnObservation(
+        `submission batch exhausted for ${action.actionId}; objective remains active`,
       );
     }
     let preflight: FraudProofWorkflowPreflight;
@@ -1597,6 +1786,12 @@ const runAdmittedFraudProofWorkflow = async ({
       }
       preflight = validatePreflight({ action, preflight: captured });
     } catch (cause) {
+      if (
+        cause instanceof WorkflowActionChangedError ||
+        cause instanceof WorkflowFundingReservationUnavailableError
+      )
+        return resumeOnObservation(cause.message);
+      if (cause instanceof LocalKupmiosTransportUnavailableError) throw cause;
       return await stalled(
         `preflight failed for ${action.actionId}: ${formatUnknownError(cause)}`,
         adapterPreflightFailed ? "preflight" : undefined,
@@ -1636,6 +1831,9 @@ const runAdmittedFraudProofWorkflow = async ({
         },
       });
     } catch (cause) {
+      if (cause instanceof WorkflowFundingReservationUnavailableError)
+        return resumeOnObservation(cause.message);
+      if (cause instanceof LocalKupmiosTransportUnavailableError) throw cause;
       return await stalled(
         `funding reservation failed for ${action.actionId}: ${formatUnknownError(cause)}`,
       );
@@ -1650,10 +1848,18 @@ const runAdmittedFraudProofWorkflow = async ({
       headerHash,
       checkpoint: "before_submit",
     });
-    await assertWorkflowFundingReservationReadyToSubmit({
-      journal,
-      transactionHash: preflight.txHash,
-    });
+    try {
+      await assertWorkflowFundingReservationReadyToSubmit({
+        journal,
+        transactionHash: preflight.txHash,
+      });
+    } catch (cause) {
+      if (cause instanceof WorkflowFundingReservationUnavailableError)
+        return resumeOnObservation(
+          `signed transaction ${preflight.txHash} requires canonical reconciliation: ${cause.message}`,
+        );
+      throw cause;
+    }
     assertWorkflowJournalActuation({
       journal,
       deploymentFingerprint,
@@ -1711,7 +1917,9 @@ const runAdmittedFraudProofWorkflow = async ({
     // The next iteration sees an unresolved action and must reconcile before
     // it can create another submission intent.
   }
-  return await stalled(`workflow exceeded ${maxActions.toString()} actions`);
+  return resumeOnObservation(
+    `workflow processed ${maxActions.toString()} actions; objective remains active`,
+  );
 };
 
 /** Canonical-block classified workflow entry retained for all ordinary families. */
@@ -1747,7 +1955,7 @@ export const runFraudProofWorkflow = async ({
   const classification = await classifyCanonicalBlockViolations({
     evidence,
     detections,
-    minimumConfirmationDepth: verified.releaseFinality.policy.confirmationDepth,
+    minimumConfirmationDepth: 1,
   });
   if (classification.decision !== "fault_detected") {
     return { kind: classification.decision, classification };
@@ -1825,7 +2033,7 @@ export const runDaHashPreimageWorkflowFromRetainedDa = async ({
     observation,
     sources,
     ...(retries === undefined ? {} : { retries }),
-    minimumConfirmationDepth: verified.releaseFinality.policy.confirmationDepth,
+    minimumConfirmationDepth: 1,
   });
   if (
     routed.schemaVersion !== FRAUD_PROOF_EVIDENCE_ROUTE ||
@@ -1948,13 +2156,13 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
   const admittedObservation =
     await admitAuthenticatedStateQueueHeaderObservation({
       observation,
-      minimumConfirmationDepth: releaseFinality.policy.confirmationDepth,
+      minimumConfirmationDepth: 1,
     });
   const routed = await fetchFraudProofEvidence({
     observation: admittedObservation,
     sources,
     ...(retries === undefined ? {} : { retries }),
-    minimumConfirmationDepth: releaseFinality.policy.confirmationDepth,
+    minimumConfirmationDepth: 1,
   });
   if (routed.kind === "canonical_decodability") {
     if (
@@ -2003,19 +2211,21 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
       "authenticated Q44 source-leaf defect requires the dedicated daHashPreimage workflow",
     );
   }
-  if (routed.kind === "field_preimage_length_mismatch") {
-    throw new Error(
-      "authenticated field-length source defect requires the dedicated fieldPreimageLengthMismatch workflow",
-    );
-  }
   if (
+    routed.kind === "field_preimage_length_mismatch" ||
     routed.kind === "mint_declared_asset_limit" ||
     routed.kind === "observers_forbidden_on_untagged_network"
   ) {
     const category =
-      routed.kind === "mint_declared_asset_limit"
-        ? "mintDeclaredAssetLimit"
-        : "observersForbiddenOnUntaggedNetwork";
+      routed.kind === "field_preimage_length_mismatch"
+        ? "fieldPreimageLengthMismatch"
+        : routed.kind === "mint_declared_asset_limit"
+          ? "mintDeclaredAssetLimit"
+          : "observersForbiddenOnUntaggedNetwork";
+    const headerHash =
+      routed.kind === "field_preimage_length_mismatch"
+        ? routed.evidence.prepared.headerHash
+        : routed.evidence.headerHash;
     if (registryScope.length !== 1 || registryScope[0] !== category)
       throw new Error(
         `authenticated raw-family evidence requires exact ${category} registry`,
@@ -2023,7 +2233,7 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
     const evidenceBinding = normalizeJournalJson({
       route: "authenticated_raw_family",
       category,
-      headerHash: routed.evidence.headerHash,
+      headerHash,
       payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
       payloadSha256: routed.evidence.payloadSha256,
       l1BlockHash: admittedObservation.chainPoint.blockHash,
@@ -2032,7 +2242,7 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
     return await runAdmittedFraudProofWorkflow({
       deploymentFingerprint: normalizedDeploymentFingerprint,
       category,
-      headerHash: routed.evidence.headerHash,
+      headerHash,
       evidenceBinding,
       prepareFamilyArtifact: async (adapter) => {
         if (adapter.prepareRaw === undefined)

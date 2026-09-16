@@ -35,7 +35,10 @@ import {
   parseContractDeploymentReferenceScriptAuthPolicyId,
 } from "../src/inspect-contracts.js";
 import { fraudSlashEconomicsFromDeploymentManifest } from "../src/remove-fraudulent-block.js";
-import { bindFraudProofWorkflowDeployment } from "../src/workflow/deployment-manifest-binding.js";
+import {
+  bindFraudProofTerminalDeployment,
+  bindFraudProofWorkflowDeployment,
+} from "../src/workflow/deployment-manifest-binding.js";
 
 const blueprintJson = "{}";
 const script = {
@@ -270,4 +273,36 @@ describe("manifest-bound builder document", () => {
     await expect(current.bind()).rejects.toThrow("manifest identity mismatch");
     expect(dependencies.resolve).not.toHaveBeenCalled();
   });
+});
+
+it("binds completed observation metadata without admitting an executable thread decoder", async () => {
+  const current = fixture();
+  dependencies.resolve.mockResolvedValue({
+    ...current.resolved,
+    contracts: {
+      ...current.resolved.contracts,
+      doubleSpend: {
+        ...current.resolved.contracts.doubleSpend,
+        steps: [{ spendingScriptAddress: "published-step-address" }],
+      },
+    },
+  });
+  await expect(current.bind()).rejects.toThrow("expected 0 computation steps");
+  const terminal = await bindFraudProofTerminalDeployment({
+    manifest: current.manifest,
+    blueprintJson,
+    deploymentInfo: current.deploymentInfo,
+    category: "doubleSpend",
+    headerHash: "99".repeat(28),
+    proverCredential: "aa".repeat(28),
+  });
+  expect(terminal.definition.computationThread.steps).toEqual([
+    { role: "computation_thread_step_01", address: "published-step-address" },
+  ]);
+  expect(Object.keys(terminal).sort()).toEqual([
+    "definition",
+    "deploymentFingerprint",
+    "releaseEconomics",
+    "releaseFinality",
+  ]);
 });

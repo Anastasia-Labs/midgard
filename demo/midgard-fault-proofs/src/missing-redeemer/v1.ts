@@ -88,8 +88,8 @@ import {
   MissingRedeemerStep05DatumSchema,
 } from "./schemas.js";
 import {
+  createMissingRedeemerStagedPlanner,
   hashMissingRedeemerGrammarCheckpoint,
-  planMissingRedeemerStagedWalk,
 } from "./staged-plan.js";
 
 export const MISSING_REDEEMER_CONFIG_KEYS = Object.freeze([
@@ -298,7 +298,9 @@ export const createManifestBoundMissingRedeemerWorkflow = async (
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
   });
+  const planStagedWalk = createMissingRedeemerStagedPlanner();
   const actuator = createMissingRedeemerActuator({
+    planStagedWalk,
     binding,
     lucid: config.lucid,
     signer: config.signer,
@@ -376,7 +378,7 @@ export const createManifestBoundMissingRedeemerWorkflow = async (
               : "direct",
         },
       };
-    const staged = planMissingRedeemerStagedWalk({
+    const staged = planStagedWalk({
       transactionId: artifact.evidence.subject.transaction_id,
       fieldPreimageCbor: artifact.evidence.fieldPreimageHex,
     });
@@ -454,6 +456,7 @@ export const createManifestBoundMissingRedeemerWorkflow = async (
     publications: l1.publications,
     requirementForAction: async ({ action, artifact }) =>
       missingRedeemerFieldRequirement({
+        planStagedWalk,
         action: await actionFor(action, restore(artifact)),
         artifact: restore(artifact),
         owner: config.signer.paymentKeyHash,

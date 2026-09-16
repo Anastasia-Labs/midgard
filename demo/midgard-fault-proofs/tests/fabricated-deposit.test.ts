@@ -64,6 +64,7 @@ import {
   type FabricatedDepositArtifact,
   requireFabricatedDepositArtifact,
 } from "../src/workflow/fabricated-deposit-evidence.js";
+import { normalizeJournalJson } from "../src/workflow/journal.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -799,7 +800,7 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
     } as unknown as CanonicalBlockEvidence;
   };
 
-  it("derives an absence fault from concrete L1 state and rejects artifact tampering", async () => {
+  it("roundtrips an absence fault through journal normalization and rejects artifact tampering", async () => {
     const fixture = await buildDepositsBlockFixture({ leaves: [FI_LEAF] });
     const authority = createFabricatedDepositEvidenceAuthority({
       lucid: {
@@ -824,6 +825,24 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
       kind: "absent_identity",
       unspentOutRef: `${FABRICATED_DEPOSIT_ID.transactionId}#0`,
     });
+    await expect(
+      authority.readmit(
+        JSON.parse(
+          JSON.stringify(normalizeJournalJson(detections[0]!.artifact)),
+        ),
+      ),
+    ).resolves.toEqual(detections[0]!.artifact);
+    await expect(
+      authority.readmit(
+        normalizeJournalJson({
+          ...detections[0]!.artifact,
+          depositInclusion: {
+            ...detections[0]!.artifact.depositInclusion,
+            depositsPhasRoot: h32(0x77),
+          },
+        }),
+      ),
+    ).rejects.toThrow(/digest mismatch/u);
     await expect(
       authority.readmit({
         ...detections[0]!.artifact,
@@ -930,9 +949,13 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
         h28(0x44),
       );
       expect(detections).toHaveLength(1);
-      await expect(authority.readmit(detections[0]!.artifact)).resolves.toEqual(
-        detections[0]!.artifact,
-      );
+      await expect(
+        authority.readmit(
+          JSON.parse(
+            JSON.stringify(normalizeJournalJson(detections[0]!.artifact)),
+          ),
+        ),
+      ).resolves.toEqual(detections[0]!.artifact);
       expect(queries).toContain(eventAddress);
       expect(queries).not.toContain(mintPolicyAddress);
       liveEventAddress = mintPolicyAddress;

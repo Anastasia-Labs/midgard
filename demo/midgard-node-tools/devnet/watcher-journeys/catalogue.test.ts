@@ -41,12 +41,18 @@ describe("automatic journey catalogue", () => {
     ).toHaveLength(13);
   });
 
-  it("selects the same runner fixtures for the trace and direct-family gate", () => {
+  it("selects the verified trace, direct, and event fixtures for the live gate", () => {
     expect(
       selectJourneyFixtures(
-        "transitionTrace,observersForbiddenOnUntaggedNetwork",
+        "transitionTrace,observersForbiddenOnUntaggedNetwork,fabricatedDeposit,fabricatedWithdrawal,withdrawalMistag",
       ).map(({ category }) => category),
-    ).toEqual(["transitionTrace", "observersForbiddenOnUntaggedNetwork"]);
+    ).toEqual([
+      "transitionTrace",
+      "observersForbiddenOnUntaggedNetwork",
+      "fabricatedDeposit",
+      "fabricatedWithdrawal",
+      "withdrawalMistag",
+    ]);
   });
 
   it("registers only distinct assigned non-interactive fixtures", () => {
@@ -61,6 +67,8 @@ describe("automatic journey catalogue", () => {
     "unknown",
     "transitionTrace,",
     "zeroInput,zeroInput",
+    "doubleWithdraw",
+    "crossBlockDuplicateEvent",
   ])(
     "rejects unsupported or ambiguous selection %s before live work",
     (selection) => {

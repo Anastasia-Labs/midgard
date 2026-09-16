@@ -232,20 +232,7 @@ export const createExecutionSourceScriptDecodingActuator = (
           });
         });
       return await captureCursorRemoval({
-        category: {
-          name: "executionSourceScriptDecoding",
-          categoryId,
-          firstStepDeploymentEntry: "fraudProofExecutionSourceScriptDecoding",
-          firstStepScriptHash: config.contracts.steps[0].spendingScriptHash,
-          fraudProof: {
-            policyId: config.contracts.fraudProof.policyId,
-            spendingScriptHash:
-              config.binding.resolvedContracts.contracts.fraudProof
-                .spendingScriptHash,
-            spendingScriptAddress:
-              config.contracts.fraudProof.spendingScriptAddress,
-          },
-        } as never,
+        category: "executionSourceScriptDecoding",
         lucid: config.lucid,
         blueprint: config.binding.blueprint,
         deploymentInfo: config.binding.deploymentInfo,

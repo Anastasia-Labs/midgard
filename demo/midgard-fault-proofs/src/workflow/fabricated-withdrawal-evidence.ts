@@ -110,11 +110,35 @@ const artifactDigest = (
     .update("\0")
     .update(value.withdrawalIndex.toString())
     .update("\0")
-    .update(JSON.stringify(value.withdrawalInclusion))
+    // Journal normalization reorders object keys; bind the schema fields in
+    // their original digest order on both preparation and re-admission.
+    .update(
+      JSON.stringify({
+        committedWithdrawalIdCbor:
+          value.withdrawalInclusion.committedWithdrawalIdCbor,
+        committedWithdrawalInfoCbor:
+          value.withdrawalInclusion.committedWithdrawalInfoCbor,
+        withdrawalsPhasRoot: value.withdrawalInclusion.withdrawalsPhasRoot,
+        withdrawalMembershipProofCbor:
+          value.withdrawalInclusion.withdrawalMembershipProofCbor,
+      }),
+    )
     .update("\0")
     .update(JSON.stringify(value.authenticContent))
     .update("\0")
-    .update(JSON.stringify(value.l1Evidence))
+    .update(
+      JSON.stringify(
+        value.l1Evidence.kind === "absent_identity"
+          ? {
+              kind: value.l1Evidence.kind,
+              unspentOutRef: value.l1Evidence.unspentOutRef,
+            }
+          : {
+              kind: value.l1Evidence.kind,
+              eventOutRef: value.l1Evidence.eventOutRef,
+            },
+      ),
+    )
     .digest("hex");
 
 const outRef = (utxo: Pick<UTxO, "txHash" | "outputIndex">): string =>

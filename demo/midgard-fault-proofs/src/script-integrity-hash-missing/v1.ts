@@ -10,7 +10,7 @@ import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scr
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
-  workflowActuationDecisionDigest,
+  workflowActuationAuthorizingDecisionDigest,
   workflowJournalIsReconciliationOnly,
 } from "../workflow/actuation-permit.js";
 import {
@@ -320,7 +320,10 @@ export const executeManifestBoundScriptIntegrityHashMissingWorkflow = async ({
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
 }): Promise<FraudProofWorkflowRunResult> => {
-  if (workflowActuationDecisionDigest(journal) !== workflow.decisionDigest)
+  if (
+    workflowActuationAuthorizingDecisionDigest(journal) !==
+    workflow.decisionDigest
+  )
     throw new Error(
       "scriptIntegrityHashMissing journal actuation permit changed decision digest",
     );

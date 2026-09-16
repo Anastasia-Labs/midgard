@@ -4306,8 +4306,8 @@ describe("authenticated state-queue indexer", () => {
                 yield_to_ref_input_index: 0n,
                 timed_out_header_hash: first.headerHash,
                 removal_approach: {
-                  PruneTimedOutBlockDescendant: {
-                    confirmed_state_ref_input_index: 0n,
+                  PruneUnattestedBlockDescendant: {
+                    predecessor_ref_input_index: 0n,
                     timed_out_node_input_outref: {
                       transactionId: bootstrapBlock.txHash,
                       outputIndex: 1n,
@@ -4353,7 +4353,7 @@ describe("authenticated state-queue indexer", () => {
     expect(timedOut.state?.history.at(-1)?.correctionTransition).toMatchObject({
       transactionHash: timeoutBlock.txHash,
       deploymentIdentityDigest: policy.deploymentMarker.manifestId,
-      removalApproach: "PruneTimedOutBlockDescendant",
+      removalApproach: "PruneUnattestedBlockDescendant",
       timedOutHeaderHash: first.headerHash,
       removedHeaderHashes: [second.headerHash],
       consumedQueueOutRefs: [firstOutRef, secondOutRef].sort(),

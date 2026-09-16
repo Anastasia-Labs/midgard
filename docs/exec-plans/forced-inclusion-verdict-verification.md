@@ -342,11 +342,16 @@ Ambiguous submitted transactions must be reconciled before retry or replacement.
 
 Use the [E2E skill](../../.agents/skills/midgard-e2e-acceptance/SKILL.md) and its
 [live reference](../../.agents/skills/midgard-e2e-acceptance/references/live-acceptance.md).
-The current runbook currency check fails on its stale
-`--state-correction-release-evidence <path>` option; log
-`/tmp/forced-runbook-currency-14.log`. Reconcile current finalizer help and source
-before live operations; do not copy stale command blocks. No live operation was
-attempted. Retain current CLI help with the release handoff.
+The runbook currency check previously failed on a stale
+`--state-correction-release-evidence <path>` option that the finalizer never
+implemented; the option has been removed from the runbook and its validator,
+and the check passes against current finalizer source. The finalizer's two
+local readiness gates (`state_correction_local_workflow_readiness`,
+`availability_challenge_readiness`) were removed as redundant: the watcher
+refuses to start without the exact catalogue installed, and the acceptance
+aggregate requires one verified workflow journal per family. Do not copy stale
+command blocks. No live operation was attempted. Retain current CLI help with
+the release handoff.
 
 Live acceptance must include both dishonest forced verdict directions through
 public L1+DA reconstruction and installed production workflows, terminal proof

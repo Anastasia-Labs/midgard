@@ -319,20 +319,7 @@ export const createUnusedRedeemerActuator = (
         });
       }
       return await captureCursorRemoval({
-        category: {
-          name: "unusedRedeemer",
-          categoryId,
-          firstStepDeploymentEntry: "fraudProofUnusedRedeemer",
-          firstStepScriptHash: config.contracts.steps[0].spendingScriptHash,
-          fraudProof: {
-            policyId: config.contracts.fraudProof.policyId,
-            spendingScriptHash:
-              config.binding.resolvedContracts.contracts.fraudProof
-                .spendingScriptHash,
-            spendingScriptAddress:
-              config.contracts.fraudProof.spendingScriptAddress,
-          },
-        } as never,
+        category: "unusedRedeemer",
         lucid: config.lucid,
         blueprint: config.binding.blueprint,
         deploymentInfo: config.binding.deploymentInfo,

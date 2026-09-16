@@ -6,6 +6,7 @@ import { isAbsolute, normalize } from "node:path";
 import {
   CML,
   Kupmios,
+  type KupmiosOptions,
   type RewardAccountState,
   stakeCredentialOf,
 } from "@lucid-evolution/lucid";
@@ -190,8 +191,9 @@ export class WatcherLocalKupmios extends Kupmios {
     kupoUrl: string,
     ogmiosUrl: string,
     native: WatcherNativeRewardAccountQuery,
+    options?: KupmiosOptions,
   ) {
-    super(kupoUrl, ogmiosUrl);
+    super(kupoUrl, ogmiosUrl, options);
     this.#native = native;
   }
 

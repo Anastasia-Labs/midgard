@@ -48,6 +48,8 @@ const localObservation = Object.freeze(
 ) as WatcherLocalKupmiosNativeObservation;
 
 const bridge = () => {
+  const recoverExisting = vi.fn(async () => 0);
+  const retryDeferredClassification = vi.fn(async () => undefined);
   const invalidateForRollback = vi.fn();
   const prepareForRecovery = vi.fn(async () => ({
     observationDigest: "00".repeat(32),
@@ -60,10 +62,14 @@ const bridge = () => {
     target: null,
   }));
   return {
+    recoverExisting,
+    retryDeferredClassification,
     invalidateForRollback,
     prepareForRecovery,
     reconcileAndDispatch,
     value: Object.freeze({
+      recoverExisting,
+      retryDeferredClassification,
       invalidateForRollback,
       prepareForRecovery,
       reconcileAndDispatch,
@@ -72,6 +78,368 @@ const bridge = () => {
 };
 
 describe("production state-queue runtime V1", () => {
+  it.each([
+    { relevance: "quiet", failOnce: false, rollback: false },
+    { relevance: "touched", failOnce: false, rollback: false },
+    { relevance: "quiet", failOnce: true, rollback: false },
+    { relevance: "touched", failOnce: true, rollback: false },
+    { relevance: "quiet", failOnce: false, rollback: true },
+  ] as const)(
+    "coalesces finalized classification: next=$relevance failure=$failOnce rollback=$rollback",
+    async ({ relevance, failOnce, rollback }) => {
+      const stable = observation(100, "61", null);
+      const included = observation(130, "62", stable.observationDigest);
+      const newest = observation(131, "63", included.observationDigest);
+      const firstFinalized = observation(101, "64", stable.observationDigest);
+      const secondFinalized = observation(
+        102,
+        "65",
+        firstFinalized.observationDigest,
+      );
+      const recovery = {
+        previous: stable,
+        discardedObservationCount: 0,
+        replayIntersection: point(100, "61"),
+        catchupBoundary: {
+          ...point(100, "61"),
+          finalityDepth: "30",
+          ogmiosTipBlockNo: "129",
+        },
+      };
+      const append = vi.fn(async () => "appended" as const);
+      const observe = vi.fn(async ({ nativeBlock: block }) =>
+        block.blockNo === "101" ? firstFinalized : secondFinalized,
+      );
+      const observeIncluded = vi.fn(async ({ nativeBlock: block }) =>
+        block.blockNo === "130" ? included : newest,
+      );
+      const runtime = await createWatcherStateQueueRuntime({
+        source: {
+          restore: async () => recovery,
+          bootstrap: async () => recovery,
+          observe,
+          observeIncluded,
+          resolveRetainedHeader: async () => {
+            throw new Error("unused");
+          },
+        },
+        store: {
+          readAll: async () => [stable],
+          append,
+          rollbackTo: async () => undefined,
+        },
+      });
+      const decisionBridge = bridge();
+      const availability = {
+        reconcile: vi.fn(async () => undefined),
+        invalidateForRollback: vi.fn(),
+      };
+      const hooks = runtime.bindFaultDecisionBridge(
+        decisionBridge.value,
+        availability,
+      );
+      await hooks.onIncluded!({
+        nativeBlock: nativeBlock(130, "62"),
+        localObservation,
+        relevance: "touched",
+      });
+      decisionBridge.reconcileAndDispatch.mockClear();
+      for (const [height, byte] of [
+        [101, "64"],
+        [102, "65"],
+      ] as const)
+        await hooks.onFinalized({
+          nativeBlock: nativeBlock(height, byte),
+          localObservation,
+          relevance: "touched",
+        });
+      expect(observe).toHaveBeenCalledTimes(2);
+      expect(append).toHaveBeenCalledTimes(2);
+      expect(append).toHaveBeenNthCalledWith(1, firstFinalized);
+      expect(append).toHaveBeenNthCalledWith(2, secondFinalized);
+      expect(availability.reconcile).toHaveBeenNthCalledWith(
+        1,
+        firstFinalized,
+        true,
+      );
+      expect(availability.reconcile).toHaveBeenNthCalledWith(
+        2,
+        secondFinalized,
+        true,
+      );
+      expect(decisionBridge.recoverExisting).toHaveBeenCalledTimes(3);
+      expect(decisionBridge.reconcileAndDispatch).not.toHaveBeenCalled();
+      // Already traversed callbacks cannot consume the pending context refresh.
+      await hooks.onIncluded!({
+        nativeBlock: nativeBlock(130, "62"),
+        localObservation,
+        relevance: "touched",
+      });
+      expect(decisionBridge.reconcileAndDispatch).not.toHaveBeenCalled();
+      if (rollback) {
+        await hooks.onRollback({
+          kind: "point",
+          blockHash: stable.nativePoint.blockHash,
+          slot: stable.nativePoint.slot,
+        });
+        await hooks.onIncluded!({
+          nativeBlock: nativeBlock(131, "63"),
+          localObservation: null,
+          relevance: "quiet",
+        });
+        expect(
+          decisionBridge.prepareForRecovery,
+        ).toHaveBeenCalledExactlyOnceWith(stable);
+        expect(decisionBridge.reconcileAndDispatch).not.toHaveBeenCalled();
+        expect(
+          decisionBridge.retryDeferredClassification,
+        ).toHaveBeenCalledExactlyOnceWith(stable);
+        return;
+      }
+      const fresh = () =>
+        hooks.onIncluded!({
+          nativeBlock: nativeBlock(131, "63"),
+          localObservation: relevance === "touched" ? localObservation : null,
+          relevance,
+        });
+      if (failOnce) {
+        decisionBridge.reconcileAndDispatch.mockRejectedValueOnce(
+          new Error("classifier unavailable"),
+        );
+        await expect(fresh()).rejects.toThrow("classifier unavailable");
+        // A failed classification survives until the next eligible callback,
+        // even after a touched callback has already advanced the queue view.
+        await hooks.onIncluded!({
+          nativeBlock: nativeBlock(132, "66"),
+          localObservation: null,
+          relevance: "quiet",
+        });
+      } else await fresh();
+      expect(decisionBridge.reconcileAndDispatch).toHaveBeenCalledTimes(
+        failOnce ? 2 : 1,
+      );
+      expect(decisionBridge.reconcileAndDispatch).toHaveBeenLastCalledWith(
+        relevance === "touched" ? newest : included,
+      );
+      expect(decisionBridge.retryDeferredClassification).not.toHaveBeenCalled();
+      await hooks.onIncluded!({
+        nativeBlock: nativeBlock(133, "67"),
+        localObservation: null,
+        relevance: "quiet",
+      });
+      expect(decisionBridge.reconcileAndDispatch).toHaveBeenCalledTimes(
+        failOnce ? 2 : 1,
+      );
+      expect(
+        decisionBridge.retryDeferredClassification,
+      ).toHaveBeenCalledExactlyOnceWith(
+        relevance === "touched" ? newest : included,
+      );
+    },
+  );
+
+  it.each([true, false])(
+    "coalesces historical finalized snapshots before the first quiet inclusion (inclusion=%s)",
+    async (hasInclusion) => {
+      const stable = observation(100, "61", null);
+      const first = observation(101, "62", stable.observationDigest);
+      const second = observation(102, "63", first.observationDigest);
+      const latest = observation(103, "64", second.observationDigest);
+      const snapshots = [first, second, latest];
+      let nextSnapshot = 0;
+      const observe = vi.fn(async () => snapshots[nextSnapshot++]!);
+      const observeIncluded = vi.fn(async () => {
+        throw new Error("quiet inclusion must not query queue");
+      });
+      const append = vi.fn(async () => "appended" as const);
+      const runtime = await createWatcherStateQueueRuntime({
+        source: {
+          restore: async () => ({
+            previous: stable,
+            discardedObservationCount: 0,
+            replayIntersection: point(100, "61"),
+            catchupBoundary: {
+              ...point(100, "61"),
+              finalityDepth: "30",
+              ogmiosTipBlockNo: "100",
+            },
+          }),
+          bootstrap: async () => {
+            throw new Error("not used");
+          },
+          observe,
+          ...(hasInclusion ? { observeIncluded } : {}),
+          resolveRetainedHeader: async () => {
+            throw new Error("not used");
+          },
+        },
+        store: {
+          readAll: async () => [stable],
+          append,
+          rollbackTo: async () => undefined,
+        },
+      });
+      // Trusted restore is already caught up to its persisted cursor even
+      // though the native stream still has a historical backlog to deliver.
+      await expect(runtime.caughtUp).resolves.toBeUndefined();
+      const decisionBridge = bridge();
+      const availability = {
+        reconcile: vi.fn(async () => undefined),
+        invalidateForRollback: vi.fn(),
+      };
+      const hooks = runtime.bindFaultDecisionBridge(
+        decisionBridge.value,
+        availability,
+      );
+      for (const [index, byte] of ["62", "63", "64"].entries()) {
+        await hooks.onFinalized({
+          nativeBlock: nativeBlock(101 + index, byte),
+          localObservation,
+          relevance: "touched",
+        });
+        expect(append).toHaveBeenNthCalledWith(index + 1, snapshots[index]);
+        expect(availability.reconcile).toHaveBeenNthCalledWith(
+          index + 1,
+          snapshots[index],
+          true,
+        );
+      }
+      expect(observe).toHaveBeenCalledTimes(3);
+      expect(runtime.current()).toBe(latest);
+      expect(decisionBridge.reconcileAndDispatch).toHaveBeenCalledTimes(
+        hasInclusion ? 0 : 3,
+      );
+      if (!hasInclusion) {
+        expect(decisionBridge.reconcileAndDispatch).toHaveBeenLastCalledWith(
+          latest,
+        );
+        return;
+      }
+      const firstInclusion = nativeBlock(131, "65");
+      await hooks.onIncluded!({
+        nativeBlock: firstInclusion,
+        localObservation: null,
+        relevance: "quiet",
+      });
+      expect(
+        decisionBridge.reconcileAndDispatch,
+      ).toHaveBeenCalledExactlyOnceWith(latest);
+      expect(decisionBridge.recoverExisting).toHaveBeenLastCalledWith({
+        nativeProgress: firstInclusion,
+      });
+      await hooks.onIncluded!({
+        nativeBlock: nativeBlock(132, "66"),
+        localObservation: null,
+        relevance: "quiet",
+      });
+      expect(decisionBridge.reconcileAndDispatch).toHaveBeenCalledOnce();
+      expect(
+        decisionBridge.retryDeferredClassification,
+      ).toHaveBeenCalledExactlyOnceWith(latest);
+      expect(observeIncluded).not.toHaveBeenCalled();
+      expect(append).toHaveBeenCalledTimes(3);
+    },
+  );
+
+  it("advances the volatile view on inclusion and discards it before rollback recovery", async () => {
+    const stable = observation(100, "61", null);
+    const provisional = observation(101, "62", stable.observationDigest);
+    const replacement = observation(101, "63", stable.observationDigest);
+    const recovery = {
+      previous: stable,
+      discardedObservationCount: 0,
+      replayIntersection: point(100, "61"),
+      catchupBoundary: {
+        ...point(100, "61"),
+        finalityDepth: "30",
+        ogmiosTipBlockNo: "129",
+      },
+    };
+    const append = vi.fn(async () => "appended" as const);
+    const observeIncluded = vi.fn(async ({ nativeBlock: block }) =>
+      block.blockHash === provisional.nativePoint.blockHash
+        ? provisional
+        : replacement,
+    );
+    const source: WatcherStateQueueObservationSource = {
+      restore: async () => recovery,
+      bootstrap: async () => recovery,
+      observe: async ({ previous }) => previous,
+      observeIncluded,
+      resolveRetainedHeader: async () => {
+        throw new Error("unused");
+      },
+    };
+    const runtime = await createWatcherStateQueueRuntime({
+      source,
+      store: {
+        readAll: async () => [stable],
+        append,
+        rollbackTo: async () => undefined,
+      },
+    });
+    const decisionBridge = bridge();
+    const availability = {
+      reconcile: vi.fn(async () => undefined),
+      invalidateForRollback: vi.fn(),
+    };
+    const hooks = runtime.bindFaultDecisionBridge(
+      decisionBridge.value,
+      availability,
+    );
+    await hooks.onIncluded!({
+      nativeBlock: nativeBlock(101, "62"),
+      localObservation,
+      relevance: "touched",
+    });
+    expect(runtime.current()).toBe(provisional);
+    expect(decisionBridge.reconcileAndDispatch).toHaveBeenLastCalledWith(
+      provisional,
+    );
+    expect(append).not.toHaveBeenCalled();
+    expect(availability.reconcile).not.toHaveBeenCalled();
+    // Public DA arriving after the touched inclusion is retried on the next
+    // quiet block, using the same authenticated queue before depth 30.
+    await hooks.onIncluded!({
+      nativeBlock: nativeBlock(102, "64"),
+      localObservation: null,
+      relevance: "quiet",
+    });
+    expect(
+      decisionBridge.retryDeferredClassification,
+    ).toHaveBeenCalledExactlyOnceWith(provisional);
+    expect(observeIncluded).toHaveBeenCalledTimes(1);
+    expect(availability.reconcile).not.toHaveBeenCalled();
+    await hooks.onFinalized({
+      nativeBlock: nativeBlock(100, "61"),
+      localObservation,
+      relevance: "touched",
+    });
+    expect(runtime.current()).toBe(provisional);
+    expect(decisionBridge.reconcileAndDispatch).toHaveBeenLastCalledWith(
+      provisional,
+    );
+    expect(availability.reconcile).toHaveBeenLastCalledWith(stable, true);
+    await hooks.onRollback({
+      kind: "point",
+      blockHash: stable.nativePoint.blockHash,
+      slot: stable.nativePoint.slot,
+    });
+    expect(runtime.current()).toBe(stable);
+    await hooks.onIncluded!({
+      nativeBlock: nativeBlock(101, "63"),
+      localObservation,
+      relevance: "touched",
+    });
+    expect(observeIncluded).toHaveBeenLastCalledWith({
+      nativeBlock: nativeBlock(101, "63"),
+      localObservation,
+      previous: stable,
+    });
+    expect(runtime.current()).toBe(replacement);
+    expect(decisionBridge.recoverExisting).toHaveBeenCalledTimes(4);
+  });
+
   it("durably revokes a raw-L1-rejected cache suffix before native replay", async () => {
     const before = observation(100, "51", null);
     const rejected = observation(102, "52", before.observationDigest);
@@ -301,7 +669,7 @@ describe("production state-queue runtime V1", () => {
       relevance: "touched",
     });
     expect(append).not.toHaveBeenCalled();
-    expect(runtime.current()).toBe(before);
+    expect(runtime.current()).toBe(current);
     expect(reconcile).toHaveBeenCalledWith(current, true);
     expect(decisionBridge.reconcileAndDispatch).toHaveBeenCalledWith(current);
     expect(reconcile.mock.invocationCallOrder[0]).toBeLessThan(
@@ -414,6 +782,62 @@ describe("production state-queue runtime V1", () => {
       ).rejects.toThrow(reason);
       await expect(runtime.caughtUp).rejects.toThrow(reason);
       expect(decisionBridge.reconcileAndDispatch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([true, false])(
+    "forwards quiet canonical progress to wake yielded proofs without queue queries (inclusion=%s)",
+    async (hasInclusion) => {
+      const before = observation(100, "44", null);
+      const observe = vi.fn(async () => before);
+      const observeIncluded = vi.fn(async () => before);
+      const append = vi.fn(async () => "appended" as const);
+      const source: WatcherStateQueueObservationSource = {
+        restore: async () => ({
+          previous: before,
+          discardedObservationCount: 0,
+          replayIntersection: point(100, "44"),
+          catchupBoundary: {
+            ...point(100, "44"),
+            finalityDepth: "30",
+            ogmiosTipBlockNo: "130",
+          },
+        }),
+        bootstrap: async () => {
+          throw new Error("not used");
+        },
+        observe,
+        ...(hasInclusion ? { observeIncluded } : {}),
+        resolveRetainedHeader: async () => {
+          throw new Error("not used");
+        },
+      };
+      const runtime = await createWatcherStateQueueRuntime({
+        source,
+        store: {
+          readAll: async () => [before],
+          append,
+          rollbackTo: async () => undefined,
+        },
+      });
+      const decisionBridge = bridge();
+      const hooks = runtime.bindFaultDecisionBridge(decisionBridge.value);
+      const progress = nativeBlock(131, "45");
+      const input = {
+        nativeBlock: progress,
+        localObservation: null,
+        relevance: "quiet" as const,
+      };
+      if (hasInclusion) await hooks.onIncluded!(input);
+      else await hooks.onFinalized(input);
+      expect(decisionBridge.recoverExisting).toHaveBeenCalledWith({
+        nativeProgress: progress,
+      });
+      expect(observe).not.toHaveBeenCalled();
+      expect(observeIncluded).not.toHaveBeenCalled();
+      expect(append).not.toHaveBeenCalled();
+      expect(decisionBridge.reconcileAndDispatch).not.toHaveBeenCalled();
+      expect(runtime.current()).toBe(before);
     },
   );
 

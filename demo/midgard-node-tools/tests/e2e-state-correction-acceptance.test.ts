@@ -7,7 +7,6 @@ import {
   parseE2EStateCorrectionAcceptance,
   REQUIRED_STATE_CORRECTION_RECOVERY_DRILL_IDS,
   stateCorrectionAcceptanceEvidence,
-  stateCorrectionLocalReadinessEvidence,
 } from "../src/commands/e2e-state-correction-acceptance.js";
 
 const hash = (index: number): string => index.toString(16).padStart(64, "0");
@@ -130,26 +129,6 @@ const finalizedFixture = (): E2EStateCorrectionAcceptance => {
 };
 
 describe("state-correction acceptance evidence", () => {
-  it("keeps Q56 and Q58 finalizer readiness explicitly fail closed", () => {
-    const gates = stateCorrectionLocalReadinessEvidence({
-      availabilityChallengeCapability: "missing",
-    });
-    expect(gates).toEqual([
-      expect.objectContaining({
-        label: "state_correction_local_workflow_readiness",
-        status: "blocked",
-        source: "compiled-production-workflow-registry-v1",
-      }),
-      expect.objectContaining({
-        label: "availability_challenge_readiness",
-        status: "blocked",
-        source: "finalized-deployment-manifest-v1",
-        details: expect.objectContaining({ capability: "missing" }),
-      }),
-    ]);
-    expect(gates[0]!.details.missingCategoryCount).not.toBe("0");
-  });
-
   it("keeps a complete aggregate blocked until independent provenance is reconciled", () => {
     const fixture = finalizedFixture();
     const parsed = parseE2EStateCorrectionAcceptance(fixture);

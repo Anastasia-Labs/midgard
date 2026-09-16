@@ -13,6 +13,7 @@ import {
   admitFraudProofRawL1Transaction,
   admitFraudProofRawL1Utxo,
   computeFraudProofRawL1PointId,
+  type FraudProofL1ObservationDepth,
   type FraudProofRawL1Point,
   type FraudProofRawL1Transaction,
   type FraudProofRawL1Utxo,
@@ -32,6 +33,41 @@ export const LOCAL_KUPMIOS_RAW_BLOCK_AT_POINT =
   "midgard-local-kupmios-raw-block-at-point-v1" as const;
 
 export { LocalKupmiosCheckpointChangedError } from "./local-kupmios-raw-l1-authority.js";
+
+/** A transport failure leaves the canonical chain and any signed attempt unknown.
+ * Retrying must begin with observation/reconciliation, never a replacement send. */
+export class LocalKupmiosTransportUnavailableError extends Error {
+  readonly cause: unknown;
+  constructor(message: string, options?: Readonly<{ cause?: unknown }>) {
+    super(message);
+    this.cause = options?.cause;
+    this.name = "LocalKupmiosTransportUnavailableError";
+  }
+}
+
+const isNetworkFailure = (error: unknown): boolean => {
+  const cause =
+    error instanceof TypeError && "cause" in error ? error.cause : error;
+  return (
+    cause instanceof Error &&
+    "code" in cause &&
+    typeof cause.code === "string" &&
+    [
+      "UND_ERR_SOCKET",
+      "UND_ERR_CONNECT_TIMEOUT",
+      "UND_ERR_HEADERS_TIMEOUT",
+      "UND_ERR_BODY_TIMEOUT",
+      "ECONNRESET",
+      "ECONNREFUSED",
+      "ECONNABORTED",
+      "EPIPE",
+      "ETIMEDOUT",
+      "EAI_AGAIN",
+      "ENETUNREACH",
+      "EHOSTUNREACH",
+    ].includes(cause.code)
+  );
+};
 export type {
   SignedTransactionRecoveryObservation,
   SignedWorkflowTransaction,
@@ -195,6 +231,7 @@ export type LocalKupmiosHttpOgmiosRawSourceDetails = Readonly<{
   deploymentIdentityDigest: string;
   blueprintHash: string;
   finalityPolicyDigest: string;
+  observationDepth: FraudProofL1ObservationDepth;
   confirmationDepth: 30;
   automaticRecoveryMaxDepth: 2160;
 }>;
@@ -238,6 +275,7 @@ export type LocalKupmiosHttpOgmiosSourceConfig = {
   readonly kupoHttpUrl: string;
   readonly ogmiosUrl: string;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+  readonly observationDepth?: FraudProofL1ObservationDepth;
   readonly fetchImpl?: FraudProofRawL1Fetch;
   readonly webSocketFactory?: FraudProofRawL1WebSocketFactory;
   readonly timeoutMs?: number;
@@ -528,6 +566,7 @@ const fetchJson = async ({
     referenceScope,
   );
   const controller = new AbortController();
+  let timedOut = false;
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   const cancelReader = (): void => {
     if (reader !== undefined) {
@@ -547,7 +586,10 @@ const fetchJson = async ({
     }
   };
   signal?.addEventListener("abort", abort, { once: true });
-  const timer = setTimeout(abort, timeoutMs);
+  const timer = setTimeout(() => {
+    timedOut = true;
+    abort();
+  }, timeoutMs);
   try {
     throwIfSourceAborted(signal);
     const response = await fetchImpl(url, {
@@ -604,9 +646,10 @@ const fetchJson = async ({
     throwIfSourceAborted(signal);
     controller.signal.throwIfAborted();
     if (!response.ok) {
-      throw new Error(
-        `HTTP ${response.status.toString()} from ${url}: ${body.slice(0, 256)}`,
-      );
+      const message = `HTTP ${response.status.toString()} from ${url}: ${body.slice(0, 256)}`;
+      if (response.status === 429 || response.status >= 500)
+        throw new LocalKupmiosTransportUnavailableError(message);
+      throw new Error(message);
     }
     try {
       const checkpointSlot = response.headers.get("x-most-recent-checkpoint");
@@ -637,6 +680,17 @@ const fetchJson = async ({
         `malformed JSON or checkpoint headers from ${url}: ${String(cause)}`,
       );
     }
+  } catch (cause) {
+    // Cancellation belongs to the owner, even when it races a network timeout.
+    throwIfSourceAborted(signal);
+    if (timedOut || isNetworkFailure(cause))
+      throw new LocalKupmiosTransportUnavailableError(
+        timedOut
+          ? `request to ${url} timed out`
+          : `transport to ${url} is unavailable`,
+        { cause },
+      );
+    throw cause;
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", abort);
@@ -846,7 +900,12 @@ const acquireOgmiosSession = async (
       resolve();
     };
     const timer = setTimeout(
-      () => fail(new Error("Ogmios session capacity wait timed out")),
+      () =>
+        fail(
+          new LocalKupmiosTransportUnavailableError(
+            "Ogmios session capacity wait timed out",
+          ),
+        ),
       timeoutMs,
     );
     signal?.addEventListener("abort", onAbort, { once: true });
@@ -892,6 +951,12 @@ const openOgmiosSession = async ({
     socket = webSocketFactory(url);
   } catch (error) {
     releaseCapacity();
+    throwIfSourceAborted(signal);
+    if (isNetworkFailure(error))
+      throw new LocalKupmiosTransportUnavailableError(
+        "Ogmios transport is unavailable",
+        { cause: error },
+      );
     throw error;
   }
   const openedMonotonicMs = performance.now();
@@ -1010,7 +1075,7 @@ const openOgmiosSession = async ({
   }) as (event: never) => void);
   listen("error", (() =>
     terminate(
-      new Error(
+      new LocalKupmiosTransportUnavailableError(
         opening ? "Ogmios socket failed while opening" : "Ogmios socket failed",
       ),
     )) as (event: never) => void);
@@ -1035,7 +1100,15 @@ const openOgmiosSession = async ({
       reason: event.reason?.slice(0, 256),
       wasClean: event.wasClean,
     };
-    terminate(new Error(`Ogmios socket closed: ${JSON.stringify(detail)}`));
+    const message = `Ogmios socket closed: ${JSON.stringify(detail)}`;
+    // A peer explicitly rejecting protocol, payload, policy or required
+    // extensions is not evidence of a transient connection outage.
+    terminate(
+      event.code !== undefined &&
+        [1002, 1003, 1007, 1008, 1009, 1010].includes(event.code)
+        ? new Error(message)
+        : new LocalKupmiosTransportUnavailableError(message),
+    );
   }) as (event: never) => void;
   socket.addEventListener("close", onClose);
   listen("open", (() => {
@@ -1046,7 +1119,9 @@ const openOgmiosSession = async ({
   }) as (event: never) => void);
   const openingTimer = setTimeout(() => {
     terminate(
-      new Error(`Ogmios socket did not open within ${timeoutMs.toString()}ms`),
+      new LocalKupmiosTransportUnavailableError(
+        `Ogmios socket did not open within ${timeoutMs.toString()}ms`,
+      ),
     );
   }, timeoutMs);
   signal?.addEventListener("abort", onAbort, { once: true });
@@ -1065,9 +1140,14 @@ const openOgmiosSession = async ({
       );
       const id = nextId;
       nextId += 1;
+      const encoded = JSON.stringify({ jsonrpc: "2.0", method, params, id });
       const result = await new Promise<unknown>((resolve, reject) => {
         const timer = setTimeout(() => {
-          terminate(new Error(`Ogmios ${method} timed out`));
+          terminate(
+            new LocalKupmiosTransportUnavailableError(
+              `Ogmios ${method} timed out`,
+            ),
+          );
         }, timeoutMs);
         lastMethod = method;
         pending.set(id, {
@@ -1082,12 +1162,13 @@ const openOgmiosSession = async ({
           },
         });
         try {
-          socket.send(JSON.stringify({ jsonrpc: "2.0", method, params, id }));
+          socket.send(encoded);
         } catch (cause) {
           terminate(
-            cause instanceof Error
-              ? cause
-              : new Error("Ogmios socket send failed"),
+            new LocalKupmiosTransportUnavailableError(
+              "Ogmios socket send failed",
+              { cause },
+            ),
           );
         }
       });
@@ -1095,6 +1176,7 @@ const openOgmiosSession = async ({
       return result;
     },
     close: async () => {
+      const priorFailure = terminal;
       terminate(new Error("Ogmios session closed"));
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
@@ -1104,10 +1186,16 @@ const openOgmiosSession = async ({
             timer = setTimeout(
               () =>
                 reject(
-                  Object.assign(
-                    new Error("Ogmios physical socket close timed out"),
-                    { cause: terminal },
-                  ),
+                  priorFailure !== null &&
+                    !(
+                      priorFailure instanceof
+                      LocalKupmiosTransportUnavailableError
+                    )
+                    ? priorFailure
+                    : new LocalKupmiosTransportUnavailableError(
+                        "Ogmios physical socket close timed out",
+                        { cause: terminal },
+                      ),
                 ),
               timeoutMs,
             );
@@ -1391,10 +1479,11 @@ const BOUNDARY_CAPTURE_ATTEMPTS = 3;
 
 const captureBoundary = async (
   source: LocalKupmiosFraudProofRawSource,
+  observationDepth: FraudProofL1ObservationDepth,
 ): Promise<Awaited<ReturnType<typeof source.readBoundary>>> => {
   for (let attempt = 1; ; attempt += 1) {
     try {
-      return await source.readBoundary();
+      return await source.readBoundary({ observationDepth });
     } catch (cause) {
       if (
         !(cause instanceof LocalKupmiosCheckpointChangedError) ||
@@ -1405,11 +1494,13 @@ const captureBoundary = async (
   }
 };
 
-/** Establishes and re-admits the concrete source's fresh release-final point. */
+/** Authenticates a fresh boundary; stable evidence remains the default. */
 export const readAdmittedLocalKupmiosBoundary = async ({
   source,
+  observationDepth = "release_finality",
 }: {
   readonly source: LocalKupmiosFraudProofRawSource;
+  readonly observationDepth?: FraudProofL1ObservationDepth;
 }): Promise<LocalKupmiosAdmittedBoundary> => {
   if (!admittedHttpOgmiosSources.has(source)) {
     throw new Error(
@@ -1417,7 +1508,7 @@ export const readAdmittedLocalKupmiosBoundary = async ({
     );
   }
   const value = exactKeys(
-    await captureBoundary(source),
+    await captureBoundary(source, observationDepth),
     ["kupoCheckpoint", "ogmiosTip"],
     [],
     "local Kupmios release boundary",
@@ -1435,7 +1526,8 @@ export const readAdmittedLocalKupmiosBoundary = async ({
   const details = admittedHttpOgmiosSourceDetails.get(source)!;
   if (
     !Number.isSafeInteger(confirmationDepth) ||
-    confirmationDepth < details.confirmationDepth ||
+    confirmationDepth <
+      (observationDepth === "inclusion" ? 1 : details.confirmationDepth) ||
     confirmationDepth > details.automaticRecoveryMaxDepth
   ) {
     throw new Error("local Kupmios boundary is outside release finality");
@@ -1970,6 +2062,11 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const blockScanLimit = config.blockScanLimit ?? DEFAULT_BLOCK_SCAN_LIMIT;
   const signal = config.signal;
+  const observationDepth = config.observationDepth ?? "release_finality";
+  const minimumObservationDepth =
+    observationDepth === "inclusion"
+      ? 1
+      : config.releaseFinality.policy.confirmationDepth;
   const maxResponseBytes = config.maxResponseBytes;
   validateSourceSignal(signal);
   throwIfSourceAborted(signal);
@@ -2781,8 +2878,7 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
     if (
       BigInt(point.blockNo) > BigInt(boundary.point.blockNo) ||
       BigInt(point.slot) > BigInt(boundary.point.slot) ||
-      blockDistance + 1n <
-        BigInt(config.releaseFinality.policy.confirmationDepth) ||
+      blockDistance + 1n < BigInt(minimumObservationDepth) ||
       blockDistance >
         BigInt(config.releaseFinality.policy.automaticRecoveryMaxDepth)
     ) {
@@ -2864,7 +2960,7 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
       const tip = await queryTip();
       const depth = tip.blockNo - Number(exact.blockNo) + 1;
       if (
-        depth < config.releaseFinality.policy.confirmationDepth ||
+        depth < minimumObservationDepth ||
         depth > config.releaseFinality.policy.automaticRecoveryMaxDepth
       ) {
         throw new Error(
@@ -2906,7 +3002,7 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
       }
       return point;
     },
-    readBoundary: async () => {
+    readBoundary: async (input) => {
       throwIfSourceAborted(signal);
       pinnedKupoResponseHead = undefined;
       activeBoundary = undefined;
@@ -2915,9 +3011,12 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
       rawBlockCache.clear();
       pointCache.clear();
       const tip = await queryTip();
-      const minimum = config.releaseFinality.policy.confirmationDepth;
+      const minimum =
+        (input?.observationDepth ?? observationDepth) === "inclusion"
+          ? 1
+          : config.releaseFinality.policy.confirmationDepth;
       const maximum = config.releaseFinality.policy.automaticRecoveryMaxDepth;
-      let lookbackSlots = Math.max(1, minimum - 1);
+      let lookbackSlots = Math.max(0, minimum - 1);
       let newerSlot = tip.slot + 1;
       for (let attempt = 0; attempt < 12; attempt += 1) {
         const lookupSlot = Math.max(0, tip.slot - lookbackSlots);
@@ -3113,6 +3212,8 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
   });
   signedTransactionRecoveryReaders.set(source, async (input) => {
     const signed = inspectSignedWorkflowTransaction(input);
+    // Replacement authorization still requires stable expiry/spend evidence,
+    // even when this source normally observes action prerequisites at inclusion.
     const boundary = await readAdmittedLocalKupmiosBoundary({ source });
     const canonicalPoint = boundary.ogmiosTip;
     const releaseFinalPoint = boundary.kupoCheckpoint;
@@ -3195,6 +3296,17 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
         "Exact recorded transaction body is on the canonical chain",
       );
     }
+    // Stable expiry and exact canonical absence retire the attempt even when a
+    // rollback erased its parent's output creation. Input history is required
+    // for rebroadcast or spend-based invalidation, not for proving elapsed TTL.
+    if (
+      signed.expiresAtSlot !== undefined &&
+      BigInt(releaseFinalPoint.slot) >= signed.expiresAtSlot
+    )
+      return finish(
+        "expired",
+        "Recorded TTL passed at the canonical release-final boundary and the exact transaction is absent",
+      );
     let status: SignedTransactionRecoveryObservation["status"] = "rebroadcast";
     let reason =
       "Canonical transaction absent and every recorded input remains unspent";
@@ -3218,11 +3330,12 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
           txHash: match.spentAt.txHash,
           point: match.spentAt,
         });
-        const spendingBody = CML.Transaction.from_cbor_hex(
+        const spendingTransaction = CML.Transaction.from_cbor_hex(
           spending.transactionCbor,
-        ).body();
-        const spent = spendingBody.inputs();
+        );
+        const spent = spendingTransaction.body().inputs();
         if (
+          !spendingTransaction.is_valid() ||
           !Array.from({ length: spent.len() }, (_, index) =>
             spent.get(index),
           ).some(
@@ -3234,25 +3347,25 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
           throw new Error(
             "Kupo input spend lacks its exact canonical consuming transaction",
           );
-        status =
-          BigInt(match.spentAt.slot) <= BigInt(releaseFinalPoint.slot)
-            ? "conflict"
-            : "pending";
-        reason = "A recorded input is spent by another canonical transaction";
-        break;
+        const stableSpend =
+          BigInt(match.spentAt.slot) <= BigInt(releaseFinalPoint.slot);
+        // An exact stable spend makes this signed body impossible regardless of
+        // input role. This retires only the attempt: funding is re-observed and
+        // reserved separately after every recorded signed attempt is resolved.
+        // Keep scanning so missing canonical history still prevents retirement.
+        if (stableSpend) {
+          status = "invalidated";
+          reason =
+            "A recorded input is stably spent by another canonical transaction";
+        } else if (status !== "invalidated") {
+          status = "pending";
+          reason = "A recorded input spend is not yet release-final";
+        }
       }
     }
     if (status !== "rebroadcast") return finish(status, reason);
     // Missing TTL prevents expiry-based replacement, but does not prevent
     // observing the mempool or replaying the exact still-valid signed body.
-    if (
-      signed.expiresAtSlot !== undefined &&
-      BigInt(releaseFinalPoint.slot) >= signed.expiresAtSlot
-    )
-      return finish(
-        "expired",
-        "Recorded TTL passed at the canonical release-final boundary, transaction absent, all exact inputs unspent",
-      );
     if (
       signed.expiresAtSlot !== undefined &&
       BigInt(canonicalPoint.slot) >= signed.expiresAtSlot
@@ -3346,6 +3459,7 @@ export const createLocalKupmiosHttpOgmiosRawSource = (
       deploymentIdentityDigest: config.releaseFinality.deploymentIdentityDigest,
       blueprintHash: config.releaseFinality.blueprintHash,
       finalityPolicyDigest: config.releaseFinality.policyDigest,
+      observationDepth,
       confirmationDepth: config.releaseFinality.policy.confirmationDepth,
       automaticRecoveryMaxDepth:
         config.releaseFinality.policy.automaticRecoveryMaxDepth,

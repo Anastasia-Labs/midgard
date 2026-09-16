@@ -126,3 +126,36 @@ describe("watcher attestation-timeout observation", () => {
     ).toBeNull();
   });
 });
+
+it("observes an expired unattested suffix behind an attested head", () => {
+  const base = snapshot(h28("a"));
+  const first = base.queue[0]!;
+  const { headerHash: _hash, headerCborHex: _cbor, ...fields } = first;
+  const tail = makeWatcherStateQueueHeader({
+    ...fields,
+    prevHeaderHash: first.headerHash,
+    prevUtxosRoot: first.utxosRoot,
+    startTime: first.endTime,
+    endTime: "3000",
+    blockSlot: "2",
+    daAttestationPolicyId: null,
+  });
+  expect(tail).not.toBeNull();
+  const { snapshotDigest: _digest, ...snapshotFields } = base;
+  const extended = makeWatcherStateQueueSnapshot({
+    ...snapshotFields,
+    queue: [{ ...first, nextHeaderHash: tail!.headerHash }, tail!],
+  });
+  expect(extended).not.toBeNull();
+  expect(
+    deriveWatcherAttestationTimeoutObservation({
+      snapshot: extended,
+      nowMs: 3_603_000n,
+      alertLeadMs: 120_000n,
+    }),
+  ).toMatchObject({
+    status: "timed_out",
+    headerHash: tail!.headerHash,
+    deadlineMs: "3603000",
+  });
+});

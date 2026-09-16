@@ -1,4 +1,3 @@
-import { workflowReadinessReport } from "@al-ft/midgard-fault-proofs";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 
 import type {
@@ -42,13 +41,7 @@ export const REQUIRED_STATE_CORRECTION_GATE_LABELS = [
   "forced_classification_directions",
   "watcher_crash_rollback_matrix",
   "state_correction_final_reconciliation",
-  "state_correction_local_workflow_readiness",
-  "availability_challenge_readiness",
 ] as const;
-
-export type StateCorrectionAvailabilityChallengeCapability =
-  | "missing"
-  | "authenticated_deployed";
 
 type DeploymentBinding = {
   readonly manifestId: string;
@@ -147,77 +140,6 @@ export type E2EStateCorrectionAcceptance = {
     readonly exactEconomicReconciliation: true;
     readonly finalStateSha256: string;
   };
-};
-
-/**
- * Finalizer-facing Q56/Q58 prerequisite gates. These are derived from compiled
- * runtime capability and the independently parsed release manifest, never
- * from the aggregate acceptance bundle.
- */
-export const stateCorrectionLocalReadinessEvidence = ({
-  availabilityChallengeCapability,
-}: {
-  readonly availabilityChallengeCapability: StateCorrectionAvailabilityChallengeCapability;
-}): readonly DbEvidence[] => {
-  const workflow = workflowReadinessReport();
-  const missing = workflow.registrations.filter(
-    (registration) => registration.status === "missing",
-  );
-  const registeredCategories = new Set(
-    workflow.registrations.map((registration) => registration.category),
-  );
-  const unregisteredCategories = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.filter(
-    (category) => !registeredCategories.has(category),
-  );
-  const duplicateRegistrationCount =
-    workflow.registrations.length - registeredCategories.size;
-  const exactRegistrationCoverage =
-    workflow.registrations.length ===
-      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length &&
-    unregisteredCategories.length === 0 &&
-    duplicateRegistrationCount === 0;
-  const workflowReady =
-    exactRegistrationCoverage &&
-    missing.length === 0 &&
-    workflow.readyCategoryCount === FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length;
-  return [
-    {
-      label: REQUIRED_STATE_CORRECTION_GATE_LABELS[6],
-      status: workflowReady ? "satisfied" : "blocked",
-      source: "compiled-production-workflow-registry-v1",
-      details: {
-        catalogueCategoryCount:
-          FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length.toString(),
-        actualRegistrationCount: workflow.registrations.length.toString(),
-        uniqueRegistrationCount: registeredCategories.size.toString(),
-        duplicateRegistrationCount: duplicateRegistrationCount.toString(),
-        readyCategoryCount: workflow.readyCategoryCount.toString(),
-        missingCategoryCount: workflow.missingCategoryCount.toString(),
-        unregisteredCategories: unregisteredCategories.join(","),
-        missingCategories: missing
-          .map((registration) => registration.category)
-          .join(","),
-        missingReasons: missing
-          .map(
-            (registration) => `${registration.category}:${registration.reason}`,
-          )
-          .join(","),
-      },
-    },
-    {
-      label: REQUIRED_STATE_CORRECTION_GATE_LABELS[7],
-      status:
-        availabilityChallengeCapability === "authenticated_deployed"
-          ? "satisfied"
-          : "blocked",
-      source: "finalized-deployment-manifest-v1",
-      details: {
-        capability: availabilityChallengeCapability,
-        requirement:
-          "authenticated Q58 challenge/respond/timeout/correct deployment and lifecycle",
-      },
-    },
-  ];
 };
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;

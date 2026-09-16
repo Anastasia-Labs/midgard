@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowJournalEntry,
+  type FraudProofWorkflowTerminal,
   resolveProverSigner,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -23,7 +24,7 @@ import {
 } from "midgard-watcher";
 import { expect } from "vitest";
 
-import { writeJourneyArtifact } from "./artifacts.js";
+import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import type { loadJourneyContext } from "./live-context.js";
 import type { startJourneyNativeRecorder } from "./native-recorder.js";
 
@@ -228,10 +229,11 @@ export const readJourneyWorkflowEntries = async ({
  * How long a workflow may keep journaling `stalled` before the attempt fails.
  *
  * The orchestrator journals a stall as a diagnostic and retries every pass.
- * The watcher observes the state queue at finality depth while preflight
+ * The watcher observes the state queue at its action depth while preflight
  * builds against the live chain, so a header the queue re-created in that
  * window (a DA attestation moves the header output) stalls preflight until
- * the re-creating block finalizes; the next pass then binds the live output.
+ * the re-creating block reaches that depth; the next pass then binds the live
+ * output.
  * The watcher itself resumes such a preflight stall every
  * `WATCHER_PREFLIGHT_STALL_RETRY_DELAY_MS` for up to its retry budget, so the
  * journey allows the whole budget plus one delay before calling it a failure.
@@ -240,14 +242,42 @@ export const JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS =
   WATCHER_PREFLIGHT_STALL_RETRY_BUDGET_MS +
   WATCHER_PREFLIGHT_STALL_RETRY_DELAY_MS;
 
-/**
- * Durable workflow progress: every journal record except the per-block
- * `reconciled` observations, which the watcher appends whether or not the
- * proof chain advances.
- */
+const journeyIntentRecovery = (
+  records: readonly FraudProofWorkflowJournalEntry[],
+) => {
+  const latest = new Map<
+    string,
+    { txHash: string; outcome: "pending" | "confirmed" | "not_found" }
+  >();
+  const abandoned = new Set<string>();
+  let progressCount = 0;
+  for (const { event } of records) {
+    if (event.kind !== "reconciled") progressCount += 1;
+    if (event.kind === "submission_intent") {
+      latest.set(event.actionId, { txHash: event.txHash, outcome: "pending" });
+    } else if (event.kind === "reconciled" || event.kind === "confirmed") {
+      const intent = latest.get(event.actionId);
+      if (intent === undefined || intent.txHash !== event.txHash) continue;
+      // Reconciled inclusion precedes funding acknowledgment and the actual
+      // confirmed event; keep its recovery allowance until that handoff ends.
+      if (event.kind === "confirmed") intent.outcome = "confirmed";
+      else if (event.outcome !== "confirmed") intent.outcome = event.outcome;
+      if (event.kind === "reconciled" && event.outcome === "not_found") {
+        const key = `${event.actionId}:${event.txHash}`;
+        if (!abandoned.has(key)) {
+          abandoned.add(key);
+          progressCount += 1;
+        }
+      }
+    }
+  }
+  return { latest, progressCount };
+};
+
+/** Pending observations do not advance the clock; exact abandonment does once. */
 export const journeyWorkflowProgressCount = (
   records: readonly FraudProofWorkflowJournalEntry[],
-) => records.filter(({ event }) => event.kind !== "reconciled").length;
+) => journeyIntentRecovery(records).progressCount;
 
 /**
  * A retained failure is history. A new stall fails the current attempt unless
@@ -289,17 +319,53 @@ export const journeyWorkflowUpdates = (
 
 /**
  * Compare the exact transactions the workflow confirmed against the last
- * intent journaled per action. An intent that expired before a restart is
- * superseded by its replacement rather than left dangling.
+ * intent journaled per action, excluding exact intents durably abandoned even
+ * when a replacement binds a different action identity.
  */
 export const journeyLatestIntentsByAction = (
   records: readonly FraudProofWorkflowJournalEntry[],
 ) => {
-  const latest = new Map<string, string>();
+  return [...journeyIntentRecovery(records).latest.values()]
+    .filter(({ outcome }) => outcome !== "not_found")
+    .map(({ txHash }) => txHash);
+};
+
+/** Recovering an included attempt need not have emitted a confirmed event. */
+export const verifyJourneyWorkflowTransactions = async (
+  records: readonly FraudProofWorkflowJournalEntry[],
+  authenticate: (txHash: string) => Promise<unknown>,
+) => {
+  const intents = journeyLatestIntentsByAction(records);
+  const submitted = new Set(
+    records.flatMap(({ event }) =>
+      event.kind === "submission_intent" ? [event.txHash] : [],
+    ),
+  );
   for (const { event } of records)
-    if (event.kind === "submission_intent")
-      latest.set(event.actionId, event.txHash);
-  return [...latest.values()];
+    if (event.kind === "confirmed")
+      expect(submitted.has(event.txHash)).toBe(true);
+  for (const txHash of intents) await authenticate(txHash);
+};
+
+/** A correction retires its own computation thread while other proofs may continue. */
+export const verifyJourneyComputationThreadAbsent = async ({
+  kupoUrl,
+  computationThreadPolicyId,
+  category,
+  headerHash,
+}: {
+  kupoUrl: string;
+  computationThreadPolicyId: string;
+  category: SDK.FraudProofCatalogueCategoryName;
+  headerHash: string;
+}) => {
+  const assetName =
+    SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[category] + headerHash;
+  const threadResponse = await fetch(
+    `${kupoUrl}/matches/${computationThreadPolicyId}.${assetName}?unspent`,
+  );
+  expect(threadResponse.ok).toBe(true);
+  expect(await threadResponse.json()).toEqual([]);
 };
 
 /** Shared acceptance assertions for every installed automatic workflow. */
@@ -312,8 +378,10 @@ export const verifyJourneyCorrection = async ({
   headerHash,
   predecessorHeaderHash,
   workflowBaseline,
+  actionDepth,
   correctionTimeoutMs = 1_800_000,
   progressAllowanceMs,
+  reconciliationAllowanceMs,
   stallAllowanceMs = JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS,
   operatorVkey,
   requireLive,
@@ -328,15 +396,21 @@ export const verifyJourneyCorrection = async ({
   headerHash: string;
   predecessorHeaderHash: string;
   workflowBaseline: readonly FraudProofWorkflowJournalEntry[];
+  /** Depth the watcher acts at; the completed terminal must be this deep. */
+  actionDepth: number;
   /** Hard cap on the whole correction: the family's audited or generic plan. */
   correctionTimeoutMs?: number;
   /**
    * Fails the correction as soon as the workflow journal makes no durable
    * progress for this long; one transaction's build, submit, and confirmation
-   * allowance. A multi-step family at release finality legitimately runs past
-   * any fixed wall clock, so progress, not elapsed time, is the health signal.
+   * allowance. A multi-step family legitimately runs past any fixed wall
+   * clock, so progress, not elapsed time, is the health signal.
+   * A retained workflow first gets the automatic-decision allowance (15
+   * minutes) to re-observe its target before this transaction clock applies.
    */
   progressAllowanceMs?: number;
+  /** Existing release-depth window for resolving an outstanding signed intent. */
+  reconciliationAllowanceMs?: number;
   stallAllowanceMs?: number;
   operatorVkey: string;
   requireLive(): void;
@@ -352,6 +426,7 @@ export const verifyJourneyCorrection = async ({
   let reportedStall: string | undefined;
   let progressCount = journeyWorkflowProgressCount(workflowBaseline);
   let progressAt = Date.now();
+  let awaitingResumeProgress = workflowBaseline.length > 0;
   const completion = await poll(
     "confirmed proof and correction",
     async () => {
@@ -361,16 +436,26 @@ export const verifyJourneyCorrection = async ({
         category,
         headerHash,
       });
-      const progress = journeyWorkflowProgressCount(records);
+      const recovery = journeyIntentRecovery(records);
+      const progress = recovery.progressCount;
       if (progress !== progressCount) {
         progressCount = progress;
         progressAt = Date.now();
-      } else if (
-        progressAllowanceMs !== undefined &&
-        Date.now() - progressAt > progressAllowanceMs
-      ) {
+        awaitingResumeProgress = false;
+      }
+      const normalAllowanceMs = awaitingResumeProgress
+        ? 900_000
+        : progressAllowanceMs;
+      const pendingIntent = [...recovery.latest.values()].some(
+        ({ outcome }) => outcome === "pending",
+      );
+      const allowanceMs =
+        pendingIntent && reconciliationAllowanceMs !== undefined
+          ? Math.max(normalAllowanceMs ?? 0, reconciliationAllowanceMs)
+          : normalAllowanceMs;
+      if (allowanceMs !== undefined && Date.now() - progressAt > allowanceMs) {
         throw new Error(
-          `Workflow made no durable progress for ${progressAllowanceMs.toString()} ms (${progressCount.toString()} progress records)`,
+          `Workflow made no durable progress for ${allowanceMs.toString()} ms (${progressCount.toString()} progress records)`,
         );
       }
       for (const { sequence, event } of journeyWorkflowUpdates(
@@ -387,25 +472,31 @@ export const verifyJourneyCorrection = async ({
         }
         reported = sequence;
       }
-      const terminal = records.find(
-        ({ event }) => event.kind === "completed",
-      )?.event;
-      if (terminal?.kind !== "completed") return undefined;
-      const intents = journeyLatestIntentsByAction(records);
-      const confirmed = records.flatMap(({ event }) =>
-        event.kind === "confirmed" ? [event.txHash] : [],
+      const terminal = [...records]
+        .reverse()
+        .find(
+          ({ event }) =>
+            event.kind === "terminal_included" || event.kind === "completed",
+        )?.event;
+      if (
+        terminal?.kind !== "terminal_included" &&
+        terminal?.kind !== "completed"
+      )
+        return undefined;
+      await verifyJourneyWorkflowTransactions(records, (txHash) =>
+        native.transaction(txHash),
       );
-      expect(confirmed).toEqual(intents);
-      for (const txHash of confirmed) await native.transaction(txHash);
       expect(terminal.terminal).toMatchObject({
         category,
         headerHash: headerHash,
         correction: { fraudulentHeaderAbsent: true },
         proofToken: { retainedAtFinalState: true },
       });
+      // Completion is inclusion at the action depth. Release finality is the
+      // separate anchor the finalized evidence stamp waits for.
       expect(
         terminal.terminal.observedAt.confirmationDepth,
-      ).toBeGreaterThanOrEqual(30);
+      ).toBeGreaterThanOrEqual(actionDepth);
       await writeJourneyArtifact(
         join(directory, "completed-workflow.json"),
         records,
@@ -462,11 +553,12 @@ export const verifyJourneyCorrection = async ({
       slashedLovelace: economics.slashingPenaltyLovelace.toString(),
       proverRewardLovelace: economics.fraudProverRewardLovelace.toString(),
     });
-    const threadResponse = await fetch(
-      `${context.kupoUrl}/matches/${contracts.computationThread.policyId}.*?unspent`,
-    );
-    expect(threadResponse.ok).toBe(true);
-    expect(await threadResponse.json()).toEqual([]);
+    await verifyJourneyComputationThreadAbsent({
+      kupoUrl: context.kupoUrl,
+      computationThreadPolicyId: contracts.computationThread.policyId,
+      category,
+      headerHash,
+    });
     expect(
       await provider.getUtxosWithUnit(
         contracts.stateQueue.spendingScriptAddress,
@@ -562,15 +654,8 @@ export const verifyJourneyCorrection = async ({
     expect(`${proofs[0]!.txHash}#${proofs[0]!.outputIndex}`).toBe(
       completion.proofToken.outRef,
     );
-    expect(
-      await provider.getUtxosWithUnit(
-        contracts.activeOperators.spendingScriptAddress,
-        toUnit(
-          contracts.activeOperators.policyId,
-          SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + operatorVkey,
-        ),
-      ),
-    ).toHaveLength(0);
+    // The authenticated removal above proves removal from the active list.
+    // A later legitimate registration can recreate this operator's current node.
     const locks = await provider.getUtxosWithUnit(
       contracts.correctionLock.spendingScriptAddress,
       toUnit(contracts.hubOracle.policyId, SDK.CORRECTION_LOCK_ASSET_NAME),
@@ -579,4 +664,108 @@ export const verifyJourneyCorrection = async ({
     expect(Data.from(locks[0]!.datum!, SDK.CorrectionLockDatum)).toBe("Idle");
   });
   return completion;
+};
+
+/** Final evidence comes only from the production verifier's completed event. */
+export const journeyAnchoredEvidence = (
+  records: readonly FraudProofWorkflowJournalEntry[],
+): FraudProofWorkflowTerminal | undefined => {
+  const completed = records.filter(({ event }) => event.kind === "completed");
+  expect(completed.length).toBeLessThanOrEqual(1);
+  const event = completed[0]?.event;
+  return event?.kind === "completed" ? event.terminal : undefined;
+};
+
+export interface JourneyPendingEvidenceStamp {
+  readonly category: SDK.FraudProofCatalogueCategoryName;
+  readonly headerHash: string;
+  readonly deploymentFingerprint: string;
+  readonly completedAtConfirmationDepth: number;
+  readonly terminalObservedAt: string;
+  readonly successorTxHash: string;
+  readonly releaseFinalityPolicyDigest: string;
+  readonly finalityDepth: number;
+}
+
+/**
+ * Sweep durable pending stamps while the shared watcher reconciles terminals.
+ * Earlier families need no live harness process of their own. A restart reads
+ * these same requests; already stamped families and older run evidence are left
+ * intact. The last selected family polls this sweep until nothing remains.
+ */
+export const finalizePendingJourneyEvidence = async ({
+  journeysDirectory,
+  workflowJournalDirectory,
+  deploymentFingerprint,
+  releaseFinalityPolicyDigest,
+  finalityDepth,
+  nativeEvidencePath,
+  authenticate,
+}: {
+  journeysDirectory: string;
+  workflowJournalDirectory: string;
+  deploymentFingerprint: string;
+  releaseFinalityPolicyDigest: string;
+  finalityDepth: number;
+  nativeEvidencePath: string;
+  authenticate(
+    request: JourneyPendingEvidenceStamp,
+    terminal: FraudProofWorkflowTerminal,
+  ): Promise<boolean>;
+}): Promise<number> => {
+  let pending = 0;
+  for (const directoryEntry of await readdir(journeysDirectory, {
+    withFileTypes: true,
+  })) {
+    if (!directoryEntry.isDirectory()) continue;
+    const directory = join(journeysDirectory, directoryEntry.name);
+    const requestPath = join(directory, "pending-evidence-stamp.json");
+    if (
+      !existsSync(requestPath) ||
+      existsSync(join(directory, "finalized-evidence-stamp.json"))
+    )
+      continue;
+    const request =
+      await readJourneyArtifact<JourneyPendingEvidenceStamp>(requestPath);
+    expect(request.deploymentFingerprint).toBe(deploymentFingerprint);
+    expect(request.releaseFinalityPolicyDigest).toBe(
+      releaseFinalityPolicyDigest,
+    );
+    expect(request.finalityDepth).toBe(finalityDepth);
+    const records = await readJourneyWorkflowEntries({
+      workflowJournalDirectory,
+      category: request.category,
+      headerHash: request.headerHash,
+    });
+    const terminal = journeyAnchoredEvidence(records);
+    if (terminal === undefined) {
+      pending += 1;
+      continue;
+    }
+    expect(terminal.category).toBe(request.category);
+    expect(terminal.headerHash).toBe(request.headerHash);
+    expect(terminal.observedAt.confirmationDepth).toBeGreaterThanOrEqual(
+      finalityDepth,
+    );
+    if (!(await authenticate(request, terminal))) {
+      pending += 1;
+      continue;
+    }
+    await writeJourneyArtifact(
+      join(directory, "finalized-workflow.json"),
+      records,
+    );
+    // The terminal may have been rebuilt or included at a new point after a
+    // rollback. The completed event independently reauthenticates its effects.
+    await writeJourneyArtifact(
+      join(directory, "finalized-evidence-stamp.json"),
+      {
+        ...request,
+        anchoredAt: new Date().toISOString(),
+        nativeEvidencePath,
+        terminal,
+      },
+    );
+  }
+  return pending;
 };

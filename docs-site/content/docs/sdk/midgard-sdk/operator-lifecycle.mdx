@@ -21,8 +21,33 @@ plus datum helpers such as `encodeRegisteredOperatorDatumValue`. The
 `active-operators`, `registered-operators`, and `retired-operators` modules cover the
 per-list operations.
 
+The `operator-lifecycle/` directory holds the exit and recovery side:
+
+- `directory.ts`: `fetchOperatorDirectorySnapshotProgram` reads the three
+  lists, the scheduler, and the hub oracle in one snapshot, with lookups such
+  as `findNodeByKey`, `findAnchorNodeForKey`, and `schedulerCurrentOperator`.
+- `status.ts`: `deriveOperatorStatus` answers where a key sits, whether it is
+  a duplicate, whether it holds the shift, and when its bond unlocks;
+  `assertOperatorNotInDirectory` is the registration skip check.
+- `strike.ts`: `planInactivityTakeover` decides whether the scheduled operator
+  can be struck now, and `buildStrikeInactiveOperatorTxProgram` builds the
+  strike that hands the shift to the next operator.
+- `exit.ts`: `deriveRetireOperatorWitnesses` and
+  `buildUnsignedRetireOperatorTxProgram` build voluntary and forced
+  retirements (`retiredOperatorBondTranche` gives the retired node's
+  lovelace); `deriveRecoverOperatorBondWitnesses` and
+  `buildUnsignedRecoverOperatorBondTxProgram` return the bond after the hold;
+  `buildUnsignedSlashDuplicateOperatorTxProgram` removes a duplicate
+  registration with a `DuplicateProof` from another list.
+
+Forced retirement and duplicate slashing pay the penalty as the transaction
+fee. The on-chain check is an equality, so those builders complete the
+transaction without coin selection and balance it to the lovelace, returning
+the remainder to the submitter as an explicit output instead of a change
+output.
+
 ## Related
 
 - On-chain: [Operator Directory](/docs/onchain/operator-directory)
-- Node commands: `register-active-operator`, `activate-operator`, see the
-  [CLI reference](/docs/operators/node/cli-reference)
+- Node commands and runbook: [Operator Lifecycle](/docs/operators/node/operator-lifecycle)
+  and the [CLI reference](/docs/operators/node/cli-reference)

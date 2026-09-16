@@ -28,7 +28,7 @@ const fixtureUrl = new URL(
 it("regenerates the DA codec fixture from every current applied contract", async () => {
   const mintingScript = {
     type: "Native" as const,
-    script: `8200581c${"00".repeat(28)}`,
+    script: "820500",
   };
   const policyId = validatorToScriptHash(mintingScript);
   const auth: ReferenceScriptAuthPolicyDeploymentInfo = {

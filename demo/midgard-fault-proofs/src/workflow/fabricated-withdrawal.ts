@@ -69,6 +69,7 @@ export type FabricatedWithdrawalWorkflowReferenceScripts = Readonly<{
   witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
+    readonly phasMembershipWithdraw: UTxO;
   };
 }>;
 
@@ -413,6 +414,10 @@ export const createManifestBoundFabricatedWithdrawalWorkflow = async (
           "computationThreadMint",
         ),
         fraudProofMint: witness("fraudProofMint", "fraudProofMint"),
+        phasMembershipWithdraw: witness(
+          "phasMembershipWithdraw",
+          "phasMembershipWithdraw",
+        ),
       }),
     });
   const contracts: FabricatedWithdrawalContracts = Object.freeze({
@@ -444,7 +449,7 @@ export const createManifestBoundFabricatedWithdrawalWorkflow = async (
     lucid: config.lucid,
     network: binding.network,
     hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
-    minimumConfirmationDepth: binding.releaseFinality.policy.confirmationDepth,
+    minimumConfirmationDepth: 1,
   });
   const transactions = transactionPort({
     binding,

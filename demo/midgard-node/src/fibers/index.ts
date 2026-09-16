@@ -12,6 +12,8 @@ export * from "./fetch-and-insert-withdrawal-utxos.js";
 export * from "./merge.js";
 export * from "./monitor-mempool.js";
 export * from "./mpf-payload-audit.js";
+export * from "./operator-watchdog.js";
+export * from "./operator-watchdog-policy.js";
 export * from "./project-deposits-to-mempool-ledger.js";
 export * from "./retention-sweeper.js";
 export * from "./speculative-commit-builder.js";

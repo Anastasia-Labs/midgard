@@ -101,7 +101,10 @@ describe("fault-proof emulator integration", () => {
       },
     );
     const targets = validationDisputeControlPublicationTargets(contracts);
-    const authPolicy = createReferenceScriptAuthPolicy(lucid, emulator.now());
+    const authPolicy = await createReferenceScriptAuthPolicy(
+      lucid,
+      emulator.now(),
+    );
     const measurements = {} as Record<
       ValidationDisputeControlPublicationTarget["control"],
       CompleteSignedTransactionMeasurement
@@ -319,7 +322,7 @@ describe("fault-proof emulator integration", () => {
       if (nonceUtxo === undefined) {
         throw new Error("Expected operator wallet to expose a nonce UTxO");
       }
-      const referenceScriptAuth = createReferenceScriptAuthPolicy(
+      const referenceScriptAuth = await createReferenceScriptAuthPolicy(
         challengerLucid,
         emulator.now(),
       );

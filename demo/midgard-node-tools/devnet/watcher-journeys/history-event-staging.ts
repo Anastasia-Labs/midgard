@@ -154,15 +154,7 @@ const publishEvent = async (
   await writeJourneyArtifact(path, checkpoint);
   lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));
   onStage(`${request.name} inclusion interval`);
-  await deployment.chain.awaitSlot(
-    Math.max(
-      0,
-      Math.ceil(
-        (checkpoint.metadata.inclusionTime - deployment.chain.now()) /
-          context.customNetwork.slotConfig.slotLength,
-      ),
-    ),
-  );
+  await deployment.chain.awaitLedgerTime(checkpoint.metadata.inclusionTime);
   if (
     BigInt(checkpoint.metadata.inclusionTime) <=
     input.predecessor.header.endTime

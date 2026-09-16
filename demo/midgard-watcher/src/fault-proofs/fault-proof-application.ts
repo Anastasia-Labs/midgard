@@ -13,6 +13,7 @@ import {
   TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES,
 } from "@al-ft/midgard-fault-proofs";
 import {
+  bindFraudProofTerminalDeployment,
   bindFraudProofWorkflowDeployment,
   classifyHeader as classifyProductionHeaderV1,
   type CompleteCanonicalReplayContext,
@@ -41,6 +42,8 @@ import {
   createInvalidRangeWorkflowRunner,
   createInvalidSignatureWorkflowRunner,
   createL2TxMistagWorkflowRunner,
+  createLocalKupmiosFraudProofRawL1SnapshotAuthority,
+  createLocalKupmiosHttpOgmiosRawSource,
   createManifestBoundCanonicalDecodabilityWorkflow,
   createManifestBoundCommittedFieldShapeWorkflow,
   createManifestBoundCrossBlockDuplicateEventWorkflow,
@@ -129,6 +132,9 @@ import {
   createWitnessScriptDecodingWorkflowRunner,
   createZeroInputWorkflowRunner,
   executionNativeScriptInvalid as executionNativeScriptInvalidV1,
+  type FraudProofCompletedVerification,
+  type FraudProofWorkflowJournalEntry,
+  type FraudProofWorkflowTerminal,
   type HeaderDecision,
   headerDecisionReplayContext,
   type HistoricalNativeScriptCheckpointStore,
@@ -136,6 +142,9 @@ import {
   type HistoricalNativeScriptProviderRoster,
   type HistoricalNativeScriptSourceRoster,
   installWorkflowApplicationRegistry,
+  journalJsonDigest,
+  LocalKupmiosCheckpointChangedError,
+  LocalKupmiosExactPointNotCanonicalError,
   makeLucidForSubmit,
   type ManifestBoundCanonicalDecodabilityWorkflowConfig,
   type ManifestBoundCommittedFieldShapeWorkflowConfig,
@@ -189,6 +198,7 @@ import {
   type ManifestBoundWithdrawnReferenceInputWorkflowConfig,
   type ManifestBoundWitnessScriptDecodingWorkflowConfig,
   type ManifestBoundZeroInputWorkflowConfig,
+  normalizeJournalJson,
   parseContractDeploymentInfo,
   requireDeploymentReferenceScript,
   requireHistoricalNativeScriptHistoryAuthority,
@@ -199,6 +209,7 @@ import {
   VALIDATION_TRACE_DISPUTE_CONTROL_CONTRACT_NAMES,
   VALIDATION_TRACE_DISPUTE_REMOVAL_CONTRACT_NAMES,
   VALIDATION_TRACE_DISPUTE_WITNESS_CONTRACT_NAMES,
+  verifyCompletedFraudProofWorkflow,
   workflowActuationPermitIsReconciliationOnly,
   type WorkflowAdapterReadinessInput,
   type WorkflowAdapterRunner,
@@ -412,6 +423,17 @@ export type WatcherFaultProofHeaderClassificationInput = Readonly<{
   retries?: number;
 }>;
 
+export type WatcherCompletedFaultProofInput = Readonly<{
+  runtimeConfigPath: string;
+  category: WatcherInstalledWorkflowCategory;
+  headerHash: string;
+  decisionDigest: string;
+  entries: readonly FraudProofWorkflowJournalEntry[];
+  terminal: FraudProofWorkflowTerminal;
+}>;
+export type WatcherCompletedFaultProofVerification =
+  FraudProofCompletedVerification;
+
 export type WatcherFaultProofApplication = Readonly<{
   schemaVersion: typeof WATCHER_FAULT_PROOF_APPLICATION;
   deploymentFingerprint: string;
@@ -430,6 +452,9 @@ export type WatcherFaultProofApplication = Readonly<{
   assertStartupReady(
     invocation: WorkflowAdapterReadinessInput,
   ): Promise<WatcherFaultProofStartupReadiness>;
+  verifyCompleted(
+    input: WatcherCompletedFaultProofInput,
+  ): Promise<WatcherCompletedFaultProofVerification>;
   runOrResume(invocation: WorkflowAdapterRunnerInput): Promise<unknown>;
   close(): Promise<void>;
 }>;
@@ -1302,8 +1327,7 @@ const referenceContracts = (
         step02: "fraudProofFabricatedDepositStep02",
         step03: "fraudProofFabricatedDepositStep03",
         step04: "fraudProofFabricatedDepositStep04",
-        computationThreadMint: "computationThreadMint",
-        fraudProofMint: "fraudProofMint",
+        ...base,
       });
     case "fabricatedWithdrawal":
       return Object.freeze({
@@ -1311,8 +1335,7 @@ const referenceContracts = (
         step02: "fraudProofFabricatedWithdrawalStep02",
         step03: "fraudProofFabricatedWithdrawalStep03",
         step04: "fraudProofFabricatedWithdrawalStep04",
-        computationThreadMint: "computationThreadMint",
-        fraudProofMint: "fraudProofMint",
+        ...base,
       });
     case "canonicalDecodability":
       return Object.freeze({
@@ -2085,6 +2108,7 @@ const buildCommonInfrastructure = async ({
           signer: resolvedSigner,
           permit: executionInvocation.fundingReservationPermit,
         });
+  signer.selectWallet(lucid);
   const references = Object.freeze(
     Object.fromEntries(
       await Promise.all(
@@ -2642,10 +2666,7 @@ function taggedConfig(
               reference("step03"),
               reference("step04"),
             ] as const),
-            witnesses: Object.freeze({
-              computationThreadMint: reference("computationThreadMint"),
-              fraudProofMint: reference("fraudProofMint"),
-            }),
+            witnesses: Object.freeze(baseWitnesses(common.references)),
           }),
         }),
       });
@@ -5684,7 +5705,7 @@ const createApplication = ({
           },
         },
       );
-      const releaseFinality = await watcherDeploymentReleaseFinalityAuthority(
+      await watcherDeploymentReleaseFinalityAuthority(
         deploymentIdentity,
       ).verifyForWorkflow({
         deploymentFingerprint: deploymentIdentity.manifestId,
@@ -5711,7 +5732,7 @@ const createApplication = ({
         hubOraclePolicyId:
           watcherDeploymentProtocolScriptAuthority(deploymentIdentity)
             .protocolScriptHashes.hubOracleMint,
-        minimumConfirmationDepth: releaseFinality.policy.confirmationDepth,
+        minimumConfirmationDepth: 1,
         owner: signer.paymentKeyHash,
       });
       if (
@@ -5963,6 +5984,94 @@ const createApplication = ({
         });
       } finally {
         await loaded.close();
+      }
+    },
+    verifyCompleted: async (input) => {
+      if (!admittedApplications.has(application))
+        throw new Error("watcher fault-proof application is not admitted");
+      if (!WATCHER_INSTALLED_WORKFLOW_CATEGORIES.includes(input.category))
+        throw new Error("completed workflow category is not installed");
+      const [runtimeJson, manifestJson, blueprintJson, deploymentJson] =
+        await Promise.all(
+          [
+            input.runtimeConfigPath,
+            infrastructure.manifestPath,
+            infrastructure.blueprintPath,
+            infrastructure.deploymentInfoPath,
+          ].map(async (path) =>
+            dependencies.readText(
+              await requireCanonicalFile(path, dependencies),
+            ),
+          ),
+        );
+      const config = parseWatcherConfig(JSON.parse(runtimeJson!));
+      if (config.l1.source.sourceMode !== "local_node")
+        throw new Error(
+          "completed workflow verification requires local-node authority",
+        );
+      const kupo = config.l1.source.queryServices.find(
+        ({ kind }) => kind === "kupo",
+      );
+      const ogmios = config.l1.source.queryServices.find(
+        ({ kind }) => kind === "ogmios",
+      );
+      if (kupo === undefined || ogmios === undefined)
+        throw new Error("completed workflow authority omitted Kupo or Ogmios");
+      const binding = await bindFraudProofTerminalDeployment({
+        manifest: JSON.parse(manifestJson!),
+        blueprintJson: blueprintJson!,
+        deploymentInfo: JSON.parse(deploymentJson!),
+        category: input.category,
+        headerHash: input.headerHash,
+        proverCredential: input.terminal.economics.proverCredential,
+      });
+      const finality = await watcherDeploymentReleaseFinalityAuthority(
+        deploymentIdentity,
+      ).verifyForWorkflow({
+        deploymentFingerprint: deploymentIdentity.manifestId,
+      });
+      if (
+        binding.deploymentFingerprint !== deploymentIdentity.manifestId ||
+        journalJsonDigest(normalizeJournalJson(binding.releaseFinality)) !==
+          journalJsonDigest(normalizeJournalJson(finality))
+      )
+        throw new Error(
+          "completed workflow changed its verified deployment release",
+        );
+      const source = createLocalKupmiosHttpOgmiosRawSource({
+        sourceId: [
+          "watcher-fault-proof",
+          input.category,
+          deploymentIdentity.manifestId,
+          config.l1.source.authorityNodeId,
+          config.l1.source.chainSync.genesisIdentitySha256,
+        ].join("/"),
+        kupoHttpUrl: kupo.endpoint,
+        ogmiosUrl: ogmios.endpoint,
+        timeoutMs: config.l1.requestTimeoutMs,
+        releaseFinality: binding.releaseFinality,
+        observationDepth: "inclusion",
+      });
+      const authority = createLocalKupmiosFraudProofRawL1SnapshotAuthority({
+        source,
+        releaseFinality: binding.releaseFinality,
+        observationDepth: "inclusion",
+      });
+      try {
+        return await verifyCompletedFraudProofWorkflow({
+          binding,
+          authority,
+          entries: input.entries,
+          terminal: input.terminal,
+          decisionDigest: input.decisionDigest,
+        });
+      } catch (error) {
+        if (
+          error instanceof LocalKupmiosCheckpointChangedError ||
+          error instanceof LocalKupmiosExactPointNotCanonicalError
+        )
+          return { kind: "pending", reason: "checkpoint_changed" };
+        throw error;
       }
     },
     runOrResume: async (invocation) => {

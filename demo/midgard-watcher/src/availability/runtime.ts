@@ -60,7 +60,7 @@ export type WatcherAvailabilityRuntime = Readonly<{
   ): Promise<void>;
   pendingAvailabilityHeaders(
     observation: WatcherAuthenticatedStateQueueObservation,
-  ): ReadonlySet<string>;
+  ): Promise<ReadonlySet<string>>;
   invalidateForRollback(point?: WatcherNativeChainSyncPoint): void;
   invalidateForShutdown(): void;
   status(): WatcherAvailabilityStatus;
@@ -139,6 +139,11 @@ export const createWatcherAvailabilityRuntime = async (input: {
   config: WatcherProcessConfig;
   identity: VerifiedWatcherDeploymentIdentity;
   rawSource: LocalKupmiosFraudProofRawSource;
+  /** Read-only payload reconstruction may follow reversible fault-proof inclusion. */
+  faultProofObservation?: Readonly<{
+    rawSource: LocalKupmiosFraudProofRawSource;
+    currentObservation(): WatcherAuthenticatedStateQueueObservation;
+  }>;
   proverWalletAddress: string;
   onStatusTransition?: (event: WatcherAvailabilityStatusTransition) => void;
 }): Promise<WatcherAvailabilityRuntime> => {
@@ -209,9 +214,10 @@ export const createWatcherAvailabilityRuntime = async (input: {
   const l1PayloadSource = createWatcherL1AvailabilityPayloadSource({
     identity: input.identity,
     deployment,
-    rawSource: input.rawSource,
+    rawSource: input.faultProofObservation?.rawSource ?? input.rawSource,
     lucid,
-    currentObservation: () => current,
+    currentObservation:
+      input.faultProofObservation?.currentObservation ?? (() => current),
   });
   const l1PayloadBinding = bindWatcherL1AvailabilityPayloadSource({
     deploymentIdentity: input.identity,
@@ -661,12 +667,67 @@ export const createWatcherAvailabilityRuntime = async (input: {
   };
   return {
     reconcile,
-    pendingAvailabilityHeaders: (observation) => {
-      if (current?.observationDigest !== observation.observationDigest)
-        throw new Error(
-          "Availability pending state belongs to a different finalized observation",
-        );
-      return new Set(pending);
+    pendingAvailabilityHeaders: async (observation) => {
+      assertWatcherStateQueueObservation(observation);
+      const epoch = generation;
+      const assertCurrentClassification = () => {
+        const inclusion = input.faultProofObservation?.currentObservation();
+        if (
+          closed ||
+          epoch !== generation ||
+          current === null ||
+          observation.deploymentIdentityDigest !== input.identity.manifestId ||
+          (current.observationDigest !== observation.observationDigest &&
+            inclusion?.observationDigest !== observation.observationDigest)
+        )
+          throw new Error(
+            "Availability pending state requires a current authenticated observation",
+          );
+      };
+      assertCurrentClassification();
+      // Classification follows the inclusion overlay; this read never changes
+      // the finalized observation or authorizes an availability transaction.
+      const result = new Set<string>();
+      for (const {
+        headerHash,
+        daAvailability,
+      } of observation.finalizedHeaders) {
+        if (daAvailability === "Unattested" || "Published" in daAvailability)
+          continue;
+        if ("Challenged" in daAvailability || pending.has(headerHash)) {
+          result.add(headerHash);
+          continue;
+        }
+        if (
+          current?.finalizedHeaders.some(
+            (header) => header.headerHash === headerHash,
+          )
+        )
+          continue;
+        // A newly included attestation can precede public DA propagation. Only
+        // ordinary unavailability defers classification: malformed/rejected
+        // data still reaches the classifier's mandatory evidence verification.
+        let unavailable = true;
+        for (const source of publicDa.sources) {
+          const payload = await source.fetchPayloadByHeaderHash(headerHash);
+          if (payload.ok) {
+            unavailable = false;
+            break;
+          }
+          if (
+            payload.attempts.some(
+              ({ status }) =>
+                status !== "not_found" &&
+                status !== "transport_error" &&
+                status !== "timeout",
+            )
+          )
+            unavailable = false;
+        }
+        if (unavailable) result.add(headerHash);
+      }
+      assertCurrentClassification();
+      return result;
     },
     invalidateForRollback: (point) => {
       generation += 1;

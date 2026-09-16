@@ -150,7 +150,10 @@ describe.skipIf(!blueprintPresent)(
       // A fresh deployer-chosen native timelock policy, exactly as a real
       // deployment would create. It is a Plutus parameter for da-attestation
       // (both legs), so its identity is recorded in the artifact.
-      const authPolicy = createReferenceScriptAuthPolicy(lucid, emulator.now());
+      const authPolicy = await createReferenceScriptAuthPolicy(
+        lucid,
+        emulator.now(),
+      );
 
       // The whole policy object, not one of its fields.
       // `ReferenceScriptAuthPolicy` is structurally a superset of

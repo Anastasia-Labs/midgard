@@ -144,6 +144,14 @@ export type WatcherStateQueueHeaderObservation = Readonly<{
 export type WatcherStateQueueObservationSource = Readonly<{
   /** Ephemeral exact finalized point, including blocks with no queue transition. */
   latestFinalizedObservation?(): WatcherAuthenticatedStateQueueObservation | null;
+  /** Volatile inclusion view; it must never be appended to the finalized store. */
+  observeIncluded?(
+    input: Readonly<{
+      nativeBlock: WatcherNativeBlockAdmission;
+      localObservation: WatcherLocalKupmiosNativeObservation;
+      previous: WatcherAuthenticatedStateQueueObservation;
+    }>,
+  ): Promise<WatcherAuthenticatedStateQueueObservation>;
   observe(
     input: Readonly<{
       nativeBlock: WatcherNativeBlockAdmission;
@@ -997,7 +1005,9 @@ const anchoredHeaderObservation = ({
   queueOutRef,
   nextHeaderHash,
   point,
+  minimumConfirmationDepth = RELEASE_FINALITY_DEPTH,
 }: {
+  minimumConfirmationDepth?: number;
   prior: WatcherStateQueueHeaderObservation | undefined;
   header: DecodedQueueHeader;
   queueOutRef: string;
@@ -1026,7 +1036,7 @@ const anchoredHeaderObservation = ({
           observedSlot: point.slot,
           observedBlockNo: point.blockNo,
           observedChainPointId: point.chainPointId,
-          finalityDepth: RELEASE_FINALITY_DEPTH.toString(),
+          finalityDepth: minimumConfirmationDepth.toString(),
         };
   return Object.freeze({
     ...header,
@@ -1299,7 +1309,9 @@ const deriveObservation = ({
   sourceId,
   previous,
   rawTransactions,
+  minimumConfirmationDepth = RELEASE_FINALITY_DEPTH,
 }: {
+  minimumConfirmationDepth?: number;
   nativeBlock: WatcherNativeBlockAdmission;
   localObservation: WatcherLocalKupmiosNativeObservation;
   authority: ReturnType<typeof watcherDeploymentProtocolScriptAuthority>;
@@ -1312,7 +1324,7 @@ const deriveObservation = ({
     localObservation.block.chainPoint.slot !== nativeBlock.slot ||
     localObservation.block.chainPoint.blockNo !== nativeBlock.blockNo ||
     BigInt(localObservation.block.chainPoint.depth) <
-      BigInt(RELEASE_FINALITY_DEPTH) ||
+      BigInt(minimumConfirmationDepth) ||
     rawTransactions.length > nativeBlock.transactionIds.length
   ) {
     throw new Error(
@@ -1352,7 +1364,7 @@ const deriveObservation = ({
       raw.inclusionPoint.blockHash !== nativeBlock.blockHash ||
       raw.inclusionPoint.slot !== nativeBlock.slot ||
       raw.inclusionPoint.blockNo !== nativeBlock.blockNo ||
-      raw.confirmationDepth < RELEASE_FINALITY_DEPTH
+      raw.confirmationDepth < minimumConfirmationDepth
     ) {
       throw new Error(
         "resolved transaction was substituted across the native chain point",
@@ -1455,7 +1467,7 @@ const deriveObservation = ({
       blockNo: nativeBlock.blockNo,
       transactionIndex: transactionIndex.toString(),
       chainPointId: authenticatedChainPointId,
-      finalityDepth: RELEASE_FINALITY_DEPTH.toString(),
+      finalityDepth: minimumConfirmationDepth.toString(),
       mintPolicyIds: policies,
       redeemers,
       spentInputOutRefs,
@@ -1477,7 +1489,7 @@ const deriveObservation = ({
       transactionHash: raw.txHash,
       point: nativeBlock,
       chainPointId: authenticatedChainPointId,
-      finalityDepth: RELEASE_FINALITY_DEPTH.toString(),
+      finalityDepth: minimumConfirmationDepth.toString(),
     });
     const byHeaderHash = new Map(
       finalizedHeaders.map((header) => [header.headerHash, header]),
@@ -1487,6 +1499,7 @@ const deriveObservation = ({
       byHeaderHash.set(
         output.header.headerHash,
         anchoredHeaderObservation({
+          minimumConfirmationDepth,
           prior: byHeaderHash.get(output.header.headerHash),
           header: output.header,
           queueOutRef: output.node.outRef,
@@ -1530,7 +1543,7 @@ const deriveObservation = ({
     slot: nativeBlock.slot,
     blockNo: nativeBlock.blockNo,
     chainPointId: authenticatedChainPointId,
-    finalityDepth: RELEASE_FINALITY_DEPTH.toString(),
+    finalityDepth: minimumConfirmationDepth.toString(),
   });
   const canonical = {
     schemaVersion: WATCHER_AUTHENTICATED_STATE_QUEUE_OBSERVATION_SCHEMA_VERSION,
@@ -1558,7 +1571,9 @@ const deriveObservation = ({
 export const createWatcherStateQueueObservationSource = ({
   deploymentIdentity,
   rawSource,
+  inclusionRawSource,
 }: {
+  inclusionRawSource?: LocalKupmiosFraudProofRawSource;
   deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   rawSource: LocalKupmiosFraudProofRawSource;
 }): WatcherStateQueueObservationSource => {
@@ -1580,6 +1595,14 @@ export const createWatcherStateQueueObservationSource = ({
     deploymentIdentity,
     rawSource,
   });
+  const includedBlockSource =
+    inclusionRawSource === undefined
+      ? null
+      : createWatcherResolvedBlockObservationSource({
+          deploymentIdentity,
+          rawSource: inclusionRawSource,
+          minimumConfirmationDepth: 1,
+        });
   const readers: PersistedRestoreReaders = {
     readBlock: (point) =>
       readAdmittedLocalKupmiosRawBlockAtPoint({
@@ -1609,8 +1632,11 @@ export const createWatcherStateQueueObservationSource = ({
   // All four entry points begin by pinning a new boundary and publish their
   // observation only after acquisition succeeds. A moving provider head can
   // therefore retry the whole read while retaining exclusive source ownership.
-  const capture = <T>(read: () => Promise<T>): Promise<T> =>
-    withLocalKupmiosSourceCapture(rawSource, async () => {
+  const capture = <T>(
+    read: () => Promise<T>,
+    captureSource = rawSource,
+  ): Promise<T> =>
+    withLocalKupmiosSourceCapture(captureSource, async () => {
       for (let attempt = 0; ; attempt += 1) {
         try {
           return await read();
@@ -1625,6 +1651,67 @@ export const createWatcherStateQueueObservationSource = ({
     });
   let latestFinalized: WatcherAuthenticatedStateQueueObservation | null = null;
   const source = Object.freeze({
+    ...(inclusionRawSource === undefined || includedBlockSource === null
+      ? {}
+      : {
+          observeIncluded: async ({
+            nativeBlock,
+            localObservation,
+            previous,
+          }: {
+            nativeBlock: WatcherNativeBlockAdmission;
+            localObservation: WatcherLocalKupmiosNativeObservation;
+            previous: WatcherAuthenticatedStateQueueObservation;
+          }) =>
+            capture(async () => {
+              assertWatcherStateQueueObservation(previous);
+              if (
+                previous.deploymentIdentityDigest !==
+                  deploymentIdentity.manifestId ||
+                previous.protocolScriptAuthorityDigest !==
+                  authority.authorityDigest ||
+                BigInt(previous.nativePoint.blockNo) >=
+                  BigInt(nativeBlock.blockNo)
+              )
+                throw new Error(
+                  "included queue predecessor is foreign or non-monotone",
+                );
+              await readAdmittedLocalKupmiosBoundary({
+                source: inclusionRawSource,
+                observationDepth: "inclusion",
+              });
+              const resolvedBlock = await includedBlockSource.observe({
+                nativeBlock,
+                localObservation,
+              });
+              const { rawBlock } =
+                readWatcherResolvedBlockObservation(resolvedBlock);
+              const candidates = candidateRawBlockTransactions({
+                rawBlock,
+                queue: previous.finalizedQueue,
+                currentLock: previous.finalizedCorrectionLock,
+                stateQueuePolicyId:
+                  authority.protocolScriptHashes.stateQueueMint,
+                hubOraclePolicyId: authority.protocolScriptHashes.hubOracleMint,
+              });
+              const rawTransactions =
+                await resolveWatcherBlockObservationTransactions(
+                  resolvedBlock,
+                  candidates.map(({ txHash }) => txHash),
+                );
+              return admitObservation(
+                deriveObservation({
+                  nativeBlock,
+                  localObservation,
+                  authority,
+                  sourceId: sourceDetails.sourceId,
+                  previous,
+                  rawTransactions,
+                  minimumConfirmationDepth: 1,
+                }),
+              );
+            }, inclusionRawSource),
+        }),
     latestFinalizedObservation: () => latestFinalized,
     observe: ({ nativeBlock, localObservation, previous }) =>
       capture(async () => {
@@ -1757,25 +1844,32 @@ export const createWatcherStateQueueObservationSource = ({
           authority,
           readers: {
             readBoundary: () =>
-              readAdmittedLocalKupmiosBoundary({ source: rawSource }),
+              readAdmittedLocalKupmiosBoundary({
+                source: inclusionRawSource ?? rawSource,
+                observationDepth:
+                  inclusionRawSource === undefined
+                    ? "release_finality"
+                    : "inclusion",
+              }),
             readHistory: (unit, point) =>
               readAdmittedLocalKupmiosUnitHistoryAtPoint({
-                source: rawSource,
+                source: inclusionRawSource ?? rawSource,
                 unit,
                 point,
               }),
             readTransaction: (txHash, point) =>
               readAdmittedLocalKupmiosRawTransaction({
-                source: rawSource,
+                source: inclusionRawSource ?? rawSource,
                 txHash,
                 expectedInclusionPoint: point,
-                minimumConfirmationDepth: RELEASE_FINALITY_DEPTH,
+                minimumConfirmationDepth:
+                  inclusionRawSource === undefined ? RELEASE_FINALITY_DEPTH : 1,
               }),
           },
         });
         admittedHeaders.add(header);
         return header;
-      }),
+      }, inclusionRawSource ?? rawSource),
   } satisfies WatcherStateQueueObservationSource);
   admittedSources.add(source);
   return source;
@@ -2064,12 +2158,12 @@ const snapshotObservationAtBoundary = async ({
 };
 
 /**
- * The retained HeaderV1 exists on L1 but none of its release-final queue
+ * The retained HeaderV1 exists on L1 but none of its authenticated queue
  * outputs carries a public DA attachment yet. The committee attests a block
  * after the operator commits it, so a successor can reach classification
- * before its predecessor's attestation is release-final. This is a wait
+ * before its predecessor's attestation is included. This is a wait
  * condition for the classifier, not a divergence, and it clears on its own
- * once the attestation transaction reaches the finality depth.
+ * once the attestation transaction is included.
  */
 export class WatcherRetainedHeaderAttestationPendingError extends Error {
   constructor(readonly headerHash: string) {

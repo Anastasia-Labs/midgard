@@ -5,6 +5,7 @@ import type {
   StateQueueMutationLease,
   StateQueueMutationLeaseCoordinator,
 } from "../remove-fraudulent-block.js";
+import { WorkflowActionChangedError } from "./action-changed.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import type { CompleteCanonicalReplayContext } from "./complete-replay.js";
 import {
@@ -97,7 +98,7 @@ const assertExactCurrentAction = ({
     expected.kind !== "action_required" ||
     !sameJson(expected.action, requested)
   ) {
-    throw new Error(
+    throw new WorkflowActionChangedError(
       `${category} preflight action differs from authenticated current L1 state`,
     );
   }

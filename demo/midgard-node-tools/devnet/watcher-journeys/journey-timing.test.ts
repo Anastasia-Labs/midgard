@@ -68,10 +68,42 @@ describe("single-deposit transition-trace journey timing", () => {
     expect(timing.expectedConfirmationMs).toBe(150 * 60_000);
     expect(timing.confirmationAllowanceMs).toBe(300 * 60_000);
     expect(timing.correctionTimeoutMs).toBe(20_250_000);
-    expect(timing.journeyTimeoutMs).toBe(28_980_030);
+    expect(timing.journeyTimeoutMs).toBe(30_210_030);
     expect(timing.plan.successorTransactions).toBe(4);
     expect(timing.allowances.successorRegistrationMs).toBe(30);
     expect(timing.cadence.confirmationDepth).toBe(30);
+    // Absent an explicit action depth, every stage keeps waiting for release
+    // finality, which is the behavior before inclusion-gated actions.
+    expect(timing.cadence.actionDepth).toBe(30);
+  });
+
+  it("budgets action stages from the action depth and the stamp from finality", () => {
+    const inclusion = transitionTraceJourneyTiming({
+      ...preprod,
+      actionDepth: 1,
+    });
+    const finality = transitionTraceJourneyTiming(preprod);
+    expect(inclusion.cadence.actionDepth).toBe(1);
+    expect(inclusion.cadence.confirmationDepth).toBe(30);
+    // One block at f=0.05 and one-second slots: twenty seconds per inclusion.
+    expect(inclusion.expectedConfirmationMs).toBe(15 * 20_000);
+    expect(inclusion.transactionAllowanceMs).toBe(40_000 + 120_000 + 30_000);
+    expect(inclusion.correctionTimeoutMs).toBe(15 * 190_000);
+    // The single release-finality window is unchanged by the action depth.
+    expect(inclusion.allowances.finalizedEvidenceStampMs).toBe(1_230_000);
+    expect(inclusion.allowances).toEqual(finality.allowances);
+    expect(inclusion.journeyTimeoutMs).toBeLessThan(finality.journeyTimeoutMs);
+    expect(
+      inclusion.journeyTimeoutMs -
+        inclusion.allowances.finalizedEvidenceStampMs,
+    ).toBeGreaterThan(0);
+  });
+
+  it("refuses an action depth outside the release finality window", () => {
+    for (const actionDepth of [0, 1.5, 31, Number.NaN])
+      expect(() =>
+        transitionTraceJourneyTiming({ ...preprod, actionDepth }),
+      ).toThrow("Invalid journey cadence");
   });
 
   it("scales with slot duration, block probability, and finality independently", () => {
@@ -89,6 +121,10 @@ describe("single-deposit transition-trace journey timing", () => {
       transitionTraceJourneyTiming({ ...preprod, confirmationDepth: 60 })
         .confirmationAllowanceMs,
     ).toBe(2 * baseline);
+    expect(
+      transitionTraceJourneyTiming({ ...preprod, actionDepth: 15 })
+        .confirmationAllowanceMs,
+    ).toBe(baseline / 2);
     const staged = transitionTraceJourneyTiming({
       ...preprod,
       fixtureStagingAllowanceMs: 123_000,
@@ -159,7 +195,7 @@ describe("generic journey timing for families without an audited plan", () => {
     expect(timing.transactionAllowanceMs).toBe(1_350_000);
     expect(timing.transactionAllowanceMs).toBe(audited.transactionAllowanceMs);
     expect(timing.correctionTimeoutMs).toBe(24 * 1_350_000);
-    expect(timing.journeyTimeoutMs).toBe(41_130_030);
+    expect(timing.journeyTimeoutMs).toBe(42_360_030);
     expect(timing.journeyTimeoutMs).toBeGreaterThan(audited.journeyTimeoutMs);
     expect(timing.allowances).toEqual(audited.allowances);
   });

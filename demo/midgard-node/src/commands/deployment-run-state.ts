@@ -495,9 +495,9 @@ export const resolveReferenceScriptAuthPolicyProgram = ({
       let policySource: "run_state" | "manifest" | "created" | "fresh_created" =
         "created";
 
-      const transitionState = (
+      const transitionState = async (
         state: DeploymentRunState,
-      ): DeploymentRunState => {
+      ): Promise<DeploymentRunState> => {
         const runStatePolicy = authPolicyFromRunStateIdentity(state.identity);
         if (runStatePolicy !== null && !options.freshRedeploy) {
           assertDeploymentIdentityMatches(
@@ -522,7 +522,7 @@ export const resolveReferenceScriptAuthPolicyProgram = ({
             referenceScriptAuthPolicyFromDeploymentInfo(manifestPolicy);
           policySource = "manifest";
         } else {
-          resolvedPolicy = createReferenceScriptAuthPolicy(
+          resolvedPolicy = await createReferenceScriptAuthPolicy(
             lucid,
             Date.now(),
             timelockDurationMs,
@@ -580,7 +580,7 @@ export const resolveReferenceScriptAuthPolicyProgram = ({
                 "Read-only reference-script capture requires an existing deployment run state.",
               );
             }
-            transitionState(existingState);
+            await transitionState(existingState);
             return existingState;
           })();
       const policy =

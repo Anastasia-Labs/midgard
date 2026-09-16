@@ -18,10 +18,11 @@ fn state_queue_mint_redeemer(
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   state_queue_policy_id: PolicyId,
 ) -> state_queue.MintRedeemer {
-  expect Some(Pair(_, redeemer_data)) = redeemers
-    |> list.find(
-        fn(Pair(purpose, _)) { purpose == Mint(state_queue_policy_id) },
-      )
+  expect Some(Pair(_, redeemer_data)) =
+    redeemers
+      |> list.find(
+          fn(Pair(purpose, _)) { purpose == Mint(state_queue_policy_id) },
+        )
   expect redeemer: state_queue.MintRedeemer = redeemer_data
   redeemer
 }
@@ -31,12 +32,13 @@ fn hub_datum_from_spent_input(
   hub_oracle_policy_id: PolicyId,
   hub_oracle_input_index: Int,
 ) -> hub.Datum {
-  let hub_input = utils.get_authentic_input_of(
-    inputs,
-    hub_oracle_policy_id,
-    hub.asset_name,
-    hub_oracle_input_index,
-  )
+  let hub_input =
+    utils.get_authentic_input_of(
+      inputs,
+      hub_oracle_policy_id,
+      hub.asset_name,
+      hub_oracle_input_index,
+    )
   expect InlineDatum(hub_datum_data) = hub_input.output.datum
   expect hub_datum: hub.Datum = hub_datum_data
   hub_datum
@@ -50,124 +52,126 @@ fn correction_transition(
   hub_datum: hub.Datum,
   tx: Transaction,
 ) -> Bool {
-  let mint_redeemer = state_queue_mint_redeemer(
-    tx.redeemers,
-    hub_datum.state_queue,
-  )
-  let (expected_locked, terminal) = when mint_redeemer is {
-    state_queue.RemoveFraudulentBlockHeader {
-      fraudulent_blocks_header_hash,
-      fraud_proof_ref_input_index,
-      block_removal_approach,
-      ..
-    } -> {
-      let
+  let mint_redeemer =
+    state_queue_mint_redeemer(tx.redeemers, hub_datum.state_queue)
+  let (expected_locked, terminal) =
+    when mint_redeemer is {
+      state_queue.RemoveFraudulentBlockHeader {
+        fraudulent_blocks_header_hash,
+        fraud_proof_ref_input_index,
+        block_removal_approach,
+        ..
+      } -> {
+        let
           referenced_header_hash,
           _fraud_prover,
-          referenced_fraud_proof_asset_name
-        <- fraud_proof.get_proven_fraud_record_with_identity(
-        tx.reference_inputs,
-        hub_datum.fraud_proof,
-        fraud_proof_ref_input_index,
-      )
-      expect referenced_header_hash == fraudulent_blocks_header_hash
-      (
-        correction_lock.Locked {
-          target_header_hash: fraudulent_blocks_header_hash,
-          correction_identity: correction_lock.FraudProof {
-            fraud_proof_asset_name: referenced_fraud_proof_asset_name,
+          referenced_fraud_proof_asset_name,
+        <-
+          fraud_proof.get_proven_fraud_record_with_identity(
+            tx.reference_inputs,
+            hub_datum.fraud_proof,
+            fraud_proof_ref_input_index,
+          )
+        expect referenced_header_hash == fraudulent_blocks_header_hash
+        (
+          correction_lock.Locked {
+            target_header_hash: fraudulent_blocks_header_hash,
+            correction_identity: correction_lock.FraudProof {
+              fraud_proof_asset_name: referenced_fraud_proof_asset_name,
+            },
           },
-        },
-        when block_removal_approach is {
-          state_queue.RemoveFraudulentBlocksLink { .. } -> False
-          state_queue.RemoveLastFraudulentBlock { .. } -> True
-        },
-      )
-    }
-    state_queue.RemoveUnattestedBlockAfterTimeout {
-      timed_out_header_hash,
-      removal_approach,
-      ..
-    } ->
-      (
-        correction_lock.Locked {
-          target_header_hash: timed_out_header_hash,
-          correction_identity: correction_lock.AttestationTimeout,
-        },
-        when removal_approach is {
-          state_queue.PruneTimedOutBlockDescendant { .. } -> False
-          state_queue.RemoveTimedOutHead { .. } -> True
-        },
-      )
-    state_queue.RemoveUnavailableBlockAfterTimeout {
-      unavailable_header_hash,
-      challenge_asset_name,
-      removal_approach,
-      ..
-    } -> {
-      expect bytearray.length(challenge_asset_name) == 32
-      let expected_locked = correction_lock.Locked {
-        target_header_hash: unavailable_header_hash,
-        correction_identity: correction_lock.AvailabilityChallenge {
-          challenge_asset_name,
-        },
+          when block_removal_approach is {
+            state_queue.RemoveFraudulentBlocksLink { .. } -> False
+            state_queue.RemoveLastFraudulentBlock { .. } -> True
+          },
+        )
       }
-      expect
-        when current_datum is {
-          correction_lock.Idle -> {
-            expect [challenge_input] = tx.inputs
-              |> list.filter(
-                  fn(Input { output, .. }) {
-                    quantity_of(
-                      output.value,
-                      availability_policy_id,
-                      challenge_asset_name,
-                    ) == 1
-                  },
-                )
-            expect
-              challenge_input.output.address == address.from_script(
-                availability_policy_id,
-              )
-            expect InlineDatum(challenge_datum_data) = challenge_input.output.datum
-            expect
-                availability.ChallengedBond {
-                  commitment,
-                  da_bond_asset_name,
-                  challenge_asset_name: authenticated_challenge_asset_name,
-                  response_deadline,
-                  ..
-                }: availability.BondDatumV1
-              = challenge_datum_data
-            expect
-              quantity_of(
-                challenge_input.output.value,
-                availability_policy_id,
-                da_bond_asset_name,
-              ) == 1
-            and {
-              authenticated_challenge_asset_name == challenge_asset_name,
-              commitment.header_hash == unavailable_header_hash,
-              utils.get_inclusive_lower_bound_of_interval(tx.validity_range) >= response_deadline,
-            }
+      state_queue.RemoveUnattestedBlockAfterTimeout {
+        timed_out_header_hash,
+        removal_approach,
+        ..
+      } ->
+        (
+          correction_lock.Locked {
+            target_header_hash: timed_out_header_hash,
+            correction_identity: correction_lock.AttestationTimeout,
+          },
+          when removal_approach is {
+            state_queue.PruneUnattestedBlockDescendant { .. } -> False
+            state_queue.RemoveLastUnattestedBlock { .. } -> True
+          },
+        )
+      state_queue.RemoveUnavailableBlockAfterTimeout {
+        unavailable_header_hash,
+        challenge_asset_name,
+        removal_approach,
+        ..
+      } -> {
+        expect bytearray.length(challenge_asset_name) == 32
+        let expected_locked =
+          correction_lock.Locked {
+            target_header_hash: unavailable_header_hash,
+            correction_identity: correction_lock.AvailabilityChallenge {
+              challenge_asset_name,
+            },
           }
-          current -> current == expected_locked
-        }
-      (
-        expected_locked,
-        when removal_approach is {
-          state_queue.PruneTimedOutBlockDescendant { .. } -> False
-          state_queue.RemoveTimedOutHead { .. } -> True
-        },
-      )
+        expect
+          when current_datum is {
+            correction_lock.Idle -> {
+              expect [challenge_input] =
+                tx.inputs
+                  |> list.filter(
+                      fn(Input { output, .. }) {
+                        quantity_of(
+                          output.value,
+                          availability_policy_id,
+                          challenge_asset_name,
+                        ) == 1
+                      },
+                    )
+              expect
+                challenge_input.output.address == address.from_script(
+                  availability_policy_id,
+                )
+              expect InlineDatum(challenge_datum_data) =
+                challenge_input.output.datum
+              expect availability.ChallengedBond {
+                commitment,
+                da_bond_asset_name,
+                challenge_asset_name: authenticated_challenge_asset_name,
+                response_deadline,
+                ..
+              }: availability.BondDatumV1 = challenge_datum_data
+              expect
+                quantity_of(
+                  challenge_input.output.value,
+                  availability_policy_id,
+                  da_bond_asset_name,
+                ) == 1
+              and {
+                authenticated_challenge_asset_name == challenge_asset_name,
+                commitment.header_hash == unavailable_header_hash,
+                utils.get_inclusive_lower_bound_of_interval(tx.validity_range) >= response_deadline,
+              }
+            }
+            current -> current == expected_locked
+          }
+        (
+          expected_locked,
+          when removal_approach is {
+            state_queue.PruneTimedOutBlockDescendant { .. } -> False
+            state_queue.RemoveTimedOutHead { .. } -> True
+          },
+        )
+      }
+      _ -> fail
     }
-    _ -> fail
-  }
-  let lock_output = correction_lock.unique_output(
-    tx.outputs,
-    hub_oracle_policy_id,
-    own_input.output.address,
-  )
+  let lock_output =
+    correction_lock.unique_output(
+      tx.outputs,
+      hub_oracle_policy_id,
+      own_input.output.address,
+    )
   and {
     quantity_of(tx.mint, hub_oracle_policy_id, correction_lock.asset_name) == 0,
     correction_lock.datum_transition_is_valid(
@@ -192,25 +196,28 @@ validator spend(
     tx: Transaction,
   ) {
     expect Some(current_datum) = datum
-    expect Some(own_input) = tx.inputs
-      |> list.find(
-          fn(Input { output_reference, .. }) { output_reference == own_ref },
-        )
-    let authenticated_own_input = correction_lock.unique_input(
-      tx.inputs,
-      hub_oracle_policy_id,
-      own_input.output.address,
-    )
+    expect Some(own_input) =
+      tx.inputs
+        |> list.find(
+            fn(Input { output_reference, .. }) { output_reference == own_ref },
+          )
+    let authenticated_own_input =
+      correction_lock.unique_input(
+        tx.inputs,
+        hub_oracle_policy_id,
+        own_input.output.address,
+      )
     expect authenticated_own_input.output_reference == own_ref
     expect correction_lock.decode_datum(own_input.output) == current_datum
 
     when redeemer is {
       correction_lock.Correct { hub_oracle_ref_input_index } -> {
-        let hub_datum = hub.get_datum(
-          tx.reference_inputs,
-          hub_oracle_policy_id,
-          hub_oracle_ref_input_index,
-        )
+        let hub_datum =
+          hub.get_datum(
+            tx.reference_inputs,
+            hub_oracle_policy_id,
+            hub_oracle_ref_input_index,
+          )
         correction_transition(
           current_datum,
           own_input,
@@ -221,11 +228,12 @@ validator spend(
         )
       }
       correction_lock.Deinit { hub_oracle_input_index } -> {
-        let hub_datum = hub_datum_from_spent_input(
-          tx.inputs,
-          hub_oracle_policy_id,
-          hub_oracle_input_index,
-        )
+        let hub_datum =
+          hub_datum_from_spent_input(
+            tx.inputs,
+            hub_oracle_policy_id,
+            hub_oracle_input_index,
+          )
         expect
           state_queue_mint_redeemer(tx.redeemers, hub_datum.state_queue) == state_queue.Deinit
         and {
@@ -372,18 +380,19 @@ fn test_availability_locked(asset_name: ByteArray) -> correction_lock.Datum {
 }
 
 fn test_timeout_redeemer(terminal: Bool) -> state_queue.MintRedeemer {
-  let removal_approach = if terminal {
-    state_queue.RemoveTimedOutHead {
-      confirmed_state_input_outref: test_outref(#"03", 0),
-      confirmed_state_output_index: 0,
+  let removal_approach =
+    if terminal {
+      state_queue.RemoveLastUnattestedBlock {
+        predecessor_input_outref: test_outref(#"03", 0),
+        predecessor_output_index: 0,
+      }
+    } else {
+      state_queue.PruneUnattestedBlockDescendant {
+        predecessor_ref_input_index: 1,
+        timed_out_node_input_outref: test_outref(#"04", 0),
+        timed_out_node_output_index: 0,
+      }
     }
-  } else {
-    state_queue.PruneTimedOutBlockDescendant {
-      confirmed_state_ref_input_index: 1,
-      timed_out_node_input_outref: test_outref(#"04", 0),
-      timed_out_node_output_index: 0,
-    }
-  }
   state_queue.RemoveUnattestedBlockAfterTimeout {
     yield_to_ref_input_index: 0,
     timed_out_header_hash: test_target,
@@ -392,17 +401,18 @@ fn test_timeout_redeemer(terminal: Bool) -> state_queue.MintRedeemer {
 }
 
 fn test_fraud_redeemer(terminal: Bool) -> state_queue.MintRedeemer {
-  let removal_approach = if terminal {
-    state_queue.RemoveLastFraudulentBlock {
-      anchor_element_input_outref: test_outref(#"05", 0),
-      anchor_element_output_index: 0,
+  let removal_approach =
+    if terminal {
+      state_queue.RemoveLastFraudulentBlock {
+        anchor_element_input_outref: test_outref(#"05", 0),
+        anchor_element_output_index: 0,
+      }
+    } else {
+      state_queue.RemoveFraudulentBlocksLink {
+        fraudulent_node_input_outref: test_outref(#"06", 0),
+        fraudulent_node_output_index: 0,
+      }
     }
-  } else {
-    state_queue.RemoveFraudulentBlocksLink {
-      fraudulent_node_input_outref: test_outref(#"06", 0),
-      fraudulent_node_output_index: 0,
-    }
-  }
   state_queue.RemoveFraudulentBlockHeader {
     yield_to_ref_input_index: 0,
     fraudulent_operator: test_operator,
@@ -420,18 +430,19 @@ fn test_availability_redeemer(
   asset_name: ByteArray,
   terminal: Bool,
 ) -> state_queue.MintRedeemer {
-  let removal_approach = if terminal {
-    state_queue.RemoveTimedOutHead {
-      confirmed_state_input_outref: test_outref(#"03", 0),
-      confirmed_state_output_index: 0,
+  let removal_approach =
+    if terminal {
+      state_queue.RemoveTimedOutHead {
+        confirmed_state_input_outref: test_outref(#"03", 0),
+        confirmed_state_output_index: 0,
+      }
+    } else {
+      state_queue.PruneTimedOutBlockDescendant {
+        confirmed_state_ref_input_index: 1,
+        timed_out_node_input_outref: test_outref(#"04", 0),
+        timed_out_node_output_index: 0,
+      }
     }
-  } else {
-    state_queue.PruneTimedOutBlockDescendant {
-      confirmed_state_ref_input_index: 1,
-      timed_out_node_input_outref: test_outref(#"04", 0),
-      timed_out_node_output_index: 0,
-    }
-  }
   state_queue.RemoveUnavailableBlockAfterTimeout {
     yield_to_ref_input_index: 0,
     unavailable_header_hash: test_target,
@@ -441,30 +452,33 @@ fn test_availability_redeemer(
 }
 
 fn test_availability_challenge_input(asset_name: ByteArray) -> Input {
-  let commitment: availability.CommitmentV1 = availability.CommitmentV1 {
-    version: availability.commitment_version_v1,
-    deployment_identity: test_hub_policy,
-    header_hash: test_target,
-    payload_byte_length: 1,
-    response_geometry: availability.ResponseGeometryV1 {
-      chunk_byte_length: 4096,
-      tranche_byte_length: 4 * 1024 * 1024,
-      max_tranche_count: 16,
-    },
-    tranche_descriptors: [],
-    bond_owner: test_operator,
-  }
-  let da_bond_asset_name = #"4441424e88888888888888888888888888888888888888888888888888888888"
-  let datum: availability.BondDatumV1 = availability.ChallengedBond {
-    commitment,
-    da_bond_asset_name,
-    committee_signers_hash: #"9999999999999999999999999999999999999999999999999999999999999999",
-    attested_signers: #"",
-    challenge_asset_name: asset_name,
-    challenger: test_operator,
-    opened_at: 0,
-    response_deadline: 100,
-  }
+  let commitment: availability.CommitmentV1 =
+    availability.CommitmentV1 {
+      version: availability.commitment_version_v1,
+      deployment_identity: test_hub_policy,
+      header_hash: test_target,
+      payload_byte_length: 1,
+      response_geometry: availability.ResponseGeometryV1 {
+        chunk_byte_length: 4096,
+        tranche_byte_length: 4 * 1024 * 1024,
+        max_tranche_count: 16,
+      },
+      tranche_descriptors: [],
+      bond_owner: test_operator,
+    }
+  let da_bond_asset_name =
+    #"4441424e88888888888888888888888888888888888888888888888888888888"
+  let datum: availability.BondDatumV1 =
+    availability.ChallengedBond {
+      commitment,
+      da_bond_asset_name,
+      committee_signers_hash: #"9999999999999999999999999999999999999999999999999999999999999999",
+      attested_signers: #"",
+      challenge_asset_name: asset_name,
+      challenger: test_operator,
+      opened_at: 0,
+      response_deadline: 100,
+    }
   Input {
     output_reference: test_outref(#"08", 0),
     output: Output {
@@ -679,7 +693,8 @@ test correction_lock_handler_rejects_other_fraud_identity_resume() fail {
 }
 
 test correction_lock_handler_accepts_availability_acquire_resume_and_clear() {
-  let challenge_asset_name = #"4441434888888888888888888888888888888888888888888888888888888888"
+  let challenge_asset_name =
+    #"4441434888888888888888888888888888888888888888888888888888888888"
   let locked = test_availability_locked(challenge_asset_name)
   let hub_input = test_hub_ref_input(test_hub_policy, test_state_queue_policy)
   and {
@@ -711,8 +726,10 @@ test correction_lock_handler_accepts_availability_acquire_resume_and_clear() {
 }
 
 test correction_lock_handler_rejects_other_availability_identity_resume() fail {
-  let first = #"4441434888888888888888888888888888888888888888888888888888888888"
-  let other = #"4441434899999999999999999999999999999999999999999999999999999999"
+  let first =
+    #"4441434888888888888888888888888888888888888888888888888888888888"
+  let other =
+    #"4441434899999999999999999999999999999999999999999999999999999999"
   let current = test_availability_locked(first)
   run_test_correction(
     current,
@@ -727,11 +744,37 @@ test correction_lock_handler_rejects_other_availability_identity_resume() fail {
 }
 
 test correction_lock_handler_rejects_availability_acquire_without_challenged_bond() fail {
-  let challenge_asset_name = #"4441434888888888888888888888888888888888888888888888888888888888"
+  let challenge_asset_name =
+    #"4441434888888888888888888888888888888888888888888888888888888888"
   let base = test_availability_acquire_tx(challenge_asset_name)
-  let tx = Transaction {
-    ..base,
-    inputs: [test_lock_input(correction_lock.Idle)],
-  }
+  let tx =
+    Transaction { ..base, inputs: [test_lock_input(correction_lock.Idle)] }
   run_test_correction(correction_lock.Idle, tx)
+}
+
+test correction_lock_handler_accepts_single_step_timeout_without_retained_lock() {
+  run_test_correction(
+    correction_lock.Idle,
+    test_correction_tx(
+      correction_lock.Idle,
+      correction_lock.Idle,
+      test_timeout_redeemer(True),
+      test_hub_ref_input(test_hub_policy, test_state_queue_policy),
+      [],
+    ),
+  )
+}
+
+test correction_lock_handler_rejects_timeout_switch_from_fraud_identity() fail {
+  let current = test_fraud_locked(test_proof_asset_name)
+  run_test_correction(
+    current,
+    test_correction_tx(
+      current,
+      test_timeout_locked(test_target),
+      test_timeout_redeemer(False),
+      test_hub_ref_input(test_hub_policy, test_state_queue_policy),
+      [],
+    ),
+  )
 }

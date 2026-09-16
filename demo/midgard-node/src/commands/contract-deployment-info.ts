@@ -2952,15 +2952,9 @@ const readReferenceScriptAuthPolicyForLiveWrite = async (
       `Deployment run state at "${runStatePath}" is missing identity.referenceScriptAuthPolicy`,
     );
   }
-  return {
-    policyId: policy.policyId,
-    nativeScript: policy.nativeScript,
-    tokenNames: SDK.REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
-    postTimelockAudit: {
-      required: true,
-      rule: "After the timelock expires, verify there is exactly one role token under this policy for every listed token name before treating the deployment as production-ready.",
-    },
-  };
+  return SDK.referenceScriptAuthPolicyDeploymentInfo(
+    SDK.referenceScriptAuthPolicyFromDeploymentInfo(policy),
+  );
 };
 
 export const writeContractDeploymentInfoFileProgram = (

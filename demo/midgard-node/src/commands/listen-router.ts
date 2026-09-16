@@ -91,6 +91,10 @@ import {
 } from "../services/state-queue-topology.js";
 import * as Initialization from "../transactions/initialization.js";
 import {
+  operatorStatusCommand,
+  parseOperatorKeyHashOption,
+} from "../transactions/operators/commands.js";
+import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
   referenceScriptTargetsByCommand,
@@ -2555,6 +2559,47 @@ ${bHex} -──▶ ${keyValues[bHex]} tx(s)`;
 /**
  * `GET /logGlobals`: logs the current process-global coordination state.
  */
+const OPERATOR_STATUS_ENDPOINT = "operator/status";
+
+/**
+ * `GET /operator/status[?operatorKeyHash=<hex>]` (admin): the same report as
+ * the `operator-status` CLI verb, for the operator wallet's key by default.
+ */
+const getOperatorStatusHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const rawKey = params["operatorKeyHash"];
+  let operatorKeyHash: string | undefined;
+  if (rawKey !== undefined) {
+    if (typeof rawKey !== "string") {
+      return yield* HttpServerResponse.json(
+        { error: "operatorKeyHash must be a single hex string" },
+        { status: 400 },
+      );
+    }
+    try {
+      operatorKeyHash = parseOperatorKeyHashOption(rawKey);
+    } catch (error) {
+      return yield* HttpServerResponse.json(
+        { error: errorMessage(error) },
+        { status: 400 },
+      );
+    }
+  }
+  const report = yield* operatorStatusCommand({ operatorKeyHash }).pipe(
+    Effect.either,
+  );
+  if (report._tag === "Left") {
+    yield* Effect.logWarning(
+      `GET /${OPERATOR_STATUS_ENDPOINT} failed: ${errorMessage(report.left)}`,
+    );
+    return yield* HttpServerResponse.json(
+      { error: errorMessage(report.left) },
+      { status: 500 },
+    );
+  }
+  return yield* HttpServerResponse.json(report.right);
+});
+
 const getLogGlobalsHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Logging global variables...`);
   const globals = yield* Globals;
@@ -3202,6 +3247,10 @@ export const buildListenRouter = (
       HttpRouter.get(
         `/logGlobals`,
         withAdminAccess("logGlobals", getLogGlobalsHandler),
+      ),
+      HttpRouter.get(
+        `/${OPERATOR_STATUS_ENDPOINT}`,
+        withAdminAccess(OPERATOR_STATUS_ENDPOINT, getOperatorStatusHandler),
       ),
       HttpRouter.post(`/${UTXOS_ENDPOINT}`, postUtxosByTxOutRefsHandler),
       HttpRouter.post(`/${DEPOSIT_BUILD_ENDPOINT}`, postDepositBuildHandler),

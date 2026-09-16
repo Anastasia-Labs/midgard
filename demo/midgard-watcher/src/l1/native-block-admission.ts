@@ -34,6 +34,17 @@ export type WatcherNativeBlockAdmission = Readonly<{
   transactionCbors: readonly string[];
 }>;
 
+const admittedNativeBlocks = new WeakSet<object>();
+
+/** A decoded native block can wake canonical rechecks; it grants no actuation
+ * or finality authority. Runtime callers must use coordinator-delivered blocks. */
+export const assertWatcherNativeBlockAdmission = (
+  block: WatcherNativeBlockAdmission,
+): void => {
+  if (!admittedNativeBlocks.has(block))
+    throw new Error("watcher native block was not admitted");
+};
+
 /**
  * Independently decodes the raw node block before durable dispatch. The Go
  * helper's metadata is treated only as a claim: CML re-derives the header,
@@ -129,7 +140,7 @@ export const admitWatcherNativeRollForwardBlock = (
         }
       }
     }
-    return Object.freeze({
+    const admitted = Object.freeze({
       schemaVersion: WATCHER_NATIVE_BLOCK_ADMISSION_SCHEMA_VERSION,
       blockType,
       protocolMajor,
@@ -142,6 +153,8 @@ export const admitWatcherNativeRollForwardBlock = (
       transactionIds: Object.freeze(transactionIds),
       transactionCbors: Object.freeze(transactionCbors),
     });
+    admittedNativeBlocks.add(admitted);
+    return admitted;
   } catch (error) {
     throw new Error("native chain-sync block admission failed", {
       cause: error,

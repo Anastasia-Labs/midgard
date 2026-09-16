@@ -11,7 +11,7 @@ The root stores \code{ConfirmedState}.
 The schematic header-only datum below omits this availability status.
 Merge requires status \code{Attested} or \code{Published}, maturity, a valid versioned header, and exact commitment/count binding.
 Spending also permits authenticated DA-attestation and availability-status updates through their coupled policies; only structural list mutations forward to the state-queue mint policy.
-The policy additionally supports attestation-timeout correction and correction-lock ordering; these coupled paths are not expanded in the schematic below.
+The policy additionally supports attestation-timeout correction and correction-lock ordering, described after the schematic below.
 
 The state queue is an L1 data structure that stores Midgard operators' committed block headers until they are confirmed.
 Active operators from the operator directory (see \cref{h:operator-directory}) take turns committing block headers to the state queue according to the rotating schedule enforced by the scheduler (see \cref{h:scheduler}).
@@ -157,6 +157,33 @@ Redeemers:
         \end{enumerate}
     \end{itemize}
 \end{description}
+
+\subsection{Unattested commitment timeout}
+\label{h:state-queue-unattested-timeout}
+
+Any pending commitment with status \code{Unattested} becomes removable when the inclusive lower bound of the transaction validity interval reaches its immutable header's \code{end\_time} plus \code{da\_attestation\_timeout} (one hour).
+The target need not immediately follow the confirmed root, and its predecessors need not be mature.
+The target NFT key must match both the redeemer's target hash and the hash of its valid versioned header.
+An authenticated immediate predecessor, either the root or an ordinary node, must link to that target.
+
+Correction proceeds through the existing correction-lock singleton and two coupled state-queue minting actions:
+\begin{enumerate}
+    \item If the target has descendants, reference its immediate predecessor, consume the target and its immediate child, burn that child's NFT, and continue the target with the child's successor link.
+      Consume the correction lock and continue it as \code{Locked} with the target hash and \code{AttestationTimeout} identity.
+      Repeat until the target has no descendants; descendants are removed regardless of operator identity or attestation status because their transitions depend on discarded state.
+    \item Consume the terminal target and its immediate predecessor, burn the target NFT, and continue the predecessor with an empty successor link.
+      Preserve the predecessor's committed data, address, and value, and return the correction lock to \code{Idle}.
+      The remaining prefix is unchanged.
+\end{enumerate}
+Each step rechecks the target's unattested status and deadline.
+The lock may begin Idle or already belong to this exact target and timeout identity; it cannot be taken from another correction.
+Appends and merges require a reference to the Idle lock, so acquiring it atomically with the first removal prevents concurrent structural growth during correction.
+A terminal target can be removed in one transaction that consumes and recreates the Idle lock.
+The state-queue minting policy delegates this action to its authenticated unattested-timeout rewarding validator; state-queue spending and correction-lock spending are coupled to that mint action.
+
+This is permissionless liveness recovery without fraud slashing.
+It does not change the separate availability-challenge timeout, the operator bond, or DA-attestation refund conditions.
+The operator node drives recovery for expired commitments throughout the pending queue, while watchers observe and alert.
 
 \subsection{Spending validator}
 \label{h:state-queue-spending-validator}

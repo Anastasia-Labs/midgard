@@ -4,7 +4,6 @@ import {
   Data as LucidData,
   type LucidEvolution,
   type TxBuilder,
-  type TxOutput,
   type UTxO,
 } from "@lucid-evolution/lucid";
 
@@ -15,6 +14,10 @@ import {
   type ReferenceScriptPublication,
   type RegisterRedeemerLayout,
 } from "./operator-lifecycle/layout.js";
+import {
+  outputMatchesElement as outputMatches,
+  requirePolicyNftUnit,
+} from "./operator-lifecycle/output-selectors.js";
 import * as SDK from "./operator-lifecycle/primitives.js";
 import {
   requireMintRedeemerIndex,
@@ -22,9 +25,14 @@ import {
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
 } from "./tx-context-redeemer.js";
-import { outputDatumCborMatches } from "./tx-output-utils.js";
 
+export * from "./operator-lifecycle/directory.js";
+export * from "./operator-lifecycle/exact-fee.js";
+export * from "./operator-lifecycle/exit.js";
 export * from "./operator-lifecycle/layout.js";
+export * from "./operator-lifecycle/output-selectors.js";
+export * from "./operator-lifecycle/status.js";
+export * from "./operator-lifecycle/strike.js";
 
 const ACTIVE_OPERATOR_LIST_STATE_TRANSITION_REDEEMER = LucidData.to(
   "ListStateTransition",
@@ -41,40 +49,6 @@ const encodeActiveOperatorDatumValue = (
 
 const encodeLinkedListNodeView = (nodeView: SDK.LinkedListNodeView): string =>
   SDK.encodeLinkedListNodeView(nodeView);
-
-const outputMatches = ({
-  output,
-  address,
-  datum,
-  unit,
-}: {
-  readonly output: TxOutput;
-  readonly address: string;
-  readonly datum: string;
-  readonly unit: string;
-}): boolean =>
-  output.address === address &&
-  outputDatumCborMatches(output, datum) &&
-  (output.assets[unit] ?? 0n) === 1n;
-
-const requirePolicyNftUnit = (
-  assets: Assets,
-  policyId: string,
-  label: string,
-): string => {
-  const units = Object.entries(assets)
-    .filter(
-      ([unit, quantity]) =>
-        unit !== "lovelace" && unit.startsWith(policyId) && quantity === 1n,
-    )
-    .map(([unit]) => unit);
-  if (units.length !== 1) {
-    throw new Error(
-      `${label} expected exactly one ${policyId} NFT unit, got ${units.length.toString()}`,
-    );
-  }
-  return units[0]!;
-};
 
 export const encodeRegisteredOperatorDatumValue = (
   operatorKeyHash: string,

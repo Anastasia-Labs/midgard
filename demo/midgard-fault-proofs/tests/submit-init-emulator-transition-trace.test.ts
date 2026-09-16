@@ -83,8 +83,8 @@ describe("fault-proof emulator integration", () => {
       throw new Error("Expected funder wallet to expose a nonce UTxO");
     }
 
-    const referenceScriptAuth = createReferenceScriptAuthPolicy(
-      funderLucid,
+    const referenceScriptAuth = await createReferenceScriptAuthPolicy(
+      proverLucid,
       emulator.now(),
     );
     const baseContracts = {

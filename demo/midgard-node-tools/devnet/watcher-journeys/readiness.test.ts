@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,6 +10,7 @@ import { readJourneyReadiness } from "./readiness.js";
 import {
   type JourneyEvidenceDeployment,
   readJourneyCanonicalTransactions,
+  readJourneyNativeEvidencePath,
 } from "./readiness-evidence.js";
 
 it("reports fixture coverage without creating deployment or runtime state", async () => {
@@ -33,13 +34,83 @@ it("reports fixture coverage without creating deployment or runtime state", asyn
   }
 });
 
+it("resolves shared evidence before anchoring and preserves an older finalized session", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "journey-native-path-"));
+  try {
+    const provisional = join(directory, "new-session", "native-chain.ndjson");
+    const finalized = join(directory, "old-session", "native-chain.ndjson");
+    await writeJourneyArtifact(join(directory, "result.json"), {
+      nativeEvidencePath: provisional,
+    });
+    expect(await readJourneyNativeEvidencePath(directory)).toBe(provisional);
+    await writeJourneyArtifact(
+      join(directory, "finalized-evidence-stamp.json"),
+      { nativeEvidencePath: finalized },
+    );
+    expect(await readJourneyNativeEvidencePath(directory)).toBe(finalized);
+    await writeJourneyArtifact(join(directory, "result.json"), {
+      nativeEvidencePath: join(
+        directory,
+        "another-session",
+        "native-chain.ndjson",
+      ),
+    });
+    expect(await readJourneyNativeEvidencePath(directory)).toBe(finalized);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("uses an existing legacy family capture only when no explicit evidence path is present", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "journey-native-legacy-"));
+  try {
+    await expect(readJourneyNativeEvidencePath(directory)).rejects.toThrow(
+      "No retained native evidence path",
+    );
+    const legacy = join(directory, "native-chain.ndjson");
+    await writeFile(legacy, "retained capture\n");
+    await writeJourneyArtifact(join(directory, "result.json"), {
+      status: "passed",
+    });
+    expect(await readJourneyNativeEvidencePath(directory)).toBe(legacy);
+    for (const nativeEvidencePath of [
+      null,
+      "",
+      "relative/native-chain.ndjson",
+      join(directory, "session") + "/../native-chain.ndjson",
+      42,
+    ]) {
+      await writeJourneyArtifact(join(directory, "result.json"), {
+        nativeEvidencePath,
+      });
+      await expect(readJourneyNativeEvidencePath(directory)).rejects.toThrow(
+        "invalid native evidence path",
+      );
+    }
+    await writeJourneyArtifact(join(directory, "result.json"), {
+      nativeEvidencePath: legacy,
+    });
+    await writeJourneyArtifact(
+      join(directory, "finalized-evidence-stamp.json"),
+      {},
+    );
+    await expect(readJourneyNativeEvidencePath(directory)).rejects.toThrow(
+      "invalid native evidence path",
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 const retained = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
 
 it.skipIf(retained === undefined)(
   "re-admits the actual retained native capture and its rollback history",
   async () => {
     const chain = await readJourneyCanonicalTransactions(
-      join(retained!, "work/journeys/transition-trace/native-chain.ndjson"),
+      await readJourneyNativeEvidencePath(
+        join(retained!, "work/journeys/transition-trace"),
+      ),
     );
     expect(chain.transactions.size).toBeGreaterThan(0);
     expect(chain.blocks.get(chain.tip.hash)?.blockNo).toBe(chain.tip.blockNo);

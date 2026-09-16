@@ -1,11 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { CML, type TxSigned } from "@lucid-evolution/lucid";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createFieldPreimageLengthCentralJournalAdapter } from "../src/field-preimage-length-mismatch/central-journal.js";
 import type { PreparedFieldPreimageLengthWorkflow } from "../src/field-preimage-length-mismatch/workflow.js";
+import * as removal from "../src/remove-fraudulent-block.js";
 import type {
   FraudProofWorkflowJournalEntry,
   FraudProofWorkflowJournalStore,
 } from "../src/workflow/journal.js";
+import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
 
 const prepared = (
   evidenceDigest = "4".repeat(64),
@@ -56,7 +63,9 @@ describe("fieldPreimageLengthMismatch central journal bridge", () => {
       referenceScripts: [],
     } as never);
     expect(memory.entries.map(({ event }) => event.kind)).toEqual([
+      "started",
       "prepared",
+      "preflight_passed",
       "submission_intent",
     ]);
     await bridge.journal.save({
@@ -65,7 +74,9 @@ describe("fieldPreimageLengthMismatch central journal bridge", () => {
       transactionIds: { init: txHash },
     });
     expect(memory.entries.map(({ event }) => event.kind)).toEqual([
+      "started",
       "prepared",
+      "preflight_passed",
       "submission_intent",
       "submitted",
       "reconciled",
@@ -123,13 +134,15 @@ describe("fieldPreimageLengthMismatch central journal bridge", () => {
       await restarted.auxiliaryConfirmed(kind, [txHash]);
 
       expect(memory.entries.map(({ event }) => event.kind)).toEqual([
+        "started",
         "prepared",
+        "preflight_passed",
         "submission_intent",
         "submitted",
         "reconciled",
         "confirmed",
       ]);
-      expect(memory.entries[1]?.event).toMatchObject({
+      expect(memory.entries[3]?.event).toMatchObject({
         kind: "submission_intent",
         actionId: `fieldPreimageLengthMismatch:carriage:${kind}:${txHash}`,
         txHash,
@@ -146,6 +159,7 @@ describe("fieldPreimageLengthMismatch central journal bridge", () => {
       txHash: first,
       referenceScripts: [],
     } as never);
+    await bridge.auxiliaryConfirmed("publication", [first]);
     await bridge.auxiliaryBoundary("publication")({
       txHash: second,
       referenceScripts: [],
@@ -174,4 +188,159 @@ describe("fieldPreimageLengthMismatch central journal bridge", () => {
       } as never),
     ).rejects.toThrow(/identity changed across restart/u);
   });
+});
+
+describe("field-preimage-length validating directory initialization", () => {
+  it("loads a new journal and retains a valid signed intent through a directory restart", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "field-preimage-first-run-"),
+    );
+    try {
+      const store = new DirectoryFraudProofWorkflowJournalStore(directory);
+      const first = adapter(store);
+      await expect(first.journal.load()).resolves.toMatchObject({
+        confirmed: [],
+        transactionIds: {},
+      });
+      const body = CML.TransactionBody.new(
+        CML.TransactionInputList.new(),
+        CML.TransactionOutputList.new(),
+        0n,
+      );
+      const transaction = CML.Transaction.new(
+        body,
+        CML.TransactionWitnessSet.new(),
+        true,
+        undefined,
+      );
+      const txHash = CML.hash_transaction(body).to_hex();
+      const signed = {
+        toTransaction: () => transaction,
+        toHash: () => txHash,
+      } as TxSigned;
+      await first.boundary(
+        "init",
+        prepared(),
+      )({ txHash, signed, referenceScripts: [] });
+      const restartedStore = new DirectoryFraudProofWorkflowJournalStore(
+        directory,
+      );
+      const restarted = adapter(restartedStore);
+      await expect(restarted.journal.load()).resolves.toMatchObject({
+        transactionIds: { init: txHash },
+      });
+      expect(
+        (await restartedStore.load(first.workflowId)).map(
+          ({ event }) => event.kind,
+        ),
+      ).toEqual([
+        "started",
+        "prepared",
+        "preflight_passed",
+        "submission_intent",
+      ]);
+      await restarted.journal.save({
+        prepared: prepared(),
+        confirmed: ["init"],
+        transactionIds: { init: txHash },
+      });
+      await expect(
+        adapter(
+          new DirectoryFraudProofWorkflowJournalStore(directory),
+        ).journal.load(),
+      ).resolves.toMatchObject({ confirmed: ["init"] });
+      await expect(
+        adapter(restartedStore, prepared("a".repeat(64))).journal.load(),
+      ).rejects.toThrow(/digest differs/u);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("field-preimage-length removal funding binding", () => {
+  afterEach(() => vi.restoreAllMocks());
+  it.each([true, false])(
+    "uses exact signed removal authority and rejects its absence (%s)",
+    async (admitted) => {
+      const directory = await mkdtemp(join(tmpdir(), "field-preimage-remove-"));
+      try {
+        const store = new DirectoryFraudProofWorkflowJournalStore(directory);
+        const bridge = adapter(store);
+        await bridge.journal.load();
+        const body = CML.TransactionBody.new(
+          CML.TransactionInputList.new(),
+          CML.TransactionOutputList.new(),
+          0n,
+        );
+        const transaction = CML.Transaction.new(
+          body,
+          CML.TransactionWitnessSet.new(),
+          true,
+          undefined,
+        );
+        const txHash = CML.hash_transaction(body).to_hex();
+        const signed = {
+          toTransaction: () => transaction,
+          toHash: () => txHash,
+        } as TxSigned;
+        const authority: removal.FraudSlashFundingAuthority = {
+          deploymentFingerprint: "1".repeat(64),
+          economicsPolicyDigest: "0".repeat(64),
+          category: "fieldPreimageLengthMismatch",
+          headerHash: prepared().headerHash,
+          fraudProofOutRef: `${"3".repeat(64)}#1`,
+          removedStateQueueOutRef: `${"4".repeat(64)}#2`,
+          operatorOutRef: `${"5".repeat(64)}#0`,
+          operatorBondLovelace: "4000000",
+          tranche: "full",
+          exactFeeLovelace: "2000000",
+          rewardLovelace: "2000000",
+          rewardAddress: "test",
+          transactionHash: txHash,
+          transactionBodySha256: "6".repeat(64),
+          signedTransactionCborHex: transaction.to_cbor_hex(),
+          inputs: [],
+        };
+        // The removal builder alone mints this opaque authority. This test checks
+        // the central bridge's consumption of it, not the builder's validation.
+        const readAuthority = vi
+          .spyOn(removal, "readFraudSlashFundingAuthority")
+          .mockImplementation((candidate) => {
+            expect(candidate).toBe(signed);
+            return admitted ? authority : null;
+          });
+        const pending = bridge.boundary(
+          "remove",
+          prepared(),
+        )({ txHash, signed, referenceScripts: [] });
+        if (admitted) {
+          await pending;
+          expect(
+            (await store.load(bridge.workflowId)).at(-1)?.event,
+          ).toMatchObject({
+            kind: "submission_intent",
+            actionId: "fieldPreimageLengthMismatch:remove",
+            actionInput: {
+              actionKind: "remove",
+              nextRemovalOutRef: authority.removedStateQueueOutRef,
+              fraudProofOutRef: authority.fraudProofOutRef,
+            },
+          });
+        } else {
+          await expect(pending).rejects.toThrow(
+            "removal omitted authenticated slash funding authority",
+          );
+          expect(
+            (await store.load(bridge.workflowId)).map(
+              ({ event }) => event.kind,
+            ),
+          ).toEqual(["started", "prepared"]);
+        }
+        expect(readAuthority).toHaveBeenCalledOnce();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
 });

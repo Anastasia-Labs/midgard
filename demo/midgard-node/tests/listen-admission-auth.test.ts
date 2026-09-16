@@ -48,6 +48,7 @@ describe("listen admin auth helpers", () => {
       "/stateQueueMutationLease",
       "/logBlocksDB",
       "/logGlobals",
+      "/operator/status",
     ]) {
       expect(isAdminRoutePath(path), path).toBe(true);
     }

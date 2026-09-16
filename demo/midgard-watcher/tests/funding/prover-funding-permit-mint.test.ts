@@ -249,6 +249,7 @@ describe("watcher production prover funding permit mint V1", () => {
   it("refuses a structural funding authority factory without reserving", async () => {
     const { store } = await openStore();
     const admitted = createWatcherProverFundingAuthorityFactory({
+      launchScope: ["doubleSpend"],
       journalRoot: process.cwd(),
       deploymentIdentity: makeWatcherDeploymentAuthorityFixture().result,
       protocolParameters:
@@ -275,6 +276,7 @@ describe("watcher production prover funding permit mint V1", () => {
     const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
     const { store } = await openStore();
     const factory = createWatcherProverFundingAuthorityFactory({
+      launchScope: ["doubleSpend"],
       journalRoot: process.cwd(),
       deploymentIdentity,
       protocolParameters:
@@ -301,6 +303,7 @@ describe("watcher production prover funding permit mint V1", () => {
         fetchImpl,
       });
     const factory = createWatcherProverFundingAuthorityFactory({
+      launchScope: ["doubleSpend"],
       journalRoot: process.cwd(),
       deploymentIdentity,
       protocolParameters,
@@ -331,7 +334,7 @@ describe("watcher production prover funding permit mint V1", () => {
         provider: fundedProvider,
       }),
     ).rejects.toThrow("actuation permit was not admitted");
-    expect(getUtxos).toHaveBeenCalledWith(fundedWalletAddress);
+    expect(getUtxos).not.toHaveBeenCalled();
 
     expect(await reservationRecords(store)).toEqual([]);
   });

@@ -7,7 +7,10 @@ import {
   referenceScriptAuthPolicyDeploymentInfo,
 } from "@al-ft/midgard-sdk";
 import { createTrackedTempDirFactory } from "@al-ft/midgard-test-support/temp-files";
-import type { LucidEvolution } from "@lucid-evolution/lucid";
+import {
+  credentialToAddress,
+  type LucidEvolution,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -38,6 +41,10 @@ import {
 } from "../src/e2e/run-state.js";
 
 const lucid = {
+  wallet: () => ({
+    address: async () =>
+      credentialToAddress("Preprod", { type: "Key", hash: "ab".repeat(28) }),
+  }),
   unixTimeToSlot: (unixTime: number) => Math.floor(unixTime / 1_000),
 } as unknown as LucidEvolution;
 
@@ -463,7 +470,7 @@ describe("deployment run-state command identity guards", () => {
     const dir = await makeTempDir();
     const runStatePath = join(dir, "run-state.json");
     const manifestPath = join(dir, "contract-deployment-info.json");
-    const policy = createReferenceScriptAuthPolicy(lucid, 1_000, 10_000);
+    const policy = await createReferenceScriptAuthPolicy(lucid, 1_000, 10_000);
     const policyInfo = referenceScriptAuthPolicyDeploymentInfo(policy);
     await writeDeploymentRunStateAtomic(
       runStatePath,
@@ -503,7 +510,7 @@ describe("deployment run-state command identity guards", () => {
     const runStatePath = join(dir, "run-state.json");
     const manifestPath = join(dir, "contract-deployment-info.json");
     const oneShotTxHash = "33".repeat(32);
-    const policy = createReferenceScriptAuthPolicy(lucid, 1_000, 10_000);
+    const policy = await createReferenceScriptAuthPolicy(lucid, 1_000, 10_000);
     const policyInfo = referenceScriptAuthPolicyDeploymentInfo(policy);
     await writeFile(manifestPath, "{}\n", "utf8");
     const readManifest = vi
@@ -546,7 +553,7 @@ describe("deployment run-state command identity guards", () => {
     const runStatePath = join(dir, "run-state.json");
     const manifestPath = join(dir, "contract-deployment-info.json");
     const policyInfo = referenceScriptAuthPolicyDeploymentInfo(
-      createReferenceScriptAuthPolicy(lucid, 1_000, 10_000),
+      await createReferenceScriptAuthPolicy(lucid, 1_000, 10_000),
     );
     await writeFile(manifestPath, "{}\n", "utf8");
     vi.spyOn(
@@ -610,10 +617,10 @@ describe("deployment run-state command identity guards", () => {
     const manifestPath = join(dir, "contract-deployment-info.json");
     const oneShotTxHash = "77".repeat(32);
     const runStatePolicyInfo = referenceScriptAuthPolicyDeploymentInfo(
-      createReferenceScriptAuthPolicy(lucid, 1_000, 10_000),
+      await createReferenceScriptAuthPolicy(lucid, 1_000, 10_000),
     );
     const manifestPolicyInfo = referenceScriptAuthPolicyDeploymentInfo(
-      createReferenceScriptAuthPolicy(lucid, 2_000, 10_000),
+      await createReferenceScriptAuthPolicy(lucid, 2_000, 10_000),
     );
     await writeDeploymentRunStateAtomic(
       runStatePath,
@@ -664,7 +671,7 @@ describe("deployment run-state command identity guards", () => {
     const runStatePath = join(dir, "run-state.json");
     const manifestPath = join(dir, "contract-deployment-info.json");
     const oneShotTxHash = "66".repeat(32);
-    const policy = createReferenceScriptAuthPolicy(lucid, 1_000, 10_000);
+    const policy = await createReferenceScriptAuthPolicy(lucid, 1_000, 10_000);
     const policyInfo = referenceScriptAuthPolicyDeploymentInfo(policy);
     await writeDeploymentRunStateAtomic(
       runStatePath,

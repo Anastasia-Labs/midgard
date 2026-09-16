@@ -44,7 +44,7 @@ describe("state-queue withdraw-zero publication admission V1", () => {
     const nonceUtxo = (await lucid.wallet().getUtxos())[0];
     if (nonceUtxo === undefined) throw new Error("missing publication nonce");
 
-    const referenceScriptAuth = createReferenceScriptAuthPolicy(
+    const referenceScriptAuth = await createReferenceScriptAuthPolicy(
       lucid,
       emulator.now(),
     );

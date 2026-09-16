@@ -408,7 +408,10 @@ it.each(categories)(
   async (category) => {
     const fixture = await recovery(category, true);
     const result = await execute(category, { ...fixture, sources: [] });
-    expect(result.kind).toBe("stalled");
+    expect(result).toMatchObject({
+      kind: "pending",
+      reason: "Canonical workflow requires fresh submission authority",
+    });
     expect(fixture.forbidden).not.toHaveBeenCalled();
     expect(fixture.observeHeader).not.toHaveBeenCalled();
   },

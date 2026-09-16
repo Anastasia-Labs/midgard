@@ -34,6 +34,26 @@ import {
   OutputReferenceStep04DatumSchema,
 } from "./schemas.js";
 
+/** Filter by coordinates first, then compare the entire authenticated checkpoint. */
+export const findOutputReferenceScriptControlIndex = (
+  controls: OutputReferenceScriptDecodingEvidence["outputScanControls"],
+  control: ReturnType<typeof outputReferenceScriptControlData>,
+): number => {
+  const encoded = Data.to(
+    control as never,
+    OutputReferenceOutputControlSchema as never,
+  );
+  return controls.findIndex(
+    (candidate) =>
+      BigInt(candidate.cursor) === control.cursor &&
+      BigInt(candidate.stage) === control.stage &&
+      Data.to(
+        outputReferenceScriptControlData(candidate) as never,
+        OutputReferenceOutputControlSchema as never,
+      ) === encoded,
+  );
+};
+
 export const submitOutputReferenceScriptDecodingStep03 = async ({
   lucid,
   contracts,
@@ -69,7 +89,7 @@ export const submitOutputReferenceScriptDecodingStep03 = async ({
     item_length: bigint;
     item_hash: string;
     chunk_hashes: readonly string[];
-    control: { cursor: bigint; stage: bigint };
+    control: ReturnType<typeof outputReferenceScriptControlData>;
     outcome: bigint;
   }>({
     threadUtxo,
@@ -85,16 +105,9 @@ export const submitOutputReferenceScriptDecodingStep03 = async ({
     state.outcome !== 0n
   )
     throw new Error(`${FAMILY}: output scan checkpoint identity changed`);
-  const encoded = Data.to(
-    state.control as never,
-    OutputReferenceOutputControlSchema as never,
-  );
-  const controlIndex = evidence.outputScanControls.findIndex(
-    (control) =>
-      Data.to(
-        outputReferenceScriptControlData(control) as never,
-        OutputReferenceOutputControlSchema as never,
-      ) === encoded,
+  const controlIndex = findOutputReferenceScriptControlIndex(
+    evidence.outputScanControls,
+    state.control,
   );
   if (controlIndex < 0)
     throw new Error(

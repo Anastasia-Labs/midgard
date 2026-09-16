@@ -50,6 +50,7 @@ const releaseFinalityFromDeployment = (
 export const createWatcherLocalKupmiosRawSource = (
   input: Readonly<{
     watcherConfig: unknown;
+    observationDepth?: "inclusion" | "release_finality";
     deploymentIdentity: VerifiedWatcherDeploymentIdentity;
     captureBounds?: Readonly<{
       signal?: AbortSignal;
@@ -145,6 +146,7 @@ export const createWatcherLocalKupmiosRawSource = (
     kupoHttpUrl: kupo.endpoint,
     ogmiosUrl: ogmios.endpoint,
     releaseFinality: releaseFinalityFromDeployment(input.deploymentIdentity),
+    observationDepth: input.observationDepth ?? "release_finality",
     timeoutMs: captureBounds?.timeoutMs ?? watcherConfig.l1.requestTimeoutMs,
     ...(captureBounds?.signal === undefined
       ? {}

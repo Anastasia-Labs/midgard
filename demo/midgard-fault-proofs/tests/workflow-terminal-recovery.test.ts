@@ -60,6 +60,7 @@ const releaseFinality = {
 const verify = async (
   observed: FraudProofWorkflowTerminal,
   stored = candidate,
+  inclusionOnly = false,
 ) => {
   const verifier = createFraudProofFamilyAuthenticatedL1TerminalVerifier({
     portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
@@ -83,7 +84,7 @@ const verify = async (
       stage: { kind: "removed", terminal: observed } as const,
     }),
   });
-  return verifier.verify({
+  return (inclusionOnly ? verifier.verifyIncluded! : verifier.verify)({
     identity: {
       schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
       deploymentFingerprint: hash("99"),
@@ -141,4 +142,23 @@ it("rejects insufficient or regressed confirmation depth", async () => {
     observedAt: { ...candidate.observedAt, confirmationDepth: 40 },
   };
   await expect(verify(candidate, stored)).rejects.toThrow("depth");
+});
+
+it("accepts independently authenticated terminal inclusion while anchoring still waits", async () => {
+  const included = {
+    ...candidate,
+    observedAt: { ...candidate.observedAt, confirmationDepth: 1 },
+  };
+  expect(await verify(included, included, true)).toBe(included);
+  await expect(verify(included, included)).rejects.toThrow("depth");
+  await expect(
+    verify(
+      {
+        ...included,
+        correction: { ...included.correction, removalTxHash: hash("ee") },
+      },
+      included,
+      true,
+    ),
+  ).rejects.toThrow("differs from independent L1 observation");
 });

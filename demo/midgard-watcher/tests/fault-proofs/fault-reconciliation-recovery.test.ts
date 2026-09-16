@@ -25,8 +25,10 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { describe, expect, it, vi } from "vitest";
 
+import { unsafeOpenWatcherFaultDecisionJournalForTest } from "../../src/fault-proofs/fault-decision-journal.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
 import { createWatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { progressObservation } from "../support/fault-proof-progress-observation.js";
 
 const DEPLOYMENT = "dd".repeat(32),
   HEADER = "aa".repeat(28),
@@ -58,7 +60,9 @@ const fixture = (): {
     replayVersion: "midgard-complete-canonical-replay-v1",
     replayDigest: "14".repeat(32),
     launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-    launchScopeDigest: "15".repeat(32),
+    launchScopeDigest: journalJsonDigest([
+      ...WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+    ]),
     classificationDigest: "16".repeat(32),
     decision: "fault_detected",
     category: "transitionTrace",
@@ -80,8 +84,12 @@ const fixture = (): {
   const artifact = {
     releaseFinality,
     evidenceBinding: {
+      route: "canonical_block",
       headerHash: HEADER,
+      payloadEnvelopeSha256: decision.payloadEnvelopeSha256,
       payloadSha256: decision.payloadSha256,
+      l1BlockHash: "17".repeat(32),
+      l1Slot: "42",
     },
     familyArtifact: { test: true },
   };
@@ -118,6 +126,12 @@ describe("existing signed workflow recovery authority", () => {
   it("schedules an exact target-absent journal without a new-start deadline and refuses every spend", async () => {
     const root = await mkdtemp("/var/tmp/midgard-reconciliation-test-");
     const { decision, entries } = fixture();
+    const decisionJournal = await unsafeOpenWatcherFaultDecisionJournalForTest({
+      directory: root,
+      deploymentFingerprint: DEPLOYMENT,
+      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+    });
+    await decisionJournal.unsafeAppendDecisionEnvelopeForTest(decision);
     const journal = new DirectoryFraudProofWorkflowJournalStore(
       join(root, "fault-proofs", "transitionTrace", HEADER),
     );
@@ -154,30 +168,38 @@ describe("existing signed workflow recovery authority", () => {
       deploymentFingerprint: DEPLOYMENT,
       deadlineAlertHeadroomMs: 3600000,
       queueAuthenticationKey: new Uint8Array(32).fill(0xa5),
-      run: async ({ job }) => {
-        expect(job.deadline).toBeNull();
-        check("before_reconcile");
-        check("before_terminal_verify");
-        expect(() => check("before_preflight")).toThrow(
-          "existing_signed_workflow_only",
-        );
-        expect(() => check("before_submit")).toThrow(
-          "existing_signed_workflow_only",
-        );
-        ran++;
+      execution: {
+        verifyCompleted: async () => {
+          throw new Error("unexpected completed execution");
+        },
+        execute: async ({ job }) => {
+          expect(job.deadline).toBeNull();
+          check("before_reconcile");
+          check("before_terminal_verify");
+          expect(() => check("before_preflight")).toThrow(
+            "existing_signed_workflow_only",
+          );
+          expect(() => check("before_submit")).toThrow(
+            "existing_signed_workflow_only",
+          );
+          ran++;
+          return {
+            kind: "pending",
+            resume: "await_observation",
+            reason: "retained signed attempt",
+          };
+        },
       },
     });
     try {
       await expect(
-        supervisor.recoverExisting(null, undefined, undefined, "0", [
-          {
-            category: "transitionTrace",
-            headerHash: HEADER,
-            decisionDigest: decision.decisionDigest,
-            actuationPermit: controller.permit,
-          },
-        ]),
-      ).resolves.toBe(1);
+        supervisor.requestProgress({
+          observation: progressObservation({
+            deploymentFingerprint: DEPLOYMENT,
+          }),
+          rollbackGeneration: "0",
+        }),
+      ).resolves.toBeUndefined();
       await supervisor.close();
       expect(ran).toBe(1);
       controller.revoke("native_chain_rollback");

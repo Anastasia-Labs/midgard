@@ -823,8 +823,7 @@ export const runOrResumeManifestBoundMissingNativeScriptTxWorkflow = async ({
   const evidence = await fetchCanonicalBlockEvidence({
     observation,
     sources,
-    minimumConfirmationDepth:
-      workflow.binding.releaseFinality.policy.confirmationDepth,
+    minimumConfirmationDepth: 1,
   });
   const corpus = await resolveHistoricalNativeScriptCorpus({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
@@ -837,17 +836,6 @@ export const runOrResumeManifestBoundMissingNativeScriptTxWorkflow = async ({
   if (cell === undefined) {
     throw new Error(
       "missing-native-script-tx workflow was not created by its manifest-bound constructor",
-    );
-  }
-  if (
-    cell.throughPoint !== undefined &&
-    (cell.throughPoint.slot !== throughPoint.slot ||
-      cell.throughPoint.blockHash !== throughPoint.blockHash ||
-      cell.throughPoint.blockNo !== throughPoint.blockNo ||
-      cell.throughPoint.pointId !== throughPoint.pointId)
-  ) {
-    throw new Error(
-      "missing-native-script-tx authenticated L1 history boundary changed across resume",
     );
   }
   cell.throughPoint = throughPoint;

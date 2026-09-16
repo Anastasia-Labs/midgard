@@ -47,25 +47,21 @@ Verify `.env` without printing seed phrases:
   and
 - `DA_LIBP2P_PRIVATE_KEY_SOURCE` matches the producer manifest identity.
 
-Check release readiness before submitting any deployment transaction or resetting
-state. The current source has `MIDGARD_RELEASE_EVIDENCE_DIGEST = null` in
-`demo/midgard-core/src/consensus-profile.ts`, so the assertion below fails and this
-live sequence is blocked. The dedicated public retained-DA reader enforces the
-same assertion at startup. Resume only after release evidence is accepted and
-its digest is compiled into the release; do not substitute a made-up digest or
-bypass the assertion. Passing it is a prerequisite, not proof that the remaining
-acceptance gates have passed.
+Before submitting, verify the current protocol tuple, finalized deployment
+manifest, and actual deployed validators using the attach/resume checks below.
+Release reports are acceptance evidence, not protocol inputs. The finalizer's
+local authority derives finality and economics from the validated manifest.
+Executable workflow coverage is proven by the watcher's own startup refusal and
+by one verified workflow journal per launch-scope family, not by a separate
+finalizer registry gate. A matching deployment is a prerequisite, not proof
+that acceptance passed.
 
-Build core so this check reads the current packaged source, then build the
-operator and tooling CLIs and start the local provider plumbing. Compose
-dependencies start Cardano node and bootstrap services.
+Build the current core, operator, and tooling packages before starting local
+provider plumbing. Compose dependencies start Cardano node and bootstrap
+services.
 
 ```bash
 pnpm --dir "$REPO_ROOT/demo/midgard-core" build || exit 1
-node --input-type=module -e '
-  import { assertMidgardConsensusReleaseReady } from "@al-ft/midgard-core/consensus-profile";
-  assertMidgardConsensusReleaseReady();
-' || exit 1
 pnpm build
 pnpm --dir "$TOOLS_DIR" build
 $COMPOSE up -d cardano-node-ogmios kupo
@@ -666,7 +662,7 @@ index, not proof: none of its booleans or transaction hashes may become
 confirmed evidence on their own. The finalizer must independently load and
 reconcile the immutable workflow journals, authenticated terminal L1
 observations, raw recovery outputs, deployment manifest, blueprint, catalogue,
-parameters, release identity, economics, and final chain/queue observation.
+parameters, manifest-bound protocol identity, economics, and final chain/queue observation.
 Until all of those independent sources are present and agree, every
 state-correction gate remains blocked. An absent, partial, inexact, cross-run,
 or incomplete aggregate fails outright.
@@ -702,7 +698,6 @@ STATE_CORRECTION_MANIFEST="$CONTRACT_INFO"
 STATE_CORRECTION_BLUEPRINT="$REPO_ROOT/onchain/aiken/plutus.json"
 STATE_CORRECTION_CATALOGUE="logs/$RUN_ID/state-correction-catalogue.json"
 STATE_CORRECTION_PARAMETERS="logs/$RUN_ID/cardano-protocol-parameters.json"
-STATE_CORRECTION_RELEASE_EVIDENCE="logs/$RUN_ID/release-evidence.json"
 STATE_CORRECTION_FINAL_SNAPSHOT="logs/$RUN_ID/state-correction-final-snapshot.json"
 STATE_CORRECTION_WORKFLOW_JOURNAL_LIST="logs/$RUN_ID/state-correction-workflow-journals.txt"
 STATE_CORRECTION_L1_OBSERVATION_LIST="logs/$RUN_ID/state-correction-l1-observations.txt"
@@ -773,7 +768,7 @@ recorded-live-data adapter rewind is the required rollback evidence. A
 naturally observed rollback is bonus evidence only.
 
 Write the aggregate only from confirmed workflow journal, provider, watcher,
-chain-point, manifest, blueprint, catalogue, parameter, release-evidence, and
+chain-point, manifest, blueprint, catalogue, parameter, and
 final-state observations. Preserve every underlying source separately and pass
 those immutable sources to the finalizer for its independent derivation. The
 aggregate parser requires exact keys and the canonical family/recovery order,
@@ -957,7 +952,6 @@ node "$TOOLS_CLI" e2e-finalize-summary \
   --state-correction-blueprint "$STATE_CORRECTION_BLUEPRINT" \
   --state-correction-catalogue "$STATE_CORRECTION_CATALOGUE" \
   --state-correction-parameters "$STATE_CORRECTION_PARAMETERS" \
-  --state-correction-release-evidence "$STATE_CORRECTION_RELEASE_EVIDENCE" \
   --state-correction-final-snapshot "$STATE_CORRECTION_FINAL_SNAPSHOT" \
   "${STATE_CORRECTION_WORKFLOW_ARGS[@]}" \
   "${STATE_CORRECTION_L1_ARGS[@]}" \

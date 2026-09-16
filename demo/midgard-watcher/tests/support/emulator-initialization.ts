@@ -33,7 +33,7 @@ export const createEmulatorInitialization = async () => {
     throw new Error("Initialization fixture has no nonce");
   const contracts = await loadRealMidgardContractsForTest(
     nonce,
-    createReferenceScriptAuthPolicy(publisherLucid, emulator.now()),
+    await createReferenceScriptAuthPolicy(publisherLucid, emulator.now()),
   );
   const references = await Effect.runPromise(
     ensureAtomicProtocolInitReferenceScriptsProgram(publisherLucid, contracts),

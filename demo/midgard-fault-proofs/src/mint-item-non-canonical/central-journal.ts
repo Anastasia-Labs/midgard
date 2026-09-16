@@ -5,6 +5,7 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { assertWorkflowJournalActuation } from "../workflow/actuation-permit.js";
 import {
   abandonWorkflowFundingReservationTransaction,
+  assertWorkflowFundingCompletionHandoffJournal,
   assertWorkflowFundingReservationReadyToSubmit,
   beginWorkflowFundingReservationAction,
   confirmWorkflowFundingReservationTransaction,
@@ -12,6 +13,9 @@ import {
   createWorkflowFundingAbandonmentHandoff,
   createWorkflowFundingSubmissionHandoff,
   prepareWorkflowFundingReservationTransaction,
+  readWorkflowFundingRecovery,
+  releaseWorkflowFundingReservation,
+  type WorkflowFundingCompletionHandoff,
 } from "../workflow/funding-reservation-permit.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
@@ -19,13 +23,26 @@ import {
   type FraudProofWorkflowIdentity,
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowJournalStore,
+  type FraudProofWorkflowTerminal,
   journalJsonDigest,
+  normalizeJournalJson,
+  validateFraudProofWorkflowJournal,
 } from "../workflow/journal.js";
-import type { FraudProofWorkflowAction } from "../workflow/orchestrator.js";
+import {
+  type FraudProofWorkflowAction,
+  type FraudProofWorkflowTerminalVerifier,
+  normalizeWorkflowTerminal,
+} from "../workflow/orchestrator.js";
+import {
+  validateVerifiedFraudProofReleaseFinalityPolicy,
+  type VerifiedFraudProofReleaseFinalityPolicy,
+} from "../workflow/release-finality-policy.js";
 import {
   bindWorkflowPreflightTransaction,
   type FraudProofPreSubmitBoundary,
   LOCAL_UPLC_EVALUATOR,
+  workflowTransactionInputOutRefs,
+  workflowTransactionReferenceInputOutRefs,
 } from "../workflow/transaction-boundary.js";
 import type {
   MintItemAction,
@@ -58,6 +75,10 @@ const familyWorkflowId = (identity: FraudProofWorkflowIdentity): string => {
 };
 
 type SubmitAction = Exclude<MintItemAction, "done">;
+export type MintItemRemovalAction = Readonly<{
+  nextRemovalOutRef: string;
+  fraudProofOutRef: string;
+}>;
 type DurableRecovery = Readonly<{
   familyIdentity: string;
   sourceStage: MintItemStage;
@@ -191,12 +212,37 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
   const workflowAction = (
     kind: SubmitAction,
     recovery: DurableRecovery,
-  ): FraudProofWorkflowAction => ({
-    actionId: actionId(kind),
-    input: { actionKind: actionId(kind), ...recovery },
-  });
+    removal?: MintItemRemovalAction,
+  ): FraudProofWorkflowAction => {
+    if (kind === "removeDescendants") {
+      if (
+        removal === undefined ||
+        !/^[0-9a-f]{64}#(0|[1-9][0-9]*)$/u.test(removal.nextRemovalOutRef) ||
+        !/^[0-9a-f]{64}#(0|[1-9][0-9]*)$/u.test(removal.fraudProofOutRef)
+      )
+        throw new Error(
+          "mintItemNonCanonical removal omitted authenticated out-refs",
+        );
+      return {
+        actionId: `${actionId(kind)}:${removal.nextRemovalOutRef}:${removal.fraudProofOutRef}`,
+        input: { actionKind: "remove", ...recovery, ...removal },
+      };
+    }
+    if (removal !== undefined)
+      throw new Error(
+        "mintItemNonCanonical non-removal action carries removal out-refs",
+      );
+    return {
+      actionId: actionId(kind),
+      input: { actionKind: actionId(kind), ...recovery },
+    };
+  };
   const assertActuation = (
-    checkpoint: "before_preflight" | "before_submit" | "before_reconcile",
+    checkpoint:
+      | "before_preflight"
+      | "before_submit"
+      | "before_reconcile"
+      | "before_terminal_verify",
   ): void =>
     assertWorkflowJournalActuation({
       journal: store,
@@ -230,6 +276,7 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
     familyIdentity: string,
     sourceStage: MintItemStage,
     targetStage: MintItemStage,
+    removal?: MintItemRemovalAction,
   ): Promise<void> => {
     await ensurePrepared(familyIdentity);
     if (unresolvedIntent(await entries()) !== undefined) {
@@ -240,11 +287,15 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
     assertActuation("before_preflight");
     await beginWorkflowFundingReservationAction({
       journal: store,
-      action: workflowAction(kind, {
-        familyIdentity,
-        sourceStage,
-        targetStage,
-      }),
+      action: workflowAction(
+        kind,
+        {
+          familyIdentity,
+          sourceStage,
+          targetStage,
+        },
+        removal,
+      ),
     });
   };
 
@@ -254,6 +305,7 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
       familyIdentity: string,
       sourceStage: MintItemStage,
       targetStage: MintItemStage,
+      removal?: MintItemRemovalAction,
     ): FraudProofPreSubmitBoundary =>
     async (transaction) => {
       if (!TX_HASH.test(transaction.txHash)) {
@@ -262,7 +314,19 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
         );
       }
       const recovery = { familyIdentity, sourceStage, targetStage } as const;
-      const action = workflowAction(kind, recovery);
+      const action = workflowAction(kind, recovery, removal);
+      if (
+        removal !== undefined &&
+        (!workflowTransactionInputOutRefs(transaction.signed).includes(
+          removal.nextRemovalOutRef,
+        ) ||
+          !workflowTransactionReferenceInputOutRefs(
+            transaction.signed,
+          ).includes(removal.fraudProofOutRef))
+      )
+        throw new Error(
+          "mintItemNonCanonical removal changed its authenticated inputs",
+        );
       const current = await entries();
       const prior = unresolvedIntent(current);
       if (prior?.event.kind === "submission_intent") {
@@ -516,6 +580,159 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
     });
   };
 
+  /** Preserve the legacy prepared record while using the standard terminal and funding checks. */
+  const finish = async ({
+    candidate,
+    releaseFinality: policy,
+    verifier,
+  }: {
+    candidate: FraudProofWorkflowTerminal;
+    releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+    verifier: FraudProofWorkflowTerminalVerifier;
+  }) => {
+    const releaseFinality =
+      validateVerifiedFraudProofReleaseFinalityPolicy(policy);
+    if (releaseFinality.deploymentIdentityDigest !== deploymentFingerprint)
+      throw new Error(
+        "mintItemNonCanonical terminal changed deployment finality identity",
+      );
+    const current = await entries();
+    validateFraudProofWorkflowJournal({
+      workflowId,
+      entries: current,
+      expectedIdentity: identity,
+    });
+    const prepared = current[1]?.event;
+    if (prepared?.kind !== "prepared")
+      throw new Error(
+        "mintItemNonCanonical terminal requires retained prepared evidence",
+      );
+    assertActuation("before_terminal_verify");
+    const inclusionOnly =
+      candidate.observedAt.confirmationDepth <
+      releaseFinality.policy.confirmationDepth;
+    const verify = inclusionOnly ? verifier.verifyIncluded : verifier.verify;
+    if (verify === undefined)
+      throw new Error(
+        "mintItemNonCanonical terminal verifier omitted inclusion verification",
+      );
+    let terminal = normalizeWorkflowTerminal({
+      identity,
+      terminal: await verify({
+        identity,
+        workflowId,
+        releaseFinality,
+        candidate,
+        artifact: prepared.artifact,
+        entries: current,
+      }),
+      entries: current,
+      releaseFinality,
+      inclusionOnly,
+    });
+    for (const txHash of [
+      terminal.proofToken.createdByTxHash,
+      terminal.correction.removalTxHash,
+    ])
+      if (!(await transactionConfirmed(txHash)))
+        throw new Error(
+          "mintItemNonCanonical terminal transaction is not authenticated on L1",
+        );
+    const funding = await readWorkflowFundingRecovery(store);
+    const saved = funding.completionHandoff;
+    if (saved !== null)
+      assertWorkflowFundingCompletionHandoffJournal({
+        handoff: saved,
+        entries: current,
+      });
+    const previous = current.find(
+      ({ event }) => event.kind === "completed",
+    )?.event;
+    const completed =
+      previous?.kind === "completed"
+        ? previous
+        : saved?.completion.kind === "completed"
+          ? saved.completion
+          : undefined;
+    const sameFacts = (
+      left: FraudProofWorkflowTerminal,
+      right: FraudProofWorkflowTerminal,
+    ) => {
+      const facts = (value: FraudProofWorkflowTerminal) => ({
+        ...value,
+        observedAt: { ...value.observedAt, confirmationDepth: 0 },
+      });
+      return (
+        journalJsonDigest(normalizeJournalJson(facts(left))) ===
+        journalJsonDigest(normalizeJournalJson(facts(right)))
+      );
+    };
+    if (completed !== undefined) {
+      if (
+        terminal.observedAt.confirmationDepth <
+          completed.terminal.observedAt.confirmationDepth ||
+        !sameFacts(terminal, completed.terminal)
+      )
+        throw new Error(
+          "mintItemNonCanonical released terminal facts changed on the canonical chain",
+        );
+      terminal = normalizeWorkflowTerminal({
+        identity,
+        terminal: completed.terminal,
+        entries: current,
+        releaseFinality,
+      });
+    }
+    const kind = inclusionOnly
+      ? ("terminal_included" as const)
+      : ("completed" as const);
+    assertActuation("before_terminal_verify");
+    const existing = current.some(({ event }) => event.kind === kind);
+    if (!existing) {
+      const completion: WorkflowFundingCompletionHandoff["completion"] = {
+        kind,
+        terminal,
+        terminalDigest: journalJsonDigest(normalizeJournalJson(terminal)),
+      };
+      const handoff: WorkflowFundingCompletionHandoff =
+        saved?.completion.kind === kind
+          ? saved
+          : {
+              workflowId,
+              identity,
+              preparedArtifactDigest: prepared.artifactDigest,
+              expectedJournalSequence: current.length,
+              completion,
+            };
+      if (handoff === saved) {
+        if (
+          terminal.observedAt.confirmationDepth <
+            saved.completion.terminal.observedAt.confirmationDepth ||
+          !sameFacts(terminal, saved.completion.terminal)
+        )
+          throw new Error(
+            "mintItemNonCanonical completion handoff changed its authenticated terminal",
+          );
+      } else
+        await releaseWorkflowFundingReservation({ journal: store, handoff });
+      assertActuation("before_terminal_verify");
+      await appendEvent(handoff.completion);
+    }
+    return {
+      kind: inclusionOnly ? ("pending" as const) : ("completed" as const),
+      workflowId,
+      identity,
+      terminal,
+      entries: await entries(),
+      ...(inclusionOnly
+        ? {
+            resumeOnObservation: true,
+            reason: "terminal awaits release finality",
+          }
+        : {}),
+    };
+  };
+
   const familyJournal: MintItemJournal = {
     load: async (familyIdentity) => {
       const current = await entries();
@@ -588,6 +805,7 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
     reconcile,
     auxiliaryBoundary,
     confirmAuxiliary,
+    finish,
     familyJournal,
   });
 };

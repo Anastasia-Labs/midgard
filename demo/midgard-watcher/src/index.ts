@@ -33,13 +33,13 @@ export {
 } from "./fault-proofs/fault-proof-application.js";
 export {
   createWatcherFaultProofSupervisor,
-  enqueueWatcherFaultDecision,
   unsafeCreateWatcherFaultProofSupervisorForTest,
   type UnsafeWatcherFaultProofSupervisorForTest,
   WATCHER_FAULT_PROOF_SUPERVISOR_SCHEMA_VERSION,
   type WatcherFaultProofDeadline,
   watcherFaultProofDeadline,
   type WatcherFaultProofJob,
+  type WatcherFaultProofProgressRequest,
   type WatcherFaultProofSupervisor,
   type WatcherFaultProofSupervisorStatus,
 } from "./fault-proofs/fault-proof-supervisor.js";

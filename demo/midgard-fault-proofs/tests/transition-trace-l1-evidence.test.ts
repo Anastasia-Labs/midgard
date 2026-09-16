@@ -8,14 +8,20 @@ import {
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
+import * as transitionDetection from "../src/transition-trace/detect.js";
 import {
   captureTransitionTraceL1Events,
   createTransitionTraceEventAuthority,
   readFreshTransitionTraceL1Events,
   requireTransitionTraceL1Events,
 } from "../src/transition-trace/l1-events.js";
-import { computeTransitionTraceL1EventEvidenceDigest } from "../src/transition-trace/replay-authority.js";
+import {
+  computeTransitionTraceL1EventEvidenceDigest,
+  replayTransitionTraceFromRetainedHistory,
+} from "../src/transition-trace/replay-authority.js";
 import { VALIDATION_TRACE_DISPUTE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import * as historicalCorpus from "../src/workflow/historical-native-script-corpus.js";
+import { LocalKupmiosCheckpointChangedError } from "../src/workflow/local-kupmios-raw-l1-authority.js";
 import * as rawSnapshot from "../src/workflow/raw-l1-snapshot.js";
 import {
   computeFraudProofRawL1PointId,
@@ -211,24 +217,32 @@ const changeDatum = (
 const withLaterEvent = (
   snapshot: FraudProofRawL1Snapshot,
   inclusionTime = retained.block.header.endTime + 1n,
+  assetName = "02",
+  quantity = 1n,
 ): FraudProofRawL1Snapshot => {
   const scope = snapshot.scopes.find(
     (entry) => entry.role === "forced_transaction_event",
   )!;
   const original = scope.utxos[0]!;
   const datum = Data.from(original.datumCbor!, SDK.TxOrderDatum);
+  const sourceTxHash =
+    assetName === "02" ? "91".repeat(32) : assetName.repeat(32);
   const updated = {
     ...datum,
     event: {
       ...datum.event,
-      id: { transactionId: "91".repeat(32), outputIndex: 0n },
+      id: { transactionId: sourceTxHash, outputIndex: 0n },
     },
     inclusion_time: inclusionTime,
   };
   const policy = getAddressDetails(scope.address).paymentCredential!.hash;
-  const unit = policy + "02";
+  const unit = policy + assetName;
   const assets = CML.MultiAsset.new();
-  assets.set(CML.ScriptHash.from_hex(policy), CML.AssetName.from_hex("02"), 1n);
+  assets.set(
+    CML.ScriptHash.from_hex(policy),
+    CML.AssetName.from_hex(assetName),
+    quantity,
+  );
   const output = CML.TransactionOutput.new(
     CML.Address.from_bech32(scope.address),
     CML.Value.new(3_000_000n, assets),
@@ -240,11 +254,15 @@ const withLaterEvent = (
   outputs.add(output);
   const inputs = CML.TransactionInputList.new();
   inputs.add(
-    CML.TransactionInput.new(CML.TransactionHash.from_hex("91".repeat(32)), 0n),
+    CML.TransactionInput.new(CML.TransactionHash.from_hex(sourceTxHash), 0n),
   );
   const body = CML.TransactionBody.new(inputs, outputs, 170_000n);
   const mint = CML.Mint.new();
-  mint.set(CML.ScriptHash.from_hex(policy), CML.AssetName.from_hex("02"), 1n);
+  mint.set(
+    CML.ScriptHash.from_hex(policy),
+    CML.AssetName.from_hex(assetName),
+    quantity,
+  );
   body.set_mint(mint);
   const txHash = CML.hash_transaction(body).to_hex();
   const outputCbor = output.to_canonical_cbor_hex();
@@ -281,7 +299,7 @@ const withLaterEvent = (
         resolvedInputs: [
           {
             ...snapshot.transactions[0]!.resolvedInputs[0]!,
-            outRef: "91".repeat(32) + "#0",
+            outRef: sourceTxHash + "#0",
           },
         ],
       },
@@ -290,6 +308,96 @@ const withLaterEvent = (
 };
 
 describe("transition trace immutable L1 evidence", () => {
+  it("recaptures complete history when an authenticated event arrives after discovery", async () => {
+    const later = withLaterEvent(advance(seed));
+    const initial = captureInput(seed);
+    const advanced = captureInput(later);
+    let captureCount = 0;
+    const captures = vi.fn(
+      async (request: rawSnapshot.FraudProofRawL1SnapshotRequest) =>
+        await (++captureCount <= 2 ? initial : advanced).authority.capture(
+          request,
+        ),
+    );
+    const handle = await captureTransitionTraceL1Events({
+      binding: initial.binding,
+      authority: { ...initial.authority, capture: captures },
+    });
+    const admitted = requireTransitionTraceL1Events(handle);
+    expect(captures).toHaveBeenCalledTimes(4);
+    expect(admitted.events).toHaveLength(2);
+    expect(admitted.snapshot.historyUnits).toEqual(
+      [...later.historyUnits].sort(),
+    );
+    expect(admitted.snapshot.history).toHaveLength(later.history.length);
+    expect(admitted.snapshot.cursor).toEqual(later.cursor);
+  });
+
+  it("bounds repeated valid event growth and leaves classification pending", async () => {
+    const snapshots = [seed, seed];
+    let current = seed;
+    for (const assetName of ["02", "03", "04"]) {
+      current = withLaterEvent(advance(current), undefined, assetName);
+      snapshots.push(current);
+    }
+    let captures = 0;
+    const initial = captureInput(seed);
+    await expect(
+      captureTransitionTraceL1Events({
+        binding: initial.binding,
+        authority: {
+          ...initial.authority,
+          capture: async (request) => {
+            const snapshot = snapshots[captures++];
+            if (snapshot === undefined)
+              throw new Error("capture bound exceeded");
+            return await captureInput(snapshot).authority.capture(request);
+          },
+        },
+      }),
+    ).rejects.toBeInstanceOf(LocalKupmiosCheckpointChangedError);
+    expect(captures).toBe(5);
+  });
+
+  it.each(["quantity", "datum"] as const)(
+    "does not retry malformed %s as coverage growth",
+    async (kind) => {
+      let later = withLaterEvent(
+        advance(seed),
+        undefined,
+        "02",
+        kind === "quantity" ? 2n : 1n,
+      );
+      if (kind === "datum") {
+        const original = seed.scopes.find(
+          ({ role }) => role === "forced_transaction_event",
+        )!.utxos[0]!;
+        later = changeDatum(
+          later,
+          Number(original.outRef.split("#")[1]),
+          Data.to(42n),
+        );
+      }
+      let captures = 0;
+      const initial = captureInput(seed);
+      const result = captureTransitionTraceL1Events({
+        binding: initial.binding,
+        authority: {
+          ...initial.authority,
+          capture: async (request) =>
+            await captureInput(
+              ++captures <= 2 ? seed : later,
+            ).authority.capture(request),
+        },
+      });
+      await expect(result).rejects.toBeInstanceOf(Error);
+      await expect(result).rejects.not.toBeInstanceOf(
+        LocalKupmiosCheckpointChangedError,
+      );
+      expect(captures).toBe(3);
+    },
+  );
+
   it("keeps an old header decision stable after a later unrelated event while binding relevant origins", async () => {
     const daProvenance = {
       trustClass: "public_or_permissionless_da",
@@ -575,7 +683,25 @@ describe("transition trace immutable L1 evidence", () => {
     },
   );
 
-  it("still refuses incomplete history, inconsistent redeemers and insufficient finality", async () => {
+  it("accepts authenticated event history at inclusion depth", async () => {
+    const tip = seed.cursor.point;
+    const included = await capture({
+      ...seed,
+      provenance: { ...seed.provenance, ogmiosTip: tip },
+      cursor: { ...seed.cursor, tip, confirmationDepth: 1 },
+      transactions: seed.transactions.map((entry) => ({
+        ...entry,
+        confirmationDepth:
+          Number(tip.blockNo) - Number(entry.inclusionPoint.blockNo) + 1,
+      })),
+    });
+    expect(
+      requireTransitionTraceL1Events(included).snapshot.cursor
+        .confirmationDepth,
+    ).toBe(1);
+  });
+
+  it("still refuses incomplete history, inconsistent redeemers and inconsistent depth", async () => {
     await expect(
       capture({
         ...seed,
@@ -596,6 +722,382 @@ describe("transition trace immutable L1 evidence", () => {
     ).rejects.toThrow("differs from the witness set");
     await expect(
       capture({ ...seed, cursor: { ...seed.cursor, confirmationDepth: 29 } }),
-    ).rejects.toThrow("below release finality");
+    ).rejects.toThrow("confirmation depth disagrees");
+  });
+});
+
+describe("immutable transition event decoding reuse", () => {
+  it("reuses admitted event parsing while rechecking mutable header and source coverage", async () => {
+    const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+      observation: authenticatedHeaderObservation(retained.block),
+      payloadEnvelopeCbor: retained.block.payloadEnvelopeCbor,
+      daProvenance: {
+        trustClass: "public_or_permissionless_da",
+        sourceId: "retained-fixture/event-facts",
+        grade: "security",
+      },
+      minimumConfirmationDepth: 30,
+    });
+    const handle = await capture(seed);
+    const freshHandle = await capture(advance(seed));
+    const decode = vi.spyOn(Data, "from");
+    try {
+      const digest = computeTransitionTraceL1EventEvidenceDigest({
+        evidence,
+        l1Events: handle,
+      });
+      const initialDecodes = decode.mock.calls.length;
+      expect(initialDecodes).toBeGreaterThan(0);
+      const started = performance.now();
+      for (let index = 0; index < 100; index += 1)
+        expect(
+          computeTransitionTraceL1EventEvidenceDigest({
+            evidence,
+            l1Events: handle,
+          }),
+        ).toBe(digest);
+      console.info(
+        JSON.stringify({
+          benchmark: "same-admitted-event-handle-100-digest-reads",
+          elapsedMs: performance.now() - started,
+          initialDecodes,
+          repeatedDecodes: decode.mock.calls.length - initialDecodes,
+        }),
+      );
+      expect(decode.mock.calls.length).toBe(initialDecodes);
+      const changedHeader = {
+        ...evidence.reconstruction.header,
+        endTime: evidence.reconstruction.header.endTime + 1n,
+      };
+      expect(
+        computeTransitionTraceL1EventEvidenceDigest({
+          evidence: {
+            ...evidence,
+            reconstruction: {
+              ...evidence.reconstruction,
+              header: changedHeader,
+            },
+          },
+          l1Events: handle,
+        }),
+      ).not.toBe(digest);
+      const forced = evidence.reconstruction.sourceEvents.find(
+        (source) => source.phase === "ForcedTransaction",
+      );
+      if (forced === undefined)
+        throw new Error("fixture requires a forced source");
+      const sources = new Map(
+        evidence.reconstruction.sourceEventsByFingerprint,
+      );
+      sources.set("uncovered-forced-source", {
+        ...forced,
+        fingerprint: "uncovered-forced-source",
+      });
+      expect(() =>
+        computeTransitionTraceL1EventEvidenceDigest({
+          evidence: {
+            ...evidence,
+            reconstruction: {
+              ...evidence.reconstruction,
+              sourceEventsByFingerprint: sources,
+            },
+          },
+          l1Events: handle,
+        }),
+      ).toThrow("lacks authenticated L1 coverage for a committed source");
+      expect(() =>
+        computeTransitionTraceL1EventEvidenceDigest({
+          evidence,
+          l1Events: { ...handle },
+        }),
+      ).toThrow("requires freshly admitted raw L1 events");
+      expect(decode.mock.calls.length).toBe(initialDecodes);
+      expect(
+        computeTransitionTraceL1EventEvidenceDigest({
+          evidence,
+          l1Events: freshHandle,
+        }),
+      ).toBe(digest);
+      expect(decode.mock.calls.length).toBeGreaterThan(initialDecodes);
+    } finally {
+      decode.mockRestore();
+    }
+  });
+});
+
+describe("immutable event parsing failure and contextual outputs", () => {
+  it("does not cache failed forced transaction decoding or identity validation", async () => {
+    const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+      observation: authenticatedHeaderObservation(retained.block),
+      payloadEnvelopeCbor: retained.block.payloadEnvelopeCbor,
+      daProvenance: {
+        trustClass: "public_or_permissionless_da",
+        sourceId: "retained-fixture/event-facts-failure",
+        grade: "security",
+      },
+      minimumConfirmationDepth: 30,
+    });
+    const raw = seed.scopes.find(
+      (scope) => scope.role === "forced_transaction_event",
+    )!.utxos[0]!;
+    const index = Number(raw.outRef.split("#")[1]);
+    const original = Data.from(raw.datumCbor!, SDK.TxOrderDatum);
+    for (const transaction of [
+      { ...original.event.tx, tx_id: "ff".repeat(32) },
+      {
+        ...original.event.tx,
+        submitted_source: {
+          ...original.event.tx.submitted_source,
+          compact_cbor: "00",
+        },
+      },
+    ]) {
+      const malformed = await capture(
+        changeDatum(
+          seed,
+          index,
+          Data.to(
+            {
+              ...original,
+              event: { ...original.event, tx: transaction },
+            },
+            SDK.TxOrderDatum,
+          ),
+        ),
+      );
+      const decode = vi.spyOn(Data, "from");
+      try {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const prior = decode.mock.calls.length;
+          expect(() =>
+            computeTransitionTraceL1EventEvidenceDigest({
+              evidence,
+              l1Events: malformed,
+            }),
+          ).toThrow();
+          expect(decode.mock.calls.length).toBeGreaterThan(prior);
+        }
+      } finally {
+        decode.mockRestore();
+      }
+    }
+    const valid = await capture(seed);
+    expect(
+      computeTransitionTraceL1EventEvidenceDigest({
+        evidence,
+        l1Events: valid,
+      }),
+    ).toMatch(/^[0-9a-f]{64}$/u);
+  });
+
+  it("detaches cached event IDs and preserves fresh withdrawal validity overrides", async () => {
+    const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+      observation: authenticatedHeaderObservation(retained.block),
+      payloadEnvelopeCbor: retained.block.payloadEnvelopeCbor,
+      daProvenance: {
+        trustClass: "public_or_permissionless_da",
+        sourceId: "retained-fixture/event-facts-outputs",
+        grade: "security",
+      },
+      minimumConfirmationDepth: 30,
+    });
+    const forcedScope = seed.scopes.find(
+      (scope) => scope.role === "forced_transaction_event",
+    )!;
+    const withdrawalScope = seed.scopes.find(
+      (scope) => scope.role === "withdrawal_event",
+    )!;
+    const original = Data.from(
+      forcedScope.utxos[0]!.datumCbor!,
+      SDK.TxOrderDatum,
+    );
+    if (original.refund_address.stakeCredential !== null)
+      throw new Error("fixture requires an unstaked refund address");
+    const refundAddress = {
+      paymentCredential: original.refund_address.paymentCredential,
+      stakeCredential: null,
+    };
+    const info: SDK.WithdrawalInfo = {
+      body: {
+        l2_outref: original.event.id,
+        l2_owner: "aa".repeat(28),
+        l2_value: new Map([["", new Map([["", 3_000_000n]])]]),
+        l1_address: refundAddress,
+        l1_datum: "NoDatum",
+      },
+      signature: ["", ""],
+      validity: { SpentWithdrawalUtxo: { l2_tx_id: "ab".repeat(32) } },
+    };
+    const datum: SDK.WithdrawalOrderDatum = {
+      event: { id: original.event.id, info },
+      inclusion_time: evidence.header.endTime + 1n,
+      witness: original.witness,
+      refund_address: refundAddress,
+      refund_datum: original.refund_datum,
+    };
+    const policy = getAddressDetails(withdrawalScope.address).paymentCredential!
+      .hash;
+    const oldUnit =
+      getAddressDetails(forcedScope.address).paymentCredential!.hash + "01";
+    const unit = policy + "01";
+    const changed = replaceBody(seed, (body) => {
+      const outputs = CML.TransactionOutputList.new();
+      outputs.add(body.outputs().get(0));
+      const assets = CML.MultiAsset.new();
+      assets.set(
+        CML.ScriptHash.from_hex(policy),
+        CML.AssetName.from_hex("01"),
+        1n,
+      );
+      outputs.add(
+        CML.TransactionOutput.new(
+          CML.Address.from_bech32(withdrawalScope.address),
+          CML.Value.new(3_000_000n, assets),
+          CML.DatumOption.new_datum(
+            CML.PlutusData.from_cbor_hex(
+              Data.to(datum, SDK.WithdrawalOrderDatum),
+            ),
+          ),
+        ),
+      );
+      const replacement = CML.TransactionBody.new(
+        body.inputs(),
+        outputs,
+        body.fee(),
+      );
+      const mint = CML.Mint.new();
+      for (let index = 0; index < outputs.len(); index += 1)
+        for (const [asset, amount] of Object.entries(
+          coreToTxOutput(outputs.get(index)).assets,
+        ))
+          if (asset !== "lovelace")
+            mint.set(
+              CML.ScriptHash.from_hex(asset.slice(0, 56)),
+              CML.AssetName.from_hex(asset.slice(56)),
+              amount,
+            );
+      replacement.set_mint(mint);
+      return replacement;
+    });
+    const changedEvents = changed.scopes.find(
+      (scope) => scope.role === "forced_transaction_event",
+    )!.utxos;
+    const handle = await capture({
+      ...changed,
+      scopes: changed.scopes.map((scope) => ({
+        ...scope,
+        utxos:
+          scope.role === "forced_transaction_event"
+            ? []
+            : scope.role === "withdrawal_event"
+              ? changedEvents
+              : scope.utxos,
+      })),
+      historyUnits: changed.historyUnits.map((asset) =>
+        asset === oldUnit ? unit : asset,
+      ),
+      history: changed.history.map((entry) => ({
+        ...entry,
+        unit: entry.unit === oldUnit ? unit : entry.unit,
+      })),
+    });
+    const eventKey: SDK.EventKey = {
+      WithdrawalEventKey: { withdrawal_id: datum.event.id },
+    };
+    const fingerprint = Data.to(eventKey, SDK.EventKey);
+    const source = {
+      phase: "Withdrawal" as const,
+      eventKey,
+      fingerprint,
+      entry: {
+        key: datum.event.id,
+        value: { ...info, validity: "IncorrectWithdrawalOwner" as const },
+        keyBytes: Buffer.from(
+          Data.to(datum.event.id, SDK.OutputReference),
+          "hex",
+        ),
+        valueBytes: Buffer.from(Data.to(info, SDK.WithdrawalInfo), "hex"),
+      },
+    };
+    const sources = new Map<
+      string,
+      (typeof evidence.reconstruction.sourceEvents)[number]
+    >([[fingerprint, source]]);
+    const current = {
+      ...evidence,
+      reconstruction: {
+        ...evidence.reconstruction,
+        sourceEventsByFingerprint: sources,
+      },
+    };
+    const corpus: historicalCorpus.HistoricalNativeScriptCorpus = {
+      schemaVersion: historicalCorpus.HISTORICAL_NATIVE_SCRIPT_CORPUS,
+      throughHeaderHash: current.headerHash,
+      headerHashes: [current.headerHash],
+      payloadEnvelopeSha256s: [current.payloadEnvelopeSha256],
+      entries: [],
+      providerRosterDigest: "00".repeat(32),
+      corpusDigest: "00".repeat(32),
+      checkpointDigest: "00".repeat(32),
+      evidenceDigest: "00".repeat(32),
+    };
+    // This regression isolates the real coverage/output construction. History
+    // admission and detector correctness are outside its scope.
+    const history = vi
+      .spyOn(historicalCorpus, "requireHistoricalNativeScriptCorpus")
+      .mockReturnValue({
+        currentEvidence: current,
+        reconstructions: [current.reconstruction],
+      });
+    const stop = new Error("coverage captured before detection");
+    const detection = vi
+      .spyOn(transitionDetection, "detectTransitionTraceFaults")
+      .mockRejectedValue(stop);
+    try {
+      const read = async () => {
+        await expect(
+          replayTransitionTraceFromRetainedHistory({
+            evidence: current,
+            corpus,
+            l1Events: handle,
+          }),
+        ).rejects.toBe(stop);
+        const timed = detection.mock.lastCall![1];
+        if (timed === undefined)
+          throw new Error("detector omitted timed evidence");
+        const item = timed.outOfWindowSourceEvents![0]!;
+        if (item.kind !== "withdrawal")
+          throw new Error("expected withdrawal coverage");
+        return item;
+      };
+      const first = await read();
+      expect(first.validityOverride).toBe("IncorrectWithdrawalOwner");
+      first.withdrawalId.transactionId = "ff".repeat(32);
+      expect((await read()).withdrawalId).toEqual(datum.event.id);
+      sources.set(fingerprint, {
+        ...source,
+        entry: {
+          ...source.entry,
+          value: { ...info, validity: "IncorrectWithdrawalSignature" },
+        },
+      });
+      expect((await read()).validityOverride).toBe(
+        "IncorrectWithdrawalSignature",
+      );
+      const forcedSource = evidence.reconstruction.sourceEvents.find(
+        (entry) => entry.phase === "ForcedTransaction",
+      );
+      if (forcedSource === undefined)
+        throw new Error("fixture requires forced source");
+      sources.set(fingerprint, { ...forcedSource, fingerprint });
+      const fallback = (await read()).validityOverride;
+      if (typeof fallback !== "object" || !("SpentWithdrawalUtxo" in fallback))
+        throw new Error("expected original withdrawal fallback");
+      fallback.SpentWithdrawalUtxo.l2_tx_id = "ff".repeat(32);
+      expect((await read()).validityOverride).toEqual(info.validity);
+    } finally {
+      history.mockRestore();
+      detection.mockRestore();
+    }
   });
 });

@@ -6,7 +6,6 @@ import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  CML,
   type LucidEvolution,
   paymentCredentialOf,
   toUnit,
@@ -14,8 +13,14 @@ import {
 import { Effect } from "effect";
 import {
   createPublishedWatcherBlockActor,
+  type PublishedDaAttestationOutcome,
   PublishedTransactionExpiredError,
+  PublishedTransactionSubmissionError,
 } from "midgard-watcher/tests/support/published-block-actor";
+import type {
+  PublishedDaTargetCorrection,
+  PublishedDaTransactionRecord,
+} from "midgard-watcher/tests/support/published-da-target-consumption";
 import {
   type PublishedDepositTraceCheckpoint,
   stagePublishedDepositTrace,
@@ -30,7 +35,9 @@ import type {
   JourneySuccessor,
   StagedJourney,
 } from "./fixture.js";
-import { JOURNEY_FINALITY_DEPTH } from "./live-context.js";
+import { readKupoUnitConsumptions } from "./kupo-consumption.js";
+import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
+import { reconcileSignedCommit } from "./signed-commit-reconciliation.js";
 import {
   classifyStagedCheckpoint,
   supersededCheckpointArchivePath,
@@ -70,6 +77,10 @@ type StagingCheckpoint = {
   current: JourneyBlock;
   commitTxHash?: string;
   signedCommit?: { txHash: string; signedCbor: string };
+  /** DA transactions signed for the fault, recorded before each submission. */
+  daTransactions?: PublishedDaTransactionRecord[];
+  /** The fault's authenticated correction when it consumed the target before DA apply. */
+  target?: PublishedDaTargetCorrection;
 };
 
 export const decodeJourneyRetainedBlock = async (
@@ -139,6 +150,9 @@ async function stageJourney(
     directory,
     historicalNativeScriptProviders,
     retain,
+    readConfirmedTransaction,
+    onHealthyPredecessor,
+    readSignedCommitRecovery,
     onStage,
   }: JourneyFixtureStage,
   task: HistoryPreparation | FaultPreparation,
@@ -239,43 +253,62 @@ async function stageJourney(
       throw new Error("Journey predecessor is absent from the queue");
     return requireHeader(root.next.Key.key);
   };
+  /**
+   * Resume a header commitment whose signed bytes were persisted before
+   * submission. Inclusion continues with its hash. An attempt the chain can
+   * provably never include, because it expired unminted or another
+   * transaction took one of its inputs, is retired: the caller drops the
+   * recorded bytes and rebuilds from the current protocol state instead of
+   * failing on the same saved transaction at every restart.
+   */
   const reconcileCommit = async (
     lucid: LucidEvolution,
-    block: JourneyBlock,
+    label: string,
     signed: NonNullable<StagingCheckpoint["signedCommit"]>,
-  ) => {
-    const transaction = CML.Transaction.from_cbor_hex(signed.signedCbor);
-    if (CML.hash_transaction(transaction.body()).to_hex() !== signed.txHash)
-      throw new Error("Recorded header transaction bytes changed their hash");
-    if ((await headerOutput(block.headerHash)) !== undefined)
-      return signed.txHash;
-    const inputs = transaction.body().inputs();
-    const outRefs = Array.from({ length: inputs.len() }, (_, index) => {
-      const value = inputs.get(index);
-      return {
-        txHash: value.transaction_id().to_hex(),
-        outputIndex: Number(value.index()),
-      };
+  ): Promise<string | undefined> => {
+    const disposition = await reconcileSignedCommit({
+      attempt: signed,
+      readRecovery: readSignedCommitRecovery,
+      pollDelay: async () => {
+        await chain.delaySlots(1);
+      },
+      resubmit: async (signedCbor) => {
+        const restored = await lucid.fromTx(signedCbor).complete();
+        if (restored.toCBOR() !== signedCbor)
+          throw new Error(
+            "Restoring the signed header changed its exact transaction bytes",
+          );
+        return restored.submit();
+      },
+      onStage,
     });
-    if ((await provider.getUtxosByOutRef(outRefs)).length !== outRefs.length)
-      throw new Error(
-        `Header transaction ${signed.txHash} has spent inputs and no live header; reconcile its canonical outcome before continuing`,
-      );
-    const expiry = transaction.body().ttl();
-    if (expiry !== undefined && BigInt(lucid.currentSlot()) >= expiry)
-      throw new Error(
-        `Recorded header transaction ${signed.txHash} expired; no replacement was constructed`,
-      );
-    const restored = await lucid.fromTx(signed.signedCbor).complete();
-    if (restored.toCBOR() !== signed.signedCbor)
-      throw new Error(
-        "Restoring the signed header changed its exact transaction bytes",
-      );
-    if ((await restored.submit()) !== signed.txHash)
-      throw new Error("Resubmitted header differs from its recorded hash");
-    await lucid.awaitTx(signed.txHash, 500);
     lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));
-    return signed.txHash;
+    if (disposition.kind === "included") return disposition.txHash;
+    onStage(
+      `${label} ${signed.txHash} retired: ${disposition.reason}; rebuilding from the current protocol state`,
+    );
+    return undefined;
+  };
+
+  // Missing outputs and rejected RPCs cannot decide whether a signed attempt
+  // landed. Use the same canonical recovery during execution as after restart.
+  // Construction, persistence, and transaction-identity failures remain hard.
+  const reconcileFailedCommit = async (
+    lucid: LucidEvolution,
+    label: string,
+    error: unknown,
+    signed: StagingCheckpoint["signedCommit"],
+  ): Promise<string | undefined> => {
+    if (
+      !(error instanceof PublishedTransactionExpiredError) &&
+      !(error instanceof PublishedTransactionSubmissionError)
+    )
+      throw error;
+    if (signed === undefined) throw error;
+    if (error.txHash !== signed.txHash)
+      throw new Error("Failed header differs from its recorded transaction");
+    onStage(`${label} outcome unresolved; reconciling ${signed.txHash}`);
+    return reconcileCommit(lucid, label, signed);
   };
   let resume = existsSync(checkpointPath)
     ? await readJourneyArtifact<StagingCheckpoint>(checkpointPath)
@@ -331,13 +364,17 @@ async function stageJourney(
       onCheckpoint: (checkpoint) =>
         writeJourneyArtifact(initialPath, checkpoint),
       timeoutCorrectionJournalPath: join(directory, "timeout-correction.json"),
-      finalityDepth: JOURNEY_FINALITY_DEPTH,
+      // The watcher observes the queue at its action depth, so the abandoned
+      // header removal only has to be that deep before the watcher starts.
+      finalityDepth: JOURNEY_ACTION_DEPTH,
     });
     await retain(initial.predecessor, initial.commits[0]!);
     await retain(initial.current, initial.commits[1]!);
     predecessor = { ...initial.current, commitTxHash: initial.commits[1]! };
   }
   await retain(predecessor, predecessor.commitTxHash);
+  if (task.mode === "fault")
+    await onHealthyPredecessor?.(predecessor.headerHash);
   let retainedPredecessor = await decodeJourneyRetainedBlock(predecessor);
   const operatorKey = paymentCredentialOf(
     await deployment.operatorLucid.wallet().address(),
@@ -359,10 +396,14 @@ async function stageJourney(
     maliciousKey === operatorKey
       ? deployment.publisherLucid
       : deployment.operatorLucid;
+  const readHeaderConsumptions = (unit: string) =>
+    readKupoUnitConsumptions(context.kupoUrl, unit);
   const actor = await createPublishedWatcherBlockActor({
     deployment,
     lucid: maliciousLucid,
     daSignerConfig,
+    readConfirmedTransaction,
+    readHeaderConsumptions,
     onStage,
   });
   const commitHistoryBlock: JourneyFaultPreparationInput["commitHistoryBlock"] =
@@ -402,15 +443,41 @@ async function stageJourney(
         await writeJourneyArtifact(historyPath, history);
       }
       if (history.commitTxHash === undefined) {
-        if (history.signedCommit !== undefined)
+        if (history.signedCommit !== undefined) {
           history.commitTxHash = await reconcileCommit(
             maliciousLucid,
-            history.block,
+            `history commit ${name}`,
             history.signedCommit,
           );
-        else
+          if (history.commitTxHash === undefined) {
+            delete history.signedCommit;
+            await writeJourneyArtifact(historyPath, history);
+            // The retired attempt's operator state may have moved on; a new
+            // commit registers against the current protocol state.
+            await actor.onboardOperator();
+          }
+        }
+        if (history.commitTxHash === undefined)
           for (;;) {
             const anchor = await assertTail(predecessor);
+            // A block staged by an earlier attempt may have outlived its
+            // commit interval unminted; its header end time bounds the
+            // commit's validity, so an elapsed one cannot be committed.
+            if (history.block.header.endTime <= BigInt(chain.now())) {
+              onStage(`staged ${name} interval elapsed unminted; rebuilding`);
+              const endTime = BigInt(chain.now() + 59_999);
+              history.block = await build({
+                predecessor: retainedPredecessor,
+                ledgerOwnerSeedPhrase: accounts.operator.seedPhrase,
+                operatorVkey: maliciousKey,
+                endTime,
+                blockSlot: BigInt(
+                  maliciousLucid.unixTimeToSlot(Number(endTime)),
+                ),
+              });
+              delete history.signedCommit;
+              await writeJourneyArtifact(historyPath, history);
+            }
             try {
               history.commitTxHash = await actor.commit(
                 history.block,
@@ -423,11 +490,15 @@ async function stageJourney(
               );
               break;
             } catch (error) {
-              if (!(error instanceof PublishedTransactionExpiredError))
-                throw error;
-              // Nothing the expired commit referenced was spent, so a fresh
-              // interval replaces the block before anything retained it.
-              onStage(`${error.label} expired unminted; rebuilding ${name}`);
+              history.commitTxHash = await reconcileFailedCommit(
+                maliciousLucid,
+                `history commit ${name}`,
+                error,
+                history.signedCommit,
+              );
+              if (history.commitTxHash !== undefined) break;
+              // Canonical expiry/invalidation authorizes fresh construction;
+              // reconcileCommit refreshed the wallet before this retry.
               const endTime = BigInt(chain.now() + 59_999);
               history.block = await build({
                 predecessor: retainedPredecessor,
@@ -445,10 +516,14 @@ async function stageJourney(
         await writeJourneyArtifact(historyPath, history);
       }
       await retain(history.block, history.commitTxHash);
-      await actor.attest({
+      const historyAttested = await actor.attest({
         ...history.block,
         payloadEnvelopeCbor: Buffer.from(history.block.payloadEnvelopeCbor),
       });
+      if (historyAttested.kind !== "attested")
+        throw new Error(
+          `History block ${history.block.headerHash} was corrected by ${historyAttested.removalTxHash} before its DA attestation applied`,
+        );
       const historyBlock = {
         ...history.block,
         commitTxHash: history.commitTxHash,
@@ -472,6 +547,8 @@ async function stageJourney(
     directory,
     historicalNativeScriptProviders,
     retain,
+    readConfirmedTransaction,
+    readSignedCommitRecovery,
     onStage,
     predecessor: retainedPredecessor,
     ledgerOwnerSeedPhrase: accounts.operator.seedPhrase,
@@ -494,12 +571,6 @@ async function stageJourney(
     if (resume === undefined) await assertTail(predecessor);
   }
 
-  // Onboard the faulty publisher now. The next producer registers after
-  // confirmed correction, so its eligibility cannot block scheduler removal.
-  // A resumed fault re-onboards when an earlier journey's confirmed slashing
-  // correction has since spent the publisher's active node.
-  if (resume === undefined || !(await actor.operatorActive()))
-    await actor.onboardOperator();
   const buildFault = () => {
     const faultEndTime = BigInt(chain.now() + 59_999);
     return prepared.buildFault({
@@ -510,24 +581,39 @@ async function stageJourney(
       blockSlot: BigInt(maliciousLucid.unixTimeToSlot(Number(faultEndTime))),
     });
   };
-  let current = resume?.current ?? (await buildFault());
+  // An unsigned draft may refer to a forced order that preparation just
+  // replaced after authenticated expiry. Signed commitments retain exact bytes.
+  let current =
+    resume?.signedCommit !== undefined || resume?.commitTxHash !== undefined
+      ? resume.current
+      : await buildFault();
   const checkpoint: StagingCheckpoint = resume ?? {
     deploymentFingerprint: fingerprint,
     predecessor,
     current,
   };
+  checkpoint.current = current;
   await writeJourneyArtifact(checkpointPath, checkpoint);
   if (checkpoint.commitTxHash === undefined) {
     // Recover a commit that reached the chain before its checkpoint write.
     const existing = await headerOutput(current.headerHash);
-    if (checkpoint.signedCommit !== undefined)
+    if (checkpoint.signedCommit !== undefined) {
       checkpoint.commitTxHash = await reconcileCommit(
         maliciousLucid,
-        current,
+        "fault commit",
         checkpoint.signedCommit,
       );
-    else if (existing !== undefined) checkpoint.commitTxHash = existing.txHash;
-    else
+      if (checkpoint.commitTxHash === undefined) {
+        delete checkpoint.signedCommit;
+        await writeJourneyArtifact(checkpointPath, checkpoint);
+      }
+    }
+    if (checkpoint.commitTxHash === undefined && existing !== undefined)
+      checkpoint.commitTxHash = existing.txHash;
+    if (checkpoint.commitTxHash === undefined) {
+      // Registration belongs to a new commit, never to recovery of a signed
+      // or already published fault whose operator may have since been slashed.
+      await actor.onboardOperator();
       for (;;) {
         const anchor = await assertTail(predecessor);
         // A fault staged by an earlier attempt may have outlived its commit
@@ -554,44 +640,118 @@ async function stageJourney(
           );
           break;
         } catch (error) {
-          if (!(error instanceof PublishedTransactionExpiredError)) throw error;
-          // Nothing the expired commit referenced was spent and nothing has
-          // retained this block yet, so a fresh interval replaces it.
-          onStage(`${error.label} expired unminted; rebuilding the fault`);
+          checkpoint.commitTxHash = await reconcileFailedCommit(
+            maliciousLucid,
+            "fault commit",
+            error,
+            checkpoint.signedCommit,
+          );
+          if (checkpoint.commitTxHash !== undefined) break;
           current = await buildFault();
           checkpoint.current = current;
           delete checkpoint.signedCommit;
           await writeJourneyArtifact(checkpointPath, checkpoint);
         }
       }
+    }
     await writeJourneyArtifact(checkpointPath, checkpoint);
   }
   await retain(current, checkpoint.commitTxHash);
-  // A completed correction consumes this header. Resuming must not republish it.
-  if ((await headerOutput(current.headerHash)) !== undefined)
-    await actor.attest({
+  // The running watcher races this attestation: its fraud proof can consume
+  // the target between any two lookups, including after DA transactions were
+  // submitted. The actor finishes through the authenticated correction of the
+  // exact fault instead of failing on the missing header, and every DA
+  // transaction it signed is persisted before submission so a resumed run
+  // reconciles the same set rather than rebonding or forgetting it.
+  // A saved correction is provenance, not authority after a possible rollback.
+  const target: PublishedDaAttestationOutcome = await actor.attest(
+    {
       ...current,
       payloadEnvelopeCbor: Buffer.from(current.payloadEnvelopeCbor),
-    });
+    },
+    {
+      submitted: checkpoint.daTransactions ?? [],
+      reconcileSubmitted: async (record) => ({
+        kind:
+          (await reconcileCommit(
+            maliciousLucid,
+            `DA ${record.step}`,
+            record,
+          )) === undefined
+            ? "retired"
+            : "included",
+      }),
+      onSubmitted: async (record) => {
+        checkpoint.daTransactions = [
+          ...(checkpoint.daTransactions ?? []),
+          record,
+        ];
+        await writeJourneyArtifact(checkpointPath, checkpoint);
+      },
+    },
+  );
+  if (target.kind === "corrected") {
+    checkpoint.target = target;
+    await writeJourneyArtifact(checkpointPath, checkpoint);
+    onStage(
+      `fault ${current.headerHash} corrected by ${target.removalTxHash} before DA apply; ${target.submittedDaTransactions.length.toString()} submitted DA transaction(s) reconciled`,
+    );
+  } else if (checkpoint.target !== undefined) {
+    delete checkpoint.target;
+    await writeJourneyArtifact(checkpointPath, checkpoint);
+  }
 
   return {
     predecessor,
     current,
+    target,
     async commitHonestSuccessor({ beforeCommit }) {
       if ((await headerOutput(current.headerHash)) !== undefined)
         throw new Error("Honest successor requires confirmed correction first");
       const successorPath = join(directory, "prepared-successor.json");
+      const successorPredecessorPath = join(
+        directory,
+        "successor-predecessor.json",
+      );
+      let successorPredecessor = existsSync(successorPredecessorPath)
+        ? await readJourneyArtifact<JourneySuccessor>(successorPredecessorPath)
+        : predecessor;
+      // A historically completed proof may be resumed after another family
+      // advanced the tail. Only a successor with no persisted transaction may
+      // choose the new head; signed attempts keep their original predecessor.
+      if (
+        !existsSync(successorPath) &&
+        (await tailOutput(successorPredecessor)) === undefined
+      ) {
+        const head = await readJourneyArtifact<{
+          deploymentFingerprint: string;
+          block: JourneySuccessor;
+        }>(headPath);
+        if (head.deploymentFingerprint !== fingerprint)
+          throw new Error("Successor head belongs to a different deployment");
+        await assertTail(head.block);
+        await retain(head.block, head.block.commitTxHash);
+        successorPredecessor = head.block;
+      }
+      await writeJourneyArtifact(
+        successorPredecessorPath,
+        successorPredecessor,
+      );
+      const successorRetainedPredecessor =
+        await decodeJourneyRetainedBlock(successorPredecessor);
       const successorActor = await createPublishedWatcherBlockActor({
         deployment,
         lucid: successorLucid,
         daSignerConfig,
+        readConfirmedTransaction,
+        readHeaderConsumptions,
         onStage,
       });
       await successorActor.onboardOperator();
       const buildSuccessor = async (): Promise<JourneyBlock> => {
         const endTime = BigInt(chain.now() + 59_999);
         const successorInput: JourneyFaultBuildInput = {
-          predecessor: retainedPredecessor,
+          predecessor: successorRetainedPredecessor,
           ledgerOwnerSeedPhrase: accounts.operator.seedPhrase,
           operatorVkey: successorActor.operatorVkey,
           endTime,
@@ -601,12 +761,13 @@ async function stageJourney(
           ? prepared.buildSuccessor(successorInput)
           : depositEventsRetainedBlock({
               operatorVkey: successorActor.operatorVkey,
-              startTime: predecessor.header.endTime,
+              startTime: successorPredecessor.header.endTime,
               endTime,
               blockSlot: BigInt(successorLucid.unixTimeToSlot(Number(endTime))),
-              prevHeaderHash: predecessor.headerHash,
-              prevUtxosRoot: predecessor.header.utxosRoot,
-              priorLedger: retainedPredecessor.payload.block_body.utxos,
+              prevHeaderHash: successorPredecessor.headerHash,
+              prevUtxosRoot: successorPredecessor.header.utxosRoot,
+              priorLedger:
+                successorRetainedPredecessor.payload.block_body.utxos,
               events: [],
             });
       };
@@ -633,15 +794,30 @@ async function stageJourney(
       if (
         commitTxHash === undefined &&
         successorCheckpoint.signedCommit !== undefined
-      )
+      ) {
         commitTxHash = await reconcileCommit(
           successorLucid,
-          successor,
+          "successor commit",
           successorCheckpoint.signedCommit,
         );
+        if (commitTxHash === undefined) {
+          delete successorCheckpoint.signedCommit;
+          await writeJourneyArtifact(successorPath, successorCheckpoint);
+        }
+      }
       commitTxHash ??= existing?.txHash;
       while (commitTxHash === undefined) {
-        const anchor = await assertTail(predecessor);
+        const anchor = await assertTail(successorPredecessor);
+        // A successor staged by an earlier attempt may have outlived its
+        // commit interval unminted; rebuild it before committing.
+        if (successor.header.endTime <= BigInt(chain.now())) {
+          onStage("staged successor interval elapsed unminted; rebuilding");
+          successor = await buildSuccessor();
+          successorCheckpoint.block = successor;
+          delete successorCheckpoint.signedCommit;
+          await writeJourneyArtifact(successorPath, successorCheckpoint);
+          await beforeCommit(successor);
+        }
         try {
           commitTxHash = await successorActor.commit(
             successor,
@@ -653,8 +829,13 @@ async function stageJourney(
             },
           );
         } catch (error) {
-          if (!(error instanceof PublishedTransactionExpiredError)) throw error;
-          onStage(`${error.label} expired unminted; rebuilding the successor`);
+          commitTxHash = await reconcileFailedCommit(
+            successorLucid,
+            "successor commit",
+            error,
+            successorCheckpoint.signedCommit,
+          );
+          if (commitTxHash !== undefined) break;
           successor = await buildSuccessor();
           successorCheckpoint.block = successor;
           delete successorCheckpoint.signedCommit;
@@ -664,10 +845,14 @@ async function stageJourney(
       }
       successorCheckpoint.commitTxHash = commitTxHash;
       await writeJourneyArtifact(successorPath, successorCheckpoint);
-      await successorActor.attest({
+      const successorAttested = await successorActor.attest({
         ...successor,
         payloadEnvelopeCbor: Buffer.from(successor.payloadEnvelopeCbor),
       });
+      if (successorAttested.kind !== "attested")
+        throw new Error(
+          `Honest successor ${successor.headerHash} was corrected by ${successorAttested.removalTxHash} before its DA attestation applied`,
+        );
       return { ...successor, commitTxHash };
     },
   };

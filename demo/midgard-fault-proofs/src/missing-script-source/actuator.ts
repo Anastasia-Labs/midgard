@@ -249,20 +249,7 @@ export const createMissingScriptSourceActuator = (
           });
         });
       return await captureCursorRemoval({
-        category: {
-          name: "missingScriptSource",
-          categoryId,
-          firstStepDeploymentEntry: "fraudProofMissingScriptSource",
-          firstStepScriptHash: config.contracts.steps[0].spendingScriptHash,
-          fraudProof: {
-            policyId: config.contracts.fraudProof.policyId,
-            spendingScriptHash:
-              config.binding.resolvedContracts.contracts.fraudProof
-                .spendingScriptHash,
-            spendingScriptAddress:
-              config.contracts.fraudProof.spendingScriptAddress,
-          },
-        } as never,
+        category: "missingScriptSource",
         lucid: config.lucid,
         blueprint: config.binding.blueprint,
         deploymentInfo: config.binding.deploymentInfo,

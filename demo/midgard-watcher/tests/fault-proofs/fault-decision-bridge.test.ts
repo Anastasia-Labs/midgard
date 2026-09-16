@@ -6,6 +6,7 @@ import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
 import {
   authenticatedStateQueueObservationDigest,
   type HeaderDecision,
+  LocalKupmiosCheckpointChangedError,
 } from "@al-ft/midgard-fault-proofs";
 import {
   type CorrectionLockDatum,
@@ -19,6 +20,7 @@ import { describe, expect, it, vi } from "vitest";
 import { unsafeCreateWatcherFaultDecisionBridgeForTest } from "../../src/fault-proofs/fault-decision-bridge.js";
 import type { WatcherPersistedFaultDecisionRecord } from "../../src/fault-proofs/fault-decision-journal.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
+import type { WatcherFaultProofProgressRequest } from "../../src/fault-proofs/fault-proof-progress-authority.js";
 import type { WatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import {
   type WatcherAuthenticatedStateQueueObservation,
@@ -192,6 +194,8 @@ const harness = (input: {
   const controllerGenerations: string[] = [];
   const revocations: string[] = [];
   const restrictions: string[] = [];
+  const progressRequests: WatcherFaultProofProgressRequest[] = [];
+  const authorityRevocations: string[] = [];
   const permitIdentities = new WeakMap<
     object,
     {
@@ -315,12 +319,18 @@ const harness = (input: {
             302400000 + (input.deadlineOffset?.() ?? 0)
           ).toString(),
         }),
-      enqueue: async (fresh, _permit, _deadline, rollbackGeneration) => {
+      requestProgress: async (request) => {
         if (input.enqueueError !== undefined) throw input.enqueueError;
-        enqueued.push(fresh as ReturnType<typeof decision>);
-        enqueuedGenerations.push(rollbackGeneration);
+        progressRequests.push(request);
+        if (request.fault !== undefined) {
+          enqueued.push(request.fault.decision as ReturnType<typeof decision>);
+          enqueuedGenerations.push(request.rollbackGeneration);
+        }
       },
-      recover: async () => 0,
+      unfinishedObjectiveCount: () => enqueued.length,
+      revokeAuthority: (reason) => {
+        authorityRevocations.push(reason);
+      },
     }),
   });
   return {
@@ -333,11 +343,42 @@ const harness = (input: {
     enqueuedGenerations,
     revocations,
     restrictions,
+    progressRequests,
+    authorityRevocations,
     retainedDecisionAuthorities,
   };
 };
 
 describe("production fault decision bridge", () => {
+  it("forwards recovery authority without scanning workflow journals", async () => {
+    const current = observation([headerFixture("01")]);
+    const header = current.finalizedHeaders[0]!;
+    const h = harness({
+      current,
+      categoryByHeader: { [header.headerHash]: "doubleSpend" },
+    });
+    await h.bridge.prepareForRecovery(current);
+    expect(await h.bridge.recoverExisting()).toBe(1);
+    expect(h.progressRequests).toHaveLength(1);
+    expect(h.progressRequests[0]).toMatchObject({
+      observation: current,
+      rollbackGeneration: "1",
+      fault: { decision: { headerHash: header.headerHash } },
+    });
+    h.bridge.invalidateForRollback();
+    expect(h.authorityRevocations).toEqual(["native_chain_rollback"]);
+  });
+
+  it("forwards a healthy observation so the supervisor can reconcile historical objectives", async () => {
+    const current = observation([]);
+    const h = harness({ current, categoryByHeader: {} });
+    await h.bridge.prepareForRecovery(current);
+    await h.bridge.recoverExisting();
+    expect(h.progressRequests).toHaveLength(1);
+    expect(h.progressRequests[0]!.observation).toBe(current);
+    expect(h.progressRequests[0]!.fault).toBeUndefined();
+  });
+
   it("reuses only the live selected fault across hundreds of forward observations", async () => {
     const current = observation([headerFixture("01"), headerFixture("02")]);
     const [healthy, faulty] = current.finalizedHeaders;
@@ -718,7 +759,118 @@ describe("production fault decision bridge", () => {
     },
   );
 
-  it("keeps attested public-DA failures pending without manufacturing a classifier decision", async () => {
+  it("defers a changing raw checkpoint and its suffix until a quiet canonical wake succeeds", async () => {
+    const current = observation([
+      headerFixture("21"),
+      headerFixture("22"),
+      headerFixture("23"),
+    ]);
+    const [healthy, pending, suffix] = current.finalizedHeaders;
+    let changed = true;
+    const h = harness({
+      current,
+      categoryByHeader: {
+        [healthy!.headerHash]: "doubleSpend",
+        [pending!.headerHash]: "invalidRange",
+        [suffix!.headerHash]: "transitionTrace",
+      },
+      classifyOverride: async (fresh) => {
+        if (fresh.headerHash === pending!.headerHash && changed)
+          throw new LocalKupmiosCheckpointChangedError(
+            "event capture checkpoint changed",
+          );
+        return fresh.headerHash === healthy!.headerHash
+          ? { ...fresh, decision: "healthy" }
+          : fresh;
+      },
+    });
+    const prepared = await h.bridge.reconcileAndDispatch(current);
+    expect(prepared.target).toBeNull();
+    expect(h.appended.map((entry) => entry.headerHash)).toEqual([
+      healthy!.headerHash,
+    ]);
+    expect(h.enqueued).toEqual([]);
+    expect(h.application.classifyHeader).toHaveBeenCalledTimes(3);
+    await h.bridge.retryDeferredClassification(current);
+    expect(h.application.classifyHeader).toHaveBeenCalledTimes(6);
+    expect(h.enqueued).toEqual([]);
+    changed = false;
+    await h.bridge.retryDeferredClassification(current);
+    expect(h.enqueued.map((entry) => entry.headerHash)).toEqual([
+      pending!.headerHash,
+    ]);
+    expect(h.application.classifyHeader).toHaveBeenCalledTimes(9);
+    await h.bridge.retryDeferredClassification(current);
+    expect(h.application.classifyHeader).toHaveBeenCalledTimes(9);
+  });
+
+  it("keeps an earlier fault permit and deadline unchanged while later checkpoint drift waits for canonical wakes", async () => {
+    const current = observation([headerFixture("25"), headerFixture("26")]);
+    const [first, pending] = current.finalizedHeaders;
+    let changed = false;
+    const h = harness({
+      current,
+      categoryByHeader: {
+        [first!.headerHash]: "doubleSpend",
+        [pending!.headerHash]: "invalidRange",
+      },
+      classifyOverride: async (fresh) => {
+        if (fresh.headerHash === pending!.headerHash && changed)
+          throw new LocalKupmiosCheckpointChangedError(
+            "event capture checkpoint changed",
+          );
+        return fresh;
+      },
+    });
+    await h.bridge.reconcileAndDispatch(current);
+    const selected = h.progressRequests[0]!.fault!;
+    changed = true;
+    await h.bridge.reconcileAndDispatch(current);
+    for (let wake = 0; wake < 3; wake++)
+      await h.bridge.retryDeferredClassification(current);
+    expect(
+      h.application.classifyHeader.mock.calls.filter(
+        ([request]) => request.observation.headerHash === pending!.headerHash,
+      ),
+    ).toHaveLength(5);
+    expect(h.progressRequests.at(-1)!.fault!.actuationPermit).toBe(
+      selected.actuationPermit,
+    );
+    expect(h.progressRequests.at(-1)!.fault!.deadline).toEqual(
+      selected.deadline,
+    );
+    expect(h.controllerGenerations).toEqual(["1"]);
+    expect(h.restrictions).toEqual([]);
+    expect(h.revocations).toEqual([]);
+  });
+
+  it.each([
+    new Error("Transition replay event NFT coverage changed or is ambiguous"),
+    Object.assign(new Error("forged checkpoint label"), {
+      name: "LocalKupmiosCheckpointChangedError",
+    }),
+  ])(
+    "keeps malformed event/authentication failures hard: %s",
+    async (failure) => {
+      const current = observation([headerFixture("24")]);
+      const h = harness({
+        current,
+        categoryByHeader: {
+          [current.finalizedHeaders[0]!.headerHash]: "doubleSpend",
+        },
+        classifyOverride: async () => {
+          throw failure;
+        },
+      });
+      await expect(h.bridge.reconcileAndDispatch(current)).rejects.toBe(
+        failure,
+      );
+      expect(h.appended).toEqual([]);
+      expect(h.enqueued).toEqual([]);
+    },
+  );
+
+  it("retries deferred public DA on a quiet-block signal and stops retrying after classification", async () => {
     const original = observation([headerFixture("01")]);
     const first = original.finalizedHeaders[0]!;
     const current: WatcherAuthenticatedStateQueueObservation = {
@@ -742,10 +894,18 @@ describe("production fault decision bridge", () => {
     expect(currentHarness.application.classifyHeader).not.toHaveBeenCalled();
     expect(currentHarness.appended).toEqual([]);
     expect(currentHarness.enqueued).toEqual([]);
+    await currentHarness.bridge.retryDeferredClassification(current);
+    expect(currentHarness.application.classifyHeader).not.toHaveBeenCalled();
     pending = new Set();
-    const recovered = await currentHarness.bridge.reconcileAndDispatch(current);
-    expect(recovered.target?.headerHash).toBe(first.headerHash);
+    await currentHarness.bridge.retryDeferredClassification(current);
+    expect(currentHarness.bridge.status().target?.headerHash).toBe(
+      first.headerHash,
+    );
     expect(currentHarness.application.classifyHeader).toHaveBeenCalledOnce();
+    expect(currentHarness.enqueued).toHaveLength(1);
+    await currentHarness.bridge.retryDeferredClassification(current);
+    expect(currentHarness.application.classifyHeader).toHaveBeenCalledOnce();
+    expect(currentHarness.enqueued).toHaveLength(1);
   });
 
   it("preserves the admitted target and replay authority through repeated availability rechecks", async () => {
@@ -900,7 +1060,7 @@ describe("production fault decision bridge", () => {
       h.admitted.add(changed);
       h.bridge.beforeHistoryAdvance();
       expect((await h.bridge.reconcileAndDispatch(changed)).target).toBeNull();
-      expect(h.restrictions).toEqual(["state_queue_target_changed"]);
+      expect(h.restrictions).toEqual([]);
       expect(h.application.classifyHeader).toHaveBeenCalledOnce();
     },
   );
@@ -1002,37 +1162,13 @@ describe("production fault decision bridge", () => {
     expect(currentHarness.enqueued.map(({ category }) => category)).toEqual([
       "doubleSpend",
     ]);
-    expect(
-      currentHarness.bridge.isJobPermitted({
-        mode: "resume",
-        category: "doubleSpend",
-        headerHash: first!.headerHash,
-        decisionDigest: prepared.target!.decisionDigest,
-        rollbackGeneration: "1",
-      }),
-    ).toBe(true);
-    expect(
-      currentHarness.bridge.isJobPermitted({
-        mode: "run",
-        category: "invalidRange",
-        headerHash: second!.headerHash,
-        decisionDigest: decision(second!.headerHash, "invalidRange")
-          .decisionDigest,
-        rollbackGeneration: "1",
-      }),
-    ).toBe(false);
+    expect(currentHarness.bridge.status().target?.decisionDigest).toBe(
+      currentHarness.enqueued[0]!.decisionDigest,
+    );
 
     currentHarness.bridge.invalidateForRollback();
     expect(currentHarness.retainedDecisionAuthorities.at(-1)).toBeNull();
-    expect(() =>
-      currentHarness.bridge.isJobPermitted({
-        mode: "resume",
-        category: "doubleSpend",
-        headerHash: first!.headerHash,
-        decisionDigest: prepared.target!.decisionDigest,
-        rollbackGeneration: "1",
-      }),
-    ).toThrow("no current authenticated");
+    expect(currentHarness.bridge.dispatchPrepared()).toBeNull();
   });
 
   it("defers headers whose predecessor attestation is not yet release-final", async () => {
@@ -1122,15 +1258,6 @@ describe("production fault decision bridge", () => {
     expect(currentHarness.enqueued.map(({ category }) => category)).toEqual([
       "invalidRange",
     ]);
-    expect(
-      currentHarness.bridge.isJobPermitted({
-        mode: "resume",
-        category: "invalidRange",
-        headerHash: second!.headerHash,
-        decisionDigest: "fe".repeat(32),
-        rollbackGeneration: "1",
-      }),
-    ).toBe(false);
 
     const substituted = observation([headerFixture("03")], {
       Locked: {
@@ -1288,7 +1415,7 @@ describe("production fault decision bridge", () => {
   );
 
   it.each([false, true])(
-    "canonical history advance preserves reconciliation until queue removal (%s)",
+    "canonical queue removal preserves the active invocation until explicit authority loss (%s)",
     async (usesLocalEventHistory) => {
       const current = observation([headerFixture("0d")]);
       const header = current.finalizedHeaders[0]!;
@@ -1298,6 +1425,8 @@ describe("production fault decision bridge", () => {
         decisionUsesLocalEventHistory: usesLocalEventHistory,
       });
       await currentHarness.bridge.reconcileAndDispatch(current);
+      const activePermit =
+        currentHarness.progressRequests[0]!.fault!.actuationPermit;
       currentHarness.bridge.beforeHistoryAdvance();
       expect(currentHarness.revocations).toEqual([]);
       const removed = Object.freeze({
@@ -1306,13 +1435,20 @@ describe("production fault decision bridge", () => {
       });
       currentHarness.admitted.add(removed);
       await currentHarness.bridge.reconcileAndDispatch(removed);
-      expect(currentHarness.restrictions).toEqual([
-        "state_queue_target_changed",
-      ]);
+      expect(currentHarness.restrictions).toEqual([]);
       expect(currentHarness.revocations).toEqual([]);
-      expect(currentHarness.bridge.dispatchPrepared()).toBeNull();
+      expect(currentHarness.progressRequests[0]!.fault!.actuationPermit).toBe(
+        activePermit,
+      );
+      await currentHarness.bridge.dispatchPrepared();
+      expect(currentHarness.progressRequests.at(-1)).toMatchObject({
+        observation: removed,
+      });
+      expect(currentHarness.progressRequests.at(-1)!.fault).toBeUndefined();
       currentHarness.bridge.invalidateForRollback();
-      expect(currentHarness.revocations).toEqual(["native_chain_rollback"]);
+      expect(currentHarness.authorityRevocations).toEqual([
+        "native_chain_rollback",
+      ]);
     },
   );
 
@@ -1346,22 +1482,16 @@ describe("production fault decision bridge", () => {
       });
       currentHarness.admitted.add(later);
 
-      const initial = await currentHarness.bridge.reconcileAndDispatch(current);
+      await currentHarness.bridge.reconcileAndDispatch(current);
       expect(currentHarness.controllerGenerations).toEqual(["1"]);
       expect(currentHarness.enqueuedGenerations).toEqual(["1"]);
 
       await currentHarness.bridge.prepareForRecovery(later);
       expect(currentHarness.controllerGenerations).toEqual(["1"]);
       expect(currentHarness.revocations).toEqual([]);
-      expect(
-        currentHarness.bridge.isJobPermitted({
-          mode: "resume",
-          category: "doubleSpend",
-          headerHash: header.headerHash,
-          decisionDigest: initial.target!.decisionDigest,
-          rollbackGeneration: "1",
-        }),
-      ).toBe(true);
+      expect(currentHarness.bridge.status().target?.decisionDigest).toBe(
+        currentHarness.enqueued[0]!.decisionDigest,
+      );
 
       currentHarness.bridge[invalidate]();
       expect(currentHarness.revocations).toEqual([reason]);

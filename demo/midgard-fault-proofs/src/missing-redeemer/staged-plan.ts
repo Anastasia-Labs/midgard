@@ -123,3 +123,38 @@ export const planMissingRedeemerStagedWalk = ({
     walk: Object.freeze(walk),
   });
 };
+
+/** One workflow's pure planning result. Chain observations are never cached. */
+export const createMissingRedeemerStagedPlanner = () => {
+  let previous:
+    | {
+        transactionId: string;
+        fieldPreimageCbor: string;
+        itemBudget: number;
+        plan: MissingRedeemerStagedPlan;
+      }
+    | undefined;
+  return (input: Parameters<typeof planMissingRedeemerStagedWalk>[0]) => {
+    const itemBudget = input.itemBudget ?? 16;
+    if (
+      previous === undefined ||
+      previous.transactionId !== input.transactionId ||
+      previous.fieldPreimageCbor !== input.fieldPreimageCbor ||
+      previous.itemBudget !== itemBudget
+    ) {
+      const plan = planMissingRedeemerStagedWalk(input);
+      Object.freeze(plan.initialGrammar);
+      Object.freeze(plan.initialWalk);
+      plan.grammar.forEach(Object.freeze);
+      plan.walk.forEach(Object.freeze);
+      previous = { ...input, itemBudget, plan };
+    }
+    // Buffers cannot be frozen: do not expose the retained plan's item bytes.
+    return Object.freeze({
+      ...previous.plan,
+      items: Object.freeze(
+        previous.plan.items.map((item) => Buffer.from(item)),
+      ),
+    });
+  };
+};

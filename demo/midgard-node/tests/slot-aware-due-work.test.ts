@@ -29,6 +29,7 @@ describe("slot-aware due-work registry", () => {
     expect(Object.keys(DEFERRABLE_SUBMIT_TIMING_OWNERS).sort()).toEqual([
       "commit_scheduler_refresh",
       "merge_submit_validity",
+      "operator_watchdog",
     ]);
   });
 

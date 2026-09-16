@@ -10,6 +10,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./test-support/raw-l1-terminal-fixture": {
+      "midgard-source": "./tests/support/raw-l1-terminal-fixture.ts",
+      "types": "./tests/support/raw-l1-terminal-fixture.ts"
+    },
     "./testing/installed-workflow": {
       "midgard-source": "./tests/support/installed-workflow.ts"
     },

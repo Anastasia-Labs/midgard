@@ -18,8 +18,8 @@ import {
   resumeWatcherLocalUserEventPublisher,
 } from "../indexers/user-event-history.js";
 import {
-  WATCHER_USER_EVENT_INDEXER_BOUNDS,
   isWatcherLocalUserEventAuthorityUnavailable,
+  WATCHER_USER_EVENT_INDEXER_BOUNDS,
   type WatcherLocalUserEventAuthority,
   type WatcherUserEventKind,
 } from "../indexers/user-event-indexer.js";
@@ -82,6 +82,8 @@ import {
 const MAX_BATCH = 64;
 const MAX_EVIDENCE_BYTES = 128 * 1024 * 1024;
 const ACQUISITION_TIMEOUT_MS = 120_000;
+/** The monitor wakes a pending read early; periodic queries prevent stale hints. */
+const NO_GROWTH_PROBE_INTERVAL_MS = 10_000;
 /** Quiet headers admitted per enumeration round before the round settles. */
 const MAX_ROUND_ITEMS = 4_096;
 /** Recently covered chain points kept for hash lookups without a request. */
@@ -235,6 +237,9 @@ export const createWatcherUserEventRuntime = async (
   let recovery: Promise<void> | null = null;
   let recoveryPoint: WatcherNativeChainSyncPoint | null = null;
   let headLease: Pair | null = null;
+  // Closed first captures are private W12 facts, never published authority.
+  // Publication still follows each caller's exact requested prefix.
+  const prefetchedFirst = new Map<string, FirstObservation>();
   // Recently covered chain points by height, event and quiet alike, so that
   // a point inside the covered stretch resolves without any request. Nothing
   // here is authority: the publisher's coverage checkpoint and the durable
@@ -298,6 +303,7 @@ export const createWatcherUserEventRuntime = async (
     if (status === "closed" || status === "failed") return;
     status = "failed";
     generation += 1;
+    prefetchedFirst.clear();
     publisher?.close();
     shutdown.abort(error);
     rejectDone(error);
@@ -422,102 +428,161 @@ export const createWatcherUserEventRuntime = async (
     }
     return Object.freeze({ observations: Object.freeze(first), bytes });
   };
+  // The caller owns this array: expired paired predecessors are single-use,
+  // so renewal replaces their entries before unused first facts are restored.
   const completeFirst = async (
-    first: readonly FirstObservation[],
+    first: FirstObservation[],
     initialBytes: number,
     operationSignal: AbortSignal,
   ): Promise<Pair[]> => {
-    const pairs: Pair[] = [];
-    let bytes = initialBytes;
-    try {
-      const deadline = performance.now() + ACQUISITION_TIMEOUT_MS;
-      for (const step of first) {
-        for (;;) {
-          operationSignal.throwIfAborted();
-          if (performance.now() >= deadline)
-            throw new Error(
-              "User-event native tip did not grow within acquisition bound",
-            );
-          const capture = await captureAt(step.plan.point, operationSignal);
-          let retained = false;
-          try {
-            const read = readWatcherLocalHistoricalCapture(capture.receipt);
-            if (read.nativeBlock.rawBlockCbor !== step.raw)
-              throw new Error(
-                "User-event native block changed between observations",
-              );
+    for (;;) {
+      const pairs: Pair[] = [];
+      let bytes = initialBytes;
+      let pairedDeadline = Infinity;
+      const freshPrefix = () => {
+        for (const pair of pairs)
+          readWatcherLocalBackfillObservation(pair.observation);
+        return pairs;
+      };
+      let restart = false;
+      try {
+        for (const step of first) {
+          let nextProbeAt = 0;
+          for (;;) {
+            operationSignal.throwIfAborted();
+            // Block production has no wall-clock bound. Keep first facts while
+            // no tip grows, with no live second-capture authority held waiting.
+            if (performance.now() >= pairedDeadline) {
+              restart = true;
+              break;
+            }
             if (
-              BigInt(read.observedNativeTip.blockNo) <= BigInt(step.tip.blockNo)
+              (monitorTip === null ||
+                BigInt(monitorTip.blockNo) <= BigInt(step.tip.blockNo)) &&
+              performance.now() < nextProbeAt
             ) {
-              await releaseCapture(capture);
               await pause(operationSignal);
               continue;
             }
-            const observation = admitWatcherLocalBackfillObservation(
-              capture.receipt,
-            );
-            const admitted = admitWatcherLocalBackfillFinality({
-              watcherConfig,
-              deploymentIdentity,
-              observation,
-              previous: step.finality,
-            }).admitted;
-            if (admitted === null)
-              throw new Error(
-                "User-event second observation was not finalized",
+            const capture = await captureAt(step.plan.point, operationSignal);
+            let retained = false;
+            try {
+              const read = readWatcherLocalHistoricalCapture(capture.receipt);
+              if (read.nativeBlock.rawBlockCbor !== step.raw)
+                throw new Error(
+                  "User-event native block changed between observations",
+                );
+              // A later capture may consume the lifetime of an earlier pair.
+              // Retire that partial batch explicitly, never mask admission errors.
+              if (performance.now() >= pairedDeadline) {
+                restart = true;
+                break;
+              }
+              if (
+                BigInt(read.observedNativeTip.blockNo) <=
+                BigInt(step.tip.blockNo)
+              ) {
+                await releaseCapture(capture);
+                if (pairs.length > 0) {
+                  if (performance.now() >= pairedDeadline) {
+                    restart = true;
+                    break;
+                  }
+                  return freshPrefix();
+                }
+                nextProbeAt = performance.now() + NO_GROWTH_PROBE_INTERVAL_MS;
+                await pause(operationSignal);
+                continue;
+              }
+              const observation = admitWatcherLocalBackfillObservation(
+                capture.receipt,
               );
-            const referenceAuthority =
-              createWatcherLocalBackfillUserEventReferenceAuthority({
+              const admitted = admitWatcherLocalBackfillFinality({
+                watcherConfig,
                 deploymentIdentity,
-                finality: admitted,
                 observation,
+                previous: step.finality,
+              }).admitted;
+              if (admitted === null)
+                throw new Error(
+                  "User-event second observation was not finalized",
+                );
+              const referenceAuthority =
+                createWatcherLocalBackfillUserEventReferenceAuthority({
+                  deploymentIdentity,
+                  finality: admitted,
+                  observation,
+                });
+              const size = evidenceSize({
+                witness: readWatcherLocalBackfillFinalityOriginalWitness({
+                  finality: admitted,
+                  observation,
+                }),
+                referenceEvidence:
+                  readWatcherUserEventReferenceEvidence(referenceAuthority),
               });
-            const size = evidenceSize({
-              witness: readWatcherLocalBackfillFinalityOriginalWitness({
-                finality: admitted,
-                observation,
-              }),
-              referenceEvidence:
-                readWatcherUserEventReferenceEvidence(referenceAuthority),
-            });
-            if (bytes + size > MAX_EVIDENCE_BYTES)
-              throw new Error(
-                "User-event paired evidence exceeds batch evidence bound",
+              if (bytes + size > MAX_EVIDENCE_BYTES)
+                throw new Error(
+                  "User-event paired evidence exceeds batch evidence bound",
+                );
+              pairs.push(
+                Object.freeze({
+                  finality: admitted,
+                  observation,
+                  referenceAuthority,
+                  close: async () => {
+                    await releaseCapture(capture);
+                  },
+                }),
               );
-            pairs.push(
-              Object.freeze({
-                finality: admitted,
-                observation,
-                referenceAuthority,
-                close: async () => {
-                  await releaseCapture(capture);
-                },
-              }),
-            );
-            bytes += size;
-            retained = true;
-            break;
-          } finally {
-            if (!retained && captures.has(capture))
-              await releaseCapture(capture);
+              bytes += size;
+              pairedDeadline = Math.min(
+                pairedDeadline,
+                read.startedAtMonotonicMs + ACQUISITION_TIMEOUT_MS,
+                performance.now() +
+                  Math.max(0, Date.parse(read.expiresAt) - Date.now()),
+              );
+              retained = true;
+              break;
+            } finally {
+              if (!retained && captures.has(capture))
+                await releaseCapture(capture);
+            }
           }
+          if (restart) break;
         }
+        if (!restart && performance.now() < pairedDeadline)
+          return freshPrefix();
+        await Promise.all(pairs.map((pair) => pair.close()));
+        let consumedBytes = 0;
+        const renewalPlans = first.splice(0, pairs.length).map((step) => {
+          consumedBytes += step.evidenceBytes;
+          return { ...step.plan, rawBlockCbor: step.raw };
+        });
+        pairs.length = 0;
+        const renewed = await acquireFirst(renewalPlans, operationSignal);
+        if (renewed.observations.length !== renewalPlans.length)
+          throw new Error(
+            "User-event expired prefix renewal exceeds batch bound",
+          );
+        initialBytes += renewed.bytes - consumedBytes;
+        if (initialBytes > MAX_EVIDENCE_BYTES / 3)
+          throw new Error(
+            "User-event renewed first evidence exceeds batch bound",
+          );
+        first.unshift(...renewed.observations);
+      } catch (error) {
+        await Promise.allSettled(pairs.map((pair) => pair.close()));
+        throw error;
       }
-      return pairs;
-    } catch (error) {
-      await Promise.allSettled(pairs.map((pair) => pair.close()));
-      throw error;
     }
   };
   const acquireBatch = async (
     plans: readonly FirstObservation["plan"][],
     operationSignal: AbortSignal,
   ): Promise<Pair[]> => {
-    const first = await acquireFirst(plans, operationSignal);
-    return await completeFirst(
-      first.observations,
-      first.bytes,
-      operationSignal,
+    return await acquireFirst(plans, operationSignal).then((first) =>
+      completeFirst([...first.observations], first.bytes, operationSignal),
     );
   };
   const onePair = async (
@@ -917,6 +982,7 @@ export const createWatcherUserEventRuntime = async (
     }
     status = "suspended";
     generation += 1;
+    prefetchedFirst.clear();
     recoveryPoint = Object.freeze({ ...point });
     const head = headCursor();
     publisher.suspend();
@@ -982,6 +1048,95 @@ export const createWatcherUserEventRuntime = async (
       });
     return recovery;
   };
+  /** Amortizes first captures without publishing beyond the requested prefix. */
+  const acquirePlannedBatch = async (
+    plans: readonly PlannedBlock[],
+    operationSignal: AbortSignal,
+  ): Promise<Pair[]> => {
+    const covered = BigInt(coveragePoint().blockNo);
+    for (const [key, first] of prefetchedFirst)
+      if (BigInt(first.plan.point.blockNo) <= covered)
+        prefetchedFirst.delete(key);
+    if (prefetchedFirst.size === 0) {
+      const source = createWatcherLocalKupmiosRawSource({
+        watcherConfig,
+        deploymentIdentity,
+        captureBounds: {
+          signal: operationSignal,
+          timeoutMs: watcherConfig.l1.requestTimeoutMs,
+        },
+      });
+      const boundary = await readAdmittedLocalKupmiosBoundary({ source });
+      operationSignal.throwIfAborted();
+      if (BigInt(boundary.kupoCheckpoint.blockNo) > covered) {
+        const ahead = await enumerateRound(
+          coveragePoint(),
+          boundary.kupoCheckpoint,
+          MAX_BATCH,
+          operationSignal,
+        );
+        const touched = ahead.flatMap((item) =>
+          item.kind === "touched" ? [item.plan] : [],
+        );
+        if (touched.length > 0) {
+          const acquired = await acquireFirst(touched, operationSignal);
+          operationSignal.throwIfAborted();
+          for (const first of acquired.observations)
+            prefetchedFirst.set(first.plan.point.pointId, first);
+        }
+      }
+    }
+    const first: FirstObservation[] = [];
+    let bytes = 0;
+    for (const plan of plans) {
+      // Re-enumeration uses the current tracked outrefs. A block newly marked
+      // touched after an earlier publication simply acquires its first now.
+      const candidate =
+        prefetchedFirst.get(plan.point.pointId) ??
+        (await acquireFirst([plan], operationSignal)).observations[0]!;
+      if (
+        !same(candidate.plan.point, plan.point) ||
+        candidate.raw !== plan.rawBlockCbor
+      )
+        throw new Error(
+          "Prefetched user-event first observation changed its block",
+        );
+      if (
+        first.length > 0 &&
+        bytes + candidate.evidenceBytes > MAX_EVIDENCE_BYTES / 3
+      )
+        break;
+      prefetchedFirst.delete(plan.point.pointId);
+      first.push(candidate);
+      bytes += candidate.evidenceBytes;
+    }
+    let retainedBytes = [...prefetchedFirst.values()].reduce(
+      (total, candidate) => total + candidate.evidenceBytes,
+      0,
+    );
+    if (bytes + retainedBytes > MAX_EVIDENCE_BYTES / 3) {
+      // Newly tracked inputs can add misses to a full speculative batch. Drop
+      // unused first facts rather than exceed the existing acquisition bound.
+      prefetchedFirst.clear();
+      retainedBytes = 0;
+    }
+    const pairs = await completeFirst(
+      first,
+      bytes + retainedBytes,
+      operationSignal,
+    );
+    try {
+      operationSignal.throwIfAborted();
+      // A pending later point returns the completed prefix. Keep its unused
+      // closed first facts so the next sequential advance does not start over.
+      for (const unused of first.slice(pairs.length))
+        prefetchedFirst.set(unused.plan.point.pointId, unused);
+      return pairs;
+    } catch (error) {
+      await Promise.allSettled(pairs.map((pair) => pair.close()));
+      throw error;
+    }
+  };
   /** Covers every block above the coverage checkpoint through `point`. */
   const advance = async (
     point: FraudProofRawL1Point,
@@ -1014,7 +1169,9 @@ export const createWatcherUserEventRuntime = async (
         item.kind === "touched" ? [item.plan] : [],
       );
       const pairs =
-        plans.length === 0 ? [] : await acquireBatch(plans, operationSignal);
+        plans.length === 0
+          ? []
+          : await acquirePlannedBatch(plans, operationSignal);
       try {
         let pairIndex = 0;
         for (const item of items) {
@@ -1311,6 +1468,7 @@ export const createWatcherUserEventRuntime = async (
         const failed = status === "failed";
         status = "closed";
         generation += 1;
+        prefetchedFirst.clear();
         publisher?.close();
         signal.removeEventListener("abort", abortOwner);
         shutdown.abort(new Error("User-event runtime closed"));

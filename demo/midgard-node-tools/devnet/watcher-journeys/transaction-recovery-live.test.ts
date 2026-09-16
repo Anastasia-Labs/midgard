@@ -11,7 +11,7 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import {
   loadWatcherVerifiedDeploymentAuthority,
-  parseWatcherConfig,
+  parseWatcherProcessConfig,
   parseWatcherProverFundingReservationRecord,
   watcherDeploymentReleaseFinalityAuthority,
 } from "midgard-watcher";
@@ -27,12 +27,15 @@ it.skipIf(runDirectory === undefined)(
   async () => {
     const context = await loadJourneyContext(runDirectory!);
     const directory = join(runDirectory!, "work/journeys/transition-trace");
-    const config = parseWatcherConfig(
-      JSON.parse(await readFile(join(directory, "watcher.json"), "utf8")),
+    const processConfig = parseWatcherProcessConfig(
+      JSON.parse(
+        await readFile(join(directory, "watcher-process.json"), "utf8"),
+      ),
     );
+    const config = processConfig.watcherConfig;
     const authority = await loadWatcherVerifiedDeploymentAuthority({
-      path: join(directory, "deployment-authority.json"),
-      ruleBundlePath: join(directory, "rules.json"),
+      path: processConfig.deploymentAuthorityPath,
+      ruleBundlePath: processConfig.ruleBundlePath,
     });
     const releaseFinality = await watcherDeploymentReleaseFinalityAuthority(
       authority.deploymentIdentity,

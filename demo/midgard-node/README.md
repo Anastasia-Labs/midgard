@@ -314,6 +314,20 @@ inspection, and operational control. See
 [`src/commands/listen-router.ts`](./src/commands/listen-router.ts) for the
 authoritative route graph.
 
+## Operator Lifecycle
+
+The node exposes the operator lifecycle as CLI verbs: `register-operator`,
+`activate-operator`, `deregister-operator`, `retire-operator`,
+`force-retire-operator`, `recover-operator-bond`, `slash-duplicate-operator`,
+`strike-inactive-operator`, and `operator-status`, plus the admin-gated
+`GET /operator/status` route. Every verb runs a wallet funding preflight and
+refuses locally, in one line, before it spends anything. A watchdog fiber,
+enabled by `OPERATOR_WATCHDOG_ENABLED` (default `true`) with
+`OPERATOR_WATCHDOG_PATIENCE_MS` (default `120000`), strikes missed shifts
+automatically. See the operator lifecycle page in the docs site
+(`docs-site/content/docs/operators/node/operator-lifecycle.mdx`) for the
+vocabulary table, recovery paths, and the status report.
+
 ## Testing
 
 ### With Docker
@@ -490,7 +504,7 @@ Each entry has the shape:
       "state-queue minting": "StateQueueMint"
     },
     "postTimelockAudit": {
-      "required": true,
+      "required": false,
       "rule": "..."
     }
   },
@@ -515,15 +529,22 @@ which defaults to the separate reference-script wallet address
 production, set `L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS` to the intended
 non-spendable reference-script address and deploy fresh reference scripts.
 
-Reference-script deployment creates a timelock native minting policy and mints
-one role token into each published reference-script UTxO. The default window is
+Reference-script deployment creates a native minting policy requiring the
+selected publisher's signature and an expiry bound, and mints one role token
+into each published reference-script UTxO. The publisher wallet is independent
+of the reference-script output address. The default minting window is
 four hours (`REFERENCE_SCRIPT_AUTH_TIMELOCK_MS=14400000`), and publication fails
 before submitting a batch when less than
 `REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS` remains. The policy metadata is written
-to `referenceScriptAuthPolicy` in the manifest. After the timelock expires, the
-deployment must be audited before production use: for every token name listed in
+to `referenceScriptAuthPolicy` in the manifest. Once publication is confirmed,
+the deployment is audited immediately: for every token name listed in
 `referenceScriptAuthPolicy.tokenNames`, exactly one token under
-`referenceScriptAuthPolicy.policyId` must exist.
+`referenceScriptAuthPolicy.policyId` must exist. The publisher remains trusted
+not to issue additional role tokens while its minting window is open; protect
+that key accordingly. Readiness does not wait for the expiry. Historical
+time-only policies still require an audit after canonical expiry, because they
+do not require a publisher signature. Manifest verification derives the authority
+kind from the native policy bytes rather than trusting the audit flag alone.
 
 `deployment-status` reports both the V1 manifest verification result and live
 protocol deployment status. If a present manifest disagrees with configured

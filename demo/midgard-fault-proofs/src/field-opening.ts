@@ -512,6 +512,8 @@ export const publishFaultProofFieldCarriage = async ({
   publisherAddress,
   label,
   preSubmitBoundary,
+  beforePublication,
+  publicationConfirmed,
 }: {
   readonly lucid: LucidEvolution;
   readonly signer: ResolvedProverSigner;
@@ -520,6 +522,10 @@ export const publishFaultProofFieldCarriage = async ({
   readonly label: string;
   /** Production workflow seam for each content publication transaction. */
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  /** Refresh reserved inputs before each new publication is built. */
+  readonly beforePublication?: () => Promise<void>;
+  /** Authenticate inclusion and rotate funding before building another chunk. */
+  readonly publicationConfirmed?: (txHash: string) => Promise<void>;
 }): Promise<readonly UTxO[]> => {
   const publications = planned.plan.publications;
   if (publications.length === 0) {
@@ -537,9 +543,11 @@ export const publishFaultProofFieldCarriage = async ({
       (utxo) => utxo.datum === datumCbor,
     );
     if (existing !== undefined) {
+      await publicationConfirmed?.(existing.txHash);
       published.push(existing);
       continue;
     }
+    await beforePublication?.();
     const unsigned = await Effect.runPromise(
       buildUnsignedFieldPreimagePublicationProgram(lucid, {
         publication: {
@@ -564,6 +572,7 @@ export const publishFaultProofFieldCarriage = async ({
       );
     }
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
+    await publicationConfirmed?.(txHash);
     const outputs = signed.toTransaction().body().outputs();
     let outputIndex: number | undefined;
     for (let index = 0; index < outputs.len(); index += 1) {

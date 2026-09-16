@@ -112,3 +112,5 @@ shared limits. Test presence and installation counts do not substitute for a
 retained passing result. See [testing status](testing-status.md),
 [remaining acceptance](execution-plan.md), and
 [public-testnet readiness](../public_testnet_readiness.md).
+The [emulator scheduling measurements](testing-status.md#emulator-gate-performance)
+retain the same test cases and do not change category or installation inventory.

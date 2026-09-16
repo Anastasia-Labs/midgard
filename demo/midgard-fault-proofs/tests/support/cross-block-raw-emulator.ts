@@ -50,6 +50,16 @@ export const recordCrossBlockRawEmulator = () => {
   >();
   const original = Emulator.prototype.submitTx;
   const recorded: { emulator?: Emulator } = {};
+  // Match the raw authority's canonical view when prerequisite discovery reads
+  // a checkpoint through Lucid while its spending transaction is in the mempool.
+  const outRefReads = vi
+    .spyOn(Emulator.prototype, "getUtxosByOutRef")
+    .mockImplementation(async function (this: Emulator, outRefs) {
+      return outRefs.flatMap(({ txHash, outputIndex }) => {
+        const entry = this.ledger[txHash + outputIndex];
+        return entry === undefined ? [] : [entry.utxo];
+      });
+    });
   const spy = vi
     .spyOn(Emulator.prototype, "submitTx")
     .mockImplementation(async function (this: Emulator, cbor: string) {
@@ -106,7 +116,13 @@ export const recordCrossBlockRawEmulator = () => {
       const boundary = point(rows.length + 1);
       const tip = point(rows.length + 30);
       const sourceId = "local-emulator-recorded-cardano";
-      const all = rows.map((row) => ({
+      const statuses = await Promise.all(
+        rows.map((row) => emulator.getTransactionStatus(row.txHash)),
+      );
+      const includedRows = rows.filter(
+        (_, index) => statuses[index]!.status === "confirmed",
+      );
+      const all = includedRows.map((row) => ({
         ...row,
         confirmationDepth:
           Number(tip.blockNo) - Number(row.inclusionPoint.blockNo) + 1,
@@ -130,9 +146,10 @@ export const recordCrossBlockRawEmulator = () => {
       const transactions = all.filter((row) =>
         request.historyUnits.some((unit) => touches(row, unit)),
       );
-      const utxos = Object.values(emulator.ledger)
-        .filter((row) => !row.spent)
-        .map((row) => row.utxo);
+      // Ledger entries are removed when their spending transaction is included.
+      // A remaining `spent` flag only reserves an input for a mempool transaction;
+      // it must not make an authenticated chain snapshot report a rollback.
+      const utxos = Object.values(emulator.ledger).map((row) => row.utxo);
       const output = (utxo: UTxO) => {
         const created = rows.find((row) => row.txHash === utxo.txHash);
         return raw(
@@ -189,7 +206,10 @@ export const recordCrossBlockRawEmulator = () => {
   };
   return {
     authority,
-    restore: () => spy.mockRestore(),
+    restore: () => {
+      spy.mockRestore();
+      outRefReads.mockRestore();
+    },
     rows,
     signedCbors,
     acceptedTransactions,

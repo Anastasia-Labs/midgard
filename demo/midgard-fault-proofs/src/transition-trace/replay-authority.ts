@@ -34,6 +34,61 @@ import type {
   OutOfWindowSourceEventEvidence,
 } from "./witnesses.js";
 
+// A handle owns deeply frozen admitted raw evidence. Cache only decoding of
+// those immutable bytes; header windows, committed sources and coverage below
+// remain caller-dependent and must be checked on every read.
+const parseEventFacts = (
+  l1: ReturnType<typeof readFreshTransitionTraceL1Events>,
+) => ({
+  hub: Data.from(l1.hub.datum!, SDK.HubOracleDatum),
+  events: l1.events.map((entry) => {
+    if (entry.kind === "deposit")
+      return {
+        kind: "deposit" as const,
+        entry,
+        datum: Data.from(entry.utxo.datum!, SDK.DepositDatum),
+      };
+    if (entry.kind === "withdrawal")
+      return {
+        kind: "withdrawal" as const,
+        entry,
+        datum: Data.from(entry.utxo.datum!, SDK.WithdrawalOrderDatum),
+      };
+    const datum = Data.from(entry.utxo.datum!, SDK.TxOrderDatum);
+    const compact = decodeMidgardForcedTxCompact(
+      Buffer.from(datum.event.tx.submitted_source.compact_cbor, "hex"),
+    );
+    if (
+      computeMidgardNativeTxId(compact).toString("hex") !== datum.event.tx.tx_id
+    )
+      throw new Error(
+        "Transition forced L1 source has a false compact transaction id",
+      );
+    return {
+      kind: "forcedTransaction" as const,
+      entry,
+      datum,
+      start: compact.transactionBody.validityIntervalStart,
+      end: compact.transactionBody.validityIntervalEnd,
+    };
+  }),
+});
+const parsedEventFacts = new WeakMap<
+  TransitionTraceL1Events,
+  ReturnType<typeof parseEventFacts>
+>();
+const readEventFacts = (
+  handle: TransitionTraceL1Events,
+  l1: ReturnType<typeof readFreshTransitionTraceL1Events>,
+) => {
+  let facts = parsedEventFacts.get(handle);
+  if (facts === undefined) {
+    facts = parseEventFacts(l1);
+    parsedEventFacts.set(handle, facts);
+  }
+  return facts;
+};
+
 const readTransitionTraceEventCoverage = ({
   evidence,
   l1Events,
@@ -51,22 +106,27 @@ const readTransitionTraceEventCoverage = ({
   const outside: OutOfWindowSourceEventEvidence[] = [];
   const referencesByEvent = new Map<string, (typeof l1.events)[number]>();
   const relevantEvents: (typeof l1.events)[number][] = [];
-  for (const entry of l1.events) {
+  for (const fact of readEventFacts(l1Events, l1).events) {
+    const entry = fact.entry;
     const common = { eventRefInputIndex: 0n, eventAssetName: entry.assetName };
     let eventKey: SDK.EventKey;
     let due: boolean;
     let omittedItem: OmittedDueL1EventEvidence;
     let outsideItem: OutOfWindowSourceEventEvidence;
-    if (entry.kind === "deposit") {
-      const datum = Data.from(entry.utxo.datum!, SDK.DepositDatum);
+    if (fact.kind === "deposit") {
+      const datum = fact.datum;
       eventKey = { DepositEventKey: { deposit_id: datum.event.id } };
       due =
         current.header.startTime < datum.inclusion_time &&
         datum.inclusion_time <= current.header.endTime;
-      omittedItem = { ...common, kind: "deposit", depositId: datum.event.id };
+      omittedItem = {
+        ...common,
+        kind: "deposit",
+        depositId: structuredClone(datum.event.id),
+      };
       outsideItem = omittedItem;
-    } else if (entry.kind === "withdrawal") {
-      const datum = Data.from(entry.utxo.datum!, SDK.WithdrawalOrderDatum);
+    } else if (fact.kind === "withdrawal") {
+      const datum = fact.datum;
       eventKey = { WithdrawalEventKey: { withdrawal_id: datum.event.id } };
       due =
         current.header.startTime < datum.inclusion_time &&
@@ -77,27 +137,15 @@ const readTransitionTraceEventCoverage = ({
       const validity =
         source?.phase === "Withdrawal"
           ? source.entry.value.validity
-          : datum.event.info.validity;
+          : structuredClone(datum.event.info.validity);
       omittedItem = {
         ...common,
         kind: "withdrawal",
-        withdrawalId: datum.event.id,
+        withdrawalId: structuredClone(datum.event.id),
       };
       outsideItem = { ...omittedItem, validityOverride: validity };
     } else {
-      const datum = Data.from(entry.utxo.datum!, SDK.TxOrderDatum);
-      const compact = decodeMidgardForcedTxCompact(
-        Buffer.from(datum.event.tx.submitted_source.compact_cbor, "hex"),
-      );
-      if (
-        computeMidgardNativeTxId(compact).toString("hex") !==
-        datum.event.tx.tx_id
-      )
-        throw new Error(
-          "Transition forced L1 source has a false compact transaction id",
-        );
-      const start = compact.transactionBody.validityIntervalStart,
-        end = compact.transactionBody.validityIntervalEnd;
+      const { datum, start, end } = fact;
       due =
         current.header.startTime < datum.inclusion_time &&
         datum.inclusion_time <= current.header.endTime &&
@@ -119,7 +167,7 @@ const readTransitionTraceEventCoverage = ({
       omittedItem = {
         ...common,
         kind: "forcedTransaction",
-        txOrderId: datum.event.id,
+        txOrderId: structuredClone(datum.event.id),
         validityOverride: verdict,
       };
       outsideItem = omittedItem;
@@ -181,7 +229,7 @@ export const computeTransitionTraceL1EventEvidenceDigest = ({
     evidence,
     l1Events,
   });
-  const parameters = Data.from(l1.hub.datum!, SDK.HubOracleDatum);
+  const parameters = readEventFacts(l1Events, l1).hub;
   const hubScope = l1.snapshot.scopes.find(
     (scope) => scope.role === "hub_oracle",
   )!;

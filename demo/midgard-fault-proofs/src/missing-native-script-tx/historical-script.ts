@@ -84,7 +84,9 @@ export type HistoricalNativeScriptEvidence = Readonly<{
   /** Exact raw-block transaction order at `inclusionPoint`. */
   readonly inclusionBlockTransactionIds: readonly string[];
   readonly inclusionPoint: FraudProofRawL1Point;
+  /** Original observation metadata when re-admitting persisted evidence. */
   readonly throughPoint: FraudProofRawL1Point;
+  /** Depth at throughPoint, not a current finality or actuation assertion. */
   readonly confirmationDepth: number;
   readonly sourceMode: HistoricalNativeScriptSourceMode;
   readonly applicationOverlayDigest: string;
@@ -518,10 +520,10 @@ const admitCandidate = ({
   }
   const confirmationDepth = throughBlock - inclusionBlock + 1n;
   if (
-    confirmationDepth < BigInt(releaseFinality.policy.confirmationDepth) ||
+    confirmationDepth < 1n ||
     confirmationDepth > BigInt(Number.MAX_SAFE_INTEGER)
   ) {
-    throw new Error(`${label} script publication is below release finality`);
+    throw new Error(`${label} script publication lacks canonical inclusion`);
   }
   const publicationOutRef = canonicalString(
     parsed.publicationOutRef,
@@ -779,7 +781,6 @@ const parsePersistedHistoricalNativeScriptEvidence = ({
   applicationOverlayDigest: expectedApplicationOverlayDigest,
   rosterDigest: expectedRosterDigest,
   expectedScriptHash,
-  throughPoint: untrustedThroughPoint,
   releaseFinality: untrustedReleaseFinality,
 }: {
   readonly value: unknown;
@@ -787,7 +788,6 @@ const parsePersistedHistoricalNativeScriptEvidence = ({
   readonly applicationOverlayDigest: string;
   readonly rosterDigest: string;
   readonly expectedScriptHash: string;
-  readonly throughPoint: FraudProofRawL1Point;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
 }): HistoricalNativeScriptEvidence => {
   if (sourceMode !== "local_node" && sourceMode !== "external_providers") {
@@ -835,8 +835,8 @@ const parsePersistedHistoricalNativeScriptEvidence = ({
     untrustedReleaseFinality,
   );
   const throughPoint = admitFraudProofRawL1Point(
-    untrustedThroughPoint,
-    "historical native script expected throughPoint",
+    parsed.throughPoint,
+    "historical native script persisted throughPoint",
   );
   const sources = admitEvidenceSources({ value: parsed.sources, sourceMode });
   const rosterDigest = digest(
@@ -1044,8 +1044,10 @@ export const resolveHistoricalNativeScriptEvidence = async ({
 
 /**
  * Re-admits a journal-loaded record by resolving the installed immutable
- * roster again and reconfirming publication ancestry through the pinned L1
- * point. A valid unkeyed digest or structural source clone is insufficient.
+ * roster again and reconfirming publication ancestry through the current L1
+ * point. Returns the original evidence for its immutable artifact digest:
+ * its throughPoint and confirmationDepth describe the prepared observation,
+ * not current depth or finality. A valid unkeyed digest alone is insufficient.
  */
 export const admitHistoricalNativeScriptEvidence = async ({
   value,
@@ -1066,7 +1068,6 @@ export const admitHistoricalNativeScriptEvidence = async ({
     applicationOverlayDigest: roster.applicationOverlayDigest,
     rosterDigest: roster.rosterDigest,
     expectedScriptHash,
-    throughPoint,
     releaseFinality,
   });
   const live = await resolveHistoricalNativeScriptEvidence({
@@ -1080,14 +1081,20 @@ export const admitHistoricalNativeScriptEvidence = async ({
     ),
   });
   if (
-    persisted.evidenceDigest !== live.evidenceDigest ||
-    JSON.stringify(persisted) !== JSON.stringify(live)
+    JSON.stringify({
+      ...persisted,
+      // Observation metadata may advance or roll back; every publication and
+      // provider field must still match the independently resolved evidence.
+      throughPoint: live.throughPoint,
+      confirmationDepth: live.confirmationDepth,
+      evidenceDigest: live.evidenceDigest,
+    }) !== JSON.stringify(live)
   ) {
     throw new Error(
       "historical native script evidence changed after live roster reconfirmation",
     );
   }
-  return live;
+  return persisted;
 };
 
 export const historicalNativeScriptBytes = (

@@ -12,6 +12,8 @@ import { createInterface } from "node:readline";
 import { setTimeout as pause } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
+import type { JourneyHistoryTransportEnvironment } from "./history-archive-transport.js";
+
 /** Recognize actual startup diagnostics without interpreting them as readiness. */
 export const journeyStartupProgress = (line: string) => {
   let event: Record<string, unknown> | null;
@@ -79,6 +81,7 @@ export const launchJourneyWatcherProcess = (input: {
   configPath: string;
   directory: string;
   caPath: string;
+  transportEnvironment?: JourneyHistoryTransportEnvironment;
 }) => {
   const startedAt = new Date().toISOString();
   const attempt = `${input.command}-${startedAt.replaceAll(":", "-")}-${randomUUID()}`;
@@ -133,24 +136,13 @@ export const launchJourneyWatcherProcess = (input: {
   log.write(`${JSON.stringify({ attempt, startedAt })}\n`);
   const child = spawn(
     process.execPath,
-    [
-      ...(input.command === "start"
-        ? [
-            "--cpu-prof",
-            `--cpu-prof-dir=${input.directory}`,
-            `--cpu-prof-name=${attempt}.cpuprofile`,
-          ]
-        : []),
-      cliPath,
-      input.command,
-      "--config",
-      input.configPath,
-    ],
+    [cliPath, input.command, "--config", input.configPath],
     {
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         PATH: process.env.PATH,
         NODE_EXTRA_CA_CERTS: input.caPath,
+        ...input.transportEnvironment,
         MALLOC_MMAP_THRESHOLD_: "131072",
       },
     },

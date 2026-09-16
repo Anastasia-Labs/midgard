@@ -22,6 +22,16 @@ import {
   activateOperatorProgram,
   registerOperatorProgram,
 } from "midgard-node/transactions/register-active-operator";
+import { canActivateRegisteredOperatorImmediately } from "midgard-node/transactions/register-active-operator/activation";
+
+import { verifyPublishedDaAttestationReceipt } from "./published-da-attestation-receipt.js";
+import {
+  type PublishedDaTargetCorrection,
+  type PublishedDaTransactionRecord,
+  type PublishedDaTransactionStep,
+  type PublishedHeaderConsumption,
+  reconcilePublishedDaTargetConsumption,
+} from "./published-da-target-consumption.js";
 
 export type PublishedWatcherDeployment = Awaited<
   ReturnType<typeof publishWorkflowDeploymentOnChain>
@@ -33,10 +43,33 @@ export type PublishedWatcherBlock = {
 };
 
 /**
- * A submitted transaction whose validity interval closed before any block
- * included it. The devnet mints blocks at random ~20s intervals, so a short
- * commit-bound validity range (Q60) can expire unminted; the caller rebuilds
- * with a fresh interval instead of failing the journey.
+ * How a DA attestation finished: the apply receipt is authenticated, or the
+ * target header's own fraud correction consumed it first and that correction
+ * is authenticated instead. A target that vanished for any other reason throws.
+ */
+export type PublishedDaAttestationOutcome =
+  | {
+      kind: "attested";
+      /** The transaction whose state queue output carries the attested header. */
+      txHash: string;
+    }
+  | PublishedDaTargetCorrection;
+
+export type PublishedDaAttestOptions = {
+  /** DA transactions an earlier attempt already submitted for this header. */
+  submitted?: readonly PublishedDaTransactionRecord[];
+  /** Settles the exact retained bytes before any replacement DA construction. */
+  reconcileSubmitted?(
+    record: PublishedDaTransactionRecord,
+  ): Promise<{ kind: "included" | "retired" }>;
+  /** Called with each DA transaction after signing and before submission. */
+  onSubmitted?(record: PublishedDaTransactionRecord): Promise<void>;
+};
+
+/**
+ * The expected output was not observed before the local validity wait elapsed.
+ * This is a reconciliation signal, not proof of canonical non-inclusion: the
+ * indexer can lag, or another transaction can already have consumed the output.
  */
 export class PublishedTransactionExpiredError extends Error {
   constructor(
@@ -45,25 +78,54 @@ export class PublishedTransactionExpiredError extends Error {
     readonly expiryMs: number,
   ) {
     super(
-      `${label} ${txHash} expired at ${expiryMs} before any block included it`,
+      `${label} ${txHash} output was not observed after validity bound ${expiryMs}`,
     );
     this.name = "PublishedTransactionExpiredError";
   }
 }
 
+/** Submission failed after signing; only canonical recovery can settle the attempt. */
+export class PublishedTransactionSubmissionError extends Error {
+  constructor(
+    readonly txHash: string,
+    cause: unknown,
+  ) {
+    super(`Header submission ${txHash} is unresolved`, { cause });
+    this.name = "PublishedTransactionSubmissionError";
+  }
+}
+
 /** Grace after a validity upper bound for the indexer to publish the last eligible block. */
 const EXPIRY_GRACE_MS = 60_000;
+/** Bound on an unbounded-validity DA transaction reaching the chain. */
+const DA_SUBMISSION_TIMEOUT_MS = 600_000;
+/** Bound on the indexer publishing the spend of a target it already reports absent. */
+const CONSUMPTION_INDEX_GRACE_MS = 120_000;
+/**
+ * How long a missing target may precede our own transaction's outputs before
+ * it counts as consumed by someone else. A block-indexed provider flips both
+ * at once; the emulator marks spent inputs at submission and publishes the
+ * outputs at its next block, at most twenty slots later.
+ */
+const OWN_SPEND_VISIBILITY_GRACE_MS = 30_000;
 
 /** A real operator's registration, header commitments and DA attestations. */
 export const createPublishedWatcherBlockActor = async ({
   deployment,
   lucid,
   daSignerConfig,
+  readConfirmedTransaction,
+  readHeaderConsumptions,
   onStage = () => {},
 }: {
   deployment: PublishedWatcherDeployment;
   lucid: LucidEvolution;
   daSignerConfig: DaLocalSignerConfig;
+  readConfirmedTransaction?: (txHash: string) => Promise<{ cbor: string }>;
+  /** Indexed spends of outputs carrying a unit; hints the reconciliation authenticates. */
+  readHeaderConsumptions?: (
+    unit: string,
+  ) => Promise<PublishedHeaderConsumption[]>;
   onStage?: (name: string) => void;
 }) => {
   const { contracts, chain, references } = deployment;
@@ -76,8 +138,8 @@ export const createPublishedWatcherBlockActor = async ({
   };
   /**
    * Wait for a transaction with a validity upper bound. Confirmation is the
-   * appearance of its expected output; once the chain clock passes the bound
-   * plus indexing grace without it, the transaction can never land.
+   * appearance of its expected output; crossing the local bound plus indexing
+   * grace without it requires canonical reconciliation before replacement.
    */
   const awaitLandedOrExpired = async ({
     label,
@@ -91,14 +153,12 @@ export const createPublishedWatcherBlockActor = async ({
     landed: () => Promise<boolean>;
   }) => {
     for (;;) {
-      if (await landed()) {
-        lucid.overrideUTxOs(await lucid.utxosAt(address));
-        return;
-      }
+      if (await landed()) break;
       if (chain.now() > expiryMs + EXPIRY_GRACE_MS)
         throw new PublishedTransactionExpiredError(label, txHash, expiryMs);
-      await chain.awaitSlot(1);
+      await chain.delaySlots(1);
     }
+    lucid.overrideUTxOs(await lucid.utxosAt(address));
   };
   const outputLanded = (txHash: string) => async () =>
     (
@@ -192,10 +252,27 @@ export const createPublishedWatcherBlockActor = async ({
         throw new Error(
           "Expected one registered activation time for the journey operator",
         );
-      const activationTime = Number(BigInt(`0x${matching[0]!.key.Key.key}`));
-      await chain.awaitSlot(
-        Math.max(0, Math.ceil((activationTime + 1 - chain.now()) / 1000)),
+      const activeRoot = await one(
+        contracts.activeOperators.spendingScriptAddress,
+        toUnit(
+          contracts.activeOperators.policyId,
+          SDK.ACTIVE_OPERATORS_ROOT_ASSET_NAME,
+        ),
       );
+      const immediateActivation = canActivateRegisteredOperatorImmediately(
+        {
+          utxo: activeRoot,
+          datum: await Effect.runPromise(
+            SDK.getLinkedListNodeViewFromUTxO(activeRoot),
+          ),
+        },
+        matching[0]!,
+        contracts.activeOperators,
+      );
+      if (!immediateActivation) {
+        const activationTime = Number(BigInt(`0x${matching[0]!.key.Key.key}`));
+        await chain.awaitLedgerTime(activationTime + 1);
+      }
     }
     onStage("operator activation");
     await Effect.runPromise(
@@ -224,16 +301,8 @@ export const createPublishedWatcherBlockActor = async ({
         throw new Error(
           "A different operator owns the current scheduler appointment",
         );
-      await chain.awaitSlot(
-        Math.max(
-          0,
-          Math.ceil(
-            (Number(schedulerDatum.ActiveOperator.start_time) +
-              1 -
-              chain.now()) /
-              1000,
-          ),
-        ),
+      await chain.awaitLedgerTime(
+        Number(schedulerDatum.ActiveOperator.start_time) + 1,
       );
       return;
     }
@@ -299,9 +368,8 @@ export const createPublishedWatcherBlockActor = async ({
       .validFrom(chain.now() - 60_000)
       .validTo(Number(schedulerStart + 1n))
       .complete({ localUPLCEval: true });
-    const appointmentHash = await (
-      await appointment.sign.withWallet().complete()
-    ).submit();
+    const appointmentSigned = await appointment.sign.withWallet().complete();
+    const appointmentHash = await appointmentSigned.submit();
     try {
       await awaitLandedOrExpired({
         label: "scheduler appointment",
@@ -315,9 +383,7 @@ export const createPublishedWatcherBlockActor = async ({
       lucid.overrideUTxOs(await lucid.utxosAt(address));
       return appointScheduler();
     }
-    await chain.awaitSlot(
-      Math.max(0, Math.ceil((Number(schedulerStart) + 1 - chain.now()) / 1000)),
-    );
+    await chain.awaitLedgerTime(Number(schedulerStart) + 1);
   };
   const commit = async (
     block: Pick<PublishedWatcherBlock, "header" | "headerHash">,
@@ -456,15 +522,19 @@ export const createPublishedWatcherBlockActor = async ({
         },
       ),
     );
-    const signed = await (await builder.complete({ localUPLCEval: true })).sign
-      .withWallet()
-      .complete();
+    const unsigned = await builder.complete({ localUPLCEval: true });
+    const signed = await unsigned.sign.withWallet().complete();
     const signedCbor = signed.toCBOR();
     const txHash = CML.hash_transaction(
       CML.Transaction.from_cbor_hex(signedCbor).body(),
     ).to_hex();
     await onSigned?.({ txHash, signedCbor });
-    const submittedHash = await signed.submit();
+    let submittedHash: string;
+    try {
+      submittedHash = await signed.submit();
+    } catch (cause) {
+      throw new PublishedTransactionSubmissionError(txHash, cause);
+    }
     if (submittedHash !== txHash)
       throw new Error(
         "Submitted header hash differs from its signed transaction",
@@ -487,44 +557,182 @@ export const createPublishedWatcherBlockActor = async ({
     });
     return txHash;
   };
-  const attest = async (block: PublishedWatcherBlock) => {
-    const submit = async (builder: TxBuilder) => {
-      const signed = await (
-        await builder.complete({ localUPLCEval: true })
-      ).sign
-        .withWallet()
-        .complete();
-      const txHash = await signed.submit();
-      await awaitConfirmed(txHash);
-      return txHash;
-    };
+  const attest = async (
+    block: PublishedWatcherBlock,
+    {
+      submitted = [],
+      reconcileSubmitted,
+      onSubmitted,
+    }: PublishedDaAttestOptions = {},
+  ): Promise<PublishedDaAttestationOutcome> => {
+    const records: PublishedDaTransactionRecord[] = [...submitted];
     const stateQueueUnit = toUnit(
       contracts.stateQueue.policyId,
       SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + block.headerHash,
     );
-    const freshTarget =
-      async (): Promise<SDK.DaAttestationStateQueueTarget> => {
-        const stateQueueUtxo = await Effect.runPromise(
-          SDK.utxoToStateQueueUTxO(
-            await one(
-              contracts.stateQueue.spendingScriptAddress,
-              stateQueueUnit,
-            ),
-            contracts.stateQueue.policyId,
-          ),
+    const attestationUnit = SDK.daAttestationUnit(
+      contracts.daAttestation,
+      block.headerHash,
+    );
+    const targetOutputs = async () => {
+      const outputs = await lucid.utxosAtWithUnit(
+        contracts.stateQueue.spendingScriptAddress,
+        stateQueueUnit,
+      );
+      if (outputs.length > 1)
+        throw new Error(`Ambiguous published state: ${stateQueueUnit}`);
+      return outputs;
+    };
+    const targetMissing = async () => (await targetOutputs()).length === 0;
+    /** The live target, or undefined once something consumed it. */
+    const freshTarget = async (): Promise<
+      SDK.DaAttestationStateQueueTarget | undefined
+    > => {
+      const [output] = await targetOutputs();
+      if (output === undefined) return undefined;
+      const stateQueueUtxo = await Effect.runPromise(
+        SDK.utxoToStateQueueUTxO(output, contracts.stateQueue.policyId),
+      );
+      const stateQueueNode = await Effect.runPromise(
+        SDK.getStateQueueNodeFromStateQueueDatum(stateQueueUtxo.datum),
+      );
+      return { stateQueueUtxo, stateQueueNode, headerHash: block.headerHash };
+    };
+    /**
+     * The target disappeared while its attestation was in progress. The only
+     * acceptable explanation is the fraud correction of this exact header, so
+     * authenticate that consumption and every DA transaction already sent.
+     */
+    const reconcile = async (): Promise<PublishedDaTargetCorrection> => {
+      if (
+        readHeaderConsumptions === undefined ||
+        readConfirmedTransaction === undefined
+      )
+        throw new Error(
+          `Expected one actual published state: ${stateQueueUnit}`,
         );
-        const stateQueueNode = await Effect.runPromise(
-          SDK.getStateQueueNodeFromStateQueueDatum(stateQueueUtxo.datum),
-        );
-        return { stateQueueUtxo, stateQueueNode, headerHash: block.headerHash };
-      };
+      onStage(`DA target ${block.headerHash} consumed; reconciling correction`);
+      const deadline = chain.now() + CONSUMPTION_INDEX_GRACE_MS;
+      let consumptions = await readHeaderConsumptions(stateQueueUnit);
+      while (consumptions.length === 0 && chain.now() <= deadline) {
+        await chain.delaySlots(1);
+        consumptions = await readHeaderConsumptions(stateQueueUnit);
+      }
+      return reconcilePublishedDaTargetConsumption({
+        headerHash: block.headerHash,
+        stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+        stateQueuePolicyId: contracts.stateQueue.policyId,
+        fraudProofPolicyId: contracts.fraudProof.policyId,
+        consumptions,
+        attestationOutputs: await lucid.utxosAtWithUnit(
+          contracts.daAttestation.spendingScriptAddress,
+          attestationUnit,
+        ),
+        submitted: records,
+        readConfirmedTransaction,
+      });
+    };
+    /** Whether any output of the transaction is indexed: spent outputs vanish, wallet change stays. */
+    const anyOutputLanded = async (txHash: string, signedCbor: string) => {
+      const outputs = CML.Transaction.from_cbor_hex(signedCbor)
+        .body()
+        .outputs();
+      return (
+        (
+          await lucid.config().provider!.getUtxosByOutRef(
+            Array.from({ length: outputs.len() }, (_, outputIndex) => ({
+              txHash,
+              outputIndex,
+            })),
+          )
+        ).length > 0
+      );
+    };
+    /**
+     * Sign, record, submit and wait. Init references the target and apply
+     * spends it, so a correction that removes the target strands them; the
+     * caller then reconciles instead of waiting for a block that cannot come.
+     */
+    const submit = async (
+      step: PublishedDaTransactionStep,
+      build: () => Promise<TxBuilder>,
+      expiryMs?: number,
+    ): Promise<PublishedDaTransactionRecord | "consumed"> => {
+      const unsigned = await (await build()).complete({ localUPLCEval: true });
+      const signed = await unsigned.sign.withWallet().complete();
+      const signedCbor = signed.toCBOR();
+      const txHash = CML.hash_transaction(
+        CML.Transaction.from_cbor_hex(signedCbor).body(),
+      ).to_hex();
+      const record = { step, txHash, signedCbor };
+      records.push(record);
+      await onSubmitted?.(record);
+      try {
+        if ((await signed.submit()) !== txHash)
+          throw new Error(
+            "Submitted DA transaction changed its signed body hash",
+          );
+      } catch (error) {
+        if (await targetMissing()) return "consumed";
+        throw error;
+      }
+      const bound = expiryMs ?? chain.now() + DA_SUBMISSION_TIMEOUT_MS;
+      let missingSince: number | undefined;
+      for (;;) {
+        if (await anyOutputLanded(txHash, signedCbor)) {
+          lucid.overrideUTxOs(await lucid.utxosAt(address));
+          return record;
+        }
+        // The apply spends the target itself, so its absence alone does not
+        // name the spender; only an absence our outputs never follow does.
+        if (await targetMissing()) {
+          missingSince ??= chain.now();
+          if (chain.now() - missingSince > OWN_SPEND_VISIBILITY_GRACE_MS)
+            return "consumed";
+        } else missingSince = undefined;
+        if (chain.now() > bound + EXPIRY_GRACE_MS) {
+          if (expiryMs !== undefined)
+            throw new PublishedTransactionExpiredError(
+              `DA ${step}`,
+              txHash,
+              expiryMs,
+            );
+          throw new Error(
+            `DA ${step} ${txHash} reached no block within ${DA_SUBMISSION_TIMEOUT_MS}ms`,
+          );
+        }
+        await chain.delaySlots(1);
+      }
+    };
     const daParamsUtxo = await one(
       contracts.daParamsGovernor.spendingScriptAddress,
       SDK.daParamsUnit(contracts.daParamsGovernor),
     );
-    const existingTarget = await freshTarget();
+    let existingTarget = await freshTarget();
+    if (existingTarget === undefined) return reconcile();
+    if (submitted.length > 0) {
+      if (reconcileSubmitted === undefined)
+        throw new Error(
+          "Retained DA attempts require exact signed transaction reconciliation",
+        );
+      for (const record of submitted) await reconcileSubmitted(record);
+      existingTarget = await freshTarget();
+      if (existingTarget === undefined) return reconcile();
+    }
     if (existingTarget.stateQueueNode.da_attestation !== SDK.NO_DA_ATTESTATION)
-      return existingTarget.stateQueueUtxo.utxo.txHash;
+      return {
+        kind: "attested",
+        txHash: existingTarget.stateQueueUtxo.utxo.txHash,
+      };
+    // Reconcile retained attempts first, but do not fund init or signatures
+    // when this immutable header can no longer accept the resulting apply.
+    // The apply path checks again after those transactions have confirmed.
+    await Effect.runPromise(
+      daAttestationApplyValidityRangeProgram({
+        currentTime: BigInt(lucid.slotToUnixTime(lucid.currentSlot())),
+        headerEndTime: existingTarget.stateQueueNode.header.endTime,
+      }),
+    );
     const daParamsDatum = Data.from(daParamsUtxo.datum!, SDK.DaParamsDatum);
     const availabilityParameters = availabilityParametersFromManifest(
       deployment.manifest.availabilityChallenge,
@@ -548,16 +756,18 @@ export const createPublishedWatcherBlockActor = async ({
     };
     const existingAttestations = await lucid.utxosAtWithUnit(
       contracts.daAttestation.spendingScriptAddress,
-      SDK.daAttestationUnit(contracts.daAttestation, block.headerHash),
+      attestationUnit,
     );
     if (existingAttestations.length === 0) {
+      const initTarget = await freshTarget();
+      if (initTarget === undefined) return reconcile();
       onStage(`DA attestation init ${block.headerHash}`);
-      await submit(
-        await Effect.runPromise(
+      const init = await submit("init", async () =>
+        Effect.runPromise(
           SDK.incompleteInitDaAttestationTxProgram(lucid, contracts, {
             daParamsUtxo,
             daParamsDatum,
-            target: await freshTarget(),
+            target: initTarget,
             referenceScripts,
             attestationOutputLovelace: availabilityParameters.da_bond_lovelace,
             rescueBeneficiary: await Effect.runPromise(
@@ -567,11 +777,12 @@ export const createPublishedWatcherBlockActor = async ({
           }),
         ),
       );
+      if (init === "consumed") return reconcile();
     }
     const fetchAttestation = async (): Promise<SDK.DaAttestationUtxo> => {
       const utxo = await one(
         contracts.daAttestation.spendingScriptAddress,
-        SDK.daAttestationUnit(contracts.daAttestation, block.headerHash),
+        attestationUnit,
       );
       return { utxo, datum: Data.from(utxo.datum!, SDK.DaAttestationDatum) };
     };
@@ -592,8 +803,8 @@ export const createPublishedWatcherBlockActor = async ({
     const pending = await fetchAttestation();
     if (pending.datum.attestation_count === 0n) {
       onStage(`DA attestation signatures ${block.headerHash}`);
-      await submit(
-        await Effect.runPromise(
+      const signatures = await submit("signatures", async () =>
+        Effect.runPromise(
           SDK.incompleteAddDaAttestationSignaturesTxProgram(lucid, contracts, {
             daParamsUtxo,
             daParamsDatum,
@@ -603,51 +814,86 @@ export const createPublishedWatcherBlockActor = async ({
           }),
         ),
       );
+      if (signatures === "consumed") return reconcile();
     } else if (pending.datum.attestation_count < pending.datum.da_threshold) {
       throw new Error(
         "Journey attestation has an unexpected partial signature set",
       );
     }
-    const target = await freshTarget();
-    const validityRange = await Effect.runPromise(
-      daAttestationApplyValidityRangeProgram({
-        currentTime: BigInt(lucid.slotToUnixTime(lucid.currentSlot())),
-        headerEndTime: block.header.endTime,
-      }),
-    );
-    onStage(`DA attestation apply ${block.headerHash}`);
-    const applyTxHash = await submit(
-      await Effect.runPromise(
-        SDK.incompleteApplyDaAttestationToStateQueueTxProgram(
-          lucid,
-          contracts,
-          {
-            hubOracleRefInput: (
-              await Effect.runPromise(
-                SDK.fetchHubOracleUTxOProgram(lucid, {
-                  hubOracleAddress: contracts.hubOracle.spendingScriptAddress,
-                  hubOraclePolicyId: contracts.hubOracle.policyId,
-                }),
-              )
-            ).utxo,
-            daParamsUtxo,
-            daParamsDatum,
-            target,
-            attestation: await fetchAttestation(),
-            referenceScripts,
-            validityRange,
-          },
-        ),
-      ),
-    );
-    if (
-      (await freshTarget()).stateQueueNode.da_attestation ===
-      SDK.NO_DA_ATTESTATION
-    )
-      throw new Error(
-        "Accepted DA attestation did not attach to the state queue",
+    // The apply carries a bounded validity range. Like a commit, one that
+    // closes unminted is rebuilt with a fresh interval; the fresh lookups
+    // first notice a target that was corrected or attested meanwhile.
+    let applied: PublishedDaTransactionRecord | "consumed";
+    let attestation: SDK.DaAttestationUtxo;
+    for (;;) {
+      const target = await freshTarget();
+      if (target === undefined) return reconcile();
+      if (target.stateQueueNode.da_attestation !== SDK.NO_DA_ATTESTATION)
+        return { kind: "attested", txHash: target.stateQueueUtxo.utxo.txHash };
+      const validityRange = await Effect.runPromise(
+        daAttestationApplyValidityRangeProgram({
+          currentTime: BigInt(lucid.slotToUnixTime(lucid.currentSlot())),
+          headerEndTime: block.header.endTime,
+        }),
       );
-    return applyTxHash;
+      onStage(`DA attestation apply ${block.headerHash}`);
+      attestation = await fetchAttestation();
+      try {
+        applied = await submit(
+          "apply",
+          async () =>
+            Effect.runPromise(
+              SDK.incompleteApplyDaAttestationToStateQueueTxProgram(
+                lucid,
+                contracts,
+                {
+                  hubOracleRefInput: (
+                    await Effect.runPromise(
+                      SDK.fetchHubOracleUTxOProgram(lucid, {
+                        hubOracleAddress:
+                          contracts.hubOracle.spendingScriptAddress,
+                        hubOraclePolicyId: contracts.hubOracle.policyId,
+                      }),
+                    )
+                  ).utxo,
+                  daParamsUtxo,
+                  daParamsDatum,
+                  target,
+                  attestation,
+                  referenceScripts,
+                  validityRange,
+                },
+              ),
+            ),
+          Number(validityRange.validTo),
+        );
+        break;
+      } catch (error) {
+        if (!(error instanceof PublishedTransactionExpiredError)) throw error;
+        onStage(`${error.label} expired unminted; rebuilding the apply`);
+        lucid.overrideUTxOs(await lucid.utxosAt(address));
+      }
+    }
+    if (applied === "consumed") return reconcile();
+    await verifyPublishedDaAttestationReceipt({
+      ...applied,
+      readConfirmedTransaction,
+      readLiveAttestation: async () => {
+        const live = await freshTarget();
+        if (live === undefined)
+          throw new Error(
+            `A proof already consumed header ${block.headerHash}; its DA receipt needs the confirmed-transaction reader`,
+          );
+        return live.stateQueueNode.da_attestation;
+      },
+      stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+      stateQueueUnit,
+      headerHash: block.headerHash,
+      bondAssetName: SDK.daAvailabilityBondAssetName(
+        SDK.outputReferenceFromUTxO(attestation.utxo),
+      ),
+    });
+    return { kind: "attested", txHash: applied.txHash };
   };
   return {
     address,

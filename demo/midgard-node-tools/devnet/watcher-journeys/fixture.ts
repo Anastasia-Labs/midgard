@@ -1,7 +1,9 @@
 import type { HistoricalNativeScriptHistoryProviderIdentity } from "@al-ft/midgard-fault-proofs";
 import type * as SDK from "@al-ft/midgard-sdk";
+import type { PublishedDaAttestationOutcome } from "midgard-watcher/tests/support/published-block-actor";
 
 import type { loadJourneyContext } from "./live-context.js";
+import type { SignedCommitReconciliationPorts } from "./signed-commit-reconciliation.js";
 
 export type JourneyCategory = Exclude<
   SDK.FraudProofCatalogueCategoryName,
@@ -28,6 +30,13 @@ export type JourneySuccessorCheckpoint = {
 export type StagedJourney = {
   predecessor: JourneyBlock;
   current: JourneyBlock;
+  /**
+   * How the fault's DA attestation ended. A watcher racing staging may correct
+   * the fault before DA apply; that authenticated correction is a complete
+   * staging outcome, and the journey continues to observe it rather than
+   * failing on the missing target.
+   */
+  target: PublishedDaAttestationOutcome;
   commitHonestSuccessor(options: {
     beforeCommit(block: JourneyBlock): Promise<void>;
     resume?: JourneySuccessorCheckpoint;
@@ -41,6 +50,10 @@ export type JourneyFixtureStage = {
   historicalNativeScriptProviders: readonly HistoricalNativeScriptHistoryProviderIdentity[];
   /** Publish the retained payload and archive its real canonical L1 point. */
   retain(block: JourneyBlock, commitTxHash: string): Promise<void>;
+  /** Launch observation once a genuine healthy predecessor is retained. */
+  onHealthyPredecessor?(headerHash: string): Promise<void>;
+  readSignedCommitRecovery: SignedCommitReconciliationPorts["readRecovery"];
+  readConfirmedTransaction?(txHash: string): Promise<{ cbor: string }>;
   onStage(name: string): void;
 };
 

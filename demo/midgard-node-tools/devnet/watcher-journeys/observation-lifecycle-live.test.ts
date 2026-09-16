@@ -11,7 +11,7 @@ import {
   createWatcherLocalKupmiosNativeObservationRuntime,
   createWatcherResolvedBlockObservationSource,
   loadWatcherVerifiedDeploymentAuthority,
-  parseWatcherConfig,
+  parseWatcherProcessConfig,
   startWatcherNativeChainSync,
   watcherL1TransportAttestationDetails,
   watcherNativeChainSyncAuthorityDetails,
@@ -21,6 +21,7 @@ import { expect, it } from "vitest";
 
 import { writeJourneyArtifact } from "./artifacts.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
+import { readJourneyNativeEvidencePath } from "./readiness-evidence.js";
 
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
 
@@ -28,15 +29,18 @@ it.skipIf(runDirectory === undefined)(
   "preserves owned query authority across a real 330-second consumer delay",
   async () => {
     const directory = join(runDirectory!, "work/journeys/transition-trace");
-    const watcherConfig = parseWatcherConfig(
-      JSON.parse(await readFile(join(directory, "watcher.json"), "utf8")),
+    const processConfig = parseWatcherProcessConfig(
+      JSON.parse(
+        await readFile(join(directory, "watcher-process.json"), "utf8"),
+      ),
     );
+    const watcherConfig = processConfig.watcherConfig;
     const authority = await loadWatcherVerifiedDeploymentAuthority({
-      path: join(directory, "deployment-authority.json"),
-      ruleBundlePath: join(directory, "rules.json"),
+      path: processConfig.deploymentAuthorityPath,
+      ruleBundlePath: processConfig.ruleBundlePath,
     });
     const recorded: WatcherNativeChainSyncRollForward[] = (
-      await readFile(join(directory, "native-chain.ndjson"), "utf8")
+      await readFile(await readJourneyNativeEvidencePath(directory), "utf8")
     )
       .trim()
       .split("\n")

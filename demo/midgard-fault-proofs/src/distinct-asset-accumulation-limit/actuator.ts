@@ -268,18 +268,7 @@ export const createDistinctAssetAccumulationActuator = (
           });
         });
       return await captureCursorRemoval({
-        category: {
-          name: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
-          categoryId: config.categoryId,
-          firstStepDeploymentEntry: "fraudProofDistinctAssetAccumulationLimit",
-          firstStepScriptHash: config.contracts.steps[0].spendingScriptHash,
-          fraudProof: {
-            policyId: config.contracts.fraudProof.policyId,
-            spendingScriptHash: config.fraudProofSpendingScriptHash,
-            spendingScriptAddress:
-              config.contracts.fraudProof.spendingScriptAddress,
-          },
-        } as never,
+        category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
         lucid: config.lucid,
         blueprint: config.blueprint,
         deploymentInfo: config.deploymentInfo,

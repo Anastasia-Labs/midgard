@@ -58,6 +58,8 @@ registered provenance through mint/removal. Cancellation and recovery must cover
 each reachable continuation, including union folds and same-block-created inputs.
 The [fit evidence index](size-plans/README.md) identifies family-specific producers
 and verifiers; retain their required shape sets when regenerating evidence.
+Use the [measured emulator gate](testing-status.md#emulator-gate-performance)
+without narrowing those shapes; faster scheduling does not close this release-bound work.
 
 Completion: all catalogue lifecycle tests pass with the shared Van Rossem
 limits and no category-specific size or ExUnit override. Complete the frozen-tree classification sweep and independent review below.

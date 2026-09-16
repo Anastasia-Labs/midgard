@@ -55,7 +55,7 @@ export interface FraudProofFamilyL1ObservationPort<
 > {
   readonly portVersion: typeof FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT;
   readonly category: Category;
-  /** Raw release-final authority retained for live global prerequisites. */
+  /** Raw authenticated authority retained for live global prerequisites. */
   readonly rawL1?: FraudProofRawL1SnapshotAuthority;
   readonly publications: FraudProofAuthenticatedPublicationObserver;
   observeSignedTransaction?(
@@ -75,7 +75,7 @@ export interface FraudProofFamilyL1ObservationPort<
   observeRetainedHeader?(input: {
     readonly headerHash: string;
   }): Promise<AuthenticatedStateQueueHeaderObservation>;
-  /** Latest release-final raw point through which all returned history was reconfirmed. */
+  /** Latest authenticated raw point through which all returned history was reconfirmed. */
   observeBoundary?(input: {
     readonly headerHash: string;
   }): Promise<FraudProofRawL1Point>;
@@ -100,7 +100,10 @@ export interface FraudProofFamilyL1ObservationPort<
 export const observeFraudProofWorkflowHeader = async <
   Category extends FraudProofCatalogueCategoryName,
 >(
-  l1: FraudProofFamilyL1ObservationPort<Category>,
+  l1: Pick<
+    FraudProofFamilyL1ObservationPort<Category>,
+    "observeHeader" | "observeRetainedHeader"
+  >,
   input: { readonly headerHash: string },
 ): Promise<AuthenticatedStateQueueHeaderObservation> => {
   try {
@@ -159,6 +162,7 @@ export const createFraudProofFamilyRawL1ObservationPort = <
       value: await authority.capture(request),
       request,
       releaseFinality,
+      observationDepth: "inclusion",
     });
   };
   const port: FraudProofFamilyL1ObservationPort<Category> = {
@@ -219,18 +223,19 @@ export const createFraudProofFamilyLocalKupmiosL1ObservationPort = <
   const rawSource = createLocalKupmiosHttpOgmiosRawSource({
     ...source,
     releaseFinality,
+    observationDepth: "inclusion",
   });
   const port = createFraudProofFamilyRawL1ObservationPort({
     authority: createLocalKupmiosFraudProofRawL1SnapshotAuthority({
       source: rawSource,
       releaseFinality,
+      observationDepth: "inclusion",
     }),
     releaseFinality,
     releaseEconomics,
     definition,
   });
-  return Object.freeze({
-    ...port,
+  const recovery = {
     observeSignedTransaction: (input: SignedWorkflowTransaction) =>
       readAdmittedLocalKupmiosSignedTransactionRecovery({
         ...input,
@@ -247,6 +252,11 @@ export const createFraudProofFamilyLocalKupmiosL1ObservationPort = <
         ...input,
         source: rawSource,
       }),
+  };
+  return Object.freeze({
+    ...port,
+    ...recovery,
+    publications: Object.freeze({ ...port.publications, ...recovery }),
   });
 };
 
@@ -268,9 +278,18 @@ export const createFraudProofFamilyAuthenticatedL1TerminalVerifier = <
   Category extends FraudProofCatalogueCategoryName,
 >(
   l1: FraudProofFamilyL1ObservationPort<Category>,
-): FraudProofWorkflowTerminalVerifier => ({
-  verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-  verify: async ({ identity, candidate, releaseFinality }) => {
+): FraudProofWorkflowTerminalVerifier => {
+  const verify = async (
+    {
+      identity,
+      candidate,
+      releaseFinality,
+    }: Parameters<FraudProofWorkflowTerminalVerifier["verify"]>[0],
+    inclusionOnly: boolean,
+  ): Promise<FraudProofWorkflowTerminal> => {
+    const minimumDepth = inclusionOnly
+      ? 1
+      : releaseFinality.policy.confirmationDepth;
     if (
       identity.category !== l1.category ||
       identity.target.kind !== "state_queue_header"
@@ -299,17 +318,20 @@ export const createFraudProofFamilyAuthenticatedL1TerminalVerifier = <
       );
     }
     if (
-      terminal.observedAt.confirmationDepth <
-        releaseFinality.policy.confirmationDepth ||
-      candidate.observedAt.confirmationDepth <
-        releaseFinality.policy.confirmationDepth ||
+      terminal.observedAt.confirmationDepth < minimumDepth ||
+      candidate.observedAt.confirmationDepth < minimumDepth ||
       terminal.observedAt.confirmationDepth <
         candidate.observedAt.confirmationDepth
     ) {
       throw new Error(
-        `authenticated terminal depth is below the release threshold: required=${releaseFinality.policy.confirmationDepth.toString()} actual=${terminal.observedAt.confirmationDepth.toString()} policy=${releaseFinality.policyDigest}`,
+        `authenticated terminal depth is below the release threshold: required=${minimumDepth.toString()} actual=${terminal.observedAt.confirmationDepth.toString()} policy=${releaseFinality.policyDigest}`,
       );
     }
     return candidate;
-  },
-});
+  };
+  return {
+    verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
+    verify: (input) => verify(input, false),
+    verifyIncluded: (input) => verify(input, true),
+  };
+};

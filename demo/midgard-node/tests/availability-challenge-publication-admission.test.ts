@@ -35,7 +35,7 @@ describe("availability-challenge publication admission", () => {
     });
     const lucid = await createMainnetEmulatorLucid(emulator, "Preprod");
     lucid.selectWallet.fromSeed(publisher.seedPhrase);
-    const authPolicy = SDK.createReferenceScriptAuthPolicy(
+    const authPolicy = await SDK.createReferenceScriptAuthPolicy(
       lucid,
       emulator.now(),
     );

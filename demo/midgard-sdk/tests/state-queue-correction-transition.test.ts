@@ -140,8 +140,8 @@ describe("state-queue correction transition V1", () => {
           yield_to_ref_input_index: 0n,
           timed_out_header_hash: target,
           removal_approach: {
-            PruneTimedOutBlockDescendant: {
-              confirmed_state_ref_input_index: 0n,
+            PruneUnattestedBlockDescendant: {
+              predecessor_ref_input_index: 0n,
               timed_out_node_input_outref: {
                 transactionId: h32("1"),
                 outputIndex: 0n,
@@ -154,7 +154,7 @@ describe("state-queue correction transition V1", () => {
     } satisfies DeriveStateQueueCorrectionTransitionInput;
     const transition = deriveStateQueueCorrectionTransition(input);
     expect(transition).toMatchObject({
-      removalApproach: "PruneTimedOutBlockDescendant",
+      removalApproach: "PruneUnattestedBlockDescendant",
       timedOutHeaderHash: target,
       removedHeaderHashes: [removed],
       consumedQueueOutRefs: [outRef("1", 0), outRef("2", 0)],
@@ -184,19 +184,19 @@ describe("state-queue correction transition V1", () => {
           yield_to_ref_input_index: 0n,
           timed_out_header_hash: target,
           removal_approach: {
-            RemoveTimedOutHead: {
-              confirmed_state_input_outref: {
+            RemoveLastUnattestedBlock: {
+              predecessor_input_outref: {
                 transactionId: h32("0"),
                 outputIndex: 0n,
               },
-              confirmed_state_output_index: 0n,
+              predecessor_output_index: 0n,
             },
           },
         },
       }),
     } satisfies DeriveStateQueueCorrectionTransitionInput;
     expect(deriveStateQueueCorrectionTransition(terminal)).toMatchObject({
-      removalApproach: "RemoveTimedOutHead",
+      removalApproach: "RemoveLastUnattestedBlock",
       removedHeaderHashes: [target],
     });
     expect(
@@ -256,12 +256,12 @@ describe("state-queue correction transition V1", () => {
           yield_to_ref_input_index: 0n,
           timed_out_header_hash: target,
           removal_approach: {
-            RemoveTimedOutHead: {
-              confirmed_state_input_outref: {
+            RemoveLastUnattestedBlock: {
+              predecessor_input_outref: {
                 transactionId: h32("0"),
                 outputIndex: 0n,
               },
-              confirmed_state_output_index: 0n,
+              predecessor_output_index: 0n,
             },
           },
         },
@@ -304,12 +304,12 @@ describe("state-queue correction transition V1", () => {
         yield_to_ref_input_index: 0n,
         timed_out_header_hash: target,
         removal_approach: {
-          RemoveTimedOutHead: {
-            confirmed_state_input_outref: {
+          RemoveLastUnattestedBlock: {
+            predecessor_input_outref: {
               transactionId: h32("0"),
               outputIndex: 0n,
             },
-            confirmed_state_output_index: 0n,
+            predecessor_output_index: 0n,
           },
         },
       },
@@ -529,6 +529,145 @@ describe("state-queue correction transition V1", () => {
           },
         }),
       ),
+    ).toBeNull();
+  });
+});
+
+describe("unattested suffix correction provenance", () => {
+  const target = h28("2");
+  const previousQueue = [
+    { headerHash: null, outRef: outRef("0", 0) },
+    { headerHash: h28("1"), outRef: outRef("1", 0) },
+    { headerHash: target, outRef: outRef("2", 0) },
+  ];
+  const terminal = () => ({
+    ...common,
+    ...timeoutLock(target, true),
+    transactionIndex: "0",
+    spentInputOutRefs: [outRef("1", 0), outRef("2", 0), outRef("f", 0)],
+    previousQueue,
+    nextQueue: [
+      previousQueue[0]!,
+      { headerHash: h28("1"), outRef: outRef("c", 0) },
+    ],
+    redeemers: timeoutRedeemer({
+      RemoveUnattestedBlockAfterTimeout: {
+        yield_to_ref_input_index: 0n,
+        timed_out_header_hash: target,
+        removal_approach: {
+          RemoveLastUnattestedBlock: {
+            predecessor_input_outref: {
+              transactionId: h32("1"),
+              outputIndex: 0n,
+            },
+            predecessor_output_index: 0n,
+          },
+        },
+      },
+    }),
+  });
+  it("authenticates terminal removal behind an untouched prefix and releases the exact lock", () => {
+    const result = deriveStateQueueAuthenticatedTransition(terminal());
+    expect(result?.removedHeaderHashes).toEqual([target]);
+    expect(result?.correctionTransition?.removalApproach).toBe(
+      "RemoveLastUnattestedBlock",
+    );
+    expect(parseStateQueueAuthenticatedTransition(result)).toEqual(result);
+    expect(
+      deriveStateQueueAuthenticatedTransition({
+        ...terminal(),
+        nextQueue: [
+          { ...previousQueue[0]!, outRef: outRef("c", 2) },
+          terminal().nextQueue[1]!,
+        ],
+      }),
+    ).toBeNull();
+    expect(
+      deriveStateQueueAuthenticatedTransition({
+        ...terminal(),
+        ...timeoutLock(h28("9"), true),
+      }),
+    ).toBeNull();
+  });
+  it("authenticates suffix pruning behind predecessors and rejects non-descendant removal", () => {
+    const input = {
+      ...terminal(),
+      ...timeoutLock(target, false),
+      spentInputOutRefs: [outRef("2", 0), outRef("3", 0), outRef("f", 0)],
+      previousQueue: [
+        ...previousQueue,
+        { headerHash: h28("3"), outRef: outRef("3", 0) },
+        { headerHash: h28("4"), outRef: outRef("4", 0) },
+      ],
+      nextQueue: [
+        ...previousQueue.slice(0, 2),
+        { headerHash: target, outRef: outRef("c", 0) },
+        { headerHash: h28("4"), outRef: outRef("4", 0) },
+      ],
+      redeemers: timeoutRedeemer({
+        RemoveUnattestedBlockAfterTimeout: {
+          yield_to_ref_input_index: 0n,
+          timed_out_header_hash: target,
+          removal_approach: {
+            PruneUnattestedBlockDescendant: {
+              predecessor_ref_input_index: 0n,
+              timed_out_node_input_outref: {
+                transactionId: h32("2"),
+                outputIndex: 0n,
+              },
+              timed_out_node_output_index: 0n,
+            },
+          },
+        },
+      }),
+    };
+    const result = deriveStateQueueAuthenticatedTransition(input);
+    expect(result?.removedHeaderHashes).toEqual([h28("3")]);
+    expect(parseStateQueueAuthenticatedTransition(result)).toEqual(result);
+    expect(
+      deriveStateQueueAuthenticatedTransition({
+        ...input,
+        nextQueue: [
+          ...previousQueue.slice(0, 2),
+          { headerHash: target, outRef: outRef("c", 0) },
+          input.previousQueue[3]!,
+        ],
+      }),
+    ).toBeNull();
+    expect(
+      deriveStateQueueAuthenticatedTransition({
+        ...input,
+        nextQueue: [
+          input.nextQueue[0]!,
+          input.nextQueue[1]!,
+          input.nextQueue[3]!,
+          input.nextQueue[2]!,
+        ],
+      }),
+    ).toBeNull();
+  });
+  it("keeps availability timeout head-only despite the new unattested wire", () => {
+    const input = terminal();
+    expect(
+      deriveStateQueueCorrectionTransition({
+        ...input,
+        redeemers: timeoutRedeemer({
+          RemoveUnavailableBlockAfterTimeout: {
+            yield_to_ref_input_index: 0n,
+            unavailable_header_hash: target,
+            challenge_asset_name: h32("9"),
+            removal_approach: {
+              RemoveTimedOutHead: {
+                confirmed_state_input_outref: {
+                  transactionId: h32("1"),
+                  outputIndex: 0n,
+                },
+                confirmed_state_output_index: 0n,
+              },
+            },
+          },
+        }),
+      }),
     ).toBeNull();
   });
 });

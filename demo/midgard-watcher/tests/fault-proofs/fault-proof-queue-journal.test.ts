@@ -51,8 +51,8 @@ describe("production fault-proof queue journal V1", () => {
       finished: true,
     });
     await expect(
-      restarted.register(identity, "999", { reopenFinished: true }),
-    ).rejects.toThrow("requeue time is invalid");
+      restarted.register(identity, "-1", { reopenFinished: true }),
+    ).rejects.toThrow("enqueue time is invalid");
     const registrations = await Promise.all([
       restarted.register(identity, "1004", { reopenFinished: true }),
       restarted.register(identity, "1005", { reopenFinished: true }),
@@ -152,6 +152,98 @@ describe("production fault-proof queue journal V1", () => {
       queuedAtMs: "1000",
       finished: true,
     });
+  });
+
+  it("preserves backward wall-clock observations through completion, recovery, and explicit reopening", async () => {
+    const journalRoot = await mkdtemp("/var/tmp/midgard-proof-queue-");
+    directories.push(journalRoot);
+    const input = { journalRoot, deploymentFingerprint, authenticationKey };
+    const digest = watcherFaultProofQueueIdentityDigest({
+      deploymentFingerprint,
+      identity,
+    });
+    const first = await openWatcherFaultProofQueueJournal(input);
+    await first.register(identity, "1000");
+    await first.markStarted(digest, "999");
+    // Restart after a clock adjustment while the durable job remains active.
+    const recovered = await openWatcherFaultProofQueueJournal(input);
+    await expect(recovered.register(identity, "998")).resolves.toEqual({
+      queuedAtMs: "1000",
+      finished: false,
+    });
+    await recovered.markStarted(digest, "997");
+    await recovered.markFinished(digest, "996");
+    await expect(recovered.register(identity, "995")).resolves.toEqual({
+      queuedAtMs: "1000",
+      finished: true,
+    });
+    await recovered.register(identity, "994", { reopenFinished: true });
+    await recovered.markStarted(digest, "993");
+    await recovered.markFinished(digest, "992");
+
+    const directory = join(journalRoot, "fault-proof-queue-v1");
+    const records = await Promise.all(
+      (await readdir(directory))
+        .sort()
+        .map(async (file) =>
+          JSON.parse(await readFile(join(directory, file), "utf8")),
+        ),
+    );
+    expect(
+      records.map(({ event }) => event.observedAtMs ?? event.queuedAtMs),
+    ).toEqual(["1000", "999", "998", "997", "996", "994", "993", "992"]);
+    const restarted = await openWatcherFaultProofQueueJournal(input);
+    await expect(restarted.register(identity, "991")).resolves.toEqual({
+      queuedAtMs: "1000",
+      finished: true,
+    });
+  });
+
+  it("rejects malformed times, unadmitted identities, and illegal state transitions without appending", async () => {
+    const journalRoot = await mkdtemp("/var/tmp/midgard-proof-queue-");
+    directories.push(journalRoot);
+    const journal = await openWatcherFaultProofQueueJournal({
+      journalRoot,
+      deploymentFingerprint,
+      authenticationKey,
+    });
+    const digest = watcherFaultProofQueueIdentityDigest({
+      deploymentFingerprint,
+      identity,
+    });
+    const otherGeneration = watcherFaultProofQueueIdentityDigest({
+      deploymentFingerprint,
+      identity: { ...identity, rollbackGeneration: "8" },
+    });
+    await journal.register(identity, "1000");
+    await expect(journal.markStarted("invalid", "999")).rejects.toThrow(
+      "identity digest is invalid",
+    );
+    await expect(journal.markStarted(otherGeneration, "999")).rejects.toThrow(
+      "has no admitted predecessor",
+    );
+    for (const time of ["-1", "1.5", "NaN", "01", ""]) {
+      await expect(journal.markStarted(digest, time)).rejects.toThrow(
+        "observation time is invalid",
+      );
+    }
+    await expect(journal.markFinished(digest, "999")).rejects.toThrow(
+      "requires active predecessor, found queued",
+    );
+    await journal.markStarted(digest, "999");
+    await expect(journal.markStarted(digest, "998")).rejects.toThrow(
+      "requires queued predecessor, found active",
+    );
+    await journal.markFinished(digest, "998");
+    await expect(journal.markFinished(digest, "997")).rejects.toThrow(
+      "requires active predecessor, found finished",
+    );
+    await expect(journal.markStarted(digest, "997")).rejects.toThrow(
+      "requires queued predecessor, found finished",
+    );
+    expect(
+      await readdir(join(journalRoot, "fault-proof-queue-v1")),
+    ).toHaveLength(3);
   });
 
   it("rejects a wrong queue authentication key on restart", async () => {

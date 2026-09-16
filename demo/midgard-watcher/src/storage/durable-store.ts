@@ -1639,13 +1639,25 @@ export const makeEmptyWatcherDurableStore = (
 
 const UTF8_ENCODER = new TextEncoder();
 const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
-const immutableStoreEncodings = new WeakMap<object, string>();
+const immutableStoreEncodings = new WeakMap<
+  object,
+  Readonly<{ encoded: string; caches: WatcherDurableCaches }>
+>();
+
+/** Package-internal receipt for this exact, fully validated immutable store.
+ * Clones and frozen containers with mutable children must take the normal path. */
+export const readValidatedWatcherDurableStoreCaches = (
+  value: unknown,
+): WatcherDurableCaches | undefined =>
+  typeof value === "object" && value !== null
+    ? immutableStoreEncodings.get(value)?.caches
+    : undefined;
 
 export const encodeWatcherDurableStore = (
   value: WatcherDurableStore,
 ): Uint8Array => {
   const cached = immutableStoreEncodings.get(value);
-  if (cached !== undefined) return UTF8_ENCODER.encode(cached);
+  if (cached !== undefined) return UTF8_ENCODER.encode(cached.encoded);
   const encoded = canonicalJson(parseWatcherDurableStore(value));
   // Parsing above checks records, references, payload digests and rebuilt
   // caches. Retain that result only if the original input is also immutable;
@@ -1653,7 +1665,7 @@ export const encodeWatcherDurableStore = (
   if (Object.isFrozen(value)) {
     canonicalJson(value);
     if (immutableCanonicalJson.has(value)) {
-      immutableStoreEncodings.set(value, encoded);
+      immutableStoreEncodings.set(value, { encoded, caches: value.caches });
     }
   }
   // Never hand out a cached mutable byte buffer.

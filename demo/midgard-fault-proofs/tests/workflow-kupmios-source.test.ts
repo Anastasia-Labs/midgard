@@ -7,7 +7,10 @@ import {
   Emulator,
   generateEmulatorAccount,
   Lucid,
+  paymentCredentialOf,
+  scriptFromNative,
   scriptHashToCredential,
+  validatorToAddress,
 } from "@lucid-evolution/lucid";
 import JSONBig from "json-bigint";
 import { describe, expect, it, vi } from "vitest";
@@ -34,6 +37,7 @@ import {
   LOCAL_KUPMIOS_REFERENCE_ACQUISITION_BOUNDS,
   LocalKupmiosCheckpointChangedError,
   LocalKupmiosExactPointNotCanonicalError,
+  LocalKupmiosTransportUnavailableError,
   OGMIOS_RAW_TRANSACTION_CBOR_FLAG,
   pinAdmittedLocalKupmiosBoundaryAtPoint,
   readAdmittedLocalKupmiosAddressUtxosAtPoint,
@@ -132,6 +136,7 @@ class OgmiosBoundarySocket implements FraudProofRawL1WebSocketLike {
       sendError?: boolean;
       childHeight?: number;
       tipHeight?: number;
+      tipSlot?: number;
       mempoolPresent?: boolean;
       submit?: (cbor: string) => Promise<string>;
     }> = {},
@@ -198,7 +203,7 @@ class OgmiosBoundarySocket implements FraudProofRawL1WebSocketLike {
               ? "origin"
               : this.intersection,
             tip: {
-              slot: 1000,
+              slot: this.behavior.tipSlot ?? 1000,
               id: TIP,
               height: this.behavior.tipHeight ?? 100,
             },
@@ -273,6 +278,8 @@ const sourceFixture = ({
   childAncestor = ANCESTOR,
   parentHeight = 70,
   tipHeight = 100,
+  tipSlot = 1000,
+  observationDepth,
   checkpointOverride,
   signal,
   timeoutMs,
@@ -288,6 +295,8 @@ const sourceFixture = ({
   readonly childAncestor?: string;
   readonly parentHeight?: number;
   readonly tipHeight?: number;
+  readonly tipSlot?: number;
+  readonly observationDepth?: "inclusion" | "release_finality";
   readonly checkpointOverride?: (
     slot: number,
   ) => { slot_no: number; header_hash: string; headHash?: string } | undefined;
@@ -316,7 +325,7 @@ const sourceFixture = ({
       return response({
         jsonrpc: "2.0",
         id: "midgard-fraud-proof-raw-tip-v1",
-        result: { slot: 1000, id: TIP, height: tipHeight },
+        result: { slot: tipSlot, id: TIP, height: tipHeight },
       });
     }
     const checkpointMatch = /\/checkpoints\/(\d+)$/u.exec(url);
@@ -327,7 +336,7 @@ const sourceFixture = ({
         override ??
         (slot >= 400
           ? { slot_no: 400, header_hash: TARGET }
-          : slot === 399 || slot === 380
+          : slot >= 380
             ? { slot_no: 380, header_hash: ANCESTOR }
             : slot === 379
               ? { slot_no: 360, header_hash: EARLIER }
@@ -359,6 +368,7 @@ const sourceFixture = ({
     kupoHttpUrl: "http://127.0.0.1:1442",
     ogmiosUrl: "http://127.0.0.1:1337",
     releaseFinality,
+    observationDepth,
     fetchImpl,
     ...(signal === undefined ? {} : { signal }),
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
@@ -368,7 +378,7 @@ const sourceFixture = ({
         blockTransactions,
         childAncestor,
         parentHeight,
-        { ...socketBehavior, tipHeight },
+        { ...socketBehavior, tipHeight, tipSlot },
       );
       sockets.push(socket);
       resolveSocket(socket);
@@ -579,9 +589,14 @@ describe("admitted historical Kupmios page contexts", () => {
 });
 
 describe("release-final boundary selection", () => {
-  it.each([1, 20])(
-    "selects the most recent final block with %i slots per block",
-    async (spacing) => {
+  it.each([
+    [1, 30],
+    [20, 30],
+    [1, 1],
+    [20, 1],
+  ])(
+    "selects the most recent eligible block with %i slots per block at depth %i",
+    async (spacing, depth) => {
       const tipSlot = 1000;
       const pointHash = (slot: number) => slot.toString(16).padStart(64, "0");
       const tip = {
@@ -644,9 +659,17 @@ describe("release-final boundary selection", () => {
           return socket;
         },
       });
-      const boundary = await readAdmittedLocalKupmiosBoundary({ source });
-      expect(boundary.kupoCheckpoint.blockNo).toBe(String(tip.height - 29));
-      expect(boundary.kupoCheckpoint.slot).toBe(String(tipSlot - 29 * spacing));
+      const boundary = await readAdmittedLocalKupmiosBoundary({
+        source,
+        ...(depth === 1 ? { observationDepth: "inclusion" as const } : {}),
+      });
+      expect(boundary.kupoCheckpoint.blockNo).toBe(
+        String(tip.height - depth + 1),
+      );
+      expect(boundary.kupoCheckpoint.slot).toBe(
+        String(tipSlot - (depth - 1) * spacing),
+      );
+      expect(boundary.confirmationDepth).toBe(depth);
     },
   );
 });
@@ -2150,44 +2173,94 @@ describe("captured reference-body reader bounds", () => {
 const signedRecoveryFixture = async ({
   ttl = 1200,
   spent = false,
+  referenceSpent,
+  scriptOrdinary = false,
+  scriptCollateral = false,
+  keyCollateral = false,
   missing = false,
   mempoolPresent = false,
   included = false,
   rollbackDuringInclusion = false,
+  rollbackDuringExpiry = false,
   captureHeadChanges = 0,
 }: {
   ttl?: number | null;
   spent?: boolean;
+  referenceSpent?:
+    | "stable"
+    | "volatile"
+    | "mixed_stable_first"
+    | "mixed_volatile_first";
+  scriptOrdinary?: boolean;
+  scriptCollateral?: boolean;
+  keyCollateral?: boolean;
   missing?: boolean;
   mempoolPresent?: boolean;
   included?: boolean;
   rollbackDuringInclusion?: boolean;
+  rollbackDuringExpiry?: boolean;
   captureHeadChanges?: number;
 } = {}) => {
   const account = generateEmulatorAccount({ lovelace: 1_000_000_000n });
   const emulator = new Emulator([account]);
   const lucid = await Lucid(emulator, "Custom");
   lucid.selectWallet.fromSeed(account.seedPhrase);
+  const mixedReferences = referenceSpent?.startsWith("mixed_") === true;
+  const volatileReference =
+    referenceSpent !== undefined && referenceSpent !== "stable";
+  const protocolScript = scriptFromNative({
+    type: "sig",
+    keyHash: paymentCredentialOf(account.address).hash,
+  });
+  const protocolAddress = validatorToAddress("Custom", protocolScript);
+  const creationBuilder = lucid
+    .newTx()
+    .pay.ToAddress(scriptOrdinary ? protocolAddress : account.address, {
+      lovelace: 10_000_000n,
+    });
+  if (mixedReferences)
+    creationBuilder.pay.ToAddress(account.address, { lovelace: 20_000_000n });
   const creation = await (
-    await lucid
-      .newTx()
-      .pay.ToAddress(account.address, { lovelace: 10_000_000n })
-      .complete({ localUPLCEval: true })
+    await creationBuilder.complete({ localUPLCEval: true })
   ).sign
     .withWallet()
     .complete();
   await creation.submit();
   emulator.awaitBlock();
-  const funding = (await lucid.wallet().getUtxos()).find(
-    (utxo) =>
-      utxo.txHash === creation.toHash() && utxo.assets.lovelace === 10_000_000n,
+  const createdOutputs = [
+    ...(await lucid.wallet().getUtxos()),
+    ...(scriptOrdinary ? await lucid.utxosAt(protocolAddress) : []),
+  ].filter((utxo) => utxo.txHash === creation.toHash());
+  const funding = createdOutputs.find((utxo) =>
+    referenceSpent === undefined
+      ? utxo.assets.lovelace === 10_000_000n
+      : utxo.assets.lovelace !== 10_000_000n &&
+        (!mixedReferences || utxo.assets.lovelace !== 20_000_000n),
   )!;
+  // The reference sorts before funding so recovery must inspect later wallet
+  // creation history even after observing a stable invalidating spend.
+  const reference =
+    referenceSpent === undefined
+      ? undefined
+      : createdOutputs.find((utxo) => utxo.assets.lovelace === 10_000_000n)!;
+  const secondReference = mixedReferences
+    ? createdOutputs.find((utxo) => utxo.assets.lovelace === 20_000_000n)!
+    : undefined;
   const planned = lucid
     .newTx()
     .collectFrom([funding])
     .pay.ToAddress(account.address, { lovelace: 5_000_000n });
+  if (reference !== undefined) {
+    if (scriptOrdinary)
+      planned
+        .collectFrom([reference])
+        .attach.SpendingValidator(protocolScript)
+        .addSigner(account.address);
+    else if (!keyCollateral) planned.readFrom([reference]);
+  }
+  if (secondReference !== undefined) planned.readFrom([secondReference]);
   if (ttl !== null) planned.validTo(lucid.slotToUnixTime(ttl));
-  const signed = await (
+  let signed = await (
     await planned.complete({
       localUPLCEval: true,
       coinSelection: false,
@@ -2196,19 +2269,66 @@ const signedRecoveryFixture = async ({
   ).sign
     .withWallet()
     .complete();
+  if (scriptCollateral || keyCollateral) {
+    // Include recorded collateral in recovery, even when its role overlaps an
+    // ordinary input. Every exact input can establish that the body is impossible.
+    const body = signed.toTransaction().body();
+    const collateral = CML.TransactionInputList.new();
+    collateral.add(
+      CML.TransactionInput.new(
+        CML.TransactionHash.from_hex(reference!.txHash),
+        BigInt(reference!.outputIndex),
+      ),
+    );
+    body.set_collateral_inputs(collateral);
+    signed = await lucid
+      .fromTx(
+        CML.Transaction.new(
+          body,
+          CML.TransactionWitnessSet.new(),
+          true,
+        ).to_cbor_hex(),
+      )
+      .sign.withWallet()
+      .complete();
+  }
+  const conflictInputs =
+    reference === undefined
+      ? [funding]
+      : [...(spent ? [funding] : []), reference];
+  const conflictBuilder = lucid
+    .newTx()
+    .collectFrom(conflictInputs)
+    .pay.ToAddress(account.address, { lovelace: 6_000_000n });
+  if (scriptOrdinary)
+    conflictBuilder.attach
+      .SpendingValidator(protocolScript)
+      .addSigner(account.address);
   const conflict = await (
-    await lucid
-      .newTx()
-      .collectFrom([funding])
-      .pay.ToAddress(account.address, { lovelace: 6_000_000n })
-      .complete({
-        localUPLCEval: true,
-        coinSelection: false,
-        presetWalletInputs: [funding],
-      })
+    await conflictBuilder.complete({
+      localUPLCEval: true,
+      coinSelection: false,
+      presetWalletInputs: conflictInputs,
+    })
   ).sign
     .withWallet()
     .complete();
+  const secondConflict =
+    secondReference === undefined
+      ? undefined
+      : await (
+          await lucid
+            .newTx()
+            .collectFrom([secondReference])
+            .pay.ToAddress(account.address, { lovelace: 6_000_000n })
+            .complete({
+              localUPLCEval: true,
+              coinSelection: false,
+              presetWalletInputs: [secondReference],
+            })
+        ).sign
+          .withWallet()
+          .complete();
   const match = {
     transaction_index: 0,
     transaction_id: creation.toHash(),
@@ -2219,16 +2339,52 @@ const signedRecoveryFixture = async ({
     script_hash: null,
     datum: null,
     script: null,
-    created_at: { slot_no: 400, header_hash: TARGET },
+    created_at: mixedReferences
+      ? { slot_no: 380, header_hash: ANCESTOR }
+      : { slot_no: 400, header_hash: TARGET },
     spent_at: spent
       ? {
-          slot_no: 400,
-          header_hash: TARGET,
+          slot_no: mixedReferences ? 380 : 400,
+          header_hash: mixedReferences ? ANCESTOR : TARGET,
           transaction_id: conflict.toHash(),
           input_index: 0,
         }
       : null,
   };
+  const referenceMatch =
+    reference === undefined
+      ? undefined
+      : {
+          ...match,
+          output_index: reference.outputIndex,
+          address: reference.address,
+          value: { coins: reference.assets.lovelace!.toString(), assets: {} },
+          spent_at: {
+            slot_no: referenceSpent === "mixed_stable_first" ? 380 : 400,
+            header_hash:
+              referenceSpent === "mixed_stable_first" ? ANCESTOR : TARGET,
+            transaction_id: conflict.toHash(),
+            input_index: 0,
+          },
+        };
+  const secondReferenceMatch =
+    secondReference === undefined
+      ? undefined
+      : {
+          ...match,
+          output_index: secondReference.outputIndex,
+          value: {
+            coins: secondReference.assets.lovelace!.toString(),
+            assets: {},
+          },
+          spent_at: {
+            slot_no: referenceSpent === "mixed_volatile_first" ? 380 : 400,
+            header_hash:
+              referenceSpent === "mixed_volatile_first" ? ANCESTOR : TARGET,
+            transaction_id: secondConflict!.toHash(),
+            input_index: 0,
+          },
+        };
   const submissions: string[] = [];
   let inclusionRead = false;
   let inclusionChecks = 0;
@@ -2246,33 +2402,49 @@ const signedRecoveryFixture = async ({
     },
   );
   const fixture = sourceFixture({
-    blockTransactions: [creation, conflict, signed].map((tx) => ({
+    observationDepth: "inclusion",
+    tipHeight: volatileReference ? 99 : 100,
+    tipSlot: volatileReference ? 620 : 1000,
+    blockTransactions: [
+      creation,
+      conflict,
+      ...(secondConflict === undefined ? [] : [secondConflict]),
+      signed,
+    ].map((tx) => ({
       id: tx.toHash(),
       cbor: tx.toTransaction().to_cbor_hex(),
     })),
     checkpointOverride: (slot) => {
-      if (slot >= 1000) return { slot_no: 1000, header_hash: TIP };
+      const tipSlot = volatileReference ? 620 : 1000;
+      if (slot >= tipSlot) return { slot_no: tipSlot, header_hash: TIP };
       if (
         slot === 400 &&
         inclusionRead &&
-        rollbackDuringInclusion &&
-        ++inclusionChecks >= 2
+        (rollbackDuringExpiry ||
+          (rollbackDuringInclusion && ++inclusionChecks >= 2))
       )
         return { slot_no: 400, header_hash: hash(99) };
       return undefined;
     },
     matchesByPattern: (pattern) => {
-      if (pattern === `*@${signed.toHash()}` && included) {
+      if (pattern === `*@${signed.toHash()}` && captureHeadChanges-- > 0)
+        throw new LocalKupmiosCheckpointChangedError(
+          "Kupo advanced during transaction inclusion capture",
+        );
+      if (pattern === `*@${signed.toHash()}`) {
         inclusionRead = true;
-        return includedMatches;
+        return included ? includedMatches : [];
       }
       if (
-        pattern === `${funding.outputIndex}@${creation.toHash()}` &&
-        captureHeadChanges-- > 0
+        reference !== undefined &&
+        pattern === `${reference.outputIndex}@${creation.toHash()}`
       )
-        throw new LocalKupmiosCheckpointChangedError(
-          "Kupo advanced during input capture",
-        );
+        return [referenceMatch];
+      if (
+        secondReference !== undefined &&
+        pattern === `${secondReference.outputIndex}@${creation.toHash()}`
+      )
+        return [secondReferenceMatch];
       return pattern === `${funding.outputIndex}@${creation.toHash()}` &&
         !missing
         ? [match]
@@ -2291,25 +2463,146 @@ const signedRecoveryFixture = async ({
     transactionHash: signed.toHash(),
     signedTransactionCborHex: signed.toTransaction().to_cbor_hex(),
   };
-  return { ...fixture, input, signed, funding, lucid, emulator, submissions };
+  return {
+    ...fixture,
+    input,
+    signed,
+    funding,
+    reference,
+    lucid,
+    emulator,
+    submissions,
+  };
 };
 
 describe("production signed intent recovery through concrete Kupo/Ogmios transports", () => {
-  it("authenticates expiry and unchanged exact inputs for a signed transaction never submitted", async () => {
+  it.each([
+    [{ referenceSpent: "stable", scriptOrdinary: true }, "invalidated"],
+    [{ referenceSpent: "volatile", scriptOrdinary: true }, "pending"],
+    [
+      { referenceSpent: "stable", scriptOrdinary: true, spent: true },
+      "invalidated",
+    ],
+    [
+      { referenceSpent: "stable", scriptOrdinary: true, missing: true },
+      "unknown",
+    ],
+    [
+      {
+        referenceSpent: "stable",
+        scriptOrdinary: true,
+        scriptCollateral: true,
+      },
+      "invalidated",
+    ],
+    [
+      { referenceSpent: "mixed_stable_first", scriptOrdinary: true },
+      "invalidated",
+    ],
+    [
+      { referenceSpent: "mixed_volatile_first", scriptOrdinary: true },
+      "invalidated",
+    ],
+    [
+      {
+        referenceSpent: "mixed_stable_first",
+        scriptOrdinary: true,
+        spent: true,
+      },
+      "invalidated",
+    ],
+  ] as const)(
+    "retires impossible signed attempts without treating input roles as objective failures: %j",
+    async (options, status) => {
+      const fixture = await signedRecoveryFixture(options);
+      expect(fixture.reference!.outputIndex).toBeLessThan(
+        fixture.funding.outputIndex,
+      );
+      expect(
+        CML.Address.from_bech32(fixture.reference!.address)
+          .payment_cred()
+          ?.as_script(),
+      ).toBeDefined();
+      const result = await readAdmittedLocalKupmiosSignedTransactionRecovery(
+        fixture.input,
+      );
+      expect(result.status).toBe(status);
+      if (status === "invalidated")
+        expect(result.inputs.map(({ outRef }) => outRef)).toContain(
+          `${fixture.funding.txHash}#${fixture.funding.outputIndex}`,
+        );
+      expect(fixture.submissions).toEqual([]);
+    },
+  );
+
+  it.each([
+    [{ referenceSpent: "stable", keyCollateral: true }, "invalidated"],
+    [{ referenceSpent: "volatile", keyCollateral: true }, "pending"],
+    [
+      { referenceSpent: "stable", keyCollateral: true, missing: true },
+      "unknown",
+    ],
+    [{ referenceSpent: "stable" }, "invalidated"],
+    [{ referenceSpent: "stable", ttl: null }, "invalidated"],
+    [{ referenceSpent: "volatile", spent: true }, "pending"],
+    [
+      { referenceSpent: "mixed_volatile_first", keyCollateral: true },
+      "invalidated",
+    ],
+    [{ referenceSpent: "volatile" }, "pending"],
+    [{ referenceSpent: "mixed_stable_first" }, "invalidated"],
+    [{ referenceSpent: "mixed_volatile_first" }, "invalidated"],
+    [{ referenceSpent: "mixed_stable_first", spent: true }, "invalidated"],
+    [{ referenceSpent: "stable", spent: true }, "invalidated"],
+    [{ referenceSpent: "stable", missing: true }, "unknown"],
+  ] as const)(
+    "authenticates mixed reference and funding spends before retiring an attempt: %j",
+    async (options, status) => {
+      const fixture = await signedRecoveryFixture(options);
+      expect(fixture.reference!.outputIndex).toBeLessThan(
+        fixture.funding.outputIndex,
+      );
+      const result = await readAdmittedLocalKupmiosSignedTransactionRecovery(
+        fixture.input,
+      );
+      expect(result.status).toBe(status);
+      if (status === "invalidated")
+        expect(result.inputs).toHaveLength(
+          options.referenceSpent.startsWith("mixed_") ? 3 : 2,
+        );
+      expect(fixture.submissions).toEqual([]);
+    },
+  );
+
+  it("authenticates release-final expiry for a signed transaction never submitted", async () => {
     const fixture = await signedRecoveryFixture({ ttl: 399 });
     const observed = await readAdmittedLocalKupmiosSignedTransactionRecovery(
       fixture.input,
     );
     expect(observed.status).toBe("expired");
     expect(observed.releaseFinalPoint.slot).toBe("400");
-    expect(observed.inputs.map((input) => input.outRef)).toContain(
-      `${fixture.funding.txHash}#${fixture.funding.outputIndex}`,
-    );
     expect(fixture.submissions).toEqual([]);
     expect(await fixture.lucid.utxosByOutRef([fixture.funding])).toHaveLength(
       1,
     );
   });
+
+  it.each([
+    [{ ttl: 399, missing: true }, "expired"],
+    [{ ttl: 399, missing: true, referenceSpent: "stable" }, "expired"],
+    [{ ttl: 900, missing: true }, "unknown"],
+    [{ ttl: 399, missing: true, included: true }, "included"],
+  ] as const)(
+    "recovers dependent attempts after a parent rollback only with stable expiry or inclusion: %j",
+    async (options, status) => {
+      const fixture = await signedRecoveryFixture(options);
+      const observed = await readAdmittedLocalKupmiosSignedTransactionRecovery(
+        fixture.input,
+      );
+      expect(observed.status).toBe(status);
+      expect(fixture.submissions).toEqual([]);
+    },
+  );
 
   it("distinguishes canonical expiry from merely passing TTL at the current tip", async () => {
     const fixture = await signedRecoveryFixture({ ttl: 900 });
@@ -2317,6 +2610,18 @@ describe("production signed intent recovery through concrete Kupo/Ogmios transpo
       (await readAdmittedLocalKupmiosSignedTransactionRecovery(fixture.input))
         .status,
     ).toBe("pending");
+    expect(fixture.submissions).toEqual([]);
+  });
+
+  it("rejects stable expiry when its canonical boundary rolls back during observation", async () => {
+    const fixture = await signedRecoveryFixture({
+      ttl: 399,
+      missing: true,
+      rollbackDuringExpiry: true,
+    });
+    await expect(
+      readAdmittedLocalKupmiosSignedTransactionRecovery(fixture.input),
+    ).rejects.toThrow();
     expect(fixture.submissions).toEqual([]);
   });
 
@@ -2363,16 +2668,16 @@ describe("production signed intent recovery through concrete Kupo/Ogmios transpo
   });
 
   it.each([
-    [{ spent: true }, "conflict"],
+    [{ spent: true }, "invalidated"],
     [{ missing: true }, "unknown"],
     [{ ttl: null }, "rebroadcast"],
     [{ ttl: null, mempoolPresent: true }, "pending"],
     [{ ttl: null, missing: true }, "unknown"],
-    [{ ttl: null, spent: true }, "conflict"],
+    [{ ttl: null, spent: true }, "invalidated"],
     [{ ttl: null, included: true }, "included"],
     [{ mempoolPresent: true }, "pending"],
   ] as const)(
-    "keeps nonreplaceable outcomes explicit: %j",
+    "distinguishes safely retired attempts from unresolved attempts: %j",
     async (options, status) => {
       const fixture = await signedRecoveryFixture(options);
       expect(
@@ -2400,20 +2705,47 @@ it("rechecks canonicality before returning an included signed transaction", asyn
 });
 
 it.each([
+  [{ referenceSpent: "stable", scriptOrdinary: true }, "not_found"],
+  [{ referenceSpent: "volatile", scriptOrdinary: true }, "pending"],
+  [
+    { referenceSpent: "stable", scriptOrdinary: true, spent: true },
+    "not_found",
+  ],
+  [
+    { referenceSpent: "stable", scriptOrdinary: true, scriptCollateral: true },
+    "not_found",
+  ],
+  [
+    { referenceSpent: "stable", scriptOrdinary: true, missing: true },
+    "unknown",
+  ],
+  [{ referenceSpent: "stable", keyCollateral: true }, "not_found"],
+  [{ referenceSpent: "volatile", keyCollateral: true }, "pending"],
+  [{ referenceSpent: "stable" }, "not_found"],
+  [{ referenceSpent: "stable", ttl: null }, "not_found"],
+  [{ referenceSpent: "volatile", spent: true }, "pending"],
+  [{ referenceSpent: "volatile" }, "pending"],
+  [{ referenceSpent: "stable", spent: true }, "not_found"],
+  [{ referenceSpent: "stable", missing: true }, "unknown"],
   [{ ttl: 399 }, "not_found"],
   [{ missing: true }, "unknown"],
   [{ ttl: null }, "pending"],
   [{ ttl: null, mempoolPresent: true }, "pending"],
   [{ ttl: null, missing: true }, "unknown"],
   [{ ttl: null, included: true }, "pending"],
-  [{ ttl: null, spent: true }, "conflict"],
-  [{ spent: true }, "conflict"],
+  [{ ttl: null, spent: true }, "not_found"],
+  [{ spent: true }, "not_found"],
   [{}, "pending"],
 ] as const)(
   "cursor and linear production adapters reconcile real signed source evidence: %j",
   async (options, outcome) => {
     for (const family of ["cursor", "linear"] as const) {
       const fixture = await signedRecoveryFixture(options);
+      const protocolRemoval =
+        "scriptOrdinary" in options && options.scriptOrdinary;
+      const proofOutRef = `${hash(78)}#0`;
+      const target = fixture.reference ?? fixture.funding;
+      let currentHeaderOutRef = `${target.txHash}#${target.outputIndex}`;
       const baseL1 = {
         portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
         publications: {
@@ -2432,10 +2764,17 @@ it.each([
             sourceId: "local-kupmios",
             grade: "security",
           } as const,
-          stage: {
-            kind: "not_started",
-            stateQueueBlockOutRef: `${fixture.funding.txHash}#${fixture.funding.outputIndex}`,
-          } as const,
+          stage: protocolRemoval
+            ? ({
+                kind: "proof_token",
+                fraudProofOutRef: proofOutRef,
+                stateQueueBlockOutRef: currentHeaderOutRef,
+                nextRemovalOutRef: currentHeaderOutRef,
+              } as const)
+            : ({
+                kind: "not_started",
+                stateQueueBlockOutRef: currentHeaderOutRef,
+              } as const),
         }),
         observeSignedTransaction: (input: SignedWorkflowTransaction) =>
           readAdmittedLocalKupmiosSignedTransactionRecovery({
@@ -2506,6 +2845,10 @@ it.each([
       const observed = await adapter.observe(context);
       if (observed.kind !== "action_required")
         throw new Error("Expected predecessor action");
+      // A DA attachment or linked-list update recreates the same HeaderV1
+      // while its signed init/removal still uses the old exact output.
+      if (fixture.reference !== undefined)
+        currentHeaderOutRef = `${hash(77)}#0`;
       const authorizeResubmission = vi.fn(async () => {});
       expect(
         (
@@ -2518,6 +2861,18 @@ it.each([
           })
         ).kind,
       ).toBe(outcome);
+      if (protocolRemoval && outcome === "not_found") {
+        const replacement = await adapter.observe(context);
+        if (replacement.kind !== "action_required")
+          throw new Error("missing replacement removal");
+        expect(replacement.action.actionId).not.toBe(observed.action.actionId);
+        expect(replacement.action.input).toMatchObject({
+          stage: "remove",
+          fraudProofOutRef: proofOutRef,
+          stateQueueBlockOutRef: currentHeaderOutRef,
+          nextRemovalOutRef: currentHeaderOutRef,
+        });
+      }
       if (
         Object.keys(options).length === 0 ||
         ("ttl" in options &&
@@ -2593,4 +2948,198 @@ it("restarts at most three complete signed-recovery captures after typed head ch
     expect(capture).toHaveBeenCalledTimes(3);
     expect(fixture.submissions).toEqual([]);
   }
+});
+
+describe("typed raw-source transport failures", () => {
+  it.each([429, 500, 502, 503, 504])(
+    "marks HTTP %i temporary without accepting response data",
+    async (status) => {
+      const fixture = sourceFixture({
+        fetchOverride: async () =>
+          new Response("temporarily unavailable", { status }),
+      });
+      await expect(fixture.source.readBoundary()).rejects.toBeInstanceOf(
+        LocalKupmiosTransportUnavailableError,
+      );
+    },
+  );
+
+  it.each([400, 401, 403, 404])(
+    "keeps HTTP %i refusal hard",
+    async (status) => {
+      const fixture = sourceFixture({
+        fetchOverride: async () => new Response("refused", { status }),
+      });
+      const error = await fixture.source
+        .readBoundary()
+        .catch((cause: unknown) => cause);
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBeInstanceOf(LocalKupmiosTransportUnavailableError);
+    },
+  );
+
+  it("classifies structured network failure but never a message substring", async () => {
+    const network = Object.assign(new TypeError("fetch failed"), {
+      cause: Object.assign(new Error("socket ended"), { code: "ECONNRESET" }),
+    });
+    const transport = sourceFixture({
+      fetchOverride: async () => {
+        throw network;
+      },
+    });
+    await expect(transport.source.readBoundary()).rejects.toMatchObject({
+      name: "LocalKupmiosTransportUnavailableError",
+      cause: network,
+    });
+    const ordinary = new Error("ECONNRESET malformed checkpoint");
+    const malformed = sourceFixture({
+      fetchOverride: async () => {
+        throw ordinary;
+      },
+    });
+    await expect(malformed.source.readBoundary()).rejects.toBe(ordinary);
+  });
+
+  it("distinguishes internal HTTP timeout from caller cancellation", async () => {
+    const fetchOverride: FraudProofRawL1Fetch = async (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init!.signal!.addEventListener(
+          "abort",
+          () => reject(new DOMException("request aborted", "AbortError")),
+          { once: true },
+        );
+      });
+    await expect(
+      sourceFixture({ fetchOverride, timeoutMs: 25 }).source.readBoundary(),
+    ).rejects.toBeInstanceOf(LocalKupmiosTransportUnavailableError);
+    const controller = new AbortController();
+    const fixture = sourceFixture({
+      fetchOverride,
+      signal: controller.signal,
+      timeoutMs: 500,
+    });
+    const outcome = fixture.source
+      .readBoundary()
+      .catch((cause: unknown) => cause);
+    await vi.waitFor(() => expect(fixture.requests.length).toBeGreaterThan(0));
+    controller.abort();
+    expect(await outcome).toMatchObject({ name: "AbortError" });
+    expect(await outcome).not.toBeInstanceOf(
+      LocalKupmiosTransportUnavailableError,
+    );
+  });
+
+  it.each([
+    { label: "JSON", fetchOverride: async () => new Response("{broken") },
+    {
+      label: "checkpoint headers",
+      fetchOverride: async () =>
+        new Response("{}", {
+          headers: { "x-most-recent-checkpoint": "no", etag: "bad" },
+        }),
+    },
+    {
+      label: "byte budget",
+      fetchOverride: async () =>
+        new Response("failure", {
+          status: 503,
+          headers: { "content-length": "67108865" },
+        }),
+    },
+  ])(
+    "keeps $label failure hard even when transport is available",
+    async ({ fetchOverride }) => {
+      const error = await sourceFixture({ fetchOverride })
+        .source.readBoundary()
+        .catch((cause: unknown) => cause);
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBeInstanceOf(LocalKupmiosTransportUnavailableError);
+    },
+  );
+
+  it.each(["error", "close"])("types a WebSocket %s event", async (event) => {
+    const fixture = sourceFixture({
+      timeoutMs: 100,
+      socketBehavior: { open: false },
+    });
+    const outcome = fixture.source
+      .readBoundary()
+      .catch((cause: unknown) => cause);
+    const socket = await fixture.socketCreated;
+    socket.emit(event, {
+      code: 1006,
+      reason: "connection lost",
+      wasClean: false,
+    });
+    expect(await outcome).toBeInstanceOf(LocalKupmiosTransportUnavailableError);
+    expect([...socket.listeners.values()].flat()).toHaveLength(0);
+  });
+
+  it.each([1002, 1008, 1009])(
+    "keeps explicit WebSocket protocol/policy refusal %i hard",
+    async (code) => {
+      const fixture = sourceFixture({
+        timeoutMs: 100,
+        socketBehavior: { open: false },
+      });
+      const outcome = fixture.source
+        .readBoundary()
+        .catch((cause: unknown) => cause);
+      const socket = await fixture.socketCreated;
+      socket.emit("close", { code, reason: "peer refusal", wasClean: true });
+      expect(await outcome).toBeInstanceOf(Error);
+      expect(await outcome).not.toBeInstanceOf(
+        LocalKupmiosTransportUnavailableError,
+      );
+    },
+  );
+
+  it.each(["opening", "request"])(
+    "types internal WebSocket %s timeout",
+    async (phase) => {
+      const fixture = sourceFixture({
+        timeoutMs: 25,
+        socketBehavior:
+          phase === "opening" ? { open: false } : { respond: false },
+      });
+      await expect(fixture.source.readBoundary()).rejects.toBeInstanceOf(
+        LocalKupmiosTransportUnavailableError,
+      );
+      expect(fixture.sockets[0]?.closeCount).toBe(1);
+    },
+  );
+
+  it.each([
+    "{broken",
+    JSON.stringify({
+      id: 0,
+      error: { code: 1000, message: "invalid request" },
+    }),
+  ])("keeps malformed/RPC error frames hard: %s", async (responseText) => {
+    const fixture = sourceFixture({ socketBehavior: { responseText } });
+    const error = await fixture.source
+      .readBoundary()
+      .catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(LocalKupmiosTransportUnavailableError);
+  });
+
+  it("does not conceal malformed data with a later socket-close timeout", async () => {
+    const fixture = sourceFixture({
+      timeoutMs: 25,
+      socketBehavior: { responseText: "{broken", close: false },
+    });
+    try {
+      const error = await fixture.source
+        .readBoundary()
+        .catch((cause: unknown) => cause);
+      expect(error).toMatchObject({
+        message: expect.stringContaining("malformed JSON"),
+      });
+      expect(error).not.toBeInstanceOf(LocalKupmiosTransportUnavailableError);
+    } finally {
+      for (const socket of fixture.sockets)
+        socket.emit("close", { code: 1000, wasClean: true });
+    }
+  });
 });

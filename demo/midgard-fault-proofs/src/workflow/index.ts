@@ -12,6 +12,7 @@ export * from "./classification.js";
 export * from "./cli.js";
 export * from "./committed-field-shape.js";
 export * from "./complete-replay.js";
+export * from "./completed-verification.js";
 export * from "./cursor-family-adapter.js";
 export * from "./cursor-family-runtime.js";
 export * from "./cursor-family-spec.js";

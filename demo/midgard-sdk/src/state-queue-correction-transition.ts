@@ -77,7 +77,11 @@ export type StateQueueCorrectionTransition = Readonly<{
   chainPointId: string;
   finalityDepth: string;
   timedOutHeaderHash: string;
-  removalApproach: "PruneTimedOutBlockDescendant" | "RemoveTimedOutHead";
+  removalApproach:
+    | "PruneUnattestedBlockDescendant"
+    | "RemoveLastUnattestedBlock"
+    | "PruneTimedOutBlockDescendant"
+    | "RemoveTimedOutHead";
   consumedQueueOutRefs: readonly string[];
   continuedQueueOutRefs: readonly Readonly<{
     headerHash: string | null;
@@ -415,6 +419,60 @@ const decodeStateQueueMintRedeemer = (
   }
 };
 
+/** Normalizes the distinct unattested and unavailable timeout wires without
+ * widening availability-challenge removal beyond the queue head. */
+const timeoutRemoval = (decoded: StateQueueRedeemerType) => {
+  if (typeof decoded !== "object" || decoded === null) return null;
+  if ("RemoveUnattestedBlockAfterTimeout" in decoded) {
+    const timeout = decoded.RemoveUnattestedBlockAfterTimeout;
+    const approach = timeout.removal_approach;
+    return "PruneUnattestedBlockDescendant" in approach
+      ? {
+          target: timeout.timed_out_header_hash,
+          name: "PruneUnattestedBlockDescendant" as const,
+          prune: true,
+          headOnly: false,
+          anchor:
+            approach.PruneUnattestedBlockDescendant.timed_out_node_input_outref,
+          outputIndex:
+            approach.PruneUnattestedBlockDescendant.timed_out_node_output_index,
+        }
+      : {
+          target: timeout.timed_out_header_hash,
+          name: "RemoveLastUnattestedBlock" as const,
+          prune: false,
+          headOnly: false,
+          anchor: approach.RemoveLastUnattestedBlock.predecessor_input_outref,
+          outputIndex:
+            approach.RemoveLastUnattestedBlock.predecessor_output_index,
+        };
+  }
+  if ("RemoveUnavailableBlockAfterTimeout" in decoded) {
+    const timeout = decoded.RemoveUnavailableBlockAfterTimeout;
+    const approach = timeout.removal_approach;
+    return "PruneTimedOutBlockDescendant" in approach
+      ? {
+          target: timeout.unavailable_header_hash,
+          name: "PruneTimedOutBlockDescendant" as const,
+          prune: true,
+          headOnly: true,
+          anchor:
+            approach.PruneTimedOutBlockDescendant.timed_out_node_input_outref,
+          outputIndex:
+            approach.PruneTimedOutBlockDescendant.timed_out_node_output_index,
+        }
+      : {
+          target: timeout.unavailable_header_hash,
+          name: "RemoveTimedOutHead" as const,
+          prune: false,
+          headOnly: true,
+          anchor: approach.RemoveTimedOutHead.confirmed_state_input_outref,
+          outputIndex: approach.RemoveTimedOutHead.confirmed_state_output_index,
+        };
+  }
+  return null;
+};
+
 export const deriveStateQueueCorrectionTransition = (
   input: DeriveStateQueueCorrectionTransitionInput,
 ): StateQueueCorrectionTransition | null => {
@@ -446,23 +504,9 @@ export const deriveStateQueueCorrectionTransition = (
   ) {
     return null;
   }
-  const timeout =
-    "RemoveUnattestedBlockAfterTimeout" in decoded
-      ? decoded.RemoveUnattestedBlockAfterTimeout
-      : {
-          ...decoded.RemoveUnavailableBlockAfterTimeout,
-          timed_out_header_hash:
-            decoded.RemoveUnavailableBlockAfterTimeout.unavailable_header_hash,
-        };
-  const approach = timeout.removal_approach;
-  const [removalApproach, pruneApproach, headApproach] =
-    "PruneTimedOutBlockDescendant" in approach
-      ? ([
-          "PruneTimedOutBlockDescendant",
-          approach.PruneTimedOutBlockDescendant,
-          null,
-        ] as const)
-      : (["RemoveTimedOutHead", null, approach.RemoveTimedOutHead] as const);
+  const timeout = timeoutRemoval(decoded);
+  if (timeout === null) return null;
+  const removalApproach = timeout.name;
   const nextByHash = new Map(
     input.nextQueue.map((node) => [node.headerHash, node]),
   );
@@ -493,27 +537,19 @@ export const deriveStateQueueCorrectionTransition = (
     .sort((left, right) =>
       left.consumedOutRef.localeCompare(right.consumedOutRef),
     );
-  const timedOutHeaderHash = timeout.timed_out_header_hash;
-  const nextHashes = input.nextQueue.map(({ headerHash }) => headerHash);
+  const timedOutHeaderHash = timeout.target;
   const previousHashes = input.previousQueue.map(
     ({ headerHash }) => headerHash,
   );
-  const priorHead = input.previousQueue[1]?.headerHash;
-  const redeemerInputOutRef =
-    pruneApproach?.timed_out_node_input_outref ??
-    headApproach!.confirmed_state_input_outref;
-  const redeemerInputOutRefLabel = `${redeemerInputOutRef.transactionId}#${redeemerInputOutRef.outputIndex.toString()}`;
-  const continuedIdentity =
-    removalApproach === "PruneTimedOutBlockDescendant"
-      ? continuedQueueOutRefs.find(
-          ({ headerHash }) => headerHash === timedOutHeaderHash,
-        )
-      : continuedQueueOutRefs.find(({ headerHash }) => headerHash === null);
-  const redeemerOutputIndex =
-    pruneApproach?.timed_out_node_output_index ??
-    headApproach!.confirmed_state_output_index;
+  const targetIndex = previousHashes.indexOf(timedOutHeaderHash);
+  const removedIndex = timeout.prune ? targetIndex + 1 : targetIndex;
+  const anchorIndex = timeout.prune ? targetIndex : targetIndex - 1;
+  const continuedIdentity = continuedQueueOutRefs[0];
   const exactTopology =
-    priorHead === timedOutHeaderHash &&
+    targetIndex > 0 &&
+    (!timeout.headOnly || targetIndex === 1) &&
+    removedIndex < input.previousQueue.length &&
+    (timeout.prune || targetIndex === input.previousQueue.length - 1) &&
     changed.length === 2 &&
     changed.every(({ outRef }) => spent.has(outRef)) &&
     input.spentInputOutRefs
@@ -521,26 +557,19 @@ export const deriveStateQueueCorrectionTransition = (
         input.previousQueue.some((node) => node.outRef === outRef),
       )
       .every((outRef) => consumedQueueOutRefs.includes(outRef)) &&
-    continuedQueueOutRefs.every(({ producedOutRef }) =>
-      producedOutRef.startsWith(`${input.transactionHash}#`),
-    ) &&
-    continuedIdentity !== undefined &&
-    redeemerInputOutRefLabel === continuedIdentity.consumedOutRef &&
-    continuedIdentity.producedOutRef ===
-      `${input.transactionHash}#${redeemerOutputIndex.toString()}` &&
-    (removalApproach === "PruneTimedOutBlockDescendant"
-      ? removedHeaderHashes.length === 1 &&
-        removedHeaderHashes[0] === input.previousQueue[2]?.headerHash &&
-        input.previousQueue.length >= 3 &&
-        nextHashes.length === previousHashes.length - 1 &&
-        nextHashes.every(
-          (hash, index) =>
-            hash === previousHashes[index < 2 ? index : index + 1],
-        )
-      : removedHeaderHashes.length === 1 &&
-        removedHeaderHashes[0] === timedOutHeaderHash &&
-        input.previousQueue.length === 2 &&
-        input.nextQueue.length === 1);
+    continuedQueueOutRefs.length === 1 &&
+    continuedIdentity?.headerHash === previousHashes[anchorIndex] &&
+    outputReferenceLabel(timeout.anchor) ===
+      continuedIdentity?.consumedOutRef &&
+    continuedIdentity?.producedOutRef ===
+      `${input.transactionHash}#${timeout.outputIndex.toString()}` &&
+    removedHeaderHashes.length === 1 &&
+    removedHeaderHashes[0] === previousHashes[removedIndex] &&
+    input.nextQueue.length === input.previousQueue.length - 1 &&
+    input.nextQueue.every(
+      ({ headerHash }, index) =>
+        headerHash === previousHashes[index < removedIndex ? index : index + 1],
+    );
   if (!exactTopology) {
     return null;
   }
@@ -613,7 +642,7 @@ const correctionLockWitnessMatchesTransition = ({
     "RemoveUnattestedBlockAfterTimeout" in decoded
   ) {
     const timeout = decoded.RemoveUnattestedBlockAfterTimeout;
-    terminal = "RemoveTimedOutHead" in timeout.removal_approach;
+    terminal = "RemoveLastUnattestedBlock" in timeout.removal_approach;
     targetHeaderHash = timeout.timed_out_header_hash;
     identityMatches = witness.correctionIdentity === "AttestationTimeout";
   } else if (
@@ -891,7 +920,9 @@ export const parseStateQueueCorrectionTransition = (
     !NATURAL.test(record.finalityDepth as string) ||
     BigInt(record.finalityDepth as string) === 0n ||
     !HEX_28.test(record.timedOutHeaderHash as string) ||
-    (record.removalApproach !== "PruneTimedOutBlockDescendant" &&
+    (record.removalApproach !== "PruneUnattestedBlockDescendant" &&
+      record.removalApproach !== "RemoveLastUnattestedBlock" &&
+      record.removalApproach !== "PruneTimedOutBlockDescendant" &&
       record.removalApproach !== "RemoveTimedOutHead") ||
     !Array.isArray(record.consumedQueueOutRefs) ||
     record.consumedQueueOutRefs.some(
@@ -1171,15 +1202,8 @@ export const parseStateQueueAuthenticatedTransition = (
     canonical.correctionTransition !== null
   ) {
     const nested = canonical.correctionTransition;
-    const timeout =
-      "RemoveUnattestedBlockAfterTimeout" in decoded
-        ? decoded.RemoveUnattestedBlockAfterTimeout
-        : {
-            ...decoded.RemoveUnavailableBlockAfterTimeout,
-            timed_out_header_hash:
-              decoded.RemoveUnavailableBlockAfterTimeout
-                .unavailable_header_hash,
-          };
+    const timeout = timeoutRemoval(decoded);
+    if (timeout === null) return null;
     const outerNestedIdentityMatches =
       nested.deploymentIdentityDigest === canonical.deploymentIdentityDigest &&
       nested.stateQueuePolicyId === canonical.stateQueuePolicyId &&
@@ -1195,24 +1219,29 @@ export const parseStateQueueAuthenticatedTransition = (
         stableJson(canonical.continuedQueueOutRefs) &&
       stableJson(nested.removedHeaderHashes) ===
         stableJson(canonical.removedHeaderHashes) &&
-      nested.timedOutHeaderHash === timeout.timed_out_header_hash;
+      nested.timedOutHeaderHash === timeout.target;
     const approachMatches =
-      "PruneTimedOutBlockDescendant" in timeout.removal_approach
-        ? nested.removalApproach === "PruneTimedOutBlockDescendant" &&
-          outputReferenceLabel(
-            timeout.removal_approach.PruneTimedOutBlockDescendant
-              .timed_out_node_input_outref,
-          ) === nested.continuedQueueOutRefs[0]?.consumedOutRef &&
-          `${canonical.transactionHash}#${timeout.removal_approach.PruneTimedOutBlockDescendant.timed_out_node_output_index.toString()}` ===
-            nested.continuedQueueOutRefs[0]?.producedOutRef
-        : nested.removalApproach === "RemoveTimedOutHead" &&
-          outputReferenceLabel(
-            timeout.removal_approach.RemoveTimedOutHead
-              .confirmed_state_input_outref,
-          ) === nested.continuedQueueOutRefs[0]?.consumedOutRef &&
-          `${canonical.transactionHash}#${timeout.removal_approach.RemoveTimedOutHead.confirmed_state_output_index.toString()}` ===
-            nested.continuedQueueOutRefs[0]?.producedOutRef;
-    semanticsAreCanonical = outerNestedIdentityMatches && approachMatches;
+      nested.removalApproach === timeout.name &&
+      outputReferenceLabel(timeout.anchor) ===
+        nested.continuedQueueOutRefs[0]?.consumedOutRef &&
+      `${canonical.transactionHash}#${timeout.outputIndex.toString()}` ===
+        nested.continuedQueueOutRefs[0]?.producedOutRef;
+    const targetIndex = canonical.previousQueue.findIndex(
+      ({ headerHash }) => headerHash === timeout.target,
+    );
+    const removedIndex = timeout.prune ? targetIndex + 1 : targetIndex;
+    const anchorIndex = timeout.prune ? targetIndex : targetIndex - 1;
+    semanticsAreCanonical =
+      outerNestedIdentityMatches &&
+      approachMatches &&
+      targetIndex > 0 &&
+      (!timeout.headOnly || targetIndex === 1) &&
+      removedIndex < canonical.previousQueue.length &&
+      (timeout.prune || targetIndex === canonical.previousQueue.length - 1) &&
+      nested.removedHeaderHashes[0] ===
+        canonical.previousQueue[removedIndex]?.headerHash &&
+      nested.continuedQueueOutRefs[0]?.headerHash ===
+        canonical.previousQueue[anchorIndex]?.headerHash;
   } else if (
     canonical.transitionKind === "merge" &&
     canonical.correctionTransition === null &&

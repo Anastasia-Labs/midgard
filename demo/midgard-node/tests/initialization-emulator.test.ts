@@ -143,7 +143,7 @@ const initEmulatorLucid = async () => {
   if (!nonceUtxo) {
     throw new Error("Expected at least one wallet UTxO in emulator");
   }
-  const referenceScriptAuth = createReferenceScriptAuthPolicy(
+  const referenceScriptAuth = await createReferenceScriptAuthPolicy(
     referenceScriptsLucid,
     emulator.now(),
   );

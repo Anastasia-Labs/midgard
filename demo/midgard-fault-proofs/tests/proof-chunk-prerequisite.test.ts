@@ -6,8 +6,10 @@ import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import { splitProofIntoChunkDatums } from "../src/publish-proof-chunks.js";
+import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
 import {
   type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalEntry,
   normalizeJournalJson,
 } from "../src/workflow/journal.js";
 import {
@@ -293,6 +295,7 @@ describe("production proof-chunk prerequisite V1", () => {
     const confirmedOutputs = new Set<string>();
     const port = createAuthenticatedProofChunkPrerequisitePort({
       category: "invalidRange",
+      maximumTransactionBytes: 16_384,
       lucid: { utxosAt: async () => [] } as unknown as LucidEvolution,
       network: "Preview",
       signer: {
@@ -358,6 +361,65 @@ describe("production proof-chunk prerequisite V1", () => {
       kind: "confirmed",
       txHash,
     });
+    const wrapper = withProofChunkPrerequisite({
+      category: "invalidRange",
+      base: base({
+        preflightFailure: new Error(
+          "Max transaction size of 16384 exceeded. Found: 16385",
+        ),
+      }),
+      prerequisite: {
+        ...port,
+        capture: async () => ({
+          transaction: transaction(),
+          durableRecovery: input.durableRecovery,
+        }),
+      },
+    });
+    const preflight = await wrapper.preflight({
+      ...context,
+      action: required.action,
+    });
+    const recorded = (
+      event: FraudProofWorkflowJournalEntry["event"],
+      sequence: number,
+    ): FraudProofWorkflowJournalEntry => ({
+      schemaVersion: "midgard-fraud-proof-workflow-journal-entry-v1",
+      workflowId: context.workflowId,
+      identity,
+      sequence,
+      recordedAt: "2026-09-13T00:00:00.000Z",
+      event,
+    });
+    const entries = [
+      recorded(
+        {
+          kind: "submission_intent",
+          actionId: required.action.actionId,
+          actionInput: required.action.input,
+          txHash,
+          attempt: 1,
+          durableRecovery: preflight.durableRecovery,
+        },
+        0,
+      ),
+      recorded(
+        { kind: "confirmed", actionId: required.action.actionId, txHash },
+        1,
+      ),
+    ];
+    // A previously confirmed publication disappears. The next observation must
+    // expose its exact old action so the orchestrator can reconcile signed bytes.
+    confirmedOutputs.clear();
+    await expect(
+      port.inspect({
+        headerHash,
+        baseAction,
+        artifact: context.artifact,
+        entries,
+      }),
+    ).resolves.toEqual({ kind: "required", action: required.action });
+
     await expect(
       port.reconcile({
         ...input,
@@ -511,6 +573,7 @@ describe("production proof-chunk prerequisite V1", () => {
   });
 
   it("reconciles a journaled publication through a fresh adapter process", async () => {
+    const authorizeResubmission = vi.fn(async () => undefined);
     const reconcile = vi.fn(async () => ({
       kind: "confirmed" as const,
       txHash,
@@ -540,9 +603,13 @@ describe("production proof-chunk prerequisite V1", () => {
         action: publicationAction,
         txHash,
         durableRecovery: preflight.durableRecovery,
+        signedTransactionCborHex: "recorded-signed-bytes",
+        authorizeResubmission,
       }),
     ).resolves.toEqual({ kind: "confirmed", txHash });
     expect(reconcile).toHaveBeenCalledWith({
+      signedTransactionCborHex: "recorded-signed-bytes",
+      authorizeResubmission,
       headerHash,
       action: publicationAction,
       artifact: context.artifact,
@@ -724,5 +791,79 @@ describe("production proof-chunk prerequisite V1", () => {
       }),
     ).resolves.toMatchObject({ txHash: "99".repeat(32) });
     expect(observedChunkCounts).toEqual([0, 0, 1]);
+  });
+});
+
+describe("fresh prerequisite selection changes", () => {
+  it.each([
+    "base_pending",
+    "publication_changed",
+    "required_again",
+    "pending_again",
+  ] as const)(
+    "yields %s before capturing or submitting stale work",
+    async (change) => {
+      const underlying = base();
+      const port = prerequisite();
+      const adapter = withProofChunkPrerequisite({
+        category: "invalidRange",
+        base: underlying,
+        prerequisite: port,
+      });
+      const action =
+        change === "required_again" || change === "pending_again"
+          ? baseAction
+          : publicationAction;
+      vi.mocked(port.inspect).mockResolvedValueOnce(
+        action === baseAction
+          ? { kind: "satisfied" }
+          : { kind: "required", action: publicationAction },
+      );
+      await expect(adapter.observe(context)).resolves.toMatchObject({
+        kind: "action_required",
+        action,
+      });
+      if (change === "base_pending")
+        vi.mocked(underlying.observe).mockResolvedValue({
+          kind: "pending",
+          reason: "canonical thread changing",
+        });
+      else if (change === "publication_changed")
+        vi.mocked(port.inspect).mockResolvedValue({
+          kind: "required",
+          action: { ...publicationAction, actionId: "replacement-publication" },
+        });
+      else if (change === "pending_again")
+        vi.mocked(port.inspect).mockResolvedValue({
+          kind: "pending",
+          reason: "publication inclusion being reconciled",
+        });
+      await expect(
+        adapter.preflight({ ...context, action }),
+      ).rejects.toBeInstanceOf(WorkflowActionChangedError);
+      expect(port.capture).not.toHaveBeenCalled();
+      expect(underlying.preflight).not.toHaveBeenCalled();
+      expect(underlying.submit).not.toHaveBeenCalled();
+    },
+  );
+
+  it("preserves prerequisite integrity failures as hard errors", async () => {
+    const underlying = base();
+    const port = prerequisite();
+    const integrity = new Error(
+      "authenticated publication datum was substituted",
+    );
+    vi.mocked(port.inspect).mockRejectedValue(integrity);
+    const adapter = withProofChunkPrerequisite({
+      category: "invalidRange",
+      base: underlying,
+      prerequisite: port,
+    });
+    await expect(
+      adapter.preflight({ ...context, action: publicationAction }),
+    ).rejects.toBe(integrity);
+    expect(integrity).not.toBeInstanceOf(WorkflowActionChangedError);
+    expect(port.capture).not.toHaveBeenCalled();
+    expect(underlying.preflight).not.toHaveBeenCalled();
   });
 });

@@ -142,11 +142,16 @@ Previously implemented portions of a combined gate still need release verificati
       agreeing on network and compatible chain points; quarantine disagreement or
       lost independence. Decode actual chain bytes deterministically, and propagate
       rollback through every index without replaying Cardano validator semantics.
-- [ ] Apply source authority/agreement and configured finality depth to commit,
-      merge, deposit, withdrawal, reserve/payout, scheduler, operator, proof, and init
-      observations. Persist tx/block hash, slot/block number when available, source
-      mode/identity, observed depth, and threshold. Test rollback before threshold
-      (pending/quarantine) and after finalization (incident and explicit recovery).
+- [ ] Apply source authority/agreement to commit, merge, deposit, withdrawal,
+      reserve/payout, scheduler, operator, proof, and init observations. Fault-proof
+      actions proceed on authenticated inclusion at fixed depth 1; their configured
+      release depth governs stable evidence.
+      Preserve unrelated lifecycle finality requirements. Persist transaction and
+      chain-point identities, source authority, and observed depth. On rollback,
+      invalidate cached authority, re-observe canonical state, reconcile outstanding
+      submissions, then retry suitable signed bytes or rebuild under fresh authority.
+      Test provisional terminal disappearance, restart, unresolved wallet inputs,
+      and post-finalization incident recovery.
 - [ ] Anchor deposit/withdrawal events and commit barriers to stable indexed
       chain points. Test appearance, disappearance, reappearance at another point,
       and conflicting same-event payloads before projection/finalization. Readiness
@@ -219,13 +224,15 @@ Previously implemented portions of a combined gate still need release verificati
       describe privileged proof-resolution access. Complete tx-order lifecycle
       coverage under the canonical scope gate above.
 - [ ] Provide register/activate/deactivate/deregister/status and bond/slash docs.
+      Runbook: `docs-site/content/docs/operators/node/operator-lifecycle.mdx`.
       Permissionless activation must support empty/head/middle/tail insertion and
       stale-anchor retry; curated activation must use explicit access controls.
       Preflight per-wallet funding for bond, lifecycle, scheduler, commit/merge,
       reference scripts, collateral, and recovery. Define Sybil-resistant faucet or
       manual funding that still permits legitimate onboarding.
 - [ ] Enforce missed commitments and neglected deposit/withdrawal/tx-order events
-      through watchdog/scheduler takeover and inactivity strikes. Test no-event and
+      through watchdog/scheduler takeover and inactivity strikes (runbook:
+      `docs-site/content/docs/operators/node/operator-lifecycle.mdx`). Test no-event and
       neglected-event inactivity, single-operator strike limit, multi-operator
       takeover, and partial-slash retirement. Expose operator/shift age, missed age,
       strike count, next takeover time, and last takeover tx.
@@ -235,7 +242,8 @@ Previously implemented portions of a combined gate still need release verificati
       flows for active, retired, registered, duplicate, bad-state, bad-settlement,
       and partially inactivity-slashed operators.
 - [ ] Accept safe rekey preserving bonds/scheduler semantics or explicitly require
-      retire, unlock, recover, and re-register. Test behavior during bond holds,
+      retire, unlock, recover, and re-register. Ruling 2026-09-15: no rekey; the
+      runbook documents retire → unlock → recover → re-register. Test behavior during bond holds,
       pending shifts/commitments, and retirement. Document compromised-current-key
       response: stop signing, prevent unsafe commits, preserve audit state, recover
       or slash.
@@ -246,6 +254,8 @@ Previously implemented portions of a combined gate still need release verificati
       challenge size plan in the [execution plan](fault-proofs/execution-plan.md).
       Every canonical family needs deployment-bound emulator, watcher, and preprod
       evidence; a first-family milestone cannot close the complete launch gate.
+      The [local emulator scheduling measurements](fault-proofs/testing-status.md#emulator-gate-performance)
+      preserve test scope and do not satisfy live acceptance.
       Availability reference publication and real contract lifecycles now pass the
       pinned mainnet protocol-11 size/execution gates; see the
       [measured scope and remaining operational work](fault-proofs/size-plans/availability-challenge.md).
@@ -274,11 +284,15 @@ Previously implemented portions of a combined gate still need release verificati
       [manual recovery](fault-proofs/manual-recovery-runbook.md) runbooks externally.
       The [automatic watcher journeys](fault-proofs/automatic-watcher-journeys.md)
       harness is the acceptance vehicle for this gate on a real devnet. As of
-      2026-09-13 five of the 54 non-interactive families (`transitionTrace`,
-      `zeroInput`, `invalidRange`, `invalidSignature`, `mintAuthorization`) have
-      a completed live journey on the merged code's 55-family deployment; the
-      rest are locally verified, running, blocked on owner rulings, or unrun. Watcher
-      installation covers all 55 source categories; installation is not
+      2026-09-13 ten of the 54 non-interactive families (`transitionTrace`,
+      `zeroInput`, `invalidRange`, `invalidSignature`, `mintAuthorization`,
+      `minFee`, `spendInputSignerMissing`, `protectedOutputSignerMissing`,
+      `observersForbiddenOnUntaggedNetwork`, `inputSetUniqueness`) have a
+      completed live journey on the merged code's 55-family deployment.
+      Preserve these per-step-finality passes with their existing provenance;
+      they do not establish the new inclusion/reconciliation behavior. Later
+      execution-policy evidence and finalized stamps are recorded separately.
+      Watcher installation covers all 55 source categories; installation is not
       acceptance.
 - [ ] Expose machine-readable rule/reject-code to family, script hashes, DA needs,
       and supported/disabled/unsupported status. Status cannot excuse missing

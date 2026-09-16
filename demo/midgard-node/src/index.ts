@@ -81,6 +81,7 @@ import { loadRuntimeDotenv } from "./runtime-env.js";
 import * as Services from "./services/index.js";
 import * as DaAttestation from "./transactions/da-attestation.js";
 import * as Initialization from "./transactions/initialization.js";
+import * as OperatorCommands from "./transactions/operators/commands.js";
 import * as PhasMembershipRegistration from "./transactions/phas-membership-registration.js";
 import {
   fetchReferenceScriptUtxosProgram,
@@ -1728,25 +1729,174 @@ program
     runCliEffect(mainEffect);
   });
 
+/**
+ * Runs an operator lifecycle verb: prints the JSON result on success, and on a
+ * local refusal or funding shortfall prints the one-line reason and exits
+ * non-zero without a fiber trace.
+ */
+const runOperatorCommand = <A, E>(
+  label: string,
+  effect: Effect.Effect<
+    A,
+    E,
+    Services.NodeConfig | Services.MidgardContracts | Services.Lucid
+  >,
+): void => {
+  runCliEffect(
+    pipe(
+      effect,
+      tapJson((result) => ({ command: label, ...(result as object) })),
+      Effect.asVoid,
+      Effect.catchAll((error) =>
+        OperatorCommands.isOperatorCommandRefusal(error)
+          ? Effect.sync(() => failCli(label, error))
+          : Effect.fail(error),
+      ),
+      provideTxServices,
+    ),
+  );
+};
+
+program
+  .command("register-operator")
+  .description(
+    "Lock the operator bond in a new registered-operators node for the operator wallet (refused locally if the key is already registered, active, or retired)",
+  )
+  .action(async () => {
+    runOperatorCommand(
+      "register-operator",
+      OperatorCommands.registerOperatorCommand,
+    );
+  });
+
 program
   .command("activate-operator")
   .description(
-    "Activate an already registered operator wallet without rerunning registration or deregistration",
+    "Move a registered operator into the active set once its activation time has passed; defaults to the operator wallet's own key",
   )
-  .action(async () => {
-    const mainEffect = pipe(
-      RegisterActiveOperator.activateProgram,
-      Effect.provide(Services.NodeConfig.layer),
-      Effect.provide(Services.MidgardContracts.Default),
-      Effect.provide(Services.Lucid.Default),
-      Effect.tap((result) =>
-        Effect.logInfo(
-          `activate-operator completed: ${JSON.stringify(result)}`,
-        ),
+  .option(
+    "--operator-key-hash <hex>",
+    "Payment key hash of the registered operator to activate",
+    OperatorCommands.parseOperatorKeyHashOption,
+  )
+  .action(async (options: { operatorKeyHash?: string }) => {
+    runOperatorCommand(
+      "activate-operator",
+      OperatorCommands.activateOperatorCommand({
+        operatorKeyHash: options.operatorKeyHash,
+      }),
+    );
+  });
+
+program
+  .command("operator-status")
+  .description(
+    "Print the operator directory status (state, bond, strikes, scheduler shift, inactivity threshold, local watchdog) as JSON; defaults to the operator wallet's own key",
+  )
+  .option(
+    "--operator-key-hash <hex>",
+    "Payment key hash of the operator to inspect",
+    OperatorCommands.parseOperatorKeyHashOption,
+  )
+  .action(async (options: { operatorKeyHash?: string }) => {
+    runCliEffect(
+      pipe(
+        OperatorCommands.operatorStatusCommand({
+          operatorKeyHash: options.operatorKeyHash,
+        }),
+        tapJson(),
+        Effect.asVoid,
+        provideTxServices,
       ),
     );
+  });
 
-    runCliEffect(mainEffect);
+program
+  .command("retire-operator")
+  .alias("deactivate-operator")
+  .description(
+    "Voluntarily retire the operator wallet: move its active node to the retired list with the full bond, advancing or rewinding the scheduler if it holds the shift",
+  )
+  .action(async () => {
+    runOperatorCommand(
+      "retire-operator",
+      OperatorCommands.retireOperatorCommand,
+    );
+  });
+
+program
+  .command("recover-operator-bond")
+  .alias("unlock-operator")
+  .description(
+    "Burn the operator wallet's retired node and return the bond to the wallet; refused before the bond unlock time",
+  )
+  .action(async () => {
+    runOperatorCommand(
+      "recover-operator-bond",
+      OperatorCommands.recoverOperatorBondCommand,
+    );
+  });
+
+program
+  .command("deregister-operator")
+  .description(
+    "Remove the operator wallet's registered node before activation and return the bond",
+  )
+  .action(async () => {
+    runOperatorCommand(
+      "deregister-operator",
+      OperatorCommands.deregisterOperatorCommand,
+    );
+  });
+
+program
+  .command("strike-inactive-operator")
+  .description(
+    "Strike the scheduled operator for a missed shift and hand the shift to the next operator; refused before the inactivity threshold",
+  )
+  .action(async () => {
+    runOperatorCommand(
+      "strike-inactive-operator",
+      OperatorCommands.strikeInactiveOperatorCommand,
+    );
+  });
+
+program
+  .command("force-retire-operator")
+  .description(
+    "Retire an operator that has reached the maximum inactivity strikes; the inactivity penalty is paid from its bond as the fee",
+  )
+  .requiredOption(
+    "--operator-key-hash <hex>",
+    "Payment key hash of the operator to force-retire",
+    OperatorCommands.parseOperatorKeyHashOption,
+  )
+  .action(async (options: { operatorKeyHash: string }) => {
+    runOperatorCommand(
+      "force-retire-operator",
+      OperatorCommands.forceRetireOperatorCommand({
+        operatorKeyHash: options.operatorKeyHash,
+      }),
+    );
+  });
+
+program
+  .command("slash-duplicate-operator")
+  .description(
+    "Remove a duplicate registered node for an operator that is already registered, active, or retired; the slashing penalty is paid from its bond and the rest goes to the submitter",
+  )
+  .requiredOption(
+    "--operator-key-hash <hex>",
+    "Payment key hash of the duplicated operator",
+    OperatorCommands.parseOperatorKeyHashOption,
+  )
+  .action(async (options: { operatorKeyHash: string }) => {
+    runOperatorCommand(
+      "slash-duplicate-operator",
+      OperatorCommands.slashDuplicateOperatorCommand({
+        operatorKeyHash: options.operatorKeyHash,
+      }),
+    );
   });
 
 program

@@ -17,6 +17,7 @@ import {
   splitProofIntoChunkDatums,
 } from "../publish-proof-chunks.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import { WorkflowActionChangedError } from "./action-changed.js";
 import {
   type FraudProofWorkflowJournalEntry,
   journalJsonDigest,
@@ -37,6 +38,10 @@ import {
   FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
   type FraudProofAuthenticatedPublicationObserver,
 } from "./raw-l1-publication-observation.js";
+import {
+  reconcileSignedWorkflowTransaction,
+  type SignedWorkflowTransaction,
+} from "./signed-transaction-reconciliation.js";
 import {
   bindWorkflowPreflightTransaction,
   captureLocallyEvaluatedTransaction,
@@ -117,6 +122,10 @@ export interface ProofChunkPrerequisitePort<
     readonly artifact: JournalJsonObject;
     readonly txHash?: string;
     readonly durableRecovery?: JournalJsonObject;
+    readonly signedTransactionCborHex?: string;
+    readonly authorizeResubmission?: (
+      input: SignedWorkflowTransaction,
+    ) => Promise<void>;
   }): Promise<FraudProofWorkflowReconcileResult>;
 }
 
@@ -700,7 +709,7 @@ const recoveryForTransaction = ({
 
 /**
  * Concrete authenticated publication port. Lucid is used only to build/query
- * candidate UTxOs; release-final admission is always performed by the raw-L1
+ * candidate UTxOs; canonical inclusion admission is always performed by the raw-L1
  * publication observer.
  */
 export const createAuthenticatedProofChunkPrerequisitePort = <
@@ -940,10 +949,7 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
         proofCbor: required.proofCbor,
       });
       if (chunks === undefined) {
-        return {
-          kind: "pending",
-          reason: `${category} journaled proof publication has no exact output set`,
-        };
+        return { kind: "required", action: routeAction };
       }
       const outputsConfirmed = await observeOutputs({
         headerHash,
@@ -956,7 +962,7 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
         ? { kind: "satisfied" }
         : {
             kind: "pending",
-            reason: `${category} exact proof chunks exist but are not release-final`,
+            reason: `${category} exact proof chunks exist but are not authenticated on the current chain`,
           };
     },
     capture: async ({ headerHash, action, artifact }) => {
@@ -983,7 +989,14 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
         }),
       };
     },
-    reconcile: async ({ headerHash, action, txHash, durableRecovery }) => {
+    reconcile: async ({
+      headerHash,
+      action,
+      txHash,
+      durableRecovery,
+      signedTransactionCborHex,
+      authorizeResubmission,
+    }) => {
       let required: ProofChunkRequirement;
       try {
         required = requirementFromJournaledAction({
@@ -1024,9 +1037,18 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
           reason: `${category} proof-chunk transaction did not produce its exact complete output set`,
         };
       }
-      // Release-final absence does not establish rejection or expiry of a
+      // Current-chain absence does not establish rejection or expiry of a
       // submitted publication. Preserve its exact journaled output set.
-      return { kind: "pending", txHash };
+      return signedTransactionCborHex === undefined ||
+        publications.observeSignedTransaction === undefined
+        ? { kind: "pending", txHash }
+        : reconcileSignedWorkflowTransaction({
+            transactionHash: txHash,
+            signedTransactionCborHex,
+            observe: publications.observeSignedTransaction,
+            rebroadcast: publications.rebroadcastSignedTransaction,
+            authorizeResubmission,
+          });
     },
   };
   return Object.freeze(port);
@@ -1128,7 +1150,7 @@ export const withProofChunkPrerequisite = <
           entries: context.entries,
         });
         if (inspection.kind === "required" || inspection.kind === "pending") {
-          throw new Error(
+          throw new WorkflowActionChangedError(
             `${category} proof step cannot bypass its direct-first carriage decision`,
           );
         }
@@ -1143,7 +1165,9 @@ export const withProofChunkPrerequisite = <
       }
       const observed = await base.observe(context);
       if (observed.kind !== "action_required") {
-        throw new Error(`${category} proof carriage has no current base step`);
+        throw new WorkflowActionChangedError(
+          `${category} proof carriage has no current base step`,
+        );
       }
       const inspection = await prerequisite.inspect({
         headerHash: context.identity.target.headerHash,
@@ -1155,7 +1179,7 @@ export const withProofChunkPrerequisite = <
         inspection.kind !== "required" ||
         !sameJson(inspection.action, context.action)
       ) {
-        throw new Error(
+        throw new WorkflowActionChangedError(
           `${category} proof carriage differs from the current requirement`,
         );
       }
@@ -1335,6 +1359,12 @@ export const withProofChunkPrerequisite = <
           artifact: context.artifact,
           entries: context.entries,
           action: recovery.baseAction,
+          ...(context.signedTransactionCborHex === undefined
+            ? {}
+            : { signedTransactionCborHex: context.signedTransactionCborHex }),
+          ...(context.authorizeResubmission === undefined
+            ? {}
+            : { authorizeResubmission: context.authorizeResubmission }),
           ...(context.txHash === undefined ? {} : { txHash: context.txHash }),
           ...(recovery.baseDurableRecovery === undefined
             ? {}
@@ -1343,6 +1373,12 @@ export const withProofChunkPrerequisite = <
       }
       return await prerequisite.reconcile({
         headerHash: context.identity.target.headerHash,
+        ...(context.signedTransactionCborHex === undefined
+          ? {}
+          : { signedTransactionCborHex: context.signedTransactionCborHex }),
+        ...(context.authorizeResubmission === undefined
+          ? {}
+          : { authorizeResubmission: context.authorizeResubmission }),
         action: context.action,
         artifact: context.artifact,
         ...(context.txHash === undefined ? {} : { txHash: context.txHash }),

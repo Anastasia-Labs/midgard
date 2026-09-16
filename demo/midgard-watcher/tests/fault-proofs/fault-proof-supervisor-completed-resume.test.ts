@@ -130,6 +130,7 @@ const writeExecution = async (
   root: string,
   decision: Awaited<ReturnType<typeof classifyDoubleSpend>>,
   completed: boolean,
+  preparedOnly = false,
 ): Promise<void> => {
   const identity = {
     schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
@@ -143,8 +144,8 @@ const writeExecution = async (
   const events: FraudProofWorkflowJournalEvent[] = [
     { kind: "started" },
     { kind: "prepared", artifact, artifactDigest: journalJsonDigest(artifact) },
-    ...submissionEvents("proof", PROOF_TX),
-    ...submissionEvents("remove", REMOVAL_TX),
+    ...(preparedOnly ? [] : submissionEvents("proof", PROOF_TX)),
+    ...(preparedOnly ? [] : submissionEvents("remove", REMOVAL_TX)),
     ...(completed
       ? [
           {
@@ -174,7 +175,7 @@ const writeExecution = async (
   }
 };
 
-const recover = async (completed: boolean) => {
+const recover = async (completed: boolean, rounds = 1) => {
   const root = await mkdtemp("/var/tmp/midgard-fault-supervisor-completed-");
   directories.push(root);
   const decision = await classifyDoubleSpend();
@@ -185,7 +186,7 @@ const recover = async (completed: boolean) => {
     deploymentFingerprint: deploymentIdentity.manifestId,
     run: async (job) => {
       ran += 1;
-      return job.mode;
+      return completed ? job.mode : { kind: "terminal_included" };
     },
   });
   // A live re-classification of the same header carries a fresh decision
@@ -194,17 +195,35 @@ const recover = async (completed: boolean) => {
     decision,
     rollbackGeneration: "3",
   });
-  const recovered = await supervisor.recoverExisting(
-    decision,
-    controller.permit,
-    Object.freeze({
-      headerHash: decision.headerHash,
-      headerEndTimeMs: "0",
-      maturityAtMs: "604800000",
-      latestSafeStartAtMs: "302400000",
-    }),
-    "3",
-  );
+  let recovered = 0;
+  for (let round = 0; round < rounds; round += 1) {
+    recovered =
+      round === 0
+        ? await supervisor.recoverExisting(
+            decision,
+            controller.permit,
+            Object.freeze({
+              headerHash: decision.headerHash,
+              headerEndTimeMs: "0",
+              maturityAtMs: "604800000",
+              latestSafeStartAtMs: "302400000",
+            }),
+            "3",
+          )
+        : (await supervisor.unsafeScheduleForTest({
+            mode: "resume",
+            category: "doubleSpend",
+            headerHash: decision.headerHash,
+            decisionDigest: decision.decisionDigest,
+            rollbackGeneration: "3",
+            observationRevision: String(round),
+          }),
+          1);
+    await vi.waitFor(() => {
+      expect(supervisor.status().activeJob).toBeNull();
+      expect(supervisor.status().queuedJobCount).toBe(0);
+    });
+  }
   await supervisor.close();
   return { recovered, ran, status: supervisor.status() };
 };
@@ -218,6 +237,78 @@ describe("fault-proof supervisor over a completed execution", () => {
       phase: "closed",
       queuedJobCount: 0,
     });
+  }, 60_000);
+
+  it("reconciles a provisionally finished execution again on later observations", async () => {
+    const outcome = await recover(false, 2);
+    expect(outcome.ran).toBe(2);
+    expect(outcome.status.queuedJobCount).toBe(0);
+  }, 60_000);
+
+  it("reopens a yielded prepared objective only when a later observation schedules it", async () => {
+    const root = await mkdtemp("/var/tmp/midgard-fault-supervisor-yielded-");
+    directories.push(root);
+    const decision = await classifyDoubleSpend();
+    await writeExecution(root, decision, false, true);
+    const run = vi.fn(async (_job: { mode: "run" | "resume" }) => ({
+      kind: "pending",
+      resumeOnObservation: true,
+    }));
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: deploymentIdentity.manifestId,
+      run,
+    });
+    const controller = createWorkflowActuationPermitController({
+      decision,
+      rollbackGeneration: "3",
+    });
+    const observe = async () =>
+      await supervisor.recoverExisting(
+        decision,
+        controller.permit,
+        {
+          headerHash: decision.headerHash,
+          headerEndTimeMs: "0",
+          maturityAtMs: "604800000",
+          latestSafeStartAtMs: "302400000",
+        },
+        "3",
+      );
+    try {
+      await observe();
+      await vi.waitFor(() => {
+        expect(run).toHaveBeenCalledTimes(1);
+        expect(supervisor.status().activeJob).toBeNull();
+        expect(supervisor.status().queuedJobCount).toBe(0);
+      });
+      // Draining runnable work does not schedule another invocation by itself.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(run).toHaveBeenCalledTimes(1);
+      await observe();
+      // Repeating the same canonical observation cannot create a busy loop.
+      expect(run).toHaveBeenCalledTimes(1);
+      await supervisor.unsafeScheduleForTest({
+        mode: "resume",
+        category: "doubleSpend",
+        headerHash: decision.headerHash,
+        decisionDigest: decision.decisionDigest,
+        rollbackGeneration: "3",
+        observationRevision: "next-canonical-observation",
+      });
+      await vi.waitFor(() => {
+        expect(run).toHaveBeenCalledTimes(2);
+        expect(supervisor.status().activeJob).toBeNull();
+        expect(supervisor.status().queuedJobCount).toBe(0);
+      });
+      expect(supervisor.status().phase).toBe("accepting");
+      expect(run.mock.calls.map(([job]) => job.mode)).toEqual([
+        "resume",
+        "resume",
+      ]);
+    } finally {
+      await supervisor.close();
+    }
   }, 60_000);
 
   it("still resumes an execution that has not completed", async () => {

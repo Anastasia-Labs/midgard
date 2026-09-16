@@ -53,7 +53,10 @@ import {
   resolveDirectFirstProofChunks,
   withProofChunkPrerequisite,
 } from "../workflow/proof-chunk-prerequisite.js";
-import { fraudProofRawL1SnapshotRequestForFamily } from "../workflow/raw-l1-family-derivation.js";
+import {
+  deriveFraudProofRawL1FamilyStage,
+  fraudProofRawL1SnapshotRequestForFamily,
+} from "../workflow/raw-l1-family-derivation.js";
 import {
   admitFraudProofRawL1Snapshot,
   type FraudProofRawL1ComputationStepRole,
@@ -261,6 +264,7 @@ export const createManifestBoundValueConservationWorkflow = async (
       value: await l1.rawL1.capture(request),
       request,
       releaseFinality: binding.releaseFinality,
+      observationDepth: "inclusion",
     });
   };
   const cache = new Map<
@@ -329,7 +333,14 @@ export const createManifestBoundValueConservationWorkflow = async (
       admitted.headerHash !== config.headerHash
     )
       throw new Error("value conservation: workflow identity changed");
-    const { stage } = await l1.observe({ headerHash: config.headerHash });
+    // The pending fold may be included between captures. Its stage and datum
+    // must therefore come from the same authenticated chain boundary.
+    const observed = await snapshot();
+    const stage = await deriveFraudProofRawL1FamilyStage({
+      snapshot: observed,
+      definition,
+      releaseEconomics: binding.releaseEconomics,
+    });
     if (stage.kind === "removed")
       return { kind: "completed", terminal: stage.terminal };
     if (stage.kind === "not_started")
@@ -355,7 +366,7 @@ export const createManifestBoundValueConservationWorkflow = async (
           },
         },
       };
-    const raw = (await snapshot()).scopes
+    const raw = observed.scopes
       .flatMap((scope) => scope.utxos)
       .find((utxo) => utxo.outRef === stage.threadOutRef);
     if (raw === undefined)

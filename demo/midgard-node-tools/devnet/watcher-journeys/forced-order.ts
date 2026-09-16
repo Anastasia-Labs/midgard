@@ -12,6 +12,7 @@ import { Effect } from "effect";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import type { JourneyCategory } from "./fixture.js";
+import { reconcileSignedCommit } from "./signed-commit-reconciliation.js";
 import {
   createPreparedJourneyFixture,
   type JourneyFaultBuildInput,
@@ -29,7 +30,7 @@ type ForcedOrderCheckpoint = {
 };
 
 /** Stage the actual order consumed by a forced-verdict fixture and its control. */
-const publishJourneyForcedOrder = async (
+export const publishJourneyForcedOrder = async (
   input: JourneyFaultPreparationInput,
   submittedTxCbor: Buffer,
 ): Promise<SDK.OutputReference> => {
@@ -37,18 +38,25 @@ const publishJourneyForcedOrder = async (
   const { deployment, provider } = context;
   const { operatorLucid: lucid, contracts } = deployment;
   const checkpointPath = join(directory, "forced-order.json");
-  let checkpoint: ForcedOrderCheckpoint;
-  if (existsSync(checkpointPath)) {
-    checkpoint =
-      await readJourneyArtifact<ForcedOrderCheckpoint>(checkpointPath);
-    if (
-      checkpoint.deploymentFingerprint !== deployment.manifest.manifestId ||
-      checkpoint.submittedTxCbor !== submittedTxCbor.toString("hex")
-    )
-      throw new Error(
-        "Forced order checkpoint changed deployment or exact submitted transaction bytes",
-      );
-  } else {
+  const buildAttempt = async (): Promise<ForcedOrderCheckpoint> => {
+    // A fault's signed header already binds this order's identity. Only an
+    // unsigned preparation can choose a new nonce after authenticated retirement.
+    const stagedPath = join(directory, "staged.json");
+    if (existsSync(stagedPath)) {
+      const staged = await readJourneyArtifact<{
+        deploymentFingerprint: string;
+        signedCommit?: unknown;
+        commitTxHash?: unknown;
+      }>(stagedPath);
+      if (
+        staged.deploymentFingerprint !== deployment.manifest.manifestId ||
+        staged.signedCommit !== undefined ||
+        staged.commitTxHash !== undefined
+      )
+        throw new Error(
+          "Cannot replace a forced order bound by a signed or published fault commitment",
+        );
+    }
     lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));
     const nonceInput = (await lucid.wallet().getUtxos()).find(
       (utxo) =>
@@ -60,8 +68,6 @@ const publishJourneyForcedOrder = async (
     if (nonceInput === undefined)
       throw new Error("No ordinary funding input for forced order");
     const mintingReference = deployment.references.get("txOrderMint");
-    if (mintingReference === undefined)
-      throw new Error("Missing published tx-order minting reference");
     const refund = await Effect.runPromise(
       SDK.addressDataFromBech32(await lucid.wallet().address()),
     );
@@ -77,11 +83,15 @@ const publishJourneyForcedOrder = async (
         submittedTxCbor: submittedTxCbor.toString("hex"),
         nonceInput,
         refundAddress,
-        referenceScripts: { txOrderMinting: mintingReference },
+        // Tx-order references are optional in the deployment catalogue. The
+        // SDK otherwise attaches this deployment's exact minting policy.
+        ...(mintingReference === undefined
+          ? {}
+          : { referenceScripts: { txOrderMinting: mintingReference } }),
       }),
     );
     const signed = await order.tx.sign.withWallet().complete();
-    checkpoint = {
+    const checkpoint: ForcedOrderCheckpoint = {
       deploymentFingerprint: deployment.manifest.manifestId,
       submittedTxCbor: submittedTxCbor.toString("hex"),
       signedCbor: signed.toCBOR(),
@@ -89,57 +99,76 @@ const publishJourneyForcedOrder = async (
       metadata: order.metadata,
       confirmed: false,
     };
-    // Preserve the exact submission before sending it. A resumed attempt only
-    // ever submits these bytes; it cannot mint a new event from a fresh nonce.
+    const transaction = CML.Transaction.from_cbor_hex(checkpoint.signedCbor);
+    try {
+      if (
+        !transaction.is_valid() ||
+        CML.hash_transaction(transaction.body()).to_hex() !==
+          checkpoint.txHash ||
+        transaction.to_cbor_hex() !== checkpoint.signedCbor
+      )
+        throw new Error(
+          "Built forced-order bytes changed their transaction identity",
+        );
+    } finally {
+      transaction.free();
+    }
+    // Submit freshly built bytes immediately: their validity interval is short.
+    // Every retry/restart first reconciles the durable exact attempt below.
     await writeJourneyArtifact(checkpointPath, checkpoint);
-  }
+    onStage("forced order publication");
+    let accepted: string | undefined;
+    try {
+      accepted = await provider.submitTx(checkpoint.signedCbor);
+    } catch (cause) {
+      onStage(
+        `Forced order ${checkpoint.txHash} submission unresolved: ${String(cause)}`,
+      );
+    }
+    if (accepted !== undefined && accepted !== checkpoint.txHash)
+      throw new Error(
+        "Provider changed the signed forced-order transaction hash",
+      );
+    return checkpoint;
+  };
+  let checkpoint = existsSync(checkpointPath)
+    ? await readJourneyArtifact<ForcedOrderCheckpoint>(checkpointPath)
+    : await buildAttempt();
   if (
-    CML.hash_transaction(
-      CML.Transaction.from_cbor_hex(checkpoint.signedCbor).body(),
-    ).to_hex() !== checkpoint.txHash
+    checkpoint.deploymentFingerprint !== deployment.manifest.manifestId ||
+    checkpoint.submittedTxCbor !== submittedTxCbor.toString("hex")
   )
     throw new Error(
-      "Recorded forced-order bytes changed their transaction hash",
+      "Forced order checkpoint changed deployment or exact submitted transaction bytes",
     );
-  if (!checkpoint.confirmed) {
-    const outputs = await provider.getUtxosWithUnit(
-      contracts.txOrder.spendingScriptAddress,
-      checkpoint.metadata.txOrderAuthUnit,
-    );
-    if (outputs.length > 1)
-      throw new Error("Duplicate forced-order role token");
-    if (outputs.length === 0) {
-      onStage("forced order publication");
-      try {
-        const txHash = await provider.submitTx(checkpoint.signedCbor);
-        if (txHash !== checkpoint.txHash)
-          throw new Error(
-            "Provider changed the signed forced-order transaction hash",
-          );
-      } catch (cause) {
-        // The submission can have reached the node. Preserve the unresolved
-        // checkpoint so a caller reconciles it instead of creating a new order.
-        throw new Error(
-          `Forced order ${checkpoint.txHash} submission needs reconciliation`,
-          { cause },
-        );
-      }
+  for (;;) {
+    // Even a prior confirmed checkpoint must survive current canonical
+    // reobservation. Pending or unknown attempts retain their exact signed bytes.
+    const disposition = await reconcileSignedCommit({
+      attempt: { txHash: checkpoint.txHash, signedCbor: checkpoint.signedCbor },
+      readRecovery: input.readSignedCommitRecovery,
+      pollDelay: async () => {
+        await deployment.chain.delaySlots(1);
+      },
+      resubmit: async (signedCbor) => {
+        onStage("forced order publication");
+        return provider.submitTx(signedCbor);
+      },
+      onStage,
+    });
+    if (disposition.kind === "included") {
+      checkpoint.confirmed = true;
+      await writeJourneyArtifact(checkpointPath, checkpoint);
+      lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));
+      break;
     }
-    await provider.awaitTx(checkpoint.txHash, 500);
-    checkpoint.confirmed = true;
-    await writeJourneyArtifact(checkpointPath, checkpoint);
-    lucid.overrideUTxOs(await lucid.utxosAt(await lucid.wallet().address()));
+    onStage(
+      `Forced order ${checkpoint.txHash} retired: ${disposition.reason}; rebuilding from current wallet state`,
+    );
+    checkpoint = await buildAttempt();
   }
   onStage("forced order inclusion interval");
-  await deployment.chain.awaitSlot(
-    Math.max(
-      0,
-      Math.ceil(
-        (checkpoint.metadata.inclusionTime - deployment.chain.now()) /
-          context.customNetwork.slotConfig.slotLength,
-      ),
-    ),
-  );
+  await deployment.chain.awaitLedgerTime(checkpoint.metadata.inclusionTime);
   if (
     input.predecessor.header.endTime >=
     BigInt(checkpoint.metadata.inclusionTime)

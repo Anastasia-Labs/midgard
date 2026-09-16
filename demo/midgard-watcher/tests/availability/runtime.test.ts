@@ -11,7 +11,11 @@ import type { WatcherProcessConfig } from "../../src/runtime/process-config.js";
 
 // Keep the real serialized reconciliation and transition reporting; isolate
 // wallet, source admission and chain I/O, which have their own fixture suites.
-const io = vi.hoisted(() => ({ reconcile: vi.fn(), snapshot: vi.fn() }));
+const io = vi.hoisted(() => ({
+  reconcile: vi.fn(),
+  snapshot: vi.fn(),
+  payload: vi.fn(),
+}));
 vi.mock("@al-ft/midgard-core/availability-operation-journal", () => ({
   openAvailabilityOperationJournal: () => ({
     assertRunning() {},
@@ -46,7 +50,7 @@ vi.mock("../../src/indexers/authenticated-state-queue-observation.js", () => ({
 }));
 vi.mock("../../src/storage/retained-da-runtime.js", () => ({
   createWatcherRetainedDaRuntime: async () => ({
-    sources: [],
+    sources: [{ sourceId: "public", fetchPayloadByHeaderHash: io.payload }],
     async close() {},
   }),
   bindWatcherL1AvailabilityPayloadSource: () => ({ close() {} }),
@@ -67,6 +71,7 @@ vi.mock("../../src/availability/published-payload.js", () => ({
 const observation = (slot: number) =>
   ({
     observationDigest: String(slot),
+    deploymentIdentityDigest: "deployment",
     nativePoint: {
       slot: String(slot),
       blockNo: String(slot),
@@ -78,6 +83,7 @@ const observation = (slot: number) =>
   }) as unknown as WatcherAuthenticatedStateQueueObservation;
 const fixture = (
   onStatusTransition?: (event: WatcherAvailabilityStatusTransition) => void,
+  currentObservation?: () => WatcherAuthenticatedStateQueueObservation,
 ) =>
   createWatcherAvailabilityRuntime({
     config: {
@@ -99,12 +105,21 @@ const fixture = (
       manifestId: "deployment",
     } as VerifiedWatcherDeploymentIdentity,
     rawSource: {} as LocalKupmiosFraudProofRawSource,
+    ...(currentObservation === undefined
+      ? {}
+      : {
+          faultProofObservation: {
+            rawSource: {} as LocalKupmiosFraudProofRawSource,
+            currentObservation,
+          },
+        }),
     proverWalletAddress: "prover",
     ...(onStatusTransition === undefined ? {} : { onStatusTransition }),
   });
 
 beforeEach(() => {
   io.reconcile.mockReset().mockResolvedValue([]);
+  io.payload.mockReset().mockResolvedValue({ ok: true });
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -249,4 +264,154 @@ describe("availability reconciliation status transitions", () => {
     expect(runtime.status().detail).toBe("actual availability failure");
     await runtime.close();
   });
+});
+
+it("projects pending availability onto current inclusion without changing finalized actuation", async () => {
+  const finalized = {
+    ...observation(1),
+    finalizedHeaders: [
+      {
+        headerHash: "known",
+        daAvailability: { Attested: { da_bond_asset_name: "bond" } },
+      },
+      {
+        headerHash: "published",
+        daAvailability: {
+          Challenged: {
+            da_bond_asset_name: "bond",
+            challenge_asset_name: "challenge",
+          },
+        },
+      },
+      {
+        headerHash: "removed",
+        daAvailability: { Attested: { da_bond_asset_name: "bond" } },
+      },
+    ],
+  } as unknown as WatcherAuthenticatedStateQueueObservation;
+  let included = {
+    ...observation(2),
+    nativePoint: { ...observation(2).nativePoint, finalityDepth: "1" },
+    finalizedHeaders: [
+      {
+        headerHash: "known",
+        daAvailability: { Attested: { da_bond_asset_name: "bond" } },
+      },
+      {
+        headerHash: "published",
+        daAvailability: { Published: { terminal_commitment: "published" } },
+      },
+      {
+        headerHash: "new-challenge",
+        daAvailability: {
+          Challenged: {
+            da_bond_asset_name: "bond",
+            challenge_asset_name: "challenge",
+          },
+        },
+      },
+      {
+        headerHash: "new-attested",
+        daAvailability: { Attested: { da_bond_asset_name: "bond" } },
+      },
+      { headerHash: "unattested", daAvailability: "Unattested" },
+    ],
+  } as unknown as WatcherAuthenticatedStateQueueObservation;
+  const runtime = await fixture(undefined, () => included);
+  // Pending state remains conservative when finalized intake cannot yet resolve.
+  io.reconcile.mockRejectedValueOnce(new Error("finalized intake unavailable"));
+  await runtime.reconcile(finalized, false);
+  const before = runtime.status();
+  expect(await runtime.pendingAvailabilityHeaders(included)).toEqual(
+    new Set(["known", "new-challenge"]),
+  );
+  expect(runtime.status()).toEqual(before);
+  expect(io.reconcile).toHaveBeenCalledTimes(1);
+  expect(io.reconcile.mock.calls[0]![0].minimumConfirmationDepth).toBe(30);
+  expect(await runtime.pendingAvailabilityHeaders(finalized)).toEqual(
+    new Set(["known", "published", "removed"]),
+  );
+  await expect(
+    runtime.pendingAvailabilityHeaders(observation(3)),
+  ).rejects.toThrow("current authenticated observation");
+  included = { ...included, deploymentIdentityDigest: "another-deployment" };
+  await expect(runtime.pendingAvailabilityHeaders(included)).rejects.toThrow(
+    "current authenticated observation",
+  );
+  included = { ...included, deploymentIdentityDigest: "deployment" };
+  runtime.invalidateForRollback();
+  await expect(runtime.pendingAvailabilityHeaders(included)).rejects.toThrow(
+    "current authenticated observation",
+  );
+  await runtime.close();
+});
+
+const includedAttestation = () =>
+  ({
+    ...observation(2),
+    nativePoint: { ...observation(2).nativePoint, finalityDepth: "1" },
+    finalizedHeaders: [
+      {
+        headerHash: "new",
+        daAvailability: { Attested: { da_bond_asset_name: "bond" } },
+      },
+    ],
+  }) as unknown as WatcherAuthenticatedStateQueueObservation;
+
+it.each(["not_found", "transport_error", "timeout"])(
+  "defers newly included attestation on public DA %s without waiting for finality",
+  async (status) => {
+    const included = includedAttestation();
+    const runtime = await fixture(undefined, () => included);
+    await runtime.reconcile(observation(1), false);
+    io.payload.mockResolvedValueOnce({ ok: false, attempts: [{ status }] });
+    expect(await runtime.pendingAvailabilityHeaders(included)).toEqual(
+      new Set(["new"]),
+    );
+    expect(await runtime.pendingAvailabilityHeaders(included)).toEqual(
+      new Set(),
+    );
+    expect(io.reconcile).toHaveBeenCalledTimes(1);
+    await runtime.close();
+  },
+);
+
+it.each(["invalid_content", "rejected", "conflict"])(
+  "leaves public DA %s to mandatory classifier verification",
+  async (status) => {
+    const included = includedAttestation();
+    const runtime = await fixture(undefined, () => included);
+    await runtime.reconcile(observation(1), false);
+    io.payload.mockResolvedValueOnce({ ok: false, attempts: [{ status }] });
+    expect(await runtime.pendingAvailabilityHeaders(included)).toEqual(
+      new Set(),
+    );
+    await runtime.close();
+  },
+);
+
+it("does not suppress unexpected public DA failures", async () => {
+  const included = includedAttestation();
+  const runtime = await fixture(undefined, () => included);
+  await runtime.reconcile(observation(1), false);
+  const failure = new Error("malformed payload");
+  io.payload.mockRejectedValueOnce(failure);
+  await expect(runtime.pendingAvailabilityHeaders(included)).rejects.toBe(
+    failure,
+  );
+  await runtime.close();
+});
+
+it("rejects inclusion classification revoked during public DA lookup", async () => {
+  const included = includedAttestation();
+  const runtime = await fixture(undefined, () => included);
+  await runtime.reconcile(observation(1), false);
+  io.payload.mockImplementationOnce(async () => {
+    runtime.invalidateForRollback();
+    return { ok: true };
+  });
+  await expect(runtime.pendingAvailabilityHeaders(included)).rejects.toThrow(
+    "current authenticated observation",
+  );
+  await runtime.close();
 });

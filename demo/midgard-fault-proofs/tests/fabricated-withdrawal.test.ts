@@ -71,6 +71,7 @@ import {
   createFabricatedWithdrawalEvidenceAuthority,
   requireFabricatedWithdrawalArtifact,
 } from "../src/workflow/fabricated-withdrawal-evidence.js";
+import { normalizeJournalJson } from "../src/workflow/journal.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -633,9 +634,13 @@ describe("fabricated-withdrawal production evidence authority", () => {
       expect(detections[0]!.artifact.authenticContent.eventDatumCbor).not.toBe(
         event.datum,
       );
-      await expect(authority.readmit(detections[0]!.artifact)).resolves.toEqual(
-        detections[0]!.artifact,
-      );
+      await expect(
+        authority.readmit(
+          JSON.parse(
+            JSON.stringify(normalizeJournalJson(detections[0]!.artifact)),
+          ),
+        ),
+      ).resolves.toEqual(detections[0]!.artifact);
       expect(queries).toContain(eventAddress);
       expect(queries).not.toContain(mintPolicyAddress);
       liveEventAddress = mintPolicyAddress;
@@ -666,7 +671,7 @@ describe("fabricated-withdrawal production evidence authority", () => {
     },
   );
 
-  it("derives and re-admits an authenticated live-identity fault", async () => {
+  it("roundtrips an authenticated live-identity fault through journal normalization", async () => {
     const fixture = await buildWithdrawalsBlockFixture({ leaves: [FI_LEAF] });
     const authority = createFabricatedWithdrawalEvidenceAuthority({
       lucid: {
@@ -693,7 +698,9 @@ describe("fabricated-withdrawal production evidence authority", () => {
       kind: "absent_identity",
       unspentOutRef: `${FABRICATED_WITHDRAWAL_ID.transactionId}#0`,
     });
-    const readmitted = await authority.readmit(detections[0]!.artifact);
+    const readmitted = await authority.readmit(
+      JSON.parse(JSON.stringify(normalizeJournalJson(detections[0]!.artifact))),
+    );
     expect(
       requireFabricatedWithdrawalArtifact(
         readmitted,
@@ -701,6 +708,17 @@ describe("fabricated-withdrawal production evidence authority", () => {
         fixture.headerHash,
       ),
     ).toBe(readmitted);
+    await expect(
+      authority.readmit(
+        normalizeJournalJson({
+          ...readmitted,
+          withdrawalInclusion: {
+            ...readmitted.withdrawalInclusion,
+            withdrawalsPhasRoot: h32(0x77),
+          },
+        }),
+      ),
+    ).rejects.toThrow(/digest mismatch/u);
     await expect(
       authority.readmit({ ...readmitted, withdrawalIndex: 1 }),
     ).rejects.toThrow(/digest mismatch/u);

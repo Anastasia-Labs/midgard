@@ -114,16 +114,17 @@ to `fundingAddress`; the request accepts at most 128 funding inputs.
 All routes below require the `x-midgard-admin-key` header matching
 `ADMIN_API_KEY`.
 
-| Method | Route                      | Purpose                                                                                                                                   |
-| ------ | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`  | `/init`                    | Initialize protocol state when startup policy and on-chain topology allow it. Refuses over invalid existing topology.                     |
-| `GET`  | `/commit`                  | Trigger a manual block commitment.                                                                                                        |
-| `GET`  | `/merge`                   | Trigger a manual merge of the oldest queued block into confirmed state.                                                                   |
-| `GET`  | `/stateQueue`              | Log and return the current ordered state-queue headers plus merge-readiness.                                                              |
-| `GET`  | `/stateQueueMutationLease` | Inspect the state-queue mutation lease (`?recent_limit=...`).                                                                             |
-| `POST` | `/stateQueueMutationLease` | Coordinate external state-queue mutators (`inspect`, `acquire`, `renew`, `release`, `fail`) for flows such as manual fault-proof removal. |
-| `GET`  | `/logBlocksDB`             | Log a compact summary of block-link rows.                                                                                                 |
-| `GET`  | `/logGlobals`              | Log the current process-global coordination state.                                                                                        |
+| Method | Route                      | Purpose                                                                                                                                                                               |
+| ------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/init`                    | Initialize protocol state when startup policy and on-chain topology allow it. Refuses over invalid existing topology.                                                                 |
+| `GET`  | `/commit`                  | Trigger a manual block commitment.                                                                                                                                                    |
+| `GET`  | `/merge`                   | Trigger a manual merge of the oldest queued block into confirmed state.                                                                                                               |
+| `GET`  | `/stateQueue`              | Log and return the current ordered state-queue headers plus merge-readiness.                                                                                                          |
+| `GET`  | `/stateQueueMutationLease` | Inspect the state-queue mutation lease (`?recent_limit=...`).                                                                                                                         |
+| `POST` | `/stateQueueMutationLease` | Coordinate external state-queue mutators (`inspect`, `acquire`, `renew`, `release`, `fail`) for flows such as manual fault-proof removal.                                             |
+| `GET`  | `/logBlocksDB`             | Log a compact summary of block-link rows.                                                                                                                                             |
+| `GET`  | `/logGlobals`              | Log the current process-global coordination state.                                                                                                                                    |
+| `GET`  | `/operator/status`         | Return the node operator's directory status (`?operatorKeyHash=` for another key); same JSON as `operator-status`. See [Operator Lifecycle](/docs/operators/node/operator-lifecycle). |
 
 <Callout type="info" title="The mutation lease is a safety interlock">
   The state-queue mutation lease is a mutual-exclusion token. External mutators

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   loadWatcherVerifiedDeploymentAuthority,
   parseWatcherConfig,
+  parseWatcherProcessConfig,
 } from "midgard-watcher";
 import { expect, it } from "vitest";
 
@@ -23,13 +24,16 @@ it.skipIf(runDirectory === undefined)(
   async () => {
     const context = await loadJourneyContext(runDirectory!);
     const directory = join(runDirectory!, "work/journeys/transition-trace");
-    const authority = await loadWatcherVerifiedDeploymentAuthority({
-      path: join(directory, "deployment-authority.json"),
-      ruleBundlePath: join(directory, "rules.json"),
-    });
-    const config = JSON.parse(
-      await readFile(join(directory, "watcher.json"), "utf8"),
+    const processConfig = parseWatcherProcessConfig(
+      JSON.parse(
+        await readFile(join(directory, "watcher-process.json"), "utf8"),
+      ),
     );
+    const authority = await loadWatcherVerifiedDeploymentAuthority({
+      path: processConfig.deploymentAuthorityPath,
+      ruleBundlePath: processConfig.ruleBundlePath,
+    });
+    const config = processConfig.watcherConfig;
     const staged = await readJourneyArtifact<{
       predecessor: RetainedBlock;
       current: RetainedBlock;

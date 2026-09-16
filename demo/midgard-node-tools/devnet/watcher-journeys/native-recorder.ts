@@ -10,6 +10,7 @@ import {
   watcherNativeChainSyncAuthorityDetails,
   type WatcherNativeChainSyncEvent,
 } from "midgard-watcher";
+import { NativeTransactionNotIncludedError } from "midgard-watcher/tests/support/published-da-target-consumption";
 
 export const startJourneyNativeRecorder = async (input: {
   directory: string;
@@ -23,6 +24,7 @@ export const startJourneyNativeRecorder = async (input: {
     >["point"],
   ): Promise<void>;
 }) => {
+  const nativeEvidencePath = join(input.directory, "native-chain.ndjson");
   const transactions = new Map<
     string,
     {
@@ -31,6 +33,7 @@ export const startJourneyNativeRecorder = async (input: {
     }
   >();
   let failure: unknown;
+  let rollbackGeneration = 0;
   let latestTip: WatcherNativeChainSyncEvent["tip"] | undefined;
   let latestBlockNo: bigint | undefined;
   const native = await startWatcherNativeChainSync({
@@ -39,13 +42,11 @@ export const startJourneyNativeRecorder = async (input: {
     intersection: { kind: "origin" },
     startupTimeoutMs: 30_000,
     onEvent: async (event) => {
-      await appendFile(
-        join(input.directory, "native-chain.ndjson"),
-        `${JSON.stringify(event)}\n`,
-      );
+      // Revoke the discarded fork's height before any journal or recovery I/O.
+      // The next admitted forward block establishes a canonical height again.
       if (event.kind === "roll_backward") {
-        latestTip = event.tip;
-        await input.onRollback?.(event.point);
+        latestBlockNo = undefined;
+        rollbackGeneration += 1;
         for (const [id, { point }] of transactions) {
           if (
             event.point.kind === "origin" ||
@@ -55,11 +56,14 @@ export const startJourneyNativeRecorder = async (input: {
           )
             transactions.delete(id);
         }
+      }
+      latestTip = event.tip;
+      await appendFile(nativeEvidencePath, `${JSON.stringify(event)}\n`);
+      if (event.kind === "roll_backward") {
+        await input.onRollback?.(event.point);
         return;
       }
       const block = admitWatcherNativeRollForwardBlock(event);
-      latestTip = event.tip;
-      latestBlockNo = BigInt(block.blockNo);
       await input.onBlock?.(block);
       const point = {
         blockHash: block.blockHash,
@@ -69,6 +73,7 @@ export const startJourneyNativeRecorder = async (input: {
       block.transactionIds.forEach((id, index) =>
         transactions.set(id, { cbor: block.transactionCbors[index]!, point }),
       );
+      latestBlockNo = BigInt(block.blockNo);
     },
   });
   void native.done.catch((cause) => {
@@ -79,7 +84,9 @@ export const startJourneyNativeRecorder = async (input: {
       throw new Error("Independent native recorder failed", { cause: failure });
   };
   return {
+    nativeEvidencePath,
     assertHealthy,
+    observedBlockNo: () => latestBlockNo,
     tip: () => {
       assertHealthy();
       const authority = watcherNativeChainSyncAuthorityDetails(
@@ -99,8 +106,15 @@ export const startJourneyNativeRecorder = async (input: {
       // The recorder replays from origin, so a transaction a resumed stage
       // already submitted is only missing once the replay has reached the tip.
       let deadline: number | undefined;
+      let generation = rollbackGeneration;
       for (;;) {
         assertHealthy();
+        if (watcherNativeChainSyncAuthorityDetails(native.authority) === null)
+          throw new Error("Native recorder transaction authority is inactive");
+        if (generation !== rollbackGeneration) {
+          deadline = undefined;
+          generation = rollbackGeneration;
+        }
         const transaction = transactions.get(txHash);
         if (transaction !== undefined) return transaction;
         if (
@@ -108,13 +122,14 @@ export const startJourneyNativeRecorder = async (input: {
           latestTip.kind !== "origin" &&
           latestBlockNo !== undefined &&
           latestBlockNo >= BigInt(latestTip.blockNo)
-        )
+        ) {
           deadline ??= Date.now() + 90_000;
-        if (deadline !== undefined && Date.now() >= deadline)
-          throw new Error(`Native node did not include transaction ${txHash}`);
+          if (Date.now() >= deadline)
+            throw new NativeTransactionNotIncludedError(txHash);
+        } else deadline = undefined;
         await pause(250);
       }
     },
     close: native.close,
-  };
+  } as const;
 };

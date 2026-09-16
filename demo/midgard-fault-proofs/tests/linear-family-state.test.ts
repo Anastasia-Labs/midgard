@@ -60,6 +60,101 @@ const terminal = (
 });
 
 describe("production linear family authenticated state machine V1", () => {
+  it("recovers a changed header reference only while the exact computation step remains current", async () => {
+    const initial = linearFamilyObservation({
+      category: "committedFieldShape",
+      headerHash,
+      provenance,
+      stage: {
+        kind: "step",
+        step: 1,
+        threadOutRef: outRef("11"),
+        stateQueueBlockOutRef: outRef("10"),
+      },
+    });
+    if (initial.kind !== "action_required") throw new Error("missing step");
+    const input = {
+      category: "committedFieldShape",
+      headerHash,
+      provenance,
+      action: initial.action,
+      txHash: hash("55"),
+      stage: {
+        kind: "step",
+        step: 1,
+        threadOutRef: outRef("11"),
+        stateQueueBlockOutRef: outRef("20"),
+      },
+      transactionConfirmed: async () => false,
+    } as const;
+    await expect(reconcileLinearFamilyAction(input)).resolves.toEqual({
+      kind: "pending",
+      txHash: hash("55"),
+    });
+    const recovery = {
+      ...input,
+      recoverUnconfirmedTransaction: async () =>
+        ({ kind: "not_found" }) as const,
+    };
+    await expect(reconcileLinearFamilyAction(recovery)).resolves.toEqual({
+      kind: "not_found",
+    });
+    await expect(
+      reconcileLinearFamilyAction({
+        ...recovery,
+        stage: { ...input.stage, threadOutRef: outRef("12") },
+      }),
+    ).resolves.toMatchObject({ kind: "conflict" });
+    await expect(
+      reconcileLinearFamilyAction({
+        ...recovery,
+        stage: { ...input.stage, step: 2 },
+      }),
+    ).resolves.toMatchObject({ kind: "conflict" });
+    await expect(
+      reconcileLinearFamilyAction({
+        ...recovery,
+        transactionConfirmed: async () => true,
+      }),
+    ).resolves.toMatchObject({ kind: "conflict" });
+  });
+
+  it("reconciles signed init after DA apply recreates the same header at another outref", async () => {
+    const initial = linearFamilyObservation({
+      category: "committedFieldShape",
+      headerHash,
+      provenance,
+      stage: { kind: "not_started", stateQueueBlockOutRef: outRef("10") },
+    });
+    if (initial.kind !== "action_required") throw new Error("missing init");
+    const input = {
+      category: "committedFieldShape",
+      headerHash,
+      provenance,
+      action: initial.action,
+      txHash: hash("55"),
+      stage: { kind: "not_started", stateQueueBlockOutRef: outRef("20") },
+      transactionConfirmed: async () => false,
+    } as const;
+    await expect(reconcileLinearFamilyAction(input)).resolves.toEqual({
+      kind: "pending",
+      txHash: hash("55"),
+    });
+    await expect(
+      reconcileLinearFamilyAction({
+        ...input,
+        recoverUnconfirmedTransaction: async () => ({ kind: "not_found" }),
+      }),
+    ).resolves.toEqual({ kind: "not_found" });
+    await expect(
+      reconcileLinearFamilyAction({
+        ...input,
+        transactionConfirmed: async () => true,
+        recoverUnconfirmedTransaction: async () => ({ kind: "not_found" }),
+      }),
+    ).resolves.toMatchObject({ kind: "conflict" });
+  });
+
   it("keeps known transactions pending while finalized state is unchanged", async () => {
     for (const stage of [
       { kind: "not_started" as const, stateQueueBlockOutRef: outRef("10") },

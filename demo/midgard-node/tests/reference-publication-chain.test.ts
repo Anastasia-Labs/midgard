@@ -29,7 +29,7 @@ const fixture = async (count = 5, largeReferences = false) => {
   const emulator = new Emulator([account]);
   const lucid = await Lucid(emulator, "Custom");
   lucid.selectWallet.fromSeed(account.seedPhrase);
-  const authPolicy = SDK.createReferenceScriptAuthPolicy(
+  const authPolicy = await SDK.createReferenceScriptAuthPolicy(
     lucid,
     emulator.now(),
     900_137,

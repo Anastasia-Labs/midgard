@@ -12,7 +12,7 @@ import {
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import type { JourneyFixture } from "./fixture.js";
 import { verifyTransitionTraceJourneyOutputPlan } from "./journey-timing.js";
-import { JOURNEY_FINALITY_DEPTH } from "./live-context.js";
+import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 
 export const transitionTraceJourneyFixture: JourneyFixture = {
   category: "transitionTrace",
@@ -35,7 +35,9 @@ export const transitionTraceJourneyFixture: JourneyFixture = {
       onCheckpoint: (checkpoint) =>
         writeJourneyArtifact(checkpointPath, checkpoint),
       timeoutCorrectionJournalPath: join(directory, "timeout-correction.json"),
-      finalityDepth: JOURNEY_FINALITY_DEPTH,
+      // The watcher observes the queue at its action depth, so the abandoned
+      // header removal only has to be that deep before the watcher starts.
+      finalityDepth: JOURNEY_ACTION_DEPTH,
     });
     const { depositEvent, depositMetadata } = staged.checkpoint;
     const datum = Data.from(depositEvent.datum!, SDK.DepositDatum);
@@ -65,6 +67,11 @@ export const transitionTraceJourneyFixture: JourneyFixture = {
     await writeJourneyArtifact(checkpointPath, staged.checkpoint);
     await retain(staged.predecessor, staged.commits[0]!);
     await retain(staged.current, staged.commits[1]!);
-    return staged;
+    // The trace attests inline and fails on any other outcome, so the target
+    // is attested whenever staging returns; its commit identifies the header.
+    return {
+      ...staged,
+      target: { kind: "attested", txHash: staged.commits[1]! },
+    };
   },
 };

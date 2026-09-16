@@ -155,10 +155,6 @@ Acceptance is complete only when:
   `withdrawal_reserve_payout`, `forced_classification_directions`,
   `watcher_crash_rollback_matrix`, and
   `state_correction_final_reconciliation` are satisfied;
-- `state_correction_local_workflow_readiness` is satisfied by the compiled
-  production adapter registry, and `availability_challenge_readiness` is
-  satisfied by the authenticated deployment capability; the finalizer blocks
-  while any family adapter or Q58 capability is missing;
 - withdrawal order, reserve, payout init/add/conclude, exact destination/value,
   both forced-classification directions, and every named crash/rollback,
   inconsistency, DA, withholding, stale-manifest, and rewind drill are present;

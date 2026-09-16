@@ -19,7 +19,10 @@ import {
   admitMissingRedeemerArtifact,
   type MissingRedeemerArtifact,
 } from "./replay.js";
-import { planMissingRedeemerStagedWalk } from "./staged-plan.js";
+import {
+  createMissingRedeemerStagedPlanner,
+  planMissingRedeemerStagedWalk,
+} from "./staged-plan.js";
 import {
   submitMissingRedeemerStep02,
   submitMissingRedeemerStep02a,
@@ -63,6 +66,7 @@ export type BoundMissingRedeemerActuatorConfig = Readonly<{
   contracts: MissingRedeemerContracts;
   references: MissingRedeemerWorkflowReferences;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
+  planStagedWalk?: typeof planMissingRedeemerStagedWalk;
 }>;
 export type MissingRedeemerActuatorAction =
   | { readonly stage: "init"; readonly stateQueueBlockOutRef: string }
@@ -109,7 +113,9 @@ export const missingRedeemerFieldRequirement = ({
   artifact,
   owner,
   certificate,
+  planStagedWalk = planMissingRedeemerStagedWalk,
 }: {
+  readonly planStagedWalk?: typeof planMissingRedeemerStagedWalk;
   readonly action: MissingRedeemerActuatorAction;
   readonly artifact: unknown;
   readonly owner: string;
@@ -124,7 +130,7 @@ export const missingRedeemerFieldRequirement = ({
       evidence: admitted.evidence,
       nativeTxCompactCbor: admitted.nativeTxCompactCbor,
       witnessSetCompactCbor,
-      staged: planMissingRedeemerStagedWalk({
+      staged: planStagedWalk({
         transactionId: admitted.evidence.subject.transaction_id,
         fieldPreimageCbor: admitted.evidence.fieldPreimageHex,
       }),
@@ -139,8 +145,10 @@ export const missingRedeemerFieldRequirement = ({
 /** Concrete seven-role actuator; configuration contains infrastructure only. */
 export const createMissingRedeemerActuator = (
   config: BoundMissingRedeemerActuatorConfig,
-) =>
-  Object.freeze({
+) => {
+  const planStagedWalk =
+    config.planStagedWalk ?? createMissingRedeemerStagedPlanner();
+  return Object.freeze({
     capture: async ({
       action,
       artifact,
@@ -235,10 +243,11 @@ export const createMissingRedeemerActuator = (
             await submitMissingRedeemerStep02a(args);
           else await submitMissingRedeemerStep02b(args);
         });
-      const staged = planMissingRedeemerStagedWalk({
-        transactionId: artifact.evidence.subject.transaction_id,
-        fieldPreimageCbor: artifact.evidence.fieldPreimageHex,
-      });
+      const staged = () =>
+        planStagedWalk({
+          transactionId: artifact.evidence.subject.transaction_id,
+          fieldPreimageCbor: artifact.evidence.fieldPreimageHex,
+        });
       if (action.stage === "field")
         return await capture(async (preSubmitBoundary) => {
           await submitMissingRedeemerStep03({
@@ -246,7 +255,7 @@ export const createMissingRedeemerActuator = (
             nativeTxCompactCbor: artifact.nativeTxCompactCbor,
             witnessSetCompactCbor:
               artifact.authentication.control.witness_set_compact_cbor,
-            staged,
+            staged: staged(),
             action: action.action,
             referenceScriptUtxo: config.references.steps[4],
             preSubmitBoundary,
@@ -260,7 +269,7 @@ export const createMissingRedeemerActuator = (
             nativeTxCompactCbor: artifact.nativeTxCompactCbor,
             witnessSetCompactCbor:
               artifact.authentication.control.witness_set_compact_cbor,
-            staged,
+            staged: staged(),
             referenceScriptUtxo: config.references.steps[5],
             preSubmitBoundary,
             awaitConfirmation: false,
@@ -300,20 +309,7 @@ export const createMissingRedeemerActuator = (
       if (action.stage !== "remove")
         throw new Error("missingRedeemer actuator action is unsupported");
       return await captureCursorRemoval({
-        category: {
-          name: MISSING_REDEEMER_CATEGORY,
-          categoryId,
-          firstStepDeploymentEntry: "fraudProofMissingRedeemer",
-          firstStepScriptHash: config.contracts.steps[0].spendingScriptHash,
-          fraudProof: {
-            policyId: config.contracts.fraudProof.policyId,
-            spendingScriptHash:
-              config.binding.resolvedContracts.contracts.fraudProof
-                .spendingScriptHash,
-            spendingScriptAddress:
-              config.contracts.fraudProof.spendingScriptAddress,
-          },
-        } as never,
+        category: MISSING_REDEEMER_CATEGORY,
         lucid: config.lucid,
         blueprint: config.binding.blueprint,
         deploymentInfo: config.binding.deploymentInfo,
@@ -335,3 +331,4 @@ export const createMissingRedeemerActuator = (
       });
     },
   });
+};

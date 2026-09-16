@@ -563,7 +563,7 @@ export const makeFixture = async (): Promise<EmulatorFixture> => {
     throw new Error("Expected operator wallet to expose a nonce UTxO");
   }
 
-  const referenceScriptAuth = createReferenceScriptAuthPolicy(
+  const referenceScriptAuth = await createReferenceScriptAuthPolicy(
     referenceScriptsLucid,
     emulator.now(),
     EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,

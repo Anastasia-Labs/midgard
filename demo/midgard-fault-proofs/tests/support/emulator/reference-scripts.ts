@@ -93,7 +93,9 @@ export const publishAuthenticatedValidationDisputeControl = async ({
     readonly name: ReferenceScriptAuthTokenTarget;
     readonly script: Script;
   };
-  readonly authPolicy: ReturnType<typeof createReferenceScriptAuthPolicy>;
+  readonly authPolicy: Awaited<
+    ReturnType<typeof createReferenceScriptAuthPolicy>
+  >;
 }) => {
   const selectedFundingInputs = selectReferenceScriptFundingUtxos(
     await lucid.wallet().getUtxos(),
@@ -166,7 +168,7 @@ export const publishValidationDisputeReferenceScript = async ({
   return publishAuthenticatedValidationDisputeControl({
     lucid,
     target,
-    authPolicy: createReferenceScriptAuthPolicy(lucid, now),
+    authPolicy: await createReferenceScriptAuthPolicy(lucid, now),
   });
 };
 
@@ -209,8 +211,8 @@ export const publishStateQueueYieldReferenceScript = async ({
   return publishAuthenticatedValidationDisputeControl({
     lucid,
     target: targetByArm[arm],
-    authPolicy: contracts.referenceScriptAuth as ReturnType<
-      typeof createReferenceScriptAuthPolicy
+    authPolicy: contracts.referenceScriptAuth as Awaited<
+      ReturnType<typeof createReferenceScriptAuthPolicy>
     >,
   });
 };
@@ -291,8 +293,8 @@ export const publishMinAdaYieldReferenceScripts = async ({
     const published = await publishAuthenticatedValidationDisputeControl({
       lucid,
       target,
-      authPolicy: contracts.referenceScriptAuth as ReturnType<
-        typeof createReferenceScriptAuthPolicy
+      authPolicy: contracts.referenceScriptAuth as Awaited<
+        ReturnType<typeof createReferenceScriptAuthPolicy>
       >,
     });
     publications[target.key] = {

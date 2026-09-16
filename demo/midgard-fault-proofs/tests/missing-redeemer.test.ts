@@ -24,6 +24,7 @@ import {
 } from "../src/missing-redeemer/family.js";
 import { decodeMissingRedeemerStageTenControl } from "../src/missing-redeemer/retained-stage-ten.js";
 import {
+  createMissingRedeemerStagedPlanner,
   encodeMissingRedeemerWalkCheckpoint,
   hashMissingRedeemerWalkCheckpoint,
   planMissingRedeemerStagedWalk,
@@ -209,6 +210,42 @@ describe("missingRedeemer V1", () => {
     expect(() =>
       decodeMissingRedeemerStageTenControl(encodeCbor([10n])),
     ).toThrow(/exact stage 10/u);
+  });
+  it("reuses only the exact walk inputs and isolates mutable item bytes", () => {
+    const plan = createMissingRedeemerStagedPlanner();
+    const input = {
+      transactionId: txId,
+      fieldPreimageCbor: field([
+        [0, 1],
+        [0, 2],
+      ]).toString("hex"),
+    };
+    const first = plan(input);
+    const second = plan({ ...input, itemBudget: 16 });
+    expect(second).toEqual(first);
+    expect(second.initialGrammar).toBe(first.initialGrammar);
+    first.items[0]!.fill(0);
+    expect(plan(input).items).toEqual(
+      planMissingRedeemerStagedWalk(input).items,
+    );
+    expect(Object.isFrozen(first.initialGrammar)).toBe(true);
+    expect(Object.isFrozen(first.grammar[0])).toBe(true);
+    const newId = plan({ ...input, transactionId: "11".repeat(32) });
+    expect(newId.initialGrammar.txId).toBe("11".repeat(32));
+    expect(newId.initialGrammar).not.toBe(second.initialGrammar);
+    const changedField = plan({
+      ...input,
+      fieldPreimageCbor: field([[0, 3]]).toString("hex"),
+    });
+    expect(changedField.items).toHaveLength(1);
+    const changedBudget = plan({ ...input, itemBudget: 1 });
+    expect(changedBudget.grammar).toHaveLength(2);
+    expect(() => plan({ ...input, itemBudget: 0 })).toThrow("item budget");
+    expect(() => plan({ ...input, fieldPreimageCbor: "ff" })).toThrow();
+    expect(plan(input)).toEqual(planMissingRedeemerStagedWalk(input));
+    expect(createMissingRedeemerStagedPlanner()(input).initialGrammar).not.toBe(
+      plan(input).initialGrammar,
+    );
   });
   it("builds canonical field-8 grammar/walk checkpoints through every batch", () => {
     const bytes = field(

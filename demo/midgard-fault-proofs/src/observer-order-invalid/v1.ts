@@ -19,7 +19,7 @@ import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scr
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
-  workflowActuationDecisionDigest,
+  workflowActuationAuthorizingDecisionDigest,
   workflowJournalIsReconciliationOnly,
 } from "../workflow/actuation-permit.js";
 import {
@@ -455,7 +455,10 @@ export const executeManifestBoundObserverOrderInvalidWorkflow = async ({
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
 }): Promise<FraudProofWorkflowRunResult> => {
-  if (workflowActuationDecisionDigest(journal) !== workflow.decisionDigest)
+  if (
+    workflowActuationAuthorizingDecisionDigest(journal) !==
+    workflow.decisionDigest
+  )
     throw new Error("observerOrderInvalid journal changed decision digest");
   if (workflowJournalIsReconciliationOnly(journal))
     return await resumeRecordedFraudProofWorkflow({

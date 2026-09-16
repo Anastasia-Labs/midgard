@@ -2,6 +2,7 @@
  * and authority bytes stay unchanged; roots reference shared immutable records.
  * This is a storage codec, not a second validation or checkpoint authority. */
 import {
+  readValidatedWatcherDurableStoreCaches,
   rebuildWatcherDurableCaches,
   watcherCanonicalJson,
   type WatcherDurableRecords,
@@ -118,12 +119,14 @@ export const encodeWatcherDurableRecord = (
     }
     // Positional caches shift when sorted records receive an insertion. They
     // are reproducible indexes, not another set of retained evidence.
-    const caches = rebuildWatcherDurableCaches({
-      deploymentMarker: input.deploymentMarker,
-      ...Object.fromEntries(
-        RECORD_FIELDS.map((field) => [field, input[field]]),
-      ),
-    } as WatcherDurableStore);
+    const caches =
+      readValidatedWatcherDurableStoreCaches(input) ??
+      rebuildWatcherDurableCaches({
+        deploymentMarker: input.deploymentMarker,
+        ...Object.fromEntries(
+          RECORD_FIELDS.map((field) => [field, input[field]]),
+        ),
+      } as WatcherDurableStore);
     if (watcherCanonicalJson(caches) !== watcherCanonicalJson(input.caches))
       throw new Error("watcher stored cache source digest mismatch");
     const { entries: _entries, ...cacheMetadata } = caches;

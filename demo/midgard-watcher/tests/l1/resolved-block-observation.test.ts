@@ -240,6 +240,48 @@ beforeEach(() => {
 });
 
 describe("shared resolved block observation owner", () => {
+  it("authenticates included transaction bytes without granting release finality", async () => {
+    const current = await fixture();
+    const included = {
+      ...current.input.localObservation,
+      block: {
+        ...current.input.localObservation.block,
+        chainPoint: {
+          ...current.input.localObservation.block.chainPoint,
+          depth: "1",
+        },
+      },
+    };
+    upstream.localObservation = included;
+    const input = { ...current.input, localObservation: included };
+    vi.mocked(readAdmittedLocalKupmiosRawTransaction).mockImplementation(
+      async ({ txHash }) => {
+        const transaction = current.rawTransactions.find(
+          (raw) => raw.txHash === txHash,
+        )!;
+        return { ...transaction, confirmationDepth: 1 };
+      },
+    );
+    const source = createWatcherResolvedBlockObservationSource({
+      ...current.sourceInput,
+      minimumConfirmationDepth: 1,
+    });
+    const admitted = await source.observe(input);
+    expect(
+      readWatcherResolvedBlockObservation(admitted).minimumConfirmationDepth,
+    ).toBe("1");
+    expect(
+      (
+        await resolveWatcherBlockObservationTransactions(admitted, [
+          current.rawTransactions[0]!.txHash,
+        ])
+      )[0]!.confirmationDepth,
+    ).toBe(1);
+    await expect(current.source.observe(input)).rejects.toThrow(
+      "chain point/finality",
+    );
+  });
+
   it("captures the complete immutable sequence before resolving a selected subset", async () => {
     const current = await fixture();
     const observation = await current.source.observe(current.input);

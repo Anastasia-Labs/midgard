@@ -1,4 +1,7 @@
-import { assertWorkflowJournalActuation } from "./actuation-permit.js";
+import {
+  assertWorkflowJournalActuation,
+  workflowJournalIsReconciliationOnly,
+} from "./actuation-permit.js";
 import type { WorkflowAdapterReadinessInput } from "./adapters.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
 
@@ -29,7 +32,9 @@ export const continuePendingWorkflow = async <Result>({
       typeof result !== "object" ||
       result === null ||
       !("kind" in result) ||
-      result.kind !== "pending"
+      result.kind !== "pending" ||
+      workflowJournalIsReconciliationOnly(journal) ||
+      ("resumeOnObservation" in result && result.resumeOnObservation === true)
     ) {
       return result;
     }

@@ -91,7 +91,7 @@ const derive = ({
                   correctionIdentity: "AttestationTimeout",
                   previousDatum: "Idle",
                   nextDatum:
-                    "RemoveTimedOutHead" in
+                    "RemoveLastUnattestedBlock" in
                     value.RemoveUnattestedBlockAfterTimeout.removal_approach
                       ? "Idle"
                       : {
@@ -207,8 +207,8 @@ describe("authenticated state-queue replay checkpoint V1", () => {
           yield_to_ref_input_index: 0n,
           timed_out_header_hash: header1,
           removal_approach: {
-            PruneTimedOutBlockDescendant: {
-              confirmed_state_ref_input_index: 0n,
+            PruneUnattestedBlockDescendant: {
+              predecessor_ref_input_index: 0n,
               timed_out_node_input_outref: {
                 transactionId: h32("1"),
                 outputIndex: 0n,

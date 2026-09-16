@@ -1,9 +1,14 @@
-import { Data, validatorToScriptHash } from "@lucid-evolution/lucid";
+import {
+  Data,
+  getAddressDetails,
+  validatorToScriptHash,
+} from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 
 import { encodeCbor } from "./codec/cbor.js";
+import { decodeMidgardNativeScript } from "./codec/native-script.js";
 import {
   isMidgardConsensusProfile,
   MIDGARD_CONSENSUS_PROFILE,
@@ -4275,6 +4280,87 @@ const validateFinalizedDa = (value: unknown): void => {
 const VERIFIED_FINALIZED_MANIFEST_ID_CACHE_LIMIT = 64;
 const verifiedFinalizedManifestIds = new Set<string>();
 
+export type ReferenceScriptPublicationAuthority =
+  | {
+      readonly kind: "publisher-signature";
+      readonly expiresAtSlot: number;
+      readonly publisherKeyHash: string;
+    }
+  | {
+      readonly kind: "time-only";
+      readonly expiresAtSlot: number;
+    };
+
+/**
+ * Immediate publication audits trust the named publisher while its minting
+ * window remains open. Historical time-only policies have no signer and still
+ * require expiry before their role tokens can be treated as unique. The policy
+ * identifies the publisher independently of the reference-output recipient;
+ * callers publishing with a wallet can additionally check that wallet here.
+ */
+export const verifyReferenceScriptPublicationAuthority = (input: {
+  readonly cborHex: string;
+  readonly expiresAtSlot: number;
+  readonly publisherAddress?: string;
+  readonly postTimelockAuditRequired: boolean;
+}): ReferenceScriptPublicationAuthority => {
+  const cborHex = requireHex(
+    input.cborHex,
+    undefined,
+    "referenceScriptAuthPolicy.nativeScript.cborHex",
+  );
+  const expiresAtSlot = requireInteger(
+    input.expiresAtSlot,
+    "referenceScriptAuthPolicy.nativeScript.expiresAtSlot",
+  );
+  const { script } = decodeMidgardNativeScript(hexToBytes(cborHex));
+  const signature = script.type === "all" ? script.scripts[0] : undefined;
+  const signed =
+    script.type === "all" &&
+    script.scripts.length === 2 &&
+    signature?.type === "sig" &&
+    script.scripts[1]?.type === "before";
+  const deadline = signed ? script.scripts[1] : script;
+  if (deadline.type !== "before") {
+    throw new Error(
+      "Deployment manifest reference-script authority must be an exact publisher signature AND expiry policy, or a historical time-only policy",
+    );
+  }
+  if (deadline.slot !== BigInt(expiresAtSlot)) {
+    throw new Error(
+      "Deployment manifest referenceScriptAuthPolicy.nativeScript.expiresAtSlot must match the native policy CBOR",
+    );
+  }
+  if (!signed) {
+    if (input.postTimelockAuditRequired !== true) {
+      throw new Error(
+        "Deployment manifest time-only reference-script authority requires postTimelockAudit.required to be true",
+      );
+    }
+    return { kind: "time-only", expiresAtSlot };
+  }
+  const publisherKeyHash = signature.keyHash.toString("hex");
+  if (input.publisherAddress !== undefined) {
+    const paymentCredential = getAddressDetails(
+      input.publisherAddress,
+    ).paymentCredential;
+    if (
+      paymentCredential?.type !== "Key" ||
+      paymentCredential.hash !== publisherKeyHash
+    ) {
+      throw new Error(
+        "Deployment manifest reference-script authority signer must match the publisherAddress payment key",
+      );
+    }
+  }
+  if (input.postTimelockAuditRequired !== false) {
+    throw new Error(
+      "Deployment manifest publisher-signed reference-script authority requires postTimelockAudit.required to be false; audit immediately after publication",
+    );
+  }
+  return { kind: "publisher-signature", expiresAtSlot, publisherKeyHash };
+};
+
 export const verifyFinalizedDeploymentManifest = (
   value: unknown,
 ): Record<string, unknown> => {
@@ -4406,7 +4492,7 @@ export const verifyFinalizedDeploymentManifest = (
     undefined,
     "referenceScriptAuthPolicy.nativeScript.cborHex",
   );
-  requireInteger(
+  const expiresAtSlot = requireInteger(
     nativeScript.expiresAtSlot,
     "referenceScriptAuthPolicy.nativeScript.expiresAtSlot",
   );
@@ -4457,11 +4543,16 @@ export const verifyFinalizedDeploymentManifest = (
     [],
     "referenceScriptAuthPolicy.postTimelockAudit",
   );
-  if (audit.required !== true) {
+  if (typeof audit.required !== "boolean") {
     throw new Error(
-      "Deployment manifest referenceScriptAuthPolicy.postTimelockAudit.required must be true",
+      "Deployment manifest referenceScriptAuthPolicy.postTimelockAudit.required must be a boolean",
     );
   }
+  verifyReferenceScriptPublicationAuthority({
+    cborHex: nativeScriptCbor,
+    expiresAtSlot,
+    postTimelockAuditRequired: audit.required,
+  });
   requireString(audit.rule, "referenceScriptAuthPolicy.postTimelockAudit.rule");
 
   const contracts = requireRecord(

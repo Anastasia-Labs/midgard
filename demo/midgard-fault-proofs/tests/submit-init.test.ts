@@ -57,7 +57,7 @@ const blueprintPath = resolve(repoRoot, "onchain/aiken/plutus.json");
 const h28 = "11".repeat(28);
 const h28b = "22".repeat(28);
 const placeholderInvalidRange = "55".repeat(28);
-const referenceScriptAuthNativeScript = `8200581c${"00".repeat(28)}`;
+const referenceScriptAuthNativeScript = "820500";
 
 const deploymentManifest = (contracts: Record<string, unknown>) => ({
   referenceScriptAuthPolicy: {

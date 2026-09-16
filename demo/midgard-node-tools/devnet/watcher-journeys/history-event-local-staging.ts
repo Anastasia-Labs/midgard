@@ -161,8 +161,7 @@ export const openLocalHistoryEventStage =
         };
       };
       const awaitTime = async (time: number) => {
-        const slots = Math.ceil((time - chain.now()) / 1000);
-        if (slots > 0) await chain.awaitSlot(slots);
+        await chain.awaitLedgerTime(time);
       };
       const settle = async (block: VerifiableJourneyBlock) => {
         const actor = await createPublishedWatcherBlockActor({
@@ -184,10 +183,14 @@ export const openLocalHistoryEventStage =
           rootUnit,
         );
         await actor.commit(block, anchor);
-        await actor.attest({
+        const attested = await actor.attest({
           ...block,
           payloadEnvelopeCbor: Buffer.from(block.payloadEnvelopeCbor),
         });
+        if (attested.kind !== "attested")
+          throw new Error(
+            `History block ${block.headerHash} was corrected before its DA attestation applied`,
+          );
         const maturity = Number(
           block.header.endTime + SDK.MATURITY_DURATION_MS,
         );

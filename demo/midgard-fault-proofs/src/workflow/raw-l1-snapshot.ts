@@ -11,6 +11,9 @@ export const FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION =
 export const FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY =
   "midgard-fraud-proof-raw-l1-snapshot-authority-v1" as const;
 
+/** Action inclusion and durable release evidence use the same authentication. */
+export type FraudProofL1ObservationDepth = "inclusion" | "release_finality";
+
 export type FraudProofRawL1ComputationStepRole =
   | "computation_thread_step_01"
   | "computation_thread_step_02"
@@ -638,11 +641,17 @@ export const admitFraudProofRawL1Snapshot = ({
   value,
   request,
   releaseFinality,
+  observationDepth = "release_finality",
 }: {
   readonly value: unknown;
   readonly request: FraudProofRawL1SnapshotRequest;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+  readonly observationDepth?: FraudProofL1ObservationDepth;
 }): FraudProofRawL1Snapshot => {
+  const minimumConfirmationDepth =
+    observationDepth === "inclusion"
+      ? 1
+      : releaseFinality.policy.confirmationDepth;
   const root = exact(
     value,
     [
@@ -741,10 +750,11 @@ export const admitFraudProofRawL1Snapshot = ({
   );
   if (
     !Number.isSafeInteger(cursorRecord.confirmationDepth) ||
-    (cursorRecord.confirmationDepth as number) <
-      releaseFinality.policy.confirmationDepth
+    (cursorRecord.confirmationDepth as number) < minimumConfirmationDepth
   ) {
-    throw new Error("raw L1 snapshot cursor is below release finality");
+    throw new Error(
+      "raw L1 snapshot cursor is below the required observation depth",
+    );
   }
   const cursor = {
     point: point(cursorRecord.point, "raw L1 cursor point"),
@@ -864,7 +874,7 @@ export const admitFraudProofRawL1Snapshot = ({
     admitFraudProofRawL1Transaction(
       candidate,
       `raw L1 snapshot transactions[${index.toString()}]`,
-      releaseFinality.policy.confirmationDepth,
+      minimumConfirmationDepth,
     ),
   );
   if (

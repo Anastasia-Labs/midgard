@@ -4,15 +4,10 @@ import { join } from "node:path";
 import {
   computeFraudProofRawL1PointId,
   createSqliteHistoricalNativeScriptCheckpointStore,
-  isWorkflowActuationRevokedError,
   resolveProverSigner,
-  type WorkflowActuationPermit,
-  type WorkflowAdapterRunner,
-  type WorkflowAdapterRunnerInput,
-  type WorkflowFundingReservationPermit,
 } from "@al-ft/midgard-fault-proofs";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
-import { Kupmios, type UTxO, utxoToCore } from "@lucid-evolution/lucid";
+import { Kupmios } from "@lucid-evolution/lucid";
 
 import {
   createWatcherAvailabilityRuntime,
@@ -28,19 +23,14 @@ import {
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   type WatcherFaultProofApplication,
   type WatcherFaultProofStartupReadiness,
-  type WatcherInstalledWorkflowCategory,
 } from "../fault-proofs/fault-proof-application.js";
+import { createWatcherFaultProofExecution } from "../fault-proofs/fault-proof-execution.js";
 import {
   createWatcherFaultProofSupervisor,
   type WatcherFaultProofSupervisor,
 } from "../fault-proofs/fault-proof-supervisor.js";
-import { runWorkflowWithPreflightStallRetries } from "../fault-proofs/preflight-stall-retry.js";
 import { createWatcherProtocolParameterRuntimeAuthority } from "../funding/prover-funding.js";
-import {
-  assertWatcherProverFundingAuthorityFactory,
-  createWatcherProverFundingAuthorityFactory,
-  type WatcherProverFundingAuthorityFactory,
-} from "../funding/prover-funding-authority.js";
+import { createWatcherProverFundingAuthorityFactory } from "../funding/prover-funding-authority.js";
 import {
   openWatcherSqliteProverFundingReservationStore,
   type WatcherSqliteProverFundingReservationStoreRuntime,
@@ -62,10 +52,7 @@ import {
   type WatcherNativeChainSyncRuntime,
 } from "../l1/native-chain-sync.js";
 import { createWatcherDurableRuntime } from "../storage/durable-runtime.js";
-import {
-  watcherCanonicalJson,
-  watcherSha256CanonicalJson,
-} from "../storage/durable-store.js";
+import { watcherCanonicalJson } from "../storage/durable-store.js";
 import {
   bindWatcherRetainedDaOperations,
   type WatcherRetainedDaOperationsBinding,
@@ -237,78 +224,10 @@ export const watcherRestartIntersectionCandidates = (input: {
   return Object.freeze(candidates);
 };
 
-const parseWatcherProverFundingOutRef = (
-  outRef: string,
-): Readonly<{ txHash: string; outputIndex: number }> => {
-  const match = /^([0-9a-f]{64})#(0|[1-9][0-9]*)$/u.exec(outRef);
-  if (match === null) {
-    throw new Error("prover funding output reference is not canonical");
-  }
-  return Object.freeze({ txHash: match[1]!, outputIndex: Number(match[2]!) });
-};
-
-export type WatcherProverFundingUtxoProvider = Readonly<{
-  getUtxos(address: string): Promise<UTxO[]>;
-  getUtxosByOutRef(
-    outRefs: readonly Readonly<{ txHash: string; outputIndex: number }>[],
-  ): Promise<UTxO[]>;
-}>;
-
-/**
- * Application-supervisor permit mint. The supervisor binds the exact admitted
- * decision digest, actuation permit, and rollback generation to a fresh
- * atomically reserved slice of the live prover wallet; the fault-proof
- * application can neither mint nor substitute this authority. All wallet and
- * protocol-input resolution goes through the same local-node Kupo/Ogmios
- * authority the runners execute against.
- */
-export const mintWatcherProverFundingReservationPermit = async (input: {
-  readonly category: WatcherInstalledWorkflowCategory;
-  readonly runner: WorkflowAdapterRunner;
-  readonly factory: WatcherProverFundingAuthorityFactory;
-  readonly actuationPermit: WorkflowActuationPermit;
-  readonly rollbackGeneration: string;
-  readonly decisionDigest: string;
-  readonly walletAddress: string;
-  readonly provider: WatcherProverFundingUtxoProvider;
-}): Promise<WorkflowFundingReservationPermit> => {
-  assertWatcherProverFundingAuthorityFactory(input.factory);
-  return await input.factory.create({
-    category: input.category,
-    runner: input.runner,
-    actuationPermit: input.actuationPermit,
-    rollbackGeneration: input.rollbackGeneration,
-    decisionDigest: input.decisionDigest,
-    walletAddress: input.walletAddress,
-    walletUtxos: await input.provider.getUtxos(input.walletAddress),
-    resolveInputs: async (outRefs) =>
-      await input.provider.getUtxosByOutRef(
-        outRefs.map(parseWatcherProverFundingOutRef),
-      ),
-    resolveProtocolInputAuthority: async ({
-      deploymentIdentity,
-      outRef,
-      semanticRole,
-    }) => {
-      const resolved = await input.provider.getUtxosByOutRef([
-        parseWatcherProverFundingOutRef(outRef),
-      ]);
-      if (resolved.length !== 1) {
-        throw new Error(
-          "prover funding protocol input is not a unique live local-node output",
-        );
-      }
-      return Object.freeze({
-        deploymentFingerprint: deploymentIdentity.manifestId,
-        outRef,
-        semanticRole,
-        resolvedOutputCborHex: utxoToCore(resolved[0]!)
-          .output()
-          .to_canonical_cbor_hex(),
-      });
-    },
-  });
-};
+export {
+  mintWatcherProverFundingReservationPermit,
+  type WatcherProverFundingUtxoProvider,
+} from "../fault-proofs/fault-proof-execution.js";
 
 const sameTipPoint = (event: WatcherNativeChainSyncEvent): boolean => {
   if (event.tip.kind === "origin")
@@ -653,9 +572,15 @@ export const createWatcherRuntime = async (input: {
       watcherConfig: input.config.watcherConfig,
       deploymentIdentity,
     });
+    const inclusionRawSource = createWatcherLocalKupmiosRawSource({
+      watcherConfig: input.config.watcherConfig,
+      deploymentIdentity,
+      observationDepth: "inclusion",
+    });
     const stateQueueSource = createWatcherStateQueueObservationSource({
       deploymentIdentity,
       rawSource,
+      inclusionRawSource,
     });
     const stateQueueRuntime = await startup("state_queue_recovery", () =>
       createWatcherStateQueueRuntime({
@@ -685,11 +610,15 @@ export const createWatcherRuntime = async (input: {
       });
     const proverFundingAuthorityFactory =
       createWatcherProverFundingAuthorityFactory({
+        launchScope: faultProofApplication.installedCategories,
         journalRoot: input.config.workflowJournalDirectory,
         deploymentIdentity,
         protocolParameters: proverFundingProtocolParameters,
         store: proverFundingStore.store,
       });
+    // No supervisor jobs exist yet; reclaim reservations left before any signed attempt.
+    await proverFundingAuthorityFactory.releaseUnused();
+
     // Address derivation only; the runtime never holds a live signer. The
     // executing runner re-resolves the same secret source itself.
     const proverSecret = await loadWatcherSecretText(
@@ -721,111 +650,16 @@ export const createWatcherRuntime = async (input: {
         input.config.watcherConfig.deadlines.proofSubmitMs,
       ),
       queueAuthenticationKey: trusted.rollbackAuthenticationKey,
-      run: async ({ job, actuationPermit }) => {
-        const { mode, category, headerHash, decisionDigest } = job;
-        const updatedAtMs = Date.now().toString();
-        const actionIdentityDigest = watcherSha256CanonicalJson({
-          category,
-          headerHash,
-          decisionDigest,
-          rollbackGeneration: job.rollbackGeneration,
-        });
-        operations.sink.recordProofStep({
-          decisionDigest,
-          stage: "prepare",
-          actionIdentityDigest,
-          status: "preflight",
-          updatedAtMs,
-        });
-        const journalDirectory = join(
-          input.config.workflowJournalDirectory,
-          "fault-proofs",
-          category,
-          headerHash,
-        );
-        await prepareJournalDirectory(journalDirectory);
-        try {
-          const mintFundingReservationPermit = async () =>
-            await mintWatcherProverFundingReservationPermit({
-              category,
-              runner: faultProofApplication.runners[category],
-              factory: proverFundingAuthorityFactory,
-              actuationPermit,
-              rollbackGeneration: job.rollbackGeneration,
-              decisionDigest,
-              walletAddress: proverWalletAddress,
-              provider: proverUtxoProvider,
-            });
-          const invocation: WorkflowAdapterRunnerInput = {
-            mode,
-            category,
-            deploymentFingerprint: deploymentIdentity.manifestId,
-            headerHash,
-            decisionDigest,
-            actuationPermit,
-            fundingReservationPermit: await mintFundingReservationPermit(),
-            journalDirectory,
-            runtimeConfigPath: input.config.watcherRuntimeConfigPath,
-          };
-          // A stall while building the next transaction may only mean the
-          // release-final family stage still trails the L1 tip; resume the
-          // same journal with a fresh funding reservation until it catches up.
-          const result = await runWorkflowWithPreflightStallRetries({
-            run: () => faultProofApplication.runOrResume(invocation),
-            resume: async () =>
-              await faultProofApplication.runOrResume({
-                ...invocation,
-                mode: "resume",
-                fundingReservationPermit: await mintFundingReservationPermit(),
-              }),
-            sleep: (ms) =>
-              new Promise<void>((resolve) => setTimeout(resolve, ms)),
-            isLive: () => phase === "live",
-          });
-          if (
-            typeof result !== "object" ||
-            result === null ||
-            !("kind" in result) ||
-            result.kind !== "completed"
-          ) {
-            const reason =
-              typeof result === "object" &&
-              result !== null &&
-              "reason" in result
-                ? String(result.reason)
-                : "workflow did not return a completed outcome";
-            throw new Error(
-              `Watcher ${category} workflow did not complete: ${reason}`,
-            );
-          }
-          operations.sink.recordProofStep({
-            decisionDigest,
-            stage: "terminal",
-            actionIdentityDigest,
-            status: "completed",
-            updatedAtMs: Date.now().toString(),
-          });
-          return result;
-        } catch (error) {
-          const cancelled = isWorkflowActuationRevokedError(error);
-          operations.sink.recordProofStep({
-            decisionDigest,
-            stage: "terminal",
-            actionIdentityDigest,
-            status: cancelled ? "cancelled" : "failed",
-            updatedAtMs: Date.now().toString(),
-          });
-          if (!cancelled) {
-            operations.sink.setAlert({
-              code: "proof_submission_failure",
-              subjectDigest: decisionDigest,
-              active: true,
-              observedAtMs: Date.now().toString(),
-            });
-          }
-          throw error;
-        }
-      },
+      execution: createWatcherFaultProofExecution({
+        application: faultProofApplication,
+        fundingFactory: proverFundingAuthorityFactory,
+        walletAddress: proverWalletAddress,
+        provider: proverUtxoProvider,
+        journalRoot: input.config.workflowJournalDirectory,
+        runtimeConfigPath: input.config.watcherRuntimeConfigPath,
+        deploymentFingerprint: deploymentIdentity.manifestId,
+        operationsSink: () => operations.sink,
+      }),
     });
     const operations = createWatcherOperationsObservability({
       deploymentFingerprint: deploymentIdentity.manifestId,
@@ -845,6 +679,10 @@ export const createWatcherRuntime = async (input: {
       config: input.config,
       identity: deploymentIdentity,
       rawSource,
+      faultProofObservation: {
+        rawSource: inclusionRawSource,
+        currentObservation: stateQueueRuntime.current,
+      },
       proverWalletAddress,
       onStatusTransition: input.onAvailabilityStatusTransition,
     });
@@ -878,15 +716,6 @@ export const createWatcherRuntime = async (input: {
     const recoveredFaultProofWorkflowCount = await startup(
       "workflow_recovery",
       () => faultDecisionBridge!.recoverExisting(),
-    );
-    // Startup classification prepared its target without dispatch so journal
-    // recovery could resume existing executions first. Schedule that target
-    // now: finalized blocks that leave the queue untouched never re-enter
-    // dispatch, so a fault selected at startup would otherwise wait for the
-    // next queue movement.
-    await startup(
-      "fault_dispatch",
-      async () => await faultDecisionBridge!.dispatchPrepared(),
     );
     operationsHttp = await startWatcherOperationsHttpServer({
       endpoint: input.config.operationsEndpoint,
@@ -962,6 +791,7 @@ export const createWatcherRuntime = async (input: {
         ]);
       },
       hooks: {
+        onIncluded: queueHooks.onIncluded,
         onRollback: async (point) => {
           activeBridge.invalidateForRollback();
           activeAvailability.invalidateForRollback(point);

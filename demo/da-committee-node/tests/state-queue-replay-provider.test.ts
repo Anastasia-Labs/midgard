@@ -40,8 +40,8 @@ const harness = ({
       yield_to_ref_input_index: 0n,
       timed_out_header_hash: target,
       removal_approach: {
-        PruneTimedOutBlockDescendant: {
-          confirmed_state_ref_input_index: 0n,
+        PruneUnattestedBlockDescendant: {
+          predecessor_ref_input_index: 0n,
           timed_out_node_input_outref: {
             transactionId: h32("1"),
             outputIndex: 0n,
@@ -58,8 +58,16 @@ const harness = ({
             yield_to_ref_input_index: 0n,
             unavailable_header_hash: target,
             challenge_asset_name: challenge,
-            removal_approach:
-              unattested.RemoveUnattestedBlockAfterTimeout.removal_approach,
+            removal_approach: {
+              PruneTimedOutBlockDescendant: {
+                confirmed_state_ref_input_index: 0n,
+                timed_out_node_input_outref: {
+                  transactionId: h32("1"),
+                  outputIndex: 0n,
+                },
+                timed_out_node_output_index: 0n,
+              },
+            },
           },
         }
       : unattested,

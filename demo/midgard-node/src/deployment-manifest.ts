@@ -26,6 +26,7 @@ import {
   verifyDeploymentManifestFraudProofCatalogueIdentity,
   verifyDeploymentManifestIdentity,
   verifyFinalizedDeploymentManifest,
+  verifyReferenceScriptPublicationAuthority,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -1654,7 +1655,7 @@ export type DeploymentManifestValue = {
       Record<keyof typeof REFERENCE_SCRIPT_AUTH_TOKEN_NAMES, string>
     >;
     readonly postTimelockAudit: {
-      readonly required: true;
+      readonly required: boolean;
       readonly rule: string;
     };
   };
@@ -1910,7 +1911,7 @@ const validateReferenceScriptAuthPolicy = (
     nativeScript.cborHex,
     "referenceScriptAuthPolicy.nativeScript.cborHex",
   );
-  requireNonNegativeSafeInteger(
+  const expiresAtSlot = requireNonNegativeSafeInteger(
     nativeScript.expiresAtSlot,
     "referenceScriptAuthPolicy.nativeScript.expiresAtSlot",
   );
@@ -1970,11 +1971,16 @@ const validateReferenceScriptAuthPolicy = (
     [],
     "referenceScriptAuthPolicy.postTimelockAudit",
   );
-  if (postTimelockAudit.required !== true) {
+  if (typeof postTimelockAudit.required !== "boolean") {
     throw new Error(
-      "Deployment manifest referenceScriptAuthPolicy.postTimelockAudit.required must be true",
+      "Deployment manifest referenceScriptAuthPolicy.postTimelockAudit.required must be a boolean",
     );
   }
+  verifyReferenceScriptPublicationAuthority({
+    cborHex: nativeScriptCbor,
+    expiresAtSlot,
+    postTimelockAuditRequired: postTimelockAudit.required,
+  });
   requireNonEmptyString(
     postTimelockAudit.rule,
     "referenceScriptAuthPolicy.postTimelockAudit.rule",

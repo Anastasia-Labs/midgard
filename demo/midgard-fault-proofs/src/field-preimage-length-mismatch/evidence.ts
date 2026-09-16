@@ -287,7 +287,7 @@ const exactAcceptedRawFinding = async ({
   });
 };
 
-const exactForcedFinding = async (
+export const fieldPreimageLengthEvidenceFromCanonicalBlock = async (
   block: Awaited<ReturnType<typeof canonicalBlockEvidenceFromVerifiedPayload>>,
 ): Promise<AuthenticatedFieldPreimageLengthEvidence> => {
   const findings: AuthenticatedFieldPreimageLengthEvidence[] = [];
@@ -425,7 +425,7 @@ export const detectAuthenticatedFieldPreimageLengthEvidence = async ({
     SDK.admitEvidenceProvenance({ provenance: fetched.provenance }),
   );
   try {
-    return await exactForcedFinding(
+    return await fieldPreimageLengthEvidenceFromCanonicalBlock(
       await canonicalBlockEvidenceFromVerifiedPayload({
         observation: admitted,
         payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,

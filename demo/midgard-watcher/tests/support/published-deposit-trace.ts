@@ -17,6 +17,7 @@ import { Effect } from "effect";
 import type { DaLocalSignerConfig } from "midgard-node/da/local-signers";
 import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
 import { activateRegisteredOperatorProgram } from "midgard-node/transactions/register-active-operator";
+import { canActivateRegisteredOperatorImmediately } from "midgard-node/transactions/register-active-operator/activation";
 
 import {
   createPublishedWatcherBlockActor,
@@ -148,7 +149,7 @@ export const stagePublishedDepositTrace = async (
       const height = await chain.blockHeight();
       if (height >= removed + finalityDepth) return;
       onStage(`abandoned header removal depth ${height - removed}`);
-      await chain.awaitSlot(20);
+      await chain.delaySlots(20);
     }
   };
   const removeAbandonedHeaders = async () => {
@@ -186,12 +187,7 @@ export const stagePublishedDepositTrace = async (
       if (result.status === "not-ready") {
         onStage(`abandoned header timeout ${result.targetHeaderHash}`);
         // Chain time is slot-quantised: land one slot past the deadline.
-        await chain.awaitSlot(
-          Math.max(
-            1,
-            Math.ceil((Number(result.deadlineMs) - chain.now()) / 1000) + 1,
-          ),
-        );
+        await chain.awaitLedgerTime(Number(result.deadlineMs) + 1000);
       } else if (result.status === "complete") {
         onStage(`abandoned header removal ${result.targetHeaderHash}`);
         lucid.overrideUTxOs(await lucid.utxosAt(address));
@@ -275,30 +271,17 @@ export const stagePublishedDepositTrace = async (
     // matures while proof construction runs prevents the last-operator rewind.
     // Genesis itself closes a real protocol interval. Faster onboarding must
     // not let the first header end before that confirmed-state cutoff.
-    await chain.awaitSlot(
-      Math.max(
-        0,
-        Math.ceil((Number(genesis.data.endTime) + 1 - chain.now()) / 1000),
-      ),
-    );
+    await chain.awaitLedgerTime(Number(genesis.data.endTime) + 1);
     // Retained deposits of a stopped run become eligible at their own
     // inclusion times; the empty predecessor must close after every one.
     const latestPriorInclusion = Math.max(
       0,
       ...priorDeposits.map((prior) => prior.metadata.inclusionTime),
     );
-    await chain.awaitSlot(
-      Math.max(
-        0,
-        Math.ceil(
-          (latestPriorInclusion -
-            EMPTY_PREDECESSOR_INTERVAL_MS +
-            1_000 -
-            chain.now()) /
-            1000,
-        ),
-      ),
-    );
+    if (priorDeposits.length > 0)
+      await chain.awaitLedgerTime(
+        latestPriorInclusion - EMPTY_PREDECESSOR_INTERVAL_MS + 1_000,
+      );
     const l2Address = credentialToAddress("Preprod", {
       type: "Key",
       hash: operatorVkey,
@@ -313,9 +296,9 @@ export const stagePublishedDepositTrace = async (
       }),
     );
     onStage("deposit publication");
-    await awaitConfirmed(
-      await (await deposit.tx.sign.withWallet().complete()).submit(),
-    );
+    const signedDeposit = await deposit.tx.sign.withWallet().complete();
+    const depositTxHash = await signedDeposit.submit();
+    await awaitConfirmed(depositTxHash);
     const event = await one(
       contracts.deposit.spendingScriptAddress,
       deposit.metadata.depositAuthUnit,
@@ -424,17 +407,37 @@ export const stagePublishedDepositTrace = async (
       node.key !== "Empty" &&
       Data.castFrom(node.data, SDK.RegisteredOperatorDatum).operator ===
         successorVkey
-        ? [node.key.Key.key]
+        ? [node]
         : [],
     );
     if (matching.length === 0) return;
     if (matching.length !== 1)
       throw new Error("The journey successor has ambiguous registrations");
     onStage("dangling successor activation");
-    const activationTime = Number(BigInt(`0x${matching[0]!}`));
-    await chain.awaitSlot(
-      Math.max(0, Math.ceil((activationTime + 1 - chain.now()) / 1000)),
+    const registration = matching[0]!;
+    if (registration.key === "Empty")
+      throw new Error("Expected successor registration node");
+    const activeRoot = await one(
+      contracts.activeOperators.spendingScriptAddress,
+      toUnit(
+        contracts.activeOperators.policyId,
+        SDK.ACTIVE_OPERATORS_ROOT_ASSET_NAME,
+      ),
     );
+    const immediateActivation = canActivateRegisteredOperatorImmediately(
+      {
+        utxo: activeRoot,
+        datum: await Effect.runPromise(
+          SDK.getLinkedListNodeViewFromUTxO(activeRoot),
+        ),
+      },
+      registration,
+      contracts.activeOperators,
+    );
+    const activationTime = Number(BigInt(`0x${registration.key.Key.key}`));
+    if (!immediateActivation) {
+      await chain.awaitLedgerTime(activationTime + 1);
+    }
     lucid.overrideUTxOs(await lucid.utxosAt(address));
     await Effect.runPromise(
       activateRegisteredOperatorProgram(
@@ -489,7 +492,13 @@ export const stagePublishedDepositTrace = async (
     );
     head = await one(contracts.stateQueue.spendingScriptAddress, headUnit);
   };
-  const attest = (block: PublishedWatcherBlock) => actor.attest(block);
+  const attest = async (block: PublishedWatcherBlock) => {
+    const outcome = await actor.attest(block);
+    if (outcome.kind !== "attested")
+      throw new Error(
+        `Deposit trace block ${block.headerHash} was corrected before its DA attestation applied`,
+      );
+  };
   if (!checkpoint.attestationsComplete) {
     if (commits.length === 0) {
       for (;;) {
@@ -530,12 +539,7 @@ export const stagePublishedDepositTrace = async (
       head = anchor;
     }
     if (commits.length === 1) {
-      await chain.awaitSlot(
-        Math.max(
-          0,
-          Math.ceil((depositMetadata.inclusionTime - chain.now()) / 1000),
-        ),
-      );
+      await chain.awaitLedgerTime(depositMetadata.inclusionTime);
       for (;;) {
         try {
           await commit(deposited);
@@ -683,7 +687,7 @@ export const stagePublishedDepositTrace = async (
           while (chain.now() < expiry + 30_000) {
             landed = await headerOutput(resumedBlock.headerHash);
             if (landed !== undefined) break;
-            await chain.awaitSlot(1);
+            await chain.delaySlots(1);
           }
         }
       }

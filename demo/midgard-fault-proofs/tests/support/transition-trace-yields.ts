@@ -15,7 +15,9 @@ import { publishAuthenticatedValidationDisputeControl } from "./emulator/referen
 export const publishTransitionTraceYields = async (
   lucid: LucidEvolution,
   contracts: MidgardValidators & {
-    referenceScriptAuth: ReturnType<typeof createReferenceScriptAuthPolicy>;
+    referenceScriptAuth: Awaited<
+      ReturnType<typeof createReferenceScriptAuthPolicy>
+    >;
   },
 ) => {
   const published: Record<string, { scriptHash: string; utxo: UTxO }> = {};

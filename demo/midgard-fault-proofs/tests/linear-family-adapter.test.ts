@@ -1,6 +1,7 @@
 import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 
+import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
 import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
@@ -173,6 +174,39 @@ const context = {
 } as const;
 
 describe("production linear family adapter V1", () => {
+  it("distinguishes a changed authenticated action from a deterministic build failure", async () => {
+    const stage: { value: FraudProofRawL1FamilyStage } = {
+      value: { kind: "not_started", stateQueueBlockOutRef: outRef("10") },
+    };
+    const failure = new Error("local UPLC validator rejected the transaction");
+    const capture = vi.fn(async () => {
+      throw failure;
+    });
+    const adapter = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(capture),
+      stateQueueMutationLeaseCoordinator: leaseCoordinator,
+    });
+    const original = await adapter.observe(context);
+    if (original.kind !== "action_required") throw new Error("missing action");
+    stage.value = { kind: "not_started", stateQueueBlockOutRef: outRef("12") };
+    await expect(
+      adapter.preflight({ ...context, action: original.action }),
+    ).rejects.toBeInstanceOf(WorkflowActionChangedError);
+    expect(capture).not.toHaveBeenCalled();
+    const current = await adapter.observe(context);
+    if (current.kind !== "action_required")
+      throw new Error("missing replacement action");
+    await expect(
+      adapter.preflight({ ...context, action: current.action }),
+    ).rejects.toBe(failure);
+    expect(capture).toHaveBeenCalledExactlyOnceWith({
+      action: current.action,
+      artifact: context.artifact,
+    });
+  });
+
   it("captures local UPLC intent, binds signed reference inputs, and submits the exact body", async () => {
     const stage = {
       value: {
@@ -634,4 +668,47 @@ describe("production linear family adapter V1", () => {
       }),
     ).toThrow("ports changed identity");
   });
+});
+
+it("reobserves the original linear step after its successor rolls back", async () => {
+  const original: FraudProofRawL1FamilyStage = {
+    kind: "step",
+    step: 1,
+    threadOutRef: outRef("11"),
+    stateQueueBlockOutRef: outRef("10"),
+  };
+  const stage = { value: original };
+  let included = true;
+  const capture = vi.fn(async () => ({ transaction: transaction() }));
+  const adapter = createLinearFamilyWorkflowAdapter({
+    category: "daHashPreimage",
+    l1: l1(stage, async () => included),
+    transactions: port(capture),
+    stateQueueMutationLeaseCoordinator: leaseCoordinator,
+  });
+  const before = await adapter.observe(context);
+  if (before.kind !== "action_required")
+    throw new Error("missing original action");
+  stage.value = {
+    kind: "step",
+    step: 2,
+    threadOutRef: `${txHash}#0`,
+    stateQueueBlockOutRef: outRef("10"),
+  };
+  await expect(
+    adapter.reconcile({ ...context, action: before.action, txHash }),
+  ).resolves.toEqual({ kind: "confirmed", txHash });
+  const successor = await adapter.observe(context);
+  if (successor.kind !== "action_required")
+    throw new Error("missing successor action");
+  stage.value = original;
+  included = false;
+  await expect(adapter.observe(context)).resolves.toEqual(before);
+  await expect(
+    adapter.preflight({ ...context, action: successor.action }),
+  ).rejects.toThrow("differs from authenticated current L1 state");
+  await expect(
+    adapter.reconcile({ ...context, action: before.action, txHash }),
+  ).resolves.toMatchObject({ kind: "unknown" });
+  expect(capture).not.toHaveBeenCalled();
 });
