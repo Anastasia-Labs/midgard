@@ -95,7 +95,7 @@
     "@al-ft/midgard-sdk": "workspace:*",
     "@al-ft/midgard-validation": "workspace:*",
     "@harmoniclabs/cbor": "1.6.6",
-    "@lucid-evolution/lucid": "0.6.4",
+    "@lucid-evolution/lucid": "0.6.5",
     "effect": "^3.14.22",
     "json-bigint": "npm:@cardanosolutions/json-bigint@1.1.0",
     "typescript": "^5.7.3"

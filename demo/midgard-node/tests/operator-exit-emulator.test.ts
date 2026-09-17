@@ -1724,6 +1724,27 @@ describe("duplicate operator slashing", () => {
       BOND_LOVELACE - SLASHING_PENALTY_LOVELACE,
     );
 
+    // The surviving registration cannot prove its own duplication: the proof
+    // is a reference input and the removed node is an input, and the ledger
+    // requires the two sets to be disjoint. The emulator applies that ledger
+    // rule at submission, so the transaction never reaches the validator.
+    const loneNode = SDK.findNodeByKey(
+      (await fetchDirectorySnapshot(lucid, contracts)).registered,
+      first.nodeKey,
+    );
+    if (loneNode === undefined) {
+      throw new Error("Expected the first registration to survive the slash");
+    }
+    await expect(
+      slashDuplicateOperator({
+        fixture,
+        submitterLucid: slasher,
+        operatorKeyHash,
+        removedRegisteredNodeKey: first.nodeKey,
+        duplicateProof: { kind: "registered", node: loneNode },
+      }),
+    ).rejects.toThrow(/ReferenceInputsNotDisjointFromInputs/);
+
     // The surviving registration is not a duplicate of anything: a proof node
     // that belongs to a different operator does not make it one.
     const otherLucid = await newFundedWallet(fixture, 3_000_000_000n);

@@ -40,7 +40,7 @@
   "pnpm": {
     "patchedDependencies": {
       "blake2b@2.1.4": "patches/blake2b@2.1.4.patch",
-      "@lucid-evolution/lucid@0.6.4": "patches/@lucid-evolution__lucid@0.6.4.patch",
+      "@lucid-evolution/lucid@0.6.5": "patches/@lucid-evolution__lucid@0.6.5.patch",
       "@lucid-evolution/core-types@0.3.0": "patches/@lucid-evolution__core-types@0.3.0.patch",
       "@lucid-evolution/wallet@0.2.2": "patches/@lucid-evolution__wallet@0.2.2.patch"
     },

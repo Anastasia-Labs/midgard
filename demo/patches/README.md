@@ -1,6 +1,6 @@
 # Dependency patches
 
-`@lucid-evolution__lucid@0.6.4.patch` fixes delayed-redeemer bootstrap for
+`@lucid-evolution__lucid@0.6.5.patch` fixes delayed-redeemer bootstrap for
 transactions whose inputs fund an explicit fee. The unpatched builder assigns
 the entire maximum transaction execution budget before the delayed redeemers
 exist. That provisional fee exceeds the exact funding required by availability
