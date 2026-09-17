@@ -10,7 +10,7 @@ import {
   InputNoIdxStep04Datum,
   MIDGARD_FIELD_INDEX,
 } from "@al-ft/midgard-sdk";
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import {
   type FaultProofFieldOpeningPlan,
@@ -42,53 +42,29 @@ import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
-import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import { INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "./deployment-manifest-binding.js";
+  defineLinearFamily,
+  type FieldPreimageCertificateBinding,
+  type LinearFamilyAssemblyContext,
+  type LinearFamilyReferenceScripts,
+  type ManifestBoundLinearFamilyWorkflow,
+  type ManifestBoundLinearFamilyWorkflowConfig,
+} from "./family-definition.js";
+import { type FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
+import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "./family-l1-observation.js";
-import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  type FieldCarriageRequirement,
-  withFieldCarriagePrerequisite,
-} from "./field-carriage-prerequisite.js";
-import {
-  type FraudProofWorkflowJournalStore,
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.js";
-import {
-  createLinearFamilyWorkflowAdapter,
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
 import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowAction,
-  type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
-  runFraudProofWorkflowFromRetainedDa,
-} from "./orchestrator.js";
-import {
-  createAuthenticatedProofChunkPrerequisitePort,
-  resolveDirectFirstProofChunks,
-  withProofChunkPrerequisite,
-} from "./proof-chunk-prerequisite.js";
-import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
+  assembleManifestBoundFamilyWorkflow,
+  runOrResumeManifestBoundFamilyWorkflow,
+} from "./manifest-bound-family-assembly.js";
+import { type FraudProofWorkflowAction } from "./orchestrator.js";
+import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
@@ -549,16 +525,24 @@ export const prepareInputNoIdxArtifact = async ({
   return Object.freeze(artifact);
 };
 
-export type InputNoIdxWorkflowReferenceScripts = Readonly<{
-  steps: readonly [UTxO, UTxO, UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScripts & {
-    readonly computationThreadMint: UTxO;
-    readonly fraudProofMint: UTxO;
-    readonly phasMembershipWithdraw: UTxO;
-    readonly chunkedVerifyWithdraw: UTxO;
-  };
-  fieldPreimageCertificateMint: UTxO;
-}>;
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+] as const;
+
+export type InputNoIdxWorkflowReferenceScripts = LinearFamilyReferenceScripts<
+  "nonExistentInputNoIndex",
+  (typeof WITNESS_ROLES)[number],
+  true
+>;
+
+type AssemblyContext = LinearFamilyAssemblyContext<
+  "nonExistentInputNoIndex",
+  (typeof WITNESS_ROLES)[number],
+  true
+>;
 
 type BoundConfig = Readonly<{
   lucid: LucidEvolution;
@@ -568,9 +552,7 @@ type BoundConfig = Readonly<{
   signer: ResolvedProverSigner;
   headerHash: string;
   referenceScripts: InputNoIdxWorkflowReferenceScripts;
-  certificate: NonNullable<
-    FraudProofWorkflowDeploymentBinding<"nonExistentInputNoIndex">["fieldPreimageCertificate"]
-  >;
+  certificate: FieldPreimageCertificateBinding;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   fraudProverRewardLovelace: bigint;
 }>;
@@ -816,229 +798,100 @@ const createTransactionPort = (
   },
 });
 
-export type ManifestBoundInputNoIdxWorkflowConfig = Readonly<{
-  manifest: unknown;
-  blueprintJson: string;
-  deploymentInfo: unknown;
-  headerHash: string;
-  lucid: LucidEvolution;
-  signer: ResolvedProverSigner;
-  referenceScripts: InputNoIdxWorkflowReferenceScripts;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
-  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-}>;
+export type ManifestBoundInputNoIdxWorkflowConfig =
+  ManifestBoundLinearFamilyWorkflowConfig<
+    "nonExistentInputNoIndex",
+    (typeof WITNESS_ROLES)[number],
+    true
+  >;
 
-export type ManifestBoundInputNoIdxWorkflow = Readonly<{
-  binding: FraudProofWorkflowDeploymentBinding<"nonExistentInputNoIndex">;
-  l1: FraudProofFamilyL1ObservationPort<"nonExistentInputNoIndex">;
-  transactions: LinearFamilyTransactionPort<"nonExistentInputNoIndex">;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-}>;
+export type ManifestBoundInputNoIdxWorkflow = ManifestBoundLinearFamilyWorkflow<
+  "nonExistentInputNoIndex",
+  true
+>;
 
-export const createManifestBoundInputNoIdxWorkflow = async (
-  config: ManifestBoundInputNoIdxWorkflowConfig,
-): Promise<ManifestBoundInputNoIdxWorkflow> => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "nonExistentInputNoIndex",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      FraudProofComputationThreadStepDatum,
-      InputNoIdxStep02Datum,
-      InputNoIdxStep03Datum,
-      InputNoIdxStep04Datum,
-    ],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
-  if (binding.fieldPreimageCertificate === null) {
-    throw new Error(
-      "input-no-idx manifest omitted field-preimage certificate policy",
-    );
-  }
-  const certificate = binding.fieldPreimageCertificate;
-  const contractNames = [
-    "fraudProofNonExistentInputNoIndex",
-    "fraudProofNonExistentInputNoIndexStep02",
-    "fraudProofNonExistentInputNoIndexStep03",
-    "fraudProofNonExistentInputNoIndexStep04",
-  ] as const;
-  const steps = contractNames.map((contractName, index) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName,
-      utxo: config.referenceScripts.steps[index]!,
-    }),
-  ) as unknown as readonly [UTxO, UTxO, UTxO, UTxO];
-  const references: InputNoIdxWorkflowReferenceScripts = Object.freeze({
-    steps: Object.freeze(steps),
-    witnesses: Object.freeze({
-      computationThreadMint: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "computationThreadMint",
-        utxo: config.referenceScripts.witnesses.computationThreadMint,
+const fieldPreimageCertificate = (context: AssemblyContext) => ({
+  policyId: context.certificate.policyId,
+  mintingScript: context.certificate.mintingScript,
+  referenceScriptUtxo: context.references.fieldPreimageCertificateMint,
+});
+
+export const INPUT_NO_IDX_FAMILY_DEFINITION = defineLinearFamily({
+  category: "nonExistentInputNoIndex",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    InputNoIdxStep02Datum,
+    InputNoIdxStep03Datum,
+    InputNoIdxStep04Datum,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  replayer: () => INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "linear",
+    transactionPort: (context) =>
+      createTransactionPort({
+        lucid: context.lucid,
+        blueprint: context.binding.blueprint,
+        deploymentInfo: context.binding.deploymentInfo,
+        network: context.binding.network,
+        signer: context.signer,
+        headerHash: context.binding.definition.headerHash,
+        referenceScripts: context.references,
+        certificate: context.certificate,
+        stateQueueMutationLeaseCoordinator:
+          context.stateQueueMutationLeaseCoordinator,
+        fraudProverRewardLovelace: BigInt(
+          context.binding.releaseEconomics.policy.fraudProverRewardLovelace,
+        ),
       }),
-      fraudProofMint: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fraudProofMint",
-        utxo: config.referenceScripts.witnesses.fraudProofMint,
-      }),
-      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "phasMembershipWithdraw",
-        utxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
-      }),
-      chunkedVerifyWithdraw: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "chunkedVerifyWithdraw",
-        utxo: config.referenceScripts.witnesses.chunkedVerifyWithdraw,
-      }),
-    }),
-    fieldPreimageCertificateMint: requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName: "fieldPreimageCertificateMint",
-      utxo: config.referenceScripts.fieldPreimageCertificateMint,
-    }),
-  });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  if (l1.publications === undefined) {
-    throw new Error("input-no-idx raw-L1 authority omitted publications");
-  }
-  const transactions = createTransactionPort({
-    lucid: config.lucid,
-    blueprint: binding.blueprint,
-    deploymentInfo: binding.deploymentInfo,
-    network: binding.network,
-    signer: config.signer,
-    headerHash: binding.definition.headerHash,
-    referenceScripts: references,
-    certificate,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-    fraudProverRewardLovelace: BigInt(
-      binding.releaseEconomics.policy.fraudProverRewardLovelace,
-    ),
-  });
-  let adapter = createLinearFamilyWorkflowAdapter({
-    category: "nonExistentInputNoIndex",
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  const fieldPrerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
-    category: "nonExistentInputNoIndex",
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    requirementForAction: ({ action, artifact }) => {
-      const input = record(action.input, "input-no-idx field prerequisite");
-      const admitted = admitInputNoIdxArtifact(
-        artifact,
-        config.signer.paymentKeyHash,
-      );
-      const planned =
-        input.stage === "step_02"
-          ? admitted.inputFieldPlan
-          : input.stage === "step_04"
-            ? admitted.outputFieldPlan
-            : null;
-      if (planned === null) return null;
-      return {
-        planned,
-        compactCbor:
+  },
+  // Step-02 opens the bad transaction's spend inputs; step-04 opens the
+  // producing transaction's outputs.
+  fieldCarriage: [
+    {
+      requirementForAction: (context, { action, artifact }) => {
+        const input = record(action.input, "input-no-idx field prerequisite");
+        const admitted = admitInputNoIdxArtifact(
+          artifact,
+          context.signer.paymentKeyHash,
+        );
+        const planned =
           input.stage === "step_02"
-            ? admitted.artifact.badTx.nativeTxCompactCbor
-            : admitted.artifact.producingTx.nativeTxCompactCbor,
-        certificate: {
-          policyId: certificate.policyId,
-          mintingScript: certificate.mintingScript,
-          referenceScriptUtxo: references.fieldPreimageCertificateMint,
-        },
-      } satisfies FieldCarriageRequirement;
+            ? admitted.inputFieldPlan
+            : input.stage === "step_04"
+              ? admitted.outputFieldPlan
+              : null;
+        if (planned === null) return null;
+        return {
+          planned,
+          compactCbor:
+            input.stage === "step_02"
+              ? admitted.artifact.badTx.nativeTxCompactCbor
+              : admitted.artifact.producingTx.nativeTxCompactCbor,
+          certificate: fieldPreimageCertificate(context),
+        } satisfies FieldCarriageRequirement;
+      },
     },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  adapter = withFieldCarriagePrerequisite({
-    category: "nonExistentInputNoIndex",
-    base: adapter,
-    prerequisite: fieldPrerequisite,
-  });
-  const proofPrerequisite = createAuthenticatedProofChunkPrerequisitePort({
-    category: "nonExistentInputNoIndex",
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    proofCborForAction: ({ action, artifact }) => {
-      const input = record(action.input, "input-no-idx proof prerequisite");
-      const admitted = admitInputNoIdxArtifact(
-        artifact,
-        config.signer.paymentKeyHash,
-      );
-      return input.stage === "step_01"
-        ? admitted.artifact.badTx.txMembershipProofCbor
-        : input.stage === "step_03"
-          ? admitted.artifact.producingTx.txMembershipProofCbor
-          : null;
-    },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  adapter = withProofChunkPrerequisite({
-    category: "nonExistentInputNoIndex",
-    base: adapter,
-    prerequisite: proofPrerequisite,
-  });
-  return Object.freeze({
-    binding,
-    l1,
-    transactions,
-    adapter,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-  });
-};
+  ],
+  proofChunk: (context, { action, artifact }) => {
+    const input = record(action.input, "input-no-idx proof prerequisite");
+    const admitted = admitInputNoIdxArtifact(
+      artifact,
+      context.signer.paymentKeyHash,
+    );
+    return input.stage === "step_01"
+      ? admitted.artifact.badTx.txMembershipProofCbor
+      : input.stage === "step_03"
+        ? admitted.artifact.producingTx.txMembershipProofCbor
+        : null;
+  },
+});
 
-export const runOrResumeManifestBoundInputNoIdxWorkflow = async ({
-  workflow,
-  sources,
-  journal,
-}: {
-  readonly workflow: ManifestBoundInputNoIdxWorkflow;
-  readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<FraudProofWorkflowRunResult> => {
-  const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
-    headerHash: workflow.binding.definition.headerHash,
-  });
-  return await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation,
-    sources,
-    replayer: INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
-    registry: createFraudProofWorkflowRegistry({
-      adapters: [workflow.adapter],
-      launchScope: ["nonExistentInputNoIndex"],
-    }),
-    journal,
-    terminalVerifier: workflow.terminalVerifier,
-    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-  });
-};
+export const createManifestBoundInputNoIdxWorkflow = (
+  config: ManifestBoundInputNoIdxWorkflowConfig,
+): Promise<ManifestBoundInputNoIdxWorkflow> =>
+  assembleManifestBoundFamilyWorkflow(INPUT_NO_IDX_FAMILY_DEFINITION, config);
+
+export const runOrResumeManifestBoundInputNoIdxWorkflow =
+  runOrResumeManifestBoundFamilyWorkflow;

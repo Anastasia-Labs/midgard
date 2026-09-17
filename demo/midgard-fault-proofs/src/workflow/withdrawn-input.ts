@@ -14,7 +14,7 @@ import {
   WithdrawnInputStep02Datum,
   WithdrawnInputStep03Datum,
 } from "@al-ft/midgard-sdk";
-import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
@@ -31,44 +31,32 @@ import {
   submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { WithdrawnInputContracts } from "../withdrawn-input/contracts.js";
 import { submitWithdrawnInputInit } from "../withdrawn-input/submit-withdrawn-input-init.js";
 import { submitWithdrawnInputStep01 } from "../withdrawn-input/submit-withdrawn-input-step-01.js";
 import { submitWithdrawnInputStep02 } from "../withdrawn-input/submit-withdrawn-input-step-02.js";
 import { submitWithdrawnInputStep03 } from "../withdrawn-input/submit-withdrawn-input-step-03.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import { WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "./deployment-manifest-binding.js";
+  defineLinearFamily,
+  type FieldPreimageCertificateBinding,
+  type LinearFamilyAssemblyContext,
+  type LinearFamilyReferenceScripts,
+  type ManifestBoundLinearFamilyWorkflow,
+  type ManifestBoundLinearFamilyWorkflowConfig,
+} from "./family-definition.js";
+import { type FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
+import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "./family-l1-observation.js";
-import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  type FieldCarriageRequirement,
-  withFieldCarriagePrerequisite,
-} from "./field-carriage-prerequisite.js";
-import {
-  type FraudProofWorkflowJournalStore,
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.js";
-import {
-  createLinearFamilyWorkflowAdapter,
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
+import {
+  assembleManifestBoundFamilyWorkflow,
+  runOrResumeManifestBoundFamilyWorkflow,
+} from "./manifest-bound-family-assembly.js";
 import {
   admitNativeInclusionArtifact,
   admitTxInputList,
@@ -81,20 +69,8 @@ import {
   NATURAL_DECIMAL,
   safeNaturalNumber,
 } from "./native-index-artifact.js";
-import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowAction,
-  type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
-  runFraudProofWorkflowFromRetainedDa,
-} from "./orchestrator.js";
-import {
-  createAuthenticatedProofChunkPrerequisitePort,
-  resolveDirectFirstProofChunks,
-  withProofChunkPrerequisite,
-} from "./proof-chunk-prerequisite.js";
-import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
+import { type FraudProofWorkflowAction } from "./orchestrator.js";
+import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
@@ -421,16 +397,25 @@ export const prepareWithdrawnInputArtifact = async ({
   return Object.freeze(artifact);
 };
 
-export type WithdrawnInputWorkflowReferenceScripts = Readonly<{
-  steps: readonly [UTxO, UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScripts & {
-    readonly computationThreadMint: UTxO;
-    readonly fraudProofMint: UTxO;
-    readonly phasMembershipWithdraw: UTxO;
-    readonly chunkedVerifyWithdraw: UTxO;
-  };
-  fieldPreimageCertificateMint: UTxO;
-}>;
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+] as const;
+
+export type WithdrawnInputWorkflowReferenceScripts =
+  LinearFamilyReferenceScripts<
+    "withdrawnInput",
+    (typeof WITNESS_ROLES)[number],
+    true
+  >;
+
+type AssemblyContext = LinearFamilyAssemblyContext<
+  "withdrawnInput",
+  (typeof WITNESS_ROLES)[number],
+  true
+>;
 
 type BoundConfig = Readonly<{
   lucid: LucidEvolution;
@@ -443,9 +428,7 @@ type BoundConfig = Readonly<{
   category: FraudProofWorkflowDeploymentBinding<"withdrawnInput">["resolvedContracts"]["category"];
   catalogue: FraudProofWorkflowDeploymentBinding<"withdrawnInput">["catalogue"];
   referenceScripts: WithdrawnInputWorkflowReferenceScripts;
-  certificate: NonNullable<
-    FraudProofWorkflowDeploymentBinding<"withdrawnInput">["fieldPreimageCertificate"]
-  >;
+  certificate: FieldPreimageCertificateBinding;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   fraudProverRewardLovelace: bigint;
 }>;
@@ -685,52 +668,18 @@ const createTransactionPort = (
   },
 });
 
-export type ManifestBoundWithdrawnInputWorkflowConfig = Readonly<{
-  manifest: unknown;
-  blueprintJson: string;
-  deploymentInfo: unknown;
-  headerHash: string;
-  lucid: LucidEvolution;
-  signer: ResolvedProverSigner;
-  referenceScripts: WithdrawnInputWorkflowReferenceScripts;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
-  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-}>;
+export type ManifestBoundWithdrawnInputWorkflowConfig =
+  ManifestBoundLinearFamilyWorkflowConfig<
+    "withdrawnInput",
+    (typeof WITNESS_ROLES)[number],
+    true
+  >;
 
-export type ManifestBoundWithdrawnInputWorkflow = Readonly<{
-  binding: FraudProofWorkflowDeploymentBinding<"withdrawnInput">;
-  l1: FraudProofFamilyL1ObservationPort<"withdrawnInput">;
-  transactions: LinearFamilyTransactionPort<"withdrawnInput">;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-}>;
+export type ManifestBoundWithdrawnInputWorkflow =
+  ManifestBoundLinearFamilyWorkflow<"withdrawnInput", true>;
 
-export const createManifestBoundWithdrawnInputWorkflow = async (
-  config: ManifestBoundWithdrawnInputWorkflowConfig,
-): Promise<ManifestBoundWithdrawnInputWorkflow> => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "withdrawnInput",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      FraudProofComputationThreadStepDatum,
-      WithdrawnInputStep02Datum,
-      WithdrawnInputStep03Datum,
-    ],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
-  if (binding.fieldPreimageCertificate === null) {
-    throw new Error("withdrawn-input manifest omitted certificate policy");
-  }
-  const certificate = binding.fieldPreimageCertificate;
+const contracts = (context: AssemblyContext): WithdrawnInputContracts => {
+  const { binding, certificate } = context;
   const chain = binding.resolvedContracts.contracts.withdrawnInput;
   const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
   if (
@@ -740,7 +689,7 @@ export const createManifestBoundWithdrawnInputWorkflow = async (
   ) {
     throw new Error("withdrawn-input deployment chain is incomplete");
   }
-  const contracts: WithdrawnInputContracts = Object.freeze({
+  return Object.freeze({
     steps: [chain.steps[0]!, chain.steps[1]!, chain.steps[2]!] as const,
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: {
@@ -756,174 +705,93 @@ export const createManifestBoundWithdrawnInputWorkflow = async (
     stateQueuePolicyId,
     fieldPreimageCertificatePolicyId: certificate.policyId,
   });
-  const ref = (contractName: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName,
-      utxo,
-    });
-  const referenceScripts: WithdrawnInputWorkflowReferenceScripts =
-    Object.freeze({
-      steps: Object.freeze([
-        ref("fraudProofWithdrawnInput", config.referenceScripts.steps[0]),
-        ref("fraudProofWithdrawnInputStep02", config.referenceScripts.steps[1]),
-        ref("fraudProofWithdrawnInputStep03", config.referenceScripts.steps[2]),
-      ] as const),
-      witnesses: Object.freeze({
-        computationThreadMint: ref(
-          "computationThreadMint",
-          config.referenceScripts.witnesses.computationThreadMint,
-        ),
-        fraudProofMint: ref(
-          "fraudProofMint",
-          config.referenceScripts.witnesses.fraudProofMint,
-        ),
-        phasMembershipWithdraw: ref(
-          "phasMembershipWithdraw",
-          config.referenceScripts.witnesses.phasMembershipWithdraw,
-        ),
-        chunkedVerifyWithdraw: ref(
-          "chunkedVerifyWithdraw",
-          config.referenceScripts.witnesses.chunkedVerifyWithdraw,
+};
+
+export const WITHDRAWN_INPUT_FAMILY_DEFINITION = defineLinearFamily({
+  category: "withdrawnInput",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    WithdrawnInputStep02Datum,
+    WithdrawnInputStep03Datum,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  replayer: () => WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "linear",
+    transactionPort: (context) =>
+      createTransactionPort({
+        lucid: context.lucid,
+        blueprint: context.binding.blueprint,
+        deploymentInfo: context.binding.deploymentInfo,
+        network: context.binding.network,
+        signer: context.signer,
+        headerHash: context.binding.definition.headerHash,
+        contracts: contracts(context),
+        category: context.binding.resolvedContracts.category,
+        catalogue: context.binding.catalogue,
+        referenceScripts: context.references,
+        certificate: context.certificate,
+        stateQueueMutationLeaseCoordinator:
+          context.stateQueueMutationLeaseCoordinator,
+        fraudProverRewardLovelace: BigInt(
+          context.binding.releaseEconomics.policy.fraudProverRewardLovelace,
         ),
       }),
-      fieldPreimageCertificateMint: ref(
-        "fieldPreimageCertificateMint",
-        config.referenceScripts.fieldPreimageCertificateMint,
-      ),
-    });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  if (l1.publications === undefined) {
-    throw new Error("withdrawn-input raw-L1 omitted publications");
-  }
-  const transactions = createTransactionPort({
-    lucid: config.lucid,
-    blueprint: binding.blueprint,
-    deploymentInfo: binding.deploymentInfo,
-    network: binding.network,
-    signer: config.signer,
-    headerHash: binding.definition.headerHash,
-    contracts,
-    category: binding.resolvedContracts.category,
-    catalogue: binding.catalogue,
-    referenceScripts,
-    certificate,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-    fraudProverRewardLovelace: BigInt(
-      binding.releaseEconomics.policy.fraudProverRewardLovelace,
-    ),
-  });
-  let adapter = createLinearFamilyWorkflowAdapter({
-    category: "withdrawnInput",
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  adapter = withFieldCarriagePrerequisite({
-    category: "withdrawnInput",
-    base: adapter,
-    prerequisite: createAuthenticatedFieldCarriagePrerequisitePort({
-      category: "withdrawnInput",
-      lucid: config.lucid,
-      network: binding.network,
-      signer: config.signer,
-      publications: l1.publications,
-      requirementForAction: async ({ action, artifact }) => {
+  },
+  // Step-02 opens the accepted transaction's spend inputs.
+  fieldCarriage: [
+    {
+      requirementForAction: async (context, { action, artifact }) => {
         if (actionInput(action).stage !== "step_02") return null;
         const admitted = await admitWithdrawnInputArtifact(
           artifact,
-          config.signer.paymentKeyHash,
+          context.signer.paymentKeyHash,
         );
         return {
           planned: admitted.spendPlan,
           compactCbor: admitted.spendPlan.nativeTxCompactCbor,
           certificate: {
-            policyId: certificate.policyId,
-            mintingScript: certificate.mintingScript,
-            referenceScriptUtxo: referenceScripts.fieldPreimageCertificateMint,
+            policyId: context.certificate.policyId,
+            mintingScript: context.certificate.mintingScript,
+            referenceScriptUtxo:
+              context.references.fieldPreimageCertificateMint,
           },
         } satisfies FieldCarriageRequirement;
       },
-      transactionConfirmed: async ({ headerHash, txHash }) =>
-        await l1.transactionConfirmed({ headerHash, txHash }),
-    }),
-  });
-  adapter = withProofChunkPrerequisite({
-    category: "withdrawnInput",
-    base: adapter,
-    prerequisite: createAuthenticatedProofChunkPrerequisitePort({
-      category: "withdrawnInput",
-      lucid: config.lucid,
-      network: binding.network,
-      signer: config.signer,
-      publications: l1.publications,
-      proofCborForAction: ({ action, artifact }) => {
-        if (actionInput(action).stage !== "step_01") return null;
-        const record = exactJournalRecord(
-          artifact,
-          [
-            "schemaVersion",
-            "headerHash",
-            "detectionId",
-            "position",
-            "tx",
-            "spendInputs",
-            "badInputIndex",
-            "withdrawalIndex",
-            "withdrawalMembershipCbor",
-          ],
-          "withdrawn-input proof-chunk artifact",
-        );
-        return admitNativeInclusionArtifact(
-          record.tx,
-          "withdrawn-input proof-chunk transaction",
-        ).artifact.txMembershipProofCbor;
-      },
-      transactionConfirmed: async ({ headerHash, txHash }) =>
-        await l1.transactionConfirmed({ headerHash, txHash }),
-    }),
-  });
-  return Object.freeze({
-    binding,
-    l1,
-    transactions,
-    adapter,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-  });
-};
+    },
+  ],
+  proofChunk: (_context, { action, artifact }) => {
+    if (actionInput(action).stage !== "step_01") return null;
+    const record = exactJournalRecord(
+      artifact,
+      [
+        "schemaVersion",
+        "headerHash",
+        "detectionId",
+        "position",
+        "tx",
+        "spendInputs",
+        "badInputIndex",
+        "withdrawalIndex",
+        "withdrawalMembershipCbor",
+      ],
+      "withdrawn-input proof-chunk artifact",
+    );
+    return admitNativeInclusionArtifact(
+      record.tx,
+      "withdrawn-input proof-chunk transaction",
+    ).artifact.txMembershipProofCbor;
+  },
+});
 
-export const runOrResumeManifestBoundWithdrawnInputWorkflow = async ({
-  workflow,
-  sources,
-  journal,
-}: {
-  readonly workflow: ManifestBoundWithdrawnInputWorkflow;
-  readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<FraudProofWorkflowRunResult> => {
-  const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
-    headerHash: workflow.binding.definition.headerHash,
-  });
-  return await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation,
-    sources,
-    replayer: WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
-    registry: createFraudProofWorkflowRegistry({
-      adapters: [workflow.adapter],
-      launchScope: ["withdrawnInput"],
-    }),
-    journal,
-    terminalVerifier: workflow.terminalVerifier,
-    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-  });
-};
+export const createManifestBoundWithdrawnInputWorkflow = (
+  config: ManifestBoundWithdrawnInputWorkflowConfig,
+): Promise<ManifestBoundWithdrawnInputWorkflow> =>
+  assembleManifestBoundFamilyWorkflow(
+    WITHDRAWN_INPUT_FAMILY_DEFINITION,
+    config,
+  );
+
+export const runOrResumeManifestBoundWithdrawnInputWorkflow =
+  runOrResumeManifestBoundFamilyWorkflow;

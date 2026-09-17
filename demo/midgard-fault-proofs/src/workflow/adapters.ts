@@ -146,6 +146,7 @@ const workflowAdapterRegistrationRows = [
     existingSurface: [
       "workflow/ledger-absence-artifact.ts",
       "workflow/non-existent-input.ts",
+      "workflow/manifest-bound-family-assembly.ts",
       "workflow/runtime.ts#createNonExistentInputProductionWorkflowRunnerV1",
       "ne-submit-step-01.ts..ne-submit-step-04.ts",
       "remove-fraudulent-block.ts",
@@ -159,6 +160,7 @@ const workflowAdapterRegistrationRows = [
     reason: "constrained_adapter_is_not_launch_scope_complete",
     existingSurface: [
       "workflow/input-no-idx.ts",
+      "workflow/manifest-bound-family-assembly.ts",
       "workflow/runtime.ts#createInputNoIdxProductionWorkflowRunnerV1",
       "submit-input-no-idx-step-01.ts..submit-input-no-idx-step-04.ts",
       "remove-fraudulent-block.ts",
@@ -247,6 +249,7 @@ const workflowAdapterRegistrationRows = [
     reason: "constrained_adapter_is_not_launch_scope_complete",
     existingSurface: [
       "workflow/reference-input-no-idx.ts",
+      "workflow/manifest-bound-family-assembly.ts",
       "workflow/runtime.ts#createReferenceInputNoIdxProductionWorkflowRunnerV1",
       "submit-reference-input-no-idx-step-01.ts..submit-reference-input-no-idx-step-04.ts",
       "remove-fraudulent-block.ts",
@@ -444,6 +447,7 @@ const workflowAdapterRegistrationRows = [
     reason: "constrained_adapter_is_not_launch_scope_complete",
     existingSurface: [
       "workflow/withdrawn-input.ts",
+      "workflow/manifest-bound-family-assembly.ts",
       "workflow/runtime.ts#createWithdrawnInputProductionWorkflowRunnerV1",
       "withdrawn-input/evidence.ts",
       "withdrawn-input/submit-withdrawn-input-init.ts",

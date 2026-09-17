@@ -1,8 +1,12 @@
 import { FABRICATED_DEPOSIT_FAMILY_DEFINITION } from "./fabricated-deposit.js";
 import { FABRICATED_WITHDRAWAL_FAMILY_DEFINITION } from "./fabricated-withdrawal.js";
 import type { LinearFamilyDefinitionOf } from "./family-definition.js";
+import { INPUT_NO_IDX_FAMILY_DEFINITION } from "./input-no-idx.js";
 import type { LinearFamilyCategory } from "./linear-family-spec.js";
 import { NO_REFERENCE_INPUT_FAMILY_DEFINITION } from "./no-reference-input.js";
+import { NON_EXISTENT_INPUT_FAMILY_DEFINITION } from "./non-existent-input.js";
+import { REFERENCE_INPUT_NO_IDX_FAMILY_DEFINITION } from "./reference-input-no-idx.js";
+import { WITHDRAWN_INPUT_FAMILY_DEFINITION } from "./withdrawn-input.js";
 
 /**
  * Linear families whose workflow module has not yet been reduced to a
@@ -12,12 +16,9 @@ import { NO_REFERENCE_INPUT_FAMILY_DEFINITION } from "./no-reference-input.js";
  * allow-list is deleted.
  */
 export const UNMIGRATED_LINEAR_FAMILY_CATEGORIES = Object.freeze([
-  "nonExistentInput",
-  "nonExistentInputNoIndex",
   "invalidRange",
   "zeroInput",
   "daHashPreimage",
-  "referenceInputNoIdx",
   "invalidSignature",
   "withdrawnReferenceInput",
   "canonicalDecodability",
@@ -26,7 +27,6 @@ export const UNMIGRATED_LINEAR_FAMILY_CATEGORIES = Object.freeze([
   "doubleWithdraw",
   "crossBlockDuplicateEvent",
   "l2TxMistag",
-  "withdrawnInput",
   "inputSetUniqueness",
 ] as const satisfies readonly LinearFamilyCategory[]);
 
@@ -39,9 +39,13 @@ export type UnmigratedLinearFamilyCategory =
  * allow-list above, with the definition's own category as its key.
  */
 export const LINEAR_FAMILY_DEFINITIONS = Object.freeze({
+  nonExistentInput: NON_EXISTENT_INPUT_FAMILY_DEFINITION,
+  nonExistentInputNoIndex: INPUT_NO_IDX_FAMILY_DEFINITION,
   noReferenceInput: NO_REFERENCE_INPUT_FAMILY_DEFINITION,
+  referenceInputNoIdx: REFERENCE_INPUT_NO_IDX_FAMILY_DEFINITION,
   fabricatedDeposit: FABRICATED_DEPOSIT_FAMILY_DEFINITION,
   fabricatedWithdrawal: FABRICATED_WITHDRAWAL_FAMILY_DEFINITION,
+  withdrawnInput: WITHDRAWN_INPUT_FAMILY_DEFINITION,
 } satisfies {
   readonly [Category in Exclude<
     LinearFamilyCategory,
