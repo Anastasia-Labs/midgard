@@ -3,7 +3,7 @@ import {
   DaHashPreimageStep02Datum,
   FraudProofComputationThreadStepDatum,
 } from "@al-ft/midgard-sdk";
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import {
   DA_HASH_PREIMAGE_EVIDENCE_SCHEMA_VERSION,
@@ -23,19 +23,14 @@ import {
 import { submitDaHashPreimageStep02 } from "../submit-da-hash-preimage-step-02.js";
 import { submitInit } from "../submit-init.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
+import { DA_HASH_PREIMAGE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "./deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "./family-l1-observation.js";
+  defineLinearFamily,
+  type LinearFamilyReferenceScripts,
+  type ManifestBoundLinearFamilyWorkflow,
+  type ManifestBoundLinearFamilyWorkflowConfig,
+} from "./family-definition.js";
 import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
 import {
   type FraudProofWorkflowJournalStore,
@@ -43,21 +38,17 @@ import {
   normalizeJournalJson,
 } from "./journal.js";
 import {
-  createLinearFamilyWorkflowAdapter,
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyCapturedAction,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
+import { assembleManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.js";
 import {
   createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowAction,
   type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
   runDaHashPreimageWorkflowFromRetainedDa,
 } from "./orchestrator.js";
-import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
@@ -249,14 +240,18 @@ export const daHashPreimageArtifact = async (
   return Object.freeze(artifact);
 };
 
-export type DaHashPreimageWorkflowReferenceScripts = Readonly<{
-  steps: readonly [UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScripts & {
-    readonly computationThreadMint: UTxO;
-    readonly fraudProofMint: UTxO;
-    readonly phasMembershipWithdraw: UTxO;
-  };
-}>;
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+] as const;
+
+export type DaHashPreimageWorkflowReferenceScripts =
+  LinearFamilyReferenceScripts<
+    "daHashPreimage",
+    (typeof WITNESS_ROLES)[number],
+    false
+  >;
 
 type BoundDaHashPreimageTransactionsConfig = Readonly<{
   lucid: LucidEvolution;
@@ -460,125 +455,70 @@ const createBoundDaHashPreimageTransactionPort = ({
   });
 };
 
-export type ManifestBoundDaHashPreimageWorkflowConfig = Readonly<{
-  manifest: unknown;
-  blueprintJson: string;
-  deploymentInfo: unknown;
-  headerHash: string;
-  lucid: LucidEvolution;
-  signer: ResolvedProverSigner;
-  referenceScripts: DaHashPreimageWorkflowReferenceScripts;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
-  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-}>;
+export type ManifestBoundDaHashPreimageWorkflowConfig =
+  ManifestBoundLinearFamilyWorkflowConfig<
+    "daHashPreimage",
+    (typeof WITNESS_ROLES)[number],
+    false
+  >;
 
-export type ManifestBoundDaHashPreimageWorkflow = Readonly<{
-  binding: FraudProofWorkflowDeploymentBinding<"daHashPreimage">;
-  l1: FraudProofFamilyL1ObservationPort<"daHashPreimage">;
-  transactions: LinearFamilyTransactionPort<"daHashPreimage">;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-}>;
+export type ManifestBoundDaHashPreimageWorkflow =
+  ManifestBoundLinearFamilyWorkflow<"daHashPreimage", false>;
 
 /**
- * Q44 manifest-bound construction. It is deliberately not an admitted runner
- * yet: the generic canonical classifier cannot route a raw source-leaf defect.
- * Readiness remains missing until the dedicated evidence route enters the
- * shared durable workflow loop without manufacturing canonical evidence.
+ * Q44 manifest-bound definition. It is deliberately not an admitted runner
+ * yet: the generic canonical classifier cannot route a raw source-leaf defect,
+ * so the workflow launches through the dedicated evidence route below rather
+ * than the generic retained-DA runner. Readiness remains missing until that
+ * route enters the shared durable workflow loop without manufacturing
+ * canonical evidence.
  */
-export const createManifestBoundDaHashPreimageWorkflow = async (
-  config: ManifestBoundDaHashPreimageWorkflowConfig,
-): Promise<ManifestBoundDaHashPreimageWorkflow> => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "daHashPreimage",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      FraudProofComputationThreadStepDatum,
-      DaHashPreimageStep02Datum,
-    ],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
-  const references: DaHashPreimageWorkflowReferenceScripts = Object.freeze({
-    steps: Object.freeze([
-      requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fraudProofDaHashPreimage",
-        utxo: config.referenceScripts.steps[0],
+export const DA_HASH_PREIMAGE_FAMILY_DEFINITION = defineLinearFamily({
+  category: "daHashPreimage",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    DaHashPreimageStep02Datum,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: false,
+  replayer: () => DA_HASH_PREIMAGE_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "linear",
+    transactionPort: (context) =>
+      createBoundDaHashPreimageTransactionPort({
+        config: {
+          lucid: context.lucid,
+          blueprint: context.binding.blueprint,
+          deploymentInfo: context.binding.deploymentInfo,
+          network: context.binding.network,
+          signer: context.signer,
+          headerHash: context.binding.definition.headerHash,
+          referenceScripts: context.references,
+          stateQueueMutationLeaseCoordinator:
+            context.stateQueueMutationLeaseCoordinator,
+          fraudProverRewardLovelace: BigInt(
+            context.binding.releaseEconomics.policy.fraudProverRewardLovelace,
+          ),
+        },
+        builders: productionBuilders,
       }),
-      requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fraudProofDaHashPreimageStep02",
-        utxo: config.referenceScripts.steps[1],
-      }),
-    ] as const),
-    witnesses: Object.freeze({
-      computationThreadMint: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "computationThreadMint",
-        utxo: config.referenceScripts.witnesses.computationThreadMint,
-      }),
-      fraudProofMint: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fraudProofMint",
-        utxo: config.referenceScripts.witnesses.fraudProofMint,
-      }),
-      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "phasMembershipWithdraw",
-        utxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
-      }),
-    }),
-  });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  const transactions = createBoundDaHashPreimageTransactionPort({
-    config: {
-      lucid: config.lucid,
-      blueprint: binding.blueprint,
-      deploymentInfo: binding.deploymentInfo,
-      network: binding.network,
-      signer: config.signer,
-      headerHash: binding.definition.headerHash,
-      referenceScripts: references,
-      stateQueueMutationLeaseCoordinator:
-        config.stateQueueMutationLeaseCoordinator,
-      fraudProverRewardLovelace: BigInt(
-        binding.releaseEconomics.policy.fraudProverRewardLovelace,
-      ),
-    },
-    builders: productionBuilders,
-  });
-  return Object.freeze({
-    binding,
-    l1,
-    transactions,
-    adapter: createLinearFamilyWorkflowAdapter({
-      category: "daHashPreimage",
-      l1,
-      transactions,
-      stateQueueMutationLeaseCoordinator:
-        config.stateQueueMutationLeaseCoordinator,
-    }),
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-  });
-};
+  },
+});
 
-/** Exact public-DA Q44 route into the shared durable lifecycle. */
+export const createManifestBoundDaHashPreimageWorkflow = (
+  config: ManifestBoundDaHashPreimageWorkflowConfig,
+): Promise<ManifestBoundDaHashPreimageWorkflow> =>
+  assembleManifestBoundFamilyWorkflow(
+    DA_HASH_PREIMAGE_FAMILY_DEFINITION,
+    config,
+  );
+
+/**
+ * Exact public-DA Q44 route into the shared durable lifecycle. It does not
+ * alias the generic run-or-resume: the raw source-leaf defect is routed by
+ * the authenticated evidence fetch, not by a canonical replayer, so the
+ * dedicated orchestrator entry stays the launch path.
+ */
 export const runOrResumeManifestBoundDaHashPreimageWorkflow = async ({
   workflow,
   sources,

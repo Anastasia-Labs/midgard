@@ -4,7 +4,7 @@ import {
   CommittedFieldShapeStep02Datum,
   FraudProofComputationThreadStepDatum,
 } from "@al-ft/midgard-sdk";
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { CommittedFieldShapeContracts } from "../committed-field-shape/contracts.js";
 import {
@@ -32,43 +32,26 @@ import {
 } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { parseSubmitStep01TxInclusion } from "../submit-step-01.js";
-import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import { COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "./deployment-manifest-binding.js";
+  defineLinearFamily,
+  type LinearFamilyAssemblyContext,
+  type LinearFamilyReferenceScripts,
+  type ManifestBoundLinearFamilyWorkflow,
+  type ManifestBoundLinearFamilyWorkflowConfig,
+} from "./family-definition.js";
+import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "./family-l1-observation.js";
-import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
-import {
-  type FraudProofWorkflowJournalStore,
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.js";
-import {
-  createLinearFamilyWorkflowAdapter,
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
 import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowAction,
-  type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
-  runFraudProofWorkflowFromRetainedDa,
-} from "./orchestrator.js";
-import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
+  assembleManifestBoundFamilyWorkflow,
+  runOrResumeManifestBoundFamilyWorkflow,
+} from "./manifest-bound-family-assembly.js";
+import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
@@ -417,14 +400,24 @@ const prepareArtifactFromEvidence = async ({
   return Object.freeze(artifact);
 };
 
-export type CommittedFieldShapeWorkflowReferenceScripts = Readonly<{
-  steps: readonly [UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScripts & {
-    readonly computationThreadMint: UTxO;
-    readonly fraudProofMint: UTxO;
-    readonly phasMembershipWithdraw: UTxO;
-  };
-}>;
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+] as const;
+
+export type CommittedFieldShapeWorkflowReferenceScripts =
+  LinearFamilyReferenceScripts<
+    "committedFieldShape",
+    (typeof WITNESS_ROLES)[number],
+    false
+  >;
+
+type AssemblyContext = LinearFamilyAssemblyContext<
+  "committedFieldShape",
+  (typeof WITNESS_ROLES)[number],
+  false
+>;
 
 type BoundCommittedFieldShapeTransactionsConfig = Readonly<{
   lucid: LucidEvolution;
@@ -621,47 +614,24 @@ const createBoundTransactionPort = ({
   },
 });
 
-export type ManifestBoundCommittedFieldShapeWorkflowConfig = Readonly<{
-  manifest: unknown;
-  blueprintJson: string;
-  deploymentInfo: unknown;
-  headerHash: string;
-  lucid: LucidEvolution;
-  signer: ResolvedProverSigner;
-  referenceScripts: CommittedFieldShapeWorkflowReferenceScripts;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
-  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-}>;
+export type ManifestBoundCommittedFieldShapeWorkflowConfig =
+  ManifestBoundLinearFamilyWorkflowConfig<
+    "committedFieldShape",
+    (typeof WITNESS_ROLES)[number],
+    false
+  >;
 
-export type ManifestBoundCommittedFieldShapeWorkflow = Readonly<{
-  binding: FraudProofWorkflowDeploymentBinding<"committedFieldShape">;
-  l1: FraudProofFamilyL1ObservationPort<"committedFieldShape">;
-  transactions: LinearFamilyTransactionPort<"committedFieldShape">;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-}>;
+export type ManifestBoundCommittedFieldShapeWorkflow =
+  ManifestBoundLinearFamilyWorkflow<"committedFieldShape", false>;
 
-export const createManifestBoundCommittedFieldShapeWorkflow = async (
-  config: ManifestBoundCommittedFieldShapeWorkflowConfig,
-): Promise<ManifestBoundCommittedFieldShapeWorkflow> => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "committedFieldShape",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      FraudProofComputationThreadStepDatum,
-      CommittedFieldShapeStep02Datum,
-    ],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
+/**
+ * The step-02 verdict binds the field-preimage certificate policy id, so the
+ * manifest must publish the policy; the family never executes the minting
+ * script, so it does not bind that reference script and the definition does
+ * not require the certificate.
+ */
+const contracts = (context: AssemblyContext): CommittedFieldShapeContracts => {
+  const { binding } = context;
   const chain = binding.resolvedContracts.contracts.committedFieldShape;
   const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
   const certificate = binding.fieldPreimageCertificate;
@@ -674,40 +644,7 @@ export const createManifestBoundCommittedFieldShapeWorkflow = async (
       "committed-field-shape manifest binding omitted required contracts",
     );
   }
-  const references: CommittedFieldShapeWorkflowReferenceScripts = Object.freeze(
-    {
-      steps: Object.freeze([
-        requireManifestBoundReferenceScriptUtxo({
-          binding,
-          contractName: "fraudProofCommittedFieldShape",
-          utxo: config.referenceScripts.steps[0],
-        }),
-        requireManifestBoundReferenceScriptUtxo({
-          binding,
-          contractName: "fraudProofCommittedFieldShapeStep02",
-          utxo: config.referenceScripts.steps[1],
-        }),
-      ] as const),
-      witnesses: Object.freeze({
-        computationThreadMint: requireManifestBoundReferenceScriptUtxo({
-          binding,
-          contractName: "computationThreadMint",
-          utxo: config.referenceScripts.witnesses.computationThreadMint,
-        }),
-        fraudProofMint: requireManifestBoundReferenceScriptUtxo({
-          binding,
-          contractName: "fraudProofMint",
-          utxo: config.referenceScripts.witnesses.fraudProofMint,
-        }),
-        phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxo({
-          binding,
-          contractName: "phasMembershipWithdraw",
-          utxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
-        }),
-      }),
-    },
-  );
-  const contracts: CommittedFieldShapeContracts = Object.freeze({
+  return Object.freeze({
     steps: chain.steps,
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: {
@@ -721,75 +658,53 @@ export const createManifestBoundCommittedFieldShapeWorkflow = async (
     stateQueuePolicyId,
     fieldPreimageCertificatePolicyId: certificate.policyId,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  const transactions = createBoundTransactionPort({
-    config: {
-      lucid: config.lucid,
-      blueprint: binding.blueprint,
-      network: binding.network,
-      signer: config.signer,
-      headerHash: binding.definition.headerHash,
-      contracts,
-      category: binding.resolvedContracts.category,
-      catalogue: binding.catalogue,
-      referenceScripts: references,
-      stateQueueMutationLeaseCoordinator:
-        config.stateQueueMutationLeaseCoordinator,
-      fraudProverRewardLovelace: BigInt(
-        binding.releaseEconomics.policy.fraudProverRewardLovelace,
-      ),
-      deploymentInfo: binding.deploymentInfo,
-    },
-    builders: productionBuilders,
-  });
-  return Object.freeze({
-    binding,
-    l1,
-    transactions,
-    adapter: createLinearFamilyWorkflowAdapter({
-      category: "committedFieldShape",
-      l1,
-      transactions,
-      stateQueueMutationLeaseCoordinator:
-        config.stateQueueMutationLeaseCoordinator,
-    }),
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-  });
 };
 
-export const runOrResumeManifestBoundCommittedFieldShapeWorkflow = async ({
-  workflow,
-  sources,
-  journal,
-}: {
-  readonly workflow: ManifestBoundCommittedFieldShapeWorkflow;
-  readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<FraudProofWorkflowRunResult> => {
-  const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
-    headerHash: workflow.binding.definition.headerHash,
-  });
-  return await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation,
-    sources,
-    replayer: COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,
-    registry: createFraudProofWorkflowRegistry({
-      adapters: [workflow.adapter],
-      launchScope: ["committedFieldShape"],
-    }),
-    journal,
-    terminalVerifier: workflow.terminalVerifier,
-    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-  });
-};
+export const COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION = defineLinearFamily({
+  category: "committedFieldShape",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    CommittedFieldShapeStep02Datum,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: false,
+  replayer: () => COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "linear",
+    transactionPort: (context) =>
+      createBoundTransactionPort({
+        config: {
+          lucid: context.lucid,
+          blueprint: context.binding.blueprint,
+          network: context.binding.network,
+          signer: context.signer,
+          headerHash: context.binding.definition.headerHash,
+          contracts: contracts(context),
+          category: context.binding.resolvedContracts.category,
+          catalogue: context.binding.catalogue,
+          referenceScripts: context.references,
+          stateQueueMutationLeaseCoordinator:
+            context.stateQueueMutationLeaseCoordinator,
+          fraudProverRewardLovelace: BigInt(
+            context.binding.releaseEconomics.policy.fraudProverRewardLovelace,
+          ),
+          deploymentInfo: context.binding.deploymentInfo,
+        },
+        builders: productionBuilders,
+      }),
+  },
+});
+
+export const createManifestBoundCommittedFieldShapeWorkflow = (
+  config: ManifestBoundCommittedFieldShapeWorkflowConfig,
+): Promise<ManifestBoundCommittedFieldShapeWorkflow> =>
+  assembleManifestBoundFamilyWorkflow(
+    COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION,
+    config,
+  );
+
+export const runOrResumeManifestBoundCommittedFieldShapeWorkflow =
+  runOrResumeManifestBoundFamilyWorkflow;
 
 export const unsafeCreateCommittedFieldShapeTransactionPortForTest = (input: {
   readonly config: BoundCommittedFieldShapeTransactionsConfig;

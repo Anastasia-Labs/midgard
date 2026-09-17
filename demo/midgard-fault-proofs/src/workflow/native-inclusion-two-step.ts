@@ -14,7 +14,7 @@ import {
   nativeTxBodyHasZeroInputViolation,
   normalizeNativeTxValidityRange,
 } from "@al-ft/midgard-sdk";
-import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import {
   prepareInvalidRangeFromCanonicalEvidence,
@@ -46,8 +46,6 @@ import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
-import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { ZeroInputContracts } from "../zero-input/contracts.js";
 import {
   prepareZeroInputEvidence,
@@ -69,44 +67,26 @@ import {
   INVALID_RANGE_COMPLETE_CANONICAL_REPLAY,
   ZERO_INPUT_COMPLETE_CANONICAL_REPLAY,
 } from "./complete-replay.js";
+import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "./deployment-manifest-binding.js";
+  defineLinearFamily,
+  type LinearFamilyAssemblyContext,
+  type LinearFamilyPrerequisiteInput,
+  type LinearFamilyReferenceScripts,
+  type ManifestBoundLinearFamilyWorkflow,
+  type ManifestBoundLinearFamilyWorkflowConfig,
+} from "./family-definition.js";
+import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-  observeFraudProofWorkflowHeader,
-} from "./family-l1-observation.js";
-import {
-  type FraudProofWorkflowJournalStore,
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.js";
-import {
-  createLinearFamilyWorkflowAdapter,
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
 import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowAction,
-  type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
-  runFraudProofWorkflowFromRetainedDa,
-} from "./orchestrator.js";
-import {
-  createAuthenticatedProofChunkPrerequisitePort,
-  resolveDirectFirstProofChunks,
-  withProofChunkPrerequisite,
-} from "./proof-chunk-prerequisite.js";
-import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
+  assembleManifestBoundFamilyWorkflow,
+  runOrResumeManifestBoundFamilyWorkflow,
+} from "./manifest-bound-family-assembly.js";
+import { type FraudProofWorkflowAction } from "./orchestrator.js";
+import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
@@ -900,15 +880,23 @@ export const prepareNativeInclusionTwoStepArtifact = async <
   return Object.freeze(artifact);
 };
 
-export type NativeInclusionTwoStepWorkflowReferenceScripts = Readonly<{
-  steps: readonly [UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScripts & {
-    readonly computationThreadMint: UTxO;
-    readonly fraudProofMint: UTxO;
-    readonly phasMembershipWithdraw: UTxO;
-    readonly chunkedVerifyWithdraw: UTxO;
-  };
-}>;
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+] as const;
+
+type WitnessRole = (typeof WITNESS_ROLES)[number];
+
+/** Both categories bind the same roles; only the two step scripts differ. */
+export type NativeInclusionTwoStepWorkflowReferenceScripts<
+  Category extends
+    NativeInclusionTwoStepCategory = NativeInclusionTwoStepCategory,
+> = LinearFamilyReferenceScripts<Category, WitnessRole, false>;
+
+type AssemblyContext<Category extends NativeInclusionTwoStepCategory> =
+  LinearFamilyAssemblyContext<Category, WitnessRole, false>;
 
 type BoundConfig<Category extends NativeInclusionTwoStepCategory> = Readonly<{
   category: Category;
@@ -918,7 +906,7 @@ type BoundConfig<Category extends NativeInclusionTwoStepCategory> = Readonly<{
   network: FraudProofWorkflowDeploymentBinding<Category>["network"];
   signer: ResolvedProverSigner;
   headerHash: string;
-  referenceScripts: NativeInclusionTwoStepWorkflowReferenceScripts;
+  referenceScripts: NativeInclusionTwoStepWorkflowReferenceScripts<Category>;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   fraudProverRewardLovelace: bigint;
   zeroInputContracts: ZeroInputContracts | null;
@@ -1247,298 +1235,186 @@ const createTransactionPort = <Category extends NativeInclusionTwoStepCategory>(
   },
 });
 
-type ManifestConfig = Readonly<{
-  manifest: unknown;
-  blueprintJson: string;
-  deploymentInfo: unknown;
-  headerHash: string;
-  lucid: LucidEvolution;
-  signer: ResolvedProverSigner;
-  referenceScripts: NativeInclusionTwoStepWorkflowReferenceScripts;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
-  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-}>;
-
-export type ManifestBoundInvalidRangeWorkflowConfig = ManifestConfig;
-export type ManifestBoundZeroInputWorkflowConfig = ManifestConfig;
+export type ManifestBoundInvalidRangeWorkflowConfig =
+  ManifestBoundLinearFamilyWorkflowConfig<"invalidRange", WitnessRole, false>;
+export type ManifestBoundZeroInputWorkflowConfig =
+  ManifestBoundLinearFamilyWorkflowConfig<"zeroInput", WitnessRole, false>;
 
 export type ManifestBoundNativeInclusionTwoStepWorkflow<
   Category extends NativeInclusionTwoStepCategory,
-> = Readonly<{
-  binding: FraudProofWorkflowDeploymentBinding<Category>;
-  l1: FraudProofFamilyL1ObservationPort<Category>;
-  transactions: LinearFamilyTransactionPort<Category>;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-}>;
+> = ManifestBoundLinearFamilyWorkflow<Category, false>;
 
 export type ManifestBoundInvalidRangeWorkflow =
   ManifestBoundNativeInclusionTwoStepWorkflow<"invalidRange">;
 export type ManifestBoundZeroInputWorkflow =
   ManifestBoundNativeInclusionTwoStepWorkflow<"zeroInput">;
 
-const bindReferences = <Category extends NativeInclusionTwoStepCategory>({
-  binding,
-  supplied,
-}: {
-  readonly binding: FraudProofWorkflowDeploymentBinding<Category>;
-  readonly supplied: NativeInclusionTwoStepWorkflowReferenceScripts;
-}): NativeInclusionTwoStepWorkflowReferenceScripts => {
-  const prefix =
-    binding.definition.category === "invalidRange"
-      ? "fraudProofInvalidRange"
-      : "fraudProofZeroInput";
-  return Object.freeze({
-    steps: Object.freeze([
-      requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: prefix,
-        utxo: supplied.steps[0],
-      }),
-      requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: `${prefix}Step02`,
-        utxo: supplied.steps[1],
-      }),
-    ] as const),
-    witnesses: Object.freeze({
-      computationThreadMint: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "computationThreadMint",
-        utxo: supplied.witnesses.computationThreadMint,
-      }),
-      fraudProofMint: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fraudProofMint",
-        utxo: supplied.witnesses.fraudProofMint,
-      }),
-      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "phasMembershipWithdraw",
-        utxo: supplied.witnesses.phasMembershipWithdraw,
-      }),
-      chunkedVerifyWithdraw: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "chunkedVerifyWithdraw",
-        utxo: supplied.witnesses.chunkedVerifyWithdraw,
-      }),
-    }),
-  });
+const stepReferenceOutRef = <Category extends NativeInclusionTwoStepCategory>(
+  context: AssemblyContext<Category>,
+  index: number,
+): string => {
+  const utxo = context.references.steps[index]!;
+  return `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 };
 
-const createWorkflow = async <Category extends NativeInclusionTwoStepCategory>({
-  category,
-  config,
-}: {
-  readonly category: Category;
-  readonly config: ManifestConfig;
-}): Promise<ManifestBoundNativeInclusionTwoStepWorkflow<Category>> => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category,
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas:
-      category === "invalidRange"
-        ? [FraudProofComputationThreadStepDatum, InvalidRangeStep02Datum]
-        : [FraudProofComputationThreadStepDatum, ZeroInputStep02DatumSchema],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
-  const references = bindReferences({
-    binding,
-    supplied: config.referenceScripts,
-  });
-  const zeroInputChain = binding.resolvedContracts.contracts.zeroInput;
-  const invalidRangeChain = binding.resolvedContracts.contracts.invalidRange;
+const zeroInputContracts = <Category extends NativeInclusionTwoStepCategory>(
+  context: AssemblyContext<Category>,
+): ZeroInputContracts => {
+  const { binding } = context;
+  const chain = binding.resolvedContracts.contracts.zeroInput;
   const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
   const certificatePolicyId =
     binding.fieldPreimageCertificate?.policyId ??
     binding.contractEntries.fieldPreimageCertificateMint?.scriptHash;
-  const zeroInputContracts: ZeroInputContracts | null =
-    category !== "zeroInput"
-      ? null
-      : zeroInputChain === undefined ||
-          stateQueuePolicyId === undefined ||
-          certificatePolicyId === undefined
-        ? (() => {
-            throw new Error("zeroInput deployment chain is incomplete");
-          })()
-        : {
-            steps: zeroInputChain.steps.map((step, index) => ({
-              ...step,
-              blueprintTitle: [
-                "fraud_proofs/zero_input/step_01.main.spend",
-                "fraud_proofs/zero_input/step_02.main.spend",
-              ][index]!,
-              referenceOutRef: `${references.steps[index]!.txHash}#${references.steps[index]!.outputIndex.toString()}`,
-            })) as unknown as ZeroInputContracts["steps"],
-            computationThread:
-              binding.resolvedContracts.contracts.computationThread,
-            fraudProof: {
-              policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
-              mintingScript:
-                binding.resolvedContracts.contracts.fraudProof.mintingScript,
-              spendingScriptAddress:
-                binding.resolvedContracts.contracts.fraudProof
-                  .spendingScriptAddress,
-            },
-            hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
-            stateQueuePolicyId,
-            fieldPreimageCertificatePolicyId: certificatePolicyId,
-          };
-  const invalidRangeContracts: InvalidRangeContracts | null =
-    category !== "invalidRange"
-      ? null
-      : invalidRangeChain === undefined || stateQueuePolicyId === undefined
-        ? (() => {
-            throw new Error("invalidRange deployment chain is incomplete");
-          })()
-        : {
-            steps: invalidRangeChain.steps.map((step, index) => ({
-              ...step,
-              blueprintTitle: [
-                "fraud_proofs/invalid_range/step_01.main.spend",
-                "fraud_proofs/invalid_range/step_02.main.spend",
-              ][index]!,
-              referenceOutRef: `${references.steps[index]!.txHash}#${references.steps[index]!.outputIndex.toString()}`,
-            })) as unknown as InvalidRangeContracts["steps"],
-            computationThread:
-              binding.resolvedContracts.contracts.computationThread,
-            fraudProof: {
-              policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
-              mintingScript:
-                binding.resolvedContracts.contracts.fraudProof.mintingScript,
-              spendingScriptAddress:
-                binding.resolvedContracts.contracts.fraudProof
-                  .spendingScriptAddress,
-            },
-            hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
-            stateQueuePolicyId,
-          };
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  if (l1.publications === undefined) {
-    throw new Error(
-      `${category} raw-L1 authority omitted publication observer`,
-    );
+  if (
+    chain === undefined ||
+    stateQueuePolicyId === undefined ||
+    certificatePolicyId === undefined
+  ) {
+    throw new Error("zeroInput deployment chain is incomplete");
   }
-  const transactions = createTransactionPort({
+  return {
+    steps: chain.steps.map((step, index) => ({
+      ...step,
+      blueprintTitle: [
+        "fraud_proofs/zero_input/step_01.main.spend",
+        "fraud_proofs/zero_input/step_02.main.spend",
+      ][index]!,
+      referenceOutRef: stepReferenceOutRef(context, index),
+    })) as unknown as ZeroInputContracts["steps"],
+    computationThread: binding.resolvedContracts.contracts.computationThread,
+    fraudProof: {
+      policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
+      mintingScript:
+        binding.resolvedContracts.contracts.fraudProof.mintingScript,
+      spendingScriptAddress:
+        binding.resolvedContracts.contracts.fraudProof.spendingScriptAddress,
+    },
+    hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
+    stateQueuePolicyId,
+    fieldPreimageCertificatePolicyId: certificatePolicyId,
+  };
+};
+
+const invalidRangeContracts = <Category extends NativeInclusionTwoStepCategory>(
+  context: AssemblyContext<Category>,
+): InvalidRangeContracts => {
+  const { binding } = context;
+  const chain = binding.resolvedContracts.contracts.invalidRange;
+  const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
+  if (chain === undefined || stateQueuePolicyId === undefined) {
+    throw new Error("invalidRange deployment chain is incomplete");
+  }
+  return {
+    steps: chain.steps.map((step, index) => ({
+      ...step,
+      blueprintTitle: [
+        "fraud_proofs/invalid_range/step_01.main.spend",
+        "fraud_proofs/invalid_range/step_02.main.spend",
+      ][index]!,
+      referenceOutRef: stepReferenceOutRef(context, index),
+    })) as unknown as InvalidRangeContracts["steps"],
+    computationThread: binding.resolvedContracts.contracts.computationThread,
+    fraudProof: {
+      policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
+      mintingScript:
+        binding.resolvedContracts.contracts.fraudProof.mintingScript,
+      spendingScriptAddress:
+        binding.resolvedContracts.contracts.fraudProof.spendingScriptAddress,
+    },
+    hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
+    stateQueuePolicyId,
+  };
+};
+
+/**
+ * The one transaction port both definitions share. The category selects
+ * which contract chain is resolved; the other stays null so the port's
+ * per-category branches refuse a mismatched artifact.
+ */
+const transactionPort = <Category extends NativeInclusionTwoStepCategory>(
+  category: Category,
+  context: AssemblyContext<Category>,
+): LinearFamilyTransactionPort<Category> => {
+  const { binding } = context;
+  return createTransactionPort({
     category,
-    lucid: config.lucid,
+    lucid: context.lucid,
     blueprint: binding.blueprint,
     deploymentInfo: binding.deploymentInfo,
     network: binding.network,
-    signer: config.signer,
+    signer: context.signer,
     headerHash: binding.definition.headerHash,
-    referenceScripts: references,
+    referenceScripts: context.references,
     stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
+      context.stateQueueMutationLeaseCoordinator,
     fraudProverRewardLovelace: BigInt(
       binding.releaseEconomics.policy.fraudProverRewardLovelace,
     ),
-    zeroInputContracts,
-    invalidRangeContracts,
+    zeroInputContracts:
+      category === "zeroInput" ? zeroInputContracts(context) : null,
+    invalidRangeContracts:
+      category === "invalidRange" ? invalidRangeContracts(context) : null,
     categoryId: binding.resolvedContracts.category.categoryId,
   });
-  const linear = createLinearFamilyWorkflowAdapter({
-    category,
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  const prerequisite = createAuthenticatedProofChunkPrerequisitePort({
-    category,
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    maximumTransactionBytes: binding.cardanoProtocolParameters.maxTxSize,
-    proofCborForAction: ({ action, artifact }) => {
-      const admitted = admitNativeInclusionTwoStepArtifact(artifact);
-      return action.input.stage === "step_01" &&
-        admitted.artifact.sourceKind === "accepted"
-        ? admitted.artifact.txMembershipProofCbor
-        : null;
-    },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  return Object.freeze({
-    binding,
-    l1,
-    transactions,
-    adapter: withProofChunkPrerequisite({
-      category,
-      base: linear,
-      prerequisite,
-    }),
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-  });
 };
 
-export const createManifestBoundInvalidRangeWorkflow = async (
+/** Only an accepted-source step-01 publishes its membership proof as chunks. */
+const acceptedStep01ProofCbor = ({
+  action,
+  artifact,
+}: LinearFamilyPrerequisiteInput): string | null => {
+  const admitted = admitNativeInclusionTwoStepArtifact(artifact);
+  return action.input.stage === "step_01" &&
+    admitted.artifact.sourceKind === "accepted"
+    ? admitted.artifact.txMembershipProofCbor
+    : null;
+};
+
+export const INVALID_RANGE_FAMILY_DEFINITION = defineLinearFamily({
+  category: "invalidRange",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    InvalidRangeStep02Datum,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: false,
+  replayer: () => INVALID_RANGE_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "linear",
+    transactionPort: (context) => transactionPort("invalidRange", context),
+  },
+  proofChunk: (_context, input) => acceptedStep01ProofCbor(input),
+});
+
+export const ZERO_INPUT_FAMILY_DEFINITION = defineLinearFamily({
+  category: "zeroInput",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    ZeroInputStep02DatumSchema,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: false,
+  replayer: () => ZERO_INPUT_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "linear",
+    transactionPort: (context) => transactionPort("zeroInput", context),
+  },
+  proofChunk: (_context, input) => acceptedStep01ProofCbor(input),
+});
+
+export const createManifestBoundInvalidRangeWorkflow = (
   config: ManifestBoundInvalidRangeWorkflowConfig,
 ): Promise<ManifestBoundInvalidRangeWorkflow> =>
-  await createWorkflow({ category: "invalidRange", config });
+  assembleManifestBoundFamilyWorkflow(INVALID_RANGE_FAMILY_DEFINITION, config);
 
-export const createManifestBoundZeroInputWorkflow = async (
+export const createManifestBoundZeroInputWorkflow = (
   config: ManifestBoundZeroInputWorkflowConfig,
 ): Promise<ManifestBoundZeroInputWorkflow> =>
-  await createWorkflow({ category: "zeroInput", config });
+  assembleManifestBoundFamilyWorkflow(ZERO_INPUT_FAMILY_DEFINITION, config);
 
-const runWorkflow = async <Category extends NativeInclusionTwoStepCategory>({
-  workflow,
-  sources,
-  journal,
-}: {
-  readonly workflow: ManifestBoundNativeInclusionTwoStepWorkflow<Category>;
-  readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<FraudProofWorkflowRunResult> => {
-  const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
-    headerHash: workflow.binding.definition.headerHash,
-  });
-  const category = workflow.binding.definition.category;
-  return await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation,
-    sources,
-    replayer:
-      category === "invalidRange"
-        ? INVALID_RANGE_COMPLETE_CANONICAL_REPLAY
-        : ZERO_INPUT_COMPLETE_CANONICAL_REPLAY,
-    registry: createFraudProofWorkflowRegistry({
-      adapters: [workflow.adapter],
-      launchScope: [category],
-    }),
-    journal,
-    terminalVerifier: workflow.terminalVerifier,
-    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-  });
-};
+export const runOrResumeManifestBoundInvalidRangeWorkflow =
+  runOrResumeManifestBoundFamilyWorkflow;
 
-export const runOrResumeManifestBoundInvalidRangeWorkflow = async (input: {
-  readonly workflow: ManifestBoundInvalidRangeWorkflow;
-  readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<FraudProofWorkflowRunResult> => await runWorkflow(input);
-
-export const runOrResumeManifestBoundZeroInputWorkflow = async (input: {
-  readonly workflow: ManifestBoundZeroInputWorkflow;
-  readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<FraudProofWorkflowRunResult> => await runWorkflow(input);
+export const runOrResumeManifestBoundZeroInputWorkflow =
+  runOrResumeManifestBoundFamilyWorkflow;

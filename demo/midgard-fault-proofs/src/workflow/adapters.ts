@@ -174,6 +174,7 @@ const workflowAdapterRegistrationRows = [
     reason: "constrained_adapter_is_not_launch_scope_complete",
     existingSurface: [
       "workflow/native-inclusion-two-step.ts",
+      "workflow/manifest-bound-family-assembly.ts",
       "workflow/proof-chunk-prerequisite.ts",
       "workflow/runtime.ts#createInvalidRangeProductionWorkflowRunnerV1",
       "submit-init.ts",
@@ -194,6 +195,7 @@ const workflowAdapterRegistrationRows = [
     reason: "constrained_adapter_is_not_launch_scope_complete",
     existingSurface: [
       "workflow/native-inclusion-two-step.ts",
+      "workflow/manifest-bound-family-assembly.ts",
       "workflow/proof-chunk-prerequisite.ts",
       "workflow/runtime.ts#createZeroInputProductionWorkflowRunnerV1",
       "submit-init.ts",
@@ -220,6 +222,7 @@ const workflowAdapterRegistrationRows = [
     existingSurface: [
       "evidence/fraud-proof-evidence.ts",
       "workflow/da-hash-preimage.ts",
+      "workflow/manifest-bound-family-assembly.ts",
       "workflow/runtime.ts#createDaHashPreimageProductionWorkflowRunnerV1",
       "submit-init.ts",
       "submit-da-hash-preimage-step-01.ts..submit-da-hash-preimage-step-02.ts",
@@ -334,6 +337,7 @@ const workflowAdapterRegistrationRows = [
     reason: "constrained_adapter_is_not_launch_scope_complete",
     existingSurface: [
       "workflow/withdrawn-reference-input.ts",
+      "workflow/manifest-bound-family-assembly.ts",
       "workflow/runtime.ts#createWithdrawnReferenceInputProductionWorkflowRunnerV1",
       "withdrawn-reference-input/prepare-withdrawn-reference-input.ts",
       "withdrawn-reference-input/submit-withdrawn-reference-input-init.ts",
@@ -366,6 +370,7 @@ const workflowAdapterRegistrationRows = [
     reason: "constrained_adapter_is_not_launch_scope_complete",
     existingSurface: [
       "workflow/committed-field-shape.ts",
+      "workflow/manifest-bound-family-assembly.ts",
       "workflow/runtime.ts#createCommittedFieldShapeProductionWorkflowRunnerV1",
       "committed-field-shape/submit-committed-field-shape-init.ts",
       "committed-field-shape/submit-committed-field-shape-step-01.ts..step-02.ts",
@@ -408,6 +413,7 @@ const workflowAdapterRegistrationRows = [
     reason: "constrained_adapter_is_not_launch_scope_complete",
     existingSurface: [
       "workflow/double-withdraw.ts",
+      "workflow/manifest-bound-family-assembly.ts",
       "workflow/runtime.ts#createDoubleWithdrawProductionWorkflowRunnerV1",
       "double-withdraw/submit-double-withdraw-init.ts",
       "double-withdraw/submit-double-withdraw-step-01.ts..step-02.ts",
@@ -434,6 +440,7 @@ const workflowAdapterRegistrationRows = [
     reason: "constrained_adapter_is_not_launch_scope_complete",
     existingSurface: [
       "workflow/l2-tx-mistag.ts",
+      "workflow/manifest-bound-family-assembly.ts",
       "workflow/proof-chunk-prerequisite.ts",
       "workflow/runtime.ts#createL2TxMistagProductionWorkflowRunnerV1",
       "l2-tx-mistag/prepare-l2-tx-mistag.ts",

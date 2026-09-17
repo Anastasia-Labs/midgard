@@ -254,16 +254,22 @@ describe("manifest-bound family assembly", () => {
       },
     );
 
-    it("requires the field-preimage certificate only when the definition declares it", async () => {
+    it("binds the field-preimage certificate mint only when the definition declares it", async () => {
       const f = fixture(category);
-      f.binding.fieldPreimageCertificate = null as never;
       if (f.definition.fieldPreimageCertificate) {
+        // The assembly refuses a manifest without the certificate policy
+        // before any provider observation.
+        f.binding.fieldPreimageCertificate = null as never;
         await expect(f.assemble()).rejects.toThrow(
           `${category} manifest omitted the field-preimage certificate policy`,
         );
         expect(f.observe).not.toHaveBeenCalled();
         return;
       }
+      // A definition that does not declare the certificate never binds the
+      // minting reference script. Its transaction port may still read the
+      // certificate policy id from the manifest (committed-field-shape and
+      // zero-input bind it into a step verdict), so the manifest stays whole.
       const workflow = await f.assemble();
       expect(workflow.adapter.category).toBe(category);
       expect(f.bindReference).not.toHaveBeenCalledWith(

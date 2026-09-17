@@ -3,7 +3,7 @@ import {
   DoubleWithdrawStep02Datum,
   FraudProofComputationThreadStepDatum,
 } from "@al-ft/midgard-sdk";
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { DoubleWithdrawContracts } from "../double-withdraw/contracts.js";
 import { submitDoubleWithdrawInit } from "../double-withdraw/submit-double-withdraw-init.js";
@@ -26,43 +26,26 @@ import {
   submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import { DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "./deployment-manifest-binding.js";
+  defineLinearFamily,
+  type LinearFamilyAssemblyContext,
+  type LinearFamilyReferenceScripts,
+  type ManifestBoundLinearFamilyWorkflow,
+  type ManifestBoundLinearFamilyWorkflowConfig,
+} from "./family-definition.js";
+import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "./family-l1-observation.js";
-import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
-import {
-  type FraudProofWorkflowJournalStore,
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.js";
-import {
-  createLinearFamilyWorkflowAdapter,
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
 import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowAction,
-  type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
-  runFraudProofWorkflowFromRetainedDa,
-} from "./orchestrator.js";
-import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
+  assembleManifestBoundFamilyWorkflow,
+  runOrResumeManifestBoundFamilyWorkflow,
+} from "./manifest-bound-family-assembly.js";
+import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
@@ -372,14 +355,24 @@ const prepareArtifactFromEvidence = async ({
   return Object.freeze(artifact);
 };
 
-export type DoubleWithdrawWorkflowReferenceScripts = Readonly<{
-  steps: readonly [UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScripts & {
-    readonly computationThreadMint: UTxO;
-    readonly fraudProofMint: UTxO;
-    readonly phasMembershipWithdraw: UTxO;
-  };
-}>;
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+] as const;
+
+export type DoubleWithdrawWorkflowReferenceScripts =
+  LinearFamilyReferenceScripts<
+    "doubleWithdraw",
+    (typeof WITNESS_ROLES)[number],
+    false
+  >;
+
+type AssemblyContext = LinearFamilyAssemblyContext<
+  "doubleWithdraw",
+  (typeof WITNESS_ROLES)[number],
+  false
+>;
 
 type BoundDoubleWithdrawTransactionsConfig = Readonly<{
   lucid: LucidEvolution;
@@ -576,47 +569,18 @@ const createBoundTransactionPort = ({
   },
 });
 
-export type ManifestBoundDoubleWithdrawWorkflowConfig = Readonly<{
-  manifest: unknown;
-  blueprintJson: string;
-  deploymentInfo: unknown;
-  headerHash: string;
-  lucid: LucidEvolution;
-  signer: ResolvedProverSigner;
-  referenceScripts: DoubleWithdrawWorkflowReferenceScripts;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
-  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-}>;
+export type ManifestBoundDoubleWithdrawWorkflowConfig =
+  ManifestBoundLinearFamilyWorkflowConfig<
+    "doubleWithdraw",
+    (typeof WITNESS_ROLES)[number],
+    false
+  >;
 
-export type ManifestBoundDoubleWithdrawWorkflow = Readonly<{
-  binding: FraudProofWorkflowDeploymentBinding<"doubleWithdraw">;
-  l1: FraudProofFamilyL1ObservationPort<"doubleWithdraw">;
-  transactions: LinearFamilyTransactionPort<"doubleWithdraw">;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-}>;
+export type ManifestBoundDoubleWithdrawWorkflow =
+  ManifestBoundLinearFamilyWorkflow<"doubleWithdraw", false>;
 
-export const createManifestBoundDoubleWithdrawWorkflow = async (
-  config: ManifestBoundDoubleWithdrawWorkflowConfig,
-): Promise<ManifestBoundDoubleWithdrawWorkflow> => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "doubleWithdraw",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      FraudProofComputationThreadStepDatum,
-      DoubleWithdrawStep02Datum,
-    ],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
+const contracts = (context: AssemblyContext): DoubleWithdrawContracts => {
+  const { binding } = context;
   const chain = binding.resolvedContracts.contracts.doubleWithdraw;
   const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
   if (chain === undefined || stateQueuePolicyId === undefined) {
@@ -624,38 +588,7 @@ export const createManifestBoundDoubleWithdrawWorkflow = async (
       "double-withdraw manifest binding omitted required contracts",
     );
   }
-  const references: DoubleWithdrawWorkflowReferenceScripts = Object.freeze({
-    steps: Object.freeze([
-      requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fraudProofDoubleWithdraw",
-        utxo: config.referenceScripts.steps[0],
-      }),
-      requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fraudProofDoubleWithdrawStep02",
-        utxo: config.referenceScripts.steps[1],
-      }),
-    ] as const),
-    witnesses: Object.freeze({
-      computationThreadMint: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "computationThreadMint",
-        utxo: config.referenceScripts.witnesses.computationThreadMint,
-      }),
-      fraudProofMint: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fraudProofMint",
-        utxo: config.referenceScripts.witnesses.fraudProofMint,
-      }),
-      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "phasMembershipWithdraw",
-        utxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
-      }),
-    }),
-  });
-  const contracts: DoubleWithdrawContracts = Object.freeze({
+  return Object.freeze({
     steps: chain.steps,
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: {
@@ -668,75 +601,53 @@ export const createManifestBoundDoubleWithdrawWorkflow = async (
     hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
     stateQueuePolicyId,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  const transactions = createBoundTransactionPort({
-    config: {
-      lucid: config.lucid,
-      blueprint: binding.blueprint,
-      network: binding.network,
-      signer: config.signer,
-      headerHash: binding.definition.headerHash,
-      contracts,
-      category: binding.resolvedContracts.category,
-      catalogue: binding.catalogue,
-      referenceScripts: references,
-      stateQueueMutationLeaseCoordinator:
-        config.stateQueueMutationLeaseCoordinator,
-      fraudProverRewardLovelace: BigInt(
-        binding.releaseEconomics.policy.fraudProverRewardLovelace,
-      ),
-      deploymentInfo: binding.deploymentInfo,
-    },
-    builders: productionBuilders,
-  });
-  return Object.freeze({
-    binding,
-    l1,
-    transactions,
-    adapter: createLinearFamilyWorkflowAdapter({
-      category: "doubleWithdraw",
-      l1,
-      transactions,
-      stateQueueMutationLeaseCoordinator:
-        config.stateQueueMutationLeaseCoordinator,
-    }),
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-  });
 };
 
-export const runOrResumeManifestBoundDoubleWithdrawWorkflow = async ({
-  workflow,
-  sources,
-  journal,
-}: {
-  readonly workflow: ManifestBoundDoubleWithdrawWorkflow;
-  readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<FraudProofWorkflowRunResult> => {
-  const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
-    headerHash: workflow.binding.definition.headerHash,
-  });
-  return await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation,
-    sources,
-    replayer: DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
-    registry: createFraudProofWorkflowRegistry({
-      adapters: [workflow.adapter],
-      launchScope: ["doubleWithdraw"],
-    }),
-    journal,
-    terminalVerifier: workflow.terminalVerifier,
-    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-  });
-};
+export const DOUBLE_WITHDRAW_FAMILY_DEFINITION = defineLinearFamily({
+  category: "doubleWithdraw",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    DoubleWithdrawStep02Datum,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: false,
+  replayer: () => DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "linear",
+    transactionPort: (context) =>
+      createBoundTransactionPort({
+        config: {
+          lucid: context.lucid,
+          blueprint: context.binding.blueprint,
+          network: context.binding.network,
+          signer: context.signer,
+          headerHash: context.binding.definition.headerHash,
+          contracts: contracts(context),
+          category: context.binding.resolvedContracts.category,
+          catalogue: context.binding.catalogue,
+          referenceScripts: context.references,
+          stateQueueMutationLeaseCoordinator:
+            context.stateQueueMutationLeaseCoordinator,
+          fraudProverRewardLovelace: BigInt(
+            context.binding.releaseEconomics.policy.fraudProverRewardLovelace,
+          ),
+          deploymentInfo: context.binding.deploymentInfo,
+        },
+        builders: productionBuilders,
+      }),
+  },
+});
+
+export const createManifestBoundDoubleWithdrawWorkflow = (
+  config: ManifestBoundDoubleWithdrawWorkflowConfig,
+): Promise<ManifestBoundDoubleWithdrawWorkflow> =>
+  assembleManifestBoundFamilyWorkflow(
+    DOUBLE_WITHDRAW_FAMILY_DEFINITION,
+    config,
+  );
+
+export const runOrResumeManifestBoundDoubleWithdrawWorkflow =
+  runOrResumeManifestBoundFamilyWorkflow;
 
 export const unsafeCreateDoubleWithdrawTransactionPortForTest = (input: {
   readonly config: BoundDoubleWithdrawTransactionsConfig;

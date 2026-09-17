@@ -5,7 +5,7 @@ import {
   FraudProofComputationThreadStepDatum,
   ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -28,48 +28,27 @@ import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
-import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import { L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "./deployment-manifest-binding.js";
+  defineLinearFamily,
+  type LinearFamilyAssemblyContext,
+  type LinearFamilyReferenceScripts,
+  type ManifestBoundLinearFamilyWorkflow,
+  type ManifestBoundLinearFamilyWorkflowConfig,
+} from "./family-definition.js";
+import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "./family-l1-observation.js";
-import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
-import {
-  type FraudProofWorkflowJournalStore,
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.js";
-import {
-  createLinearFamilyWorkflowAdapter,
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
 import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowAction,
-  type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
-  runFraudProofWorkflowFromRetainedDa,
-} from "./orchestrator.js";
-import {
-  createAuthenticatedProofChunkPrerequisitePort,
-  resolveDirectFirstProofChunks,
-  withProofChunkPrerequisite,
-} from "./proof-chunk-prerequisite.js";
-import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
+  assembleManifestBoundFamilyWorkflow,
+  runOrResumeManifestBoundFamilyWorkflow,
+} from "./manifest-bound-family-assembly.js";
+import { type FraudProofWorkflowAction } from "./orchestrator.js";
+import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
@@ -352,15 +331,24 @@ export const prepareL2TxMistagArtifact = async ({
   return Object.freeze(artifact);
 };
 
-export type L2TxMistagWorkflowReferenceScripts = Readonly<{
-  steps: readonly [UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScripts & {
-    readonly computationThreadMint: UTxO;
-    readonly fraudProofMint: UTxO;
-    readonly phasMembershipWithdraw: UTxO;
-    readonly chunkedVerifyWithdraw: UTxO;
-  };
-}>;
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+] as const;
+
+export type L2TxMistagWorkflowReferenceScripts = LinearFamilyReferenceScripts<
+  "l2TxMistag",
+  (typeof WITNESS_ROLES)[number],
+  false
+>;
+
+type AssemblyContext = LinearFamilyAssemblyContext<
+  "l2TxMistag",
+  (typeof WITNESS_ROLES)[number],
+  false
+>;
 
 type BoundConfig = Readonly<{
   lucid: LucidEvolution;
@@ -562,89 +550,26 @@ const createTransactionPort = (
   },
 });
 
-export type ManifestBoundL2TxMistagWorkflowConfig = Readonly<{
-  manifest: unknown;
-  blueprintJson: string;
-  deploymentInfo: unknown;
-  headerHash: string;
-  lucid: LucidEvolution;
-  signer: ResolvedProverSigner;
-  referenceScripts: L2TxMistagWorkflowReferenceScripts;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
-  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-}>;
+export type ManifestBoundL2TxMistagWorkflowConfig =
+  ManifestBoundLinearFamilyWorkflowConfig<
+    "l2TxMistag",
+    (typeof WITNESS_ROLES)[number],
+    false
+  >;
 
-export type ManifestBoundL2TxMistagWorkflow = Readonly<{
-  binding: FraudProofWorkflowDeploymentBinding<"l2TxMistag">;
-  l1: FraudProofFamilyL1ObservationPort<"l2TxMistag">;
-  transactions: LinearFamilyTransactionPort<"l2TxMistag">;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-}>;
+export type ManifestBoundL2TxMistagWorkflow = ManifestBoundLinearFamilyWorkflow<
+  "l2TxMistag",
+  false
+>;
 
-export const createManifestBoundL2TxMistagWorkflow = async (
-  config: ManifestBoundL2TxMistagWorkflowConfig,
-): Promise<ManifestBoundL2TxMistagWorkflow> => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "l2TxMistag",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      FraudProofComputationThreadStepDatum,
-      L2TxMistagStep02Datum,
-    ],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
+const contracts = (context: AssemblyContext): L2TxMistagContracts => {
+  const { binding } = context;
   const chain = binding.resolvedContracts.contracts.l2TxMistag;
   const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
   if (chain === undefined || stateQueuePolicyId === undefined) {
     throw new Error("l2-tx-mistag manifest omitted required contracts");
   }
-  const references: L2TxMistagWorkflowReferenceScripts = Object.freeze({
-    steps: Object.freeze([
-      requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fraudProofL2TxMistag",
-        utxo: config.referenceScripts.steps[0],
-      }),
-      requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fraudProofL2TxMistagStep02",
-        utxo: config.referenceScripts.steps[1],
-      }),
-    ] as const),
-    witnesses: Object.freeze({
-      computationThreadMint: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "computationThreadMint",
-        utxo: config.referenceScripts.witnesses.computationThreadMint,
-      }),
-      fraudProofMint: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fraudProofMint",
-        utxo: config.referenceScripts.witnesses.fraudProofMint,
-      }),
-      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "phasMembershipWithdraw",
-        utxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
-      }),
-      chunkedVerifyWithdraw: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "chunkedVerifyWithdraw",
-        utxo: config.referenceScripts.witnesses.chunkedVerifyWithdraw,
-      }),
-    }),
-  });
-  const contracts: L2TxMistagContracts = Object.freeze({
+  return Object.freeze({
     steps: chain.steps,
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: {
@@ -657,89 +582,51 @@ export const createManifestBoundL2TxMistagWorkflow = async (
     hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
     stateQueuePolicyId,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  const transactions = createTransactionPort({
-    lucid: config.lucid,
-    blueprint: binding.blueprint,
-    deploymentInfo: binding.deploymentInfo,
-    network: binding.network,
-    signer: config.signer,
-    headerHash: binding.definition.headerHash,
-    contracts,
-    category: binding.resolvedContracts.category,
-    catalogue: binding.catalogue,
-    referenceScripts: references,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-    fraudProverRewardLovelace: BigInt(
-      binding.releaseEconomics.policy.fraudProverRewardLovelace,
-    ),
-  });
-  const linear = createLinearFamilyWorkflowAdapter({
-    category: "l2TxMistag",
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  const prerequisite = createAuthenticatedProofChunkPrerequisitePort({
-    category: "l2TxMistag",
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    proofCborForAction: ({ action, artifact }) => {
-      const admitted = parseArtifact(artifact);
-      return action.input.stage === "step_01"
-        ? admitted.txMembershipProofCbor
-        : null;
-    },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  return Object.freeze({
-    binding,
-    l1,
-    transactions,
-    adapter: withProofChunkPrerequisite({
-      category: "l2TxMistag",
-      base: linear,
-      prerequisite,
-    }),
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-  });
 };
 
-export const runOrResumeManifestBoundL2TxMistagWorkflow = async ({
-  workflow,
-  sources,
-  journal,
-}: {
-  readonly workflow: ManifestBoundL2TxMistagWorkflow;
-  readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<FraudProofWorkflowRunResult> => {
-  const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
-    headerHash: workflow.binding.definition.headerHash,
-  });
-  return await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation,
-    sources,
-    replayer: L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY,
-    registry: createFraudProofWorkflowRegistry({
-      adapters: [workflow.adapter],
-      launchScope: ["l2TxMistag"],
-    }),
-    journal,
-    terminalVerifier: workflow.terminalVerifier,
-    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-  });
-};
+export const L2_TX_MISTAG_FAMILY_DEFINITION = defineLinearFamily({
+  category: "l2TxMistag",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    L2TxMistagStep02Datum,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: false,
+  replayer: () => L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "linear",
+    transactionPort: (context) =>
+      createTransactionPort({
+        lucid: context.lucid,
+        blueprint: context.binding.blueprint,
+        deploymentInfo: context.binding.deploymentInfo,
+        network: context.binding.network,
+        signer: context.signer,
+        headerHash: context.binding.definition.headerHash,
+        contracts: contracts(context),
+        category: context.binding.resolvedContracts.category,
+        catalogue: context.binding.catalogue,
+        referenceScripts: context.references,
+        stateQueueMutationLeaseCoordinator:
+          context.stateQueueMutationLeaseCoordinator,
+        fraudProverRewardLovelace: BigInt(
+          context.binding.releaseEconomics.policy.fraudProverRewardLovelace,
+        ),
+      }),
+  },
+  // Step-01 publishes the transaction membership proof as chunks.
+  proofChunk: (_context, { action, artifact }) => {
+    const admitted = parseArtifact(artifact);
+    return action.input.stage === "step_01"
+      ? admitted.txMembershipProofCbor
+      : null;
+  },
+});
+
+export const createManifestBoundL2TxMistagWorkflow = (
+  config: ManifestBoundL2TxMistagWorkflowConfig,
+): Promise<ManifestBoundL2TxMistagWorkflow> =>
+  assembleManifestBoundFamilyWorkflow(L2_TX_MISTAG_FAMILY_DEFINITION, config);
+
+export const runOrResumeManifestBoundL2TxMistagWorkflow =
+  runOrResumeManifestBoundFamilyWorkflow;

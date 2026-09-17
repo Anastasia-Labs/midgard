@@ -346,7 +346,11 @@ export type FamilyDefinition<
   >;
   /** Witness scripts whose published references this family binds. */
   witnessRoles: readonly Witness[];
-  /** Whether the manifest must publish the field-preimage certificate policy. */
+  /**
+   * Whether the assembly binds the field-preimage certificate minting
+   * reference script and refuses a manifest without the certificate policy.
+   * A port that only reads the policy id into a verdict leaves this false.
+   */
   fieldPreimageCertificate: Certificate;
   /** The exact closed replay bundle `runOrResume` launches with. */
   replayer: (
