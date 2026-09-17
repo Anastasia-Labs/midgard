@@ -4,7 +4,7 @@ import {
   FabricatedDepositStep04Datum,
   FraudProofComputationThreadStepDatum,
 } from "@al-ft/midgard-sdk";
-import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import { type LucidEvolution } from "@lucid-evolution/lucid";
 
 import {
   type StateQueueMutationLease,
@@ -21,57 +21,53 @@ import { submitFabricatedDepositStep02 } from "../submit-fabricated-deposit-step
 import { submitFabricatedDepositStep03 } from "../submit-fabricated-deposit-step-03.js";
 import { submitFabricatedDepositStep04 } from "../submit-fabricated-deposit-step-04.js";
 import { submitInit } from "../submit-init.js";
-import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { createFabricatedDepositCompleteCanonicalReplay } from "./complete-replay.js";
-import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "./deployment-manifest-binding.js";
+import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
   createFabricatedDepositEvidenceAuthority,
   type FabricatedDepositEvidenceAuthority,
   requireFabricatedDepositArtifact,
 } from "./fabricated-deposit-evidence.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "./family-l1-observation.js";
-import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
-import type { FraudProofWorkflowJournalStore } from "./journal.js";
+  defineLinearFamily,
+  type LinearFamilyAssemblyContext,
+  type LinearFamilyReferenceScripts,
+  type ManifestBoundLinearFamilyWorkflow,
+  type ManifestBoundLinearFamilyWorkflowConfig,
+} from "./family-definition.js";
 import {
-  createLinearFamilyWorkflowAdapter,
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
 import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowAction,
-  type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
-  runFraudProofWorkflowFromRetainedDa,
-} from "./orchestrator.js";
-import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
+  assembleManifestBoundFamilyWorkflow,
+  runOrResumeManifestBoundFamilyWorkflow,
+} from "./manifest-bound-family-assembly.js";
+import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
 
-export type FabricatedDepositWorkflowReferenceScripts = Readonly<{
-  steps: readonly [UTxO, UTxO, UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScripts & {
-    readonly computationThreadMint: UTxO;
-    readonly fraudProofMint: UTxO;
-    readonly phasMembershipWithdraw: UTxO;
-  };
-}>;
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+] as const;
+
+type AssemblyContext = LinearFamilyAssemblyContext<
+  "fabricatedDeposit",
+  (typeof WITNESS_ROLES)[number],
+  false
+>;
+
+export type FabricatedDepositWorkflowReferenceScripts =
+  LinearFamilyReferenceScripts<
+    "fabricatedDeposit",
+    (typeof WITNESS_ROLES)[number],
+    false
+  >;
 
 type BoundConfig = Readonly<{
   binding: FraudProofWorkflowDeploymentBinding<"fabricatedDeposit">;
@@ -330,175 +326,89 @@ const transactionPort = (
   },
 });
 
-export type ManifestBoundFabricatedDepositWorkflowConfig = Readonly<{
-  manifest: unknown;
-  blueprintJson: string;
-  deploymentInfo: unknown;
-  headerHash: string;
-  lucid: LucidEvolution;
-  signer: ResolvedProverSigner;
-  referenceScripts: FabricatedDepositWorkflowReferenceScripts;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
-  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-}>;
+export type ManifestBoundFabricatedDepositWorkflowConfig =
+  ManifestBoundLinearFamilyWorkflowConfig<
+    "fabricatedDeposit",
+    (typeof WITNESS_ROLES)[number],
+    false
+  >;
 
-export type ManifestBoundFabricatedDepositWorkflow = Readonly<{
-  binding: FraudProofWorkflowDeploymentBinding<"fabricatedDeposit">;
-  l1: FraudProofFamilyL1ObservationPort<"fabricatedDeposit">;
-  transactions: LinearFamilyTransactionPort<"fabricatedDeposit">;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-  replayer: ReturnType<typeof createFabricatedDepositCompleteCanonicalReplay>;
-}>;
+export type ManifestBoundFabricatedDepositWorkflow =
+  ManifestBoundLinearFamilyWorkflow<"fabricatedDeposit", false>;
 
-export const createManifestBoundFabricatedDepositWorkflow = async (
-  config: ManifestBoundFabricatedDepositWorkflowConfig,
-): Promise<ManifestBoundFabricatedDepositWorkflow> => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "fabricatedDeposit",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      FraudProofComputationThreadStepDatum,
-      FabricatedDepositStep02Datum,
-      FabricatedDepositStep03Datum,
-      FabricatedDepositStep04Datum,
-    ],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
-  const chain = binding.resolvedContracts.contracts.fabricatedDeposit;
-  const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
+const contracts = (context: AssemblyContext): FabricatedDepositContracts => {
+  const resolved = context.binding.resolvedContracts;
+  const chain = resolved.contracts.fabricatedDeposit;
+  const stateQueuePolicyId = resolved.stateQueuePolicyId;
   if (chain === undefined || stateQueuePolicyId === undefined) {
     throw new Error("fabricated-deposit manifest omitted required contracts");
   }
-  const stepNames = [
-    "fraudProofFabricatedDeposit",
-    "fraudProofFabricatedDepositStep02",
-    "fraudProofFabricatedDepositStep03",
-    "fraudProofFabricatedDepositStep04",
-  ] as const;
-  const steps = stepNames.map((contractName, index) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName,
-      utxo: config.referenceScripts.steps[index]!,
-    }),
-  ) as unknown as FabricatedDepositWorkflowReferenceScripts["steps"];
-  const witness = <Name extends keyof FaultProofWitnessReferenceScripts>(
-    name: Name,
-    contractName: string,
-  ) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName,
-      utxo: config.referenceScripts.witnesses[name]!,
-    });
-  const references: FabricatedDepositWorkflowReferenceScripts = Object.freeze({
-    steps: Object.freeze(steps),
-    witnesses: Object.freeze({
-      computationThreadMint: witness(
-        "computationThreadMint",
-        "computationThreadMint",
-      ),
-      fraudProofMint: witness("fraudProofMint", "fraudProofMint"),
-      phasMembershipWithdraw: witness(
-        "phasMembershipWithdraw",
-        "phasMembershipWithdraw",
-      ),
-    }),
-  });
-  const contracts: FabricatedDepositContracts = Object.freeze({
-    steps: chain.steps,
-    computationThread: binding.resolvedContracts.contracts.computationThread,
-    fraudProof: {
-      policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
-      mintingScript:
-        binding.resolvedContracts.contracts.fraudProof.mintingScript,
-      spendingScriptAddress:
-        binding.resolvedContracts.contracts.fraudProof.spendingScriptAddress,
-    },
-    hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
-    stateQueuePolicyId,
-    categoryId: binding.resolvedContracts.category.categoryId,
-  });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  if (l1.rawL1 === undefined || l1.publications === undefined) {
-    throw new Error(
-      "fabricated-deposit requires authenticated raw L1 and publication authorities",
-    );
-  }
-  const evidence = createFabricatedDepositEvidenceAuthority({
-    lucid: config.lucid,
-    network: binding.network,
-    hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
-    minimumConfirmationDepth: 1,
-  });
-  const transactions = transactionPort({
-    binding,
-    lucid: config.lucid,
-    signer: config.signer,
-    contracts,
-    references,
-    evidence,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  const adapter = createLinearFamilyWorkflowAdapter({
-    category: "fabricatedDeposit",
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
   return Object.freeze({
-    binding,
-    l1,
-    transactions,
-    adapter,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-    replayer: createFabricatedDepositCompleteCanonicalReplay({
-      authority: evidence,
-      owner: config.signer.paymentKeyHash,
-    }),
+    steps: chain.steps,
+    computationThread: resolved.contracts.computationThread,
+    fraudProof: {
+      policyId: resolved.contracts.fraudProof.policyId,
+      mintingScript: resolved.contracts.fraudProof.mintingScript,
+      spendingScriptAddress:
+        resolved.contracts.fraudProof.spendingScriptAddress,
+    },
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    stateQueuePolicyId,
+    categoryId: resolved.category.categoryId,
   });
 };
 
-export const runOrResumeManifestBoundFabricatedDepositWorkflow = async ({
-  workflow,
-  sources,
-  journal,
-}: {
-  readonly workflow: ManifestBoundFabricatedDepositWorkflow;
-  readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<FraudProofWorkflowRunResult> =>
-  await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation: await observeFraudProofWorkflowHeader(workflow.l1, {
-      headerHash: workflow.binding.definition.headerHash,
-    }),
-    sources,
-    replayer: workflow.replayer,
-    registry: createFraudProofWorkflowRegistry({
-      adapters: [workflow.adapter],
-      launchScope: ["fabricatedDeposit"],
-    }),
-    journal,
-    terminalVerifier: workflow.terminalVerifier,
-    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+/**
+ * The public L1 event authority both the transaction port and the replayer
+ * read. It is a stateless view over the bound hub oracle; each caller may
+ * hold its own instance.
+ */
+const evidenceAuthority = (context: AssemblyContext) =>
+  createFabricatedDepositEvidenceAuthority({
+    lucid: context.lucid,
+    network: context.binding.network,
+    hubOraclePolicyId: context.binding.resolvedContracts.hubOraclePolicyId,
+    minimumConfirmationDepth: 1,
   });
+
+export const FABRICATED_DEPOSIT_FAMILY_DEFINITION = defineLinearFamily({
+  category: "fabricatedDeposit",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    FabricatedDepositStep02Datum,
+    FabricatedDepositStep03Datum,
+    FabricatedDepositStep04Datum,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: false,
+  replayer: (context) =>
+    createFabricatedDepositCompleteCanonicalReplay({
+      authority: evidenceAuthority(context),
+      owner: context.signer.paymentKeyHash,
+    }),
+  adapter: {
+    kind: "linear",
+    transactionPort: (context) =>
+      transactionPort({
+        binding: context.binding,
+        lucid: context.lucid,
+        signer: context.signer,
+        contracts: contracts(context),
+        references: context.references,
+        evidence: evidenceAuthority(context),
+        stateQueueMutationLeaseCoordinator:
+          context.stateQueueMutationLeaseCoordinator,
+      }),
+  },
+});
+
+export const createManifestBoundFabricatedDepositWorkflow = (
+  config: ManifestBoundFabricatedDepositWorkflowConfig,
+): Promise<ManifestBoundFabricatedDepositWorkflow> =>
+  assembleManifestBoundFamilyWorkflow(
+    FABRICATED_DEPOSIT_FAMILY_DEFINITION,
+    config,
+  );
+
+export const runOrResumeManifestBoundFabricatedDepositWorkflow =
+  runOrResumeManifestBoundFamilyWorkflow;

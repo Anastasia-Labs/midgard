@@ -104,3 +104,23 @@ bignums and tag-102 constructors. It does not expose a resumable parse-stack
 checkpoint; the native-script pushdown has its own hash-chained frame protocol.
 See [MidgardTx §11.2](docs/spec/midgard-tx.md#112-the-canonical-data-acceptor-case-b).
 _Avoid_: full on-chain decode, datum Merkleization
+
+### Fault-proof workflow assembly
+
+**Family definition**:
+The frozen, per-category record from which a linear fault-proof family's
+manifest-bound workflow is assembled: step datum schemas, witness roles,
+replayer, adapter arm, and the prerequisites the family declares (field
+carriage, proof chunks). It is separate from the linear family spec, which
+fixes the step contract names and chain shape; a definition never re-declares
+them.
+_Avoid_: family config, workflow definition, spec (for the definition)
+
+**Manifest-bound family assembly**:
+The single module that turns a family definition and a deployment-bound
+config into a runnable workflow in one fixed order: bind the verified
+manifest, check the signer, bind every reference script, start the L1
+observation port, build the transaction port and adapter, apply the declared
+prerequisites (field carriage before proof chunks), then hand the result to
+the retained-DA runner. Per-family constructors are aliases over it.
+_Avoid_: per-family workflow constructor (as the primary term)

@@ -4,7 +4,6 @@ import {
   NoReferenceInputStep03ThreadDatum,
   NoReferenceInputStep04ThreadDatum,
 } from "@al-ft/midgard-sdk";
-import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
   type FaultProofFieldOpeningPlan,
@@ -30,91 +29,61 @@ import {
   submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
 import { resolveNoReferenceInputDeploymentContracts } from "../runtime.js";
-import { type ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
 import { submitNoReferenceInputStep01 } from "../submit-no-reference-input-step-01.js";
 import { submitNoReferenceInputStep02 } from "../submit-no-reference-input-step-02.js";
 import { submitNoReferenceInputStep03 } from "../submit-no-reference-input-step-03.js";
 import { submitNoReferenceInputStep04 } from "../submit-no-reference-input-step-04.js";
-import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { completeCanonicalReplayPredecessorEvidence } from "./complete-replay.js";
+import { NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
 import {
-  type CompleteCanonicalReplayContext,
-  NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
-} from "./complete-replay.js";
-import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "./deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "./family-l1-observation.js";
-import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  type FieldCarriageRequirement,
-  withFieldCarriagePrerequisite,
-} from "./field-carriage-prerequisite.js";
-import type { FraudProofWorkflowJournalStore } from "./journal.js";
+  defineLinearFamily,
+  type LinearFamilyAssemblyContext,
+  type LinearFamilyReferenceScripts,
+  type ManifestBoundLinearFamilyWorkflow,
+  type ManifestBoundLinearFamilyWorkflowConfig,
+} from "./family-definition.js";
+import { type FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
 import {
   admitLedgerAbsenceArtifact,
   prepareLedgerAbsenceArtifact,
 } from "./ledger-absence-artifact.js";
 import {
-  createLinearFamilyWorkflowAdapter,
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
 import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowAction,
-  type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
-  runFraudProofWorkflowFromRetainedDa,
-} from "./orchestrator.js";
-import {
-  createAuthenticatedProofChunkPrerequisitePort,
-  resolveDirectFirstProofChunks,
-  withProofChunkPrerequisite,
-} from "./proof-chunk-prerequisite.js";
-import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
+  assembleManifestBoundFamilyWorkflow,
+  runOrResumeManifestBoundFamilyWorkflow,
+} from "./manifest-bound-family-assembly.js";
+import { type FraudProofWorkflowAction } from "./orchestrator.js";
+import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
 
-export type NoReferenceInputWorkflowReferenceScripts = Readonly<{
-  steps: readonly [UTxO, UTxO, UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScripts & {
-    readonly computationThreadMint: UTxO;
-    readonly fraudProofMint: UTxO;
-    readonly phasMembershipWithdraw: UTxO;
-    readonly chunkedVerifyWithdraw: UTxO;
-    readonly pexcludesWithdraw: UTxO;
-  };
-  fieldPreimageCertificateMint: UTxO;
-}>;
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+  "pexcludesWithdraw",
+] as const;
 
-type BoundConfig = Readonly<{
-  binding: FraudProofWorkflowDeploymentBinding<"noReferenceInput">;
-  lucid: LucidEvolution;
-  signer: ResolvedProverSigner;
-  referenceScripts: NoReferenceInputWorkflowReferenceScripts;
-  certificate: NonNullable<
-    FraudProofWorkflowDeploymentBinding<"noReferenceInput">["fieldPreimageCertificate"]
+export type NoReferenceInputWorkflowReferenceScripts =
+  LinearFamilyReferenceScripts<
+    "noReferenceInput",
+    (typeof WITNESS_ROLES)[number],
+    true
   >;
-  replayContext?: CompleteCanonicalReplayContext;
-  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-}>;
+
+type BoundConfig = LinearFamilyAssemblyContext<
+  "noReferenceInput",
+  (typeof WITNESS_ROLES)[number],
+  true
+>;
 
 const record = (
   value: unknown,
@@ -314,7 +283,7 @@ const createTransactionPort = (
                   "stateQueueBlockOutRef",
                 ),
                 fraudulentHeaderHash: prepared.headerHash,
-                witnessReferenceScripts: config.referenceScripts.witnesses,
+                witnessReferenceScripts: config.references.witnesses,
                 preSubmitBoundary,
                 awaitConfirmation: false,
               });
@@ -359,11 +328,10 @@ const createTransactionPort = (
               prepared,
               stepIndex: stepIndex as 0 | 1 | 2 | 3,
               referenceScripts: {
-                steps: config.referenceScripts.steps,
+                steps: config.references.steps,
                 computationThreadMint:
-                  config.referenceScripts.witnesses.computationThreadMint,
-                fraudProofMint:
-                  config.referenceScripts.witnesses.fraudProofMint,
+                  config.references.witnesses.computationThreadMint,
+                fraudProofMint: config.references.witnesses.fraudProofMint,
               },
               carriageUtxos:
                 carriage === null
@@ -409,7 +377,7 @@ const createTransactionPort = (
                 "stateQueueBlockOutRef",
               ),
               fraudulentHeaderHash: admitted.artifact.headerHash,
-              witnessReferenceScripts: config.referenceScripts.witnesses,
+              witnessReferenceScripts: config.references.witnesses,
               preSubmitBoundary,
               awaitConfirmation: false,
             });
@@ -439,8 +407,8 @@ const createTransactionPort = (
               ),
               txInclusion: admitted.txInclusion,
               publishedProofChunks: chunks,
-              referenceScriptUtxo: config.referenceScripts.steps[0],
-              witnessReferenceScripts: config.referenceScripts.witnesses,
+              referenceScriptUtxo: config.references.steps[0],
+              witnessReferenceScripts: config.references.witnesses,
               preSubmitBoundary,
               awaitConfirmation: false,
             });
@@ -475,7 +443,7 @@ const createTransactionPort = (
                     certificateUtxo: carriage.certificate,
                     certificatePolicyId: config.certificate.policyId,
                   }),
-              referenceScriptUtxo: config.referenceScripts.steps[1],
+              referenceScriptUtxo: config.references.steps[1],
               preSubmitBoundary,
               awaitConfirmation: false,
             });
@@ -502,8 +470,8 @@ const createTransactionPort = (
               ledgerNonMembershipProofCbor:
                 admitted.artifact.ledgerNonMembershipProofCbor,
               publishedProofChunks: chunks,
-              referenceScriptUtxo: config.referenceScripts.steps[2],
-              witnessReferenceScripts: config.referenceScripts.witnesses,
+              referenceScriptUtxo: config.references.steps[2],
+              witnessReferenceScripts: config.references.witnesses,
               preSubmitBoundary,
               awaitConfirmation: false,
             });
@@ -530,8 +498,8 @@ const createTransactionPort = (
               txsNonMembershipProofCbor:
                 admitted.artifact.txsNonMembershipProofCbor,
               publishedProofChunks: chunks,
-              referenceScriptUtxo: config.referenceScripts.steps[3],
-              witnessReferenceScripts: config.referenceScripts.witnesses,
+              referenceScriptUtxo: config.references.steps[3],
+              witnessReferenceScripts: config.references.witnesses,
               preSubmitBoundary,
               awaitConfirmation: false,
             });
@@ -548,255 +516,97 @@ const createTransactionPort = (
   },
 });
 
-export type ManifestBoundNoReferenceInputWorkflowConfig = Readonly<{
-  manifest: unknown;
-  blueprintJson: string;
-  deploymentInfo: unknown;
-  headerHash: string;
-  lucid: LucidEvolution;
-  signer: ResolvedProverSigner;
-  referenceScripts: NoReferenceInputWorkflowReferenceScripts;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
-  replayContext?: CompleteCanonicalReplayContext;
-  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-}>;
+export type ManifestBoundNoReferenceInputWorkflowConfig =
+  ManifestBoundLinearFamilyWorkflowConfig<
+    "noReferenceInput",
+    (typeof WITNESS_ROLES)[number],
+    true
+  >;
 
-export type ManifestBoundNoReferenceInputWorkflow = Readonly<{
-  binding: FraudProofWorkflowDeploymentBinding<"noReferenceInput">;
-  l1: FraudProofFamilyL1ObservationPort<"noReferenceInput">;
-  transactions: LinearFamilyTransactionPort<"noReferenceInput">;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-  replayContext?: CompleteCanonicalReplayContext;
-}>;
+export type ManifestBoundNoReferenceInputWorkflow =
+  ManifestBoundLinearFamilyWorkflow<"noReferenceInput", true>;
 
-export const createManifestBoundNoReferenceInputWorkflow = async (
-  config: ManifestBoundNoReferenceInputWorkflowConfig,
-): Promise<ManifestBoundNoReferenceInputWorkflow> => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "noReferenceInput",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      FraudProofComputationThreadStepDatum,
-      NoReferenceInputStep02ThreadDatum,
-      NoReferenceInputStep03ThreadDatum,
-      NoReferenceInputStep04ThreadDatum,
-    ],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
-  if (binding.fieldPreimageCertificate === null) {
-    throw new Error(
-      "no-reference-input manifest omitted field-preimage certificate policy",
-    );
-  }
-  const certificate = binding.fieldPreimageCertificate;
-  const stepNames = [
-    "fraudProofNoReferenceInput",
-    "fraudProofNoReferenceInputStep02",
-    "fraudProofNoReferenceInputStep03",
-    "fraudProofNoReferenceInputStep04",
-  ] as const;
-  const steps = stepNames.map((contractName, index) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName,
-      utxo: config.referenceScripts.steps[index]!,
-    }),
-  ) as unknown as readonly [UTxO, UTxO, UTxO, UTxO];
-  const witness = <Name extends keyof FaultProofWitnessReferenceScripts>(
-    name: Name,
-    contractName: string,
-  ) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName,
-      utxo: config.referenceScripts.witnesses[name]!,
-    });
-  const references: NoReferenceInputWorkflowReferenceScripts = Object.freeze({
-    steps: Object.freeze(steps),
-    witnesses: Object.freeze({
-      computationThreadMint: witness(
-        "computationThreadMint",
-        "computationThreadMint",
-      ),
-      fraudProofMint: witness("fraudProofMint", "fraudProofMint"),
-      phasMembershipWithdraw: witness(
-        "phasMembershipWithdraw",
-        "phasMembershipWithdraw",
-      ),
-      chunkedVerifyWithdraw: witness(
-        "chunkedVerifyWithdraw",
-        "chunkedVerifyWithdraw",
-      ),
-      pexcludesWithdraw: witness("pexcludesWithdraw", "pexcludesWithdraw"),
-    }),
-    fieldPreimageCertificateMint: requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName: "fieldPreimageCertificateMint",
-      utxo: config.referenceScripts.fieldPreimageCertificateMint,
-    }),
-  });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  if (l1.rawL1 === undefined || l1.publications === undefined) {
-    throw new Error(
-      "no-reference-input requires authenticated raw L1 and publication authorities",
-    );
-  }
-  const bound: BoundConfig = {
-    binding,
-    lucid: config.lucid,
-    signer: config.signer,
-    referenceScripts: references,
-    certificate,
-    ...(config.replayContext === undefined
-      ? {}
-      : { replayContext: config.replayContext }),
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  };
-  const transactions = createTransactionPort(bound);
-  let adapter = createLinearFamilyWorkflowAdapter({
-    category: "noReferenceInput",
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  const fieldPrerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
-    category: "noReferenceInput",
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    requirementForAction: async ({ action, artifact }) => {
-      if (actionInput(action).stage !== "step_02") return null;
-      if (artifact.schemaVersion === NO_REFERENCE_INPUT_FORCED_ARTIFACT) {
-        const prepared = await admitNoReferenceInputForcedArtifact(artifact);
+const fieldPreimageCertificate = (context: BoundConfig) => ({
+  policyId: context.certificate.policyId,
+  mintingScript: context.certificate.mintingScript,
+  referenceScriptUtxo: context.references.fieldPreimageCertificateMint,
+});
+
+export const NO_REFERENCE_INPUT_FAMILY_DEFINITION = defineLinearFamily({
+  category: "noReferenceInput",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    NoReferenceInputStep02ThreadDatum,
+    NoReferenceInputStep03ThreadDatum,
+    NoReferenceInputStep04ThreadDatum,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  replayer: () => NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "linear",
+    transactionPort: createTransactionPort,
+  },
+  // Step-02 carries the disputed transaction's field preimage: the forced
+  // artifact opens the forced source, the ledger-absence artifact opens the
+  // accepted compact transaction.
+  fieldCarriage: [
+    {
+      requirementForAction: async (context, { action, artifact }) => {
+        if (actionInput(action).stage !== "step_02") return null;
+        if (artifact.schemaVersion === NO_REFERENCE_INPUT_FORCED_ARTIFACT) {
+          const prepared = await admitNoReferenceInputForcedArtifact(artifact);
+          return {
+            planned: noReferenceInputForcedFieldPlan(
+              prepared,
+              context.signer.paymentKeyHash,
+            ),
+            compactCbor:
+              prepared.forcedSource.membership.value.submitted_source
+                .compact_cbor,
+            witnessSetCompactCbor:
+              prepared.forcedSource.membership.value.submitted_source
+                .witness_set_compact_cbor,
+            certificate: fieldPreimageCertificate(context),
+          } satisfies FieldCarriageRequirement;
+        }
+        const admitted = admitLedgerAbsenceArtifact(
+          artifact,
+          context.signer.paymentKeyHash,
+        );
         return {
-          planned: noReferenceInputForcedFieldPlan(
-            prepared,
-            config.signer.paymentKeyHash,
-          ),
-          compactCbor:
-            prepared.forcedSource.membership.value.submitted_source
-              .compact_cbor,
-          witnessSetCompactCbor:
-            prepared.forcedSource.membership.value.submitted_source
-              .witness_set_compact_cbor,
-          certificate: {
-            policyId: certificate.policyId,
-            mintingScript: certificate.mintingScript,
-            referenceScriptUtxo: references.fieldPreimageCertificateMint,
-          },
+          planned: admitted.fieldPlan,
+          compactCbor: admitted.artifact.badTx.nativeTxCompactCbor,
+          certificate: fieldPreimageCertificate(context),
         } satisfies FieldCarriageRequirement;
-      }
-      const admitted = admitLedgerAbsenceArtifact(
-        artifact,
-        config.signer.paymentKeyHash,
-      );
-      return {
-        planned: admitted.fieldPlan,
-        compactCbor: admitted.artifact.badTx.nativeTxCompactCbor,
-        certificate: {
-          policyId: certificate.policyId,
-          mintingScript: certificate.mintingScript,
-          referenceScriptUtxo: references.fieldPreimageCertificateMint,
-        },
-      } satisfies FieldCarriageRequirement;
+      },
     },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  adapter = withFieldCarriagePrerequisite({
-    category: "noReferenceInput",
-    base: adapter,
-    prerequisite: fieldPrerequisite,
-  });
-  const proofPrerequisite = createAuthenticatedProofChunkPrerequisitePort({
-    category: "noReferenceInput",
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    maximumTransactionBytes: binding.cardanoProtocolParameters.maxTxSize,
-    proofCborForAction: ({ action, artifact }) => {
-      if (artifact.schemaVersion === NO_REFERENCE_INPUT_FORCED_ARTIFACT)
-        return null;
-      const stage = actionInput(action).stage;
-      const admitted = admitLedgerAbsenceArtifact(
-        artifact,
-        config.signer.paymentKeyHash,
-      );
-      return stage === "step_01"
-        ? admitted.artifact.badTx.txMembershipProofCbor
-        : stage === "step_03"
-          ? admitted.artifact.ledgerNonMembershipProofCbor
-          : stage === "step_04"
-            ? admitted.artifact.txsNonMembershipProofCbor
-            : null;
-    },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  adapter = withProofChunkPrerequisite({
-    category: "noReferenceInput",
-    base: adapter,
-    prerequisite: proofPrerequisite,
-  });
-  return Object.freeze({
-    binding,
-    l1,
-    transactions,
-    adapter,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-    ...(config.replayContext === undefined
-      ? {}
-      : { replayContext: config.replayContext }),
-  });
-};
+  ],
+  proofChunk: (context, { action, artifact }) => {
+    if (artifact.schemaVersion === NO_REFERENCE_INPUT_FORCED_ARTIFACT)
+      return null;
+    const stage = actionInput(action).stage;
+    const admitted = admitLedgerAbsenceArtifact(
+      artifact,
+      context.signer.paymentKeyHash,
+    );
+    return stage === "step_01"
+      ? admitted.artifact.badTx.txMembershipProofCbor
+      : stage === "step_03"
+        ? admitted.artifact.ledgerNonMembershipProofCbor
+        : stage === "step_04"
+          ? admitted.artifact.txsNonMembershipProofCbor
+          : null;
+  },
+});
 
-export const runOrResumeManifestBoundNoReferenceInputWorkflow = async ({
-  workflow,
-  sources,
-  journal,
-}: {
-  readonly workflow: ManifestBoundNoReferenceInputWorkflow;
-  readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<FraudProofWorkflowRunResult> => {
-  const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
-    headerHash: workflow.binding.definition.headerHash,
-  });
-  return await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation,
-    sources,
-    replayer: NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
-    ...(workflow.replayContext === undefined
-      ? {}
-      : { replayContext: workflow.replayContext }),
-    registry: createFraudProofWorkflowRegistry({
-      adapters: [workflow.adapter],
-      launchScope: ["noReferenceInput"],
-    }),
-    journal,
-    terminalVerifier: workflow.terminalVerifier,
-    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-  });
-};
+export const createManifestBoundNoReferenceInputWorkflow = (
+  config: ManifestBoundNoReferenceInputWorkflowConfig,
+): Promise<ManifestBoundNoReferenceInputWorkflow> =>
+  assembleManifestBoundFamilyWorkflow(
+    NO_REFERENCE_INPUT_FAMILY_DEFINITION,
+    config,
+  );
+
+export const runOrResumeManifestBoundNoReferenceInputWorkflow =
+  runOrResumeManifestBoundFamilyWorkflow;

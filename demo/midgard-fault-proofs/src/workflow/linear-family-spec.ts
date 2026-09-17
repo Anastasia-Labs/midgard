@@ -66,10 +66,19 @@ type SuccessorOverrides = Readonly<
   Partial<Record<1 | 2 | 3 | 4, readonly LinearFamilySuccessor[]>>
 >;
 
-const steps = (
-  manifestContractNames: readonly [string, ...string[]],
+/**
+ * One spec step per manifest contract name, as a tuple of the same length so
+ * a family's step count is visible at the type level (the reference-script
+ * types in `family-definition.ts` derive their step tuples from it).
+ */
+export type LinearFamilyStepsFor<Names extends readonly string[]> = {
+  readonly [Index in keyof Names]: LinearFamilyStep;
+};
+
+const steps = <const Names extends readonly [string, ...string[]]>(
+  manifestContractNames: Names,
   overrides: SuccessorOverrides = {},
-): readonly LinearFamilyStep[] => {
+): LinearFamilyStepsFor<Names> => {
   const stepCount = manifestContractNames.length;
   return Object.freeze(
     manifestContractNames.map((manifestContractName, index) => {
@@ -111,14 +120,18 @@ const steps = (
         terminalStep: successors.includes("proof_token"),
       });
     }),
-  );
+  ) as unknown as LinearFamilyStepsFor<Names>;
 };
 
-const spec = (
-  category: LinearFamilyCategory,
-  manifestContractNames: readonly [string, ...string[]],
+const spec = <
+  Category extends LinearFamilyCategory,
+  const Names extends readonly [string, ...string[]],
+>(
+  category: Category,
+  manifestContractNames: Names,
   overrides: SuccessorOverrides = {},
-): LinearFamilySpec =>
+): LinearFamilySpec &
+  Readonly<{ category: Category; steps: LinearFamilyStepsFor<Names> }> =>
   Object.freeze({
     schemaVersion: LINEAR_FAMILY_SPEC,
     category,
@@ -228,16 +241,20 @@ if (
 
 export const LINEAR_FAMILY_SPECS = Object.freeze(rows);
 
+/** The exact spec row of one category, with its step tuple length. */
+export type LinearFamilySpecOf<Category extends LinearFamilyCategory> = Extract<
+  (typeof LINEAR_FAMILY_SPECS)[number],
+  { readonly category: Category }
+>;
+
 export const linearFamilySpec = <Category extends LinearFamilyCategory>(
   category: Category,
-): LinearFamilySpec & { readonly category: Category } => {
+): LinearFamilySpecOf<Category> => {
   const found = LINEAR_FAMILY_SPECS.find(
     (candidate) => candidate.category === category,
   );
   if (found === undefined) {
     throw new Error(`no production linear family spec for ${category}`);
   }
-  return found as LinearFamilySpec & {
-    readonly category: Category;
-  };
+  return found as unknown as LinearFamilySpecOf<Category>;
 };

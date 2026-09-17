@@ -232,6 +232,7 @@ const workflowAdapterRegistrationRows = [
     reason: "constrained_adapter_is_not_launch_scope_complete",
     existingSurface: [
       "workflow/no-reference-input.ts",
+      "workflow/manifest-bound-family-assembly.ts",
       "workflow/ledger-absence-artifact.ts",
       "workflow/runtime.ts#createNoReferenceInputProductionWorkflowRunnerV1",
       "submit-no-reference-input-step-01.ts..submit-no-reference-input-step-04.ts",
@@ -273,6 +274,7 @@ const workflowAdapterRegistrationRows = [
     existingSurface: [
       "workflow/fabricated-deposit-evidence.ts",
       "workflow/fabricated-deposit.ts",
+      "workflow/manifest-bound-family-assembly.ts",
       "workflow/runtime.ts#createFabricatedDepositProductionWorkflowRunnerV1",
       "submit-fabricated-deposit-step-01.ts..submit-fabricated-deposit-step-04.ts",
       "remove-fraudulent-block.ts",
@@ -287,6 +289,7 @@ const workflowAdapterRegistrationRows = [
     existingSurface: [
       "workflow/fabricated-withdrawal-evidence.ts",
       "workflow/fabricated-withdrawal.ts",
+      "workflow/manifest-bound-family-assembly.ts",
       "workflow/runtime.ts#createFabricatedWithdrawalProductionWorkflowRunnerV1",
       "submit-fabricated-withdrawal-step-01.ts..submit-fabricated-withdrawal-step-04.ts",
       "remove-fraudulent-block.ts",
