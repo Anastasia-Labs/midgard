@@ -263,6 +263,7 @@ const workflowAdapterRegistrationRows = [
     reason: "constrained_adapter_is_not_launch_scope_complete",
     existingSurface: [
       "workflow/invalid-signature.ts",
+      "workflow/manifest-bound-family-assembly.ts",
       "workflow/runtime.ts#createInvalidSignatureProductionWorkflowRunnerV1",
       "submit-invalid-signature-step-01.ts..submit-invalid-signature-step-02.ts",
       "remove-fraudulent-block.ts",
@@ -349,6 +350,7 @@ const workflowAdapterRegistrationRows = [
     existingSurface: [
       "evidence/canonical-decodability-raw-evidence.ts",
       "workflow/canonical-decodability.ts",
+      "workflow/manifest-bound-family-assembly.ts",
       "workflow/field-carriage-prerequisite.ts",
       "workflow/runtime.ts#createCanonicalDecodabilityProductionWorkflowRunnerV1",
       "canonical-decodability/submit-canonical-decodability-init.ts",
@@ -378,6 +380,7 @@ const workflowAdapterRegistrationRows = [
     reason: "constrained_adapter_is_not_launch_scope_complete",
     existingSurface: [
       "workflow/min-fee.ts",
+      "workflow/manifest-bound-family-assembly.ts",
       "workflow/field-carriage-prerequisite.ts",
       "workflow/runtime.ts#createMinFeeProductionWorkflowRunnerV1",
       "prepare-min-fee.ts",
@@ -478,6 +481,7 @@ const workflowAdapterRegistrationRows = [
     reason: "constrained_adapter_is_not_launch_scope_complete",
     existingSurface: [
       "workflow/input-set-uniqueness.ts",
+      "workflow/manifest-bound-family-assembly.ts",
       "workflow/runtime.ts#createInputSetUniquenessProductionWorkflowRunnerV1",
       "input-set-uniqueness/scan.ts",
       "input-set-uniqueness/submit-input-set-uniqueness-init.ts",

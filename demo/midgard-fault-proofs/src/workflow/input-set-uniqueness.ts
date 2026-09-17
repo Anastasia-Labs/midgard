@@ -15,7 +15,7 @@ import {
   OutputReferenceSchema,
   rootMembershipProofSchema,
 } from "@al-ft/midgard-sdk";
-import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
@@ -63,40 +63,28 @@ import {
   parseOutRef,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import { INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "./deployment-manifest-binding.js";
+  defineLinearFamily,
+  type LinearFamilyAssemblyContext,
+  type LinearFamilyFieldCarriageRequirement,
+  type LinearFamilyReferenceScripts,
+  type ManifestBoundLinearFamilyWorkflow,
+  type ManifestBoundLinearFamilyWorkflowConfig,
+} from "./family-definition.js";
+import type { FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
+import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "./family-l1-observation.js";
-import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  type FieldCarriageRequirement,
-  withFieldCarriagePrerequisite,
-} from "./field-carriage-prerequisite.js";
-import {
-  type FraudProofWorkflowJournalStore,
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.js";
-import {
-  createLinearFamilyWorkflowAdapter,
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
+import {
+  assembleManifestBoundFamilyWorkflow,
+  runOrResumeManifestBoundFamilyWorkflow,
+} from "./manifest-bound-family-assembly.js";
 import {
   admitNativeInclusionArtifact,
   canonicalHex,
@@ -108,20 +96,8 @@ import {
   NATURAL_DECIMAL,
   safeNaturalNumber,
 } from "./native-index-artifact.js";
-import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowAction,
-  type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
-  runFraudProofWorkflowFromRetainedDa,
-} from "./orchestrator.js";
-import {
-  createAuthenticatedProofChunkPrerequisitePort,
-  resolveDirectFirstProofChunks,
-  withProofChunkPrerequisite,
-} from "./proof-chunk-prerequisite.js";
-import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
+import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
@@ -711,16 +687,25 @@ export const prepareInputSetUniquenessArtifact = async ({
   return Object.freeze(artifact);
 };
 
-export type InputSetUniquenessWorkflowReferenceScripts = Readonly<{
-  steps: readonly [UTxO, UTxO, UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScripts & {
-    readonly computationThreadMint: UTxO;
-    readonly fraudProofMint: UTxO;
-    readonly phasMembershipWithdraw: UTxO;
-    readonly chunkedVerifyWithdraw: UTxO;
-  };
-  fieldPreimageCertificateMint: UTxO;
-}>;
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+] as const;
+
+type AssemblyContext = LinearFamilyAssemblyContext<
+  "inputSetUniqueness",
+  (typeof WITNESS_ROLES)[number],
+  true
+>;
+
+export type InputSetUniquenessWorkflowReferenceScripts =
+  LinearFamilyReferenceScripts<
+    "inputSetUniqueness",
+    (typeof WITNESS_ROLES)[number],
+    true
+  >;
 
 type BoundConfig = Readonly<{
   lucid: LucidEvolution;
@@ -1103,55 +1088,20 @@ const createTransactionPort = (
   },
 });
 
-export type ManifestBoundInputSetUniquenessWorkflowConfig = Readonly<{
-  manifest: unknown;
-  blueprintJson: string;
-  deploymentInfo: unknown;
-  headerHash: string;
-  lucid: LucidEvolution;
-  signer: ResolvedProverSigner;
-  referenceScripts: InputSetUniquenessWorkflowReferenceScripts;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
-  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-}>;
+export type ManifestBoundInputSetUniquenessWorkflowConfig =
+  ManifestBoundLinearFamilyWorkflowConfig<
+    "inputSetUniqueness",
+    (typeof WITNESS_ROLES)[number],
+    true
+  >;
 
-export type ManifestBoundInputSetUniquenessWorkflow = Readonly<{
-  binding: FraudProofWorkflowDeploymentBinding<"inputSetUniqueness">;
-  l1: FraudProofFamilyL1ObservationPort<"inputSetUniqueness">;
-  transactions: LinearFamilyTransactionPort<"inputSetUniqueness">;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-}>;
+export type ManifestBoundInputSetUniquenessWorkflow =
+  ManifestBoundLinearFamilyWorkflow<"inputSetUniqueness", true>;
 
-export const createManifestBoundInputSetUniquenessWorkflow = async (
-  config: ManifestBoundInputSetUniquenessWorkflowConfig,
-): Promise<ManifestBoundInputSetUniquenessWorkflow> => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "inputSetUniqueness",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      FraudProofComputationThreadStepDatum,
-      InputSetUniquenessStep02Datum,
-      InputSetUniquenessStep03DatumSchema,
-      InputSetUniquenessStep04DatumSchema,
-    ],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
-  if (binding.fieldPreimageCertificate === null) {
-    throw new Error("input-set-uniqueness manifest omitted certificate policy");
-  }
-  const certificate = binding.fieldPreimageCertificate;
-  const chain = binding.resolvedContracts.contracts.inputSetUniqueness;
-  const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
+const contracts = (context: AssemblyContext): InputSetUniquenessContracts => {
+  const resolved = context.binding.resolvedContracts;
+  const chain = resolved.contracts.inputSetUniqueness;
+  const stateQueuePolicyId = resolved.stateQueuePolicyId;
   if (
     stateQueuePolicyId === undefined ||
     chain === undefined ||
@@ -1159,207 +1109,120 @@ export const createManifestBoundInputSetUniquenessWorkflow = async (
   ) {
     throw new Error("input-set-uniqueness deployment chain is incomplete");
   }
-  const contracts: InputSetUniquenessContracts = {
+  return {
     steps: [chain.steps[0]!, chain.steps[1]!, chain.steps[2]!, chain.steps[3]!],
-    computationThread: binding.resolvedContracts.contracts.computationThread,
+    computationThread: resolved.contracts.computationThread,
     fraudProof: {
-      policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
-      mintingScript:
-        binding.resolvedContracts.contracts.fraudProof.mintingScript,
+      policyId: resolved.contracts.fraudProof.policyId,
+      mintingScript: resolved.contracts.fraudProof.mintingScript,
       spendingScriptAddress:
-        binding.resolvedContracts.contracts.fraudProof.spendingScriptAddress,
+        resolved.contracts.fraudProof.spendingScriptAddress,
     },
-    hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
     stateQueuePolicyId,
-    fieldPreimageCertificatePolicyId: certificate.policyId,
+    fieldPreimageCertificatePolicyId: context.certificate.policyId,
   };
-  const ref = (contractName: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName,
-      utxo,
-    });
-  const references: InputSetUniquenessWorkflowReferenceScripts = Object.freeze({
-    steps: Object.freeze([
-      ref("fraudProofInputSetUniqueness", config.referenceScripts.steps[0]),
-      ref(
-        "fraudProofInputSetUniquenessStep02",
-        config.referenceScripts.steps[1],
-      ),
-      ref(
-        "fraudProofInputSetUniquenessStep03",
-        config.referenceScripts.steps[2],
-      ),
-      ref(
-        "fraudProofInputSetUniquenessStep04",
-        config.referenceScripts.steps[3],
-      ),
-    ] as const),
-    witnesses: Object.freeze({
-      computationThreadMint: ref(
-        "computationThreadMint",
-        config.referenceScripts.witnesses.computationThreadMint,
-      ),
-      fraudProofMint: ref(
-        "fraudProofMint",
-        config.referenceScripts.witnesses.fraudProofMint,
-      ),
-      phasMembershipWithdraw: ref(
-        "phasMembershipWithdraw",
-        config.referenceScripts.witnesses.phasMembershipWithdraw,
-      ),
-      chunkedVerifyWithdraw: ref(
-        "chunkedVerifyWithdraw",
-        config.referenceScripts.witnesses.chunkedVerifyWithdraw,
-      ),
-    }),
-    fieldPreimageCertificateMint: ref(
-      "fieldPreimageCertificateMint",
-      config.referenceScripts.fieldPreimageCertificateMint,
-    ),
-  });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  if (l1.publications === undefined) {
-    throw new Error("input-set-uniqueness raw-L1 omitted publications");
-  }
-  const publications = l1.publications;
-  const transactions = createTransactionPort({
-    lucid: config.lucid,
-    blueprint: binding.blueprint,
-    deploymentInfo: binding.deploymentInfo,
-    network: binding.network,
-    signer: config.signer,
-    headerHash: binding.definition.headerHash,
-    contracts,
-    category: binding.resolvedContracts.category,
-    catalogue: binding.catalogue,
-    referenceScripts: references,
-    certificate,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-    fraudProverRewardLovelace: BigInt(
-      binding.releaseEconomics.policy.fraudProverRewardLovelace,
-    ),
-  });
-  let adapter = createLinearFamilyWorkflowAdapter({
-    category: "inputSetUniqueness",
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  const fieldPrerequisite = (
-    selector: (artifact: AdmittedArtifact) => FaultProofFieldOpeningPlan | null,
-  ) =>
-    createAuthenticatedFieldCarriagePrerequisitePort({
-      category: "inputSetUniqueness",
-      lucid: config.lucid,
-      network: binding.network,
-      signer: config.signer,
-      publications,
-      requirementForAction: ({ action, artifact }) => {
-        const input = actionInput(action);
-        const admitted = admitAnyInputSetUniquenessArtifact(
-          artifact,
-          config.signer.paymentKeyHash,
-        );
-        if (
-          (admitted.sourceKind === "accepted" && input.stage !== "step_02") ||
-          (admitted.sourceKind === "forced" &&
-            input.stage !== "step_03" &&
-            input.stage !== "step_04")
-        ) {
-          return null;
-        }
-        const plan = selector(admitted);
-        return plan === null
-          ? null
-          : ({
-              planned: plan,
-              compactCbor: plan.nativeTxCompactCbor,
-              certificate: {
-                policyId: certificate.policyId,
-                mintingScript: certificate.mintingScript,
-                referenceScriptUtxo: references.fieldPreimageCertificateMint,
-              },
-            } satisfies FieldCarriageRequirement);
-      },
-      transactionConfirmed: async ({ headerHash, txHash }) =>
-        await l1.transactionConfirmed({ headerHash, txHash }),
-    });
-  adapter = withFieldCarriagePrerequisite({
-    category: "inputSetUniqueness",
-    base: adapter,
-    prerequisite: fieldPrerequisite((artifact) => artifact.spendPlan),
-  });
-  adapter = withFieldCarriagePrerequisite({
-    category: "inputSetUniqueness",
-    base: adapter,
-    prerequisite: fieldPrerequisite((artifact) => artifact.referencePlan),
-  });
-  adapter = withProofChunkPrerequisite({
-    category: "inputSetUniqueness",
-    base: adapter,
-    prerequisite: createAuthenticatedProofChunkPrerequisitePort({
-      category: "inputSetUniqueness",
-      lucid: config.lucid,
-      network: binding.network,
-      signer: config.signer,
-      publications,
-      proofCborForAction: ({ action, artifact }) =>
-        (() => {
-          if (actionInput(action).stage !== "step_01") return null;
-          const admitted = admitAnyInputSetUniquenessArtifact(
-            artifact,
-            config.signer.paymentKeyHash,
-          );
-          return admitted.sourceKind === "accepted"
-            ? admitted.artifact.tx.txMembershipProofCbor
-            : null;
-        })(),
-      transactionConfirmed: async ({ headerHash, txHash }) =>
-        await l1.transactionConfirmed({ headerHash, txHash }),
-    }),
-  });
-  return Object.freeze({
-    binding,
-    l1,
-    transactions,
-    adapter,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-  });
 };
 
-export const runOrResumeManifestBoundInputSetUniquenessWorkflow = async ({
-  workflow,
-  sources,
-  journal,
-}: {
-  readonly workflow: ManifestBoundInputSetUniquenessWorkflow;
-  readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<FraudProofWorkflowRunResult> => {
-  const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
-    headerHash: workflow.binding.definition.headerHash,
-  });
-  return await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation,
-    sources,
-    replayer: INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY,
-    registry: createFraudProofWorkflowRegistry({
-      adapters: [workflow.adapter],
-      launchScope: ["inputSetUniqueness"],
-    }),
-    journal,
-    terminalVerifier: workflow.terminalVerifier,
-    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-  });
-};
+/**
+ * One field-carriage requirement per input field. The accepted artifact opens
+ * its fields before step-02, the forced artifact before step-03 and step-04;
+ * a claim that never touches a field yields no plan for it.
+ */
+const fieldCarriageFor = (
+  selector: (artifact: AdmittedArtifact) => FaultProofFieldOpeningPlan | null,
+): LinearFamilyFieldCarriageRequirement<
+  "inputSetUniqueness",
+  (typeof WITNESS_ROLES)[number],
+  true
+> => ({
+  requirementForAction: (context, { action, artifact }) => {
+    const input = actionInput(action);
+    const admitted = admitAnyInputSetUniquenessArtifact(
+      artifact,
+      context.signer.paymentKeyHash,
+    );
+    if (
+      (admitted.sourceKind === "accepted" && input.stage !== "step_02") ||
+      (admitted.sourceKind === "forced" &&
+        input.stage !== "step_03" &&
+        input.stage !== "step_04")
+    ) {
+      return null;
+    }
+    const plan = selector(admitted);
+    return plan === null
+      ? null
+      : ({
+          planned: plan,
+          compactCbor: plan.nativeTxCompactCbor,
+          certificate: {
+            policyId: context.certificate.policyId,
+            mintingScript: context.certificate.mintingScript,
+            referenceScriptUtxo:
+              context.references.fieldPreimageCertificateMint,
+          },
+        } satisfies FieldCarriageRequirement);
+  },
+});
+
+export const INPUT_SET_UNIQUENESS_FAMILY_DEFINITION = defineLinearFamily({
+  category: "inputSetUniqueness",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    InputSetUniquenessStep02Datum,
+    InputSetUniquenessStep03DatumSchema,
+    InputSetUniquenessStep04DatumSchema,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  replayer: () => INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "linear",
+    transactionPort: (context) =>
+      createTransactionPort({
+        lucid: context.lucid,
+        blueprint: context.binding.blueprint,
+        deploymentInfo: context.binding.deploymentInfo,
+        network: context.binding.network,
+        signer: context.signer,
+        headerHash: context.binding.definition.headerHash,
+        contracts: contracts(context),
+        category: context.binding.resolvedContracts.category,
+        catalogue: context.binding.catalogue,
+        referenceScripts: context.references,
+        certificate: context.certificate,
+        stateQueueMutationLeaseCoordinator:
+          context.stateQueueMutationLeaseCoordinator,
+        fraudProverRewardLovelace: BigInt(
+          context.binding.releaseEconomics.policy.fraudProverRewardLovelace,
+        ),
+      }),
+  },
+  // The spend plan is carried first, then the reference plan.
+  fieldCarriage: [
+    fieldCarriageFor((artifact) => artifact.spendPlan),
+    fieldCarriageFor((artifact) => artifact.referencePlan),
+  ],
+  proofChunk: (context, { action, artifact }) => {
+    if (actionInput(action).stage !== "step_01") return null;
+    const admitted = admitAnyInputSetUniquenessArtifact(
+      artifact,
+      context.signer.paymentKeyHash,
+    );
+    return admitted.sourceKind === "accepted"
+      ? admitted.artifact.tx.txMembershipProofCbor
+      : null;
+  },
+});
+
+export const createManifestBoundInputSetUniquenessWorkflow = (
+  config: ManifestBoundInputSetUniquenessWorkflowConfig,
+): Promise<ManifestBoundInputSetUniquenessWorkflow> =>
+  assembleManifestBoundFamilyWorkflow(
+    INPUT_SET_UNIQUENESS_FAMILY_DEFINITION,
+    config,
+  );
+
+export const runOrResumeManifestBoundInputSetUniquenessWorkflow =
+  runOrResumeManifestBoundFamilyWorkflow;

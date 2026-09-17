@@ -46,53 +46,29 @@ import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
-import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import { MIN_FEE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "./deployment-manifest-binding.js";
+  defineLinearFamily,
+  type LinearFamilyAssemblyContext,
+  type LinearFamilyFieldCarriageRequirement,
+  type LinearFamilyReferenceScripts,
+  type ManifestBoundLinearFamilyWorkflow,
+  type ManifestBoundLinearFamilyWorkflowConfig,
+} from "./family-definition.js";
+import type { FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
+import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "./family-l1-observation.js";
-import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  type FieldCarriageRequirement,
-  withFieldCarriagePrerequisite,
-} from "./field-carriage-prerequisite.js";
-import {
-  type FraudProofWorkflowJournalStore,
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.js";
-import {
-  createLinearFamilyWorkflowAdapter,
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
 import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowAction,
-  type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
-  runFraudProofWorkflowFromRetainedDa,
-} from "./orchestrator.js";
-import {
-  createAuthenticatedProofChunkPrerequisitePort,
-  resolveDirectFirstProofChunks,
-  withProofChunkPrerequisite,
-} from "./proof-chunk-prerequisite.js";
-import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
+  assembleManifestBoundFamilyWorkflow,
+  runOrResumeManifestBoundFamilyWorkflow,
+} from "./manifest-bound-family-assembly.js";
+import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
@@ -562,16 +538,24 @@ export const prepareMinFeeArtifact = async ({
   return Object.freeze(artifact);
 };
 
-export type MinFeeWorkflowReferenceScripts = Readonly<{
-  steps: readonly [UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScripts & {
-    readonly computationThreadMint: UTxO;
-    readonly fraudProofMint: UTxO;
-    readonly phasMembershipWithdraw: UTxO;
-    readonly chunkedVerifyWithdraw: UTxO;
-  };
-  fieldPreimageCertificateMint: UTxO;
-}>;
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+] as const;
+
+type AssemblyContext = LinearFamilyAssemblyContext<
+  "minFee",
+  (typeof WITNESS_ROLES)[number],
+  true
+>;
+
+export type MinFeeWorkflowReferenceScripts = LinearFamilyReferenceScripts<
+  "minFee",
+  (typeof WITNESS_ROLES)[number],
+  true
+>;
 
 type BoundConfig = Readonly<{
   lucid: LucidEvolution;
@@ -863,242 +847,122 @@ const createTransactionPort = (
   },
 });
 
-export type ManifestBoundMinFeeWorkflowConfig = Readonly<{
-  manifest: unknown;
-  blueprintJson: string;
-  deploymentInfo: unknown;
-  headerHash: string;
-  lucid: LucidEvolution;
-  signer: ResolvedProverSigner;
-  referenceScripts: MinFeeWorkflowReferenceScripts;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
-  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-}>;
+export type ManifestBoundMinFeeWorkflowConfig =
+  ManifestBoundLinearFamilyWorkflowConfig<
+    "minFee",
+    (typeof WITNESS_ROLES)[number],
+    true
+  >;
 
-export type ManifestBoundMinFeeWorkflow = Readonly<{
-  binding: FraudProofWorkflowDeploymentBinding<"minFee">;
-  l1: FraudProofFamilyL1ObservationPort<"minFee">;
-  transactions: LinearFamilyTransactionPort<"minFee">;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-}>;
+export type ManifestBoundMinFeeWorkflow = ManifestBoundLinearFamilyWorkflow<
+  "minFee",
+  true
+>;
 
-export const createManifestBoundMinFeeWorkflow = async (
-  config: ManifestBoundMinFeeWorkflowConfig,
-): Promise<ManifestBoundMinFeeWorkflow> => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "minFee",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [FraudProofComputationThreadStepDatum, MinFeeStep02Datum],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
-  const chain = binding.resolvedContracts.contracts.minFee;
-  const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
-  const certificate = binding.fieldPreimageCertificate;
-  if (
-    chain === undefined ||
-    stateQueuePolicyId === undefined ||
-    certificate === null
-  ) {
+const contracts = (context: AssemblyContext): MinFeeContracts => {
+  const resolved = context.binding.resolvedContracts;
+  const chain = resolved.contracts.minFee;
+  const stateQueuePolicyId = resolved.stateQueuePolicyId;
+  if (chain === undefined || stateQueuePolicyId === undefined) {
     throw new Error("min-fee manifest binding omitted required contracts");
   }
-  const references: MinFeeWorkflowReferenceScripts = Object.freeze({
-    steps: Object.freeze([
-      requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fraudProofMinFee",
-        utxo: config.referenceScripts.steps[0],
-      }),
-      requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fraudProofMinFeeStep02",
-        utxo: config.referenceScripts.steps[1],
-      }),
-    ] as const),
-    witnesses: Object.freeze({
-      computationThreadMint: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "computationThreadMint",
-        utxo: config.referenceScripts.witnesses.computationThreadMint,
-      }),
-      fraudProofMint: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fraudProofMint",
-        utxo: config.referenceScripts.witnesses.fraudProofMint,
-      }),
-      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "phasMembershipWithdraw",
-        utxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
-      }),
-      chunkedVerifyWithdraw: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "chunkedVerifyWithdraw",
-        utxo: config.referenceScripts.witnesses.chunkedVerifyWithdraw,
-      }),
-    }),
-    fieldPreimageCertificateMint: requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName: "fieldPreimageCertificateMint",
-      utxo: config.referenceScripts.fieldPreimageCertificateMint,
-    }),
-  });
-  const contracts: MinFeeContracts = Object.freeze({
-    steps: chain.steps,
-    computationThread: binding.resolvedContracts.contracts.computationThread,
-    fraudProof: {
-      policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
-      mintingScript:
-        binding.resolvedContracts.contracts.fraudProof.mintingScript,
-      spendingScriptAddress:
-        binding.resolvedContracts.contracts.fraudProof.spendingScriptAddress,
-    },
-    hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
-    stateQueuePolicyId,
-    fieldPreimageCertificatePolicyId: certificate.policyId,
-  });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  if (l1.publications === undefined) {
-    throw new Error("min-fee raw-L1 authority omitted publication observer");
-  }
-  const transactions = createTransactionPort({
-    lucid: config.lucid,
-    blueprint: binding.blueprint,
-    deploymentInfo: binding.deploymentInfo,
-    network: binding.network,
-    signer: config.signer,
-    headerHash: binding.definition.headerHash,
-    contracts,
-    category: binding.resolvedContracts.category,
-    catalogue: binding.catalogue,
-    referenceScripts: references,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-    fraudProverRewardLovelace: BigInt(
-      binding.releaseEconomics.policy.fraudProverRewardLovelace,
-    ),
-  });
-  let adapter = createLinearFamilyWorkflowAdapter({
-    category: "minFee",
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  // Compose one prerequisite per field. Wrapping from field 0 upward makes
-  // field 0 the innermost and therefore the first action observed, followed
-  // deterministically by fields 1..8 before the proof step can execute.
-  for (let fieldIndex = 0; fieldIndex < FIELD_COUNT; fieldIndex += 1) {
-    const index = fieldIndex;
-    const prerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
-      category: "minFee",
-      lucid: config.lucid,
-      network: binding.network,
-      signer: config.signer,
-      publications: l1.publications,
-      requirementForAction: async ({ action, artifact }) => {
-        const input = record(action.input, "min-fee prerequisite action");
-        if (input.stage !== "step_02") return null;
-        const admitted = await admitWorkflowArtifact(
-          artifact,
-          config.signer.paymentKeyHash,
-        );
-        const planned = admitted.fieldPlans[index];
-        if (planned === undefined) {
-          throw new Error(`min-fee artifact omitted field ${index.toString()}`);
-        }
-        return {
-          planned,
-          compactCbor: admitted.artifact.nativeTxCompactCbor,
-          witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
-            witnessSetCore(admitted.witnessSet),
-          ).toString("hex"),
-          certificate: {
-            policyId: certificate.policyId,
-            mintingScript: certificate.mintingScript,
-            referenceScriptUtxo: references.fieldPreimageCertificateMint,
-          },
-        } satisfies FieldCarriageRequirement;
-      },
-      transactionConfirmed: async ({ headerHash, txHash }) =>
-        await l1.transactionConfirmed({ headerHash, txHash }),
-    });
-    adapter = withFieldCarriagePrerequisite({
-      category: "minFee",
-      base: adapter,
-      prerequisite,
-    });
-  }
-  const proofPrerequisite = createAuthenticatedProofChunkPrerequisitePort({
-    category: "minFee",
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    proofCborForAction: ({ action, artifact }) => {
-      const input = record(action.input, "min-fee proof prerequisite action");
-      return input.stage === "step_01" &&
-        artifact.schemaVersion !== MIN_FEE_FORCED_ARTIFACT
-        ? admitMinFeeArtifact(artifact, config.signer.paymentKeyHash).artifact
-            .txMembershipProofCbor
-        : null;
-    },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  adapter = withProofChunkPrerequisite({
-    category: "minFee",
-    base: adapter,
-    prerequisite: proofPrerequisite,
-  });
   return Object.freeze({
-    binding,
-    l1,
-    transactions,
-    adapter,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
+    steps: chain.steps,
+    computationThread: resolved.contracts.computationThread,
+    fraudProof: {
+      policyId: resolved.contracts.fraudProof.policyId,
+      mintingScript: resolved.contracts.fraudProof.mintingScript,
+      spendingScriptAddress:
+        resolved.contracts.fraudProof.spendingScriptAddress,
+    },
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    stateQueuePolicyId,
+    fieldPreimageCertificatePolicyId: context.certificate.policyId,
   });
 };
 
-export const runOrResumeManifestBoundMinFeeWorkflow = async ({
-  workflow,
-  sources,
-  journal,
-}: {
-  readonly workflow: ManifestBoundMinFeeWorkflow;
-  readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<FraudProofWorkflowRunResult> => {
-  const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
-    headerHash: workflow.binding.definition.headerHash,
-  });
-  return await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation,
-    sources,
-    replayer: MIN_FEE_COMPLETE_CANONICAL_REPLAY,
-    registry: createFraudProofWorkflowRegistry({
-      adapters: [workflow.adapter],
-      launchScope: ["minFee"],
-    }),
-    journal,
-    terminalVerifier: workflow.terminalVerifier,
-    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-  });
-};
+/**
+ * One prerequisite per field. Declared from field 0 upward so field 0 is the
+ * innermost decoration and therefore the first action observed, followed
+ * deterministically by fields 1..8 before the proof step can execute.
+ */
+const fieldCarriageForField = (
+  index: number,
+): LinearFamilyFieldCarriageRequirement<
+  "minFee",
+  (typeof WITNESS_ROLES)[number],
+  true
+> => ({
+  requirementForAction: async (context, { action, artifact }) => {
+    const input = record(action.input, "min-fee prerequisite action");
+    if (input.stage !== "step_02") return null;
+    const admitted = await admitWorkflowArtifact(
+      artifact,
+      context.signer.paymentKeyHash,
+    );
+    const planned = admitted.fieldPlans[index];
+    if (planned === undefined) {
+      throw new Error(`min-fee artifact omitted field ${index.toString()}`);
+    }
+    return {
+      planned,
+      compactCbor: admitted.artifact.nativeTxCompactCbor,
+      witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+        witnessSetCore(admitted.witnessSet),
+      ).toString("hex"),
+      certificate: {
+        policyId: context.certificate.policyId,
+        mintingScript: context.certificate.mintingScript,
+        referenceScriptUtxo: context.references.fieldPreimageCertificateMint,
+      },
+    } satisfies FieldCarriageRequirement;
+  },
+});
+
+export const MIN_FEE_FAMILY_DEFINITION = defineLinearFamily({
+  category: "minFee",
+  stepDatumSchemas: [FraudProofComputationThreadStepDatum, MinFeeStep02Datum],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  replayer: () => MIN_FEE_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "linear",
+    transactionPort: (context) =>
+      createTransactionPort({
+        lucid: context.lucid,
+        blueprint: context.binding.blueprint,
+        deploymentInfo: context.binding.deploymentInfo,
+        network: context.binding.network,
+        signer: context.signer,
+        headerHash: context.binding.definition.headerHash,
+        contracts: contracts(context),
+        category: context.binding.resolvedContracts.category,
+        catalogue: context.binding.catalogue,
+        referenceScripts: context.references,
+        stateQueueMutationLeaseCoordinator:
+          context.stateQueueMutationLeaseCoordinator,
+        fraudProverRewardLovelace: BigInt(
+          context.binding.releaseEconomics.policy.fraudProverRewardLovelace,
+        ),
+      }),
+  },
+  fieldCarriage: Array.from({ length: FIELD_COUNT }, (_, index) =>
+    fieldCarriageForField(index),
+  ),
+  proofChunk: (context, { action, artifact }) => {
+    const input = record(action.input, "min-fee proof prerequisite action");
+    return input.stage === "step_01" &&
+      artifact.schemaVersion !== MIN_FEE_FORCED_ARTIFACT
+      ? admitMinFeeArtifact(artifact, context.signer.paymentKeyHash).artifact
+          .txMembershipProofCbor
+      : null;
+  },
+});
+
+export const createManifestBoundMinFeeWorkflow = (
+  config: ManifestBoundMinFeeWorkflowConfig,
+): Promise<ManifestBoundMinFeeWorkflow> =>
+  assembleManifestBoundFamilyWorkflow(MIN_FEE_FAMILY_DEFINITION, config);
+
+export const runOrResumeManifestBoundMinFeeWorkflow =
+  runOrResumeManifestBoundFamilyWorkflow;

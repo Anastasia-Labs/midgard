@@ -129,6 +129,7 @@ describe("production input-set-uniqueness forced authority", () => {
       | "lucid"
       | "signer"
       | "referenceScripts"
+      | "replayContext"
       | "source"
       | "stateQueueMutationLeaseCoordinator"
     >();
@@ -142,6 +143,7 @@ describe("production input-set-uniqueness forced authority", () => {
           "lucid",
           "signer",
           "referenceScripts",
+          "replayContext",
           "source",
           "stateQueueMutationLeaseCoordinator",
         ].includes(key),

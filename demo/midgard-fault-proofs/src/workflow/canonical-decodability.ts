@@ -12,7 +12,7 @@ import {
   MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX,
   type NativeTxWitnessSetCompact,
 } from "@al-ft/midgard-sdk";
-import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { CanonicalDecodabilityContracts } from "../canonical-decodability/contracts.js";
 import { submitCanonicalDecodabilityInit } from "../canonical-decodability/submit-canonical-decodability-init.js";
@@ -40,52 +40,32 @@ import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
-import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "./deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "./family-l1-observation.js";
-import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
+  defineLinearFamily,
+  type LinearFamilyAssemblyContext,
+  type LinearFamilyPrerequisiteInput,
+  type LinearFamilyReferenceScripts,
+  type ManifestBoundLinearFamilyWorkflow,
+  type ManifestBoundLinearFamilyWorkflowConfig,
+} from "./family-definition.js";
 import {
   createAuthenticatedFieldCarriagePrerequisitePort,
   createRawCommittedFieldCarriagePlan,
   type FieldCarriagePrerequisitePort,
-  withFieldCarriagePrerequisite,
+  type PreimageCarriageRequirement,
 } from "./field-carriage-prerequisite.js";
+import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
 import {
-  type FraudProofWorkflowJournalStore,
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.js";
-import {
-  createLinearFamilyWorkflowAdapter,
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
 import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowAction,
-  type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
-  runFraudProofWorkflowFromRetainedDa,
-} from "./orchestrator.js";
-import {
-  createAuthenticatedProofChunkPrerequisitePort,
-  withProofChunkPrerequisite,
-} from "./proof-chunk-prerequisite.js";
-import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
+  assembleManifestBoundFamilyWorkflow,
+  runOrResumeManifestBoundFamilyWorkflow,
+} from "./manifest-bound-family-assembly.js";
+import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
@@ -378,16 +358,25 @@ export const prepareCanonicalDecodabilityArtifact = async (
   return Object.freeze(artifact);
 };
 
-export type CanonicalDecodabilityWorkflowReferenceScripts = Readonly<{
-  steps: readonly [UTxO, UTxO];
-  fieldPreimageCertificateMint: UTxO;
-  witnesses: FaultProofWitnessReferenceScripts & {
-    readonly computationThreadMint: UTxO;
-    readonly fraudProofMint: UTxO;
-    readonly phasMembershipWithdraw: UTxO;
-    readonly chunkedVerifyWithdraw: UTxO;
-  };
-}>;
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+] as const;
+
+type AssemblyContext = LinearFamilyAssemblyContext<
+  "canonicalDecodability",
+  (typeof WITNESS_ROLES)[number],
+  true
+>;
+
+export type CanonicalDecodabilityWorkflowReferenceScripts =
+  LinearFamilyReferenceScripts<
+    "canonicalDecodability",
+    (typeof WITNESS_ROLES)[number],
+    true
+  >;
 
 type BoundConfig = Readonly<{
   lucid: LucidEvolution;
@@ -603,232 +592,133 @@ const createTransactionPort = (
   },
 });
 
-export type ManifestBoundCanonicalDecodabilityWorkflowConfig = Readonly<{
-  manifest: unknown;
-  blueprintJson: string;
-  deploymentInfo: unknown;
-  headerHash: string;
-  lucid: LucidEvolution;
-  signer: ResolvedProverSigner;
-  referenceScripts: CanonicalDecodabilityWorkflowReferenceScripts;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
-  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-}>;
+export type ManifestBoundCanonicalDecodabilityWorkflowConfig =
+  ManifestBoundLinearFamilyWorkflowConfig<
+    "canonicalDecodability",
+    (typeof WITNESS_ROLES)[number],
+    true
+  >;
 
-export type ManifestBoundCanonicalDecodabilityWorkflow = Readonly<{
-  binding: FraudProofWorkflowDeploymentBinding<"canonicalDecodability">;
-  l1: FraudProofFamilyL1ObservationPort<"canonicalDecodability">;
-  transactions: LinearFamilyTransactionPort<"canonicalDecodability">;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-}>;
+export type ManifestBoundCanonicalDecodabilityWorkflow =
+  ManifestBoundLinearFamilyWorkflow<"canonicalDecodability", true>;
 
-export const createManifestBoundCanonicalDecodabilityWorkflow = async (
-  config: ManifestBoundCanonicalDecodabilityWorkflowConfig,
-): Promise<ManifestBoundCanonicalDecodabilityWorkflow> => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "canonicalDecodability",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      FraudProofComputationThreadStepDatum,
-      CanonicalDecodabilityStep02Datum,
-    ],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
-  const chain = binding.resolvedContracts.contracts.canonicalDecodability;
-  const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
-  const certificate = binding.fieldPreimageCertificate;
-  if (
-    chain === undefined ||
-    stateQueuePolicyId === undefined ||
-    certificate === null
-  ) {
+const contracts = (
+  context: AssemblyContext,
+): CanonicalDecodabilityContracts => {
+  const resolved = context.binding.resolvedContracts;
+  const chain = resolved.contracts.canonicalDecodability;
+  const stateQueuePolicyId = resolved.stateQueuePolicyId;
+  if (chain === undefined || stateQueuePolicyId === undefined) {
     throw new Error(
       "canonical-decodability manifest omitted its proof/certificate contracts",
     );
   }
-  const references: CanonicalDecodabilityWorkflowReferenceScripts =
-    Object.freeze({
-      steps: Object.freeze([
-        requireManifestBoundReferenceScriptUtxo({
-          binding,
-          contractName: "fraudProofCanonicalDecodability",
-          utxo: config.referenceScripts.steps[0],
-        }),
-        requireManifestBoundReferenceScriptUtxo({
-          binding,
-          contractName: "fraudProofCanonicalDecodabilityStep02",
-          utxo: config.referenceScripts.steps[1],
-        }),
-      ] as const),
-      fieldPreimageCertificateMint: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fieldPreimageCertificateMint",
-        utxo: config.referenceScripts.fieldPreimageCertificateMint,
-      }),
-      witnesses: Object.freeze({
-        computationThreadMint: requireManifestBoundReferenceScriptUtxo({
-          binding,
-          contractName: "computationThreadMint",
-          utxo: config.referenceScripts.witnesses.computationThreadMint,
-        }),
-        fraudProofMint: requireManifestBoundReferenceScriptUtxo({
-          binding,
-          contractName: "fraudProofMint",
-          utxo: config.referenceScripts.witnesses.fraudProofMint,
-        }),
-        phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxo({
-          binding,
-          contractName: "phasMembershipWithdraw",
-          utxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
-        }),
-        chunkedVerifyWithdraw: requireManifestBoundReferenceScriptUtxo({
-          binding,
-          contractName: "chunkedVerifyWithdraw",
-          utxo: config.referenceScripts.witnesses.chunkedVerifyWithdraw,
-        }),
-      }),
-    });
-  const contracts: CanonicalDecodabilityContracts = Object.freeze({
-    steps: chain.steps,
-    computationThread: binding.resolvedContracts.contracts.computationThread,
-    fraudProof: {
-      policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
-      mintingScript:
-        binding.resolvedContracts.contracts.fraudProof.mintingScript,
-      spendingScriptAddress:
-        binding.resolvedContracts.contracts.fraudProof.spendingScriptAddress,
-    },
-    hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
-    stateQueuePolicyId,
-    fieldPreimageCertificatePolicyId: certificate.policyId,
-  });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  const fieldCarriage = createAuthenticatedFieldCarriagePrerequisitePort({
-    category: "canonicalDecodability",
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    requirementForAction: async ({ action, artifact }) => {
-      if (action.input.stage !== "step_01") return null;
-      const admitted = await admitCanonicalDecodabilityArtifact(artifact);
-      return Object.freeze({
-        planned: createRawCommittedFieldCarriagePlan({
-          sourceKind: 0n,
-          owner: config.signer.paymentKeyHash,
-          nativeTxId: admitted.txInclusion.nativeTxId,
-          fieldIndex: admitted.artifact.selectedFieldIndex,
-          preimage: admitted.committedPreimage,
-        }),
-        compactCbor: admitted.txInclusion.nativeTxCompactCbor,
-        ...(admitted.witnessSetCompactCbor === undefined
-          ? {}
-          : { witnessSetCompactCbor: admitted.witnessSetCompactCbor }),
-        certificate: Object.freeze({
-          policyId: certificate.policyId,
-          mintingScript: certificate.mintingScript,
-          referenceScriptUtxo: references.fieldPreimageCertificateMint,
-        }),
-      });
-    },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  const transactions = createTransactionPort({
-    lucid: config.lucid,
-    blueprint: binding.blueprint,
-    deploymentInfo: binding.deploymentInfo,
-    network: binding.network,
-    signer: config.signer,
-    headerHash: binding.definition.headerHash,
-    contracts,
-    category: binding.resolvedContracts.category,
-    catalogue: binding.catalogue,
-    referenceScripts: references,
-    fieldCarriage,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-    fraudProverRewardLovelace: BigInt(
-      binding.releaseEconomics.policy.fraudProverRewardLovelace,
-    ),
-  });
-  const linear = createLinearFamilyWorkflowAdapter({
-    category: "canonicalDecodability",
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  const proofChunks = createAuthenticatedProofChunkPrerequisitePort({
-    category: "canonicalDecodability",
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    proofCborForAction: ({ action, artifact }) =>
-      action.input.stage === "step_01"
-        ? parseArtifact(artifact).txMembershipProofCbor
-        : null,
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
   return Object.freeze({
-    binding,
-    l1,
-    transactions,
-    adapter: withFieldCarriagePrerequisite({
-      category: "canonicalDecodability",
-      base: withProofChunkPrerequisite({
-        category: "canonicalDecodability",
-        base: linear,
-        prerequisite: proofChunks,
-      }),
-      prerequisite: fieldCarriage,
-    }),
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
+    steps: chain.steps,
+    computationThread: resolved.contracts.computationThread,
+    fraudProof: {
+      policyId: resolved.contracts.fraudProof.policyId,
+      mintingScript: resolved.contracts.fraudProof.mintingScript,
+      spendingScriptAddress:
+        resolved.contracts.fraudProof.spendingScriptAddress,
+    },
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    stateQueuePolicyId,
+    fieldPreimageCertificatePolicyId: context.certificate.policyId,
   });
 };
 
-export const runOrResumeManifestBoundCanonicalDecodabilityWorkflow = async ({
-  workflow,
-  sources,
-  journal,
-}: {
-  readonly workflow: ManifestBoundCanonicalDecodabilityWorkflow;
-  readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<FraudProofWorkflowRunResult> => {
-  const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
-    headerHash: workflow.binding.definition.headerHash,
-  });
-  return await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation,
-    sources,
-    replayer: CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
-    registry: createFraudProofWorkflowRegistry({
-      adapters: [workflow.adapter],
-      launchScope: ["canonicalDecodability"],
+// Step-01 carries the selected committed field as raw bytes.
+const fieldCarriageRequirementForAction = async (
+  context: AssemblyContext,
+  { action, artifact }: LinearFamilyPrerequisiteInput,
+): Promise<PreimageCarriageRequirement | null> => {
+  if (action.input.stage !== "step_01") return null;
+  const admitted = await admitCanonicalDecodabilityArtifact(artifact);
+  return Object.freeze({
+    planned: createRawCommittedFieldCarriagePlan({
+      sourceKind: 0n,
+      owner: context.signer.paymentKeyHash,
+      nativeTxId: admitted.txInclusion.nativeTxId,
+      fieldIndex: admitted.artifact.selectedFieldIndex,
+      preimage: admitted.committedPreimage,
     }),
-    journal,
-    terminalVerifier: workflow.terminalVerifier,
-    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+    compactCbor: admitted.txInclusion.nativeTxCompactCbor,
+    ...(admitted.witnessSetCompactCbor === undefined
+      ? {}
+      : { witnessSetCompactCbor: admitted.witnessSetCompactCbor }),
+    certificate: Object.freeze({
+      policyId: context.certificate.policyId,
+      mintingScript: context.certificate.mintingScript,
+      referenceScriptUtxo: context.references.fieldPreimageCertificateMint,
+    }),
   });
 };
+
+/**
+ * The transaction port resolves the authenticated field carriage before it
+ * builds step-01. The port is a stateless view over the raw-L1 publication
+ * observer, so the transaction port holds its own instance built from the
+ * same requirement the assembly decorates the adapter with.
+ */
+const fieldCarriagePort = (context: AssemblyContext) =>
+  createAuthenticatedFieldCarriagePrerequisitePort({
+    category: "canonicalDecodability",
+    lucid: context.lucid,
+    network: context.binding.network,
+    signer: context.signer,
+    publications: context.l1.publications,
+    requirementForAction: (input) =>
+      fieldCarriageRequirementForAction(context, input),
+    transactionConfirmed: async ({ headerHash, txHash }) =>
+      await context.l1.transactionConfirmed({ headerHash, txHash }),
+  });
+
+export const CANONICAL_DECODABILITY_FAMILY_DEFINITION = defineLinearFamily({
+  category: "canonicalDecodability",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    CanonicalDecodabilityStep02Datum,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  replayer: () => CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "linear",
+    transactionPort: (context) =>
+      createTransactionPort({
+        lucid: context.lucid,
+        blueprint: context.binding.blueprint,
+        deploymentInfo: context.binding.deploymentInfo,
+        network: context.binding.network,
+        signer: context.signer,
+        headerHash: context.binding.definition.headerHash,
+        contracts: contracts(context),
+        category: context.binding.resolvedContracts.category,
+        catalogue: context.binding.catalogue,
+        referenceScripts: context.references,
+        fieldCarriage: fieldCarriagePort(context),
+        stateQueueMutationLeaseCoordinator:
+          context.stateQueueMutationLeaseCoordinator,
+        fraudProverRewardLovelace: BigInt(
+          context.binding.releaseEconomics.policy.fraudProverRewardLovelace,
+        ),
+      }),
+  },
+  fieldCarriage: [{ requirementForAction: fieldCarriageRequirementForAction }],
+  proofChunk: (_context, { action, artifact }) =>
+    action.input.stage === "step_01"
+      ? parseArtifact(artifact).txMembershipProofCbor
+      : null,
+});
+
+export const createManifestBoundCanonicalDecodabilityWorkflow = (
+  config: ManifestBoundCanonicalDecodabilityWorkflowConfig,
+): Promise<ManifestBoundCanonicalDecodabilityWorkflow> =>
+  assembleManifestBoundFamilyWorkflow(
+    CANONICAL_DECODABILITY_FAMILY_DEFINITION,
+    config,
+  );
+
+export const runOrResumeManifestBoundCanonicalDecodabilityWorkflow =
+  runOrResumeManifestBoundFamilyWorkflow;
