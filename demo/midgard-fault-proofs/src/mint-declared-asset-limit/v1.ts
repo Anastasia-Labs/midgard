@@ -6,7 +6,6 @@ import {
   DaLibp2pRetainedDaSource,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
@@ -20,27 +19,16 @@ import {
 } from "../workflow/adapters.js";
 import { MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
-  createCursorFamilyWorkflowAdapter,
   CURSOR_FAMILY_TRANSACTION_PORT,
+  type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+  defineFamily,
+  type FamilyAssemblyContext,
+  type ManifestBoundFamilyWorkflow,
+} from "../workflow/family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  type FieldCarriagePrerequisitePort,
-  withFieldCarriagePrerequisite,
-} from "../workflow/field-carriage-prerequisite.js";
+import { type FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
   DirectoryFraudProofWorkflowJournalStore,
@@ -48,17 +36,15 @@ import {
   journalJsonDigest,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
   createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
   resumeRecordedFraudProofWorkflow,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
 import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import type { FraudProofRawL1FamilyStage } from "../workflow/raw-l1-family-derivation.js";
-import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import {
   createMintDeclaredAssetLimitActuator,
   type MintDeclaredAssetLimitActuatorAction,
@@ -121,45 +107,35 @@ export type ManifestBoundMintDeclaredAssetLimitWorkflowConfig = Readonly<{
     Readonly<{ removal: MintDeclaredAssetLimitRemovalReferenceScripts }>;
 }>;
 
-export type ManifestBoundMintDeclaredAssetLimitWorkflow = Readonly<{
-  binding: FraudProofWorkflowDeploymentBinding<"mintDeclaredAssetLimit">;
-  l1: FraudProofFamilyL1ObservationPort<"mintDeclaredAssetLimit">;
-  actuator: ReturnType<typeof createMintDeclaredAssetLimitActuator>;
-  prerequisite: FieldCarriagePrerequisitePort<"mintDeclaredAssetLimit">;
-  lucid: LucidEvolution;
-  decisionDigest: string;
-  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-}>;
+export type ManifestBoundMintDeclaredAssetLimitWorkflow =
+  ManifestBoundFamilyWorkflow<"mintDeclaredAssetLimit", true, 4> &
+    WorkflowExtension &
+    Readonly<{ decisionDigest: string }>;
 
 const CATEGORY = "mintDeclaredAssetLimit" as const;
 
-export const createManifestBoundMintDeclaredAssetLimitWorkflow = async (
-  config: ManifestBoundMintDeclaredAssetLimitWorkflowConfig,
-): Promise<ManifestBoundMintDeclaredAssetLimitWorkflow> => {
-  if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
-    throw new Error("mintDeclaredAssetLimit decision digest is malformed");
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: CATEGORY,
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      MintDeclaredAssetLimitStep02DatumSchema,
-      MintDeclaredAssetLimitStep02DatumSchema,
-      MintDeclaredAssetLimitStep03DatumSchema,
-      MintDeclaredAssetLimitStep04DatumSchema,
-    ],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+  "pexcludesWithdraw",
+] as const;
+type BoundContext = FamilyAssemblyContext<
+  "mintDeclaredAssetLimit",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  4
+>;
+type WorkflowExtension = Readonly<{
+  actuator: ReturnType<typeof createMintDeclaredAssetLimitActuator>;
+  prerequisite: FieldCarriagePrerequisitePort<"mintDeclaredAssetLimit">;
+  lucid: LucidEvolution;
+  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
+}>;
+const bindFamily = (context: BoundContext) => {
+  const { binding, references } = context;
+  const { steps } = references;
   const chain = binding.resolvedContracts.contracts[CATEGORY];
   const certificate = binding.fieldPreimageCertificate;
   const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
@@ -172,50 +148,6 @@ export const createManifestBoundMintDeclaredAssetLimitWorkflow = async (
     throw new Error(
       "mintDeclaredAssetLimit manifest omitted required contracts",
     );
-  const bindReference = (name: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName: name,
-      utxo,
-    });
-  const steps = MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES.map(
-    (_title, index) =>
-      bindReference(
-        [
-          "fraudProofMintDeclaredAssetLimit",
-          "fraudProofMintDeclaredAssetLimitStep02",
-          "fraudProofMintDeclaredAssetLimitStep03",
-          "fraudProofMintDeclaredAssetLimitStep04",
-        ][index]!,
-        config.referenceScripts.steps[index]!,
-      ),
-  ) as unknown as MintDeclaredAssetLimitWorkflowReferenceScripts["steps"];
-  const witnessNames = {
-    computationThreadMint: "computationThreadMint",
-    fraudProofMint: "fraudProofMint",
-    phasMembershipWithdraw: "phasMembershipWithdraw",
-    chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
-    pexcludesWithdraw: "pexcludesWithdraw",
-  } as const;
-  const witnesses = Object.fromEntries(
-    Object.entries(witnessNames).map(([role, name]) => [
-      role,
-      bindReference(
-        name,
-        config.referenceScripts.witnesses[
-          role as keyof FaultProofWitnessReferenceScripts
-        ]!,
-      ),
-    ]),
-  ) as Required<FaultProofWitnessReferenceScripts>;
-  const references = Object.freeze({
-    steps: Object.freeze(steps),
-    witnesses: Object.freeze(witnesses),
-    fieldPreimageCertificateMint: bindReference(
-      "fieldPreimageCertificateMint",
-      config.referenceScripts.fieldPreimageCertificateMint,
-    ),
-  });
   const contracts: MintDeclaredAssetLimitContracts = Object.freeze({
     steps: chain.steps.map((step, index) => ({
       blueprintTitle: MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES[index]!,
@@ -237,56 +169,102 @@ export const createManifestBoundMintDeclaredAssetLimitWorkflow = async (
     fieldPreimageCertificatePolicyId: certificate.policyId,
     fieldPreimageCertificateMintingScript: certificate.mintingScript,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
   const actuator = createMintDeclaredAssetLimitActuator({
     binding,
-    lucid: config.lucid,
-    signer: config.signer,
+    lucid: context.lucid,
+    signer: context.signer,
     contracts,
     references,
     stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
+      context.stateQueueMutationLeaseCoordinator,
   });
-  const prerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
+  return actuator;
+};
+const bound = new WeakMap<BoundContext, ReturnType<typeof bindFamily>>();
+const boundFor = (context: BoundContext) => {
+  const existing = bound.get(context);
+  if (existing !== undefined) return existing;
+  const created = bindFamily(context);
+  bound.set(context, created);
+  return created;
+};
+const createTransactionPort = (
+  context: BoundContext,
+): CursorFamilyTransactionPort<"mintDeclaredAssetLimit"> => {
+  const actuator = boundFor(context);
+  return {
+    portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
     category: CATEGORY,
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    requirementForAction: ({ action, artifact }) =>
-      mintDeclaredAssetLimitFieldRequirement({
+    prepareRaw: async (routed) => {
+      if (routed.kind !== "mint_declared_asset_limit")
+        throw new Error("raw family route changed");
+      return await prepareMintDeclaredAssetLimitAcceptedArtifact(
+        routed.evidence,
+      );
+    },
+    validatePreparedRawArtifact: async ({ routed, artifact }) => {
+      if (routed.kind !== "mint_declared_asset_limit")
+        throw new Error("raw family route changed");
+      if (
+        journalJsonDigest(
+          await prepareMintDeclaredAssetLimitAcceptedArtifact(routed.evidence),
+        ) !== journalJsonDigest(artifact)
+      )
+        throw new Error("prepared raw artifact differs from retained evidence");
+    },
+    validatePreparedArtifact: async ({ evidence, artifact }) => {
+      if (
+        journalJsonDigest(
+          await prepareMintDeclaredAssetLimitForcedArtifact(evidence),
+        ) !== journalJsonDigest(artifact)
+      )
+        throw new Error(
+          "prepared family artifact differs from retained evidence",
+        );
+    },
+    prepare: async ({ evidence }) =>
+      await prepareMintDeclaredAssetLimitForcedArtifact(evidence),
+    capture: async ({ action, artifact }) =>
+      await actuator.capture({
         action: action.input as unknown as MintDeclaredAssetLimitActuatorAction,
         artifact,
-        owner: config.signer.paymentKeyHash,
-        certificate: {
-          policyId: certificate.policyId,
-          mintingScript: certificate.mintingScript,
-          referenceScriptUtxo: references.fieldPreimageCertificateMint,
-        },
       }),
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  const adapter = withFieldCarriagePrerequisite({
-    category: CATEGORY,
-    prerequisite,
-    base: createCursorFamilyWorkflowAdapter({
-      spec: {
-        category: CATEGORY,
-        stepCount: 4,
-        successors: { 1: [2], 2: [2, 3, 4], 3: [3, 4], 4: ["proof_token"] },
-      },
-      l1,
-      stateQueueMutationLeaseCoordinator:
-        config.stateQueueMutationLeaseCoordinator,
-      refineAction: async ({ observed, artifact }) => {
+  };
+};
+export const MINT_DECLARED_ASSET_LIMIT_FAMILY_DEFINITION = defineFamily<
+  "mintDeclaredAssetLimit",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  4
+>({
+  category: CATEGORY,
+  stepDatumSchemas: [
+    MintDeclaredAssetLimitStep02DatumSchema,
+    MintDeclaredAssetLimitStep02DatumSchema,
+    MintDeclaredAssetLimitStep03DatumSchema,
+    MintDeclaredAssetLimitStep04DatumSchema,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  replayer: () => MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
+    spec: {
+      category: CATEGORY,
+      stepCount: 4,
+      successors: { 1: [2], 2: [2, 3, 4], 3: [3, 4], 4: ["proof_token"] },
+    },
+    stepContractNames: [
+      "fraudProofMintDeclaredAssetLimit",
+      "fraudProofMintDeclaredAssetLimitStep02",
+      "fraudProofMintDeclaredAssetLimitStep03",
+      "fraudProofMintDeclaredAssetLimitStep04",
+    ],
+    createRefineAction:
+      (context) =>
+      async ({ observed, artifact }) => {
         const selected = await currentAction({
-          workflow: { lucid: config.lucid },
+          workflow: { lucid: context.lucid },
           artifact: admitMintDeclaredAssetLimitArtifact(artifact).artifact,
           stage: observed.stage,
         });
@@ -298,64 +276,48 @@ export const createManifestBoundMintDeclaredAssetLimitWorkflow = async (
           ),
         );
       },
-      transactions: {
-        portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
-        category: CATEGORY,
-        prepareRaw: async (routed) => {
-          if (routed.kind !== "mint_declared_asset_limit")
-            throw new Error("raw family route changed");
-          return await prepareMintDeclaredAssetLimitAcceptedArtifact(
-            routed.evidence,
-          );
-        },
-        validatePreparedRawArtifact: async ({ routed, artifact }) => {
-          if (routed.kind !== "mint_declared_asset_limit")
-            throw new Error("raw family route changed");
-          if (
-            journalJsonDigest(
-              await prepareMintDeclaredAssetLimitAcceptedArtifact(
-                routed.evidence,
-              ),
-            ) !== journalJsonDigest(artifact)
-          )
-            throw new Error(
-              "prepared raw artifact differs from retained evidence",
-            );
-        },
-        validatePreparedArtifact: async ({ evidence, artifact }) => {
-          if (
-            journalJsonDigest(
-              await prepareMintDeclaredAssetLimitForcedArtifact(evidence),
-            ) !== journalJsonDigest(artifact)
-          )
-            throw new Error(
-              "prepared family artifact differs from retained evidence",
-            );
-        },
-        prepare: async ({ evidence }) =>
-          await prepareMintDeclaredAssetLimitForcedArtifact(evidence),
-        capture: async ({ action, artifact }) =>
-          await actuator.capture({
-            action:
-              action.input as unknown as MintDeclaredAssetLimitActuatorAction,
-            artifact,
-          }),
+    transactionPort: createTransactionPort,
+  },
+  fieldCarriage: [
+    {
+      requirementForAction: (context, { action, artifact }) => {
+        const { certificate, references } = context;
+        return mintDeclaredAssetLimitFieldRequirement({
+          action:
+            action.input as unknown as MintDeclaredAssetLimitActuatorAction,
+          artifact,
+          owner: context.signer.paymentKeyHash,
+          certificate: {
+            policyId: certificate.policyId,
+            mintingScript: certificate.mintingScript,
+            referenceScriptUtxo: references.fieldPreimageCertificateMint,
+          },
+        });
       },
-    }),
-  });
-  return Object.freeze({
-    binding,
-    l1,
-    adapter,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-    lucid: config.lucid,
-    actuator,
-    prerequisite,
-    decisionDigest: config.decisionDigest,
+    },
+  ],
+  extend: (context): WorkflowExtension => ({
+    actuator: boundFor(context),
+    prerequisite: context.fieldCarriagePrerequisites[0]!,
+    lucid: context.lucid,
     stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
+      context.stateQueueMutationLeaseCoordinator,
+  }),
+});
+
+export const createManifestBoundMintDeclaredAssetLimitWorkflow = async (
+  config: ManifestBoundMintDeclaredAssetLimitWorkflowConfig,
+): Promise<ManifestBoundMintDeclaredAssetLimitWorkflow> => {
+  if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
+    throw new Error("mintDeclaredAssetLimit decision digest is malformed");
+  const { decisionDigest, ...assemblyConfig } = config;
+  const workflow = await assembleManifestBoundFamilyWorkflow(
+    MINT_DECLARED_ASSET_LIMIT_FAMILY_DEFINITION,
+    assemblyConfig,
+  );
+  return Object.freeze({
+    ...(workflow as typeof workflow & WorkflowExtension),
+    decisionDigest,
   });
 };
 

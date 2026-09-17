@@ -37,7 +37,10 @@ import type {
 import type { CursorFamilySpec } from "./cursor-family-state.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import type { FraudProofFamilyL1ObservationPort } from "./family-l1-observation.js";
-import type { PreimageCarriageRequirement } from "./field-carriage-prerequisite.js";
+import type {
+  FieldCarriagePrerequisitePort,
+  PreimageCarriageRequirement,
+} from "./field-carriage-prerequisite.js";
 import type { JournalJsonObject } from "./journal.js";
 import type { LinearFamilyTransactionPort } from "./linear-family-adapter.js";
 import {
@@ -160,6 +163,8 @@ export type ManifestBoundFamilyWorkflowConfig<
     Certificate,
     StepCount
   >;
+  /** Family-specific published scripts, keyed by the definition's role names. */
+  auxiliaryReferenceScripts?: Readonly<Record<string, UTxO>>;
   source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   replayContext?: CompleteCanonicalReplayContext;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
@@ -169,7 +174,10 @@ export type ManifestBoundLinearFamilyWorkflowConfig<
   Category extends LinearFamilyCategory,
   Witness extends FaultProofWitnessRole,
   Certificate extends boolean,
-> = ManifestBoundFamilyWorkflowConfig<Category, Witness, Certificate>;
+> = Omit<
+  ManifestBoundFamilyWorkflowConfig<Category, Witness, Certificate>,
+  "auxiliaryReferenceScripts"
+>;
 
 export type FieldPreimageCertificateBinding = Readonly<{
   policyId: string;
@@ -186,11 +194,19 @@ export type FamilyAssemblyContext<
   Witness extends FaultProofWitnessRole,
   Certificate extends boolean,
   StepCount extends number = number,
+  Runtime extends object = Readonly<Record<never, never>>,
 > = Readonly<{
+  /** Family-specific invocation inputs, supplied explicitly by its constructor/runner. */
+  runtime: Runtime;
   binding: FraudProofWorkflowDeploymentBinding<Category>;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   references: FamilyReferenceScripts<Category, Witness, Certificate, StepCount>;
+  /** Exact manifest-bound scripts declared in addition to steps and witnesses. */
+  auxiliaryReferences: Readonly<Record<string, UTxO>>;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  /** Shared handles used by both the transaction port and adapter decorators. */
+  fieldCarriagePrerequisites: readonly FieldCarriagePrerequisitePort<Category>[];
   l1: FraudProofFamilyL1ObservationPort<Category> & {
     readonly rawL1: FraudProofRawL1SnapshotAuthority;
   };
@@ -200,6 +216,23 @@ export type FamilyAssemblyContext<
   replayContext?: CompleteCanonicalReplayContext;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
+
+/** Authenticated deployment inputs shared by independently assembled runs. */
+export type FamilyDeploymentContext<
+  Category extends FamilyCategory,
+  Witness extends FaultProofWitnessRole,
+  Certificate extends boolean,
+  StepCount extends number = number,
+> = Omit<
+  FamilyAssemblyContext<Category, Witness, Certificate, StepCount>,
+  "runtime" | "fieldCarriagePrerequisites"
+>;
+
+/** Runtime inputs are mandatory only for definitions that declare them. */
+export type FamilyRuntimeArguments<Runtime extends object> =
+  keyof Runtime extends never
+    ? readonly [runtime?: Runtime]
+    : readonly [runtime: Runtime];
 
 export type LinearFamilyAssemblyContext<
   Category extends LinearFamilyCategory,
@@ -222,11 +255,18 @@ export type FamilyFieldCarriageRequirement<
   Witness extends FaultProofWitnessRole,
   Certificate extends boolean,
   StepCount extends number = number,
+  Runtime extends object = Readonly<Record<never, never>>,
 > = Readonly<{
   /** Raw-datum carriage instead of a compact-field opening. */
   rawDatum?: boolean;
   requirementForAction: (
-    context: FamilyAssemblyContext<Category, Witness, Certificate, StepCount>,
+    context: FamilyAssemblyContext<
+      Category,
+      Witness,
+      Certificate,
+      StepCount,
+      Runtime
+    >,
     input: LinearFamilyPrerequisiteInput,
   ) =>
     | PreimageCarriageRequirement
@@ -246,14 +286,16 @@ export type LinearFamilyFieldCarriageRequirement<
  * or the cursor port.
  */
 export type FamilyTransactionPort<Category extends FamilyCategory> =
-  | LinearFamilyTransactionPort<Category & LinearFamilyCategory>
-  | CursorFamilyTransactionPort<Category>;
+  Category extends LinearFamilyCategory
+    ? LinearFamilyTransactionPort<Category>
+    : CursorFamilyTransactionPort<Category>;
 
 export type FamilyAdapterArm<
   Category extends FamilyCategory,
   Witness extends FaultProofWitnessRole,
   Certificate extends boolean,
   StepCount extends number = number,
+  Runtime extends object = Readonly<Record<never, never>>,
 > =
   | Readonly<{
       /** Steps come from the category's linear spec. */
@@ -263,7 +305,8 @@ export type FamilyAdapterArm<
           Category,
           Witness,
           Certificate,
-          StepCount
+          StepCount,
+          Runtime
         >,
       ) => LinearFamilyTransactionPort<Category & LinearFamilyCategory>;
     }>
@@ -283,12 +326,27 @@ export type FamilyAdapterArm<
           typeof createCursorFamilyWorkflowAdapter<Category>
         >[0]["refineAction"]
       >;
+      /** Bind a refiner to this workflow's authenticated runtime context. */
+      createRefineAction?: (
+        context: FamilyAssemblyContext<
+          Category,
+          Witness,
+          Certificate,
+          StepCount,
+          Runtime
+        >,
+      ) => NonNullable<
+        Parameters<
+          typeof createCursorFamilyWorkflowAdapter<Category>
+        >[0]["refineAction"]
+      >;
       transactionPort: (
         context: FamilyAssemblyContext<
           Category,
           Witness,
           Certificate,
-          StepCount
+          StepCount,
+          Runtime
         >,
       ) => CursorFamilyTransactionPort<Category>;
     }>;
@@ -308,12 +366,14 @@ export type ManifestBoundFamilyWorkflow<
   Category extends FamilyCategory,
   Certificate extends boolean = boolean,
   StepCount extends number = number,
+  Runtime extends object = Readonly<Record<never, never>>,
 > = Readonly<{
   definition: FamilyDefinition<
     Category,
     FaultProofWitnessRole,
     Certificate,
-    StepCount
+    StepCount,
+    Runtime
   >;
   binding: FraudProofWorkflowDeploymentBinding<Category>;
   l1: FraudProofFamilyL1ObservationPort<Category>;
@@ -335,6 +395,7 @@ export type FamilyDefinition<
   Witness extends FaultProofWitnessRole = FaultProofWitnessRole,
   Certificate extends boolean = boolean,
   StepCount extends number = number,
+  Runtime extends object = Readonly<Record<never, never>>,
 > = Readonly<{
   definitionVersion: typeof LINEAR_FAMILY_DEFINITION_VERSION;
   category: Category;
@@ -346,6 +407,8 @@ export type FamilyDefinition<
   >;
   /** Witness scripts whose published references this family binds. */
   witnessRoles: readonly Witness[];
+  /** Additional published script roles mapped to finalized manifest contracts. */
+  auxiliaryReferenceScripts?: Readonly<Record<string, string>>;
   /**
    * Whether the assembly binds the field-preimage certificate minting
    * reference script and refuses a manifest without the certificate policy.
@@ -354,25 +417,49 @@ export type FamilyDefinition<
   fieldPreimageCertificate: Certificate;
   /** The exact closed replay bundle `runOrResume` launches with. */
   replayer: (
-    context: FamilyAssemblyContext<Category, Witness, Certificate, StepCount>,
+    context: FamilyAssemblyContext<
+      Category,
+      Witness,
+      Certificate,
+      StepCount,
+      Runtime
+    >,
   ) => CompleteCanonicalReplay;
-  adapter: FamilyAdapterArm<Category, Witness, Certificate, StepCount>;
+  adapter: FamilyAdapterArm<Category, Witness, Certificate, StepCount, Runtime>;
   /** Applied in declared order, before the proof-chunk prerequisite. */
   fieldCarriage?: readonly FamilyFieldCarriageRequirement<
     Category,
     Witness,
     Certificate,
-    StepCount
+    StepCount,
+    Runtime
   >[];
   /** Proof CBOR an action publishes as chunks, or null for none. */
   proofChunk?: (
-    context: FamilyAssemblyContext<Category, Witness, Certificate, StepCount>,
+    context: FamilyAssemblyContext<
+      Category,
+      Witness,
+      Certificate,
+      StepCount,
+      Runtime
+    >,
     input: LinearFamilyPrerequisiteInput & { readonly headerHash: string },
   ) => string | null | Promise<string | null>;
   /** Extra members of the assembled workflow object. */
   extend?: (
-    context: FamilyAssemblyContext<Category, Witness, Certificate, StepCount>,
-    workflow: ManifestBoundFamilyWorkflow<Category, Certificate, StepCount>,
+    context: FamilyAssemblyContext<
+      Category,
+      Witness,
+      Certificate,
+      StepCount,
+      Runtime
+    >,
+    workflow: ManifestBoundFamilyWorkflow<
+      Category,
+      Certificate,
+      StepCount,
+      Runtime
+    >,
   ) => Readonly<Record<string, unknown>>;
 }>;
 
@@ -400,12 +487,13 @@ export const defineFamily = <
   const Witness extends FaultProofWitnessRole,
   const Certificate extends boolean,
   StepCount extends number = number,
+  Runtime extends object = Readonly<Record<never, never>>,
 >(
   definition: Omit<
-    FamilyDefinition<Category, Witness, Certificate, StepCount>,
+    FamilyDefinition<Category, Witness, Certificate, StepCount, Runtime>,
     "definitionVersion"
   >,
-): FamilyDefinition<Category, Witness, Certificate, StepCount> =>
+): FamilyDefinition<Category, Witness, Certificate, StepCount, Runtime> =>
   Object.freeze({
     definitionVersion: LINEAR_FAMILY_DEFINITION_VERSION,
     ...definition,

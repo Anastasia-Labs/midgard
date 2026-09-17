@@ -2,7 +2,7 @@
 
 Status: Active
 
-Last reviewed: 2026-09-07 (evidence index; no new protocol test receipt).
+Last reviewed: 2026-09-17 (family assembly and emulator fixture acceptance).
 
 ## What the evidence establishes
 
@@ -30,6 +30,40 @@ signed-publication and registered contract-lifecycle gates using the pinned
 mainnet protocol-11 cost model. Its operational challenger/watcher and live release
 acceptance remain open. Remeasure any release evidence whose source or blueprint
 binding changed; saved results do not replace the current-build gates.
+
+## Family assembly and funding-publisher verification (2026-09-17)
+
+The family assembly and funding-publication changes following
+`7fbd02d7fd6aa06ab4f97917c0b76460c14ebc3b`
+complete the [shared assembly](workflow-family-assembly.md) migration for 18
+linear and 31 cursor families. Authenticated reference publication fixtures now
+use the deployment funding wallet and reserve the deployment nonce. The prover
+can consume the publication independently.
+
+Verification used Node 22.22.2, pnpm 9.15.4, eight fault-proof forks, and the
+fresh testnet blueprint with SHA-256
+`04790ae612c2478aa089a7f08089f11e43638cf007a2f562fa8b445f4ee25f6e`.
+
+- The complete fault-proof run took 3,178.11 seconds: 4,022 assertions passed,
+  four were skipped, and none failed. All 864 assertions that failed in the
+  baseline now pass, including repeated parameterized test names.
+- That run exited unsuccessfully because the transition subvariant suite's
+  final hook found an older blueprint hash in its pinned forced-window ledger.
+  The ledger was remeasured with the complete six-case lifecycle suite and its
+  normal read-only verification rerun; both passed. The complete 53-minute
+  package run was not repeated for this ledger-only correction.
+- The assembly/recovery selection passed 1,031 assertions, including seven new
+  assembly-lifecycle checks collected separately from the full run.
+- The node `test:tx-prep:emulator` gate passed all 55 assertions. Three SDK native
+  publication-policy checks passed, including wrong-wallet and expiry refusals.
+- Fault-proof build/declarations and compiled registry loading passed, as did
+  package lint, changed-file formatting, and fault-proof/watcher/node/node-tools
+  typechecks.
+
+These results establish local workflow and emulator acceptance for the exercised
+scenarios. They do not establish live deployment or release acceptance. Generated
+transition-workflow measurement output was preserved with the local run evidence;
+only the forced-window ledger consumed by a regression test was refreshed.
 
 ## Verification commands
 

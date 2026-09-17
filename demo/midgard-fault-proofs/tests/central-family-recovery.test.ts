@@ -16,6 +16,7 @@ import { executeManifestBoundWitnessScriptDecodingWorkflow } from "../src/witnes
 import { WITNESS_SCRIPT_DECODING_CURSOR_SPEC } from "../src/witness-script-decoding/workflow-spec.js";
 import { type FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
+import { bindFamilyRecoveryFixture } from "./support/bound-family-recovery-fixture.js";
 import {
   customWorkflowRecoveryFixture as fixture,
   verifyCompletionHandoffRestart,
@@ -51,7 +52,7 @@ const cases = [
   ],
 ] as const;
 for (const [spec, execute] of cases) {
-  const run = (input: Awaited<ReturnType<typeof fixture>>) =>
+  const run = async (input: Awaited<ReturnType<typeof fixture>>) =>
     (
       execute as unknown as (
         value: unknown,
@@ -60,6 +61,7 @@ for (const [spec, execute] of cases) {
       ...input,
       workflow: {
         ...input.workflow,
+        deployment: await bindFamilyRecoveryFixture(input.workflow),
         config: {
           binding: input.workflow.binding,
           // Read-only recovery must never use a provider or these builder-only inputs.
@@ -79,7 +81,10 @@ for (const [spec, execute] of cases) {
     const f = await fixture(spec);
     f.advance();
     const result = await run(f);
-    expect(result.kind).toBe("stalled");
+    expect(result).toMatchObject({
+      kind: "pending",
+      reason: "Canonical workflow requires fresh submission authority",
+    });
     expect(f.observeHeader).not.toHaveBeenCalled();
     expect(f.capture).not.toHaveBeenCalled();
     expect(f.built.submit).not.toHaveBeenCalled();

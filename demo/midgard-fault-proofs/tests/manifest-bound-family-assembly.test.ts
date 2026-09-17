@@ -5,6 +5,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import * as settlementAuthority from "../src/cross-block-duplicate-event/settlement-authority.js";
+import * as inspection from "../src/inspect-contracts.js";
+import * as historyRoster from "../src/missing-native-script-tx/historical-script.js";
 import * as deployment from "../src/workflow/deployment-manifest-binding.js";
 import { familyStepContractNames } from "../src/workflow/family-definition.js";
 import {
@@ -14,6 +17,7 @@ import {
 import * as observations from "../src/workflow/family-l1-observation.js";
 import { FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT } from "../src/workflow/family-l1-observation.js";
 import * as fieldCarriage from "../src/workflow/field-carriage-prerequisite.js";
+import * as historyAuthority from "../src/workflow/historical-native-script-corpus.js";
 import {
   assembleManifestBoundFamilyWorkflow,
   runOrResumeManifestBoundFamilyWorkflow,
@@ -22,6 +26,8 @@ import * as orchestrator from "../src/workflow/orchestrator.js";
 import * as proofChunks from "../src/workflow/proof-chunk-prerequisite.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
 import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../src/workflow/raw-l1-snapshot.js";
+import { cursorAssemblyRuntimeFixture } from "./support/cursor-assembly-runtime-fixtures.js";
+import { createAuthenticatedFamilyAssemblyRuntimeFixture } from "./support/family-assembly-runtime-fixtures.js";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -47,6 +53,7 @@ const fixture = (category: AssembledFamilyCategory) => {
     ...stepNames,
     ...definition.witnessRoles,
     "fieldPreimageCertificateMint",
+    ...Object.values(definition.auxiliaryReferenceScripts ?? {}),
   ];
   const utxoAt = (index: number): UTxO => ({
     txHash: "22".repeat(32),
@@ -89,9 +96,19 @@ const fixture = (category: AssembledFamilyCategory) => {
       }),
     ),
     definition: { category, headerHash: HEADER, proverCredential: OWNER },
+    contractEntries: {
+      hubOracleMint: { scriptHash: "88".repeat(28) },
+      stateQueueMint: { scriptHash: "33".repeat(28) },
+    },
     resolvedContracts: {
       contracts: {
-        [category]: { steps: contractSteps },
+        [category]: {
+          steps: contractSteps,
+          firstStep: contractSteps[0],
+          acceptedStep02: contractSteps[1],
+          forcedStep02: contractSteps[2],
+          certificateStep03: contractSteps[3],
+        },
         computationThread: { policyId: "66".repeat(28) },
         fraudProof: {
           policyId: "77".repeat(28),
@@ -123,6 +140,7 @@ const fixture = (category: AssembledFamilyCategory) => {
       observeExact: vi.fn(),
     },
     observeHeader: vi.fn(async () => observation),
+    observeBoundary: vi.fn(),
     transactionConfirmed: vi.fn(async () => false),
     observe: vi.fn(),
   };
@@ -146,12 +164,68 @@ const fixture = (category: AssembledFamilyCategory) => {
       )!,
     },
     source: {},
+    auxiliaryReferenceScripts: Object.fromEntries(
+      Object.entries(definition.auxiliaryReferenceScripts ?? {}).map(
+        ([role, contractName]) => [role, references.get(contractName)!],
+      ),
+    ),
     stateQueueMutationLeaseCoordinator: { acquire: vi.fn() },
   };
+  // Historical providers are external authorities, isolated alongside L1 here.
+  // Family contract mapping, transaction ports and prerequisite wiring stay real.
+  vi.spyOn(
+    historyAuthority,
+    "requireHistoricalNativeScriptHistoryAuthority",
+  ).mockReturnValue({ providerRosterDigest: "99".repeat(32) });
+  vi.spyOn(
+    historyRoster,
+    "requireHistoricalNativeScriptSourceRoster",
+  ).mockImplementation(() => undefined as never);
+  vi.spyOn(
+    settlementAuthority,
+    "createCrossBlockSettlementAuthority",
+  ).mockReturnValue({
+    deploymentFingerprint: binding.deploymentFingerprint,
+    capture: vi.fn(),
+  });
+  vi.spyOn(
+    inspection,
+    "parseContractDeploymentReferenceScriptAuthPolicyId",
+  ).mockReturnValue("ab".repeat(28));
+  const historical = {
+    historicalNativeScriptCheckpointStore: {},
+    historicalNativeScriptHistorySource: {
+      providerRosterDigest: "99".repeat(32),
+    },
+    historicalNativeScriptL1Roster: {
+      applicationOverlayDigest: "99".repeat(32),
+    },
+  };
+  const runtime =
+    createAuthenticatedFamilyAssemblyRuntimeFixture(category, {
+      binding,
+      config,
+    }) ??
+    cursorAssemblyRuntimeFixture({ category, binding, l1, config }) ??
+    (category === "minAda" || category === "missingNativeScriptTx"
+      ? { ...historical, corpusCell: {} }
+      : category === "transitionTrace"
+        ? { config: { ...config, ...historical }, cell: {} }
+        : category === "crossBlockDuplicateEvent"
+          ? {
+              historySource: historical.historicalNativeScriptHistorySource,
+              checkpointStore: {},
+            }
+          : undefined);
   const assemble = () =>
-    assembleManifestBoundFamilyWorkflow(definition as never, config as never);
+    assembleManifestBoundFamilyWorkflow(
+      definition as never,
+      config as never,
+      runtime,
+    );
   return {
     definition,
+    runtime,
     stepNames,
     binding,
     config,
@@ -168,7 +242,17 @@ const fixture = (category: AssembledFamilyCategory) => {
 
 describe("manifest-bound family assembly", () => {
   it("covers every migrated definition, linear and cursor", () => {
-    expect(categories.length).toBeGreaterThan(0);
+    expect(categories).toHaveLength(49);
+    expect(
+      categories.filter(
+        (category) => FAMILY_DEFINITIONS[category].adapter.kind === "linear",
+      ),
+    ).toHaveLength(18);
+    expect(
+      categories.filter(
+        (category) => FAMILY_DEFINITIONS[category].adapter.kind === "cursor",
+      ),
+    ).toHaveLength(31);
     for (const category of categories) {
       expect(FAMILY_DEFINITIONS[category].category).toBe(category);
     }
@@ -202,6 +286,7 @@ describe("manifest-bound family assembly", () => {
         ...(f.definition.fieldPreimageCertificate
           ? ["fieldPreimageCertificateMint"]
           : []),
+        ...Object.values(f.definition.auxiliaryReferenceScripts ?? {}),
       ];
       expect(bound).toEqual(expected);
       for (const name of expected) {
@@ -376,6 +461,7 @@ describe("manifest-bound family assembly", () => {
       const workflow = await assembleManifestBoundFamilyWorkflow(
         f.definition as never,
         { ...f.config, replayContext } as never,
+        f.runtime,
       );
       expect(workflow.replayContext).toBe(replayContext);
       const run = vi

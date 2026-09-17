@@ -24,8 +24,8 @@ import {
 } from "../workflow/artifact-codec.js";
 import { MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
-  createCursorFamilyWorkflowAdapter,
   CURSOR_FAMILY_TRANSACTION_PORT,
+  type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
 import {
   cursorFamilyActionInput,
@@ -33,36 +33,22 @@ import {
 } from "../workflow/cursor-family-runtime.js";
 import type { CursorFamilySpec } from "../workflow/cursor-family-state.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  type FieldCarriagePrerequisitePort,
-  withFieldCarriagePrerequisite,
-} from "../workflow/field-carriage-prerequisite.js";
+  defineFamily,
+  type FamilyAssemblyContext,
+  type ManifestBoundFamilyWorkflow,
+} from "../workflow/family-definition.js";
+import { type FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
   DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import { executeManifestBoundFamilyRecovery } from "../workflow/manifest-bound-family-recovery.js";
 import type { FraudProofWorkflowAction } from "../workflow/orchestrator.js";
-import {
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
-} from "../workflow/orchestrator.js";
+import { type FraudProofWorkflowRunResult } from "../workflow/orchestrator.js";
 import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
-import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import {
   createMissingRedeemerActuator,
   type MissingRedeemerActuatorAction,
@@ -115,20 +101,20 @@ export const MISSING_REDEEMER_STEP_DATUM_SCHEMAS = Object.freeze([
   MissingRedeemerStep05DatumSchema,
 ] as const);
 
-export const MISSING_REDEEMER_CURSOR_SPEC: CursorFamilySpec<"missingRedeemer"> =
-  {
-    category: "missingRedeemer",
-    stepCount: 7,
-    successors: {
-      1: [2],
-      2: [3],
-      3: [4],
-      4: [5],
-      5: [5, 6],
-      6: [6, 7],
-      7: ["proof_token"],
-    },
-  };
+export const MISSING_REDEEMER_CURSOR_SPEC: CursorFamilySpec<"missingRedeemer"> &
+  Readonly<{ stepCount: 7 }> = {
+  category: "missingRedeemer",
+  stepCount: 7,
+  successors: {
+    1: [2],
+    2: [3],
+    3: [4],
+    4: [5],
+    5: [5, 6],
+    6: [6, 7],
+    7: ["proof_token"],
+  },
+};
 
 export type MissingRedeemerRemovalReferenceScripts = Readonly<{
   correctionLockSpend: UTxO;
@@ -162,18 +148,13 @@ export type ManifestBoundMissingRedeemerWorkflowConfig = Readonly<{
   referenceScripts: MissingRedeemerWorkflowReferenceScripts;
 }>;
 
-export type ManifestBoundMissingRedeemerWorkflow = Readonly<{
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-  binding: FraudProofWorkflowDeploymentBinding<"missingRedeemer">;
-  lucid: LucidEvolution;
-  decisionDigest: string;
-  l1: ReturnType<typeof createFraudProofFamilyLocalKupmiosL1ObservationPort>;
-  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-  actuator: ReturnType<typeof createMissingRedeemerActuator>;
-  prerequisite: FieldCarriagePrerequisitePort<"missingRedeemer">;
-}>;
+export type ManifestBoundMissingRedeemerWorkflow = ManifestBoundFamilyWorkflow<
+  "missingRedeemer",
+  true,
+  7
+> &
+  WorkflowExtension &
+  Readonly<{ decisionDigest: string }>;
 
 const manifestContracts = Object.freeze({
   steps: [
@@ -205,33 +186,30 @@ const manifestContracts = Object.freeze({
   },
 } as const);
 
-/** Strict manifest-bound construction; proof evidence is never configurable. */
-export const createManifestBoundMissingRedeemerWorkflow = async (
-  config: ManifestBoundMissingRedeemerWorkflowConfig,
-): Promise<ManifestBoundMissingRedeemerWorkflow> => {
-  if (
-    Object.keys(config).sort().join("\0") !==
-    [...MISSING_REDEEMER_CONFIG_KEYS].sort().join("\0")
-  )
-    throw new Error(
-      "missingRedeemer production config contains callback authority",
-    );
-  if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
-    throw new Error("missingRedeemer decision digest is malformed");
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: MISSING_REDEEMER_CATEGORY,
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: MISSING_REDEEMER_STEP_DATUM_SCHEMAS,
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+  "pexcludesWithdraw",
+] as const;
+type BoundContext = FamilyAssemblyContext<
+  "missingRedeemer",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  7
+>;
+type WorkflowExtension = Readonly<{
+  actuator: ReturnType<typeof createMissingRedeemerActuator>;
+  prerequisite: FieldCarriagePrerequisitePort<"missingRedeemer">;
+  lucid: LucidEvolution;
+  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
+}>;
+const bindFamily = (context: BoundContext) => {
+  const {
+    binding,
+    references: { steps, witnesses },
+  } = context;
   const chain = binding.resolvedContracts.contracts.missingRedeemer;
   const certificate = binding.fieldPreimageCertificate;
   const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
@@ -242,37 +220,6 @@ export const createManifestBoundMissingRedeemerWorkflow = async (
     stateQueuePolicyId === undefined
   )
     throw new Error("missingRedeemer manifest omitted required contracts");
-  const bind = (name: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName: name,
-      utxo,
-    });
-  const steps = manifestContracts.steps.map((name, index) =>
-    bind(name, config.referenceScripts.steps[index]!),
-  ) as unknown as MissingRedeemerWorkflowReferences["steps"];
-  const witnesses = Object.fromEntries(
-    Object.entries(manifestContracts.witnesses).map(([role, name]) => [
-      role,
-      bind(
-        name,
-        config.referenceScripts.witnesses[
-          role as keyof FaultProofWitnessReferenceScripts
-        ]!,
-      ),
-    ]),
-  ) as Required<FaultProofWitnessReferenceScripts>;
-  for (const [role, name] of Object.entries(manifestContracts.removal))
-    bind(
-      name,
-      config.referenceScripts.removal[
-        role as keyof MissingRedeemerRemovalReferenceScripts
-      ],
-    );
-  const fieldPreimageCertificateMint = bind(
-    "fieldPreimageCertificateMint",
-    config.referenceScripts.fieldPreimageCertificateMint,
-  );
   const contracts: MissingRedeemerContracts = Object.freeze({
     steps: chain.steps.map((step, index) => ({
       ...step,
@@ -292,22 +239,16 @@ export const createManifestBoundMissingRedeemerWorkflow = async (
     fieldPreimageCertificatePolicyId: certificate.policyId,
     fieldPreimageCertificateMintingScript: certificate.mintingScript,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
   const planStagedWalk = createMissingRedeemerStagedPlanner();
   const actuator = createMissingRedeemerActuator({
     planStagedWalk,
     binding,
-    lucid: config.lucid,
-    signer: config.signer,
+    lucid: context.lucid,
+    signer: context.signer,
     contracts,
     references: { steps, witnesses },
     stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
+      context.stateQueueMutationLeaseCoordinator,
   });
   const actionFor = async (
     action: FraudProofWorkflowAction,
@@ -351,7 +292,7 @@ export const createManifestBoundMissingRedeemerWorkflow = async (
     if (input.ordinal !== 5)
       throw new Error("missingRedeemer cursor ordinal changed");
     const { threadUtxo } = await requireLinearFaultThreadUtxo({
-      lucid: config.lucid,
+      lucid: context.lucid,
       contracts,
       categoryId: binding.definition.categoryId,
       family: "missing-redeemer",
@@ -362,7 +303,7 @@ export const createManifestBoundMissingRedeemerWorkflow = async (
       Data.Static<typeof MissingRedeemerAuthenticationStateSchema>
     >({
       threadUtxo,
-      signer: config.signer,
+      signer: context.signer,
       schema: MissingRedeemerStep03DatumSchema as never,
       family: "missing-redeemer",
       stepIndex: 4,
@@ -418,75 +359,107 @@ export const createManifestBoundMissingRedeemerWorkflow = async (
       throw new Error("missingRedeemer replay has no selected artifact");
     return selected.artifact;
   };
-  let adapter = createCursorFamilyWorkflowAdapter({
+  const transactions: CursorFamilyTransactionPort<"missingRedeemer"> = {
+    portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
+    category: "missingRedeemer",
+    prepare: async ({ evidence }) => {
+      freshArtifact = await prepareArtifact(evidence);
+      return encodeWorkflowArtifact(freshArtifact);
+    },
+    validatePreparedArtifact: async ({ evidence, artifact }) => {
+      freshArtifact = requireWorkflowArtifactMatches(
+        artifact,
+        await prepareArtifact(evidence),
+      );
+    },
+    capture: async ({ action, artifact }) => {
+      const restored = restore(artifact);
+      return actuator.capture({
+        action: await actionFor(action, restored),
+        artifact: restored,
+      });
+    },
+  };
+  return { actuator, transactions, actionFor, restore, planStagedWalk };
+};
+const bound = new WeakMap<BoundContext, ReturnType<typeof bindFamily>>();
+const boundFor = (context: BoundContext) => {
+  const existing = bound.get(context);
+  if (existing !== undefined) return existing;
+  const created = bindFamily(context);
+  bound.set(context, created);
+  return created;
+};
+export const MISSING_REDEEMER_FAMILY_DEFINITION = defineFamily<
+  "missingRedeemer",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  7
+>({
+  category: MISSING_REDEEMER_CATEGORY,
+  stepDatumSchemas: MISSING_REDEEMER_STEP_DATUM_SCHEMAS,
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  auxiliaryReferenceScripts: manifestContracts.removal,
+  replayer: () => MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
     spec: MISSING_REDEEMER_CURSOR_SPEC,
-    l1,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-    transactions: {
-      portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
-      category: "missingRedeemer",
-      prepare: async ({ evidence }) => {
-        freshArtifact = await prepareArtifact(evidence);
-        return encodeWorkflowArtifact(freshArtifact);
-      },
-      validatePreparedArtifact: async ({ evidence, artifact }) => {
-        freshArtifact = requireWorkflowArtifactMatches(
-          artifact,
-          await prepareArtifact(evidence),
-        );
-      },
-      capture: async ({ action, artifact }) => {
-        const restored = restore(artifact);
-        return actuator.capture({
-          action: await actionFor(action, restored),
-          artifact: restored,
+    stepContractNames: manifestContracts.steps,
+    transactionPort: (context) => boundFor(context).transactions,
+  },
+  fieldCarriage: [
+    {
+      requirementForAction: async (context, { action, artifact }) => {
+        const { actionFor, restore, planStagedWalk } = boundFor(context);
+        const { certificate } = context;
+        return missingRedeemerFieldRequirement({
+          planStagedWalk,
+          action: await actionFor(action, restore(artifact)),
+          artifact: restore(artifact),
+          owner: context.signer.paymentKeyHash,
+          certificate: {
+            policyId: certificate.policyId,
+            mintingScript: certificate.mintingScript,
+            referenceScriptUtxo:
+              context.references.fieldPreimageCertificateMint,
+          },
         });
       },
     },
-  });
-  // Field 8 is opened from published carriage: the prerequisite port
-  // publishes (and, above the raw bound, certifies) it before the first
-  // field-consuming action and recovers it from the raw L1 afterwards.
-  const prerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
-    category: MISSING_REDEEMER_CATEGORY,
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    requirementForAction: async ({ action, artifact }) =>
-      missingRedeemerFieldRequirement({
-        planStagedWalk,
-        action: await actionFor(action, restore(artifact)),
-        artifact: restore(artifact),
-        owner: config.signer.paymentKeyHash,
-        certificate: {
-          policyId: certificate.policyId,
-          mintingScript: certificate.mintingScript,
-          referenceScriptUtxo: fieldPreimageCertificateMint,
-        },
-      }),
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  adapter = withFieldCarriagePrerequisite({
-    category: "missingRedeemer",
-    base: adapter,
-    prerequisite,
-  });
-  return Object.freeze({
-    binding,
-    lucid: config.lucid,
-    decisionDigest: config.decisionDigest,
-    l1,
+  ],
+  extend: (context): WorkflowExtension => ({
+    actuator: boundFor(context).actuator,
+    prerequisite: context.fieldCarriagePrerequisites[0]!,
+    lucid: context.lucid,
     stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-    actuator,
-    adapter,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-    prerequisite,
+      context.stateQueueMutationLeaseCoordinator,
+  }),
+});
+/** Strict manifest-bound construction; proof evidence is never configurable. */
+export const createManifestBoundMissingRedeemerWorkflow = async (
+  config: ManifestBoundMissingRedeemerWorkflowConfig,
+): Promise<ManifestBoundMissingRedeemerWorkflow> => {
+  if (
+    Object.keys(config).sort().join("\0") !==
+    [...MISSING_REDEEMER_CONFIG_KEYS].sort().join("\0")
+  )
+    throw new Error(
+      "missingRedeemer production config contains callback authority",
+    );
+  if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
+    throw new Error("missingRedeemer decision digest is malformed");
+  const { decisionDigest, ...assemblyConfig } = config;
+  const workflow = await assembleManifestBoundFamilyWorkflow(
+    MISSING_REDEEMER_FAMILY_DEFINITION,
+    {
+      ...assemblyConfig,
+      auxiliaryReferenceScripts: config.referenceScripts.removal,
+    },
+  );
+  return Object.freeze({
+    ...(workflow as typeof workflow & WorkflowExtension),
+    decisionDigest,
   });
 };
 

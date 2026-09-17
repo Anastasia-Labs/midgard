@@ -21,7 +21,6 @@ import {
   WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY,
 } from "../workflow/complete-replay.js";
 import {
-  createCursorFamilyWorkflowAdapter,
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
@@ -32,31 +31,17 @@ import {
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
 import { WITHDRAWAL_MISTAG_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
-import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
-import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
+import { defineFamily } from "../workflow/family-definition.js";
 import type { FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import {
+  assembleManifestBoundFamilyWorkflow,
+  runOrResumeManifestBoundFamilyWorkflow,
+} from "../workflow/manifest-bound-family-assembly.js";
 import type { FraudProofWorkflowAction } from "../workflow/orchestrator.js";
-import {
-  createFraudProofWorkflowRegistry,
-  runFraudProofWorkflowFromRetainedDa,
-} from "../workflow/orchestrator.js";
-import {
-  createAuthenticatedRawDatumPreimagePrerequisitePort,
-  createStructuredDataPreimageRequirement,
-  withRawDatumPreimagePrerequisite,
-} from "../workflow/raw-datum-preimage-prerequisite.js";
+import { createStructuredDataPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   admitWithdrawalMistagWorkflowArtifact,
@@ -289,156 +274,77 @@ export type ManifestBoundWithdrawalMistagWorkflowConfig = Readonly<{
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export const createManifestBoundWithdrawalMistagWorkflow = async (
-  config: ManifestBoundWithdrawalMistagWorkflowConfig,
-) => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "withdrawalMistag",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      SDK.WithdrawalMistagStep01Datum,
-      SDK.WithdrawalMistagStep02Datum,
-      SDK.WithdrawalMistagStep03Datum,
-      SDK.WithdrawalMistagStep04Datum,
-      SDK.WithdrawalMistagStep05Datum,
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+] as const;
+
+export const WITHDRAWAL_MISTAG_FAMILY_DEFINITION = defineFamily({
+  category: "withdrawalMistag",
+  stepDatumSchemas: [
+    SDK.WithdrawalMistagStep01Datum,
+    SDK.WithdrawalMistagStep02Datum,
+    SDK.WithdrawalMistagStep03Datum,
+    SDK.WithdrawalMistagStep04Datum,
+    SDK.WithdrawalMistagStep05Datum,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: false,
+  replayer: () => WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
+    spec: WITHDRAWAL_MISTAG_CURSOR_SPEC,
+    stepContractNames: [
+      "fraudProofWithdrawalMistag",
+      "fraudProofWithdrawalMistagStep02",
+      "fraudProofWithdrawalMistagStep03",
+      "fraudProofWithdrawalMistagStep04",
+      "fraudProofWithdrawalMistagStep05",
     ],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
-  const chain = binding.resolvedContracts.contracts.withdrawalMistag;
-  const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
-  if (chain === undefined || stateQueuePolicyId === undefined)
-    throw new Error("withdrawalMistag manifest omitted contracts");
-  const reference = (name: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName: name,
-      utxo,
-    });
-  const references: WithdrawalMistagWorkflowReferenceScripts = {
-    steps: [
-      reference("fraudProofWithdrawalMistag", config.referenceScripts.steps[0]),
-      reference(
-        "fraudProofWithdrawalMistagStep02",
-        config.referenceScripts.steps[1],
-      ),
-      reference(
-        "fraudProofWithdrawalMistagStep03",
-        config.referenceScripts.steps[2],
-      ),
-      reference(
-        "fraudProofWithdrawalMistagStep04",
-        config.referenceScripts.steps[3],
-      ),
-      reference(
-        "fraudProofWithdrawalMistagStep05",
-        config.referenceScripts.steps[4],
-      ),
-    ],
-    witnesses: {
-      computationThreadMint: reference(
-        "computationThreadMint",
-        config.referenceScripts.witnesses.computationThreadMint,
-      ),
-      fraudProofMint: reference(
-        "fraudProofMint",
-        config.referenceScripts.witnesses.fraudProofMint,
-      ),
-      phasMembershipWithdraw: reference(
-        "phasMembershipWithdraw",
-        config.referenceScripts.witnesses.phasMembershipWithdraw,
-      ),
+    transactionPort: (context) => {
+      const { binding } = context;
+      const chain = binding.resolvedContracts.contracts.withdrawalMistag;
+      const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
+      if (chain === undefined || stateQueuePolicyId === undefined)
+        throw new Error("withdrawalMistag manifest omitted contracts");
+      return createWithdrawalMistagTransactionPort({
+        ...context,
+        evidencePrerequisite: context.fieldCarriagePrerequisites[0]!,
+        contracts: {
+          steps: chain.steps,
+          computationThread:
+            binding.resolvedContracts.contracts.computationThread,
+          fraudProof: binding.resolvedContracts.contracts.fraudProof,
+          hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
+          stateQueuePolicyId,
+        },
+      });
     },
-  };
-  const contracts: WithdrawalMistagContracts = {
-    steps: chain.steps,
-    computationThread: binding.resolvedContracts.contracts.computationThread,
-    fraudProof: binding.resolvedContracts.contracts.fraudProof,
-    hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
-    stateQueuePolicyId,
-  };
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  if (l1.rawL1 === undefined)
-    throw new Error("withdrawalMistag raw L1 authority unavailable");
-  const evidencePrerequisite =
-    createAuthenticatedRawDatumPreimagePrerequisitePort({
-      category: "withdrawalMistag",
-      lucid: config.lucid,
-      network: binding.network,
-      signer: config.signer,
-      publications: l1.publications,
-      requirementForAction: withdrawalMistagEvidenceRequirement,
-      transactionConfirmed: (args) => l1.transactionConfirmed(args),
-    });
-  const transactions = createWithdrawalMistagTransactionPort({
-    evidencePrerequisite,
-    binding,
-    lucid: config.lucid,
-    signer: config.signer,
-    contracts,
-    references,
-    replayContext: config.replayContext,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  return Object.freeze({
-    binding,
-    l1,
-    transactions,
-    replayContext: config.replayContext,
-    adapter: withRawDatumPreimagePrerequisite({
-      category: "withdrawalMistag",
-      prerequisite: evidencePrerequisite,
-      base: createCursorFamilyWorkflowAdapter({
-        spec: WITHDRAWAL_MISTAG_CURSOR_SPEC,
-        l1,
-        transactions,
-        stateQueueMutationLeaseCoordinator:
-          config.stateQueueMutationLeaseCoordinator,
-      }),
-    }),
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-  });
-};
+  },
+  fieldCarriage: [
+    {
+      rawDatum: true,
+      requirementForAction: (_context, input) =>
+        withdrawalMistagEvidenceRequirement(input),
+    },
+  ],
+});
+
+export const createManifestBoundWithdrawalMistagWorkflow = (
+  config: ManifestBoundWithdrawalMistagWorkflowConfig,
+) =>
+  assembleManifestBoundFamilyWorkflow(
+    WITHDRAWAL_MISTAG_FAMILY_DEFINITION,
+    config,
+  );
+
 export type ManifestBoundWithdrawalMistagWorkflow = Awaited<
   ReturnType<typeof createManifestBoundWithdrawalMistagWorkflow>
 >;
-export const runOrResumeManifestBoundWithdrawalMistagWorkflow = async ({
-  workflow,
-  sources,
-  journal,
-}: {
+
+export const runOrResumeManifestBoundWithdrawalMistagWorkflow = (input: {
   workflow: ManifestBoundWithdrawalMistagWorkflow;
   sources: readonly RetainedDaPayloadSource[];
   journal: FraudProofWorkflowJournalStore;
-}) =>
-  await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation: await observeFraudProofWorkflowHeader(workflow.l1, {
-      headerHash: workflow.binding.definition.headerHash,
-    }),
-    sources,
-    replayer: WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY,
-    replayContext: workflow.replayContext,
-    registry: createFraudProofWorkflowRegistry({
-      adapters: [workflow.adapter],
-      launchScope: ["withdrawalMistag"],
-    }),
-    journal,
-    terminalVerifier: workflow.terminalVerifier,
-    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-  });
+}) => runOrResumeManifestBoundFamilyWorkflow(input);

@@ -6,7 +6,6 @@ import {
   DaLibp2pRetainedDaSource,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
@@ -19,45 +18,29 @@ import {
   type WorkflowAdapterRunner,
 } from "../workflow/adapters.js";
 import { SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
-import {
-  createCursorFamilyWorkflowAdapter,
-  type CursorFamilyTransactionPort,
-} from "../workflow/cursor-family-adapter.js";
+import { type CursorFamilyTransactionPort } from "../workflow/cursor-family-adapter.js";
 import type { CursorFamilySpec } from "../workflow/cursor-family-state.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+  defineFamily,
+  type FamilyAssemblyContext,
+  type ManifestBoundFamilyWorkflow,
+} from "../workflow/family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  type FieldCarriageRequirement,
-  withFieldCarriagePrerequisite,
-} from "../workflow/field-carriage-prerequisite.js";
+import { type FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
   DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
   createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
   resumeRecordedFraudProofWorkflow,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
 import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
-import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import {
   createScriptIntegrityHashMissingTransactionPort,
   scriptIntegrityHashMissingFieldRequirement,
@@ -101,20 +84,20 @@ export const SCRIPT_INTEGRITY_HASH_MISSING_MANIFEST_CONTRACTS = Object.freeze({
   },
 } as const);
 
-export const SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC: CursorFamilySpec<"scriptIntegrityHashMissing"> =
-  Object.freeze({
-    category: "scriptIntegrityHashMissing",
-    stepCount: 7,
-    successors: Object.freeze({
-      1: [2] as const,
-      2: [3] as const,
-      3: [4, 7] as const,
-      4: [4, 5] as const,
-      5: [5, 6] as const,
-      6: [6, 7] as const,
-      7: ["proof_token"] as const,
-    }),
-  });
+export const SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC: CursorFamilySpec<"scriptIntegrityHashMissing"> &
+  Readonly<{ stepCount: 7 }> = Object.freeze({
+  category: "scriptIntegrityHashMissing",
+  stepCount: 7,
+  successors: Object.freeze({
+    1: [2] as const,
+    2: [3] as const,
+    3: [4, 7] as const,
+    4: [4, 5] as const,
+    5: [5, 6] as const,
+    6: [6, 7] as const,
+    7: ["proof_token"] as const,
+  }),
+});
 
 export type { ScriptIntegrityHashMissingWorkflowReferenceScripts } from "./actuator.js";
 
@@ -144,35 +127,32 @@ export type ManifestBoundScriptIntegrityHashMissingWorkflowConfig = Readonly<{
     Readonly<{ removal: ScriptIntegrityHashMissingRemovalReferenceScripts }>;
 }>;
 
-export type ManifestBoundScriptIntegrityHashMissingWorkflow = Readonly<{
-  binding: FraudProofWorkflowDeploymentBinding<"scriptIntegrityHashMissing">;
-  l1: FraudProofFamilyL1ObservationPort<"scriptIntegrityHashMissing">;
-  transactions: CursorFamilyTransactionPort<"scriptIntegrityHashMissing">;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-  decisionDigest: string;
-}>;
+export type ManifestBoundScriptIntegrityHashMissingWorkflow = Omit<
+  ManifestBoundFamilyWorkflow<"scriptIntegrityHashMissing", true, 7>,
+  "definition" | "replayer"
+> &
+  Readonly<{
+    transactions: CursorFamilyTransactionPort<"scriptIntegrityHashMissing">;
+    decisionDigest: string;
+  }>;
 
-export const createManifestBoundScriptIntegrityHashMissingWorkflow = async (
-  config: ManifestBoundScriptIntegrityHashMissingWorkflowConfig,
-): Promise<ManifestBoundScriptIntegrityHashMissingWorkflow> => {
-  if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
-    throw new Error("scriptIntegrityHashMissing decision digest is malformed");
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "scriptIntegrityHashMissing",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: ScriptIntegrityStepDatums,
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+  "pexcludesWithdraw",
+] as const;
+type BoundContext = FamilyAssemblyContext<
+  "scriptIntegrityHashMissing",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  7
+>;
+const createTransactionPort = (
+  context: BoundContext,
+): CursorFamilyTransactionPort<"scriptIntegrityHashMissing"> => {
+  const { binding, references } = context;
   const chain = binding.resolvedContracts.contracts.scriptIntegrityHashMissing;
   const certificate = binding.fieldPreimageCertificate;
   const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
@@ -185,45 +165,6 @@ export const createManifestBoundScriptIntegrityHashMissingWorkflow = async (
     throw new Error(
       "scriptIntegrityHashMissing manifest omitted required contracts",
     );
-  const ref = (name: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName: name,
-      utxo,
-    });
-  const steps = SCRIPT_INTEGRITY_HASH_MISSING_MANIFEST_CONTRACTS.steps.map(
-    (name, index) => ref(name, config.referenceScripts.steps[index]!),
-  ) as unknown as ScriptIntegrityHashMissingWorkflowReferenceScripts["steps"];
-  const witnesses = Object.fromEntries(
-    Object.entries(
-      SCRIPT_INTEGRITY_HASH_MISSING_MANIFEST_CONTRACTS.witnesses,
-    ).map(([role, name]) => [
-      role,
-      ref(
-        name,
-        config.referenceScripts.witnesses[
-          role as keyof FaultProofWitnessReferenceScripts
-        ]!,
-      ),
-    ]),
-  ) as Required<FaultProofWitnessReferenceScripts>;
-  for (const [role, name] of Object.entries(
-    SCRIPT_INTEGRITY_HASH_MISSING_MANIFEST_CONTRACTS.removal,
-  ))
-    ref(
-      name,
-      config.referenceScripts.removal[
-        role as keyof ScriptIntegrityHashMissingRemovalReferenceScripts
-      ],
-    );
-  const references = Object.freeze({
-    steps: Object.freeze(steps),
-    witnesses: Object.freeze(witnesses),
-    fieldPreimageCertificateMint: ref(
-      SCRIPT_INTEGRITY_HASH_MISSING_MANIFEST_CONTRACTS.fieldPreimageCertificateMint,
-      config.referenceScripts.fieldPreimageCertificateMint,
-    ),
-  });
   const contracts: ScriptIntegrityHashMissingContracts = Object.freeze({
     steps: chain.steps,
     computationThread: binding.resolvedContracts.contracts.computationThread,
@@ -239,50 +180,48 @@ export const createManifestBoundScriptIntegrityHashMissingWorkflow = async (
     hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
     stateQueuePolicyId,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  if (l1.publications === undefined)
-    throw new Error(
-      "scriptIntegrityHashMissing raw L1 publication authority is unavailable",
-    );
-  const transactions = createScriptIntegrityHashMissingTransactionPort({
+  return createScriptIntegrityHashMissingTransactionPort({
     binding,
-    lucid: config.lucid,
-    signer: config.signer,
+    lucid: context.lucid,
+    signer: context.signer,
     contracts,
     references,
-    lease: config.stateQueueMutationLeaseCoordinator,
+    lease: context.stateQueueMutationLeaseCoordinator,
   });
-  let adapter = createCursorFamilyWorkflowAdapter({
+};
+
+export const SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION = defineFamily<
+  "scriptIntegrityHashMissing",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  7
+>({
+  category: "scriptIntegrityHashMissing",
+  stepDatumSchemas: ScriptIntegrityStepDatums,
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  auxiliaryReferenceScripts:
+    SCRIPT_INTEGRITY_HASH_MISSING_MANIFEST_CONTRACTS.removal,
+  replayer: () => SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
     spec: SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC,
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  adapter = withFieldCarriagePrerequisite({
-    category: "scriptIntegrityHashMissing",
-    base: adapter,
-    prerequisite: createAuthenticatedFieldCarriagePrerequisitePort({
-      category: "scriptIntegrityHashMissing",
-      lucid: config.lucid,
-      network: binding.network,
-      signer: config.signer,
-      publications: l1.publications,
-      requirementForAction: ({ action, artifact }) => {
+    stepContractNames: SCRIPT_INTEGRITY_HASH_MISSING_MANIFEST_CONTRACTS.steps,
+    transactionPort: createTransactionPort,
+  },
+  fieldCarriage: [
+    {
+      requirementForAction: (context, { action, artifact }) => {
+        const { certificate, references } = context;
         const planned = scriptIntegrityHashMissingFieldRequirement({
           actionStage: action.input.stage,
           artifact,
-          owner: config.signer.paymentKeyHash,
+          owner: context.signer.paymentKeyHash,
         });
         if (planned === null) return null;
         const admitted = admitScriptIntegrityHashMissingArtifact(
           artifact,
-          config.signer.paymentKeyHash,
+          context.signer.paymentKeyHash,
         );
         return {
           planned,
@@ -295,20 +234,27 @@ export const createManifestBoundScriptIntegrityHashMissingWorkflow = async (
           },
         } satisfies FieldCarriageRequirement;
       },
-      transactionConfirmed: async ({ headerHash, txHash }) =>
-        await l1.transactionConfirmed({ headerHash, txHash }),
-    }),
-  });
+    },
+  ],
+});
+
+export const createManifestBoundScriptIntegrityHashMissingWorkflow = async (
+  config: ManifestBoundScriptIntegrityHashMissingWorkflowConfig,
+): Promise<ManifestBoundScriptIntegrityHashMissingWorkflow> => {
+  if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
+    throw new Error("scriptIntegrityHashMissing decision digest is malformed");
+  const { decisionDigest, ...assemblyConfig } = config;
+  const workflow = await assembleManifestBoundFamilyWorkflow(
+    SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION,
+    {
+      ...assemblyConfig,
+      auxiliaryReferenceScripts: config.referenceScripts.removal,
+    },
+  );
   return Object.freeze({
-    binding,
-    l1,
-    transactions,
-    adapter,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-    decisionDigest: config.decisionDigest,
-  });
+    ...workflow,
+    decisionDigest,
+  }) as ManifestBoundScriptIntegrityHashMissingWorkflow;
 };
 
 export const executeManifestBoundScriptIntegrityHashMissingWorkflow = async ({

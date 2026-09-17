@@ -57,7 +57,6 @@ import {
   RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
 } from "../workflow/complete-replay.js";
 import {
-  createCursorFamilyWorkflowAdapter,
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
@@ -66,23 +65,21 @@ import {
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
-import { releaseFinalityAuthorityFromDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import {
   assertManifestBoundWorkflowSigner,
   bindFraudProofWorkflowDeployment,
   type FraudProofWorkflowDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
-import { createFraudProofFamilyAuthenticatedL1TerminalVerifier } from "../workflow/family-l1-observation.js";
 import {
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+  defineFamily,
+  type FamilyAssemblyContext,
+  type FamilyDeploymentContext,
+  type LinearFamilyPrerequisiteInput,
+} from "../workflow/family-definition.js";
+import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  withFieldCarriagePrerequisite,
-} from "../workflow/field-carriage-prerequisite.js";
+import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
   type HistoricalNativeScriptCheckpointStore,
@@ -94,6 +91,10 @@ import {
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import {
+  assembleBoundManifestBoundFamilyWorkflow,
+  bindManifestBoundFamilyWorkflow,
+} from "../workflow/manifest-bound-family-assembly.js";
 import {
   createCanonicalFamilyArtifactPort,
   executeManifestBoundFamilyRecovery,
@@ -276,6 +277,23 @@ export const loadManifestBoundResolvedOutputNonCanonicalConfig = async (
     address: input.signer.address,
     paymentKeyHash: input.signer.paymentKeyHash,
   });
+  const referenceScripts = bindResolvedOutputNonCanonicalReferenceScripts({
+    binding,
+    referenceScripts: input.referenceScripts,
+  });
+  return resolvedOutputNonCanonicalConfigFromBinding({
+    ...input,
+    binding,
+    referenceScripts,
+  });
+};
+const resolvedOutputNonCanonicalConfigFromBinding = (input: {
+  binding: FraudProofWorkflowDeploymentBinding<"resolvedOutputNonCanonical">;
+  lucid: LucidEvolution;
+  signer: ResolvedProverSigner;
+  referenceScripts: ResolvedOutputNonCanonicalReferenceScripts;
+}): ManifestBoundResolvedOutputNonCanonicalConfig => {
+  const { binding, referenceScripts } = input;
   const localContracts = binding.resolvedContracts.contracts as unknown as {
     readonly resolvedOutputNonCanonical?: ResolvedOutputNonCanonicalContracts;
   };
@@ -291,10 +309,6 @@ export const loadManifestBoundResolvedOutputNonCanonicalConfig = async (
       "resolvedOutputNonCanonical deployment omitted field-preimage certificate",
     );
   }
-  const referenceScripts = bindResolvedOutputNonCanonicalReferenceScripts({
-    binding,
-    referenceScripts: input.referenceScripts,
-  });
   return Object.freeze({
     schemaVersion: RESOLVED_OUTPUT_NON_CANONICAL_WORKFLOW,
     lucid: input.lucid,
@@ -1008,6 +1022,7 @@ export type ManifestBoundResolvedOutputNonCanonicalWorkflowConfig =
     }>;
 
 export type ManifestBoundResolvedOutputNonCanonicalWorkflow = Readonly<{
+  deployment: Deployment;
   workflowVersion: typeof RESOLVED_OUTPUT_NON_CANONICAL_WORKFLOW;
   config: ManifestBoundResolvedOutputNonCanonicalConfig;
   binding: FraudProofWorkflowDeploymentBinding<"resolvedOutputNonCanonical">;
@@ -1022,18 +1037,45 @@ export type ManifestBoundResolvedOutputNonCanonicalWorkflow = Readonly<{
 export const createManifestBoundResolvedOutputNonCanonicalWorkflow = async (
   input: ManifestBoundResolvedOutputNonCanonicalWorkflowConfig,
 ): Promise<ManifestBoundResolvedOutputNonCanonicalWorkflow> => {
-  const config = await loadManifestBoundResolvedOutputNonCanonicalConfig(input);
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: input.source,
-    releaseFinality: config.binding.releaseFinality,
-    releaseEconomics: config.binding.releaseEconomics,
-    definition: config.binding.definition,
+  const deployment = await bindManifestBoundFamilyWorkflow(
+    RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION,
+    {
+      ...input,
+      referenceScripts: {
+        steps: [
+          input.referenceScripts.step01,
+          input.referenceScripts.step02,
+          input.referenceScripts.step03,
+          input.referenceScripts.step04,
+          input.referenceScripts.step05,
+        ],
+        witnesses: input.referenceScripts.witnesses,
+        fieldPreimageCertificateMint:
+          input.referenceScripts.fieldPreimageCertificateMint,
+      },
+    },
+  );
+  const config = resolvedOutputNonCanonicalConfigFromBinding({
+    binding: deployment.binding,
+    lucid: deployment.lucid,
+    signer: deployment.signer,
+    referenceScripts: {
+      step01: deployment.references.steps[0],
+      step02: deployment.references.steps[1],
+      step03: deployment.references.steps[2],
+      step04: deployment.references.steps[3],
+      step05: deployment.references.steps[4],
+      witnesses: deployment.references.witnesses,
+      fieldPreimageCertificateMint:
+        deployment.references.fieldPreimageCertificateMint,
+    },
   });
   return Object.freeze({
+    deployment,
     workflowVersion: RESOLVED_OUTPUT_NON_CANONICAL_WORKFLOW,
     config,
-    binding: config.binding,
-    l1,
+    binding: deployment.binding,
+    l1: deployment.l1,
     stateQueueMutationLeaseCoordinator:
       input.stateQueueMutationLeaseCoordinator,
     decisionDigest: input.decisionDigest,
@@ -1166,7 +1208,7 @@ export const prepareResolvedOutputNonCanonicalRecoveryMaterial = async (
   };
 };
 
-export const createResolvedOutputNonCanonicalRecoveryAdapter = (
+const createResolvedOutputNonCanonicalRecoveryPorts = (
   workflow: ManifestBoundResolvedOutputNonCanonicalWorkflow,
   sources: readonly RetainedDaPayloadSource[],
 ) => {
@@ -1278,55 +1320,137 @@ export const createResolvedOutputNonCanonicalRecoveryAdapter = (
       return { transaction };
     },
   };
-  const base = createCursorFamilyWorkflowAdapter({
-    spec: RESOLVED_OUTPUT_NON_CANONICAL_CURSOR_SPEC,
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator,
-  });
-  const adapter = withFieldCarriagePrerequisite({
-    category,
-    base,
-    prerequisite: createAuthenticatedFieldCarriagePrerequisitePort({
-      category,
-      lucid: config.lucid,
-      network: binding.network,
-      signer: config.signer,
-      publications: l1.publications,
-      transactionConfirmed: async ({ headerHash, txHash }) =>
-        await l1.transactionConfirmed({ headerHash, txHash }),
-      requirementForAction: ({ action, artifact }) => {
-        if (action.input.stage !== "step_02") return null;
-        const { evidence, source } = material.require(artifact);
-        const certificate = binding.fieldPreimageCertificate;
-        if (certificate === null)
-          throw new Error(`${category} omitted field certificate authority`);
-        return {
-          planned: planFaultProofFieldOpening({
-            anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
-            fieldIndex: evidence.coordinate.sourceKind,
-            anchorTxId: evidence.subject.transaction_id,
-            nativeTxCompactCbor: source.nativeTxCompactCbor,
-            itemCbors: decodeMidgardFieldPreimage(
-              Buffer.from(evidence.inputFieldPreimageHex, "hex"),
-            ),
-            owner: config.signer.paymentKeyHash,
-            publish: true,
-            label: `${category} field opening`,
-          }),
-          compactCbor: source.nativeTxCompactCbor,
-          witnessSetCompactCbor: source.witnessSetCompactCbor,
-          certificate: {
-            policyId: certificate.policyId,
-            mintingScript: certificate.mintingScript,
-            referenceScriptUtxo:
-              config.referenceScripts.fieldPreimageCertificateMint,
-          },
-        };
+  const requirementForAction = ({
+    action,
+    artifact,
+  }: LinearFamilyPrerequisiteInput): FieldCarriageRequirement | null => {
+    if (action.input.stage !== "step_02") return null;
+    const { evidence, source } = material.require(artifact);
+    const certificate = binding.fieldPreimageCertificate;
+    if (certificate === null)
+      throw new Error(`${category} omitted field certificate authority`);
+    return {
+      planned: planFaultProofFieldOpening({
+        anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
+        fieldIndex: evidence.coordinate.sourceKind,
+        anchorTxId: evidence.subject.transaction_id,
+        nativeTxCompactCbor: source.nativeTxCompactCbor,
+        itemCbors: decodeMidgardFieldPreimage(
+          Buffer.from(evidence.inputFieldPreimageHex, "hex"),
+        ),
+        owner: config.signer.paymentKeyHash,
+        publish: true,
+        label: `${category} field opening`,
+      }),
+      compactCbor: source.nativeTxCompactCbor,
+      witnessSetCompactCbor: source.witnessSetCompactCbor,
+      certificate: {
+        policyId: certificate.policyId,
+        mintingScript: certificate.mintingScript,
+        referenceScriptUtxo:
+          config.referenceScripts.fieldPreimageCertificateMint,
       },
-    }),
-  });
-  return { adapter, transactions, resolveReplayContext };
+    };
+  };
+  return { transactions, requirementForAction, resolveReplayContext };
+};
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+] as const;
+type Deployment = FamilyDeploymentContext<
+  "resolvedOutputNonCanonical",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  5
+>;
+type RunContext = Readonly<{
+  workflow: ManifestBoundResolvedOutputNonCanonicalWorkflow;
+  sources: readonly RetainedDaPayloadSource[];
+}>;
+type BoundContext = FamilyAssemblyContext<
+  "resolvedOutputNonCanonical",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  5,
+  RunContext
+>;
+const runs = new WeakMap<
+  BoundContext,
+  ReturnType<typeof createResolvedOutputNonCanonicalRecoveryPorts>
+>();
+const runFor = (context: BoundContext) => {
+  const existing = runs.get(context);
+  if (existing !== undefined) return existing;
+  const created = createResolvedOutputNonCanonicalRecoveryPorts(
+    context.runtime.workflow,
+    context.runtime.sources,
+  );
+  runs.set(context, created);
+  return created;
+};
+export const RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION = defineFamily<
+  "resolvedOutputNonCanonical",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  5,
+  RunContext
+>({
+  category: "resolvedOutputNonCanonical",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    ResolvedOutputStep02DatumSchema,
+    ResolvedOutputStep03DatumSchema,
+    ResolvedOutputStep04DatumSchema,
+    ResolvedOutputStep05DatumSchema,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  replayer: () => RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
+    spec: RESOLVED_OUTPUT_NON_CANONICAL_CURSOR_SPEC,
+    stepContractNames: [
+      RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step01,
+      RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step02,
+      RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step03,
+      RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step04,
+      RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step05,
+    ],
+    transactionPort: (context) => runFor(context).transactions,
+  },
+  fieldCarriage: [
+    {
+      requirementForAction: (context, input) =>
+        runFor(context).requirementForAction(input),
+    },
+  ],
+  extend: (context) => ({
+    resolveReplayContext: runFor(context).resolveReplayContext,
+  }),
+});
+export const createResolvedOutputNonCanonicalRecoveryAdapter = (
+  workflow: ManifestBoundResolvedOutputNonCanonicalWorkflow,
+  sources: readonly RetainedDaPayloadSource[],
+) => {
+  const assembled = assembleBoundManifestBoundFamilyWorkflow(
+    RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION,
+    workflow.deployment,
+    { workflow, sources },
+  );
+  return {
+    ...assembled,
+    transactions:
+      assembled.transactions as CursorFamilyTransactionPort<"resolvedOutputNonCanonical">,
+    resolveReplayContext: (
+      assembled as typeof assembled &
+        Pick<
+          ReturnType<typeof createResolvedOutputNonCanonicalRecoveryPorts>,
+          "resolveReplayContext"
+        >
+    ).resolveReplayContext,
+  };
 };
 
 export const executeManifestBoundResolvedOutputNonCanonicalWorkflow = async ({
@@ -1343,13 +1467,6 @@ export const executeManifestBoundResolvedOutputNonCanonicalWorkflow = async ({
     sources,
     journal,
     ...createResolvedOutputNonCanonicalRecoveryAdapter(workflow, sources),
-    replayer: RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(
-      workflow.l1,
-    ),
-    releaseFinalityAuthority: releaseFinalityAuthorityFromDeploymentBinding(
-      workflow.binding,
-    ),
   });
 
 export type LoadedResolvedOutputNonCanonicalWorkflow = Readonly<{

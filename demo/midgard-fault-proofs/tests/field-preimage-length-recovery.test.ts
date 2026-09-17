@@ -15,7 +15,7 @@ import {
   executeManifestBoundFieldPreimageLengthWorkflow,
   type ManifestBoundFieldPreimageLengthWorkflow,
 } from "../src/field-preimage-length-mismatch/authenticated-workflow.js";
-import { createFieldPreimageLengthRecoveryAdapter } from "../src/field-preimage-length-mismatch/recovery.js";
+import { createFieldPreimageLengthRecoveryPorts } from "../src/field-preimage-length-mismatch/recovery.js";
 import * as submitters from "../src/field-preimage-length-mismatch/submit-lucid.js";
 import { FIELD_PREIMAGE_LENGTH_CURSOR_SPEC } from "../src/field-preimage-length-mismatch/workflow-spec.js";
 import { DaLibp2pRetainedDaSource } from "../src/transition-trace/fetch.js";
@@ -30,11 +30,16 @@ import {
   COMPLETE_CANONICAL_REPLAY,
   FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay.js";
+import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.js";
 import { cursorFamilyObservation } from "../src/workflow/cursor-family-state.js";
 import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "../src/workflow/family-l1-observation.js";
+import {
+  createAuthenticatedFieldCarriagePrerequisitePort,
+  withFieldCarriagePrerequisite,
+} from "../src/workflow/field-carriage-prerequisite.js";
 import { unsafeCreateWorkflowFundingReservationPermitForTest } from "../src/workflow/funding-reservation-permit.js";
 import {
   authenticatedStateQueueObservationDigest,
@@ -75,6 +80,38 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+
+// These fixtures provide an authenticated workflow directly; keep their adapter
+// wiring local so the production constructor is assembled from its definition.
+const createFieldPreimageLengthRecoveryAdapter = (
+  workflow: Parameters<typeof createFieldPreimageLengthRecoveryPorts>[0],
+) => {
+  const { transactions, requirementForAction } =
+    createFieldPreimageLengthRecoveryPorts(workflow);
+  return {
+    transactions,
+    adapter: withFieldCarriagePrerequisite({
+      category: "fieldPreimageLengthMismatch",
+      base: createCursorFamilyWorkflowAdapter({
+        spec: FIELD_PREIMAGE_LENGTH_CURSOR_SPEC,
+        l1: workflow.l1,
+        transactions,
+        stateQueueMutationLeaseCoordinator:
+          workflow.stateQueueMutationLeaseCoordinator,
+      }),
+      prerequisite: createAuthenticatedFieldCarriagePrerequisitePort({
+        category: "fieldPreimageLengthMismatch",
+        lucid: workflow.config.lucid,
+        network: workflow.binding.network,
+        signer: workflow.config.signer,
+        publications: workflow.l1.publications,
+        transactionConfirmed: async (input) =>
+          await workflow.l1.transactionConfirmed(input),
+        requirementForAction,
+      }),
+    }),
+  };
+};
 
 const category = "fieldPreimageLengthMismatch";
 const hash = (value: string) => value.repeat(32);

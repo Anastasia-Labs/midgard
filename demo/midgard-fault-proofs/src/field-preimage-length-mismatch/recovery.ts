@@ -4,7 +4,6 @@ import {
   requireWorkflowArtifactMatches,
 } from "../workflow/artifact-codec.js";
 import {
-  createCursorFamilyWorkflowAdapter,
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
@@ -13,10 +12,8 @@ import {
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  withFieldCarriagePrerequisite,
-} from "../workflow/field-carriage-prerequisite.js";
+import type { LinearFamilyPrerequisiteInput } from "../workflow/family-definition.js";
+import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
 import {
   journalJsonDigest,
   type JournalJsonObject,
@@ -40,15 +37,10 @@ import {
   fieldPreimageLengthEvidenceFromCanonicalBlock,
 } from "./evidence.js";
 import type { FieldPreimageLengthAction } from "./workflow.js";
-import { FIELD_PREIMAGE_LENGTH_CURSOR_SPEC } from "./workflow-spec.js";
 
 type BoundWorkflow = Pick<
   ManifestBoundFieldPreimageLengthWorkflow,
-  | "config"
-  | "binding"
-  | "l1"
-  | "decisionDigest"
-  | "stateQueueMutationLeaseCoordinator"
+  "config" | "binding" | "l1" | "stateQueueMutationLeaseCoordinator"
 >;
 const CATEGORY = "fieldPreimageLengthMismatch";
 
@@ -61,7 +53,7 @@ const proofMaterial = (
 });
 
 /** Existing submitters capture one evaluated body; shared recovery owns every durable attempt. */
-export const createFieldPreimageLengthRecoveryAdapter = (
+export const createFieldPreimageLengthRecoveryPorts = (
   workflow: BoundWorkflow,
 ) => {
   const { config, binding, l1, stateQueueMutationLeaseCoordinator } = workflow;
@@ -250,55 +242,39 @@ export const createFieldPreimageLengthRecoveryAdapter = (
       return { transaction };
     },
   };
-  const base = createCursorFamilyWorkflowAdapter({
-    spec: FIELD_PREIMAGE_LENGTH_CURSOR_SPEC,
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator,
-  });
-  const adapter = withFieldCarriagePrerequisite({
-    category: CATEGORY,
-    base,
-    prerequisite: createAuthenticatedFieldCarriagePrerequisitePort({
-      category: CATEGORY,
-      lucid: config.lucid,
-      network: binding.network,
-      signer: config.signer,
-      publications: l1.publications,
-      transactionConfirmed: async ({ headerHash, txHash }) =>
-        await l1.transactionConfirmed({ headerHash, txHash }),
-      requirementForAction: ({ action, artifact }) => {
-        if (
-          action.input.stage !== "step_01" &&
-          action.input.stage !== "step_02" &&
-          action.input.stage !== "step_03"
-        )
-          return null;
-        const evidence = requireMaterial(artifact);
-        if (
-          action.input.stage !== "step_02" &&
-          action.input.stage !== "step_03" &&
-          !(
-            action.input.stage === "step_01" &&
-            evidence.prepared.direction === "wrongfulAcceptance"
-          )
-        )
-          return null;
-        const planned = planFieldPreimageLengthCarriage({ workflow, evidence });
-        const certificate = config.contracts.fieldPreimageCertificate;
-        return {
-          planned,
-          compactCbor: evidence.fieldMaterial.nativeTxCompactCbor,
-          witnessSetCompactCbor: evidence.fieldMaterial.witnessSetCompactCbor,
-          certificate: {
-            policyId: certificate.policyId,
-            mintingScript: certificate.mintingScript,
-            referenceScriptUtxo:
-              config.referenceScripts.fieldPreimageCertificateMint,
-          },
-        };
+  const requirementForAction = ({
+    action,
+    artifact,
+  }: LinearFamilyPrerequisiteInput): FieldCarriageRequirement | null => {
+    if (
+      action.input.stage !== "step_01" &&
+      action.input.stage !== "step_02" &&
+      action.input.stage !== "step_03"
+    )
+      return null;
+    const evidence = requireMaterial(artifact);
+    if (
+      action.input.stage !== "step_02" &&
+      action.input.stage !== "step_03" &&
+      !(
+        action.input.stage === "step_01" &&
+        evidence.prepared.direction === "wrongfulAcceptance"
+      )
+    )
+      return null;
+    const planned = planFieldPreimageLengthCarriage({ workflow, evidence });
+    const certificate = config.contracts.fieldPreimageCertificate;
+    return {
+      planned,
+      compactCbor: evidence.fieldMaterial.nativeTxCompactCbor,
+      witnessSetCompactCbor: evidence.fieldMaterial.witnessSetCompactCbor,
+      certificate: {
+        policyId: certificate.policyId,
+        mintingScript: certificate.mintingScript,
+        referenceScriptUtxo:
+          config.referenceScripts.fieldPreimageCertificateMint,
       },
-    }),
-  });
-  return { adapter, transactions };
+    };
+  };
+  return { transactions, requirementForAction };
 };

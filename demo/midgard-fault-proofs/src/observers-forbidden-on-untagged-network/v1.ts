@@ -6,7 +6,6 @@ import {
   DaLibp2pRetainedDaSource,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
@@ -20,27 +19,16 @@ import {
 } from "../workflow/adapters.js";
 import { OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
-  createCursorFamilyWorkflowAdapter,
   CURSOR_FAMILY_TRANSACTION_PORT,
+  type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+  defineFamily,
+  type FamilyAssemblyContext,
+  type ManifestBoundFamilyWorkflow,
+} from "../workflow/family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  type FieldCarriagePrerequisitePort,
-  withFieldCarriagePrerequisite,
-} from "../workflow/field-carriage-prerequisite.js";
+import { type FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
   DirectoryFraudProofWorkflowJournalStore,
@@ -48,10 +36,7 @@ import {
   journalJsonDigest,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
-import type {
-  FraudProofFamilyWorkflowAdapter,
-  FraudProofWorkflowTerminalVerifier,
-} from "../workflow/orchestrator.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
   createFraudProofWorkflowRegistry,
   type FraudProofWorkflowRunResult,
@@ -60,7 +45,6 @@ import {
 } from "../workflow/orchestrator.js";
 import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import type { FraudProofRawL1FamilyStage } from "../workflow/raw-l1-family-derivation.js";
-import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import {
   createObserversForbiddenActuator,
   type ObserversForbiddenActuatorAction,
@@ -112,45 +96,33 @@ export type ManifestBoundObserversForbiddenWorkflowConfig = Readonly<{
     Readonly<{ removal: ObserversForbiddenRemovalReferenceScripts }>;
 }>;
 
-type SerialBinding =
-  FraudProofWorkflowDeploymentBinding<"observersForbiddenOnUntaggedNetwork">;
+export type ManifestBoundObserversForbiddenWorkflow =
+  ManifestBoundFamilyWorkflow<"observersForbiddenOnUntaggedNetwork", true, 2> &
+    WorkflowExtension &
+    Readonly<{ decisionDigest: string }>;
 
-export type ManifestBoundObserversForbiddenWorkflow = Readonly<{
-  binding: SerialBinding;
-  l1: FraudProofFamilyL1ObservationPort<"observersForbiddenOnUntaggedNetwork">;
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+  "pexcludesWithdraw",
+] as const;
+type BoundContext = FamilyAssemblyContext<
+  "observersForbiddenOnUntaggedNetwork",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  2
+>;
+type WorkflowExtension = Readonly<{
   actuator: ReturnType<typeof createObserversForbiddenActuator>;
   prerequisite: FieldCarriagePrerequisitePort<"observersForbiddenOnUntaggedNetwork">;
   lucid: LucidEvolution;
-  decisionDigest: string;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
-
-/** Config contains infrastructure and authenticated references only. */
-export const createManifestBoundObserversForbiddenWorkflow = async (
-  config: ManifestBoundObserversForbiddenWorkflowConfig,
-): Promise<ManifestBoundObserversForbiddenWorkflow> => {
-  if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
-    throw new Error("observersForbidden decision digest is malformed");
-  const binding = (await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: CATEGORY as never,
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      ObserversForbiddenStep02DatumSchema,
-      ObserversForbiddenStep02DatumSchema,
-    ],
-  })) as SerialBinding;
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
+const bindFamily = (context: BoundContext) => {
+  const { binding, references } = context;
+  const { steps } = references;
   const resolved = binding.resolvedContracts as unknown as {
     category: { categoryId: string };
     hubOraclePolicyId: string;
@@ -174,48 +146,6 @@ export const createManifestBoundObserversForbiddenWorkflow = async (
     resolved.stateQueuePolicyId === undefined
   )
     throw new Error("observersForbidden manifest omitted required contracts");
-  const bindReference = (name: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName: name,
-      utxo,
-    });
-  const steps = [
-    bindReference(
-      "fraudProofObserversForbiddenOnUntaggedNetwork",
-      config.referenceScripts.steps[0],
-    ),
-    bindReference(
-      "fraudProofObserversForbiddenOnUntaggedNetworkStep02",
-      config.referenceScripts.steps[1],
-    ),
-  ] as const;
-  const witnessNames = {
-    computationThreadMint: "computationThreadMint",
-    fraudProofMint: "fraudProofMint",
-    phasMembershipWithdraw: "phasMembershipWithdraw",
-    chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
-    pexcludesWithdraw: "pexcludesWithdraw",
-  } as const;
-  const witnesses = Object.fromEntries(
-    Object.entries(witnessNames).map(([role, name]) => [
-      role,
-      bindReference(
-        name,
-        config.referenceScripts.witnesses[
-          role as keyof FaultProofWitnessReferenceScripts
-        ]!,
-      ),
-    ]),
-  ) as Required<FaultProofWitnessReferenceScripts>;
-  const references = Object.freeze({
-    steps,
-    witnesses: Object.freeze(witnesses),
-    fieldPreimageCertificateMint: bindReference(
-      "fieldPreimageCertificateMint",
-      config.referenceScripts.fieldPreimageCertificateMint,
-    ),
-  });
   const contracts: ObserversForbiddenContracts = Object.freeze({
     steps: chain.steps.map((step, index) => ({
       blueprintTitle: OBSERVERS_FORBIDDEN_BLUEPRINT_TITLES[index]!,
@@ -231,56 +161,97 @@ export const createManifestBoundObserversForbiddenWorkflow = async (
     fieldPreimageCertificatePolicyId: certificate.policyId,
     fieldPreimageCertificateMintingScript: certificate.mintingScript,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
   const actuator = createObserversForbiddenActuator({
     binding,
-    lucid: config.lucid,
-    signer: config.signer,
+    lucid: context.lucid,
+    signer: context.signer,
     contracts,
     references,
     stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
+      context.stateQueueMutationLeaseCoordinator,
   });
-  const prerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
-    category: CATEGORY as never,
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    requirementForAction: ({ action, artifact }) =>
-      observersForbiddenFieldRequirement({
+  return actuator;
+};
+const bound = new WeakMap<BoundContext, ReturnType<typeof bindFamily>>();
+const boundFor = (context: BoundContext) => {
+  const existing = bound.get(context);
+  if (existing !== undefined) return existing;
+  const created = bindFamily(context);
+  bound.set(context, created);
+  return created;
+};
+const createTransactionPort = (
+  context: BoundContext,
+): CursorFamilyTransactionPort<"observersForbiddenOnUntaggedNetwork"> => {
+  const actuator = boundFor(context);
+  return {
+    portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
+    category: CATEGORY,
+    prepareRaw: async (routed) => {
+      if (routed.kind !== "observers_forbidden_on_untagged_network")
+        throw new Error("raw family route changed");
+      return await prepareObserversForbiddenAcceptedArtifact(routed.evidence);
+    },
+    validatePreparedRawArtifact: async ({ routed, artifact }) => {
+      if (routed.kind !== "observers_forbidden_on_untagged_network")
+        throw new Error("raw family route changed");
+      if (
+        journalJsonDigest(
+          await prepareObserversForbiddenAcceptedArtifact(routed.evidence),
+        ) !== journalJsonDigest(artifact)
+      )
+        throw new Error("prepared raw artifact differs from retained evidence");
+    },
+    validatePreparedArtifact: async ({ evidence, artifact }) => {
+      if (
+        journalJsonDigest(
+          await prepareObserversForbiddenForcedArtifact(evidence),
+        ) !== journalJsonDigest(artifact)
+      )
+        throw new Error(
+          "prepared family artifact differs from retained evidence",
+        );
+    },
+    prepare: async ({ evidence }) =>
+      await prepareObserversForbiddenForcedArtifact(evidence),
+    capture: async ({ action, artifact }) =>
+      await actuator.capture({
         action: action.input as unknown as ObserversForbiddenActuatorAction,
         artifact,
-        owner: config.signer.paymentKeyHash,
-        certificate: {
-          policyId: certificate.policyId,
-          mintingScript: certificate.mintingScript,
-          referenceScriptUtxo: references.fieldPreimageCertificateMint,
-        },
       }),
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  const adapter = withFieldCarriagePrerequisite({
-    category: CATEGORY,
-    prerequisite,
-    base: createCursorFamilyWorkflowAdapter({
-      spec: {
-        category: CATEGORY,
-        stepCount: 2,
-        successors: { 1: [2], 2: ["proof_token"] },
-      },
-      l1,
-      stateQueueMutationLeaseCoordinator:
-        config.stateQueueMutationLeaseCoordinator,
-      refineAction: async ({ observed, artifact }) => {
+  };
+};
+export const OBSERVERS_FORBIDDEN_FAMILY_DEFINITION = defineFamily<
+  "observersForbiddenOnUntaggedNetwork",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  2
+>({
+  category: CATEGORY,
+  stepDatumSchemas: [
+    ObserversForbiddenStep02DatumSchema,
+    ObserversForbiddenStep02DatumSchema,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  replayer: () =>
+    OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
+    spec: {
+      category: CATEGORY,
+      stepCount: 2,
+      successors: { 1: [2], 2: ["proof_token"] },
+    },
+    stepContractNames: [
+      "fraudProofObserversForbiddenOnUntaggedNetwork",
+      "fraudProofObserversForbiddenOnUntaggedNetworkStep02",
+    ],
+    createRefineAction:
+      (context) =>
+      async ({ observed, artifact }) => {
         const selected = await currentAction({
-          workflow: { lucid: config.lucid },
+          workflow: { lucid: context.lucid },
           artifact: admitObserversForbiddenArtifact(artifact).artifact,
           stage: observed.stage,
         });
@@ -292,61 +263,48 @@ export const createManifestBoundObserversForbiddenWorkflow = async (
           ),
         );
       },
-      transactions: {
-        portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
-        category: CATEGORY,
-        prepareRaw: async (routed) => {
-          if (routed.kind !== "observers_forbidden_on_untagged_network")
-            throw new Error("raw family route changed");
-          return await prepareObserversForbiddenAcceptedArtifact(
-            routed.evidence,
-          );
-        },
-        validatePreparedRawArtifact: async ({ routed, artifact }) => {
-          if (routed.kind !== "observers_forbidden_on_untagged_network")
-            throw new Error("raw family route changed");
-          if (
-            journalJsonDigest(
-              await prepareObserversForbiddenAcceptedArtifact(routed.evidence),
-            ) !== journalJsonDigest(artifact)
-          )
-            throw new Error(
-              "prepared raw artifact differs from retained evidence",
-            );
-        },
-        validatePreparedArtifact: async ({ evidence, artifact }) => {
-          if (
-            journalJsonDigest(
-              await prepareObserversForbiddenForcedArtifact(evidence),
-            ) !== journalJsonDigest(artifact)
-          )
-            throw new Error(
-              "prepared family artifact differs from retained evidence",
-            );
-        },
-        prepare: async ({ evidence }) =>
-          await prepareObserversForbiddenForcedArtifact(evidence),
-        capture: async ({ action, artifact }) =>
-          await actuator.capture({
-            action: action.input as unknown as ObserversForbiddenActuatorAction,
-            artifact,
-          }),
+    transactionPort: createTransactionPort,
+  },
+  fieldCarriage: [
+    {
+      requirementForAction: (context, { action, artifact }) => {
+        const { certificate, references } = context;
+        return observersForbiddenFieldRequirement({
+          action: action.input as unknown as ObserversForbiddenActuatorAction,
+          artifact,
+          owner: context.signer.paymentKeyHash,
+          certificate: {
+            policyId: certificate.policyId,
+            mintingScript: certificate.mintingScript,
+            referenceScriptUtxo: references.fieldPreimageCertificateMint,
+          },
+        });
       },
-    }),
-  });
-  return Object.freeze({
-    binding,
-    l1,
-    adapter,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-    actuator,
-    prerequisite,
-    lucid: config.lucid,
-    decisionDigest: config.decisionDigest,
+    },
+  ],
+  extend: (context): WorkflowExtension => ({
+    actuator: boundFor(context),
+    prerequisite: context.fieldCarriagePrerequisites[0]!,
+    lucid: context.lucid,
     stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
+      context.stateQueueMutationLeaseCoordinator,
+  }),
+});
+
+/** Config contains infrastructure and authenticated references only. */
+export const createManifestBoundObserversForbiddenWorkflow = async (
+  config: ManifestBoundObserversForbiddenWorkflowConfig,
+): Promise<ManifestBoundObserversForbiddenWorkflow> => {
+  if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
+    throw new Error("observersForbidden decision digest is malformed");
+  const { decisionDigest, ...assemblyConfig } = config;
+  const workflow = await assembleManifestBoundFamilyWorkflow(
+    OBSERVERS_FORBIDDEN_FAMILY_DEFINITION,
+    assemblyConfig,
+  );
+  return Object.freeze({
+    ...(workflow as typeof workflow & WorkflowExtension),
+    decisionDigest,
   });
 };
 

@@ -58,39 +58,34 @@ import {
   type WorkflowAdapterRunner,
 } from "../workflow/adapters.js";
 import { OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
-import {
-  createCursorFamilyWorkflowAdapter,
-  CURSOR_FAMILY_TRANSACTION_PORT,
-  type CursorFamilyTransactionPort,
-} from "../workflow/cursor-family-adapter.js";
+import { CURSOR_FAMILY_TRANSACTION_PORT } from "../workflow/cursor-family-adapter.js";
 import {
   captureCursorRemoval,
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
-import { releaseFinalityAuthorityFromDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import {
   assertManifestBoundWorkflowSigner,
   bindFraudProofWorkflowDeployment,
   type FraudProofWorkflowDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
-import { createFraudProofFamilyAuthenticatedL1TerminalVerifier } from "../workflow/family-l1-observation.js";
 import {
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+  defineFamily,
+  type FamilyDeploymentContext,
+} from "../workflow/family-definition.js";
+import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  withFieldCarriagePrerequisite,
-} from "../workflow/field-carriage-prerequisite.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
   DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import {
+  assembleBoundManifestBoundFamilyWorkflow,
+  bindManifestBoundFamilyWorkflow,
+} from "../workflow/manifest-bound-family-assembly.js";
 import {
   createCanonicalFamilyArtifactPort,
   executeManifestBoundFamilyRecovery,
@@ -279,24 +274,25 @@ export const loadManifestBoundOutputReferenceScriptDecodingConfig = async (
     manifest: input.manifest,
     blueprintJson: input.blueprintJson,
     deploymentInfo: input.deploymentInfo,
-    category:
-      "outputReferenceScriptDecoding" as FraudProofCatalogueCategoryName,
+    category: "outputReferenceScriptDecoding",
     headerHash: input.headerHash,
     proverCredential: input.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      FraudProofComputationThreadStepDatum,
-      OutputReferenceStep02DatumSchema,
-      OutputReferenceStep03DatumSchema,
-      OutputReferenceStep04DatumSchema,
-      OutputReferenceStep05DatumSchema,
-      OutputReferenceStep06DatumSchema,
-    ],
+    stepDatumSchemas:
+      OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION.stepDatumSchemas,
   });
   assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: input.signer.address,
     paymentKeyHash: input.signer.paymentKeyHash,
   });
+
+  return createOutputReferenceScriptDecodingBoundConfig(input, binding);
+};
+
+const createOutputReferenceScriptDecodingBoundConfig = (
+  input: LoadManifestBoundOutputReferenceScriptDecodingConfig,
+  binding: FraudProofWorkflowDeploymentBinding<"outputReferenceScriptDecoding">,
+): ManifestBoundOutputReferenceScriptDecodingConfig => {
   const localContracts = binding.resolvedContracts.contracts as unknown as {
     readonly outputReferenceScriptDecoding?: OutputReferenceScriptDecodingContracts;
   };
@@ -1106,8 +1102,7 @@ const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
       deploymentInfo: config.binding.deploymentInfo,
       network: config.binding.network,
       signer: config.signer,
-      fraudCategory:
-        "outputReferenceScriptDecoding" as FraudProofCatalogueCategoryName,
+      fraudCategory: "outputReferenceScriptDecoding",
       fraudulentHeaderHash: config.binding.definition.headerHash,
       requireReferenceScripts: true,
       stateQueueMutationLeaseCoordinator:
@@ -1252,6 +1247,12 @@ export type ManifestBoundOutputReferenceScriptDecodingWorkflowConfig =
     }>;
 
 export type ManifestBoundOutputReferenceScriptDecodingWorkflow = Readonly<{
+  deployment: FamilyDeploymentContext<
+    "outputReferenceScriptDecoding",
+    "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",
+    true,
+    6
+  >;
   workflowVersion: typeof OUTPUT_REFERENCE_SCRIPT_DECODING_WORKFLOW;
   config: ManifestBoundOutputReferenceScriptDecodingConfig;
   binding: OutputReferenceScriptDecodingDeploymentBinding;
@@ -1264,15 +1265,32 @@ export type ManifestBoundOutputReferenceScriptDecodingWorkflow = Readonly<{
 export const createManifestBoundOutputReferenceScriptDecodingWorkflow = async (
   input: ManifestBoundOutputReferenceScriptDecodingWorkflowConfig,
 ): Promise<ManifestBoundOutputReferenceScriptDecodingWorkflow> => {
-  const config =
-    await loadManifestBoundOutputReferenceScriptDecodingConfig(input);
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: input.source,
-    releaseFinality: config.binding.releaseFinality,
-    releaseEconomics: config.binding.releaseEconomics,
-    definition: config.binding.definition as never,
-  });
+  const deployment = await bindManifestBoundFamilyWorkflow(
+    OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION,
+    {
+      ...input,
+      referenceScripts: {
+        steps: [
+          input.referenceScripts.step01,
+          input.referenceScripts.step02,
+          input.referenceScripts.step03,
+          input.referenceScripts.step04,
+          input.referenceScripts.step05,
+          input.referenceScripts.step06,
+        ],
+        witnesses: input.referenceScripts.witnesses,
+        fieldPreimageCertificateMint:
+          input.referenceScripts.fieldPreimageCertificateMint,
+      },
+    },
+  );
+  const config = createOutputReferenceScriptDecodingBoundConfig(
+    input,
+    deployment.binding,
+  );
+  const l1 = deployment.l1;
   return Object.freeze({
+    deployment,
     workflowVersion: OUTPUT_REFERENCE_SCRIPT_DECODING_WORKFLOW,
     config,
     binding: config.binding,
@@ -1389,109 +1407,136 @@ export const prepareOutputReferenceScriptDecodingRecoveryMaterial = async (
   };
 };
 
-export const createOutputReferenceScriptDecodingRecoveryAdapter = (
-  workflow: ManifestBoundOutputReferenceScriptDecodingWorkflow,
-) => {
-  const { config, binding, l1, stateQueueMutationLeaseCoordinator } = workflow;
-  const category = "outputReferenceScriptDecoding";
-  const material = createCanonicalFamilyArtifactPort(
-    async ({ evidence, classification }) =>
-      await prepareOutputReferenceScriptDecodingRecoveryMaterial(
-        evidence,
-        classification.selected.detectionId,
-      ),
-  );
-  const transactions: CursorFamilyTransactionPort<typeof category> = {
-    portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
-    category,
-    prepare: material.prepare,
-    validatePreparedArtifact: material.validatePreparedArtifact,
-    capture: async ({ action, artifact }) => {
-      const input = cursorFamilyActionInput({ category, action });
-      if (input.stage === "remove")
-        return await captureCursorRemoval({
-          category,
-          lucid: config.lucid,
-          blueprint: binding.blueprint,
-          deploymentInfo: binding.deploymentInfo,
-          network: binding.network,
-          signer: config.signer,
-          headerHash: binding.definition.headerHash,
-          input,
-          stateQueueMutationLeaseCoordinator,
-          fraudProverRewardLovelace: BigInt(
-            binding.releaseEconomics.policy.fraudProverRewardLovelace,
-          ),
-        });
-      const admitted = material.require(artifact);
-      const actions = {
-        init: "submitInit",
-        step_01: "submitStep01",
-        step_02: "submitStep02",
-        step_03: "submitOutputScan",
-        step_04: "submitReferenceBind",
-        step_05: "submitStructuralScan",
-        step_06: "submitStep06",
-      } as const;
-      const familyAction = actions[input.stage as keyof typeof actions];
-      if (familyAction === undefined)
-        throw new Error(
-          `${category} cursor action is outside its exact topology`,
-        );
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (preSubmitBoundary) => {
-          const submission =
-            createManifestBoundOutputReferenceScriptDecodingSubmission({
-              config,
-              preSubmitBoundary,
-              observe: async () =>
-                outputReferenceScriptDecodingStageFromL1(
-                  (
-                    await l1.observe({
-                      headerHash: binding.definition.headerHash,
-                    })
-                  ).stage,
-                ),
-              resolveStage:
-                createOutputReferenceScriptDecodingRawL1StageResolver({
-                  config,
-                  l1,
-                  source: admitted.source,
-                }),
-            });
-          await submission.submit(familyAction, admitted.evidence);
-        },
-      );
-      if (
-        input.stage !== "init" &&
-        !workflowTransactionInputOutRefs(transaction.signed).includes(
-          cursorStringField(input, "threadOutRef"),
-        )
-      )
-        throw new Error(
-          `${category} captured transaction changed its authenticated thread input`,
-        );
-      return { transaction };
-    },
-  };
-  const base = createCursorFamilyWorkflowAdapter({
+type OutputReferenceScriptDecodingAssemblyRuntime = Readonly<{
+  config: ManifestBoundOutputReferenceScriptDecodingConfig;
+  material: ReturnType<
+    typeof createCanonicalFamilyArtifactPort<
+      Awaited<
+        ReturnType<typeof prepareOutputReferenceScriptDecodingRecoveryMaterial>
+      >
+    >
+  >;
+}>;
+
+export const OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
+  "outputReferenceScriptDecoding",
+  "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",
+  true,
+  6,
+  OutputReferenceScriptDecodingAssemblyRuntime
+>({
+  category: "outputReferenceScriptDecoding",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    OutputReferenceStep02DatumSchema,
+    OutputReferenceStep03DatumSchema,
+    OutputReferenceStep04DatumSchema,
+    OutputReferenceStep05DatumSchema,
+    OutputReferenceStep06DatumSchema,
+  ],
+  witnessRoles: [
+    "computationThreadMint",
+    "fraudProofMint",
+    "phasMembershipWithdraw",
+  ],
+  fieldPreimageCertificate: true,
+  replayer: () => OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
     spec: OUTPUT_REFERENCE_SCRIPT_DECODING_CURSOR_SPEC,
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator,
-  });
-  const adapter = withFieldCarriagePrerequisite({
-    category,
-    base,
-    prerequisite: createAuthenticatedFieldCarriagePrerequisitePort({
-      category,
-      lucid: config.lucid,
-      network: binding.network,
-      signer: config.signer,
-      publications: l1.publications,
-      transactionConfirmed: async ({ headerHash, txHash }) =>
-        await l1.transactionConfirmed({ headerHash, txHash }),
-      requirementForAction: ({ action, artifact }) => {
+    stepContractNames: [
+      OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS.step01,
+      OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS.step02,
+      OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS.step03,
+      OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS.step04,
+      OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS.step05,
+      OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS.step06,
+    ],
+    transactionPort: (context) => {
+      const category = "outputReferenceScriptDecoding";
+      const { config, material } = context.runtime;
+      const { binding, l1, stateQueueMutationLeaseCoordinator } = context;
+      return {
+        portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
+        category,
+        prepare: material.prepare,
+        validatePreparedArtifact: material.validatePreparedArtifact,
+        capture: async ({ action, artifact }) => {
+          const input = cursorFamilyActionInput({ category, action });
+          if (input.stage === "remove")
+            return await captureCursorRemoval({
+              category,
+              lucid: config.lucid,
+              blueprint: binding.blueprint,
+              deploymentInfo: binding.deploymentInfo,
+              network: binding.network,
+              signer: config.signer,
+              headerHash: binding.definition.headerHash,
+              input,
+              stateQueueMutationLeaseCoordinator,
+              fraudProverRewardLovelace: BigInt(
+                binding.releaseEconomics.policy.fraudProverRewardLovelace,
+              ),
+            });
+          const admitted = material.require(artifact);
+          const actions = {
+            init: "submitInit",
+            step_01: "submitStep01",
+            step_02: "submitStep02",
+            step_03: "submitOutputScan",
+            step_04: "submitReferenceBind",
+            step_05: "submitStructuralScan",
+            step_06: "submitStep06",
+          } as const;
+          const familyAction = actions[input.stage as keyof typeof actions];
+          if (familyAction === undefined)
+            throw new Error(
+              `${category} cursor action is outside its exact topology`,
+            );
+          const transaction = await captureLocallyEvaluatedTransaction(
+            async (preSubmitBoundary) => {
+              const submission =
+                createManifestBoundOutputReferenceScriptDecodingSubmission({
+                  config,
+                  preSubmitBoundary,
+                  observe: async () =>
+                    outputReferenceScriptDecodingStageFromL1(
+                      (
+                        await l1.observe({
+                          headerHash: binding.definition.headerHash,
+                        })
+                      ).stage,
+                    ),
+                  resolveStage:
+                    createOutputReferenceScriptDecodingRawL1StageResolver({
+                      config,
+                      l1,
+                      source: admitted.source,
+                    }),
+                });
+              await submission.submit(familyAction, admitted.evidence);
+            },
+          );
+          if (
+            input.stage !== "init" &&
+            !workflowTransactionInputOutRefs(transaction.signed).includes(
+              cursorStringField(input, "threadOutRef"),
+            )
+          )
+            throw new Error(
+              `${category} captured transaction changed its authenticated thread input`,
+            );
+          return { transaction };
+        },
+      };
+    },
+  },
+  fieldCarriage: [
+    {
+      requirementForAction: (context, { action, artifact }) => {
+        const category = "outputReferenceScriptDecoding";
+        const { config, material } = context.runtime;
+        const { binding } = context;
         if (
           action.input.stage !== "step_02" &&
           action.input.stage !== "step_04"
@@ -1524,9 +1569,27 @@ export const createOutputReferenceScriptDecodingRecoveryAdapter = (
           },
         };
       },
-    }),
-  });
-  return { adapter, transactions };
+    },
+  ],
+});
+
+export const createOutputReferenceScriptDecodingRecoveryAdapter = (
+  workflow: ManifestBoundOutputReferenceScriptDecodingWorkflow,
+) => {
+  const { config } = workflow;
+  const material = createCanonicalFamilyArtifactPort(
+    async ({ evidence, classification }) =>
+      await prepareOutputReferenceScriptDecodingRecoveryMaterial(
+        evidence,
+        classification.selected.detectionId,
+      ),
+  );
+  const assembled = assembleBoundManifestBoundFamilyWorkflow(
+    OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION,
+    workflow.deployment,
+    { config, material },
+  );
+  return { ...assembled };
 };
 
 export const executeManifestBoundOutputReferenceScriptDecodingWorkflow =
@@ -1544,13 +1607,6 @@ export const executeManifestBoundOutputReferenceScriptDecodingWorkflow =
       sources,
       journal,
       ...createOutputReferenceScriptDecodingRecoveryAdapter(workflow),
-      replayer: OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-      terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(
-        workflow.l1,
-      ),
-      releaseFinalityAuthority: releaseFinalityAuthorityFromDeploymentBinding(
-        workflow.binding,
-      ),
     });
 
 export type LoadedOutputReferenceScriptDecodingWorkflow = Readonly<{
@@ -1592,16 +1648,14 @@ export const createOutputReferenceScriptDecodingWorkflowRunnerSurface = ({
           permit: invocation.actuationPermit,
           decisionDigest: invocation.decisionDigest,
           deploymentFingerprint: invocation.deploymentFingerprint,
-          category:
-            "outputReferenceScriptDecoding" as FraudProofCatalogueCategoryName,
+          category: "outputReferenceScriptDecoding",
           headerHash: invocation.headerHash,
         }),
       });
       assertWorkflowJournalActuation({
         journal,
         deploymentFingerprint: invocation.deploymentFingerprint,
-        category:
-          "outputReferenceScriptDecoding" as FraudProofCatalogueCategoryName,
+        category: "outputReferenceScriptDecoding",
         headerHash: invocation.headerHash,
         checkpoint: "runner_start",
       });

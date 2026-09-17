@@ -19,7 +19,6 @@ import {
   requireCompleteCanonicalReplayDecision,
 } from "../workflow/complete-replay.js";
 import {
-  createCursorFamilyWorkflowAdapter,
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
@@ -29,15 +28,10 @@ import {
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+  defineFamily,
+  type FamilyAssemblyContext,
+  type FamilyReferenceScripts,
+} from "../workflow/family-definition.js";
 import {
   type HistoricalNativeScriptCheckpointStore,
   type HistoricalNativeScriptCorpus,
@@ -50,16 +44,15 @@ import type {
   JournalJsonObject,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
   createFraudProofWorkflowRegistry,
   type FraudProofWorkflowAction,
   runFraudProofWorkflow,
 } from "../workflow/orchestrator.js";
 import {
-  createAuthenticatedRawDatumPreimagePrerequisitePort,
   createChunkedRawDatumPreimageRequirement,
   createStructuredDataPreimageRequirement,
-  withRawDatumPreimagePrerequisite,
 } from "../workflow/raw-datum-preimage-prerequisite.js";
 import { structuredDataPublicationPlan } from "../workflow/structured-data-preimage.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
@@ -98,7 +91,7 @@ export const TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS = Object.freeze([
   SDK.TransitionTraceProofCommitmentDatum,
   SDK.TransitionTraceStepDatum,
   SDK.TransitionTraceStepDatum,
-]);
+] as const);
 export const TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES = Object.freeze(
   [
     "fraudProofTransitionTrace",
@@ -121,6 +114,7 @@ type Prepared = Readonly<{
 type ReplayCell = {
   evidence?: CanonicalBlockEvidence;
   corpus?: HistoricalNativeScriptCorpus;
+  l1Events?: Awaited<ReturnType<typeof captureTransitionTraceL1Events>>;
   prepared?: ReadonlyMap<string, Prepared>;
 };
 const cells = new WeakMap<object, ReplayCell>();
@@ -140,60 +134,39 @@ export type ManifestBoundTransitionTraceWorkflowConfig = Readonly<{
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export const createManifestBoundTransitionTraceWorkflow = async (
-  config: ManifestBoundTransitionTraceWorkflowConfig,
-) => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "transitionTrace",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
-  });
+type TransitionRuntime = Readonly<{
+  config: ManifestBoundTransitionTraceWorkflowConfig;
+  cell: ReplayCell;
+}>;
+type TransitionContext = FamilyAssemblyContext<
+  "transitionTrace",
+  "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",
+  false,
+  9,
+  TransitionRuntime
+>;
+const boundRuns = new WeakMap<TransitionContext, ReturnType<typeof bindRun>>();
+const bindRun = (context: TransitionContext) => {
+  const { binding } = context;
+  const { config, cell } = context.runtime;
   requireHistoricalNativeScriptHistoryAuthority({
     deploymentFingerprint: binding.deploymentFingerprint,
     checkpointStore: config.historicalNativeScriptCheckpointStore,
     historySource: config.historicalNativeScriptHistorySource,
   });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
+  const references = Object.freeze({
+    ...context.auxiliaryReferences,
+    ...context.references.witnesses,
+    ...Object.fromEntries(
+      [
+        "fraudProofTransitionTrace",
+        ...TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES,
+      ].map((name, index) => [name, context.references.steps[index]!]),
+    ),
   });
-  const names = TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES;
-  const references = Object.fromEntries(
-    names.map((contractName) => {
-      const utxo = config.referenceScripts[contractName];
-      if (utxo === undefined)
-        throw new Error(
-          `Transition workflow omitted published ${contractName}`,
-        );
-      return [
-        contractName,
-        requireManifestBoundReferenceScriptUtxo({
-          binding,
-          contractName,
-          utxo,
-        }),
-      ];
-    }),
-  );
-  const witnesses: FaultProofWitnessReferenceScripts = {
-    computationThreadMint: references.computationThreadMint!,
-    fraudProofMint: references.fraudProofMint!,
-    phasMembershipWithdraw: references.phasMembershipWithdraw!,
-  };
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  if (l1.rawL1 === undefined)
-    throw new Error("Transition workflow lacks raw L1 authority");
-  const cell: ReplayCell = {};
+  const witnesses: FaultProofWitnessReferenceScripts =
+    context.references.witnesses;
+  const prerequisite = context.fieldCarriagePrerequisites[0]!;
   const admit = (artifact: JournalJsonObject): Prepared => {
     if (typeof artifact.detectionId !== "string")
       throw new Error("Transition artifact has no detection identity");
@@ -270,15 +243,6 @@ export const createManifestBoundTransitionTraceWorkflow = async (
       preimage: Buffer.from(output, "hex"),
     });
   };
-  const prerequisite = createAuthenticatedRawDatumPreimagePrerequisitePort({
-    category: "transitionTrace",
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    requirementForAction,
-    transactionConfirmed: (input) => l1.transactionConfirmed(input),
-  });
   const transactions: CursorFamilyTransactionPort<"transitionTrace"> = {
     portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
     category: "transitionTrace",
@@ -372,30 +336,114 @@ export const createManifestBoundTransitionTraceWorkflow = async (
       };
     },
   };
-  const workflow = Object.freeze({
-    binding,
-    l1,
-    transactions,
-    references,
-    witnesses,
-    config,
-    adapter: withRawDatumPreimagePrerequisite({
-      category: "transitionTrace",
-      prerequisite,
-      base: createCursorFamilyWorkflowAdapter({
-        spec: TRANSITION_TRACE_CURSOR_SPEC,
-        l1,
-        transactions,
-        stateQueueMutationLeaseCoordinator:
-          config.stateQueueMutationLeaseCoordinator,
-      }),
-    }),
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-  });
+
+  return { transactions, requirementForAction, references, witnesses };
+};
+const runFor = (context: TransitionContext) => {
+  const existing = boundRuns.get(context);
+  if (existing !== undefined) return existing;
+  const run = bindRun(context);
+  boundRuns.set(context, run);
+  return run;
+};
+export const TRANSITION_TRACE_FAMILY_DEFINITION = defineFamily<
+  "transitionTrace",
+  "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",
+  false,
+  9,
+  TransitionRuntime
+>({
+  category: "transitionTrace",
+  stepDatumSchemas: TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
+  witnessRoles: [
+    "computationThreadMint",
+    "fraudProofMint",
+    "phasMembershipWithdraw",
+  ],
+  fieldPreimageCertificate: false,
+  auxiliaryReferenceScripts: Object.fromEntries(
+    Object.values(TRANSITION_TRACE_YIELD_REFERENCES).map(({ entry }) => [
+      entry,
+      entry,
+    ]),
+  ),
+  replayer: (context) =>
+    createTransitionTraceCompleteCanonicalReplayFromRetainedHistory(
+      () => {
+        const corpus = context.runtime.cell.corpus;
+        if (corpus === undefined)
+          throw new Error(
+            "Transition replay requires freshly derived retained history",
+          );
+        return corpus;
+      },
+      () => {
+        const events = context.runtime.cell.l1Events;
+        if (events === undefined)
+          throw new Error(
+            "Transition replay requires freshly authenticated L1 events",
+          );
+        return events;
+      },
+    ),
+  adapter: {
+    kind: "cursor",
+    spec: TRANSITION_TRACE_CURSOR_SPEC,
+    stepContractNames: [
+      "fraudProofTransitionTrace",
+      ...TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES,
+    ],
+    transactionPort: (context) => runFor(context).transactions,
+  },
+  fieldCarriage: [
+    {
+      rawDatum: true,
+      requirementForAction: (context, input) =>
+        runFor(context).requirementForAction(input),
+    },
+  ],
+  extend: (context) => ({
+    references: runFor(context).references,
+    witnesses: runFor(context).witnesses,
+    config: context.runtime.config,
+  }),
+});
+export const createManifestBoundTransitionTraceWorkflow = async (
+  config: ManifestBoundTransitionTraceWorkflowConfig,
+) => {
+  const cell: ReplayCell = {};
+  const steps = [
+    "fraudProofTransitionTrace",
+    ...TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES,
+  ].map((name) => config.referenceScripts[name]!);
+  const workflow = await assembleManifestBoundFamilyWorkflow(
+    TRANSITION_TRACE_FAMILY_DEFINITION,
+    {
+      ...config,
+      referenceScripts: {
+        steps: steps as unknown as FamilyReferenceScripts<
+          "transitionTrace",
+          "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",
+          false,
+          9
+        >["steps"],
+        witnesses: {
+          computationThreadMint: config.referenceScripts.computationThreadMint!,
+          fraudProofMint: config.referenceScripts.fraudProofMint!,
+          phasMembershipWithdraw:
+            config.referenceScripts.phasMembershipWithdraw!,
+        },
+      },
+      auxiliaryReferenceScripts: config.referenceScripts,
+    },
+    { config, cell },
+  );
   cells.set(workflow, cell);
-  return workflow;
+  return workflow as typeof workflow & {
+    readonly references: Readonly<Record<string, UTxO>>;
+    readonly witnesses: FaultProofWitnessReferenceScripts;
+    readonly config: ManifestBoundTransitionTraceWorkflowConfig;
+  };
 };
 
 export type ManifestBoundTransitionTraceWorkflow = Awaited<
@@ -486,12 +534,9 @@ export const runOrResumeManifestBoundTransitionTraceWorkflow = async ({
   }
   cell.evidence = evidence;
   cell.corpus = corpus;
+  cell.l1Events = l1Events;
   cell.prepared = prepared;
-  const replayer =
-    createTransitionTraceCompleteCanonicalReplayFromRetainedHistory(
-      corpus,
-      l1Events,
-    );
+  const replayer = workflow.replayer;
   const decision = await replayer.replay(evidence);
   const detections = requireCompleteCanonicalReplayDecision({
     evidence,

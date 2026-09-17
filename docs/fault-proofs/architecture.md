@@ -2,7 +2,7 @@
 
 Status: Active
 
-Last reviewed: 2026-09-16 (objective supervision and recovery).
+Last reviewed: 2026-09-17 (shared family assembly and recovery).
 
 ## End-to-end path
 
@@ -27,6 +27,13 @@ The system uses two proof shapes:
 
 `transitionTrace` is a separate routed family for boundary, link, event,
 source, duplicate, omission, window, count, and one-step transition faults.
+
+## Family workflow assembly
+
+[Manifest-bound family assembly](workflow-family-assembly.md) centralizes deployment
+identity, exact published references, prerequisites, and authenticated completion
+for 18 linear and 31 cursor families. Family-specific transaction construction and
+historical recovery checks remain in their family modules.
 
 ## Watcher proof progress
 

@@ -29,11 +29,11 @@ import { parseSubmitStep01TxInclusion } from "../submit-step-01.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
+  type CompleteCanonicalReplay,
   createMissingNativeScriptUtxoCompleteCanonicalReplay,
   requireCompleteCanonicalReplayDecision,
 } from "../workflow/complete-replay.js";
 import {
-  createCursorFamilyWorkflowAdapter,
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
@@ -42,24 +42,14 @@ import {
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
+import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+  defineFamily,
+  type FamilyAssemblyContext,
+} from "../workflow/family-definition.js";
+import type { FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  type FieldCarriageRequirement,
-  withFieldCarriagePrerequisite,
-} from "../workflow/field-carriage-prerequisite.js";
+import { type FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
 import {
   type HistoricalNativeScriptCheckpointStore,
   type HistoricalNativeScriptCorpus,
@@ -70,16 +60,16 @@ import {
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
 import {
+  assembleBoundManifestBoundFamilyWorkflow,
+  bindManifestBoundFamilyWorkflow,
+} from "../workflow/manifest-bound-family-assembly.js";
+import {
   createFraudProofWorkflowRegistry,
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowRunResult,
   type FraudProofWorkflowTerminalVerifier,
   runFraudProofWorkflow,
 } from "../workflow/orchestrator.js";
-import {
-  createAuthenticatedProofChunkPrerequisitePort,
-  withProofChunkPrerequisite,
-} from "../workflow/proof-chunk-prerequisite.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
@@ -507,6 +497,7 @@ export type ManifestBoundMissingNativeScriptUtxoWorkflowConfig = Readonly<{
 }>;
 
 export type ManifestBoundMissingNativeScriptUtxoWorkflow = Readonly<{
+  replayer: CompleteCanonicalReplay;
   binding: FraudProofWorkflowDeploymentBinding<"missingNativeScriptUtxo">;
   l1: FraudProofFamilyL1ObservationPort<"missingNativeScriptUtxo">;
   transactions: CursorFamilyTransactionPort<"missingNativeScriptUtxo">;
@@ -523,36 +514,30 @@ type HistoricalCorpusCell = {
 
 const historicalCorpusCells = new WeakMap<object, HistoricalCorpusCell>();
 
-export const createManifestBoundMissingNativeScriptUtxoWorkflow = async (
-  config: ManifestBoundMissingNativeScriptUtxoWorkflowConfig,
-): Promise<ManifestBoundMissingNativeScriptUtxoWorkflow> => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "missingNativeScriptUtxo",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      FraudProofComputationThreadStepDatum,
-      MissingNativeScriptUtxoStep02DatumSchema,
-      MissingNativeScriptUtxoStep03DatumSchema,
-      MissingNativeScriptUtxoStep04DatumSchema,
-      MissingNativeScriptUtxoStep05DatumSchema,
-      MissingNativeScriptTxStep07Datum,
-      MissingNativeScriptTxStep08Datum,
-    ],
-  });
-  requireHistoricalNativeScriptHistoryAuthority({
-    deploymentFingerprint: binding.deploymentFingerprint,
-    checkpointStore: config.historicalNativeScriptCheckpointStore,
-    historySource: config.historicalNativeScriptHistorySource,
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+  "pexcludesWithdraw",
+] as const;
+const STEP_CONTRACT_NAMES = [
+  "fraudProofMissingNativeScriptUtxo",
+  "fraudProofMissingNativeScriptUtxoStep02",
+  "fraudProofMissingNativeScriptUtxoStep03",
+  "fraudProofMissingNativeScriptUtxoStep04",
+  "fraudProofMissingNativeScriptUtxoStep05",
+  "fraudProofMissingNativeScriptUtxoStep06",
+  "fraudProofMissingNativeScriptUtxoStep07",
+] as const;
+type BoundContext = FamilyAssemblyContext<
+  "missingNativeScriptUtxo",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  7
+>;
+const bindFamily = (context: BoundContext) => {
+  const { binding, references } = context;
   const chain = binding.resolvedContracts.contracts.missingNativeScriptUtxo;
   const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
   const certificate = binding.fieldPreimageCertificate;
@@ -565,56 +550,6 @@ export const createManifestBoundMissingNativeScriptUtxoWorkflow = async (
       "missing-native-script-utxo manifest omitted required contracts",
     );
   }
-  const stepNames = [
-    "fraudProofMissingNativeScriptUtxo",
-    "fraudProofMissingNativeScriptUtxoStep02",
-    "fraudProofMissingNativeScriptUtxoStep03",
-    "fraudProofMissingNativeScriptUtxoStep04",
-    "fraudProofMissingNativeScriptUtxoStep05",
-    "fraudProofMissingNativeScriptUtxoStep06",
-    "fraudProofMissingNativeScriptUtxoStep07",
-  ] as const;
-  const steps = stepNames.map((contractName, index) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName,
-      utxo: config.referenceScripts.steps[index]!,
-    }),
-  ) as unknown as MissingNativeScriptUtxoWorkflowReferenceScripts["steps"];
-  const witness = <Name extends keyof FaultProofWitnessReferenceScripts>(
-    name: Name,
-    contractName: string,
-  ) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName,
-      utxo: config.referenceScripts.witnesses[name],
-    });
-  const references: MissingNativeScriptUtxoWorkflowReferenceScripts =
-    Object.freeze({
-      steps: Object.freeze(steps),
-      witnesses: Object.freeze({
-        computationThreadMint: witness(
-          "computationThreadMint",
-          "computationThreadMint",
-        ),
-        fraudProofMint: witness("fraudProofMint", "fraudProofMint"),
-        phasMembershipWithdraw: witness(
-          "phasMembershipWithdraw",
-          "phasMembershipWithdraw",
-        ),
-        chunkedVerifyWithdraw: witness(
-          "chunkedVerifyWithdraw",
-          "chunkedVerifyWithdraw",
-        ),
-        pexcludesWithdraw: witness("pexcludesWithdraw", "pexcludesWithdraw"),
-      }),
-      fieldPreimageCertificateMint: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fieldPreimageCertificateMint",
-        utxo: config.referenceScripts.fieldPreimageCertificateMint,
-      }),
-    });
   const contracts: MissingNativeScriptUtxoContracts = Object.freeze({
     steps: chain.steps,
     computationThread: binding.resolvedContracts.contracts.computationThread,
@@ -629,21 +564,11 @@ export const createManifestBoundMissingNativeScriptUtxoWorkflow = async (
     stateQueuePolicyId,
     fieldPreimageCertificatePolicyId: certificate.policyId,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  if (l1.rawL1 === undefined)
-    throw new Error(
-      "missing-native-script-utxo raw L1 authority is unavailable",
-    );
   const corpusCell: HistoricalCorpusCell = {};
   const bound: BoundConfig = {
     binding,
-    lucid: config.lucid,
-    signer: config.signer,
+    lucid: context.lucid,
+    signer: context.signer,
     contracts,
     references,
     historicalCorpus: () => {
@@ -656,86 +581,118 @@ export const createManifestBoundMissingNativeScriptUtxoWorkflow = async (
       return corpus;
     },
     stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
+      context.stateQueueMutationLeaseCoordinator,
   };
-  const transactions = transactionPort(bound);
-  let adapter = createCursorFamilyWorkflowAdapter({
+  return { bound, corpusCell };
+};
+const boundFamilies = new WeakMap<
+  BoundContext,
+  ReturnType<typeof bindFamily>
+>();
+const boundFor = (context: BoundContext) => {
+  const existing = boundFamilies.get(context);
+  if (existing !== undefined) return existing;
+  const created = bindFamily(context);
+  boundFamilies.set(context, created);
+  return created;
+};
+export const MISSING_NATIVE_SCRIPT_UTXO_FAMILY_DEFINITION = defineFamily<
+  "missingNativeScriptUtxo",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  7
+>({
+  category: "missingNativeScriptUtxo",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    MissingNativeScriptUtxoStep02DatumSchema,
+    MissingNativeScriptUtxoStep03DatumSchema,
+    MissingNativeScriptUtxoStep04DatumSchema,
+    MissingNativeScriptUtxoStep05DatumSchema,
+    MissingNativeScriptTxStep07Datum,
+    MissingNativeScriptTxStep08Datum,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  replayer: (context) =>
+    createMissingNativeScriptUtxoCompleteCanonicalReplay(() =>
+      boundFor(context).bound.historicalCorpus(),
+    ),
+  adapter: {
+    kind: "cursor",
     spec: MISSING_NATIVE_SCRIPT_UTXO_CURSOR_SPEC,
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  const fieldPrerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
-    category: "missingNativeScriptUtxo",
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    requirementForAction: ({ action, artifact }) => {
-      const admitted = admitMissingNativeScriptUtxoArtifact(artifact);
-      const planned =
-        action.input.stage === "step_02"
-          ? spendFieldPlan(admitted, config.signer.paymentKeyHash)
-          : typeof action.input.stage === "string" &&
-              ["step_05", "step_06", "step_07"].includes(action.input.stage)
-            ? scriptFieldPlan(admitted, config.signer.paymentKeyHash)
-            : null;
-      if (planned === null) return null;
-      return {
-        planned,
-        compactCbor: admitted.prepared.nativeTxCompactCbor,
-        certificate: {
-          policyId: certificate.policyId,
-          mintingScript: certificate.mintingScript,
-          referenceScriptUtxo: references.fieldPreimageCertificateMint,
-        },
-      } satisfies FieldCarriageRequirement;
+    stepContractNames: STEP_CONTRACT_NAMES,
+    transactionPort: (context) => transactionPort(boundFor(context).bound),
+  },
+  fieldCarriage: [
+    {
+      requirementForAction: (context, { action, artifact }) => {
+        const { certificate, references } = context;
+        const admitted = admitMissingNativeScriptUtxoArtifact(artifact);
+        const planned =
+          action.input.stage === "step_02"
+            ? spendFieldPlan(admitted, context.signer.paymentKeyHash)
+            : typeof action.input.stage === "string" &&
+                ["step_05", "step_06", "step_07"].includes(action.input.stage)
+              ? scriptFieldPlan(admitted, context.signer.paymentKeyHash)
+              : null;
+        if (planned === null) return null;
+        return {
+          planned,
+          compactCbor: admitted.prepared.nativeTxCompactCbor,
+          certificate: {
+            policyId: certificate.policyId,
+            mintingScript: certificate.mintingScript,
+            referenceScriptUtxo: references.fieldPreimageCertificateMint,
+          },
+        } satisfies FieldCarriageRequirement;
+      },
     },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
+  ],
+  proofChunk: (_context, { action, artifact }) => {
+    const admitted = admitMissingNativeScriptUtxoArtifact(artifact);
+    return action.input.stage === "step_01"
+      ? admitted.prepared.txInclusion.txMembershipProofCbor
+      : action.input.stage === "step_03"
+        ? admitted.prepared.membershipProofCbor
+        : null;
+  },
+  extend: (context) => ({ historicalCorpusCell: boundFor(context).corpusCell }),
+});
+export const createManifestBoundMissingNativeScriptUtxoWorkflow = async (
+  config: ManifestBoundMissingNativeScriptUtxoWorkflowConfig,
+): Promise<ManifestBoundMissingNativeScriptUtxoWorkflow> => {
+  const deployment = await bindManifestBoundFamilyWorkflow(
+    MISSING_NATIVE_SCRIPT_UTXO_FAMILY_DEFINITION,
+    config,
+  );
+  const { binding } = deployment;
+  requireHistoricalNativeScriptHistoryAuthority({
+    deploymentFingerprint: binding.deploymentFingerprint,
+    checkpointStore: config.historicalNativeScriptCheckpointStore,
+    historySource: config.historicalNativeScriptHistorySource,
   });
-  adapter = withFieldCarriagePrerequisite({
-    category: "missingNativeScriptUtxo",
-    base: adapter,
-    prerequisite: fieldPrerequisite,
-  });
-  const proofPrerequisite = createAuthenticatedProofChunkPrerequisitePort({
-    category: "missingNativeScriptUtxo",
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    proofCborForAction: ({ action, artifact }) => {
-      const admitted = admitMissingNativeScriptUtxoArtifact(artifact);
-      return action.input.stage === "step_01"
-        ? admitted.prepared.txInclusion.txMembershipProofCbor
-        : action.input.stage === "step_03"
-          ? admitted.prepared.membershipProofCbor
-          : null;
-    },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  adapter = withProofChunkPrerequisite({
-    category: "missingNativeScriptUtxo",
-    base: adapter,
-    prerequisite: proofPrerequisite,
-  });
+  const assembled = assembleBoundManifestBoundFamilyWorkflow(
+    MISSING_NATIVE_SCRIPT_UTXO_FAMILY_DEFINITION,
+    deployment,
+  );
   const workflow = Object.freeze({
-    binding,
-    l1,
-    transactions,
-    adapter,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
+    ...assembled,
+    transactions:
+      assembled.transactions as CursorFamilyTransactionPort<"missingNativeScriptUtxo">,
     historicalNativeScriptCheckpointStore:
       config.historicalNativeScriptCheckpointStore,
     historicalNativeScriptHistorySource:
       config.historicalNativeScriptHistorySource,
   });
-  historicalCorpusCells.set(workflow, corpusCell);
+  historicalCorpusCells.set(
+    workflow,
+    (
+      assembled as typeof assembled & {
+        historicalCorpusCell: HistoricalCorpusCell;
+      }
+    ).historicalCorpusCell,
+  );
   return workflow;
 };
 
@@ -778,7 +735,7 @@ export const runOrResumeManifestBoundMissingNativeScriptUtxoWorkflow = async ({
     );
   }
   cell.value = corpus;
-  const replayer = createMissingNativeScriptUtxoCompleteCanonicalReplay(corpus);
+  const replayer = workflow.replayer;
   const decision = await replayer.replay(evidence);
   const detections = requireCompleteCanonicalReplayDecision({
     evidence,

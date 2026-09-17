@@ -62,7 +62,6 @@ import {
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
 import { WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
-  createCursorFamilyWorkflowAdapter,
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
@@ -71,29 +70,31 @@ import {
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
-import { releaseFinalityAuthorityFromDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import {
   assertManifestBoundWorkflowSigner,
   bindFraudProofWorkflowDeployment,
   type FraudProofWorkflowDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
-import { createFraudProofFamilyAuthenticatedL1TerminalVerifier } from "../workflow/family-l1-observation.js";
 import {
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+  defineFamily,
+  type FamilyAssemblyContext,
+  type FamilyDeploymentContext,
+  type LinearFamilyPrerequisiteInput,
+} from "../workflow/family-definition.js";
+import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  withFieldCarriagePrerequisite,
-} from "../workflow/field-carriage-prerequisite.js";
+import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
   DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import {
+  assembleBoundManifestBoundFamilyWorkflow,
+  bindManifestBoundFamilyWorkflow,
+} from "../workflow/manifest-bound-family-assembly.js";
 import {
   createCanonicalFamilyArtifactPort,
   executeManifestBoundFamilyRecovery,
@@ -289,6 +290,23 @@ export const loadManifestBoundWitnessScriptDecodingConfig = async (
     address: input.signer.address,
     paymentKeyHash: input.signer.paymentKeyHash,
   });
+  const referenceScripts = bindWitnessScriptDecodingReferenceScripts({
+    binding,
+    referenceScripts: input.referenceScripts,
+  });
+  return witnessScriptDecodingConfigFromBinding({
+    ...input,
+    binding,
+    referenceScripts,
+  });
+};
+const witnessScriptDecodingConfigFromBinding = (input: {
+  binding: FraudProofWorkflowDeploymentBinding<"witnessScriptDecoding">;
+  lucid: LucidEvolution;
+  signer: ResolvedProverSigner;
+  referenceScripts: WitnessScriptDecodingReferenceScripts;
+}): ManifestBoundWitnessScriptDecodingConfig => {
+  const { binding, referenceScripts } = input;
   const chain = binding.resolvedContracts.contracts.witnessScriptDecoding;
   const certificate = binding.fieldPreimageCertificate;
   if (chain === undefined || chain.steps.length !== 4) {
@@ -301,10 +319,6 @@ export const loadManifestBoundWitnessScriptDecodingConfig = async (
       "witnessScriptDecoding deployment omitted field-preimage certificate",
     );
   }
-  const referenceScripts = bindWitnessScriptDecodingReferenceScripts({
-    binding,
-    referenceScripts: input.referenceScripts,
-  });
   return Object.freeze({
     schemaVersion: WITNESS_SCRIPT_DECODING_WORKFLOW,
     lucid: input.lucid,
@@ -1175,6 +1189,7 @@ export type ManifestBoundWitnessScriptDecodingWorkflowConfig =
     }>;
 
 export type ManifestBoundWitnessScriptDecodingWorkflow = Readonly<{
+  deployment: Deployment;
   workflowVersion: typeof WITNESS_SCRIPT_DECODING_WORKFLOW;
   config: ManifestBoundWitnessScriptDecodingConfig;
   binding: FraudProofWorkflowDeploymentBinding<"witnessScriptDecoding">;
@@ -1187,18 +1202,43 @@ export type ManifestBoundWitnessScriptDecodingWorkflow = Readonly<{
 export const createManifestBoundWitnessScriptDecodingWorkflow = async (
   input: ManifestBoundWitnessScriptDecodingWorkflowConfig,
 ): Promise<ManifestBoundWitnessScriptDecodingWorkflow> => {
-  const config = await loadManifestBoundWitnessScriptDecodingConfig(input);
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: input.source,
-    releaseFinality: config.binding.releaseFinality,
-    releaseEconomics: config.binding.releaseEconomics,
-    definition: config.binding.definition,
+  const deployment = await bindManifestBoundFamilyWorkflow(
+    WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION,
+    {
+      ...input,
+      referenceScripts: {
+        steps: [
+          input.referenceScripts.step01,
+          input.referenceScripts.step02,
+          input.referenceScripts.step03,
+          input.referenceScripts.step04,
+        ],
+        witnesses: input.referenceScripts.witnesses,
+        fieldPreimageCertificateMint:
+          input.referenceScripts.fieldPreimageCertificateMint,
+      },
+    },
+  );
+  const config = witnessScriptDecodingConfigFromBinding({
+    binding: deployment.binding,
+    lucid: deployment.lucid,
+    signer: deployment.signer,
+    referenceScripts: {
+      step01: deployment.references.steps[0],
+      step02: deployment.references.steps[1],
+      step03: deployment.references.steps[2],
+      step04: deployment.references.steps[3],
+      witnesses: deployment.references.witnesses,
+      fieldPreimageCertificateMint:
+        deployment.references.fieldPreimageCertificateMint,
+    },
   });
   return Object.freeze({
+    deployment,
     workflowVersion: WITNESS_SCRIPT_DECODING_WORKFLOW,
     config,
-    binding: config.binding,
-    l1,
+    binding: deployment.binding,
+    l1: deployment.l1,
     stateQueueMutationLeaseCoordinator:
       input.stateQueueMutationLeaseCoordinator,
     decisionDigest: input.decisionDigest,
@@ -1324,7 +1364,7 @@ export const prepareWitnessScriptDecodingRecoveryMaterial = async (
   };
 };
 
-export const createWitnessScriptDecodingRecoveryAdapter = (
+const createWitnessScriptDecodingRecoveryPorts = (
   workflow: ManifestBoundWitnessScriptDecodingWorkflow,
 ) => {
   const { config, binding, l1, stateQueueMutationLeaseCoordinator } = workflow;
@@ -1407,68 +1447,133 @@ export const createWitnessScriptDecodingRecoveryAdapter = (
       return { transaction };
     },
   };
-  const base = createCursorFamilyWorkflowAdapter({
-    spec: WITNESS_SCRIPT_DECODING_CURSOR_SPEC,
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator,
-  });
-  const adapter = withFieldCarriagePrerequisite({
-    category,
-    base,
-    prerequisite: createAuthenticatedFieldCarriagePrerequisitePort({
-      category,
-      lucid: config.lucid,
-      network: binding.network,
-      signer: config.signer,
-      publications: l1.publications,
-      transactionConfirmed: async ({ headerHash, txHash }) =>
-        await l1.transactionConfirmed({ headerHash, txHash }),
-      requirementForAction: ({ action, artifact }) => {
-        if (action.input.stage !== "step_02") return null;
-        const { evidence, source } = material.require(artifact);
-        const certificate = binding.fieldPreimageCertificate;
-        if (certificate === null)
-          throw new Error(`${category} omitted field certificate authority`);
-        return {
-          planned: planFaultProofFieldOpening({
-            anchorSourceKind:
-              evidence.finding.subject.source_kind === 1n ? 1n : 0n,
-            witnessSet: (() => {
-              const compact = decodeMidgardNativeTxWitnessSetCompact(
-                Buffer.from(source.witnessSetCompactCbor, "hex"),
-              );
-              return {
-                addr_tx_wits_hash: compact.addrTxWitsHash.toString("hex"),
-                script_tx_wits_hash: compact.scriptTxWitsHash.toString("hex"),
-                redeemer_tx_wits_hash:
-                  compact.redeemerTxWitsHash.toString("hex"),
-              };
-            })(),
-            anchorWitnessSetHash: evidence.finding.witnessSetHash,
-            fieldIndex: 6,
-            anchorTxId: evidence.finding.subject.transaction_id,
-            nativeTxCompactCbor: source.nativeTxCompactCbor,
-            itemCbors: decodeMidgardFieldPreimage(
-              Buffer.from(evidence.fieldPreimageHex, "hex"),
-            ),
-            owner: config.signer.paymentKeyHash,
-            publish: true,
-            label: `${category} field opening`,
-          }),
-          compactCbor: source.nativeTxCompactCbor,
-          witnessSetCompactCbor: source.witnessSetCompactCbor,
-          certificate: {
-            policyId: certificate.policyId,
-            mintingScript: certificate.mintingScript,
-            referenceScriptUtxo:
-              config.referenceScripts.fieldPreimageCertificateMint,
-          },
-        };
+  const requirementForAction = ({
+    action,
+    artifact,
+  }: LinearFamilyPrerequisiteInput): FieldCarriageRequirement | null => {
+    if (action.input.stage !== "step_02") return null;
+    const { evidence, source } = material.require(artifact);
+    const certificate = binding.fieldPreimageCertificate;
+    if (certificate === null)
+      throw new Error(`${category} omitted field certificate authority`);
+    return {
+      planned: planFaultProofFieldOpening({
+        anchorSourceKind: evidence.finding.subject.source_kind === 1n ? 1n : 0n,
+        witnessSet: (() => {
+          const compact = decodeMidgardNativeTxWitnessSetCompact(
+            Buffer.from(source.witnessSetCompactCbor, "hex"),
+          );
+          return {
+            addr_tx_wits_hash: compact.addrTxWitsHash.toString("hex"),
+            script_tx_wits_hash: compact.scriptTxWitsHash.toString("hex"),
+            redeemer_tx_wits_hash: compact.redeemerTxWitsHash.toString("hex"),
+          };
+        })(),
+        anchorWitnessSetHash: evidence.finding.witnessSetHash,
+        fieldIndex: 6,
+        anchorTxId: evidence.finding.subject.transaction_id,
+        nativeTxCompactCbor: source.nativeTxCompactCbor,
+        itemCbors: decodeMidgardFieldPreimage(
+          Buffer.from(evidence.fieldPreimageHex, "hex"),
+        ),
+        owner: config.signer.paymentKeyHash,
+        publish: true,
+        label: `${category} field opening`,
+      }),
+      compactCbor: source.nativeTxCompactCbor,
+      witnessSetCompactCbor: source.witnessSetCompactCbor,
+      certificate: {
+        policyId: certificate.policyId,
+        mintingScript: certificate.mintingScript,
+        referenceScriptUtxo:
+          config.referenceScripts.fieldPreimageCertificateMint,
       },
-    }),
-  });
-  return { adapter, transactions };
+    };
+  };
+  return { transactions, requirementForAction };
+};
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+] as const;
+type Deployment = FamilyDeploymentContext<
+  "witnessScriptDecoding",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  4
+>;
+type RunContext = Readonly<{
+  workflow: ManifestBoundWitnessScriptDecodingWorkflow;
+}>;
+type BoundContext = FamilyAssemblyContext<
+  "witnessScriptDecoding",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  4,
+  RunContext
+>;
+const runs = new WeakMap<
+  BoundContext,
+  ReturnType<typeof createWitnessScriptDecodingRecoveryPorts>
+>();
+const runFor = (context: BoundContext) => {
+  const existing = runs.get(context);
+  if (existing !== undefined) return existing;
+  const created = createWitnessScriptDecodingRecoveryPorts(
+    context.runtime.workflow,
+  );
+  runs.set(context, created);
+  return created;
+};
+export const WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
+  "witnessScriptDecoding",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  4,
+  RunContext
+>({
+  category: "witnessScriptDecoding",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    WitnessScriptDecodingStep02DatumSchema,
+    WitnessScriptDecodingStep03DatumSchema,
+    WitnessScriptDecodingStep04DatumSchema,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  replayer: () => WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
+    spec: WITNESS_SCRIPT_DECODING_CURSOR_SPEC,
+    stepContractNames: [
+      WITNESS_SCRIPT_DECODING_MANIFEST_CONTRACTS.step01,
+      WITNESS_SCRIPT_DECODING_MANIFEST_CONTRACTS.step02,
+      WITNESS_SCRIPT_DECODING_MANIFEST_CONTRACTS.step03,
+      WITNESS_SCRIPT_DECODING_MANIFEST_CONTRACTS.step04,
+    ],
+    transactionPort: (context) => runFor(context).transactions,
+  },
+  fieldCarriage: [
+    {
+      requirementForAction: (context, input) =>
+        runFor(context).requirementForAction(input),
+    },
+  ],
+});
+export const createWitnessScriptDecodingRecoveryAdapter = (
+  workflow: ManifestBoundWitnessScriptDecodingWorkflow,
+) => {
+  const assembled = assembleBoundManifestBoundFamilyWorkflow(
+    WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION,
+    workflow.deployment,
+    { workflow },
+  );
+  return {
+    ...assembled,
+    transactions:
+      assembled.transactions as CursorFamilyTransactionPort<"witnessScriptDecoding">,
+  };
 };
 
 export const executeManifestBoundWitnessScriptDecodingWorkflow = async ({
@@ -1485,13 +1590,6 @@ export const executeManifestBoundWitnessScriptDecodingWorkflow = async ({
     sources,
     journal,
     ...createWitnessScriptDecodingRecoveryAdapter(workflow),
-    replayer: WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(
-      workflow.l1,
-    ),
-    releaseFinalityAuthority: releaseFinalityAuthorityFromDeploymentBinding(
-      workflow.binding,
-    ),
   });
 
 export type LoadedWitnessScriptDecodingWorkflow = Readonly<{

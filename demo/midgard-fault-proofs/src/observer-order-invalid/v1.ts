@@ -15,7 +15,6 @@ import {
   DaLibp2pRetainedDaSource,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
@@ -29,27 +28,16 @@ import {
 } from "../workflow/adapters.js";
 import { OBSERVER_ORDER_INVALID_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
-  createCursorFamilyWorkflowAdapter,
   CURSOR_FAMILY_TRANSACTION_PORT,
+  type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+  defineFamily,
+  type FamilyAssemblyContext,
+  type ManifestBoundFamilyWorkflow,
+} from "../workflow/family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  type FieldCarriagePrerequisitePort,
-  withFieldCarriagePrerequisite,
-} from "../workflow/field-carriage-prerequisite.js";
+import { type FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
   DirectoryFraudProofWorkflowJournalStore,
@@ -57,17 +45,15 @@ import {
   journalJsonDigest,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
   createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
   resumeRecordedFraudProofWorkflow,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
 import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import type { FraudProofRawL1FamilyStage } from "../workflow/raw-l1-family-derivation.js";
-import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import {
   createObserverOrderInvalidActuator,
   type ObserverOrderInvalidActuatorAction,
@@ -164,45 +150,35 @@ export type ManifestBoundObserverOrderInvalidWorkflowConfig = Readonly<{
     Readonly<{ removal: ObserverOrderInvalidRemovalReferenceScripts }>;
 }>;
 
-export type ManifestBoundObserverOrderInvalidWorkflow = Readonly<{
-  binding: FraudProofWorkflowDeploymentBinding<"observerOrderInvalid">;
-  l1: FraudProofFamilyL1ObservationPort<"observerOrderInvalid">;
-  actuator: ReturnType<typeof createObserverOrderInvalidActuator>;
-  prerequisite: FieldCarriagePrerequisitePort<"observerOrderInvalid">;
-  lucid: LucidEvolution;
-  decisionDigest: string;
-  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-}>;
+export type ManifestBoundObserverOrderInvalidWorkflow =
+  ManifestBoundFamilyWorkflow<"observerOrderInvalid", true, 4> &
+    WorkflowExtension &
+    Readonly<{ decisionDigest: string }>;
 
 const CATEGORY = "observerOrderInvalid" as const;
 
-export const createManifestBoundObserverOrderInvalidWorkflow = async (
-  config: ManifestBoundObserverOrderInvalidWorkflowConfig,
-): Promise<ManifestBoundObserverOrderInvalidWorkflow> => {
-  if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
-    throw new Error("observerOrderInvalid decision digest is malformed");
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: CATEGORY,
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      ObserverOrderInvalidStep02DatumSchema,
-      ObserverOrderInvalidStep02DatumSchema,
-      ObserverOrderInvalidStep03DatumSchema,
-      ObserverOrderInvalidStep04DatumSchema,
-    ],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+  "pexcludesWithdraw",
+] as const;
+type BoundContext = FamilyAssemblyContext<
+  "observerOrderInvalid",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  4
+>;
+type WorkflowExtension = Readonly<{
+  actuator: ReturnType<typeof createObserverOrderInvalidActuator>;
+  prerequisite: FieldCarriagePrerequisitePort<"observerOrderInvalid">;
+  lucid: LucidEvolution;
+  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
+}>;
+const bindFamily = (context: BoundContext) => {
+  const { binding, references } = context;
+  const { steps } = references;
   const chain = binding.resolvedContracts.contracts[CATEGORY];
   const certificate = binding.fieldPreimageCertificate;
   const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
@@ -213,49 +189,6 @@ export const createManifestBoundObserverOrderInvalidWorkflow = async (
     stateQueuePolicyId === undefined
   )
     throw new Error("observerOrderInvalid manifest omitted required contracts");
-  const bindReference = (name: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName: name,
-      utxo,
-    });
-  const steps = OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES.map((_title, index) =>
-    bindReference(
-      [
-        "fraudProofObserverOrderInvalid",
-        "fraudProofObserverOrderInvalidStep02",
-        "fraudProofObserverOrderInvalidStep03",
-        "fraudProofObserverOrderInvalidStep04",
-      ][index]!,
-      config.referenceScripts.steps[index]!,
-    ),
-  ) as unknown as ObserverOrderInvalidWorkflowReferenceScripts["steps"];
-  const witnessNames = {
-    computationThreadMint: "computationThreadMint",
-    fraudProofMint: "fraudProofMint",
-    phasMembershipWithdraw: "phasMembershipWithdraw",
-    chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
-    pexcludesWithdraw: "pexcludesWithdraw",
-  } as const;
-  const witnesses = Object.fromEntries(
-    Object.entries(witnessNames).map(([role, name]) => [
-      role,
-      bindReference(
-        name,
-        config.referenceScripts.witnesses[
-          role as keyof FaultProofWitnessReferenceScripts
-        ]!,
-      ),
-    ]),
-  ) as Required<FaultProofWitnessReferenceScripts>;
-  const references = Object.freeze({
-    steps: Object.freeze(steps),
-    witnesses: Object.freeze(witnesses),
-    fieldPreimageCertificateMint: bindReference(
-      "fieldPreimageCertificateMint",
-      config.referenceScripts.fieldPreimageCertificateMint,
-    ),
-  });
   const contracts: ObserverOrderInvalidContracts = Object.freeze({
     steps: chain.steps.map((step, index) => ({
       blueprintTitle: OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES[index]!,
@@ -277,56 +210,85 @@ export const createManifestBoundObserverOrderInvalidWorkflow = async (
     fieldPreimageCertificatePolicyId: certificate.policyId,
     fieldPreimageCertificateMintingScript: certificate.mintingScript,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
   const actuator = createObserverOrderInvalidActuator({
     binding,
-    lucid: config.lucid,
-    signer: config.signer,
+    lucid: context.lucid,
+    signer: context.signer,
     contracts,
     references,
     stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
+      context.stateQueueMutationLeaseCoordinator,
   });
-  const prerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
+  return actuator;
+};
+const bound = new WeakMap<BoundContext, ReturnType<typeof bindFamily>>();
+const boundFor = (context: BoundContext) => {
+  const existing = bound.get(context);
+  if (existing !== undefined) return existing;
+  const created = bindFamily(context);
+  bound.set(context, created);
+  return created;
+};
+const createTransactionPort = (
+  context: BoundContext,
+): CursorFamilyTransactionPort<"observerOrderInvalid"> => {
+  const actuator = boundFor(context);
+  return {
+    portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
     category: CATEGORY,
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    requirementForAction: ({ action, artifact }) =>
-      observerOrderInvalidFieldRequirement({
+    validatePreparedArtifact: async ({ evidence, artifact }) => {
+      if (
+        journalJsonDigest(
+          await prepareObserverOrderWorkflowArtifact(evidence),
+        ) !== journalJsonDigest(artifact)
+      )
+        throw new Error(
+          "prepared family artifact differs from retained evidence",
+        );
+    },
+    prepare: async ({ evidence }) =>
+      await prepareObserverOrderWorkflowArtifact(evidence),
+    capture: async ({ action, artifact }) =>
+      await actuator.capture({
         action: action.input as unknown as ObserverOrderInvalidActuatorAction,
         artifact,
-        owner: config.signer.paymentKeyHash,
-        certificate: {
-          policyId: certificate.policyId,
-          mintingScript: certificate.mintingScript,
-          referenceScriptUtxo: references.fieldPreimageCertificateMint,
-        },
       }),
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  const adapter = withFieldCarriagePrerequisite({
-    category: CATEGORY,
-    prerequisite,
-    base: createCursorFamilyWorkflowAdapter({
-      spec: {
-        category: CATEGORY,
-        stepCount: 4,
-        successors: { 1: [2], 2: [3, 4], 3: [3, 4], 4: ["proof_token"] },
-      },
-      l1,
-      stateQueueMutationLeaseCoordinator:
-        config.stateQueueMutationLeaseCoordinator,
-      refineAction: async ({ observed, artifact }) => {
+  };
+};
+export const OBSERVER_ORDER_INVALID_FAMILY_DEFINITION = defineFamily<
+  "observerOrderInvalid",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  4
+>({
+  category: CATEGORY,
+  stepDatumSchemas: [
+    ObserverOrderInvalidStep02DatumSchema,
+    ObserverOrderInvalidStep02DatumSchema,
+    ObserverOrderInvalidStep03DatumSchema,
+    ObserverOrderInvalidStep04DatumSchema,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  replayer: () => OBSERVER_ORDER_INVALID_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
+    spec: {
+      category: CATEGORY,
+      stepCount: 4,
+      successors: { 1: [2], 2: [3, 4], 3: [3, 4], 4: ["proof_token"] },
+    },
+    stepContractNames: [
+      "fraudProofObserverOrderInvalid",
+      "fraudProofObserverOrderInvalidStep02",
+      "fraudProofObserverOrderInvalidStep03",
+      "fraudProofObserverOrderInvalidStep04",
+    ],
+    createRefineAction:
+      (context) =>
+      async ({ observed, artifact }) => {
         const selected = await currentAction({
-          workflow: { lucid: config.lucid },
+          workflow: { lucid: context.lucid },
           artifact: admitObserverOrderInvalidArtifact(artifact).artifact,
           stage: observed.stage,
         });
@@ -338,43 +300,47 @@ export const createManifestBoundObserverOrderInvalidWorkflow = async (
           ),
         );
       },
-      transactions: {
-        portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
-        category: CATEGORY,
-        validatePreparedArtifact: async ({ evidence, artifact }) => {
-          if (
-            journalJsonDigest(
-              await prepareObserverOrderWorkflowArtifact(evidence),
-            ) !== journalJsonDigest(artifact)
-          )
-            throw new Error(
-              "prepared family artifact differs from retained evidence",
-            );
-        },
-        prepare: async ({ evidence }) =>
-          await prepareObserverOrderWorkflowArtifact(evidence),
-        capture: async ({ action, artifact }) =>
-          await actuator.capture({
-            action:
-              action.input as unknown as ObserverOrderInvalidActuatorAction,
-            artifact,
-          }),
+    transactionPort: createTransactionPort,
+  },
+  fieldCarriage: [
+    {
+      requirementForAction: (context, { action, artifact }) => {
+        const { certificate, references } = context;
+        return observerOrderInvalidFieldRequirement({
+          action: action.input as unknown as ObserverOrderInvalidActuatorAction,
+          artifact,
+          owner: context.signer.paymentKeyHash,
+          certificate: {
+            policyId: certificate.policyId,
+            mintingScript: certificate.mintingScript,
+            referenceScriptUtxo: references.fieldPreimageCertificateMint,
+          },
+        });
       },
-    }),
-  });
-  return Object.freeze({
-    binding,
-    l1,
-    adapter,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-    lucid: config.lucid,
-    actuator,
-    prerequisite,
-    decisionDigest: config.decisionDigest,
+    },
+  ],
+  extend: (context): WorkflowExtension => ({
+    actuator: boundFor(context),
+    prerequisite: context.fieldCarriagePrerequisites[0]!,
+    lucid: context.lucid,
     stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
+      context.stateQueueMutationLeaseCoordinator,
+  }),
+});
+
+export const createManifestBoundObserverOrderInvalidWorkflow = async (
+  config: ManifestBoundObserverOrderInvalidWorkflowConfig,
+): Promise<ManifestBoundObserverOrderInvalidWorkflow> => {
+  if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
+    throw new Error("observerOrderInvalid decision digest is malformed");
+  const { decisionDigest, ...assemblyConfig } = config;
+  const workflow = await assembleManifestBoundFamilyWorkflow(
+    OBSERVER_ORDER_INVALID_FAMILY_DEFINITION,
+    assemblyConfig,
+  );
+  return Object.freeze({
+    ...(workflow as typeof workflow & WorkflowExtension),
+    decisionDigest,
   });
 };
 

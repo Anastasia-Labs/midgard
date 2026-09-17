@@ -41,7 +41,9 @@ import type {
   FamilyAssemblyContext,
   FamilyCategory,
   FamilyDefinition,
+  FamilyDeploymentContext,
   FamilyReferenceScripts,
+  FamilyRuntimeArguments,
   FamilyTransactionPort,
   FaultProofWitnessRole,
   FieldPreimageCertificateBinding,
@@ -77,13 +79,24 @@ import {
   withProofChunkPrerequisite,
 } from "./proof-chunk-prerequisite.js";
 
+// A bound context is valid only for the definition whose references it checked.
+// Structural copies and same-category definitions cannot reuse that authority.
+const boundDefinitions = new WeakMap<object, object>();
+
 const requireDefinition = <
   Category extends FamilyCategory,
   Witness extends FaultProofWitnessRole,
   Certificate extends boolean,
   StepCount extends number,
+  Runtime extends object,
 >(
-  definition: FamilyDefinition<Category, Witness, Certificate, StepCount>,
+  definition: FamilyDefinition<
+    Category,
+    Witness,
+    Certificate,
+    StepCount,
+    Runtime
+  >,
 ): readonly string[] => {
   if (
     definition.definitionVersion !== LINEAR_FAMILY_DEFINITION_VERSION ||
@@ -95,6 +108,14 @@ const requireDefinition = <
   }
   const { adapter } = definition;
   if (adapter.kind === "cursor") {
+    if (
+      adapter.refineAction !== undefined &&
+      adapter.createRefineAction !== undefined
+    ) {
+      throw new Error(
+        `${definition.category} definition declares two action refiners`,
+      );
+    }
     const names = adapter.stepContractNames as readonly string[];
     if (
       adapter.spec.category !== definition.category ||
@@ -127,6 +148,7 @@ const bindReferenceScripts = <
   Witness extends FaultProofWitnessRole,
   Certificate extends boolean,
   StepCount extends number,
+  Runtime extends object,
 >({
   definition,
   stepContractNames,
@@ -137,7 +159,8 @@ const bindReferenceScripts = <
     Category,
     Witness,
     Certificate,
-    StepCount
+    StepCount,
+    Runtime
   >;
   readonly stepContractNames: readonly string[];
   readonly binding: Parameters<
@@ -221,6 +244,7 @@ const familyAdapter = <
   Witness extends FaultProofWitnessRole,
   Certificate extends boolean,
   StepCount extends number,
+  Runtime extends object,
 >({
   definition,
   context,
@@ -230,13 +254,15 @@ const familyAdapter = <
     Category,
     Witness,
     Certificate,
-    StepCount
+    StepCount,
+    Runtime
   >;
   readonly context: FamilyAssemblyContext<
     Category,
     Witness,
     Certificate,
-    StepCount
+    StepCount,
+    Runtime
   >;
   readonly stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }): {
@@ -247,7 +273,7 @@ const familyAdapter = <
   if (arm.kind === "linear") {
     const transactions = arm.transactionPort(context);
     return {
-      transactions,
+      transactions: transactions as FamilyTransactionPort<Category>,
       adapter: createLinearFamilyWorkflowAdapter({
         category: definition.category as Category & LinearFamilyCategory,
         l1: context.l1 as FraudProofFamilyL1ObservationPort<
@@ -259,16 +285,15 @@ const familyAdapter = <
     };
   }
   const transactions = arm.transactionPort(context);
+  const refineAction = arm.createRefineAction?.(context) ?? arm.refineAction;
   return {
-    transactions,
+    transactions: transactions as FamilyTransactionPort<Category>,
     adapter: createCursorFamilyWorkflowAdapter({
       spec: arm.spec,
       l1: context.l1,
       transactions,
       stateQueueMutationLeaseCoordinator,
-      ...(arm.refineAction === undefined
-        ? {}
-        : { refineAction: arm.refineAction }),
+      ...(refineAction === undefined ? {} : { refineAction }),
     }),
   };
 };
@@ -279,20 +304,29 @@ const familyAdapter = <
  * prerequisites applied, and its `replayer` is the definition's replayer
  * bound to this assembly's context.
  */
-export const assembleManifestBoundFamilyWorkflow = async <
+export const bindManifestBoundFamilyWorkflow = async <
   Category extends FamilyCategory,
   Witness extends FaultProofWitnessRole,
   Certificate extends boolean,
   StepCount extends number = number,
+  Runtime extends object = Readonly<Record<never, never>>,
 >(
-  definition: FamilyDefinition<Category, Witness, Certificate, StepCount>,
+  definition: FamilyDefinition<
+    Category,
+    Witness,
+    Certificate,
+    StepCount,
+    Runtime
+  >,
   config: ManifestBoundFamilyWorkflowConfig<
     Category,
     Witness,
     Certificate,
     StepCount
   >,
-): Promise<ManifestBoundFamilyWorkflow<Category, Certificate, StepCount>> => {
+): Promise<
+  FamilyDeploymentContext<Category, Witness, Certificate, StepCount>
+> => {
   const stepContractNames = requireDefinition(definition);
   const { category } = definition;
   const binding = await bindFraudProofWorkflowDeployment({
@@ -325,6 +359,28 @@ export const assembleManifestBoundFamilyWorkflow = async <
     binding,
     supplied: config.referenceScripts,
   });
+  const auxiliaryReferences = Object.freeze(
+    Object.fromEntries(
+      Object.entries(definition.auxiliaryReferenceScripts ?? {}).map(
+        ([role, contractName]) => {
+          const utxo = config.auxiliaryReferenceScripts?.[role];
+          if (utxo === undefined) {
+            throw new Error(
+              `${category} workflow config omitted auxiliary reference script ${role}`,
+            );
+          }
+          return [
+            role,
+            requireManifestBoundReferenceScriptUtxo({
+              binding,
+              contractName,
+              utxo,
+            }),
+          ];
+        },
+      ),
+    ),
+  );
   const observed = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
@@ -342,17 +398,14 @@ export const assembleManifestBoundFamilyWorkflow = async <
     readonly rawL1: NonNullable<typeof observed.rawL1>;
     readonly publications: NonNullable<typeof observed.publications>;
   };
-  const context: FamilyAssemblyContext<
-    Category,
-    Witness,
-    Certificate,
-    StepCount
-  > = Object.freeze({
+  const deployment = Object.freeze({
     binding,
     lucid: config.lucid,
     signer: config.signer,
     references,
+    auxiliaryReferences,
     l1,
+    source: config.source,
     certificate: certificate as FamilyAssemblyContext<
       Category,
       Witness,
@@ -365,32 +418,89 @@ export const assembleManifestBoundFamilyWorkflow = async <
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
   });
-  const { transactions, adapter: familyAdapterBase } = familyAdapter({
-    definition,
-    context,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  const replayer = definition.replayer(context);
-  let adapter = familyAdapterBase;
+  boundDefinitions.set(deployment, definition);
+  return deployment;
+};
+
+/** Assemble one run over an already authenticated deployment, without rebinding L1. */
+export const assembleBoundManifestBoundFamilyWorkflow = <
+  Category extends FamilyCategory,
+  Witness extends FaultProofWitnessRole,
+  Certificate extends boolean,
+  StepCount extends number = number,
+  Runtime extends object = Readonly<Record<never, never>>,
+>(
+  definition: FamilyDefinition<
+    Category,
+    Witness,
+    Certificate,
+    StepCount,
+    Runtime
+  >,
+  deployment: FamilyDeploymentContext<
+    Category,
+    Witness,
+    Certificate,
+    StepCount
+  >,
+  ...runtime: FamilyRuntimeArguments<Runtime>
+): ManifestBoundFamilyWorkflow<Category, Certificate, StepCount, Runtime> => {
+  requireDefinition(definition);
+  const { category } = definition;
+  if (boundDefinitions.get(deployment) !== definition) {
+    throw new Error(`${category} deployment was not bound for this definition`);
+  }
+  const { binding, l1 } = deployment;
+  if (binding.definition.category !== category || l1.category !== category) {
+    throw new Error(`${category} bound deployment changed category`);
+  }
   const transactionConfirmed = async (input: {
     readonly headerHash: string;
     readonly txHash: string;
   }) => await l1.transactionConfirmed(input);
-  for (const requirement of definition.fieldCarriage ?? []) {
-    adapter = withFieldCarriagePrerequisite({
-      category,
-      base: adapter,
-      prerequisite: createAuthenticatedFieldCarriagePrerequisitePort({
+  // These ports capture lazy requirement callbacks. Sharing their handles with
+  // transaction ports ensures capture resolves the same authenticated evidence
+  // that the adapter's prerequisites published.
+  const fieldCarriagePrerequisites = Object.freeze(
+    (definition.fieldCarriage ?? []).map((requirement) =>
+      createAuthenticatedFieldCarriagePrerequisitePort({
         category,
-        lucid: config.lucid,
+        lucid: deployment.lucid,
         network: binding.network,
-        signer: config.signer,
+        signer: deployment.signer,
         publications: l1.publications,
         requirementForAction: (input) =>
           requirement.requirementForAction(context, input),
         transactionConfirmed,
       }),
+    ),
+  );
+  const context: FamilyAssemblyContext<
+    Category,
+    Witness,
+    Certificate,
+    StepCount,
+    Runtime
+  > = Object.freeze({
+    ...deployment,
+    runtime: (runtime[0] ?? {}) as Runtime,
+    fieldCarriagePrerequisites,
+  });
+  const { transactions, adapter: familyAdapterBase } = familyAdapter({
+    definition,
+    context,
+    stateQueueMutationLeaseCoordinator:
+      deployment.stateQueueMutationLeaseCoordinator,
+  });
+  const replayer = definition.replayer(context);
+  let adapter = familyAdapterBase;
+  for (const [index, requirement] of (
+    definition.fieldCarriage ?? []
+  ).entries()) {
+    adapter = withFieldCarriagePrerequisite({
+      category,
+      base: adapter,
+      prerequisite: fieldCarriagePrerequisites[index]!,
       ...(requirement.rawDatum === undefined
         ? {}
         : { rawDatum: requirement.rawDatum }),
@@ -403,9 +513,9 @@ export const assembleManifestBoundFamilyWorkflow = async <
       base: adapter,
       prerequisite: createAuthenticatedProofChunkPrerequisitePort({
         category,
-        lucid: config.lucid,
+        lucid: deployment.lucid,
         network: binding.network,
-        signer: config.signer,
+        signer: deployment.signer,
         publications: l1.publications,
         maximumTransactionBytes: binding.cardanoProtocolParameters.maxTxSize,
         proofCborForAction: (input) => proofChunk(context, input),
@@ -416,7 +526,8 @@ export const assembleManifestBoundFamilyWorkflow = async <
   const workflow: ManifestBoundFamilyWorkflow<
     Category,
     Certificate,
-    StepCount
+    StepCount,
+    Runtime
   > = {
     definition,
     binding,
@@ -427,9 +538,9 @@ export const assembleManifestBoundFamilyWorkflow = async <
     releaseFinalityAuthority:
       releaseFinalityAuthorityFromDeploymentBinding(binding),
     replayer,
-    ...(config.replayContext === undefined
+    ...(deployment.replayContext === undefined
       ? {}
-      : { replayContext: config.replayContext }),
+      : { replayContext: deployment.replayContext }),
   };
   return Object.freeze({
     ...workflow,
@@ -438,6 +549,37 @@ export const assembleManifestBoundFamilyWorkflow = async <
       : definition.extend(context, workflow)),
   });
 };
+
+/** Bind a deployment and assemble its family workflow in one operation. */
+export const assembleManifestBoundFamilyWorkflow = async <
+  Category extends FamilyCategory,
+  Witness extends FaultProofWitnessRole,
+  Certificate extends boolean,
+  StepCount extends number = number,
+  Runtime extends object = Readonly<Record<never, never>>,
+>(
+  definition: FamilyDefinition<
+    Category,
+    Witness,
+    Certificate,
+    StepCount,
+    Runtime
+  >,
+  config: ManifestBoundFamilyWorkflowConfig<
+    Category,
+    Witness,
+    Certificate,
+    StepCount
+  >,
+  ...runtime: FamilyRuntimeArguments<Runtime>
+): Promise<
+  ManifestBoundFamilyWorkflow<Category, Certificate, StepCount, Runtime>
+> =>
+  assembleBoundManifestBoundFamilyWorkflow(
+    definition,
+    await bindManifestBoundFamilyWorkflow(definition, config),
+    ...runtime,
+  );
 
 /**
  * Runs or resumes an assembled workflow: observes its header, then hands the
@@ -448,6 +590,7 @@ export const runOrResumeManifestBoundFamilyWorkflow = async <
   Category extends FamilyCategory,
   Certificate extends boolean,
   StepCount extends number = number,
+  Runtime extends object = Readonly<Record<never, never>>,
 >({
   workflow,
   sources,
@@ -456,7 +599,8 @@ export const runOrResumeManifestBoundFamilyWorkflow = async <
   readonly workflow: ManifestBoundFamilyWorkflow<
     Category,
     Certificate,
-    StepCount
+    StepCount,
+    Runtime
   >;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;

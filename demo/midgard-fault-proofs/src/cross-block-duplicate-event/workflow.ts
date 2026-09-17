@@ -11,7 +11,6 @@ import {
   CROSS_BLOCK_DUPLICATE_EVENT_COMPLETE_CANONICAL_REPLAY,
 } from "../workflow/complete-replay.js";
 import {
-  createCursorFamilyWorkflowAdapter,
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
@@ -21,18 +20,12 @@ import {
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
 import { CROSS_BLOCK_DUPLICATE_EVENT_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
+import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+  defineFamily,
+  type FamilyAssemblyContext,
+} from "../workflow/family-definition.js";
+import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import type {
   HistoricalNativeScriptCheckpointStore,
@@ -40,6 +33,7 @@ import type {
 } from "../workflow/historical-native-script-corpus.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
   createFraudProofWorkflowRegistry,
   type FraudProofFamilyWorkflowAdapter,
@@ -207,110 +201,98 @@ export type ManifestBoundCrossBlockDuplicateEventWorkflow = Readonly<{
   releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   settlementAuthority: CrossBlockSettlementAuthority;
 }>;
+type CrossBlockRuntime = Pick<
+  ManifestBoundCrossBlockDuplicateEventWorkflowConfig,
+  "historySource" | "checkpointStore"
+>;
+type CrossBlockContext = FamilyAssemblyContext<
+  "crossBlockDuplicateEvent",
+  "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",
+  false,
+  2,
+  CrossBlockRuntime
+>;
+const settlementAuthorities = new WeakMap<
+  CrossBlockContext,
+  CrossBlockSettlementAuthority
+>();
+const settlementAuthorityFor = (context: CrossBlockContext) => {
+  const existing = settlementAuthorities.get(context);
+  if (existing !== undefined) return existing;
+  const authority = createCrossBlockSettlementAuthority({
+    binding: context.binding,
+    source: context.source,
+    ...context.runtime,
+  });
+  settlementAuthorities.set(context, authority);
+  return authority;
+};
+export const CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_DEFINITION = defineFamily<
+  "crossBlockDuplicateEvent",
+  "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",
+  false,
+  2,
+  CrossBlockRuntime
+>({
+  category: "crossBlockDuplicateEvent",
+  stepDatumSchemas: [
+    SDK.FraudProofComputationThreadStepDatum,
+    SDK.CrossBlockDuplicateEventStep02DatumSchema,
+  ],
+  witnessRoles: [
+    "computationThreadMint",
+    "fraudProofMint",
+    "phasMembershipWithdraw",
+  ],
+  fieldPreimageCertificate: false,
+  replayer: () => CROSS_BLOCK_DUPLICATE_EVENT_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
+    spec: CROSS_BLOCK_DUPLICATE_EVENT_CURSOR_SPEC,
+    stepContractNames: [
+      "fraudProofCrossBlockDuplicateEvent",
+      "fraudProofCrossBlockDuplicateEventStep02",
+    ],
+    transactionPort: (context) => {
+      const { binding } = context;
+      const chain =
+        binding.resolvedContracts.contracts.crossBlockDuplicateEvent;
+      if (
+        chain === undefined ||
+        binding.resolvedContracts.stateQueuePolicyId === undefined
+      )
+        throw new Error("cross-block duplicate manifest lacks required chain");
+      const contracts: CrossBlockDuplicateEventContracts = {
+        steps: chain.steps,
+        computationThread:
+          binding.resolvedContracts.contracts.computationThread,
+        fraudProof: binding.resolvedContracts.contracts.fraudProof,
+        hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
+        stateQueuePolicyId: binding.resolvedContracts.stateQueuePolicyId,
+      };
+
+      return createCrossBlockDuplicateEventTransactionPort({
+        ...context,
+        contracts,
+        settlementAuthority: settlementAuthorityFor(context),
+      });
+    },
+  },
+  extend: (context) => ({
+    settlementAuthority: settlementAuthorityFor(context),
+  }),
+});
 export const createManifestBoundCrossBlockDuplicateEventWorkflow = async (
   config: ManifestBoundCrossBlockDuplicateEventWorkflowConfig,
-): Promise<ManifestBoundCrossBlockDuplicateEventWorkflow> => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "crossBlockDuplicateEvent",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      SDK.FraudProofComputationThreadStepDatum,
-      SDK.CrossBlockDuplicateEventStep02DatumSchema,
-    ],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
-  const chain = binding.resolvedContracts.contracts.crossBlockDuplicateEvent;
-  if (
-    chain === undefined ||
-    binding.resolvedContracts.stateQueuePolicyId === undefined
-  )
-    throw new Error("cross-block duplicate manifest lacks required chain");
-  const references: CrossBlockDuplicateEventWorkflowReferenceScripts = {
-    steps: [
-      requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fraudProofCrossBlockDuplicateEvent",
-        utxo: config.referenceScripts.steps[0],
-      }),
-      requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fraudProofCrossBlockDuplicateEventStep02",
-        utxo: config.referenceScripts.steps[1],
-      }),
-    ],
-    witnesses: {
-      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "phasMembershipWithdraw",
-        utxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
-      }),
-      computationThreadMint: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "computationThreadMint",
-        utxo: config.referenceScripts.witnesses.computationThreadMint,
-      }),
-      fraudProofMint: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fraudProofMint",
-        utxo: config.referenceScripts.witnesses.fraudProofMint,
-      }),
+): Promise<ManifestBoundCrossBlockDuplicateEventWorkflow> =>
+  (await assembleManifestBoundFamilyWorkflow(
+    CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_DEFINITION,
+    config,
+    {
+      historySource: config.historySource,
+      checkpointStore: config.checkpointStore,
     },
-  };
-  const contracts: CrossBlockDuplicateEventContracts = {
-    steps: chain.steps,
-    computationThread: binding.resolvedContracts.contracts.computationThread,
-    fraudProof: binding.resolvedContracts.contracts.fraudProof,
-    hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
-    stateQueuePolicyId: binding.resolvedContracts.stateQueuePolicyId,
-  };
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  const settlementAuthority = createCrossBlockSettlementAuthority({
-    binding,
-    source: config.source,
-    historySource: config.historySource,
-    checkpointStore: config.checkpointStore,
-  });
-  const transactions = createCrossBlockDuplicateEventTransactionPort({
-    binding,
-    lucid: config.lucid,
-    signer: config.signer,
-    contracts,
-    references,
-    settlementAuthority,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  const adapter = createCursorFamilyWorkflowAdapter({
-    spec: CROSS_BLOCK_DUPLICATE_EVENT_CURSOR_SPEC,
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  return Object.freeze({
-    binding,
-    l1,
-    transactions,
-    adapter,
-    settlementAuthority,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-  });
-};
+  )) as unknown as ManifestBoundCrossBlockDuplicateEventWorkflow;
 export const runOrResumeManifestBoundCrossBlockDuplicateEventWorkflow = async ({
   workflow,
   sources,

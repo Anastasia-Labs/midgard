@@ -1,4 +1,16 @@
+import {
+  FieldPreimageLengthStep01DatumSchema,
+  FieldPreimageLengthStep02DatumSchema,
+  FieldPreimageLengthStep03DatumSchema,
+} from "@al-ft/midgard-sdk";
+
+import {
+  defineFamily,
+  type FamilyAssemblyContext,
+} from "../workflow/family-definition.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import { resolveFieldPreimageLengthCarriage } from "./carriage.js";
+import { FIELD_PREIMAGE_LENGTH_CURSOR_SPEC } from "./workflow-spec.js";
 export {
   planFieldPreimageLengthCarriage,
   resolveFieldPreimageLengthCarriage,
@@ -9,13 +21,8 @@ import {
 } from "../remove-fraudulent-block.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
-import { releaseFinalityAuthorityFromDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import { createFraudProofFamilyAuthenticatedL1TerminalVerifier } from "../workflow/family-l1-observation.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
 import { executeManifestBoundFamilyRecovery } from "../workflow/manifest-bound-family-recovery.js";
@@ -27,8 +34,9 @@ import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-fin
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   createConcreteFieldPreimageLengthLucidBuilders,
+  FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS,
+  fieldPreimageLengthConfigFromBinding,
   type LoadManifestBoundFieldPreimageLengthConfig,
-  loadManifestBoundFieldPreimageLengthConfig,
   type ManifestBoundFieldPreimageLengthConfig,
   runManifestBoundFieldPreimageLengthWorkflow,
 } from "./config.js";
@@ -36,7 +44,7 @@ import {
   type AuthenticatedFieldPreimageLengthEvidence,
   detectAuthenticatedFieldPreimageLengthEvidence,
 } from "./evidence.js";
-import { createFieldPreimageLengthRecoveryAdapter } from "./recovery.js";
+import { createFieldPreimageLengthRecoveryPorts } from "./recovery.js";
 import type {
   FieldPreimageLengthJournal,
   PreparedFieldPreimageLengthWorkflow,
@@ -70,33 +78,114 @@ export type ManifestBoundFieldPreimageLengthWorkflow = Readonly<{
   releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
 
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+] as const;
+type BoundContext = FamilyAssemblyContext<
+  "fieldPreimageLengthMismatch",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  4
+>;
+type WorkflowExtension = Pick<
+  ManifestBoundFieldPreimageLengthWorkflow,
+  "workflowVersion" | "config" | "stateQueueMutationLeaseCoordinator"
+>;
+const bindFamily = (context: BoundContext) => {
+  const config = fieldPreimageLengthConfigFromBinding({
+    binding: context.binding,
+    lucid: context.lucid,
+    signer: context.signer,
+    referenceScripts: {
+      step01: context.references.steps[0],
+      step02Accepted: context.references.steps[1],
+      step02Forced: context.references.steps[2],
+      step03: context.references.steps[3],
+      witnesses: context.references.witnesses,
+      fieldPreimageCertificateMint:
+        context.references.fieldPreimageCertificateMint,
+    },
+  });
+  const workflow = {
+    workflowVersion: FIELD_PREIMAGE_LENGTH_AUTHENTICATED_WORKFLOW,
+    config,
+    binding: context.binding,
+    l1: context.l1,
+    stateQueueMutationLeaseCoordinator:
+      context.stateQueueMutationLeaseCoordinator,
+  };
+  return { workflow, ports: createFieldPreimageLengthRecoveryPorts(workflow) };
+};
+const bound = new WeakMap<BoundContext, ReturnType<typeof bindFamily>>();
+const boundFor = (context: BoundContext) => {
+  const existing = bound.get(context);
+  if (existing !== undefined) return existing;
+  const created = bindFamily(context);
+  bound.set(context, created);
+  return created;
+};
+export const FIELD_PREIMAGE_LENGTH_FAMILY_DEFINITION = defineFamily<
+  "fieldPreimageLengthMismatch",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  4
+>({
+  category: "fieldPreimageLengthMismatch",
+  stepDatumSchemas: [
+    FieldPreimageLengthStep01DatumSchema,
+    FieldPreimageLengthStep02DatumSchema,
+    FieldPreimageLengthStep02DatumSchema,
+    FieldPreimageLengthStep03DatumSchema,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  replayer: () => FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
+    spec: FIELD_PREIMAGE_LENGTH_CURSOR_SPEC,
+    stepContractNames: [
+      FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS.step01,
+      FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS.step02Accepted,
+      FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS.step02Forced,
+      FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS.step03,
+    ],
+    transactionPort: (context) => boundFor(context).ports.transactions,
+  },
+  fieldCarriage: [
+    {
+      requirementForAction: (context, input) =>
+        boundFor(context).ports.requirementForAction(input),
+    },
+  ],
+  extend: (context): WorkflowExtension => boundFor(context).workflow,
+});
+
 /** Installation factory: binds deployment/L1 authority and accepts no proof. */
 export const createManifestBoundFieldPreimageLengthWorkflow = async (
   input: ManifestBoundFieldPreimageLengthWorkflowConfig,
 ): Promise<ManifestBoundFieldPreimageLengthWorkflow> => {
-  const config = await loadManifestBoundFieldPreimageLengthConfig(input);
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: input.source,
-    releaseFinality: config.binding.releaseFinality,
-    releaseEconomics: config.binding.releaseEconomics,
-    definition: config.binding.definition,
-  });
-  const workflow = Object.freeze({
-    workflowVersion: FIELD_PREIMAGE_LENGTH_AUTHENTICATED_WORKFLOW,
-    config,
-    binding: config.binding,
-    l1,
-    stateQueueMutationLeaseCoordinator:
-      input.stateQueueMutationLeaseCoordinator,
-    decisionDigest: input.decisionDigest,
-  });
+  const workflow = await assembleManifestBoundFamilyWorkflow(
+    FIELD_PREIMAGE_LENGTH_FAMILY_DEFINITION,
+    {
+      ...input,
+      referenceScripts: {
+        steps: [
+          input.referenceScripts.step01,
+          input.referenceScripts.step02Accepted,
+          input.referenceScripts.step02Forced,
+          input.referenceScripts.step03,
+        ],
+        witnesses: input.referenceScripts.witnesses,
+        fieldPreimageCertificateMint:
+          input.referenceScripts.fieldPreimageCertificateMint,
+      },
+    },
+  );
   return Object.freeze({
-    ...workflow,
-    ...createFieldPreimageLengthRecoveryAdapter(workflow),
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority: releaseFinalityAuthorityFromDeploymentBinding(
-      config.binding,
-    ),
+    ...(workflow as typeof workflow & WorkflowExtension),
+    decisionDigest: input.decisionDigest,
   });
 };
 

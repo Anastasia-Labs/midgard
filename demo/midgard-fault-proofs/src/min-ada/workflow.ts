@@ -30,7 +30,6 @@ import {
   requireCompleteCanonicalReplayDecision,
 } from "../workflow/complete-replay.js";
 import {
-  createCursorFamilyWorkflowAdapter,
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
@@ -39,23 +38,13 @@ import {
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
+import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  type FieldCarriageRequirement,
-  withFieldCarriagePrerequisite,
-} from "../workflow/field-carriage-prerequisite.js";
+  defineFamily,
+  type FamilyAssemblyContext,
+} from "../workflow/family-definition.js";
+import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
+import { type FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
 import {
   type HistoricalNativeScriptCheckpointStore,
   type HistoricalNativeScriptCorpus,
@@ -65,6 +54,7 @@ import {
 } from "../workflow/historical-native-script-corpus.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
   createFraudProofWorkflowRegistry,
   type FraudProofFamilyWorkflowAdapter,
@@ -72,10 +62,6 @@ import {
   type FraudProofWorkflowTerminalVerifier,
   runFraudProofWorkflow,
 } from "../workflow/orchestrator.js";
-import {
-  createAuthenticatedProofChunkPrerequisitePort,
-  withProofChunkPrerequisite,
-} from "../workflow/proof-chunk-prerequisite.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import { submitMinAdaStep01Forced } from "./submit-step-01-forced.js";
@@ -474,37 +460,31 @@ type HistoricalCorpusCell = {
 
 const historicalCorpusCells = new WeakMap<object, HistoricalCorpusCell>();
 
-export const createManifestBoundMinAdaWorkflow = async (
-  config: ManifestBoundMinAdaWorkflowConfig,
-): Promise<ManifestBoundMinAdaWorkflow> => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "minAda",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      FraudProofComputationThreadStepDatum,
-      MinAdaStep02DatumSchema,
-      MinAdaStep03DatumSchema,
-      MinAdaStep04DatumSchema,
-      MinAdaStep05DatumSchema,
-    ],
-  });
+type HistoricalRuntime = Pick<
+  ManifestBoundMinAdaWorkflowConfig,
+  | "historicalNativeScriptCheckpointStore"
+  | "historicalNativeScriptHistorySource"
+> & { readonly corpusCell: HistoricalCorpusCell };
+type AssemblyContext = FamilyAssemblyContext<
+  "minAda",
+  keyof FaultProofWitnessReferenceScripts,
+  true,
+  5,
+  HistoricalRuntime
+>;
+const boundConfigs = new WeakMap<AssemblyContext, BoundConfig>();
+const boundFor = (context: AssemblyContext): BoundConfig => {
+  const existing = boundConfigs.get(context);
+  if (existing !== undefined) return existing;
+  const { binding, certificate } = context;
+  const { corpusCell } = context.runtime;
   requireHistoricalNativeScriptHistoryAuthority({
     deploymentFingerprint: binding.deploymentFingerprint,
-    checkpointStore: config.historicalNativeScriptCheckpointStore,
-    historySource: config.historicalNativeScriptHistorySource,
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
+    checkpointStore: context.runtime.historicalNativeScriptCheckpointStore,
+    historySource: context.runtime.historicalNativeScriptHistorySource,
   });
   const chain = binding.resolvedContracts.contracts.minAda;
   const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
-  const certificate = binding.fieldPreimageCertificate;
   if (
     chain === undefined ||
     stateQueuePolicyId === undefined ||
@@ -512,65 +492,6 @@ export const createManifestBoundMinAdaWorkflow = async (
   ) {
     throw new Error("min-ada manifest omitted required contracts");
   }
-  const stepNames = [
-    "fraudProofMinAda",
-    "fraudProofMinAdaStep02",
-    "fraudProofMinAdaStep03",
-    "fraudProofMinAdaStep04",
-    "fraudProofMinAdaStep05",
-  ] as const;
-  const steps = stepNames.map((contractName, index) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName,
-      utxo: config.referenceScripts.steps[index]!,
-    }),
-  ) as unknown as MinAdaWorkflowReferenceScripts["steps"];
-  const witness = <Name extends keyof FaultProofWitnessReferenceScripts>(
-    name: Name,
-    contractName: string,
-  ) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName,
-      utxo: config.referenceScripts.witnesses[name],
-    });
-  const references: MinAdaWorkflowReferenceScripts = Object.freeze({
-    steps: Object.freeze(steps),
-    yields: Object.freeze({
-      tx: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fraudProofMinAdaStep02TxWithdraw",
-        utxo: config.referenceScripts.yields.tx,
-      }),
-      utxo: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fraudProofMinAdaStep02UtxoWithdraw",
-        utxo: config.referenceScripts.yields.utxo,
-      }),
-    }),
-    witnesses: Object.freeze({
-      computationThreadMint: witness(
-        "computationThreadMint",
-        "computationThreadMint",
-      ),
-      fraudProofMint: witness("fraudProofMint", "fraudProofMint"),
-      phasMembershipWithdraw: witness(
-        "phasMembershipWithdraw",
-        "phasMembershipWithdraw",
-      ),
-      chunkedVerifyWithdraw: witness(
-        "chunkedVerifyWithdraw",
-        "chunkedVerifyWithdraw",
-      ),
-      pexcludesWithdraw: witness("pexcludesWithdraw", "pexcludesWithdraw"),
-    }),
-    fieldPreimageCertificateMint: requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName: "fieldPreimageCertificateMint",
-      utxo: config.referenceScripts.fieldPreimageCertificateMint,
-    }),
-  });
   const contracts: MinAdaContracts = Object.freeze({
     steps: chain.steps,
     yields: chain.yields,
@@ -587,23 +508,21 @@ export const createManifestBoundMinAdaWorkflow = async (
     fieldPreimageCertificatePolicyId: certificate.policyId,
     referenceScriptAuthPolicyId:
       parseContractDeploymentReferenceScriptAuthPolicyId(
-        config.deploymentInfo,
+        binding.deploymentInfo,
         "reference-script-auth minting",
       ),
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  if (l1.rawL1 === undefined)
-    throw new Error("min-ada raw L1 authority is unavailable");
-  const corpusCell: HistoricalCorpusCell = {};
+  const references: MinAdaWorkflowReferenceScripts = {
+    ...context.references,
+    yields: {
+      tx: context.auxiliaryReferences.tx!,
+      utxo: context.auxiliaryReferences.utxo!,
+    },
+  };
   const bound: BoundConfig = {
     binding,
-    lucid: config.lucid,
-    signer: config.signer,
+    lucid: context.lucid,
+    signer: context.signer,
     contracts,
     references,
     historicalCorpus: () => {
@@ -616,87 +535,109 @@ export const createManifestBoundMinAdaWorkflow = async (
       return corpus;
     },
     stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
+      context.stateQueueMutationLeaseCoordinator,
   };
-  const transactions = transactionPort(bound);
-  let adapter = createCursorFamilyWorkflowAdapter({
-    spec: MIN_ADA_CURSOR_SPEC,
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  const fieldPrerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
-    category: "minAda",
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    requirementForAction: async ({ action, artifact }) => {
-      if (action.input.stage !== "step_02") return null;
-      const admitted = await admitMinAdaArtifact(artifact);
-      if (!isTx(admitted)) return null;
-      return {
-        planned: txFieldPlan(admitted, config.signer.paymentKeyHash),
-        compactCbor: admitted.prepared.nativeTxCompactCbor,
-        certificate: {
-          policyId: certificate.policyId,
-          mintingScript: certificate.mintingScript,
-          referenceScriptUtxo: references.fieldPreimageCertificateMint,
-        },
-      } satisfies FieldCarriageRequirement;
-    },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  adapter = withFieldCarriagePrerequisite({
-    category: "minAda",
-    base: adapter,
-    prerequisite: fieldPrerequisite,
-  });
-  const proofPrerequisite = createAuthenticatedProofChunkPrerequisitePort({
-    category: "minAda",
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    proofCborForAction: async ({ action, artifact }) => {
-      const admitted = await admitMinAdaArtifact(artifact);
-      return action.input.stage === "step_01" &&
-        isTx(admitted) &&
-        !isForced(admitted)
-        ? admitted.prepared.txInclusion.txMembershipProofCbor
-        : action.input.stage === "step_02" && !isTx(admitted)
-          ? admitted.prepared.postMembershipProofCbor
-          : action.input.stage === "step_04" && !isTx(admitted)
-            ? admitted.prepared.predecessorNonMembershipProofCbor
-            : null;
-    },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  adapter = withProofChunkPrerequisite({
-    category: "minAda",
-    base: adapter,
-    prerequisite: proofPrerequisite,
-  });
-  const workflow = Object.freeze({
-    binding,
-    l1,
-    transactions,
-    adapter,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-    historicalNativeScriptCheckpointStore:
-      config.historicalNativeScriptCheckpointStore,
-    historicalNativeScriptHistorySource:
-      config.historicalNativeScriptHistorySource,
-  });
-  historicalCorpusCells.set(workflow, corpusCell);
-  return workflow;
-};
 
+  boundConfigs.set(context, bound);
+  return bound;
+};
+export const MIN_ADA_FAMILY_DEFINITION = defineFamily<
+  "minAda",
+  keyof FaultProofWitnessReferenceScripts,
+  true,
+  5,
+  HistoricalRuntime
+>({
+  category: "minAda",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    MinAdaStep02DatumSchema,
+    MinAdaStep03DatumSchema,
+    MinAdaStep04DatumSchema,
+    MinAdaStep05DatumSchema,
+  ],
+  witnessRoles: [
+    "computationThreadMint",
+    "fraudProofMint",
+    "phasMembershipWithdraw",
+    "chunkedVerifyWithdraw",
+    "pexcludesWithdraw",
+  ],
+  fieldPreimageCertificate: true,
+  replayer: (context) =>
+    createMinAdaCompleteCanonicalReplayFromHistoricalCorpus(() =>
+      boundFor(context).historicalCorpus(),
+    ),
+  auxiliaryReferenceScripts: {
+    tx: "fraudProofMinAdaStep02TxWithdraw",
+    utxo: "fraudProofMinAdaStep02UtxoWithdraw",
+  },
+  adapter: {
+    kind: "cursor",
+    spec: MIN_ADA_CURSOR_SPEC,
+    stepContractNames: [
+      "fraudProofMinAda",
+      "fraudProofMinAdaStep02",
+      "fraudProofMinAdaStep03",
+      "fraudProofMinAdaStep04",
+      "fraudProofMinAdaStep05",
+    ],
+    transactionPort: (context) => {
+      return transactionPort(boundFor(context));
+    },
+  },
+  fieldCarriage: [
+    {
+      requirementForAction: async (context, { action, artifact }) => {
+        const { certificate, references } = context;
+
+        if (action.input.stage !== "step_02") return null;
+        const admitted = await admitMinAdaArtifact(artifact);
+        if (!isTx(admitted)) return null;
+        return {
+          planned: txFieldPlan(admitted, context.signer.paymentKeyHash),
+          compactCbor: admitted.prepared.nativeTxCompactCbor,
+          certificate: {
+            policyId: certificate.policyId,
+            mintingScript: certificate.mintingScript,
+            referenceScriptUtxo: references.fieldPreimageCertificateMint,
+          },
+        } satisfies FieldCarriageRequirement;
+      },
+    },
+  ],
+  proofChunk: async (_context, { action, artifact }) => {
+    const admitted = await admitMinAdaArtifact(artifact);
+    return action.input.stage === "step_01" &&
+      isTx(admitted) &&
+      !isForced(admitted)
+      ? admitted.prepared.txInclusion.txMembershipProofCbor
+      : action.input.stage === "step_02" && !isTx(admitted)
+        ? admitted.prepared.postMembershipProofCbor
+        : action.input.stage === "step_04" && !isTx(admitted)
+          ? admitted.prepared.predecessorNonMembershipProofCbor
+          : null;
+  },
+  extend: (context) => ({
+    historicalNativeScriptCheckpointStore:
+      context.runtime.historicalNativeScriptCheckpointStore,
+    historicalNativeScriptHistorySource:
+      context.runtime.historicalNativeScriptHistorySource,
+  }),
+});
+export const createManifestBoundMinAdaWorkflow = async (
+  config: ManifestBoundMinAdaWorkflowConfig,
+): Promise<ManifestBoundMinAdaWorkflow> => {
+  const corpusCell: HistoricalCorpusCell = {};
+  const runtime: HistoricalRuntime = { ...config, corpusCell };
+  const workflow = await assembleManifestBoundFamilyWorkflow(
+    MIN_ADA_FAMILY_DEFINITION,
+    { ...config, auxiliaryReferenceScripts: config.referenceScripts.yields },
+    runtime,
+  );
+  historicalCorpusCells.set(workflow, corpusCell);
+  return workflow as unknown as ManifestBoundMinAdaWorkflow;
+};
 export const runOrResumeManifestBoundMinAdaWorkflow = async ({
   workflow,
   sources,

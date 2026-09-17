@@ -32,6 +32,7 @@ import {
 } from "../src/unused-script-witness/v1.js";
 import { type FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
+import { bindFamilyRecoveryFixture } from "./support/bound-family-recovery-fixture.js";
 import {
   customWorkflowRecoveryFixture as fixture,
   verifyCompletionHandoffRestart,
@@ -66,14 +67,20 @@ const cases = [
   ],
 ] as const;
 for (const [spec, execute] of cases) {
-  const run = (input: Awaited<ReturnType<typeof fixture>>) =>
+  const run = async (input: Awaited<ReturnType<typeof fixture>>) =>
     (
       execute as unknown as (
         value: unknown,
       ) => Promise<FraudProofWorkflowRunResult>
     )({
       ...input,
-      workflow: input.workflow,
+      workflow:
+        spec.category === "executionNativeScriptInvalid"
+          ? {
+              ...input.workflow,
+              deployment: await bindFamilyRecoveryFixture(input.workflow),
+            }
+          : input.workflow,
       decisionDigest: input.workflow.decisionDigest,
       sources: [],
     });
@@ -81,7 +88,10 @@ for (const [spec, execute] of cases) {
     const f = await fixture(spec);
     f.advance();
     const result = await run(f);
-    expect(result.kind).toBe("stalled");
+    expect(result).toMatchObject({
+      kind: "pending",
+      reason: "Canonical workflow requires fresh submission authority",
+    });
     expect(f.observeHeader).not.toHaveBeenCalled();
     expect(f.capture).not.toHaveBeenCalled();
     expect(f.built.submit).not.toHaveBeenCalled();

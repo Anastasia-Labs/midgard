@@ -37,7 +37,6 @@ import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scr
 import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.js";
 import { MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
-  createCursorFamilyWorkflowAdapter,
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
@@ -47,26 +46,17 @@ import {
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
 import { MINT_AUTHORIZATION_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
-import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
+import { defineFamily } from "../workflow/family-definition.js";
+import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
+  type FieldCarriagePrerequisitePort,
   type FieldCarriageRequirement,
-  withFieldCarriagePrerequisite,
 } from "../workflow/field-carriage-prerequisite.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
   createFraudProofWorkflowRegistry,
   type FraudProofFamilyWorkflowAdapter,
@@ -74,16 +64,8 @@ import {
   type FraudProofWorkflowTerminalVerifier,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
-import {
-  createAuthenticatedProofChunkPrerequisitePort,
-  withProofChunkPrerequisite,
-} from "../workflow/proof-chunk-prerequisite.js";
 import { createStructuredDataPreimageRequirement } from "../workflow/raw-datum-preimage.js";
-import {
-  createAuthenticatedRawDatumPreimagePrerequisitePort,
-  createRawDatumPreimageRequirement,
-  withRawDatumPreimagePrerequisite,
-} from "../workflow/raw-datum-preimage-prerequisite.js";
+import { createRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
@@ -288,9 +270,7 @@ const resolveField = async ({
 
 export const createMintAuthorizationTransactionPort = (
   config: BoundConfig,
-  rawPrerequisite: ReturnType<
-    typeof createAuthenticatedRawDatumPreimagePrerequisitePort<"mintAuthorization">
-  >,
+  rawPrerequisite: FieldCarriagePrerequisitePort<"mintAuthorization">,
 ): CursorFamilyTransactionPort<"mintAuthorization"> => ({
   portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
   category: "mintAuthorization",
@@ -555,227 +535,133 @@ export type ManifestBoundMintAuthorizationWorkflow = Readonly<{
   releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
 
-export const createManifestBoundMintAuthorizationWorkflow = async (
-  config: ManifestBoundMintAuthorizationWorkflowConfig,
-): Promise<ManifestBoundMintAuthorizationWorkflow> => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "mintAuthorization",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      FraudProofComputationThreadStepDatum,
-      MintAuthorizationStep02ThreadDatum,
-      MintAuthorizationStep03Datum,
-      MintAuthorizationStep04Datum,
-      MintAuthorizationStep05Datum,
-      MintAuthorizationEvaluateDatum,
-      MintAuthorizationWitnessScanDatum,
-    ],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
-  const chain = binding.resolvedContracts.contracts.mintAuthorization;
-  const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
-  const certificate = binding.fieldPreimageCertificate;
-  if (
-    chain === undefined ||
-    stateQueuePolicyId === undefined ||
-    certificate === null
-  ) {
-    throw new Error("mint-authorization manifest omitted required contracts");
-  }
-  const stepNames = [
-    "fraudProofMintAuthorization",
-    "fraudProofMintAuthorizationStep02",
-    "fraudProofMintAuthorizationStep03",
-    "fraudProofMintAuthorizationStep04",
-    "fraudProofMintAuthorizationStep05",
-    "fraudProofMintAuthorizationStep06",
-    "fraudProofMintAuthorizationStep07",
-  ] as const;
-  const steps = stepNames.map((contractName, index) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName,
-      utxo: config.referenceScripts.steps[index]!,
-    }),
-  ) as unknown as MintAuthorizationWorkflowReferenceScripts["steps"];
-  const witness = <Name extends keyof FaultProofWitnessReferenceScripts>(
-    name: Name,
-    contractName: string,
-  ) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName,
-      utxo: config.referenceScripts.witnesses[name],
-    });
-  const references: MintAuthorizationWorkflowReferenceScripts = Object.freeze({
-    steps: Object.freeze(steps),
-    witnesses: Object.freeze({
-      computationThreadMint: witness(
-        "computationThreadMint",
-        "computationThreadMint",
-      ),
-      fraudProofMint: witness("fraudProofMint", "fraudProofMint"),
-      phasMembershipWithdraw: witness(
-        "phasMembershipWithdraw",
-        "phasMembershipWithdraw",
-      ),
-      chunkedVerifyWithdraw: witness(
-        "chunkedVerifyWithdraw",
-        "chunkedVerifyWithdraw",
-      ),
-      pexcludesWithdraw: witness("pexcludesWithdraw", "pexcludesWithdraw"),
-    }),
-    fieldPreimageCertificateMint: requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName: "fieldPreimageCertificateMint",
-      utxo: config.referenceScripts.fieldPreimageCertificateMint,
-    }),
-  });
-  const contracts: MintAuthorizationContracts = Object.freeze({
-    steps: chain.steps,
-    computationThread: binding.resolvedContracts.contracts.computationThread,
-    fraudProof: {
-      policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
-      mintingScript:
-        binding.resolvedContracts.contracts.fraudProof.mintingScript,
-      spendingScriptAddress:
-        binding.resolvedContracts.contracts.fraudProof.spendingScriptAddress,
-    },
-    hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
-    stateQueuePolicyId,
-    fieldPreimageCertificatePolicyId: certificate.policyId,
-  });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  if (l1.rawL1 === undefined) {
-    throw new Error("mint-authorization raw L1 authority is unavailable");
-  }
-  const bound: BoundConfig = {
-    replayContext: config.replayContext,
-    binding,
-    lucid: config.lucid,
-    signer: config.signer,
-    contracts,
-    references,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  };
-  const rawPrerequisite = createAuthenticatedRawDatumPreimagePrerequisitePort({
-    category: "mintAuthorization",
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    requirementForAction: async ({ action, artifact }) => {
-      if (
-        typeof action.input.stage !== "string" ||
-        !["step_02", "step_03", "step_06", "step_07"].includes(
-          action.input.stage,
-        )
-      )
-        return null;
-      return mintAuthorizationWorkflowRawRequirement(
-        await admitMintAuthorizationWorkflowArtifact(artifact),
-        action.input.stage,
-      );
-    },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  const transactions = createMintAuthorizationTransactionPort(
-    bound,
-    rawPrerequisite,
-  );
-  let adapter = createCursorFamilyWorkflowAdapter({
+export const MINT_AUTHORIZATION_FAMILY_DEFINITION = defineFamily({
+  category: "mintAuthorization",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    MintAuthorizationStep02ThreadDatum,
+    MintAuthorizationStep03Datum,
+    MintAuthorizationStep04Datum,
+    MintAuthorizationStep05Datum,
+    MintAuthorizationEvaluateDatum,
+    MintAuthorizationWitnessScanDatum,
+  ],
+  witnessRoles: [
+    "computationThreadMint",
+    "fraudProofMint",
+    "phasMembershipWithdraw",
+    "chunkedVerifyWithdraw",
+    "pexcludesWithdraw",
+  ],
+  fieldPreimageCertificate: true,
+  replayer: () => MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
     spec: MINT_AUTHORIZATION_CURSOR_SPEC,
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  const fieldPrerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
-    category: "mintAuthorization",
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    requirementForAction: async ({ action, artifact }) => {
+    stepContractNames: [
+      "fraudProofMintAuthorization",
+      "fraudProofMintAuthorizationStep02",
+      "fraudProofMintAuthorizationStep03",
+      "fraudProofMintAuthorizationStep04",
+      "fraudProofMintAuthorizationStep05",
+      "fraudProofMintAuthorizationStep06",
+      "fraudProofMintAuthorizationStep07",
+    ],
+    transactionPort: (context) => {
+      const { binding, certificate } = context;
+      const chain = binding.resolvedContracts.contracts.mintAuthorization;
+      const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
       if (
-        typeof action.input.stage !== "string" ||
-        !["step_02", "step_03", "step_04"].includes(action.input.stage)
-      )
-        return null;
-      const input = cursorFamilyActionInput({
-        category: "mintAuthorization",
-        action,
-      });
-      const admitted = await admitMintAuthorizationWorkflowArtifact(artifact);
-      return mintAuthorizationWorkflowFieldRequirement(
-        admitted,
-        config.signer.paymentKeyHash,
-        input.stage,
-        {
-          policyId: certificate.policyId,
-          mintingScript: certificate.mintingScript,
-          referenceScriptUtxo: references.fieldPreimageCertificateMint,
+        chain === undefined ||
+        stateQueuePolicyId === undefined ||
+        certificate === null
+      ) {
+        throw new Error(
+          "mint-authorization manifest omitted required contracts",
+        );
+      }
+
+      const contracts: MintAuthorizationContracts = Object.freeze({
+        steps: chain.steps,
+        computationThread:
+          binding.resolvedContracts.contracts.computationThread,
+        fraudProof: {
+          policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
+          mintingScript:
+            binding.resolvedContracts.contracts.fraudProof.mintingScript,
+          spendingScriptAddress:
+            binding.resolvedContracts.contracts.fraudProof
+              .spendingScriptAddress,
         },
+        hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
+        stateQueuePolicyId,
+        fieldPreimageCertificatePolicyId: certificate.policyId,
+      });
+
+      return createMintAuthorizationTransactionPort(
+        { ...context, contracts },
+        context.fieldCarriagePrerequisites[1]!,
       );
     },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  adapter = withFieldCarriagePrerequisite({
-    category: "mintAuthorization",
-    base: adapter,
-    prerequisite: fieldPrerequisite,
-  });
-  adapter = withRawDatumPreimagePrerequisite({
-    category: "mintAuthorization",
-    base: adapter,
-    prerequisite: rawPrerequisite,
-  });
-  const txProofPrerequisite = createAuthenticatedProofChunkPrerequisitePort({
-    category: "mintAuthorization",
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    proofCborForAction: async ({ action, artifact }) => {
-      if (action.input.stage !== "step_01") return null;
-      const admitted = await admitMintAuthorizationWorkflowArtifact(artifact);
-      return admitted.txInclusion.txMembershipProofCbor ?? null;
+  },
+  fieldCarriage: [
+    {
+      requirementForAction: async (context, { action, artifact }) => {
+        const { certificate, references } = context;
+
+        if (
+          typeof action.input.stage !== "string" ||
+          !["step_02", "step_03", "step_04"].includes(action.input.stage)
+        )
+          return null;
+        const input = cursorFamilyActionInput({
+          category: "mintAuthorization",
+          action,
+        });
+        const admitted = await admitMintAuthorizationWorkflowArtifact(artifact);
+        return mintAuthorizationWorkflowFieldRequirement(
+          admitted,
+          context.signer.paymentKeyHash,
+          input.stage,
+          {
+            policyId: certificate.policyId,
+            mintingScript: certificate.mintingScript,
+            referenceScriptUtxo: references.fieldPreimageCertificateMint,
+          },
+        );
+      },
     },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  adapter = withProofChunkPrerequisite({
-    category: "mintAuthorization",
-    base: adapter,
-    prerequisite: txProofPrerequisite,
-  });
-  return Object.freeze({
-    replayContext: config.replayContext,
-    binding,
-    l1,
-    transactions,
-    adapter,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-  });
-};
+    {
+      rawDatum: true,
+      requirementForAction: async (_context, { action, artifact }) => {
+        if (
+          typeof action.input.stage !== "string" ||
+          !["step_02", "step_03", "step_06", "step_07"].includes(
+            action.input.stage,
+          )
+        )
+          return null;
+        return mintAuthorizationWorkflowRawRequirement(
+          await admitMintAuthorizationWorkflowArtifact(artifact),
+          action.input.stage,
+        );
+      },
+    },
+  ],
+  proofChunk: async (_context, { action, artifact }) => {
+    if (action.input.stage !== "step_01") return null;
+    const admitted = await admitMintAuthorizationWorkflowArtifact(artifact);
+    return admitted.txInclusion.txMembershipProofCbor ?? null;
+  },
+});
+
+export const createManifestBoundMintAuthorizationWorkflow = (
+  config: ManifestBoundMintAuthorizationWorkflowConfig,
+): Promise<ManifestBoundMintAuthorizationWorkflow> =>
+  assembleManifestBoundFamilyWorkflow(
+    MINT_AUTHORIZATION_FAMILY_DEFINITION,
+    config,
+  );
 
 export const runOrResumeManifestBoundMintAuthorizationWorkflow = async ({
   workflow,

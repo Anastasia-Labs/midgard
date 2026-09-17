@@ -422,30 +422,6 @@ export const loadManifestBoundFieldPreimageLengthConfig = async (
     address: input.signer.address,
     paymentKeyHash: input.signer.paymentKeyHash,
   });
-  const contracts = binding.resolvedContracts.contracts;
-  const chain = contracts.fieldPreimageLengthMismatch;
-  const certificate = binding.fieldPreimageCertificate;
-  if (chain === undefined) {
-    throw new Error(
-      "field-preimage-length deployment omitted the resolved category chain",
-    );
-  }
-  if (certificate === null) {
-    throw new Error(
-      "field-preimage-length deployment omitted the field-preimage certificate policy",
-    );
-  }
-  if (
-    chain.steps.length !== 4 ||
-    chain.steps[0].spendingScriptHash !== chain.firstStep.spendingScriptHash ||
-    chain.steps[1].spendingScriptHash !==
-      chain.acceptedStep02.spendingScriptHash ||
-    chain.steps[2].spendingScriptHash !== chain.forcedStep02.spendingScriptHash
-  ) {
-    throw new Error(
-      "field-preimage-length resolved chain changed its four-script physical topology",
-    );
-  }
   const names = FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS;
   const references = input.referenceScripts;
   const referenceScripts = Object.freeze({
@@ -493,6 +469,45 @@ export const loadManifestBoundFieldPreimageLengthConfig = async (
       }),
     }),
   });
+  return fieldPreimageLengthConfigFromBinding({
+    ...input,
+    binding,
+    referenceScripts,
+  });
+};
+
+/** Builds category contracts from an authenticated binding and checked references. */
+export const fieldPreimageLengthConfigFromBinding = (input: {
+  readonly binding: ManifestBoundFieldPreimageLengthConfig["binding"];
+  readonly lucid: LucidEvolution;
+  readonly signer: ResolvedProverSigner;
+  readonly referenceScripts: FieldPreimageLengthReferenceScripts;
+}): ManifestBoundFieldPreimageLengthConfig => {
+  const { binding, referenceScripts } = input;
+  const contracts = binding.resolvedContracts.contracts;
+  const chain = contracts.fieldPreimageLengthMismatch;
+  const certificate = binding.fieldPreimageCertificate;
+  if (chain === undefined) {
+    throw new Error(
+      "field-preimage-length deployment omitted the resolved category chain",
+    );
+  }
+  if (certificate === null) {
+    throw new Error(
+      "field-preimage-length deployment omitted the field-preimage certificate policy",
+    );
+  }
+  if (
+    chain.steps.length !== 4 ||
+    chain.steps[0].spendingScriptHash !== chain.firstStep.spendingScriptHash ||
+    chain.steps[1].spendingScriptHash !==
+      chain.acceptedStep02.spendingScriptHash ||
+    chain.steps[2].spendingScriptHash !== chain.forcedStep02.spendingScriptHash
+  ) {
+    throw new Error(
+      "field-preimage-length resolved chain changed its four-script physical topology",
+    );
+  }
   return Object.freeze({
     schemaVersion: FIELD_PREIMAGE_LENGTH_CONFIG,
     lucid: input.lucid,

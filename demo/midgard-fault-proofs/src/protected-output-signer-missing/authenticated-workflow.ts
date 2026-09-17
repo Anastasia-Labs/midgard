@@ -50,39 +50,34 @@ import {
   type WorkflowAdapterRunner,
 } from "../workflow/adapters.js";
 import { PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
-import {
-  createCursorFamilyWorkflowAdapter,
-  CURSOR_FAMILY_TRANSACTION_PORT,
-  type CursorFamilyTransactionPort,
-} from "../workflow/cursor-family-adapter.js";
+import { CURSOR_FAMILY_TRANSACTION_PORT } from "../workflow/cursor-family-adapter.js";
 import {
   captureCursorRemoval,
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
-import { releaseFinalityAuthorityFromDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import {
   assertManifestBoundWorkflowSigner,
   bindFraudProofWorkflowDeployment,
   type FraudProofWorkflowDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
-import { createFraudProofFamilyAuthenticatedL1TerminalVerifier } from "../workflow/family-l1-observation.js";
 import {
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+  defineFamily,
+  type FamilyDeploymentContext,
+} from "../workflow/family-definition.js";
+import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  withFieldCarriagePrerequisite,
-} from "../workflow/field-carriage-prerequisite.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
   DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import {
+  assembleBoundManifestBoundFamilyWorkflow,
+  bindManifestBoundFamilyWorkflow,
+} from "../workflow/manifest-bound-family-assembly.js";
 import {
   createCanonicalFamilyArtifactPort,
   executeManifestBoundFamilyRecovery,
@@ -267,22 +262,25 @@ export const loadManifestBoundProtectedOutputSignerMissingConfig = async (
     manifest: input.manifest,
     blueprintJson: input.blueprintJson,
     deploymentInfo: input.deploymentInfo,
-    category: "protectedOutputSignerMissing" as FraudProofCatalogueCategoryName,
+    category: "protectedOutputSignerMissing",
     headerHash: input.headerHash,
     proverCredential: input.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      FraudProofComputationThreadStepDatum,
-      ProtectedOutputSignerStep02DatumSchema,
-      ProtectedOutputSignerStep03DatumSchema,
-      ProtectedOutputSignerStep04DatumSchema,
-      ProtectedOutputSignerStep05DatumSchema,
-    ],
+    stepDatumSchemas:
+      PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION.stepDatumSchemas,
   });
   assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: input.signer.address,
     paymentKeyHash: input.signer.paymentKeyHash,
   });
+
+  return createProtectedOutputSignerMissingBoundConfig(input, binding);
+};
+
+const createProtectedOutputSignerMissingBoundConfig = (
+  input: LoadManifestBoundProtectedOutputSignerMissingConfig,
+  binding: FraudProofWorkflowDeploymentBinding<"protectedOutputSignerMissing">,
+): ManifestBoundProtectedOutputSignerMissingConfig => {
   const localContracts = binding.resolvedContracts.contracts as unknown as {
     readonly protectedOutputSignerMissing?: ProtectedOutputSignerMissingContracts;
   };
@@ -1040,8 +1038,7 @@ const createManifestBoundProtectedOutputSignerMissingSubmission = ({
       deploymentInfo: config.binding.deploymentInfo,
       network: config.binding.network,
       signer: config.signer,
-      fraudCategory:
-        "protectedOutputSignerMissing" as FraudProofCatalogueCategoryName,
+      fraudCategory: "protectedOutputSignerMissing",
       fraudulentHeaderHash: config.binding.definition.headerHash,
       requireReferenceScripts: true,
       stateQueueMutationLeaseCoordinator:
@@ -1169,6 +1166,12 @@ export type ManifestBoundProtectedOutputSignerMissingWorkflowConfig =
     }>;
 
 export type ManifestBoundProtectedOutputSignerMissingWorkflow = Readonly<{
+  deployment: FamilyDeploymentContext<
+    "protectedOutputSignerMissing",
+    "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",
+    true,
+    5
+  >;
   workflowVersion: typeof PROTECTED_OUTPUT_SIGNER_MISSING_WORKFLOW;
   config: ManifestBoundProtectedOutputSignerMissingConfig;
   binding: ProtectedOutputSignerMissingDeploymentBinding;
@@ -1181,15 +1184,31 @@ export type ManifestBoundProtectedOutputSignerMissingWorkflow = Readonly<{
 export const createManifestBoundProtectedOutputSignerMissingWorkflow = async (
   input: ManifestBoundProtectedOutputSignerMissingWorkflowConfig,
 ): Promise<ManifestBoundProtectedOutputSignerMissingWorkflow> => {
-  const config =
-    await loadManifestBoundProtectedOutputSignerMissingConfig(input);
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: input.source,
-    releaseFinality: config.binding.releaseFinality,
-    releaseEconomics: config.binding.releaseEconomics,
-    definition: config.binding.definition as never,
-  });
+  const deployment = await bindManifestBoundFamilyWorkflow(
+    PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION,
+    {
+      ...input,
+      referenceScripts: {
+        steps: [
+          input.referenceScripts.step01,
+          input.referenceScripts.step02,
+          input.referenceScripts.step03,
+          input.referenceScripts.step04,
+          input.referenceScripts.step05,
+        ],
+        witnesses: input.referenceScripts.witnesses,
+        fieldPreimageCertificateMint:
+          input.referenceScripts.fieldPreimageCertificateMint,
+      },
+    },
+  );
+  const config = createProtectedOutputSignerMissingBoundConfig(
+    input,
+    deployment.binding,
+  );
+  const l1 = deployment.l1;
   return Object.freeze({
+    deployment,
     workflowVersion: PROTECTED_OUTPUT_SIGNER_MISSING_WORKFLOW,
     config,
     binding: config.binding,
@@ -1301,108 +1320,133 @@ export const prepareProtectedOutputSignerMissingRecoveryMaterial = async (
   };
 };
 
-export const createProtectedOutputSignerMissingRecoveryAdapter = (
-  workflow: ManifestBoundProtectedOutputSignerMissingWorkflow,
-) => {
-  const { config, binding, l1, stateQueueMutationLeaseCoordinator } = workflow;
-  const category = "protectedOutputSignerMissing";
-  const material = createCanonicalFamilyArtifactPort(
-    async ({ evidence, classification }) =>
-      await prepareProtectedOutputSignerMissingRecoveryMaterial(
-        evidence,
-        classification.selected.detectionId,
-      ),
-  );
-  const transactions: CursorFamilyTransactionPort<typeof category> = {
-    portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
-    category,
-    prepare: material.prepare,
-    validatePreparedArtifact: material.validatePreparedArtifact,
-    capture: async ({ action, artifact }) => {
-      const input = cursorFamilyActionInput({ category, action });
-      if (input.stage === "remove")
-        return await captureCursorRemoval({
-          category,
-          lucid: config.lucid,
-          blueprint: binding.blueprint,
-          deploymentInfo: binding.deploymentInfo,
-          network: binding.network,
-          signer: config.signer,
-          headerHash: binding.definition.headerHash,
-          input,
-          stateQueueMutationLeaseCoordinator,
-          fraudProverRewardLovelace: BigInt(
-            binding.releaseEconomics.policy.fraudProverRewardLovelace,
-          ),
-        });
-      const admitted = material.require(artifact);
-      const actions = {
-        init: "submitInit",
-        step_01: "submitStep01",
-        step_02: "submitStep02",
-        step_03: "submitStep03",
-        step_04: "submitScan",
-        step_05: "submitStep05",
-      } as const;
-      const familyAction = actions[input.stage as keyof typeof actions];
-      if (familyAction === undefined)
-        throw new Error(
-          `${category} cursor action is outside its exact topology`,
-        );
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (preSubmitBoundary) => {
-          const submission =
-            createManifestBoundProtectedOutputSignerMissingSubmission({
-              config,
-              preSubmitBoundary,
-              observe: async () =>
-                protectedOutputSignerStageFromL1(
-                  (
-                    await l1.observe({
-                      headerHash: binding.definition.headerHash,
-                    })
-                  ).stage,
-                ),
-              resolveStage:
-                createProtectedOutputSignerMissingRawL1StageResolver({
-                  config,
-                  l1,
-                  source: admitted.source,
-                }),
-            });
-          await submission.submit(familyAction, admitted.evidence);
-        },
-      );
-      if (
-        input.stage !== "init" &&
-        !workflowTransactionInputOutRefs(transaction.signed).includes(
-          cursorStringField(input, "threadOutRef"),
-        )
-      )
-        throw new Error(
-          `${category} captured transaction changed its authenticated thread input`,
-        );
-      return { transaction };
-    },
-  };
-  const base = createCursorFamilyWorkflowAdapter({
+type ProtectedOutputSignerMissingAssemblyRuntime = Readonly<{
+  config: ManifestBoundProtectedOutputSignerMissingConfig;
+  material: ReturnType<
+    typeof createCanonicalFamilyArtifactPort<
+      Awaited<
+        ReturnType<typeof prepareProtectedOutputSignerMissingRecoveryMaterial>
+      >
+    >
+  >;
+}>;
+
+export const PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<
+  "protectedOutputSignerMissing",
+  "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",
+  true,
+  5,
+  ProtectedOutputSignerMissingAssemblyRuntime
+>({
+  category: "protectedOutputSignerMissing",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    ProtectedOutputSignerStep02DatumSchema,
+    ProtectedOutputSignerStep03DatumSchema,
+    ProtectedOutputSignerStep04DatumSchema,
+    ProtectedOutputSignerStep05DatumSchema,
+  ],
+  witnessRoles: [
+    "computationThreadMint",
+    "fraudProofMint",
+    "phasMembershipWithdraw",
+  ],
+  fieldPreimageCertificate: true,
+  replayer: () => PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
     spec: PROTECTED_OUTPUT_SIGNER_MISSING_CURSOR_SPEC,
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator,
-  });
-  const adapter = withFieldCarriagePrerequisite({
-    category,
-    base,
-    prerequisite: createAuthenticatedFieldCarriagePrerequisitePort({
-      category,
-      lucid: config.lucid,
-      network: binding.network,
-      signer: config.signer,
-      publications: l1.publications,
-      transactionConfirmed: async ({ headerHash, txHash }) =>
-        await l1.transactionConfirmed({ headerHash, txHash }),
-      requirementForAction: ({ action, artifact }) => {
+    stepContractNames: [
+      PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step01,
+      PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step02,
+      PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step03,
+      PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step04,
+      PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step05,
+    ],
+    transactionPort: (context) => {
+      const category = "protectedOutputSignerMissing";
+      const { config, material } = context.runtime;
+      const { binding, l1, stateQueueMutationLeaseCoordinator } = context;
+      return {
+        portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
+        category,
+        prepare: material.prepare,
+        validatePreparedArtifact: material.validatePreparedArtifact,
+        capture: async ({ action, artifact }) => {
+          const input = cursorFamilyActionInput({ category, action });
+          if (input.stage === "remove")
+            return await captureCursorRemoval({
+              category,
+              lucid: config.lucid,
+              blueprint: binding.blueprint,
+              deploymentInfo: binding.deploymentInfo,
+              network: binding.network,
+              signer: config.signer,
+              headerHash: binding.definition.headerHash,
+              input,
+              stateQueueMutationLeaseCoordinator,
+              fraudProverRewardLovelace: BigInt(
+                binding.releaseEconomics.policy.fraudProverRewardLovelace,
+              ),
+            });
+          const admitted = material.require(artifact);
+          const actions = {
+            init: "submitInit",
+            step_01: "submitStep01",
+            step_02: "submitStep02",
+            step_03: "submitStep03",
+            step_04: "submitScan",
+            step_05: "submitStep05",
+          } as const;
+          const familyAction = actions[input.stage as keyof typeof actions];
+          if (familyAction === undefined)
+            throw new Error(
+              `${category} cursor action is outside its exact topology`,
+            );
+          const transaction = await captureLocallyEvaluatedTransaction(
+            async (preSubmitBoundary) => {
+              const submission =
+                createManifestBoundProtectedOutputSignerMissingSubmission({
+                  config,
+                  preSubmitBoundary,
+                  observe: async () =>
+                    protectedOutputSignerStageFromL1(
+                      (
+                        await l1.observe({
+                          headerHash: binding.definition.headerHash,
+                        })
+                      ).stage,
+                    ),
+                  resolveStage:
+                    createProtectedOutputSignerMissingRawL1StageResolver({
+                      config,
+                      l1,
+                      source: admitted.source,
+                    }),
+                });
+              await submission.submit(familyAction, admitted.evidence);
+            },
+          );
+          if (
+            input.stage !== "init" &&
+            !workflowTransactionInputOutRefs(transaction.signed).includes(
+              cursorStringField(input, "threadOutRef"),
+            )
+          )
+            throw new Error(
+              `${category} captured transaction changed its authenticated thread input`,
+            );
+          return { transaction };
+        },
+      };
+    },
+  },
+  fieldCarriage: [
+    {
+      requirementForAction: (context, { action, artifact }) => {
+        const category = "protectedOutputSignerMissing";
+        const { config, material } = context.runtime;
+        const { binding } = context;
         if (
           action.input.stage !== "step_02" &&
           action.input.stage !== "step_03" &&
@@ -1439,9 +1483,27 @@ export const createProtectedOutputSignerMissingRecoveryAdapter = (
           },
         };
       },
-    }),
-  });
-  return { adapter, transactions };
+    },
+  ],
+});
+
+export const createProtectedOutputSignerMissingRecoveryAdapter = (
+  workflow: ManifestBoundProtectedOutputSignerMissingWorkflow,
+) => {
+  const { config } = workflow;
+  const material = createCanonicalFamilyArtifactPort(
+    async ({ evidence, classification }) =>
+      await prepareProtectedOutputSignerMissingRecoveryMaterial(
+        evidence,
+        classification.selected.detectionId,
+      ),
+  );
+  const assembled = assembleBoundManifestBoundFamilyWorkflow(
+    PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION,
+    workflow.deployment,
+    { config, material },
+  );
+  return { ...assembled };
 };
 
 export const executeManifestBoundProtectedOutputSignerMissingWorkflow = async ({
@@ -1458,13 +1520,6 @@ export const executeManifestBoundProtectedOutputSignerMissingWorkflow = async ({
     sources,
     journal,
     ...createProtectedOutputSignerMissingRecoveryAdapter(workflow),
-    replayer: PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(
-      workflow.l1,
-    ),
-    releaseFinalityAuthority: releaseFinalityAuthorityFromDeploymentBinding(
-      workflow.binding,
-    ),
   });
 
 export type LoadedProtectedOutputSignerMissingWorkflow = Readonly<{
@@ -1506,16 +1561,14 @@ export const createProtectedOutputSignerMissingWorkflowRunnerSurface = ({
           permit: invocation.actuationPermit,
           decisionDigest: invocation.decisionDigest,
           deploymentFingerprint: invocation.deploymentFingerprint,
-          category:
-            "protectedOutputSignerMissing" as FraudProofCatalogueCategoryName,
+          category: "protectedOutputSignerMissing",
           headerHash: invocation.headerHash,
         }),
       });
       assertWorkflowJournalActuation({
         journal,
         deploymentFingerprint: invocation.deploymentFingerprint,
-        category:
-          "protectedOutputSignerMissing" as FraudProofCatalogueCategoryName,
+        category: "protectedOutputSignerMissing",
         headerHash: invocation.headerHash,
         checkpoint: "runner_start",
       });

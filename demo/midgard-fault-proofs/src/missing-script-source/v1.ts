@@ -7,7 +7,6 @@ import {
   DaLibp2pRetainedDaSource,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
@@ -19,8 +18,8 @@ import {
 } from "../workflow/adapters.js";
 import { MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
-  createCursorFamilyWorkflowAdapter,
   CURSOR_FAMILY_TRANSACTION_PORT,
+  type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
 import {
   cursorFamilyActionInput,
@@ -28,35 +27,24 @@ import {
 } from "../workflow/cursor-family-runtime.js";
 import type { CursorFamilySpec } from "../workflow/cursor-family-state.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+  defineFamily,
+  type FamilyAssemblyContext,
+  type ManifestBoundFamilyWorkflow,
+} from "../workflow/family-definition.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
   DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
   createCanonicalFamilyArtifactPort,
   executeManifestBoundFamilyRecovery,
 } from "../workflow/manifest-bound-family-recovery.js";
-import {
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
-} from "../workflow/orchestrator.js";
+import { type FraudProofWorkflowRunResult } from "../workflow/orchestrator.js";
 import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
-import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import {
-  type BoundMissingScriptSourceActuatorConfig,
   createMissingScriptSourceActuator,
   type MissingScriptSourceArtifact,
   type MissingScriptSourceWorkflowReferences,
@@ -108,19 +96,21 @@ export const MISSING_SCRIPT_SOURCE_STEP_DATUM_SCHEMAS = Object.freeze([
   ExecutionSourceStep06DatumSchema,
 ] as const);
 
-export const MISSING_SCRIPT_SOURCE_CURSOR_SPEC: CursorFamilySpec<"missingScriptSource"> =
-  Object.freeze<CursorFamilySpec<"missingScriptSource">>({
-    category: "missingScriptSource",
-    stepCount: 6,
-    successors: {
-      1: [2],
-      2: [3],
-      3: [4],
-      4: [5],
-      5: [5, 6],
-      6: ["proof_token"],
-    },
-  });
+export const MISSING_SCRIPT_SOURCE_CURSOR_SPEC: CursorFamilySpec<"missingScriptSource"> &
+  Readonly<{ stepCount: 6 }> = Object.freeze<
+  CursorFamilySpec<"missingScriptSource"> & Readonly<{ stepCount: 6 }>
+>({
+  category: "missingScriptSource",
+  stepCount: 6,
+  successors: {
+    1: [2],
+    2: [3],
+    3: [4],
+    4: [5],
+    5: [5, 6],
+    6: ["proof_token"],
+  },
+});
 
 export type MissingScriptSourceRemovalReferences = Readonly<{
   correctionLockSpend: UTxO;
@@ -150,20 +140,174 @@ export type ManifestBoundMissingScriptSourceWorkflowConfig = Readonly<{
     }>;
 }>;
 
-export type ManifestBoundMissingScriptSourceWorkflow = Readonly<{
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-  binding: FraudProofWorkflowDeploymentBinding<never> &
-    BoundMissingScriptSourceActuatorConfig["binding"];
+export type ManifestBoundMissingScriptSourceWorkflow =
+  ManifestBoundFamilyWorkflow<"missingScriptSource", false, 6> &
+    WorkflowExtension &
+    Readonly<{
+      decisionDigest: string;
+      source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+    }>;
+
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+  "pexcludesWithdraw",
+] as const;
+const STEP_CONTRACT_NAMES = [
+  "fraudProofMissingScriptSource",
+  "fraudProofMissingScriptSourceStep02",
+  "fraudProofMissingScriptSourceStep03",
+  "fraudProofMissingScriptSourceStep04",
+  "fraudProofMissingScriptSourceStep05",
+  "fraudProofMissingScriptSourceStep06",
+] as const;
+type BoundContext = FamilyAssemblyContext<
+  "missingScriptSource",
+  (typeof WITNESS_ROLES)[number],
+  false,
+  6
+>;
+type WorkflowExtension = Readonly<{
   actuator: ReturnType<typeof createMissingScriptSourceActuator>;
   lucid: LucidEvolution;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
-  decisionDigest: string;
-  l1: ReturnType<typeof createFraudProofFamilyLocalKupmiosL1ObservationPort>;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
-
+const bindFamily = (context: BoundContext) => {
+  const {
+    binding,
+    references: { steps, witnesses },
+  } = context;
+  const chain = binding.resolvedContracts.contracts.missingScriptSource;
+  const hubOraclePolicyId = binding.contractEntries.hubOracleMint?.scriptHash;
+  if (
+    chain === undefined ||
+    chain.steps.length !== 6 ||
+    hubOraclePolicyId === undefined
+  )
+    throw new Error("missingScriptSource manifest omitted six-step chain");
+  const contracts: MissingScriptSourceContracts = {
+    steps: chain.steps.map((step, index) => ({
+      ...step,
+      blueprintTitle: MISSING_SCRIPT_SOURCE_BLUEPRINT_TITLES[index]!,
+      referenceOutRef: `${steps[index]!.txHash}#${steps[index]!.outputIndex.toString()}`,
+    })) as unknown as MissingScriptSourceContracts["steps"],
+    computationThread: binding.resolvedContracts.contracts.computationThread,
+    fraudProof: binding.resolvedContracts.contracts.fraudProof,
+    hubOraclePolicyId,
+  };
+  const actuator = createMissingScriptSourceActuator({
+    binding,
+    lucid: context.lucid,
+    signer: context.signer,
+    contracts,
+    references: { steps, witnesses },
+    stateQueueMutationLeaseCoordinator:
+      context.stateQueueMutationLeaseCoordinator,
+  });
+  const artifacts = createCanonicalFamilyArtifactPort(
+    ({ evidence }) => prepareMissingScriptSourceArtifact(evidence),
+    missingScriptSourceRecoveryMaterial,
+  );
+  return { actuator, artifacts };
+};
+const bound = new WeakMap<BoundContext, ReturnType<typeof bindFamily>>();
+const boundFor = (context: BoundContext) => {
+  const existing = bound.get(context);
+  if (existing !== undefined) return existing;
+  const created = bindFamily(context);
+  bound.set(context, created);
+  return created;
+};
+const createTransactionPort = (
+  context: BoundContext,
+): CursorFamilyTransactionPort<"missingScriptSource"> => {
+  const { actuator, artifacts } = boundFor(context);
+  return {
+    portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
+    category: "missingScriptSource",
+    prepare: artifacts.prepare,
+    validatePreparedArtifact: artifacts.validatePreparedArtifact,
+    capture: async ({ action, artifact }) => {
+      const input = cursorFamilyActionInput({
+        category: "missingScriptSource",
+        action,
+      });
+      const restored = artifacts.require(artifact);
+      if (input.stage === "init")
+        return actuator.capture({
+          artifact: restored,
+          action: {
+            stage: "init",
+            stateQueueBlockOutRef: cursorStringField(
+              input,
+              "stateQueueBlockOutRef",
+            ),
+          },
+        });
+      if (input.stage === "remove")
+        return actuator.capture({
+          artifact: restored,
+          action: {
+            stage: "remove",
+            nextRemovalOutRef: cursorStringField(input, "nextRemovalOutRef"),
+            fraudProofOutRef: cursorStringField(input, "fraudProofOutRef"),
+          },
+        });
+      const stages = [
+        "step_01",
+        "step_02",
+        "step_03",
+        "scan",
+        "prove",
+        "finalize",
+      ] as const;
+      const stage = stages[Number(input.ordinal) - 1];
+      if (stage === undefined)
+        throw new Error("missingScriptSource cursor ordinal changed");
+      const threadOutRef = cursorStringField(input, "threadOutRef");
+      return actuator.capture({
+        artifact: restored,
+        action:
+          stage === "step_01"
+            ? {
+                stage,
+                threadOutRef,
+                stateQueueBlockOutRef: cursorStringField(
+                  input,
+                  "stateQueueBlockOutRef",
+                ),
+              }
+            : { stage, threadOutRef },
+      });
+    },
+  };
+};
+export const MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION = defineFamily<
+  "missingScriptSource",
+  (typeof WITNESS_ROLES)[number],
+  false,
+  6
+>({
+  category: "missingScriptSource",
+  stepDatumSchemas: MISSING_SCRIPT_SOURCE_STEP_DATUM_SCHEMAS,
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: false,
+  replayer: () => MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
+    spec: MISSING_SCRIPT_SOURCE_CURSOR_SPEC,
+    stepContractNames: STEP_CONTRACT_NAMES,
+    transactionPort: createTransactionPort,
+  },
+  extend: (context): WorkflowExtension => ({
+    actuator: boundFor(context).actuator,
+    lucid: context.lucid,
+    stateQueueMutationLeaseCoordinator:
+      context.stateQueueMutationLeaseCoordinator,
+  }),
+});
 /**
  * Manifest-bound family construction. Config contains infrastructure and
  * authenticated references only: no evidence, stage, submit, or journal
@@ -181,186 +325,15 @@ export const createManifestBoundMissingScriptSourceWorkflow = async (
     );
   if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
     throw new Error("missingScriptSource decision digest is malformed");
-  const rawBinding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "missingScriptSource" as never,
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: MISSING_SCRIPT_SOURCE_STEP_DATUM_SCHEMAS,
-  });
-  assertManifestBoundWorkflowSigner({
-    network: rawBinding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
-  const binding =
-    rawBinding as unknown as FraudProofWorkflowDeploymentBinding<never> &
-      BoundMissingScriptSourceActuatorConfig["binding"] & {
-        resolvedContracts: {
-          contracts: {
-            computationThread: MissingScriptSourceContracts["computationThread"];
-            fraudProof: MissingScriptSourceContracts["fraudProof"] & {
-              spendingScriptHash: string;
-            };
-            missingScriptSource?: {
-              steps: MissingScriptSourceContracts["steps"];
-            };
-          };
-        };
-      };
-  const chain = binding.resolvedContracts.contracts.missingScriptSource;
-  const hubOraclePolicyId =
-    rawBinding.contractEntries.hubOracleMint?.scriptHash;
-  if (
-    chain === undefined ||
-    chain.steps.length !== 6 ||
-    hubOraclePolicyId === undefined
-  )
-    throw new Error("missingScriptSource manifest omitted six-step chain");
-  const bindReference = (name: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding: rawBinding,
-      contractName: name,
-      utxo,
-    });
-  const stepNames = [
-    "fraudProofMissingScriptSource",
-    "fraudProofMissingScriptSourceStep02",
-    "fraudProofMissingScriptSourceStep03",
-    "fraudProofMissingScriptSourceStep04",
-    "fraudProofMissingScriptSourceStep05",
-    "fraudProofMissingScriptSourceStep06",
-  ] as const;
-  const steps = stepNames.map((name, index) =>
-    bindReference(name, config.referenceScripts.steps[index]!),
-  ) as unknown as MissingScriptSourceWorkflowReferences["steps"];
-  const witnessNames = {
-    computationThreadMint: "computationThreadMint",
-    fraudProofMint: "fraudProofMint",
-    phasMembershipWithdraw: "phasMembershipWithdraw",
-    chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
-    pexcludesWithdraw: "pexcludesWithdraw",
-  } as const;
-  const witnesses = Object.fromEntries(
-    Object.entries(witnessNames).map(([role, name]) => [
-      role,
-      bindReference(
-        name,
-        config.referenceScripts.witnesses[
-          role as keyof FaultProofWitnessReferenceScripts
-        ]!,
-      ),
-    ]),
-  ) as Required<FaultProofWitnessReferenceScripts>;
-  const contracts: MissingScriptSourceContracts = {
-    steps: chain.steps.map((step, index) => ({
-      ...step,
-      blueprintTitle: MISSING_SCRIPT_SOURCE_BLUEPRINT_TITLES[index]!,
-      referenceOutRef: `${steps[index]!.txHash}#${steps[index]!.outputIndex.toString()}`,
-    })) as unknown as MissingScriptSourceContracts["steps"],
-    computationThread: binding.resolvedContracts.contracts.computationThread,
-    fraudProof: binding.resolvedContracts.contracts.fraudProof,
-    hubOraclePolicyId,
-  };
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  const actuator = createMissingScriptSourceActuator({
-    binding,
-    lucid: config.lucid,
-    signer: config.signer,
-    contracts,
-    references: { steps, witnesses },
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  const artifacts = createCanonicalFamilyArtifactPort(
-    ({ evidence }) => prepareMissingScriptSourceArtifact(evidence),
-    missingScriptSourceRecoveryMaterial,
+  const { decisionDigest, ...assemblyConfig } = config;
+  const workflow = await assembleManifestBoundFamilyWorkflow(
+    MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION,
+    assemblyConfig,
   );
-  const adapter = createCursorFamilyWorkflowAdapter({
-    spec: MISSING_SCRIPT_SOURCE_CURSOR_SPEC,
-    l1,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-    transactions: {
-      portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
-      category: "missingScriptSource",
-      prepare: artifacts.prepare,
-      validatePreparedArtifact: artifacts.validatePreparedArtifact,
-      capture: async ({ action, artifact }) => {
-        const input = cursorFamilyActionInput({
-          category: "missingScriptSource",
-          action,
-        });
-        const restored = artifacts.require(artifact);
-        if (input.stage === "init")
-          return actuator.capture({
-            artifact: restored,
-            action: {
-              stage: "init",
-              stateQueueBlockOutRef: cursorStringField(
-                input,
-                "stateQueueBlockOutRef",
-              ),
-            },
-          });
-        if (input.stage === "remove")
-          return actuator.capture({
-            artifact: restored,
-            action: {
-              stage: "remove",
-              nextRemovalOutRef: cursorStringField(input, "nextRemovalOutRef"),
-              fraudProofOutRef: cursorStringField(input, "fraudProofOutRef"),
-            },
-          });
-        const stages = [
-          "step_01",
-          "step_02",
-          "step_03",
-          "scan",
-          "prove",
-          "finalize",
-        ] as const;
-        const stage = stages[Number(input.ordinal) - 1];
-        if (stage === undefined)
-          throw new Error("missingScriptSource cursor ordinal changed");
-        const threadOutRef = cursorStringField(input, "threadOutRef");
-        return actuator.capture({
-          artifact: restored,
-          action:
-            stage === "step_01"
-              ? {
-                  stage,
-                  threadOutRef,
-                  stateQueueBlockOutRef: cursorStringField(
-                    input,
-                    "stateQueueBlockOutRef",
-                  ),
-                }
-              : { stage, threadOutRef },
-        });
-      },
-    },
-  });
   return Object.freeze({
-    binding,
-    lucid: config.lucid,
+    ...(workflow as typeof workflow & WorkflowExtension),
     source: config.source,
-    decisionDigest: config.decisionDigest,
-    l1,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-    actuator,
-    adapter,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
+    decisionDigest,
   });
 };
 

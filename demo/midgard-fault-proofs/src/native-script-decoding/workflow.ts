@@ -30,7 +30,6 @@ import {
   NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
 } from "../workflow/complete-replay.js";
 import {
-  createCursorFamilyWorkflowAdapter,
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
@@ -40,26 +39,14 @@ import {
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
 import { NATIVE_SCRIPT_DECODING_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
-import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
+import { defineFamily } from "../workflow/family-definition.js";
+import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  type FieldCarriageRequirement,
-  withFieldCarriagePrerequisite,
-} from "../workflow/field-carriage-prerequisite.js";
+import { type FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
   createFraudProofWorkflowRegistry,
   type FraudProofFamilyWorkflowAdapter,
@@ -67,10 +54,6 @@ import {
   type FraudProofWorkflowTerminalVerifier,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
-import {
-  createAuthenticatedProofChunkPrerequisitePort,
-  withProofChunkPrerequisite,
-} from "../workflow/proof-chunk-prerequisite.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
@@ -392,203 +375,120 @@ export type ManifestBoundNativeScriptDecodingWorkflow = Readonly<{
   releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
 
-export const createManifestBoundNativeScriptDecodingWorkflow = async (
-  config: ManifestBoundNativeScriptDecodingWorkflowConfig,
-): Promise<ManifestBoundNativeScriptDecodingWorkflow> => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "nativeScriptDecoding",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      FraudProofComputationThreadStepDatum,
-      NativeScriptDecodingStep02DatumSchema,
-      NativeScriptDecodingStep03OpenSubjectDatumSchema,
-      NativeScriptDecodingStep03BindDescriptorDatumSchema,
-      NativeScriptDecodingStep03AdvanceOrCloseDatumSchema,
-      NativeScriptDecodingStep04DatumSchema,
-    ],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
-  const chain = binding.resolvedContracts.contracts.nativeScriptDecoding;
-  const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
-  const certificate = binding.fieldPreimageCertificate;
-  if (
-    chain === undefined ||
-    stateQueuePolicyId === undefined ||
-    certificate === null
-  ) {
-    throw new Error(
-      "native-script-decoding manifest omitted required contracts",
-    );
-  }
-  const stepNames = [
-    "fraudProofNativeScriptDecoding",
-    "fraudProofNativeScriptDecodingStep02",
-    "fraudProofNativeScriptDecodingStep03OpenSubject",
-    "fraudProofNativeScriptDecodingStep03BindDescriptor",
-    "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
-    "fraudProofNativeScriptDecodingStep04",
-  ] as const;
-  const steps = stepNames.map((contractName, index) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName,
-      utxo: config.referenceScripts.steps[index]!,
-    }),
-  ) as unknown as NativeScriptDecodingWorkflowReferenceScripts["steps"];
-  const witness = <Name extends keyof FaultProofWitnessReferenceScripts>(
-    name: Name,
-    contractName: string,
-  ) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName,
-      utxo: config.referenceScripts.witnesses[name],
-    });
-  const references: NativeScriptDecodingWorkflowReferenceScripts =
-    Object.freeze({
-      steps: Object.freeze(steps),
-      witnesses: Object.freeze({
-        computationThreadMint: witness(
-          "computationThreadMint",
-          "computationThreadMint",
-        ),
-        fraudProofMint: witness("fraudProofMint", "fraudProofMint"),
-        phasMembershipWithdraw: witness(
-          "phasMembershipWithdraw",
-          "phasMembershipWithdraw",
-        ),
-        chunkedVerifyWithdraw: witness(
-          "chunkedVerifyWithdraw",
-          "chunkedVerifyWithdraw",
-        ),
-        pexcludesWithdraw: witness("pexcludesWithdraw", "pexcludesWithdraw"),
-      }),
-      fieldPreimageCertificateMint: requireManifestBoundReferenceScriptUtxo({
-        binding,
-        contractName: "fieldPreimageCertificateMint",
-        utxo: config.referenceScripts.fieldPreimageCertificateMint,
-      }),
-    });
-  const contracts: NativeScriptDecodingContracts = Object.freeze({
-    steps: chain.steps,
-    computationThread: binding.resolvedContracts.contracts.computationThread,
-    fraudProof: {
-      policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
-      mintingScript:
-        binding.resolvedContracts.contracts.fraudProof.mintingScript,
-      spendingScriptAddress:
-        binding.resolvedContracts.contracts.fraudProof.spendingScriptAddress,
-    },
-    hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
-    stateQueuePolicyId,
-    fieldPreimageCertificatePolicyId: certificate.policyId,
-  });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  if (l1.rawL1 === undefined) {
-    throw new Error("native-script-decoding raw L1 authority is unavailable");
-  }
-  const bound: BoundConfig = {
-    replayContext: config.replayContext,
-    binding,
-    lucid: config.lucid,
-    signer: config.signer,
-    contracts,
-    references,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  };
-  const transactions = createNativeScriptDecodingTransactionPort(bound);
-  let adapter = createCursorFamilyWorkflowAdapter({
+export const NATIVE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily({
+  category: "nativeScriptDecoding",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    NativeScriptDecodingStep02DatumSchema,
+    NativeScriptDecodingStep03OpenSubjectDatumSchema,
+    NativeScriptDecodingStep03BindDescriptorDatumSchema,
+    NativeScriptDecodingStep03AdvanceOrCloseDatumSchema,
+    NativeScriptDecodingStep04DatumSchema,
+  ],
+  witnessRoles: [
+    "computationThreadMint",
+    "fraudProofMint",
+    "phasMembershipWithdraw",
+    "chunkedVerifyWithdraw",
+    "pexcludesWithdraw",
+  ],
+  fieldPreimageCertificate: true,
+  replayer: () => NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
     spec: NATIVE_SCRIPT_DECODING_CURSOR_SPEC,
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  const fieldPrerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
-    category: "nativeScriptDecoding",
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    requirementForAction: async ({ action, artifact }) => {
-      const input = cursorFamilyActionInput({
-        category: "nativeScriptDecoding",
-        action,
-      });
-      const admitted =
-        await admitNativeScriptDecodingWorkflowArtifact(artifact);
-      const planned =
-        input.stage === "step_03" && namesField(admitted)
-          ? subjectPlan(admitted, config.signer.paymentKeyHash)
-          : null;
-      if (planned === null) return null;
-      return {
-        planned,
-        compactCbor: admitted.material.proofSource.compactCbor.toString("hex"),
-        witnessSetCompactCbor:
-          admitted.material.proofSource.witnessSetCompactCbor.toString("hex"),
-        certificate: {
-          policyId: certificate.policyId,
-          mintingScript: certificate.mintingScript,
-          referenceScriptUtxo: references.fieldPreimageCertificateMint,
+    stepContractNames: [
+      "fraudProofNativeScriptDecoding",
+      "fraudProofNativeScriptDecodingStep02",
+      "fraudProofNativeScriptDecodingStep03OpenSubject",
+      "fraudProofNativeScriptDecodingStep03BindDescriptor",
+      "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
+      "fraudProofNativeScriptDecodingStep04",
+    ],
+    transactionPort: (context) => {
+      const { binding, certificate } = context;
+      const chain = binding.resolvedContracts.contracts.nativeScriptDecoding;
+      const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
+      if (
+        chain === undefined ||
+        stateQueuePolicyId === undefined ||
+        certificate === null
+      ) {
+        throw new Error(
+          "native-script-decoding manifest omitted required contracts",
+        );
+      }
+
+      const contracts: NativeScriptDecodingContracts = Object.freeze({
+        steps: chain.steps,
+        computationThread:
+          binding.resolvedContracts.contracts.computationThread,
+        fraudProof: {
+          policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
+          mintingScript:
+            binding.resolvedContracts.contracts.fraudProof.mintingScript,
+          spendingScriptAddress:
+            binding.resolvedContracts.contracts.fraudProof
+              .spendingScriptAddress,
         },
-      } satisfies FieldCarriageRequirement;
+        hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
+        stateQueuePolicyId,
+        fieldPreimageCertificatePolicyId: certificate.policyId,
+      });
+
+      return createNativeScriptDecodingTransactionPort({
+        ...context,
+        contracts,
+      });
     },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  adapter = withFieldCarriagePrerequisite({
-    category: "nativeScriptDecoding",
-    base: adapter,
-    prerequisite: fieldPrerequisite,
-  });
-  const txProofPrerequisite = createAuthenticatedProofChunkPrerequisitePort({
-    category: "nativeScriptDecoding",
-    lucid: config.lucid,
-    network: binding.network,
-    signer: config.signer,
-    publications: l1.publications,
-    proofCborForAction: async ({ action, artifact }) => {
-      if (action.input.stage !== "step_01") return null;
-      const admitted =
-        await admitNativeScriptDecodingWorkflowArtifact(artifact);
-      return admitted.coordinate.sourceKind === 0
-        ? (await sourceInclusion(admitted)).txMembershipProofCbor
-        : null;
+  },
+  fieldCarriage: [
+    {
+      requirementForAction: async (context, { action, artifact }) => {
+        const { certificate, references } = context;
+
+        const input = cursorFamilyActionInput({
+          category: "nativeScriptDecoding",
+          action,
+        });
+        const admitted =
+          await admitNativeScriptDecodingWorkflowArtifact(artifact);
+        const planned =
+          input.stage === "step_03" && namesField(admitted)
+            ? subjectPlan(admitted, context.signer.paymentKeyHash)
+            : null;
+        if (planned === null) return null;
+        return {
+          planned,
+          compactCbor:
+            admitted.material.proofSource.compactCbor.toString("hex"),
+          witnessSetCompactCbor:
+            admitted.material.proofSource.witnessSetCompactCbor.toString("hex"),
+          certificate: {
+            policyId: certificate.policyId,
+            mintingScript: certificate.mintingScript,
+            referenceScriptUtxo: references.fieldPreimageCertificateMint,
+          },
+        } satisfies FieldCarriageRequirement;
+      },
     },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
-  adapter = withProofChunkPrerequisite({
-    category: "nativeScriptDecoding",
-    base: adapter,
-    prerequisite: txProofPrerequisite,
-  });
-  return Object.freeze({
-    replayContext: config.replayContext,
-    binding,
-    l1,
-    transactions,
-    adapter,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
-  });
-};
+  ],
+  proofChunk: async (_context, { action, artifact }) => {
+    if (action.input.stage !== "step_01") return null;
+    const admitted = await admitNativeScriptDecodingWorkflowArtifact(artifact);
+    return admitted.coordinate.sourceKind === 0
+      ? (await sourceInclusion(admitted)).txMembershipProofCbor
+      : null;
+  },
+});
+
+export const createManifestBoundNativeScriptDecodingWorkflow = (
+  config: ManifestBoundNativeScriptDecodingWorkflowConfig,
+): Promise<ManifestBoundNativeScriptDecodingWorkflow> =>
+  assembleManifestBoundFamilyWorkflow(
+    NATIVE_SCRIPT_DECODING_FAMILY_DEFINITION,
+    config,
+  );
 
 export const runOrResumeManifestBoundNativeScriptDecodingWorkflow = async ({
   workflow,

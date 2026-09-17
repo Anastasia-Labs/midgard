@@ -25,6 +25,7 @@ export * from "./fabricated-deposit.js";
 export * from "./fabricated-withdrawal.js";
 export * from "./fabricated-withdrawal-evidence.js";
 export * from "./family-definition.js";
+export * from "./family-definitions.js";
 export * from "./family-l1-observation.js";
 export * from "./field-carriage-prerequisite.js";
 export * from "./funding-requirements.js";

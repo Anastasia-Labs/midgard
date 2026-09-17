@@ -1587,14 +1587,14 @@ export const MISSING_NATIVE_SCRIPT_TX_COMPLETE_CANONICAL_REPLAY =
  * capability derived for the exact challenged block.
  */
 export const createMissingNativeScriptUtxoCompleteCanonicalReplay = (
-  corpus: HistoricalNativeScriptCorpus,
+  corpus: HistoricalNativeScriptCorpus | (() => HistoricalNativeScriptCorpus),
 ): CompleteCanonicalReplay =>
   completeReplayer(
     ["missingNativeScriptUtxo"],
     async (evidence) =>
       await detectMissingNativeScriptUtxoFromHistoricalCorpus({
         evidence,
-        corpus,
+        corpus: typeof corpus === "function" ? corpus() : corpus,
       }),
   );
 
@@ -1703,13 +1703,16 @@ export const MIN_ADA_COMPLETE_CANONICAL_REPLAY = completeReplayer(
 
 /** Complete Q27 replay backed by the same checkpointed predecessor authority as Q33. */
 export const createMinAdaCompleteCanonicalReplayFromHistoricalCorpus = (
-  corpus: HistoricalNativeScriptCorpus,
+  corpus: HistoricalNativeScriptCorpus | (() => HistoricalNativeScriptCorpus),
 ): CompleteCanonicalReplay =>
   completeReplayer(["minAda"], async (evidence) => [
     ...(await detectMinAda(evidence, undefined)).filter(
       (detection) => detection.violationId === MIN_ADA_VIOLATION_ID,
     ),
-    ...detectMinAdaUtxoFromHistoricalCorpus({ evidence, corpus }),
+    ...detectMinAdaUtxoFromHistoricalCorpus({
+      evidence,
+      corpus: typeof corpus === "function" ? corpus() : corpus,
+    }),
     ...detectMinAdaForcedReplay(evidence),
   ]);
 
@@ -2140,14 +2143,14 @@ export const MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY = completeReplayer(
 
 /** Complete transition replay derives every witness from freshly admitted history and raw L1. */
 export const createTransitionTraceCompleteCanonicalReplayFromRetainedHistory = (
-  corpus: HistoricalNativeScriptCorpus,
-  l1Events: TransitionTraceL1Events,
+  corpus: HistoricalNativeScriptCorpus | (() => HistoricalNativeScriptCorpus),
+  l1Events: TransitionTraceL1Events | (() => TransitionTraceL1Events),
 ): CompleteCanonicalReplay =>
   completeReplayer(["transitionTrace"], async (evidence) => {
     const replay = await replayTransitionTraceFromRetainedHistory({
       evidence,
-      corpus,
-      l1Events,
+      corpus: typeof corpus === "function" ? corpus() : corpus,
+      l1Events: typeof l1Events === "function" ? l1Events() : l1Events,
     });
     return replay.detections.map((detection, index) => ({
       violationId: "transition-trace",

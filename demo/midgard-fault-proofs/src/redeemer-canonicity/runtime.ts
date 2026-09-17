@@ -46,30 +46,21 @@ import {
 } from "../workflow/adapters.js";
 import { REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
-  createCursorFamilyWorkflowAdapter,
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyCapturedAction,
+  type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
 import {
   captureCursorRemoval,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
+import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+  defineFamily,
+  type FamilyAssemblyContext,
+} from "../workflow/family-definition.js";
+import type { FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  withFieldCarriagePrerequisite,
-} from "../workflow/field-carriage-prerequisite.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
   DirectoryFraudProofWorkflowJournalStore,
@@ -78,6 +69,7 @@ import {
   type JournalJsonObject,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
   createFraudProofWorkflowRegistry,
   type FraudProofFamilyWorkflowAdapter,
@@ -158,7 +150,7 @@ export type ManifestBoundRedeemerCanonicityWorkflowConfig = Readonly<{
 type Binding = FraudProofWorkflowDeploymentBinding<"redeemerCanonicity">;
 export type ManifestBoundRedeemerCanonicityWorkflow = Readonly<{
   binding: Binding;
-  l1: ReturnType<typeof createFraudProofFamilyLocalKupmiosL1ObservationPort>;
+  l1: FraudProofFamilyL1ObservationPort<"redeemerCanonicity">;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   contracts: RedeemerCanonicityContracts;
@@ -170,37 +162,40 @@ export type ManifestBoundRedeemerCanonicityWorkflow = Readonly<{
   releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
 
-/** Strict manifest/reference binding whose input admits no callback authority. */
-export const createManifestBoundRedeemerCanonicityWorkflow = async (
-  config: ManifestBoundRedeemerCanonicityWorkflowConfig,
-): Promise<ManifestBoundRedeemerCanonicityWorkflow> => {
-  if (
-    Object.keys(config).sort().join("\0") !==
-    [...REDEEMER_CANONICITY_CONFIG_KEYS].sort().join("\0")
-  )
-    throw new Error(
-      "redeemerCanonicity production config contains callback authority",
-    );
-  if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
-    throw new Error("redeemerCanonicity decision digest is malformed");
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "redeemerCanonicity",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      FraudProofComputationThreadStepDatum,
-      RedeemerCanonicityStep02DatumSchema,
-      RedeemerCanonicityStep03DatumSchema,
-    ],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+  "pexcludesWithdraw",
+] as const;
+const STEP_CONTRACT_NAMES = [
+  "fraudProofRedeemerCanonicity",
+  "fraudProofRedeemerCanonicityStep02",
+  "fraudProofRedeemerCanonicityStep03",
+] as const;
+const REMOVAL_CONTRACTS = {
+  correctionLockSpend: "correctionLockSpend",
+  stateQueueSpend: "stateQueueSpend",
+  stateQueueMint: "stateQueueMint",
+  stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
+  activeOperatorsSpend: "activeOperatorsSpend",
+  activeOperatorsMint: "activeOperatorsMint",
+  retiredOperatorsSpend: "retiredOperatorsSpend",
+  retiredOperatorsMint: "retiredOperatorsMint",
+  schedulerSpend: "schedulerSpend",
+} as const;
+type BoundContext = FamilyAssemblyContext<
+  "redeemerCanonicity",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  3
+>;
+const bindFamily = (context: BoundContext): RedeemerWorkflowCore => {
+  const {
+    binding,
+    references: { steps, witnesses },
+  } = context;
   const chain = binding.resolvedContracts.contracts.redeemerCanonicity;
   const certificate = binding.fieldPreimageCertificate;
   const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
@@ -211,44 +206,6 @@ export const createManifestBoundRedeemerCanonicityWorkflow = async (
     stateQueuePolicyId === undefined
   )
     throw new Error("redeemerCanonicity manifest omitted required contracts");
-  const bind = (name: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName: name,
-      utxo,
-    });
-  const stepNames = [
-    "fraudProofRedeemerCanonicity",
-    "fraudProofRedeemerCanonicityStep02",
-    "fraudProofRedeemerCanonicityStep03",
-  ] as const;
-  const steps = stepNames.map((name, index) =>
-    bind(name, config.referenceScripts.steps[index]!),
-  ) as unknown as RedeemerCanonicityWorkflowReferenceScripts["steps"];
-  const witnessNames = {
-    computationThreadMint: "computationThreadMint",
-    fraudProofMint: "fraudProofMint",
-    phasMembershipWithdraw: "phasMembershipWithdraw",
-    chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
-    pexcludesWithdraw: "pexcludesWithdraw",
-  } as const;
-  const witnesses = Object.fromEntries(
-    Object.entries(witnessNames).map(([role, name]) => [
-      role,
-      bind(
-        name,
-        config.referenceScripts.witnesses[
-          role as keyof FaultProofWitnessReferenceScripts
-        ]!,
-      ),
-    ]),
-  ) as Required<FaultProofWitnessReferenceScripts>;
-  bind(
-    "fieldPreimageCertificateMint",
-    config.referenceScripts.fieldPreimageCertificateMint,
-  );
-  for (const [name, utxo] of Object.entries(config.referenceScripts.removal))
-    bind(name, utxo);
   const contracts: RedeemerCanonicityContracts = {
     steps: chain.steps.map((step, index) => ({
       ...step,
@@ -262,35 +219,104 @@ export const createManifestBoundRedeemerCanonicityWorkflow = async (
     fieldPreimageCertificatePolicyId: certificate.policyId,
     fieldPreimageCertificateMintingScript: certificate.mintingScript,
   };
-  const core = Object.freeze({
+  return {
     binding,
-    l1: createFraudProofFamilyLocalKupmiosL1ObservationPort({
-      source: config.source,
-      releaseFinality: binding.releaseFinality,
-      releaseEconomics: binding.releaseEconomics,
-      definition: binding.definition,
-    }),
-    lucid: config.lucid,
-    signer: config.signer,
+    l1: context.l1,
+    lucid: context.lucid,
+    signer: context.signer,
     contracts,
     referenceScripts: {
-      ...config.referenceScripts,
+      ...context.references,
       steps,
       witnesses,
+      removal:
+        context.auxiliaryReferences as RedeemerCanonicityRemovalReferenceScripts,
     },
-    decisionDigest: config.decisionDigest,
     stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  const adapter = createRedeemerCanonicityWorkflowAdapter(core);
+      context.stateQueueMutationLeaseCoordinator,
+  };
+};
+const bound = new WeakMap<BoundContext, RedeemerWorkflowCore>();
+const boundFor = (context: BoundContext) => {
+  const existing = bound.get(context);
+  if (existing !== undefined) return existing;
+  const created = bindFamily(context);
+  bound.set(context, created);
+  return created;
+};
+export const REDEEMER_CANONICITY_FAMILY_DEFINITION = defineFamily<
+  "redeemerCanonicity",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  3
+>({
+  category: "redeemerCanonicity",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    RedeemerCanonicityStep02DatumSchema,
+    RedeemerCanonicityStep03DatumSchema,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  auxiliaryReferenceScripts: REMOVAL_CONTRACTS,
+  replayer: () => REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
+    spec: {
+      category: "redeemerCanonicity",
+      stepCount: 3,
+      successors: { 1: [2], 2: [3], 3: ["proof_token"] },
+    },
+    stepContractNames: STEP_CONTRACT_NAMES,
+    transactionPort: (context) =>
+      createRedeemerCanonicityTransactionPort(boundFor(context)),
+  },
+  fieldCarriage: [
+    {
+      requirementForAction: (context, { action, artifact }) => {
+        if (action.input.stage !== "step_02") return null;
+        const workflow = boundFor(context);
+        const { planned, admitted } = redeemerField(workflow, artifact);
+        return {
+          planned,
+          compactCbor: admitted.nativeTxCompactCbor,
+          witnessSetCompactCbor: admitted.witnessSetCompactCbor,
+          certificate: {
+            policyId: context.certificate.policyId,
+            mintingScript: context.certificate.mintingScript,
+            referenceScriptUtxo:
+              context.references.fieldPreimageCertificateMint,
+          },
+        };
+      },
+    },
+  ],
+  extend: (context) => boundFor(context),
+});
+/** Strict manifest/reference binding whose input admits no callback authority. */
+export const createManifestBoundRedeemerCanonicityWorkflow = async (
+  config: ManifestBoundRedeemerCanonicityWorkflowConfig,
+): Promise<ManifestBoundRedeemerCanonicityWorkflow> => {
+  if (
+    Object.keys(config).sort().join("\0") !==
+    [...REDEEMER_CANONICITY_CONFIG_KEYS].sort().join("\0")
+  )
+    throw new Error(
+      "redeemerCanonicity production config contains callback authority",
+    );
+  if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
+    throw new Error("redeemerCanonicity decision digest is malformed");
+  const { decisionDigest, ...assemblyConfig } = config;
+  const workflow = await assembleManifestBoundFamilyWorkflow(
+    REDEEMER_CANONICITY_FAMILY_DEFINITION,
+    {
+      ...assemblyConfig,
+      auxiliaryReferenceScripts: config.referenceScripts.removal,
+    },
+  );
   return Object.freeze({
-    ...core,
-    adapter,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(
-      core.l1,
-    ),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
+    ...(workflow as typeof workflow & RedeemerWorkflowCore),
+    decisionDigest,
   });
 };
 
@@ -313,7 +339,7 @@ const selectDetection = (
 
 type RedeemerWorkflowCore = Omit<
   ManifestBoundRedeemerCanonicityWorkflow,
-  "adapter" | "terminalVerifier" | "releaseFinalityAuthority"
+  "adapter" | "terminalVerifier" | "releaseFinalityAuthority" | "decisionDigest"
 >;
 
 export const prepareRedeemerCanonicityWorkflowArtifact = async (
@@ -651,65 +677,26 @@ const captureRedeemerAction = async (
   return { transaction };
 };
 
-const createRedeemerCanonicityWorkflowAdapter = (
+const createRedeemerCanonicityTransactionPort = (
   workflow: RedeemerWorkflowCore,
-): FraudProofFamilyWorkflowAdapter =>
-  withFieldCarriagePrerequisite({
-    category: "redeemerCanonicity",
-    prerequisite: createAuthenticatedFieldCarriagePrerequisitePort({
-      category: "redeemerCanonicity",
-      lucid: workflow.lucid,
-      network: workflow.binding.network,
-      signer: workflow.signer,
-      publications: workflow.l1.publications,
-      transactionConfirmed: async ({ headerHash, txHash }) =>
-        await workflow.l1.transactionConfirmed({ headerHash, txHash }),
-      requirementForAction: ({ action, artifact }) => {
-        if (action.input.stage !== "step_02") return null;
-        const { planned, admitted } = redeemerField(workflow, artifact);
-        return {
-          planned,
-          compactCbor: admitted.nativeTxCompactCbor,
-          witnessSetCompactCbor: admitted.witnessSetCompactCbor,
-          certificate: {
-            policyId: workflow.contracts.fieldPreimageCertificatePolicyId,
-            mintingScript:
-              workflow.contracts.fieldPreimageCertificateMintingScript,
-            referenceScriptUtxo:
-              workflow.referenceScripts.fieldPreimageCertificateMint,
-          },
-        };
-      },
-    }),
-    base: createCursorFamilyWorkflowAdapter({
-      spec: {
-        category: "redeemerCanonicity",
-        stepCount: 3,
-        successors: { 1: [2], 2: [3], 3: ["proof_token"] },
-      },
-      l1: workflow.l1,
-      stateQueueMutationLeaseCoordinator:
-        workflow.stateQueueMutationLeaseCoordinator,
-      transactions: {
-        portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
-        category: "redeemerCanonicity",
-        validatePreparedArtifact: async ({ evidence, artifact }) => {
-          if (
-            journalJsonDigest(
-              await prepareRedeemerCanonicityWorkflowArtifact(evidence),
-            ) !== journalJsonDigest(artifact)
-          )
-            throw new Error(
-              "prepared family artifact differs from retained evidence",
-            );
-        },
-        prepare: async ({ evidence }) =>
-          await prepareRedeemerCanonicityWorkflowArtifact(evidence),
-        capture: async ({ action, artifact }) =>
-          await captureRedeemerAction(workflow, action, artifact),
-      },
-    }),
-  });
+): CursorFamilyTransactionPort<"redeemerCanonicity"> => ({
+  portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
+  category: "redeemerCanonicity",
+  validatePreparedArtifact: async ({ evidence, artifact }) => {
+    if (
+      journalJsonDigest(
+        await prepareRedeemerCanonicityWorkflowArtifact(evidence),
+      ) !== journalJsonDigest(artifact)
+    )
+      throw new Error(
+        "prepared family artifact differs from retained evidence",
+      );
+  },
+  prepare: async ({ evidence }) =>
+    await prepareRedeemerCanonicityWorkflowArtifact(evidence),
+  capture: async ({ action, artifact }) =>
+    await captureRedeemerAction(workflow, action, artifact),
+});
 
 export type RedeemerCanonicityRuntimeDependencies = Readonly<{
   journal: FraudProofWorkflowJournalStore;

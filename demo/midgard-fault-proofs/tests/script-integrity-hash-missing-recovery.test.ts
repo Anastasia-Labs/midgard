@@ -238,11 +238,17 @@ it.each([false, true])(
     const result = await executeManifestBoundScriptIntegrityHashMissingWorkflow(
       { ...fixture, sources: [] },
     );
-    expect(result.kind).toBe(needsAnotherAction ? "stalled" : "pending");
+    expect(result).toMatchObject({
+      kind: "pending",
+      reason: needsAnotherAction
+        ? "Canonical workflow requires fresh submission authority"
+        : "awaiting canonical terminal evidence",
+    });
     expect(fixture.reconcile).toHaveBeenCalledTimes(1);
     expect(fixture.observeHeader).not.toHaveBeenCalled();
     expect(fixture.forbidden).not.toHaveBeenCalled();
     const entries = await fixture.journal.load(fixture.workflowId);
+    expect(entries.some(({ event }) => event.kind === "stalled")).toBe(false);
     expect(
       entries.filter(({ event }) => event.kind === "submission_intent"),
     ).toHaveLength(1);

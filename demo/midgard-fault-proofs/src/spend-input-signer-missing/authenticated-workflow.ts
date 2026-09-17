@@ -53,33 +53,24 @@ import {
   admitCompleteCanonicalReplayHistoricalCorpus,
   SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
 } from "../workflow/complete-replay.js";
-import {
-  createCursorFamilyWorkflowAdapter,
-  CURSOR_FAMILY_TRANSACTION_PORT,
-  type CursorFamilyTransactionPort,
-} from "../workflow/cursor-family-adapter.js";
+import { CURSOR_FAMILY_TRANSACTION_PORT } from "../workflow/cursor-family-adapter.js";
 import {
   captureCursorRemoval,
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
-import { releaseFinalityAuthorityFromDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import {
   assertManifestBoundWorkflowSigner,
   bindFraudProofWorkflowDeployment,
   type FraudProofWorkflowDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
-import { createFraudProofFamilyAuthenticatedL1TerminalVerifier } from "../workflow/family-l1-observation.js";
 import {
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-  type FraudProofFamilyL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+  defineFamily,
+  type FamilyDeploymentContext,
+} from "../workflow/family-definition.js";
+import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  withFieldCarriagePrerequisite,
-} from "../workflow/field-carriage-prerequisite.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
   type HistoricalNativeScriptCheckpointStore,
@@ -91,6 +82,10 @@ import {
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import {
+  assembleBoundManifestBoundFamilyWorkflow,
+  bindManifestBoundFamilyWorkflow,
+} from "../workflow/manifest-bound-family-assembly.js";
 import {
   createCanonicalFamilyArtifactPort,
   executeManifestBoundFamilyRecovery,
@@ -272,22 +267,25 @@ export const loadManifestBoundSpendInputSignerMissingConfig = async (
     manifest: input.manifest,
     blueprintJson: input.blueprintJson,
     deploymentInfo: input.deploymentInfo,
-    category: "spendInputSignerMissing" as FraudProofCatalogueCategoryName,
+    category: "spendInputSignerMissing",
     headerHash: input.headerHash,
     proverCredential: input.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      FraudProofComputationThreadStepDatum,
-      SpendInputSignerStep02DatumSchema,
-      SpendInputSignerStep03DatumSchema,
-      SpendInputSignerStep04DatumSchema,
-      SpendInputSignerStep05DatumSchema,
-    ],
+    stepDatumSchemas:
+      SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION.stepDatumSchemas,
   });
   assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: input.signer.address,
     paymentKeyHash: input.signer.paymentKeyHash,
   });
+
+  return createSpendInputSignerMissingBoundConfig(input, binding);
+};
+
+const createSpendInputSignerMissingBoundConfig = (
+  input: LoadManifestBoundSpendInputSignerMissingConfig,
+  binding: FraudProofWorkflowDeploymentBinding<"spendInputSignerMissing">,
+): ManifestBoundSpendInputSignerMissingConfig => {
   const localContracts = binding.resolvedContracts.contracts as unknown as {
     readonly spendInputSignerMissing?: SpendInputSignerMissingContracts;
   };
@@ -962,8 +960,7 @@ const createManifestBoundSpendInputSignerMissingSubmission = ({
       deploymentInfo: config.binding.deploymentInfo,
       network: config.binding.network,
       signer: config.signer,
-      fraudCategory:
-        "spendInputSignerMissing" as FraudProofCatalogueCategoryName,
+      fraudCategory: "spendInputSignerMissing",
       fraudulentHeaderHash: config.binding.definition.headerHash,
       requireReferenceScripts: true,
       stateQueueMutationLeaseCoordinator:
@@ -1096,6 +1093,12 @@ export type ManifestBoundSpendInputSignerMissingWorkflowConfig =
     }>;
 
 export type ManifestBoundSpendInputSignerMissingWorkflow = Readonly<{
+  deployment: FamilyDeploymentContext<
+    "spendInputSignerMissing",
+    "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",
+    true,
+    5
+  >;
   workflowVersion: typeof SPEND_INPUT_SIGNER_MISSING_WORKFLOW;
   config: ManifestBoundSpendInputSignerMissingConfig;
   binding: SpendInputSignerMissingDeploymentBinding;
@@ -1110,14 +1113,31 @@ export type ManifestBoundSpendInputSignerMissingWorkflow = Readonly<{
 export const createManifestBoundSpendInputSignerMissingWorkflow = async (
   input: ManifestBoundSpendInputSignerMissingWorkflowConfig,
 ): Promise<ManifestBoundSpendInputSignerMissingWorkflow> => {
-  const config = await loadManifestBoundSpendInputSignerMissingConfig(input);
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: input.source,
-    releaseFinality: config.binding.releaseFinality,
-    releaseEconomics: config.binding.releaseEconomics,
-    definition: config.binding.definition as never,
-  });
+  const deployment = await bindManifestBoundFamilyWorkflow(
+    SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION,
+    {
+      ...input,
+      referenceScripts: {
+        steps: [
+          input.referenceScripts.step01,
+          input.referenceScripts.step02,
+          input.referenceScripts.step03,
+          input.referenceScripts.step04,
+          input.referenceScripts.step05,
+        ],
+        witnesses: input.referenceScripts.witnesses,
+        fieldPreimageCertificateMint:
+          input.referenceScripts.fieldPreimageCertificateMint,
+      },
+    },
+  );
+  const config = createSpendInputSignerMissingBoundConfig(
+    input,
+    deployment.binding,
+  );
+  const l1 = deployment.l1;
   return Object.freeze({
+    deployment,
     workflowVersion: SPEND_INPUT_SIGNER_MISSING_WORKFLOW,
     config,
     binding: config.binding,
@@ -1254,136 +1274,132 @@ export const prepareSpendInputSignerMissingRecoveryMaterial = async (
   };
 };
 
-export const createSpendInputSignerMissingRecoveryAdapter = (
-  workflow: ManifestBoundSpendInputSignerMissingWorkflow,
-  sources: readonly RetainedDaPayloadSource[],
-) => {
-  const { config, binding, l1, stateQueueMutationLeaseCoordinator } = workflow;
-  const category = "spendInputSignerMissing";
-  let currentHistory:
-    | {
-        evidence: CanonicalBlockEvidence;
-        corpus: Awaited<ReturnType<typeof resolveHistoricalNativeScriptCorpus>>;
-      }
-    | undefined;
-  const resolveReplayContext = async (canonical: CanonicalBlockEvidence) => {
-    const corpus = await resolveHistoricalNativeScriptCorpus({
-      deploymentFingerprint: binding.deploymentFingerprint,
-      checkpointStore: workflow.historicalCheckpointStore,
-      historySource: workflow.historicalSource,
-      currentEvidence: canonical,
-      sources,
-    });
-    currentHistory = { evidence: canonical, corpus };
-    return {
-      historicalCorpus: admitCompleteCanonicalReplayHistoricalCorpus({
-        evidence: canonical,
-        corpus,
-      }),
-    };
-  };
-  const material = createCanonicalFamilyArtifactPort(
-    async ({ evidence: canonical, classification }) => {
-      if (currentHistory?.evidence !== canonical)
-        throw new Error(
-          "spendInputSignerMissing requires its exact admitted historical replay context",
-        );
-      return await prepareSpendInputSignerMissingRecoveryMaterial(
-        canonical,
-        classification.selected.detectionId,
-        currentHistory.corpus,
-      );
-    },
-  );
-  const transactions: CursorFamilyTransactionPort<typeof category> = {
-    portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
-    category,
-    prepare: material.prepare,
-    validatePreparedArtifact: material.validatePreparedArtifact,
-    capture: async ({ action, artifact }) => {
-      const input = cursorFamilyActionInput({ category, action });
-      if (input.stage === "remove")
-        return await captureCursorRemoval({
-          category,
-          lucid: config.lucid,
-          blueprint: binding.blueprint,
-          deploymentInfo: binding.deploymentInfo,
-          network: binding.network,
-          signer: config.signer,
-          headerHash: binding.definition.headerHash,
-          input,
-          stateQueueMutationLeaseCoordinator,
-          fraudProverRewardLovelace: BigInt(
-            binding.releaseEconomics.policy.fraudProverRewardLovelace,
-          ),
-        });
-      const admitted = material.require(artifact);
-      const actions = {
-        init: "submitInit",
-        step_01: "submitStep01",
-        step_02: "submitStep02",
-        step_03: "submitStep03",
-        step_04: "submitScan",
-        step_05: "submitStep05",
-      } as const;
-      const familyAction = actions[input.stage as keyof typeof actions];
-      if (familyAction === undefined)
-        throw new Error(
-          `${category} cursor action is outside its exact topology`,
-        );
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (preSubmitBoundary) => {
-          const submission =
-            createManifestBoundSpendInputSignerMissingSubmission({
-              config,
-              preSubmitBoundary,
-              observe: async () =>
-                spendInputSignerStageFromL1(
-                  (
-                    await l1.observe({
-                      headerHash: binding.definition.headerHash,
-                    })
-                  ).stage,
-                ),
-              resolveStage: createSpendInputSignerMissingRawL1StageResolver({
-                config,
-                l1,
-                source: admitted.source,
-              }),
-            });
-          await submission.submit(familyAction, admitted.evidence);
-        },
-      );
-      if (
-        input.stage !== "init" &&
-        !workflowTransactionInputOutRefs(transaction.signed).includes(
-          cursorStringField(input, "threadOutRef"),
-        )
-      )
-        throw new Error(
-          `${category} captured transaction changed its authenticated thread input`,
-        );
-      return { transaction };
-    },
-  };
-  const base = createCursorFamilyWorkflowAdapter({
+type SpendInputSignerMissingAssemblyRuntime = Readonly<{
+  config: ManifestBoundSpendInputSignerMissingConfig;
+  material: ReturnType<
+    typeof createCanonicalFamilyArtifactPort<
+      Awaited<ReturnType<typeof prepareSpendInputSignerMissingRecoveryMaterial>>
+    >
+  >;
+}>;
+
+export const SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<
+  "spendInputSignerMissing",
+  "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",
+  true,
+  5,
+  SpendInputSignerMissingAssemblyRuntime
+>({
+  category: "spendInputSignerMissing",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    SpendInputSignerStep02DatumSchema,
+    SpendInputSignerStep03DatumSchema,
+    SpendInputSignerStep04DatumSchema,
+    SpendInputSignerStep05DatumSchema,
+  ],
+  witnessRoles: [
+    "computationThreadMint",
+    "fraudProofMint",
+    "phasMembershipWithdraw",
+  ],
+  fieldPreimageCertificate: true,
+  replayer: () => SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
     spec: SPEND_INPUT_SIGNER_MISSING_CURSOR_SPEC,
-    l1,
-    transactions,
-    stateQueueMutationLeaseCoordinator,
-  });
-  const adapter = withFieldCarriagePrerequisite({
-    category,
-    base,
-    prerequisite: createAuthenticatedFieldCarriagePrerequisitePort({
-      category,
-      lucid: config.lucid,
-      network: binding.network,
-      signer: config.signer,
-      publications: l1.publications,
-      transactionConfirmed: async ({ headerHash, txHash }) =>
-        await l1.transactionConfirmed({ headerHash, txHash }),
-      requirementForAction: ({ action, artifact }) => {
+    stepContractNames: [
+      SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step01,
+      SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step02,
+      SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step03,
+      SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step04,
+      SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS.step05,
+    ],
+    transactionPort: (context) => {
+      const category = "spendInputSignerMissing";
+      const { config, material } = context.runtime;
+      const { binding, l1, stateQueueMutationLeaseCoordinator } = context;
+      return {
+        portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
+        category,
+        prepare: material.prepare,
+        validatePreparedArtifact: material.validatePreparedArtifact,
+        capture: async ({ action, artifact }) => {
+          const input = cursorFamilyActionInput({ category, action });
+          if (input.stage === "remove")
+            return await captureCursorRemoval({
+              category,
+              lucid: config.lucid,
+              blueprint: binding.blueprint,
+              deploymentInfo: binding.deploymentInfo,
+              network: binding.network,
+              signer: config.signer,
+              headerHash: binding.definition.headerHash,
+              input,
+              stateQueueMutationLeaseCoordinator,
+              fraudProverRewardLovelace: BigInt(
+                binding.releaseEconomics.policy.fraudProverRewardLovelace,
+              ),
+            });
+          const admitted = material.require(artifact);
+          const actions = {
+            init: "submitInit",
+            step_01: "submitStep01",
+            step_02: "submitStep02",
+            step_03: "submitStep03",
+            step_04: "submitScan",
+            step_05: "submitStep05",
+          } as const;
+          const familyAction = actions[input.stage as keyof typeof actions];
+          if (familyAction === undefined)
+            throw new Error(
+              `${category} cursor action is outside its exact topology`,
+            );
+          const transaction = await captureLocallyEvaluatedTransaction(
+            async (preSubmitBoundary) => {
+              const submission =
+                createManifestBoundSpendInputSignerMissingSubmission({
+                  config,
+                  preSubmitBoundary,
+                  observe: async () =>
+                    spendInputSignerStageFromL1(
+                      (
+                        await l1.observe({
+                          headerHash: binding.definition.headerHash,
+                        })
+                      ).stage,
+                    ),
+                  resolveStage: createSpendInputSignerMissingRawL1StageResolver(
+                    {
+                      config,
+                      l1,
+                      source: admitted.source,
+                    },
+                  ),
+                });
+              await submission.submit(familyAction, admitted.evidence);
+            },
+          );
+          if (
+            input.stage !== "init" &&
+            !workflowTransactionInputOutRefs(transaction.signed).includes(
+              cursorStringField(input, "threadOutRef"),
+            )
+          )
+            throw new Error(
+              `${category} captured transaction changed its authenticated thread input`,
+            );
+          return { transaction };
+        },
+      };
+    },
+  },
+  fieldCarriage: [
+    {
+      requirementForAction: (context, { action, artifact }) => {
+        const category = "spendInputSignerMissing";
+        const { config, material } = context.runtime;
+        const { binding } = context;
         if (
           action.input.stage !== "step_02" &&
           action.input.stage !== "step_03" &&
@@ -1420,9 +1436,56 @@ export const createSpendInputSignerMissingRecoveryAdapter = (
           },
         };
       },
-    }),
-  });
-  return { adapter, transactions, resolveReplayContext };
+    },
+  ],
+});
+
+export const createSpendInputSignerMissingRecoveryAdapter = (
+  workflow: ManifestBoundSpendInputSignerMissingWorkflow,
+  sources: readonly RetainedDaPayloadSource[],
+) => {
+  const { config, binding } = workflow;
+  let currentHistory:
+    | {
+        evidence: CanonicalBlockEvidence;
+        corpus: Awaited<ReturnType<typeof resolveHistoricalNativeScriptCorpus>>;
+      }
+    | undefined;
+  const resolveReplayContext = async (canonical: CanonicalBlockEvidence) => {
+    const corpus = await resolveHistoricalNativeScriptCorpus({
+      deploymentFingerprint: binding.deploymentFingerprint,
+      checkpointStore: workflow.historicalCheckpointStore,
+      historySource: workflow.historicalSource,
+      currentEvidence: canonical,
+      sources,
+    });
+    currentHistory = { evidence: canonical, corpus };
+    return {
+      historicalCorpus: admitCompleteCanonicalReplayHistoricalCorpus({
+        evidence: canonical,
+        corpus,
+      }),
+    };
+  };
+  const material = createCanonicalFamilyArtifactPort(
+    async ({ evidence: canonical, classification }) => {
+      if (currentHistory?.evidence !== canonical)
+        throw new Error(
+          "spendInputSignerMissing requires its exact admitted historical replay context",
+        );
+      return await prepareSpendInputSignerMissingRecoveryMaterial(
+        canonical,
+        classification.selected.detectionId,
+        currentHistory.corpus,
+      );
+    },
+  );
+  const assembled = assembleBoundManifestBoundFamilyWorkflow(
+    SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION,
+    workflow.deployment,
+    { config, material },
+  );
+  return { ...assembled, resolveReplayContext };
 };
 
 export const executeManifestBoundSpendInputSignerMissingWorkflow = async ({
@@ -1439,13 +1502,6 @@ export const executeManifestBoundSpendInputSignerMissingWorkflow = async ({
     sources,
     journal,
     ...createSpendInputSignerMissingRecoveryAdapter(workflow, sources),
-    replayer: SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(
-      workflow.l1,
-    ),
-    releaseFinalityAuthority: releaseFinalityAuthorityFromDeploymentBinding(
-      workflow.binding,
-    ),
   });
 
 export type LoadedSpendInputSignerMissingWorkflow = Readonly<{
@@ -1487,15 +1543,14 @@ export const createSpendInputSignerMissingWorkflowRunnerSurface = ({
           permit: invocation.actuationPermit,
           decisionDigest: invocation.decisionDigest,
           deploymentFingerprint: invocation.deploymentFingerprint,
-          category:
-            "spendInputSignerMissing" as FraudProofCatalogueCategoryName,
+          category: "spendInputSignerMissing",
           headerHash: invocation.headerHash,
         }),
       });
       assertWorkflowJournalActuation({
         journal,
         deploymentFingerprint: invocation.deploymentFingerprint,
-        category: "spendInputSignerMissing" as FraudProofCatalogueCategoryName,
+        category: "spendInputSignerMissing",
         headerHash: invocation.headerHash,
         checkpoint: "runner_start",
       });

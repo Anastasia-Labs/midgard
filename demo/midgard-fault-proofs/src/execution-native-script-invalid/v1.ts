@@ -59,25 +59,21 @@ import {
   EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
 } from "../workflow/complete-replay.js";
 import {
-  createCursorFamilyWorkflowAdapter,
   CURSOR_FAMILY_TRANSACTION_PORT,
+  type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
 import {
   captureCursorRemoval,
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
+import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+  defineFamily,
+  type FamilyAssemblyContext,
+  type FamilyDeploymentContext,
+} from "../workflow/family-definition.js";
+import type { FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import type {
@@ -93,6 +89,10 @@ import {
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import {
+  assembleBoundManifestBoundFamilyWorkflow,
+  bindManifestBoundFamilyWorkflow,
+} from "../workflow/manifest-bound-family-assembly.js";
 import { executeManifestBoundFamilyRecovery } from "../workflow/manifest-bound-family-recovery.js";
 import {
   type FraudProofWorkflowAction,
@@ -226,6 +226,7 @@ export type ManifestBoundExecutionNativeScriptInvalidWorkflowConfig = Readonly<{
 }>;
 
 export type ManifestBoundExecutionNativeScriptInvalidWorkflow = Readonly<{
+  deployment: Deployment;
   binding: FraudProofWorkflowDeploymentBinding<"executionNativeScriptInvalid">;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
@@ -235,7 +236,7 @@ export type ManifestBoundExecutionNativeScriptInvalidWorkflow = Readonly<{
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   contracts: ExecutionNativeScriptInvalidContracts;
   references: ExecutionNativeScriptInvalidWorkflowReferenceScripts;
-  l1: ReturnType<typeof createFraudProofFamilyLocalKupmiosL1ObservationPort>;
+  l1: FraudProofFamilyL1ObservationPort<"executionNativeScriptInvalid">;
 }>;
 
 const contractNames = Object.freeze([
@@ -254,6 +255,65 @@ const contractNames = Object.freeze([
   "fraudProofExecutionNativeScriptInvalidAcceptedReferenceSource",
 ] as const);
 
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+  "pexcludesWithdraw",
+] as const;
+const REMOVAL_CONTRACTS = {
+  correctionLockSpend: "correctionLockSpend",
+  stateQueueSpend: "stateQueueSpend",
+  stateQueueMint: "stateQueueMint",
+  stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
+  activeOperatorsSpend: "activeOperatorsSpend",
+  activeOperatorsMint: "activeOperatorsMint",
+  retiredOperatorsSpend: "retiredOperatorsSpend",
+  retiredOperatorsMint: "retiredOperatorsMint",
+  schedulerSpend: "schedulerSpend",
+} as const;
+type Deployment = FamilyDeploymentContext<
+  "executionNativeScriptInvalid",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  13
+>;
+type RunContext = Readonly<{
+  workflow: ManifestBoundExecutionNativeScriptInvalidWorkflow;
+  sources: readonly RetainedDaPayloadSource[];
+}>;
+type BoundContext = FamilyAssemblyContext<
+  "executionNativeScriptInvalid",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  13,
+  RunContext
+>;
+export const EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION = defineFamily<
+  "executionNativeScriptInvalid",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  13,
+  RunContext
+>({
+  category: "executionNativeScriptInvalid",
+  stepDatumSchemas: EXECUTION_NATIVE_SCRIPT_INVALID_STEP_DATUM_SCHEMAS,
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  auxiliaryReferenceScripts: REMOVAL_CONTRACTS,
+  replayer: () => EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
+    spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+    stepContractNames: contractNames,
+    transactionPort: (context) => runFor(context).transactions,
+  },
+  extend: (context) => ({
+    resolveReplayContext: runFor(context).resolveReplayContext,
+  }),
+});
+
 /** Strict manifest/reference construction; no proof inputs or callbacks. */
 export const createManifestBoundExecutionNativeScriptInvalidWorkflow = async (
   config: ManifestBoundExecutionNativeScriptInvalidWorkflowConfig,
@@ -265,20 +325,14 @@ export const createManifestBoundExecutionNativeScriptInvalidWorkflow = async (
     throw new Error(
       "executionNativeScriptInvalid production config contains callback authority",
     );
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "executionNativeScriptInvalid",
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: EXECUTION_NATIVE_SCRIPT_INVALID_STEP_DATUM_SCHEMAS,
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
+  const deployment = await bindManifestBoundFamilyWorkflow(
+    EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION,
+    { ...config, auxiliaryReferenceScripts: config.referenceScripts.removal },
+  );
+  const {
+    binding,
+    references: { steps },
+  } = deployment;
   const chain =
     binding.resolvedContracts.contracts.executionNativeScriptInvalid;
   const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
@@ -292,58 +346,6 @@ export const createManifestBoundExecutionNativeScriptInvalidWorkflow = async (
     throw new Error(
       "executionNativeScriptInvalid manifest omitted thirteen-step chain",
     );
-  const steps = contractNames.map((contractName, index) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName,
-      utxo: config.referenceScripts.steps[index]!,
-    }),
-  ) as unknown as ExecutionNativeScriptInvalidWorkflowReferenceScripts["steps"];
-  const bindReference = (contractName: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding,
-      contractName,
-      utxo,
-    });
-  const witnesses = Object.freeze({
-    computationThreadMint: bindReference(
-      "computationThreadMint",
-      config.referenceScripts.witnesses.computationThreadMint,
-    ),
-    fraudProofMint: bindReference(
-      "fraudProofMint",
-      config.referenceScripts.witnesses.fraudProofMint,
-    ),
-    phasMembershipWithdraw: bindReference(
-      "phasMembershipWithdraw",
-      config.referenceScripts.witnesses.phasMembershipWithdraw,
-    ),
-    chunkedVerifyWithdraw: bindReference(
-      "chunkedVerifyWithdraw",
-      config.referenceScripts.witnesses.chunkedVerifyWithdraw,
-    ),
-    pexcludesWithdraw: bindReference(
-      "pexcludesWithdraw",
-      config.referenceScripts.witnesses.pexcludesWithdraw,
-    ),
-  });
-  const removal = Object.freeze(
-    Object.fromEntries(
-      Object.entries(config.referenceScripts.removal).map(([role, utxo]) => [
-        role,
-        bindReference(role, utxo),
-      ]),
-    ) as unknown as ExecutionNativeScriptInvalidWorkflowReferenceScripts["removal"],
-  );
-  const references = Object.freeze({
-    steps,
-    witnesses,
-    fieldPreimageCertificateMint: bindReference(
-      "fieldPreimageCertificateMint",
-      config.referenceScripts.fieldPreimageCertificateMint,
-    ),
-    removal,
-  });
   const contracts: ExecutionNativeScriptInvalidContracts = Object.freeze({
     steps: chain.steps.slice(0, 6).map((step, index) => ({
       ...step,
@@ -363,6 +365,7 @@ export const createManifestBoundExecutionNativeScriptInvalidWorkflow = async (
     fieldPreimageCertificatePolicyId: certificate.policyId,
   });
   return Object.freeze({
+    deployment,
     binding,
     lucid: config.lucid,
     signer: config.signer,
@@ -372,13 +375,12 @@ export const createManifestBoundExecutionNativeScriptInvalidWorkflow = async (
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
     contracts,
-    references,
-    l1: createFraudProofFamilyLocalKupmiosL1ObservationPort({
-      source: config.source,
-      releaseFinality: binding.releaseFinality,
-      releaseEconomics: binding.releaseEconomics,
-      definition: binding.definition,
-    }),
+    references: {
+      ...deployment.references,
+      removal:
+        deployment.auxiliaryReferences as ExecutionNativeScriptInvalidWorkflowReferenceScripts["removal"],
+    },
+    l1: deployment.l1,
   });
 };
 
@@ -919,6 +921,86 @@ const captureExecutionNativeScriptInvalidAction = async ({
   return { transaction };
 };
 
+const bindRun = (context: BoundContext) => {
+  const { workflow, sources } = context.runtime;
+  let fresh: PreparedExecutionNativeScriptInvalid | undefined;
+  const prepareArtifact = async (
+    block: import("../evidence/canonical-block-evidence.js").CanonicalBlockEvidence,
+  ) => {
+    const corpus = await resolveHistoricalNativeScriptCorpus({
+      deploymentFingerprint: workflow.binding.deploymentFingerprint,
+      checkpointStore: workflow.historicalCheckpointStore,
+      historySource: workflow.historicalSource,
+      currentEvidence: block,
+      sources,
+    });
+    const detections = detectExecutionNativeScriptInvalidCanonicalViolations({
+      block,
+      corpus,
+    });
+    const detection = detections[0];
+    if (detection === undefined)
+      throw new Error(
+        "executionNativeScriptInvalid replay has no selected artifact",
+      );
+    return { block, corpus, detection };
+  };
+  // The canonical envelope records payload identity; the family artifact records
+  // exact selected proof material and the authenticated history corpus identity.
+  const material = (prepared: PreparedExecutionNativeScriptInvalid) => ({
+    header: prepared.block.header,
+    headerHash: prepared.block.headerHash,
+    detection: prepared.detection,
+    corpus: prepared.corpus,
+  });
+  const transactions: CursorFamilyTransactionPort<"executionNativeScriptInvalid"> =
+    {
+      portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
+      category: "executionNativeScriptInvalid",
+      prepare: async ({ evidence }) => {
+        fresh = await prepareArtifact(evidence);
+        return encodeWorkflowArtifact(material(fresh));
+      },
+      validatePreparedArtifact: async ({ evidence, artifact }) => {
+        fresh = await prepareArtifact(evidence);
+        requireWorkflowArtifactMatches(artifact, material(fresh));
+      },
+      capture: async ({ action, artifact }) => {
+        if (fresh === undefined)
+          throw new Error(
+            "executionNativeScriptInvalid capture requires current authenticated material",
+          );
+        requireWorkflowArtifactMatches(artifact, material(fresh));
+        return captureExecutionNativeScriptInvalidAction({
+          workflow,
+          prepared: fresh,
+          action,
+        });
+      },
+    };
+  const resolveReplayContext: NonNullable<
+    Parameters<
+      typeof executeManifestBoundFamilyRecovery
+    >[0]["resolveReplayContext"]
+  > = async (evidence) => {
+    fresh = await prepareArtifact(evidence);
+    return {
+      historicalCorpus: admitCompleteCanonicalReplayHistoricalCorpus({
+        evidence,
+        corpus: fresh.corpus,
+      }),
+    };
+  };
+  return { transactions, resolveReplayContext };
+};
+const runs = new WeakMap<BoundContext, ReturnType<typeof bindRun>>();
+const runFor = (context: BoundContext) => {
+  const existing = runs.get(context);
+  if (existing !== undefined) return existing;
+  const created = bindRun(context);
+  runs.set(context, created);
+  return created;
+};
 export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow =
   async ({
     workflow,
@@ -933,89 +1015,20 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow =
   }): Promise<FraudProofWorkflowRunResult> => {
     if (workflowActuationAuthorizingDecisionDigest(journal) !== decisionDigest)
       throw new Error("executionNativeScriptInvalid journal decision changed");
-    let fresh: PreparedExecutionNativeScriptInvalid | undefined;
-    const prepareArtifact = async (
-      block: import("../evidence/canonical-block-evidence.js").CanonicalBlockEvidence,
-    ) => {
-      const corpus = await resolveHistoricalNativeScriptCorpus({
-        deploymentFingerprint: workflow.binding.deploymentFingerprint,
-        checkpointStore: workflow.historicalCheckpointStore,
-        historySource: workflow.historicalSource,
-        currentEvidence: block,
-        sources,
-      });
-      const detections = detectExecutionNativeScriptInvalidCanonicalViolations({
-        block,
-        corpus,
-      });
-      const detection = detections[0];
-      if (detection === undefined)
-        throw new Error(
-          "executionNativeScriptInvalid replay has no selected artifact",
-        );
-      return { block, corpus, detection };
-    };
-    // The canonical envelope records payload identity; the family artifact records
-    // exact selected proof material and the authenticated history corpus identity.
-    const material = (prepared: PreparedExecutionNativeScriptInvalid) => ({
-      header: prepared.block.header,
-      headerHash: prepared.block.headerHash,
-      detection: prepared.detection,
-      corpus: prepared.corpus,
-    });
-    const adapter = createCursorFamilyWorkflowAdapter({
-      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
-      l1: workflow.l1,
-      stateQueueMutationLeaseCoordinator:
-        workflow.stateQueueMutationLeaseCoordinator,
-      transactions: {
-        portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
-        category: "executionNativeScriptInvalid",
-        prepare: async ({ evidence }) => {
-          fresh = await prepareArtifact(evidence);
-          return encodeWorkflowArtifact(material(fresh));
-        },
-        validatePreparedArtifact: async ({ evidence, artifact }) => {
-          fresh = await prepareArtifact(evidence);
-          requireWorkflowArtifactMatches(artifact, material(fresh));
-        },
-        capture: async ({ action, artifact }) => {
-          if (fresh === undefined)
-            throw new Error(
-              "executionNativeScriptInvalid capture requires current authenticated material",
-            );
-          requireWorkflowArtifactMatches(artifact, material(fresh));
-          return captureExecutionNativeScriptInvalidAction({
-            workflow,
-            prepared: fresh,
-            action,
-          });
-        },
-      },
-    });
-    const terminalVerifier =
-      createFraudProofFamilyAuthenticatedL1TerminalVerifier(workflow.l1);
-    const releaseFinalityAuthority =
-      releaseFinalityAuthorityFromDeploymentBinding(workflow.binding);
+    const assembled = assembleBoundManifestBoundFamilyWorkflow(
+      EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION,
+      workflow.deployment,
+      { workflow, sources },
+    );
     return executeManifestBoundFamilyRecovery({
-      binding: workflow.binding,
-      l1: workflow.l1,
-      adapter,
-      decisionDigest,
+      ...assembled,
       sources,
       journal,
-      terminalVerifier,
-      releaseFinalityAuthority,
-      replayer: EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
-      resolveReplayContext: async (evidence) => {
-        fresh = await prepareArtifact(evidence);
-        return {
-          historicalCorpus: admitCompleteCanonicalReplayHistoricalCorpus({
-            evidence,
-            corpus: fresh.corpus,
-          }),
-        };
-      },
+      decisionDigest,
+      resolveReplayContext: (
+        assembled as typeof assembled &
+          Pick<ReturnType<typeof bindRun>, "resolveReplayContext">
+      ).resolveReplayContext,
     });
   };
 
