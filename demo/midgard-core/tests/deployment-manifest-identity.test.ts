@@ -1,11 +1,19 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { beforeAll, describe, expect, it } from "vitest";
+import { validatorToScriptHash } from "@lucid-evolution/lucid";
+import { blake2b } from "@noble/hashes/blake2.js";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
+import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 
 import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_CONSENSUS_PROFILE_DIGEST,
   MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
 } from "../src/consensus-profile.js";
+import {
+  DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
+  DA_TRANSPORT_LIMITS,
+  DA_TRANSPORT_PROTOCOL_VERSION,
+} from "../src/da-transport.js";
 import {
   assertDeploymentMarkerMatches,
   computeDeploymentManifestId,
@@ -27,6 +35,7 @@ import {
   parseDeploymentMarker,
   verifyDeploymentManifestFraudProofCatalogueIdentity,
   verifyDeploymentManifestIdentity,
+  verifyFinalizedDeploymentManifest,
 } from "../src/deployment-manifest-identity.js";
 
 let generatedCatalogueFixture: DeploymentManifestFraudProofCatalogueIdentity;
@@ -114,6 +123,237 @@ const identityInput = () => ({
     maxTimeoutFeeLovelace: 1_200_000,
     bondOwnerCredential: "77".repeat(28),
   },
+});
+
+// A complete document built independently of the node parser and SDK builders.
+const finalizedManifest = () => {
+  const referenceOutRefs = new Map<
+    string,
+    { txHash: string; outputIndex: number }
+  >(
+    Object.values(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+      (name, outputIndex) => [name, { txHash: "22".repeat(32), outputIndex }],
+    ),
+  );
+  const policy = { type: "Native" as const, script: "820501" };
+  const policyId = validatorToScriptHash(policy);
+  const snapshot = {
+    minFeeA: "44",
+    minFeeB: "155381",
+    priceMemory: { numerator: "577", denominator: "10000" },
+    priceSteps: { numerator: "721", denominator: "10000000" },
+    coinsPerUtxoByte: "4310",
+    collateralPercentage: "150",
+    maxCollateralInputs: "3",
+    maxTxSize: "16384",
+    maxValueSize: "5000",
+    maxTxExUnits: { memory: "16500000", steps: "10000000000" },
+    referenceScriptFee: {
+      base: { numerator: "15", denominator: "1" },
+      range: "25600",
+      multiplier: { numerator: "6", denominator: "5" },
+      maximumSizeBytes: "204800",
+    },
+  };
+  const document = {
+    ...identityInput(),
+    cardanoProtocolParameters: {
+      snapshot,
+      digest: computeDeploymentManifestJsonDigest(snapshot),
+    },
+    genesis: { headerHash: "00".repeat(28), utxoSetDigest: "33".repeat(32) },
+    hubOracleOneShot: {
+      txHash: "11".repeat(32),
+      outputIndex: 0,
+      outRef: `${"11".repeat(32)}#0`,
+      status: "consumed_by_init",
+    },
+    referenceScriptAuthPolicy: {
+      policyId,
+      nativeScript: {
+        type: policy.type,
+        cborHex: policy.script,
+        expiresAtSlot: 1,
+        expiresAtUnixTime: 1,
+        timelockDurationMs: 1,
+      },
+      tokenNames: DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
+      postTimelockAudit: {
+        required: true,
+        rule: "No authenticated reference-script output may change.",
+      },
+    },
+    contracts: Object.fromEntries(
+      DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((name) => [
+        name,
+        {
+          refScriptUTxO: referenceOutRefs.get(name) ?? null,
+          contract:
+            name === "referenceScriptAuthMint"
+              ? { type: policy.type, cborHex: policy.script }
+              : { type: "PlutusV3", cborHex: "01" },
+          scriptHash:
+            name === "referenceScriptAuthMint"
+              ? policyId
+              : CATALOGUE_FIXTURE_SCRIPT_HASH,
+          ...(name === "fraudProofCatalogueMint"
+            ? { fraudProofCatalogue: catalogueFixture() }
+            : {}),
+        },
+      ]),
+    ),
+    referenceScripts: Object.fromEntries(
+      Object.entries(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+        ([role, name]) => {
+          const outRef = referenceOutRefs.get(name)!;
+          const tokenName =
+            DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES[
+              role as keyof typeof DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES
+            ];
+          return [
+            role,
+            {
+              status: "confirmed",
+              roleUnit: policyId + Buffer.from(tokenName).toString("hex"),
+              scriptHash:
+                name === "referenceScriptAuthMint"
+                  ? policyId
+                  : CATALOGUE_FIXTURE_SCRIPT_HASH,
+              outRef: `${outRef.txHash}#${outRef.outputIndex}`,
+            },
+          ];
+        },
+      ),
+    ),
+    da: {
+      committeeVkeys: ["44".repeat(32)],
+      committeeSignersHash: bytesToHex(
+        blake2b(hexToBytes("44".repeat(32)), { dkLen: 32 }),
+      ),
+      threshold: 1,
+      transportProfile: {
+        protocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
+        runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
+        envelopeEncoding: "identity",
+        zstdLevel: 3,
+        limits: DA_TRANSPORT_LIMITS,
+        retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
+      },
+    },
+    artifacts: { blueprintHash: "55".repeat(32) },
+    steps: {
+      prepareHubOracleNonce: { status: "complete" },
+      deployNodeRuntimeReferenceScripts: { status: "complete" },
+      initProtocol: { status: "complete" },
+      availabilityRegistration: { status: "complete" },
+      phasRegistration: { status: "pending" },
+      operatorRegistration: { status: "pending" },
+      operatorActivation: { status: "pending" },
+    },
+    validationDispute: {
+      version: MIDGARD_CONSENSUS_PROFILE.validationDisputeVersion,
+      responseWindowMs:
+        MIDGARD_CONSENSUS_PROFILE.limits.validationDisputeResponseWindowMs,
+      maxBisectionRounds:
+        MIDGARD_CONSENSUS_PROFILE.limits.maxValidationBisectionRounds,
+      maturityMs: MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs,
+    },
+  };
+  return { ...document, manifestId: computeDeploymentManifestId(document) };
+};
+
+describe("finalized deployment manifest", () => {
+  it("returns a typed view of the original document, including on repeated verification", () => {
+    const document = finalizedManifest();
+    const verified = verifyFinalizedDeploymentManifest(document);
+    expectTypeOf(verified.network).toEqualTypeOf<
+      "Mainnet" | "Preprod" | "Preview" | "Custom"
+    >();
+    expectTypeOf(verified.artifacts.blueprintHash).toEqualTypeOf<string>();
+    expectTypeOf(
+      verified.cardanoProtocolParameters.snapshot.maxTxSize,
+    ).toEqualTypeOf<string>();
+    expect(verified).toBe(document);
+    expect(verifyFinalizedDeploymentManifest(document)).toBe(document);
+    expect(Object.isFrozen(document)).toBe(false);
+    expect(Object.isFrozen(document.artifacts)).toBe(false);
+  });
+
+  it.each([
+    [
+      "network",
+      (manifest: ReturnType<typeof finalizedManifest>) => {
+        manifest.network = "unsupported";
+      },
+      /network is unsupported/,
+    ],
+    [
+      "blueprint identity",
+      (manifest: ReturnType<typeof finalizedManifest>) => {
+        manifest.artifacts.blueprintHash = "00";
+      },
+      /blueprintHash/,
+    ],
+    [
+      "protocol parameter snapshot",
+      (manifest: ReturnType<typeof finalizedManifest>) => {
+        manifest.cardanoProtocolParameters.snapshot.maxTxSize = "0";
+        manifest.cardanoProtocolParameters.digest =
+          computeDeploymentManifestJsonDigest(
+            manifest.cardanoProtocolParameters.snapshot,
+          );
+      },
+      /bounds must be positive/,
+    ],
+    [
+      "contract hash",
+      (manifest: ReturnType<typeof finalizedManifest>) => {
+        manifest.contracts.hubOracleMint.scriptHash = "00".repeat(28);
+      },
+      /scriptHash mismatch/,
+    ],
+    [
+      "reference publication",
+      (manifest: ReturnType<typeof finalizedManifest>) => {
+        manifest.referenceScripts["hub-oracle minting"].status = "pending";
+      },
+      /status must be confirmed/,
+    ],
+    [
+      "required initialization",
+      (manifest: ReturnType<typeof finalizedManifest>) => {
+        manifest.steps.initProtocol.status = "pending";
+      },
+      /initProtocol.status must be complete/,
+    ],
+    [
+      "optional step status",
+      (manifest: ReturnType<typeof finalizedManifest>) => {
+        manifest.steps.operatorActivation.status = "unsupported";
+      },
+      /operatorActivation.status is unsupported/,
+    ],
+  ] as const)(
+    "rejects invalid %s even with a matching document ID",
+    (_name, mutate, error) => {
+      const manifest = finalizedManifest();
+      mutate(manifest);
+      const { manifestId: _manifestId, ...identity } = manifest;
+      manifest.manifestId = computeDeploymentManifestId(identity);
+      // Identity-only verification deliberately does not claim finalization.
+      expect(verifyDeploymentManifestIdentity(manifest)).toBe(manifest);
+      expect(() => verifyFinalizedDeploymentManifest(manifest)).toThrow(error);
+    },
+  );
+
+  it("rechecks document identity after a previously verified caller-owned value changes", () => {
+    const manifest = finalizedManifest();
+    verifyFinalizedDeploymentManifest(manifest);
+    manifest.artifacts.blueprintHash = "66".repeat(32);
+    expect(() => verifyFinalizedDeploymentManifest(manifest)).toThrow(
+      /id mismatch/,
+    );
+  });
 });
 
 describe("DeploymentManifestV1 shared identity", () => {

@@ -8,6 +8,7 @@ import {
   DA_TRANSPORT_LIMITS,
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
+import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
@@ -33,7 +34,6 @@ import {
   computeDeploymentManifestId,
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  type DeploymentManifestValue,
   normalizeDeploymentManifestJsonValue,
 } from "../src/deployment-manifest.js";
 import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
@@ -417,7 +417,7 @@ const writeFinalizedDeploymentInfo = async (
   mutate?.(manifest);
   delete manifest.manifestId;
   manifest.manifestId = computeDeploymentManifestId(
-    manifest as unknown as Omit<DeploymentManifestValue, "manifestId">,
+    manifest as unknown as Omit<DeploymentManifest, "manifestId">,
   );
   const raw = `${JSON.stringify(manifest, null, 2)}\n`;
   const path = join(dir, "contract-deployment-info.json");

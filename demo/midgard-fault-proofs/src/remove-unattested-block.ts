@@ -62,7 +62,6 @@ import {
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  type ReleaseL1FinalityPolicy,
   validateVerifiedFraudProofReleaseFinalityPolicy,
 } from "./workflow/release-finality-policy.js";
 import {
@@ -638,12 +637,11 @@ export const createLocalKupmiosTimeoutCorrectionRecovery = (input: {
     throw new Error(
       "Timeout recovery network differs from its finalized deployment.",
     );
-  const policy = manifest.l1Finality as ReleaseL1FinalityPolicy;
+  const policy = manifest.l1Finality;
   const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicy({
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: manifest.manifestId as string,
-    blueprintHash: (manifest.artifacts as { blueprintHash: string })
-      .blueprintHash,
+    deploymentIdentityDigest: manifest.manifestId,
+    blueprintHash: manifest.artifacts.blueprintHash,
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
     policy,
   });

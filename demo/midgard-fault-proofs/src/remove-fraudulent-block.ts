@@ -3012,7 +3012,7 @@ export const submitRemoveFraudulentBlock = async ({
       slashFundingAuthorities.set(
         signed,
         Object.freeze({
-          deploymentFingerprint: String(canonicalManifest.manifestId),
+          deploymentFingerprint: canonicalManifest.manifestId,
           economicsPolicyDigest:
             computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
           category: contracts.fraudCategory,

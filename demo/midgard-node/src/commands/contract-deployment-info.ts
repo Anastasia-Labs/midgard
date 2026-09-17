@@ -16,7 +16,6 @@ import { fileURLToPath } from "node:url";
 import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_CONSENSUS_PROFILE_DIGEST,
-  type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
 import {
   DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
@@ -26,9 +25,11 @@ import {
 import {
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
   DEPLOYMENT_MANIFEST_L1_FINALITY,
+  type DeploymentManifest,
   type DeploymentManifestAvailabilityChallenge,
   type DeploymentManifestCanonicalRational,
   type DeploymentManifestCardanoProtocolParameters,
+  type DeploymentManifestContractEntry,
   type DeploymentManifestEconomics,
   type DeploymentManifestEconomicsProfile,
   deriveDeploymentManifestCardanoProtocolParametersFromOgmios,
@@ -56,7 +57,6 @@ import {
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
-  type DeploymentManifestValue,
   normalizeDeploymentManifestJsonValue,
   parseDeploymentManifestValue,
 } from "../deployment-manifest.js";
@@ -96,15 +96,7 @@ export type ContractDeploymentInfoRefScriptUTxO = {
   readonly outputIndex: number;
 };
 
-export type ContractDeploymentInfoEntry = {
-  readonly refScriptUTxO: ContractDeploymentInfoRefScriptUTxO | null;
-  readonly contract: {
-    readonly type: Script["type"];
-    readonly cborHex: string;
-  };
-  readonly scriptHash: string;
-  readonly fraudProofCatalogue?: SDK.FraudProofCatalogueDeploymentInfo;
-};
+export type ContractDeploymentInfoEntry = DeploymentManifestContractEntry;
 
 export type ContractDeploymentInfo = {
   readonly referenceScriptAuthPolicy: ReferenceScriptAuthPolicyDeploymentInfo;
@@ -113,70 +105,10 @@ export type ContractDeploymentInfo = {
 
 export { computeDeploymentManifestId, DEPLOYMENT_MANIFEST_SCHEMA_VERSION };
 
-export type DeploymentManifestStepStatus =
-  | "pending"
-  | "in_progress"
-  | "submitted"
-  | "complete"
-  | "attached"
-  | "failed"
-  | "blocked_requires_fresh_redeploy";
-
-export type DeploymentManifest = ContractDeploymentInfo & {
-  readonly schemaVersion: typeof DEPLOYMENT_MANIFEST_SCHEMA_VERSION;
-  readonly manifestId: string;
-  readonly consensusProfile: MidgardConsensusProfile;
-  readonly consensusProfileDigest: string;
-  readonly network: string;
-  readonly cardanoProtocolParameters: DeploymentManifestValue["cardanoProtocolParameters"];
-  readonly genesis: DeploymentManifestValue["genesis"];
-  readonly createdAt: string;
-  readonly updatedAt: string;
-  readonly referenceScriptDeployAddress: string;
-  readonly hubOracleOneShot: {
-    readonly txHash: string;
-    readonly outputIndex: number;
-    readonly outRef: string;
-    readonly status: "consumed_by_init";
-  };
-  readonly referenceScripts: Readonly<
-    Record<
-      string,
-      {
-        readonly status: "confirmed";
-        readonly roleUnit: string;
-        readonly scriptHash: string;
-        readonly outRef: string;
-      }
-    >
-  >;
-  readonly da: DeploymentManifestValue["da"];
-  readonly artifacts: DeploymentManifestValue["artifacts"];
-  readonly steps: Readonly<
-    Record<
-      | "prepareHubOracleNonce"
-      | "deployNodeRuntimeReferenceScripts"
-      | "initProtocol"
-      | "phasRegistration"
-      | "availabilityRegistration"
-      | "operatorRegistration"
-      | "operatorActivation",
-      {
-        readonly status: DeploymentManifestStepStatus;
-        readonly txHash?: string;
-      }
-    >
-  >;
-  readonly validationDispute: {
-    readonly version: number;
-    readonly responseWindowMs: number;
-    readonly maxBisectionRounds: number;
-    readonly maturityMs: number;
-  };
-  readonly l1Finality: DeploymentManifestValue["l1Finality"];
-  readonly economics: DeploymentManifestValue["economics"];
-  readonly availabilityChallenge: DeploymentManifestValue["availabilityChallenge"];
-};
+export type {
+  DeploymentManifest,
+  DeploymentManifestStepStatus,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 
 export type DeploymentManifestVerificationReport = {
   readonly ok: boolean;
@@ -2282,11 +2214,11 @@ const buildReferenceScriptRecords = (
 };
 
 export type DeploymentManifestBuildContext = {
-  readonly network: string;
-  readonly cardanoProtocolParameters: DeploymentManifestValue["cardanoProtocolParameters"];
-  readonly genesis: DeploymentManifestValue["genesis"];
-  readonly da: DeploymentManifestValue["da"];
-  readonly artifacts: DeploymentManifestValue["artifacts"];
+  readonly network: DeploymentManifest["network"];
+  readonly cardanoProtocolParameters: DeploymentManifest["cardanoProtocolParameters"];
+  readonly genesis: DeploymentManifest["genesis"];
+  readonly da: DeploymentManifest["da"];
+  readonly artifacts: DeploymentManifest["artifacts"];
   readonly economics: DeploymentManifestEconomics;
   readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
   readonly referenceScriptDeployAddress: string;
@@ -2470,7 +2402,7 @@ export const cardanoProtocolParametersIdentityFromProvider = async (
     readonly getProtocolParameters: () => Promise<unknown>;
   },
   rawOgmiosProtocolParameters: unknown,
-): Promise<DeploymentManifestValue["cardanoProtocolParameters"]> => {
+): Promise<DeploymentManifest["cardanoProtocolParameters"]> => {
   const snapshot = exactProtocolParameterSnapshot(
     await provider.getProtocolParameters(),
     rawOgmiosProtocolParameters,
@@ -2709,12 +2641,12 @@ export const buildDeploymentManifest = (
     l1Finality: DEPLOYMENT_MANIFEST_L1_FINALITY,
     economics: context.economics,
     availabilityChallenge: context.availabilityChallenge,
-  }) as DeploymentManifest;
-  return parseDeploymentManifestValue(manifest) as DeploymentManifest;
+  });
+  return parseDeploymentManifestValue(manifest);
 };
 
 export const parseDeploymentManifest = (value: unknown): DeploymentManifest =>
-  parseDeploymentManifestValue(value) as DeploymentManifest;
+  parseDeploymentManifestValue(value);
 
 export const readDeploymentManifestFile = (
   outputPath: string,

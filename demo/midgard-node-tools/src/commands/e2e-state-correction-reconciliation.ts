@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core";
+import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowTerminal,
@@ -11,10 +12,7 @@ import {
   normalizeJournalJson,
   validateFraudProofWorkflowJournal,
 } from "@al-ft/midgard-fault-proofs";
-import {
-  type DeploymentManifestValue,
-  parseDeploymentManifestValue,
-} from "midgard-node/deployment-manifest";
+import { parseDeploymentManifestValue } from "midgard-node/deployment-manifest";
 
 import type {
   DbEvidence,
@@ -1417,9 +1415,9 @@ const assertEqual = (
 };
 
 const manifestCatalogue = (
-  manifest: DeploymentManifestValue,
+  manifest: DeploymentManifest,
 ): NonNullable<
-  DeploymentManifestValue["contracts"][string]["fraudProofCatalogue"]
+  DeploymentManifest["contracts"][string]["fraudProofCatalogue"]
 > => {
   const catalogue =
     manifest.contracts.fraudProofCatalogueMint?.fraudProofCatalogue;

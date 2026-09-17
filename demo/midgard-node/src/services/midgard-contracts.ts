@@ -7,6 +7,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
+import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   assertDeploymentMarkerMatches,
   type DeploymentManifestL1Finality,
@@ -34,10 +35,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect, Layer } from "effect";
 
-import {
-  type DeploymentManifestValue,
-  parseDeploymentManifestValue,
-} from "../deployment-manifest.js";
+import { parseDeploymentManifestValue } from "../deployment-manifest.js";
 import {
   defaultDeploymentRunStatePath,
   loadDeploymentRunState,
@@ -74,18 +72,6 @@ type Blueprint = {
   validators: BlueprintValidator[];
 };
 
-type DeploymentManifestContractEntry = {
-  readonly contract?: {
-    readonly type?: unknown;
-    readonly cborHex?: unknown;
-  };
-  readonly scriptHash?: unknown;
-};
-
-type DeploymentManifestCandidate = DeploymentManifestValue & {
-  readonly contracts: Readonly<Record<string, DeploymentManifestContractEntry>>;
-};
-
 export type ContractDeploymentIdentityValue = {
   readonly kind: "manifest" | "derived";
   readonly manifestId?: string;
@@ -94,7 +80,7 @@ export type ContractDeploymentIdentityValue = {
   readonly consensusProfile: MidgardConsensusProfile;
   readonly l1Finality?: DeploymentManifestL1Finality;
   /** Exact parser-admitted manifest; absent for derived/dev contract bundles. */
-  readonly manifest?: DeploymentManifestValue;
+  readonly manifest?: DeploymentManifest;
 };
 
 type MidgardContractRuntimeValue = {
@@ -274,8 +260,7 @@ const loadReferenceScriptAuthValidator = (): Effect.Effect<
 
 export const parseRuntimeDeploymentManifest = (
   raw: unknown,
-): DeploymentManifestCandidate =>
-  parseDeploymentManifestValue(raw) as DeploymentManifestCandidate;
+): DeploymentManifest => parseDeploymentManifestValue(raw);
 
 export const readRuntimeDeploymentManifestFile = (
   deploymentInfoPath: string,
@@ -283,7 +268,7 @@ export const readRuntimeDeploymentManifestFile = (
 ):
   | {
       readonly path: string;
-      readonly manifest: DeploymentManifestCandidate;
+      readonly manifest: DeploymentManifest;
     }
   | undefined => {
   if (!existsSync(deploymentInfoPath)) {
@@ -356,7 +341,7 @@ const requireManifestScriptType = (
 };
 
 export const assertDeploymentManifestMatchesConfig = (
-  manifest: DeploymentManifestCandidate,
+  manifest: DeploymentManifest,
   sourcePath: string,
   nodeConfig: Pick<
     NodeConfigDep,
@@ -450,7 +435,7 @@ export const assertDeploymentManifestMatchesConfig = (
 };
 
 const manifestScript = (
-  manifest: DeploymentManifestCandidate,
+  manifest: DeploymentManifest,
   sourcePath: string,
   name: string,
 ): {
@@ -508,7 +493,7 @@ const assertManifestScriptHash = (
 };
 
 const mintingValidatorFromManifest = (
-  manifest: DeploymentManifestCandidate,
+  manifest: DeploymentManifest,
   sourcePath: string,
   name: string,
 ): SDK.MintingValidator => {
@@ -525,7 +510,7 @@ const mintingValidatorFromManifest = (
 
 const spendingValidatorFromManifest = (
   network: Network,
-  manifest: DeploymentManifestCandidate,
+  manifest: DeploymentManifest,
   sourcePath: string,
   name: string,
 ): SDK.SpendingValidator => {
@@ -547,7 +532,7 @@ const spendingValidatorFromManifest = (
 };
 
 const withdrawalValidatorFromManifest = (
-  manifest: DeploymentManifestCandidate,
+  manifest: DeploymentManifest,
   sourcePath: string,
   name: string,
 ): SDK.WithdrawalValidator => {
@@ -569,7 +554,7 @@ const withdrawalValidatorFromManifest = (
 
 const authenticatedValidatorFromManifest = (
   network: Network,
-  manifest: DeploymentManifestCandidate,
+  manifest: DeploymentManifest,
   sourcePath: string,
   spendName: string,
   mintName: string,
@@ -753,7 +738,7 @@ const linearFaultProofChainFromManifest = <
   Category extends RegisteredLinearFaultProofCategory,
 >(
   network: Network,
-  manifest: DeploymentManifestCandidate,
+  manifest: DeploymentManifest,
   sourcePath: string,
   baseContracts: SDK.MidgardValidators,
   category: Category,
@@ -927,7 +912,7 @@ const linearFaultProofChainFromManifest = <
 
 const legacyFaultProofChainFromManifest = <Chain extends SDK.FraudProofChain>(
   network: Network,
-  manifest: DeploymentManifestCandidate,
+  manifest: DeploymentManifest,
   sourcePath: string,
   baseChain: Chain,
   firstStepContractName: string,
@@ -957,7 +942,7 @@ const legacyFaultProofChainFromManifest = <Chain extends SDK.FraudProofChain>(
 
 export const midgardContractsFromDeploymentManifest = (
   network: Network,
-  manifest: DeploymentManifestCandidate,
+  manifest: DeploymentManifest,
   sourcePath: string,
   baseContracts: SDK.MidgardValidators,
 ): SDK.MidgardValidators => {

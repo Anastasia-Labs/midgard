@@ -5,6 +5,19 @@ language of its L1 dispute machinery and compact-transaction commitments.
 
 ## Language
 
+### Deployment identity
+
+**Deployment manifest**:
+The document identifying a Midgard deployment's contracts, reference scripts,
+protocol configuration, and recorded deployment steps by a content-derived
+manifest ID.
+
+**Finalized deployment manifest**:
+A deployment manifest whose contents satisfy the deployment identity and
+finalization checks, including the required completed deployment steps.
+Finalization of the document does not establish current L1 availability or
+release acceptance.
+
 ### Operator participation and fraud correction
 
 **Operator identity**:

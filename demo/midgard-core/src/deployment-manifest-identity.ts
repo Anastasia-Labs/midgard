@@ -14,6 +14,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_CONSENSUS_PROFILE_DIGEST,
   MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+  type MidgardConsensusProfile,
 } from "./consensus-profile.js";
 import {
   DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
@@ -2609,6 +2610,126 @@ export type DeploymentManifestAvailabilityChallenge = Readonly<{
   bondOwnerCredential: string;
 }>;
 
+export type DeploymentManifestContractEntry = {
+  readonly refScriptUTxO: {
+    readonly txHash: string;
+    readonly outputIndex: number;
+  } | null;
+  readonly contract: {
+    readonly type: "Native" | "PlutusV1" | "PlutusV2" | "PlutusV3";
+    readonly cborHex: string;
+  };
+  readonly scriptHash: string;
+  readonly fraudProofCatalogue?: DeploymentManifestFraudProofCatalogueIdentity;
+};
+
+export type DeploymentManifestStepStatus =
+  | "pending"
+  | "in_progress"
+  | "submitted"
+  | "complete"
+  | "attached"
+  | "failed"
+  | "blocked_requires_fresh_redeploy";
+
+/**
+ * Complete structural view returned by finalized document verification.
+ * Verification preserves the caller's object; this type neither freezes it
+ * nor certifies current chain state or application-specific authority.
+ */
+export type DeploymentManifest = {
+  readonly schemaVersion: typeof MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION;
+  readonly manifestId: string;
+  readonly consensusProfile: MidgardConsensusProfile;
+  readonly consensusProfileDigest: string;
+  readonly network: "Mainnet" | "Preprod" | "Preview" | "Custom";
+  readonly cardanoProtocolParameters: {
+    readonly snapshot: DeploymentManifestCardanoProtocolParameters;
+    readonly digest: string;
+  };
+  readonly genesis: {
+    readonly headerHash: string;
+    readonly utxoSetDigest: string;
+  };
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly referenceScriptDeployAddress: string;
+  readonly hubOracleOneShot: {
+    readonly txHash: string;
+    readonly outputIndex: number;
+    readonly outRef: string;
+    readonly status: "consumed_by_init";
+  };
+  readonly referenceScriptAuthPolicy: {
+    readonly policyId: string;
+    readonly nativeScript: {
+      readonly type: "Native";
+      readonly cborHex: string;
+      readonly expiresAtSlot: number;
+      readonly expiresAtUnixTime: number;
+      readonly timelockDurationMs: number;
+    };
+    readonly tokenNames: Readonly<
+      Record<
+        keyof typeof DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
+        string
+      >
+    >;
+    readonly postTimelockAudit: {
+      readonly required: boolean;
+      readonly rule: string;
+    };
+  };
+  readonly contracts: Readonly<Record<string, DeploymentManifestContractEntry>>;
+  readonly referenceScripts: Readonly<
+    Record<
+      string,
+      {
+        readonly status: "confirmed";
+        readonly roleUnit: string;
+        readonly scriptHash: string;
+        readonly outRef: string;
+      }
+    >
+  >;
+  readonly da: {
+    readonly committeeVkeys: readonly string[];
+    readonly committeeSignersHash: string;
+    readonly threshold: number;
+    readonly transportProfile: {
+      readonly protocolVersion: typeof DA_TRANSPORT_PROTOCOL_VERSION;
+      readonly runtimeManifestSchemaVersion: typeof DA_RUNTIME_MANIFEST_SCHEMA_VERSION;
+      readonly envelopeEncoding: "identity" | "zstd";
+      readonly zstdLevel: number;
+      readonly limits: typeof DA_TRANSPORT_LIMITS;
+      readonly retentionDays: number;
+    };
+  };
+  readonly artifacts: {
+    readonly blueprintHash: string;
+  };
+  readonly steps: Readonly<
+    Record<
+      (typeof DEPLOYMENT_MANIFEST_STEP_NAMES)[number],
+      {
+        // The existing verifier checks String(status); preserve its accepted
+        // JSON values rather than promising a string it does not establish.
+        readonly status: DeploymentManifestJsonValue;
+        readonly txHash?: string;
+      }
+    >
+  >;
+  readonly validationDispute: {
+    readonly version: number;
+    readonly responseWindowMs: number;
+    readonly maxBisectionRounds: number;
+    readonly maturityMs: number;
+  };
+  readonly l1Finality: DeploymentManifestL1Finality;
+  readonly economics: DeploymentManifestEconomics;
+  readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
+};
+
 export const DEPLOYMENT_MANIFEST_ROOT_KEYS = Object.freeze([
   "schemaVersion",
   "manifestId",
@@ -4363,11 +4484,11 @@ export const verifyReferenceScriptPublicationAuthority = (input: {
 
 export const verifyFinalizedDeploymentManifest = (
   value: unknown,
-): Record<string, unknown> => {
+): DeploymentManifest => {
   const candidate = verifyDeploymentManifestIdentity(value);
   const verifiedManifestId = candidate.manifestId as string;
   if (verifiedFinalizedManifestIds.has(verifiedManifestId)) {
-    return candidate;
+    return candidate as DeploymentManifest;
   }
   if (
     candidate.network !== "Mainnet" &&
@@ -4677,5 +4798,5 @@ export const verifyFinalizedDeploymentManifest = (
     }
   }
   verifiedFinalizedManifestIds.add(verifiedManifestId);
-  return candidate;
+  return candidate as DeploymentManifest;
 };

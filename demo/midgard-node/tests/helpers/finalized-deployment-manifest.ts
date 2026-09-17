@@ -3,6 +3,7 @@ import {
   DA_TRANSPORT_LIMITS,
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
+import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
@@ -21,7 +22,6 @@ import {
   computeDeploymentManifestDaCommitteeSignersHash,
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  type DeploymentManifestValue,
   normalizeDeploymentManifestJsonValue,
   parseDeploymentManifestValue,
 } from "../../src/deployment-manifest.js";
@@ -67,7 +67,7 @@ const IDENTITY: DeploymentManifestIdentityContext = {
 };
 
 export const makeFinalizedDeploymentManifestFixture =
-  async (): Promise<DeploymentManifestValue> => {
+  async (): Promise<DeploymentManifest> => {
     const contracts = await loadRealMidgardContractsForTest({
       txHash: "ab".repeat(32),
       outputIndex: 0,

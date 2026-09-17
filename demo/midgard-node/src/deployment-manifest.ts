@@ -3,7 +3,6 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_CONSENSUS_PROFILE_DIGEST,
   MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
-  type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
 import {
   DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
@@ -14,13 +13,10 @@ import {
   computeDeploymentManifestId as computeDeploymentManifestV1Id,
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_L1_FINALITY,
-  type DeploymentManifestAvailabilityChallenge,
-  type DeploymentManifestCardanoProtocolParameters,
-  type DeploymentManifestEconomics,
+  type DeploymentManifest,
   type DeploymentManifestFraudProofCatalogueCategory,
   type DeploymentManifestFraudProofCatalogueCategoryIdentity,
   type DeploymentManifestJsonValue,
-  type DeploymentManifestL1Finality,
   normalizeDeploymentManifestJsonValue,
   parseDeploymentManifestEconomics,
   verifyDeploymentManifestFraudProofCatalogueIdentity,
@@ -1597,130 +1593,11 @@ type DeploymentManifestOutRef = {
   readonly outputIndex: number;
 };
 
-type DeploymentManifestContractEntry = {
-  readonly refScriptUTxO: DeploymentManifestOutRef | null;
-  readonly contract: {
-    readonly type: (typeof DEPLOYMENT_MANIFEST_SCRIPT_TYPES)[number];
-    readonly cborHex: string;
-  };
-  readonly scriptHash: string;
-  readonly fraudProofCatalogue?: {
-    readonly root: string;
-    readonly categories: Readonly<
-      Record<
-        (typeof FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER)[number],
-        {
-          readonly categoryId: string;
-          readonly scriptHash: string;
-          readonly membershipProofCbor: string;
-        }
-      >
-    >;
-  };
-};
-
-export type DeploymentManifestValue = {
-  readonly schemaVersion: typeof DEPLOYMENT_MANIFEST_SCHEMA_VERSION;
-  readonly manifestId: string;
-  readonly consensusProfile: MidgardConsensusProfile;
-  readonly consensusProfileDigest: string;
-  readonly network: string;
-  readonly cardanoProtocolParameters: {
-    readonly snapshot: DeploymentManifestCardanoProtocolParameters;
-    readonly digest: string;
-  };
-  readonly genesis: {
-    readonly headerHash: string;
-    readonly utxoSetDigest: string;
-  };
-  readonly createdAt: string;
-  readonly updatedAt: string;
-  readonly referenceScriptDeployAddress: string;
-  readonly hubOracleOneShot: {
-    readonly txHash: string;
-    readonly outputIndex: number;
-    readonly outRef: string;
-    readonly status: "consumed_by_init";
-  };
-  readonly referenceScriptAuthPolicy: {
-    readonly policyId: string;
-    readonly nativeScript: {
-      readonly type: "Native";
-      readonly cborHex: string;
-      readonly expiresAtSlot: number;
-      readonly expiresAtUnixTime: number;
-      readonly timelockDurationMs: number;
-    };
-    readonly tokenNames: Readonly<
-      Record<keyof typeof REFERENCE_SCRIPT_AUTH_TOKEN_NAMES, string>
-    >;
-    readonly postTimelockAudit: {
-      readonly required: boolean;
-      readonly rule: string;
-    };
-  };
-  readonly contracts: Readonly<Record<string, DeploymentManifestContractEntry>>;
-  readonly referenceScripts: Readonly<
-    Record<
-      string,
-      {
-        readonly status: "confirmed";
-        readonly roleUnit: string;
-        readonly scriptHash: string;
-        readonly outRef: string;
-      }
-    >
-  >;
-  readonly da: {
-    readonly committeeVkeys: readonly string[];
-    readonly committeeSignersHash: string;
-    readonly threshold: number;
-    readonly transportProfile: {
-      readonly protocolVersion: typeof DA_TRANSPORT_PROTOCOL_VERSION;
-      readonly runtimeManifestSchemaVersion: typeof DA_RUNTIME_MANIFEST_SCHEMA_VERSION;
-      readonly envelopeEncoding: "identity" | "zstd";
-      readonly zstdLevel: number;
-      readonly limits: typeof DA_TRANSPORT_LIMITS;
-      readonly retentionDays: number;
-    };
-  };
-  readonly artifacts: {
-    readonly blueprintHash: string;
-  };
-  readonly steps: Readonly<
-    Record<
-      string,
-      {
-        readonly status: (typeof DEPLOYMENT_MANIFEST_STEP_STATUSES)[number];
-        readonly txHash?: string;
-      }
-    >
-  >;
-  readonly validationDispute: {
-    readonly version: number;
-    readonly responseWindowMs: number;
-    readonly maxBisectionRounds: number;
-    readonly maturityMs: number;
-  };
-  readonly l1Finality: DeploymentManifestL1Finality;
-  readonly economics: DeploymentManifestEconomics;
-  readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
-};
-
 export const computeDeploymentManifestDaCommitteeSignersHash = (
   committeeVkeys: readonly string[],
 ): string => Effect.runSync(hashHexWithBlake2b(committeeVkeys.join(""), 32));
 
-const deploymentManifestIdentityInput = (
-  manifest: Omit<DeploymentManifestValue, "manifestId">,
-): unknown => manifest;
-
-export const computeDeploymentManifestId = (
-  manifest: Omit<DeploymentManifestValue, "manifestId">,
-): string =>
-  computeDeploymentManifestV1Id(
-    deploymentManifestIdentityInput(manifest) as Record<string, unknown>,
-  );
+export const computeDeploymentManifestId = computeDeploymentManifestV1Id;
 
 const requireObject = (
   value: unknown,
@@ -2429,9 +2306,9 @@ const validateValidationDispute = (
   }
 };
 
-const parseDeploymentManifestCommon = (
+const validateDeploymentManifestCommon = (
   candidate: Record<string, unknown>,
-): DeploymentManifestValue => {
+): void => {
   const network = requireNonEmptyString(candidate.network, "network");
   if (!DEPLOYMENT_MANIFEST_NETWORKS.has(network)) {
     throw new Error(
@@ -2563,20 +2440,18 @@ const parseDeploymentManifestCommon = (
       "Deployment manifest manifestId must be lowercase SHA-256 hex",
     );
   }
-  const parsed = candidate as unknown as DeploymentManifestValue;
-  const { manifestId: _manifestId, ...identityInput } = parsed;
-  const expectedManifestId = computeDeploymentManifestId(identityInput);
+  const { manifestId: _manifestId, ...identityInput } = candidate;
+  const expectedManifestId = computeDeploymentManifestV1Id(identityInput);
   if (manifestId !== expectedManifestId) {
     throw new Error(
       `Deployment manifest id mismatch: expected ${expectedManifestId}, found ${manifestId}`,
     );
   }
-  return parsed;
 };
 
 export const parseDeploymentManifestValue = (
   value: unknown,
-): DeploymentManifestValue => {
+): DeploymentManifest => {
   const candidate = verifyDeploymentManifestIdentity(value);
   requireExactKeys(
     candidate,
@@ -2616,7 +2491,6 @@ export const parseDeploymentManifestValue = (
       "Deployment manifest consensusProfileDigest must exactly match canonical V1",
     );
   }
-  const parsed = parseDeploymentManifestCommon(candidate);
-  verifyFinalizedDeploymentManifest(parsed);
-  return parsed;
+  validateDeploymentManifestCommon(candidate);
+  return verifyFinalizedDeploymentManifest(candidate);
 };

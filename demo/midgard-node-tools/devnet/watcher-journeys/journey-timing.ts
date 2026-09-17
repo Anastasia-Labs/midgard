@@ -317,12 +317,10 @@ export const readJourneyCadence = async (
   ]);
   const genesis = object(JSON.parse(genesisBytes), "Shelley genesis");
   const manifest = verifyFinalizedDeploymentManifest(JSON.parse(manifestBytes));
-  const finality = object(manifest.l1Finality, "Deployment finality policy");
-  const confirmationDepth = finality.confirmationDepth;
+  const confirmationDepth = manifest.l1Finality.confirmationDepth;
   if (
     typeof genesis.slotLength !== "number" ||
-    typeof genesis.activeSlotsCoeff !== "number" ||
-    typeof confirmationDepth !== "number"
+    typeof genesis.activeSlotsCoeff !== "number"
   ) {
     throw new Error(
       "Journey configuration omitted numeric cadence or finality depth",

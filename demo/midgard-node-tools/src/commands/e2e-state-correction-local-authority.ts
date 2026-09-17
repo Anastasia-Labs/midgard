@@ -1,15 +1,13 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
+import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { SpendingValidator } from "@lucid-evolution/lucid";
 import {
   credentialToAddress,
   validatorToAddress,
 } from "@lucid-evolution/lucid";
-import {
-  type DeploymentManifestValue,
-  parseDeploymentManifestValue,
-} from "midgard-node/deployment-manifest";
+import { parseDeploymentManifestValue } from "midgard-node/deployment-manifest";
 import {
   fetchKupoAncestorPoint,
   fetchKupoCreationPoint,
@@ -127,7 +125,7 @@ type ReleaseEconomicsPolicy = {
 };
 
 export const releaseEconomicsPolicyFromDeploymentManifest = (
-  manifest: DeploymentManifestValue,
+  manifest: DeploymentManifest,
 ): ReleaseEconomicsPolicy => ({
   requiredBondLovelace: manifest.economics.requiredBondLovelace.toString(),
   slashingPenaltyLovelace:
@@ -1140,9 +1138,9 @@ export const createLocalKupmiosStateCorrectionAuthority = (
 };
 
 const requireManifestContract = (
-  manifest: DeploymentManifestValue,
+  manifest: DeploymentManifest,
   name: string,
-): DeploymentManifestValue["contracts"][string] => {
+): DeploymentManifest["contracts"][string] => {
   const contract = manifest.contracts[name];
   if (contract === undefined) {
     throw new Error(`deployment manifest has no ${name} contract`);

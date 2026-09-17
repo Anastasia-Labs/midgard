@@ -6,6 +6,7 @@ import {
   LocalKupmiosCheckpointChangedError,
   LocalKupmiosExactPointNotCanonicalError,
   type LocalKupmiosRawBlockAtPoint,
+  LocalKupmiosTransportUnavailableError,
   readAdmittedLocalKupmiosPredecessorPoint,
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -160,6 +161,7 @@ describe("concrete raw-source operational capture bounds", () => {
     );
     expect(fetcher).toHaveBeenCalledOnce();
 
+    vi.useFakeTimers();
     const controller = new AbortController();
     let started!: () => void;
     const ready = new Promise<void>((resolve) => {
@@ -185,13 +187,16 @@ describe("concrete raw-source operational capture bounds", () => {
       (error: unknown) => error,
     );
     await ready;
+    expect(vi.getTimerCount()).toBe(1);
     controller.abort();
     expect(await outcome).toMatchObject({ name: "AbortError" });
     expect(requestSignal?.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
     await expect(readHttpPredecessor(cancelled)).rejects.toThrow("aborted");
+    expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("uses the smaller supplied timeout and clears it after cancellation", async () => {
+  it("uses the smaller supplied timeout, reports transport unavailability, and clears the timer", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(
       "fetch",
@@ -206,11 +211,20 @@ describe("concrete raw-source operational capture bounds", () => {
           ),
       ),
     );
-    const outcome = readHttpPredecessor(rawSource({ timeoutMs: 5 })).catch(
-      (error: unknown) => error,
-    );
-    await vi.advanceTimersByTimeAsync(5);
-    expect(await outcome).toMatchObject({ name: "AbortError" });
+    let settled = false;
+    const outcome = readHttpPredecessor(rawSource({ timeoutMs: 5 }))
+      .catch((error: unknown) => error)
+      .finally(() => {
+        settled = true;
+      });
+    await vi.advanceTimersByTimeAsync(4);
+    expect(settled).toBe(false);
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await outcome).toBeInstanceOf(LocalKupmiosTransportUnavailableError);
+    expect(await outcome).toMatchObject({
+      message: expect.stringContaining("timed out"),
+    });
     expect(vi.getTimerCount()).toBe(0);
   });
 });

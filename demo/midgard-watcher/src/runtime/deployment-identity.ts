@@ -5,12 +5,12 @@ import {
   verify as verifySignature,
 } from "node:crypto";
 
-import { MIDGARD_CONSENSUS_PROFILE_DIGEST } from "@al-ft/midgard-core/consensus-profile";
 import {
   assertDeploymentMarkerMatches,
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  type DeploymentManifest,
   type DeploymentManifestAvailabilityChallenge,
   type DeploymentManifestCardanoProtocolParameters,
   type DeploymentMarker,
@@ -18,7 +18,6 @@ import {
   parseDeploymentManifestAvailabilityChallenge,
   parseDeploymentManifestCardanoProtocolParameters,
   parseDeploymentManifestEconomics,
-  verifyDeploymentManifestIdentity,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
@@ -32,7 +31,6 @@ import {
   type FraudProofReleaseEconomicsAuthority,
   type FraudProofReleaseFinalityAuthority,
   type ReleaseFraudProofEconomicsPolicy,
-  type ReleaseL1FinalityPolicy,
   validateVerifiedFraudProofReleaseEconomicsPolicy,
   validateVerifiedFraudProofReleaseFinalityPolicy,
   type VerifiedFraudProofReleaseEconomicsPolicy,
@@ -637,41 +635,25 @@ const parseTrustRoots = (
 };
 
 const mapManifestContracts = (
-  manifest: JsonRecord,
+  manifest: DeploymentManifest,
 ): Readonly<Record<string, string>> => {
-  const contracts = plainRecord(manifest.contracts, "$.manifest.contracts");
   const hashes: Record<string, string> = {};
   for (const contractName of DEPLOYMENT_MANIFEST_CONTRACT_NAMES) {
-    const entry = plainRecord(
-      contracts[contractName],
-      `$.manifest.contracts.${contractName}`,
-    );
-    hashes[contractName] = exactString(
-      entry.scriptHash,
-      `$.manifest.contracts.${contractName}.scriptHash`,
-      HEX_28,
-    );
+    hashes[contractName] = manifest.contracts[contractName].scriptHash;
   }
   return hashes;
 };
 
 const assertReferenceScripts = (
-  manifest: JsonRecord,
+  manifest: DeploymentManifest,
   expected: Readonly<Record<string, WatcherReferenceScriptIdentity>>,
 ): void => {
-  const scripts = plainRecord(
-    manifest.referenceScripts,
-    "$.manifest.referenceScripts",
-  );
+  const scripts = manifest.referenceScripts;
   for (const role of REFERENCE_SCRIPT_ROLES) {
-    const entry = plainRecord(
-      scripts[role],
-      `$.manifest.referenceScripts.${role}`,
-    );
+    const entry = scripts[role];
     if (
       entry.scriptHash !== expected[role]?.scriptHash ||
-      entry.outRef !== expected[role]?.outRef ||
-      entry.status !== "confirmed"
+      entry.outRef !== expected[role]?.outRef
     ) {
       fail("mismatched_identity", `$.manifest.referenceScripts.${role}`);
     }
@@ -679,50 +661,32 @@ const assertReferenceScripts = (
 };
 
 const assertCatalogue = (
-  manifest: JsonRecord,
+  manifest: DeploymentManifest,
   expected: WatcherFraudProofCatalogueIdentity,
 ): void => {
-  const contracts = plainRecord(manifest.contracts, "$.manifest.contracts");
-  const catalogueContract = plainRecord(
-    contracts.fraudProofCatalogueMint,
-    "$.manifest.contracts.fraudProofCatalogueMint",
-  );
-  const catalogue = plainRecord(
-    catalogueContract.fraudProofCatalogue,
-    "$.manifest.contracts.fraudProofCatalogueMint.fraudProofCatalogue",
-  );
+  const contracts = manifest.contracts;
+  const catalogue = contracts.fraudProofCatalogueMint.fraudProofCatalogue;
+  if (catalogue === undefined) {
+    return fail(
+      "invalid_field",
+      "$.manifest.contracts.fraudProofCatalogueMint.fraudProofCatalogue",
+    );
+  }
   if (catalogue.root !== expected.root) {
     fail(
       "mismatched_identity",
       "$.manifest.contracts.fraudProofCatalogueMint.fraudProofCatalogue.root",
     );
   }
-  const categories = plainRecord(
-    catalogue.categories,
-    "$.manifest.contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories",
-  );
+  const categories = catalogue.categories;
   for (const category of Object.keys(CATALOGUE_CATEGORY_TO_CONTRACT) as Array<
     keyof typeof CATALOGUE_CATEGORY_TO_CONTRACT
   >) {
-    const entry = plainRecord(
-      categories[category],
-      `$.manifest.contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${category}`,
-    );
+    const entry = categories[category];
     const expectedEntry = expected.categories[category];
-    const contractName = CATALOGUE_CATEGORY_TO_CONTRACT[category];
-    const deployedContract = plainRecord(
-      contracts[contractName],
-      `$.manifest.contracts.${contractName}`,
-    );
-    const deployedScriptHash = exactString(
-      deployedContract.scriptHash,
-      `$.manifest.contracts.${contractName}.scriptHash`,
-      HEX_28,
-    );
     if (
       entry.categoryId !== expectedEntry.categoryId ||
-      entry.scriptHash !== expectedEntry.scriptHash ||
-      entry.scriptHash !== deployedScriptHash
+      entry.scriptHash !== expectedEntry.scriptHash
     ) {
       fail(
         "mismatched_identity",
@@ -733,24 +697,14 @@ const assertCatalogue = (
 };
 
 const assertPolicyBindings = (
-  manifest: JsonRecord,
+  manifest: DeploymentManifest,
   bindings: ReleaseBindings,
   policy: ParsedPolicy,
 ): void => {
   if (manifest.network !== policy.network) {
     fail("mismatched_identity", "$.manifest.network");
   }
-  if (manifest.consensusProfileDigest !== MIDGARD_CONSENSUS_PROFILE_DIGEST) {
-    fail("mismatched_identity", "$.manifest.consensusProfileDigest");
-  }
-  const oneShot = plainRecord(
-    manifest.hubOracleOneShot,
-    "$.manifest.hubOracleOneShot",
-  );
-  if (
-    oneShot.outRef !== policy.hubOracleOneShotOutRef ||
-    oneShot.status !== "consumed_by_init"
-  ) {
+  if (manifest.hubOracleOneShot.outRef !== policy.hubOracleOneShotOutRef) {
     fail("mismatched_identity", "$.manifest.hubOracleOneShot");
   }
   const actualScriptHashes = mapManifestContracts(manifest);
@@ -778,32 +732,22 @@ const assertPolicyBindings = (
   ) {
     fail("mismatched_identity", "$.releaseBindings.fundingProfileBundleDigest");
   }
-  const artifacts = plainRecord(manifest.artifacts, "$.manifest.artifacts");
   if (
     bindings.artifacts.blueprintHash !== policy.blueprintHash ||
-    artifacts.blueprintHash !== policy.blueprintHash
+    manifest.artifacts.blueprintHash !== policy.blueprintHash
   ) {
     fail("mismatched_identity", "$.releaseBindings.artifacts");
   }
 };
 
-const verifyCanonicalManifest = (value: unknown): JsonRecord => {
-  const candidate = (() => {
-    try {
-      return verifyDeploymentManifestIdentity(value);
-    } catch {
-      return fail("canonical_manifest_invalid", "$.manifest");
-    }
-  })();
-
+const verifyCanonicalManifest = (value: unknown): DeploymentManifest => {
   // Validate the exact signed manifest, including contract bytes, parameters,
   // references, and blueprint identity. No release evidence is required.
   try {
-    verifyFinalizedDeploymentManifest(candidate);
+    return verifyFinalizedDeploymentManifest(value);
   } catch {
-    fail("canonical_manifest_invalid", "$.manifest");
+    return fail("canonical_manifest_invalid", "$.manifest");
   }
-  return candidate;
 };
 
 export type VerifiedWatcherDeploymentIdentity = Readonly<{
@@ -1270,11 +1214,7 @@ export const verifyWatcherDeploymentIdentity = (input: {
     fail("invalid_field", "$.schemaVersion");
   }
   const manifest = verifyCanonicalManifest(envelope.manifest);
-  const manifestId = exactString(
-    manifest.manifestId,
-    "$.manifest.manifestId",
-    HEX_32,
-  );
+  const manifestId = manifest.manifestId;
   const bindings = parseReleaseBindings(
     envelope.releaseBindings,
     "$.releaseBindings",
@@ -1393,26 +1333,13 @@ export const verifyWatcherDeploymentIdentity = (input: {
     ...authorityInput,
     authorityDigest: computeDeploymentManifestJsonDigest(authorityInput),
   });
-  const manifestProtocolParameters = exactRecord(
-    manifest.cardanoProtocolParameters,
-    "$.manifest.cardanoProtocolParameters",
-    ["snapshot", "digest"],
-  );
+  const manifestProtocolParameters = manifest.cardanoProtocolParameters;
+  // Keep the independently owned, frozen snapshot supplied by the parser.
   const protocolParameterSnapshot =
     parseDeploymentManifestCardanoProtocolParameters(
       manifestProtocolParameters.snapshot,
     );
-  const protocolParameterSnapshotDigest = exactString(
-    manifestProtocolParameters.digest,
-    "$.manifest.cardanoProtocolParameters.digest",
-    HEX_32,
-  );
-  if (
-    computeDeploymentManifestJsonDigest(protocolParameterSnapshot) !==
-    protocolParameterSnapshotDigest
-  ) {
-    fail("mismatched_identity", "$.manifest.cardanoProtocolParameters.digest");
-  }
+  const protocolParameterSnapshotDigest = manifestProtocolParameters.digest;
   const protocolParameterAuthorityInput = Object.freeze({
     schemaVersion:
       WATCHER_DEPLOYMENT_PROTOCOL_PARAMETER_AUTHORITY_SCHEMA_VERSION,
@@ -1445,24 +1372,16 @@ export const verifyWatcherDeploymentIdentity = (input: {
       availabilityChallengeAuthorityInput,
     ),
   });
-  const manifestL1Finality = exactRecord(
-    manifest.l1Finality,
-    "$.manifest.l1Finality",
-    ["confirmationDepth", "automaticRecoveryMaxDepth", "deepRollbackPolicy"],
-  );
+  const manifestL1Finality = manifest.l1Finality;
   const releaseFinalityPolicy = Object.freeze({
     confirmationDepth: manifestL1Finality.confirmationDepth,
     automaticRecoveryMaxDepth: manifestL1Finality.automaticRecoveryMaxDepth,
     deepRollbackPolicy: manifestL1Finality.deepRollbackPolicy,
-  }) as ReleaseL1FinalityPolicy;
+  });
   const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicy({
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: manifestId,
-    blueprintHash: exactString(
-      plainRecord(manifest.artifacts, "$.manifest.artifacts").blueprintHash,
-      "$.manifest.artifacts.blueprintHash",
-      HEX_32,
-    ),
+    blueprintHash: manifest.artifacts.blueprintHash,
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(
       releaseFinalityPolicy,
     ),
@@ -1505,11 +1424,7 @@ export const verifyWatcherDeploymentIdentity = (input: {
   const releaseEconomics = validateVerifiedFraudProofReleaseEconomicsPolicy({
     schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: manifestId,
-    blueprintHash: exactString(
-      plainRecord(manifest.artifacts, "$.manifest.artifacts").blueprintHash,
-      "$.manifest.artifacts.blueprintHash",
-      HEX_32,
-    ),
+    blueprintHash: manifest.artifacts.blueprintHash,
     policyDigest: computeFraudProofReleaseEconomicsPolicyDigest(
       releaseEconomicsPolicy,
     ),
@@ -1534,39 +1449,16 @@ export const verifyWatcherDeploymentIdentity = (input: {
         return releaseEconomics;
       },
     });
-  const signedContracts = plainRecord(
-    manifest.contracts,
-    "$.manifest.contracts",
-  );
   const signedUserEventContracts = Object.freeze(
     Object.fromEntries(
       USER_EVENT_SIGNED_CONTRACT_NAMES.map((name) => {
-        const entry = plainRecord(
-          signedContracts[name],
-          `$.manifest.contracts.${name}`,
-        );
-        const contract = plainRecord(
-          entry.contract,
-          `$.manifest.contracts.${name}.contract`,
-        );
+        const entry = manifest.contracts[name];
         return [
           name,
           Object.freeze({
-            type: exactString(
-              contract.type,
-              `$.manifest.contracts.${name}.contract.type`,
-              /^.+$/u,
-            ),
-            cborHex: exactString(
-              contract.cborHex,
-              `$.manifest.contracts.${name}.contract.cborHex`,
-              /^(?:[0-9a-f]{2})+$/u,
-            ),
-            scriptHash: exactString(
-              entry.scriptHash,
-              `$.manifest.contracts.${name}.scriptHash`,
-              HEX_28,
-            ),
+            type: entry.contract.type,
+            cborHex: entry.contract.cborHex,
+            scriptHash: entry.scriptHash,
           }),
         ];
       }),

@@ -2,9 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 
-import { assertRetentionWindowCoversDeployment } from "@al-ft/midgard-core";
 import {
-  isMidgardConsensusProfile,
   MIDGARD_CONSENSUS_LIMITS,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
@@ -295,10 +293,7 @@ export const loadWatcherConfig = async (
     daRetentionDays: manifestDaRetentionDays,
     finalityDepth: manifestFinalityDepth,
     availabilityChallenge: manifestAvailabilityChallenge,
-  } = contractDeploymentManifestConfig(
-    contractDeploymentInfo,
-    contractDeploymentInfoPath,
-  );
+  } = contractDeploymentManifestConfig(contractDeploymentInfo);
   const network = runtimeManifest.network;
   if (network !== contractDeploymentNetwork) {
     throw new Error(
@@ -1272,7 +1267,6 @@ const LIBP2P_DA_URL_ENV_OVERRIDES = [
 
 const contractDeploymentManifestConfig = (
   contractDeploymentInfo: Record<string, unknown>,
-  path: string,
 ): {
   readonly manifestId: string;
   readonly consensusProfile: MidgardConsensusProfile;
@@ -1282,39 +1276,14 @@ const contractDeploymentManifestConfig = (
   readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
 } => {
   const verified = verifyFinalizedDeploymentManifest(contractDeploymentInfo);
-  const exactProfile = verified.consensusProfile;
-  if (!isMidgardConsensusProfile(exactProfile)) {
-    throw new Error(`${path} does not contain the exact V1 consensus profile`);
-  }
-  const manifestId = verified.manifestId as string;
-  const network = verified.network;
-  if (typeof network !== "string" || network.length === 0) {
-    throw new Error(`${path} does not contain a deployment network`);
-  }
-  // Q54: the retention window is part of deployment identity, so read it from
-  // the *verified* deployment manifest rather than from the runtime manifest.
-  const daRetentionDays = assertRetentionWindowCoversDeployment(verified);
-  const l1Finality = verified.l1Finality as Record<string, unknown>;
-  const finalityDepth = l1Finality.confirmationDepth;
-  if (
-    typeof finalityDepth !== "number" ||
-    !Number.isSafeInteger(finalityDepth) ||
-    finalityDepth < 0
-  ) {
-    // `verifyFinalizedDeploymentManifest` already establishes this shape.
-    // Keep the local assertion at the boundary so a future parser change
-    // cannot silently turn release finality back into caller configuration.
-    throw new Error(`${path} has invalid l1Finality.confirmationDepth`);
-  }
   return {
-    manifestId: normalizeHex(manifestId, {
-      fieldName: "contract deployment manifestId",
-      byteLength: 32,
-    }),
-    consensusProfile: exactProfile,
-    network,
-    daRetentionDays,
-    finalityDepth,
+    manifestId: verified.manifestId,
+    consensusProfile: verified.consensusProfile,
+    network: verified.network,
+    // The retention window is part of the verified deployment identity.
+    daRetentionDays: verified.da.transportProfile.retentionDays,
+    finalityDepth: verified.l1Finality.confirmationDepth,
+    // Preserve the parser's independently owned, frozen configuration value.
     availabilityChallenge: parseDeploymentManifestAvailabilityChallenge(
       verified.availabilityChallenge,
     ),

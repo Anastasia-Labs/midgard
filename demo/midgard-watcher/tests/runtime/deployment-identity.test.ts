@@ -559,6 +559,13 @@ describe("watcher deployment identity", () => {
     });
     expect(Object.isFrozen(authority)).toBe(true);
     expect(Object.isFrozen(authority.snapshot)).toBe(true);
+    expect(authority.snapshot).not.toBe(
+      fixture.signedIdentity.manifest.cardanoProtocolParameters.snapshot,
+    );
+    const maxTxSize = authority.snapshot.maxTxSize;
+    fixture.signedIdentity.manifest.cardanoProtocolParameters.snapshot.maxTxSize =
+      "1";
+    expect(authority.snapshot.maxTxSize).toBe(maxTxSize);
     expect(() =>
       assertWatcherDeploymentProtocolParameterAuthority(authority),
     ).not.toThrow();
@@ -604,6 +611,11 @@ describe("watcher deployment identity", () => {
     });
     expect(Object.isFrozen(authority)).toBe(true);
     expect(Object.isFrozen(authority.parameters)).toBe(true);
+    expect(authority.parameters).not.toBe(
+      fixture.signedIdentity.manifest.availabilityChallenge,
+    );
+    fixture.signedIdentity.manifest.availabilityChallenge.responseGeometry.chunkByteLength = 1;
+    expect(authority.parameters.responseGeometry.chunkByteLength).toBe(14_020);
     expect(() =>
       assertWatcherDeploymentAvailabilityChallengeAuthority(authority),
     ).not.toThrow();

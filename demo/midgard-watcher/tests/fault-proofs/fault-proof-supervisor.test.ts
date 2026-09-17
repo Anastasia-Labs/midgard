@@ -513,13 +513,19 @@ describe("production fault-proof supervisor", () => {
   it("reports at-risk headroom and fails closed before an unsafe job starts", async () => {
     const root = await directory();
     const gate = deferred<void>();
+    const started = deferred<void>();
+    const starts: string[] = [];
     let nowMs = 302_399_500;
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       deadlineAlertHeadroomMs: 1_000,
       unsafeNowMsForTest: () => nowMs,
-      run: async () => await gate.promise,
+      run: async (job) => {
+        starts.push(job.headerHash);
+        started.resolve();
+        await gate.promise;
+      },
     });
     await supervisor.recoverExisting(null);
     const run = supervisor.unsafeRunOrResumeForTest({
@@ -530,7 +536,9 @@ describe("production fault-proof supervisor", () => {
       rollbackGeneration: "0",
       deadline: deadline(h28("91"), 0),
     });
-    await waitUntil(() => supervisor.status().earliestDeadlineJob !== null);
+    // Queue visibility precedes asynchronous journal admission and the
+    // safe-start check. Advance time only once the safe job's runner starts.
+    await started.promise;
     expect(supervisor.status()).toMatchObject({
       deadlineHealth: "at_risk",
       remainingSafeStartMs: "500",
@@ -545,6 +553,7 @@ describe("production fault-proof supervisor", () => {
       deadline: deadline(h28("92"), 0),
     });
     const unsafeRejected = expect(unsafe).rejects.toThrow("deadline is unsafe");
+    await waitUntil(() => supervisor.status().queuedJobCount === 1);
     gate.resolve();
     await expect(run).resolves.toBeUndefined();
     await unsafeRejected;
@@ -553,6 +562,7 @@ describe("production fault-proof supervisor", () => {
       phase: "blocked",
       deadlineHealth: "unsafe",
     });
+    expect(starts).toEqual([h28("91")]);
     await supervisor.close();
   });
 });

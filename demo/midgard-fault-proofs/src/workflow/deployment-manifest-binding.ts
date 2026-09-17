@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 
 import {
+  type DeploymentManifest,
   type DeploymentManifestCardanoProtocolParameters,
-  type DeploymentManifestEconomics,
-  type DeploymentManifestL1Finality,
+  type DeploymentManifestContractEntry,
   parseDeploymentManifestEconomics,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -38,51 +38,11 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   type FraudProofReleaseFinalityAuthority,
-  type ReleaseL1FinalityPolicy,
   type VerifiedFraudProofReleaseFinalityPolicy,
 } from "./release-finality-policy.js";
 
 export const FRAUD_PROOF_WORKFLOW_DEPLOYMENT_BINDING =
   "midgard-fraud-proof-workflow-deployment-binding-v1" as const;
-
-type ManifestContract = {
-  readonly scriptHash: string;
-  readonly contract: {
-    readonly type: Script["type"];
-    readonly cborHex: string;
-  };
-  readonly refScriptUTxO: {
-    readonly txHash: string;
-    readonly outputIndex: number;
-  } | null;
-  readonly fraudProofCatalogue?: {
-    readonly root: string;
-    readonly categories: Readonly<
-      Record<
-        FraudProofCatalogueCategoryName,
-        {
-          readonly categoryId: string;
-          readonly scriptHash: string;
-          readonly membershipProofCbor: string;
-        }
-      >
-    >;
-  };
-};
-
-type FinalizedWorkflowManifest = {
-  readonly manifestId: string;
-  readonly network: Network;
-  readonly artifacts: {
-    readonly blueprintHash: string;
-  };
-  readonly l1Finality: DeploymentManifestL1Finality;
-  readonly economics: DeploymentManifestEconomics;
-  readonly cardanoProtocolParameters: {
-    readonly snapshot: DeploymentManifestCardanoProtocolParameters;
-  };
-  readonly contracts: Readonly<Record<string, ManifestContract>>;
-};
 
 type LucidDataSchema =
   FraudProofRawL1FamilyDefinition["computationThread"]["steps"][number]["datumSchema"];
@@ -143,7 +103,6 @@ export const releaseFinalityAuthorityFromDeploymentBinding = (
 });
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
-const HEX_32 = /^[0-9a-f]{64}$/u;
 
 export const assertManifestBoundWorkflowSigner = ({
   network,
@@ -228,9 +187,9 @@ const isFieldPreimageCertificateContract = (
 };
 
 const manifestContract = (
-  manifest: FinalizedWorkflowManifest,
+  manifest: DeploymentManifest,
   name: string,
-): ManifestContract => {
+): DeploymentManifestContractEntry => {
   const entry = manifest.contracts[name];
   if (entry === undefined) {
     throw new Error(`deployment manifest omitted ${name}`);
@@ -238,14 +197,14 @@ const manifestContract = (
   return entry;
 };
 
-const scriptOf = (entry: ManifestContract): Script => ({
+const scriptOf = (entry: DeploymentManifestContractEntry): Script => ({
   type: entry.contract.type,
   script: entry.contract.cborHex,
 });
 
 const sameOutRef = (
-  left: ManifestContract["refScriptUTxO"] | undefined,
-  right: ManifestContract["refScriptUTxO"] | undefined,
+  left: DeploymentManifestContractEntry["refScriptUTxO"] | undefined,
+  right: DeploymentManifestContractEntry["refScriptUTxO"] | undefined,
 ): boolean =>
   left === right ||
   (left !== null &&
@@ -259,7 +218,7 @@ const assertDeploymentInfoMatchesManifest = ({
   manifest,
   deploymentInfo,
 }: {
-  readonly manifest: FinalizedWorkflowManifest;
+  readonly manifest: DeploymentManifest;
   readonly deploymentInfo: ContractDeploymentInfo;
 }): void => {
   const manifestNames = Object.keys(manifest.contracts).sort();
@@ -311,29 +270,18 @@ const freezeManifestDocument = <Value>(value: Value): Value => {
   return value;
 };
 
-const finalizedManifest = (value: unknown): FinalizedWorkflowManifest => {
-  const verified = verifyFinalizedDeploymentManifest(value);
-  const manifest = freezeManifestDocument(
-    structuredClone(verified),
-  ) as unknown as FinalizedWorkflowManifest;
-  if (
-    !HEX_32.test(manifest.manifestId) ||
-    !HEX_32.test(manifest.artifacts.blueprintHash)
-  ) {
-    throw new Error(
-      "finalized deployment manifest has invalid release or blueprint identity",
-    );
-  }
-  return manifest;
-};
+const finalizedManifest = (value: unknown): DeploymentManifest =>
+  freezeManifestDocument(
+    structuredClone(verifyFinalizedDeploymentManifest(value)),
+  );
 
 const releasePolicies = (
-  manifest: FinalizedWorkflowManifest,
+  manifest: DeploymentManifest,
 ): {
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
   readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
 } => {
-  const finalityPolicy = manifest.l1Finality as ReleaseL1FinalityPolicy;
+  const finalityPolicy = manifest.l1Finality;
   const releaseFinality: VerifiedFraudProofReleaseFinalityPolicy = {
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: manifest.manifestId,
@@ -480,20 +428,6 @@ const bindFraudProofDeployment = async <
   const retiredSpend = manifestContract(manifest, "retiredOperatorsSpend");
   const retiredMint = manifestContract(manifest, "retiredOperatorsMint");
   const schedulerSpend = manifestContract(manifest, "schedulerSpend");
-  for (const [label, entry] of [
-    ["stateQueueSpend", stateQueueSpend],
-    ["fraudProofSpend", fraudProofSpend],
-    ["fraudProofCatalogueSpend", catalogueSpend],
-    ["activeOperatorsSpend", activeSpend],
-    ["retiredOperatorsSpend", retiredSpend],
-    ["schedulerSpend", schedulerSpend],
-  ] as const) {
-    if (validatorToScriptHash(scriptOf(entry)) !== entry.scriptHash) {
-      throw new Error(
-        `deployment manifest ${label} script bytes/hash disagree`,
-      );
-    }
-  }
   const policies = releasePolicies(manifest);
   const fieldPreimageCertificateCandidate =
     "fieldPreimageCertificate" in resolvedContracts.contracts

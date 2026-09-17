@@ -7,14 +7,13 @@ import {
   DA_TRANSPORT_LIMITS,
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
+import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
-  computeDeploymentManifestJsonDigest as computeSharedDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_CONTRACT_NAMES as SHARED_DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
   DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS as SHARED_DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   DEPLOYMENT_MANIFEST_L1_FINALITY,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE as SHARED_DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  normalizeDeploymentManifestJsonValue as normalizeSharedDeploymentManifestJsonValue,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
@@ -39,8 +38,6 @@ import {
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_ROLES,
   DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
-  DEPLOYMENT_MANIFEST_STEP_NAMES,
-  type DeploymentManifestValue,
   normalizeDeploymentManifestJsonValue,
   parseDeploymentManifestValue,
 } from "../src/deployment-manifest.js";
@@ -95,7 +92,7 @@ const CARDANO_PARAMETERS = {
   },
 } as const;
 
-const canonicalIdentity = (): Omit<DeploymentManifestValue, "manifestId"> => {
+const canonicalIdentity = (): Omit<DeploymentManifest, "manifestId"> => {
   const referenceOutRefByContract = new Map<
     string,
     { readonly txHash: string; readonly outputIndex: number }
@@ -107,31 +104,29 @@ const canonicalIdentity = (): Omit<DeploymentManifestValue, "manifestId"> => {
       ],
     ),
   );
-  const contracts: Record<
-    string,
-    DeploymentManifestValue["contracts"][string]
-  > = Object.fromEntries(
-    DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((contractName) => [
-      contractName,
-      {
-        refScriptUTxO: referenceOutRefByContract.get(contractName) ?? null,
-        contract: {
-          type:
+  const contracts: Record<string, DeploymentManifest["contracts"][string]> =
+    Object.fromEntries(
+      DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((contractName) => [
+        contractName,
+        {
+          refScriptUTxO: referenceOutRefByContract.get(contractName) ?? null,
+          contract: {
+            type:
+              contractName === "referenceScriptAuthMint"
+                ? ("Native" as const)
+                : ("PlutusV3" as const),
+            cborHex:
+              contractName === "referenceScriptAuthMint"
+                ? NATIVE_SCRIPT_CBOR
+                : CONTRACT_SCRIPT_CBOR,
+          },
+          scriptHash:
             contractName === "referenceScriptAuthMint"
-              ? ("Native" as const)
-              : ("PlutusV3" as const),
-          cborHex:
-            contractName === "referenceScriptAuthMint"
-              ? NATIVE_SCRIPT_CBOR
-              : CONTRACT_SCRIPT_CBOR,
+              ? NATIVE_SCRIPT_HASH
+              : CONTRACT_SCRIPT_HASH,
         },
-        scriptHash:
-          contractName === "referenceScriptAuthMint"
-            ? NATIVE_SCRIPT_HASH
-            : CONTRACT_SCRIPT_HASH,
-      },
-    ]),
-  );
+      ]),
+    );
   contracts.fraudProofCatalogueMint = {
     ...contracts.fraudProofCatalogueMint,
     fraudProofCatalogue: CANONICAL_FRAUD_PROOF_CATALOGUE,
@@ -156,20 +151,15 @@ const canonicalIdentity = (): Omit<DeploymentManifestValue, "manifestId"> => {
       ];
     }),
   );
-  const steps = Object.fromEntries(
-    DEPLOYMENT_MANIFEST_STEP_NAMES.map((stepName) => [
-      stepName,
-      {
-        status:
-          stepName === "prepareHubOracleNonce" ||
-          stepName === "deployNodeRuntimeReferenceScripts" ||
-          stepName === "initProtocol" ||
-          stepName === "availabilityRegistration"
-            ? ("complete" as const)
-            : ("pending" as const),
-      },
-    ]),
-  );
+  const steps: DeploymentManifest["steps"] = {
+    prepareHubOracleNonce: { status: "complete" },
+    deployNodeRuntimeReferenceScripts: { status: "complete" },
+    initProtocol: { status: "complete" },
+    availabilityRegistration: { status: "complete" },
+    phasRegistration: { status: "pending" },
+    operatorRegistration: { status: "pending" },
+    operatorActivation: { status: "pending" },
+  };
   return {
     schemaVersion: DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
@@ -246,23 +236,16 @@ const canonicalIdentity = (): Omit<DeploymentManifestValue, "manifestId"> => {
 };
 
 const withId = (
-  identity: Omit<DeploymentManifestValue, "manifestId">,
-): DeploymentManifestValue => ({
+  identity: Omit<DeploymentManifest, "manifestId">,
+): DeploymentManifest => ({
   ...identity,
   manifestId: computeDeploymentManifestId(identity),
 });
 
-const canonicalManifest = (): DeploymentManifestValue =>
-  withId(canonicalIdentity());
+const canonicalManifest = (): DeploymentManifest => withId(canonicalIdentity());
 
 describe("V1 deployment manifest", () => {
-  it("delegates canonical JSON normalization and digesting to core", () => {
-    expect(normalizeDeploymentManifestJsonValue).toBe(
-      normalizeSharedDeploymentManifestJsonValue,
-    );
-    expect(computeDeploymentManifestJsonDigest).toBe(
-      computeSharedDeploymentManifestJsonDigest,
-    );
+  it("keeps deployment registry mirrors aligned with core", () => {
     expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toEqual(
       SHARED_DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
     );
@@ -389,7 +372,7 @@ describe("V1 deployment manifest", () => {
       identity.contracts.fraudProofCatalogueMint.fraudProofCatalogue!;
     const withCatalogue = (
       fraudProofCatalogue: typeof catalogue,
-    ): Omit<DeploymentManifestValue, "manifestId"> => ({
+    ): Omit<DeploymentManifest, "manifestId"> => ({
       ...identity,
       contracts: {
         ...identity.contracts,
@@ -456,7 +439,7 @@ describe("V1 deployment manifest", () => {
       parseDeploymentManifestValue({
         ...missingDa,
         manifestId: computeDeploymentManifestId(
-          missingDa as Omit<DeploymentManifestValue, "manifestId">,
+          missingDa as Omit<DeploymentManifest, "manifestId">,
         ),
       }),
     ).toThrow(/value\.da is required/u);
@@ -476,7 +459,7 @@ describe("V1 deployment manifest", () => {
     const missingContract = {
       ...identity,
       contracts: withoutZeroInput,
-    } as Omit<DeploymentManifestValue, "manifestId">;
+    } as Omit<DeploymentManifest, "manifestId">;
     expect(() => parseDeploymentManifestValue(withId(missingContract))).toThrow(
       /contracts\.fraudProofZeroInput is required/u,
     );
@@ -491,7 +474,7 @@ describe("V1 deployment manifest", () => {
     const missingContract = {
       ...identity,
       contracts: withoutSource,
-    } as Omit<DeploymentManifestValue, "manifestId">;
+    } as Omit<DeploymentManifest, "manifestId">;
     expect(() => parseDeploymentManifestValue(withId(missingContract))).toThrow(
       /contracts\.validationTraceDisputeSource is required/u,
     );
@@ -514,7 +497,7 @@ describe("V1 deployment manifest", () => {
     };
     expect(() =>
       parseDeploymentManifestValue(
-        withId(tampered as Omit<DeploymentManifestValue, "manifestId">),
+        withId(tampered as Omit<DeploymentManifest, "manifestId">),
       ),
     ).toThrow(/contracts\.txOrderSpend\.scriptHash mismatch/u);
   });
@@ -573,7 +556,7 @@ describe("V1 deployment manifest", () => {
         parseDeploymentManifestValue({
           ...tampered,
           manifestId: computeDeploymentManifestId(
-            tampered as Omit<DeploymentManifestValue, "manifestId">,
+            tampered as Omit<DeploymentManifest, "manifestId">,
           ),
         }),
       ).toThrow(/l1Finality/u);
@@ -598,7 +581,7 @@ describe("V1 deployment manifest", () => {
         parseDeploymentManifestValue({
           ...tampered,
           manifestId: computeDeploymentManifestId(
-            tampered as Omit<DeploymentManifestValue, "manifestId">,
+            tampered as Omit<DeploymentManifest, "manifestId">,
           ),
         }),
       ).toThrow(/economics/u);
