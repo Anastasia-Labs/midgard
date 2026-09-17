@@ -1,110 +1,256 @@
-# Testing Status
+# Fault-Proof Testing Status
 
-> Audited 2026-07-10 against branch `tx-validation` (HEAD `269bf6b3`) plus its
-> contemporaneous working tree; reconstructed on clean base `55afdc54`. Source
-> paths and CI claims below were reconciled to that clean base. What is tested,
-> at which fidelity (pure unit → emulator → integration → real network), and what
-> CI actually runs.
->
-> Commands, CI wiring, and top-level gaps were revalidated 2026-07-22 against
-> `tx-validation` HEAD `0aeaa700`; the full proof audit date remains 2026-07-10.
+Status: Active
 
-## 1. Fidelity ladder for the fault-proof system
+Last reviewed: 2026-09-17 (family assembly and emulator fixture acceptance).
 
-| Level                                       | Exists?                                   | Where                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| ------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Aiken unit/property tests                   | 🟠 partial                                | transition-trace proof families (23), native-tx codec, counted roots, invalid-range normalization, and zero-input step-02 full-handler accept/reject fixtures — **nothing** for computation-thread, fault-proof token, catalogue, or state-queue removal at the Aiken level ([`onchain-reference.md`](onchain-reference.md) §6)                                                                                                                                                                                    |
-| TypeScript unit tests                       | ✅ broad                                  | prepare-\* logic, MPF proofs, lease protocol, contract inspection, transition-trace detection/reconstruction (all 11 files in `demo/midgard-fault-proofs/tests/`)                                                                                                                                                                                                                                                                                                                                                  |
-| Lucid Emulator end-to-end                   | ✅ for 5 families                         | `submit-init-emulator.test.ts`: full chains for double-spend, invalid-range, non-existent-input, transition-trace, and zero-input from `submitInit` through fault-proof-token mint to `submitRemoveFaultyBlock`, incl. tail + non-tail removal topologies and lease edge cases; `spend-input-witness.test.ts` (180-input witness)                                                                                                                                                                                  |
-| Cross-process / network integration         | 🟠 adjacent only                          | DA layer: `da-committee-node` in-process protocol tests, `multi-node-integration.test.ts`, node-side `da-multi-process-50k-integration` (CI + nightly). Nothing drives a fault proof across processes                                                                                                                                                                                                                                                                                                              |
-| Preprod / real testnet                      | 🟠 reported, not independently reproduced | PR #461's author supplied a preprod zero-input transaction sequence through removal after the counted-root/native-MPF changes. This hardening review did not rerun it, and the repository still lacks a reproducible automated preprod acceptance artifact. The older operator-local 2026-05-08 canonical-root report predates counted roots and the MPF rewrite. System-wide readiness therefore remains unconfirmed; `public_testnet_readiness.md` still lists fault proofs "Partial, not public-testnet ready". |
-| Autonomous end-to-end (detect→prove→remove) | ❌                                        | no watcher exists                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+## What the evidence establishes
 
-## 2. Test inventory — `demo/midgard-fault-proofs/tests/`
+[Catalogue status](catalogue-status.md) owns source and watcher-installation
+inventory. It does not assert that all tests passed. Avoid test-file counts:
+a file can contain skipped, uncollected, or failing scenarios.
 
-| File                                                                                                                                   | Fidelity                                 | Proves                                                                                                                        |
-| -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `submit-init-emulator.test.ts`                                                                                                         | Emulator + real `plutus.json`            | the strongest e2e evidence in the repo (see above)                                                                            |
-| `spend-input-witness.test.ts`                                                                                                          | Emulator                                 | reference-witness publication under real UPLC cost accounting                                                                 |
-| `transition-trace-challenger.test.ts`                                                                                                  | unit (synthetic fixtures, mocked libp2p) | reconstruction, all detection families, witness building, retained-DA fetch protocol                                          |
-| `prepare-double-spend.test.ts` / `prepare-invalid-range.test.ts` / `prepare-non-existent-input.test.ts` / `prepare-zero-input.test.ts` | unit (mocked fetch/file)                 | violation detection + MPF proof generation per family; zero-input also pins and requires authoritative counted-root agreement |
-| `remove-fraudulent-block.test.ts`                                                                                                      | unit (mocked `fetch`)                    | lease-protocol correctness only — not removal tx logic                                                                        |
-| `submit-init.test.ts`                                                                                                                  | unit (fake lucid)                        | signer precedence, per-category deployment-readiness gating                                                                   |
-| `inspect-contracts.test.ts`                                                                                                            | unit + real blueprint                    | blueprint↔deployment consistency, catalogue root/membership                                                                  |
-| `bin.test.ts`                                                                                                                          | unit                                     | CLI parsing, including zero-input category and mandatory preparation root                                                     |
+| Evidence                                   | Establishes                                                                                          |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| Aiken unit/property results                | Predicate and transition behavior for the collected scenarios                                        |
+| TypeScript unit/workflow results           | Codecs, evidence, admission, journals, and deterministic workflow behavior                           |
+| Real-blueprint Lucid lifecycles            | Applied scripts, complete transaction fit, refusals, recovery, mint/removal for the exercised shapes |
+| Independent-process / real-node acceptance | Runtime composition, transport, durable recovery, and correction                                     |
+| Preprod acceptance on release identity     | Live challenge behavior for the exercised deployment and scenarios                                   |
 
-## 3. Exact local verification commands
+The [installed validation workflow](validation-trace-dispute-installed-workflow.md)
+and [transition replay](transition-trace-installed-replay.md) identify current
+routing and executable acceptance surfaces. The [fit evidence index](size-plans/README.md)
+distinguishes current-blueprint gates from historical snapshot consistency tests.
+A saved measurement, passing digest check, or a test that returned early does not
+establish current-build acceptance.
 
-```bash
-# On-chain (Aiken v1.1.21, pinned in onchain/aiken/aiken.toml:3)
-cd onchain/aiken && aiken fmt --check && aiken check
-aiken build --env testnet                      # blueprint used by TS tests/deploys
+The [availability challenge](size-plans/availability-challenge.md) now has passing
+signed-publication and registered contract-lifecycle gates using the pinned
+mainnet protocol-11 cost model. Its operational challenger/watcher and live release
+acceptance remain open. Remeasure any release evidence whose source or blueprint
+binding changed; saved results do not replace the current-build gates.
 
-# Plutarch (legacy MPF; not CI-wired)
-cd onchain/plutarch && cabal test helpers-tests
+## Family assembly and funding-publisher verification (2026-09-17)
 
-# Fault-proof package (unit + emulator e2e; CI-wired)
-pnpm --dir demo/midgard-fault-proofs test      # vitest run
+The family assembly and funding-publication changes following
+`7fbd02d7fd6aa06ab4f97917c0b76460c14ebc3b`
+complete the [shared assembly](workflow-family-assembly.md) migration for 18
+linear and 31 cursor families. Authenticated reference publication fixtures now
+use the deployment funding wallet and reserve the deployment nonce. The prover
+can consume the publication independently.
 
-# Local validation / SDK
-pnpm --dir demo/midgard-validation test
-pnpm --dir demo/midgard-sdk test
+Verification used Node 22.22.2, pnpm 9.15.4, eight fault-proof forks, and the
+fresh testnet blueprint with SHA-256
+`04790ae612c2478aa089a7f08089f11e43638cf007a2f562fa8b445f4ee25f6e`.
 
-# DA layer
-pnpm --dir demo/midgard-core test
-pnpm --dir demo/da-committee-node test
+- The complete fault-proof run took 3,178.11 seconds: 4,022 assertions passed,
+  four were skipped, and none failed. All 864 assertions that failed in the
+  baseline now pass, including repeated parameterized test names.
+- That run exited unsuccessfully because the transition subvariant suite's
+  final hook found an older blueprint hash in its pinned forced-window ledger.
+  The ledger was remeasured with the complete six-case lifecycle suite and its
+  normal read-only verification rerun; both passed. The complete 53-minute
+  package run was not repeated for this ledger-only correction.
+- The assembly/recovery selection passed 1,031 assertions, including seven new
+  assembly-lifecycle checks collected separately from the full run.
+- The node `test:tx-prep:emulator` gate passed all 55 assertions. Three SDK native
+  publication-policy checks passed, including wrong-wallet and expiry refusals.
+- Fault-proof build/declarations and compiled registry loading passed, as did
+  package lint, changed-file formatting, and fault-proof/watcher/node/node-tools
+  typechecks.
 
-# Node
-pnpm --dir demo/midgard-node test              # NODE_ENV=emulator
-pnpm --dir demo/midgard-node run test:da-phase5-e2e
+These results establish local workflow and emulator acceptance for the exercised
+scenarios. They do not establish live deployment or release acceptance. Generated
+transition-workflow measurement output was preserved with the local run evidence;
+only the forced-window ledger consumed by a regression test was refreshed.
 
-# Haskell offchain (mockchain; not CI-wired)
-cd offchain && cabal test mockchain-tests
+## Verification commands
+
+From the repository root, build the real blueprint using the pinned compiler:
+
+```sh
+(cd onchain/aiken && aiken build --env testnet)
 ```
 
-On reconstructed base `55afdc54`, pinned Aiken v1.1.21 passes all 96 tests and
-the `testnet` build, but `aiken fmt --check` reports three pre-existing files:
-`validators/da-attestation.ak`,
-`lib/midgard/fraud-proofs/transition-trace/proof.ak`, and
-`lib/midgard/fraud-proofs/transition-trace/proof.test.ak`. This documentation
-change does not touch `onchain/aiken/**`, so the path-filtered Aiken workflow is
-not a check on this PR; the formatter debt remains a repository hygiene item.
+Use the [Aiken build skill](../../.agents/skills/aiken-contract-build/SKILL.md)
+for focused selectors and cache isolation. Selectors must collect a nonzero
+number of tests. For package suites, also from the repository root:
 
-Live-stack acceptance: `.agents/skills/midgard-e2e-acceptance/SKILL.md` (local Kupmios
-only; real DA attestation required — `attest-state-queue-once` forbidden as an acceptance
-path, `:78-81,822-829`). Contract building: `.agents/skills/aiken-contract-build/SKILL.md`
-(`aiken build --env testnet`; default env is not e2e-compatible, `:31-33`).
+```sh
+pnpm --dir demo/midgard-fault-proofs run typecheck
+pnpm --dir demo/midgard-fault-proofs test
+pnpm --dir demo/midgard-core test
+pnpm --dir demo/midgard-sdk test
+pnpm --dir demo/midgard-validation test
+pnpm --dir demo/midgard-watcher test
+pnpm --dir demo/midgard-node test
+pnpm --dir demo/da-committee-node test
+```
 
-## 4. CI wiring
+Set `MIDGARD_REAL_BLUEPRINT_PATH` to the absolute freshly built blueprint when
+running real-contract scenarios. Workspace source conditions resolve sibling
+source for typecheck/lint/Vitest; scripts that invoke plain `node` still require
+the package builds they document.
 
-| Suite                                                                            | CI                                                                             |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `aiken fmt --check` + `aiken check`                                              | ✅ `.github/workflows/aiken-ci.yml`                                            |
-| `aiken build --env testnet`                                                      | ✅ `.github/workflows/midgard-node-ci.yml`                                     |
-| midgard-core / da-committee-node / lucid-midgard / midgard-node / DA phase-5 e2e | ✅ `.github/workflows/midgard-node-ci.yml` (+ nightly benchmark workflow)      |
-| `demo/midgard-fault-proofs` build/typecheck/tests                                | ✅ `.github/workflows/midgard-node-ci.yml`; package paths trigger the workflow |
-| midgard-sdk / midgard-validation build/typecheck/tests                           | ✅ `.github/workflows/midgard-node-ci.yml`                                     |
-| Plutarch / Haskell offchain                                                      | ❌ manual only                                                                 |
-| tx-prep / preprod operator-lifecycle                                             | ❌ manual, env-gated                                                           |
+Positive publication and lifecycle acceptance must use the shared
+`demo/midgard-fault-proofs/tests/support/emulator/protocol-parameters.ts`
+limits. Raised size/ExUnit limits are diagnostic, not release acceptance.
 
-## 5. Known coverage gaps (test debt, ordered)
+## Emulator gate performance
 
-1. **CI**: wire the legacy Plutarch helper suite into CI or retire the remaining
-   dependency on it with explicit replacement evidence. The TypeScript fault-proof,
-   validation, and SDK suites are already required by `midgard-node-ci.yml`.
-2. **Aiken-level tests** for computation-thread Init/Success/cancel, fault-proof mint
-   coupling, catalogue immutability, and both `RemoveFaultyBlockHeader` branches —
-   including a regression for the cross-operator descendant case
-   (`state-queue.ak:661`) and a duplicate-`Init` double-mint probe.
-3. **Transition-trace sub-variant gaps**: `SourcePhaseMismatch` (0 tests), `CountFault`
-   (1/5), `OmittedDueL1Event`/`OutOfWindowSourceEvent` (deposit-only).
-4. **Phase A/B reject codes never exercised**: `UnsupportedFieldNonEmpty`,
-   `PlutusEvaluationUnavailable`, `CertificatesForbidden`, `NonZeroWithdrawal`
-   (21/25 covered by `phase-a.test.ts`/`phase-b.test.ts`).
-5. **Preprod re-run** of one full family (double-spend) with publishable evidence to
-   confirm or supersede the operator-local canonical-root mismatch report.
-6. **Removal integration** against a real node (`/stateQueueMutationLease` currently
-   mocked-fetch only) and a post-removal event re-inclusion scenario.
-7. **DA**: compression has startup and payload-envelope/sizing coverage, but no
-   focused codec property suite; committee-store retention behavior remains untestable
-   because no retention code exists.
+The 2026-09-14 scheduling change preserves all 434 collected fault-proof
+emulator cases across 103 files. It removes the command-level serialization
+that overrode the existing fork limit and splits two expensive transition-trace
+cases into independent files. The original 21 cases remain 19 + 1 + 1 with
+identical full test names and an unchanged callback syntax tree, including all
+39 assertions and three restored module spies. Each file retains an isolated
+fork; real local UPLC evaluation, protocol limits and lifecycle checks remain
+required. Optional fit ledgers from the two split files use distinct sibling
+paths to avoid concurrent writes.
+
+Run the complete named gate from the repository root with the measured worker
+cap (eight is the default on this host):
+
+```sh
+MIDGARD_FAULT_PROOF_FORKS=8 pnpm --dir demo run test:tx-prep:emulator
+```
+
+The scheduling-only benchmarks below precede the evaluator optimization described
+later and measure only the fault-proof stage. The separate node
+stage previously passed all 52 cases in 432.61 seconds; add its runtime when
+assessing the complete named gate. Both worker benchmarks use the same frozen
+fault-proof test tree and blueprint, with fit-ledger writes disabled.
+
+| Fault-proof workers                 | Cases / files | Result | Wall time     | Peak aggregate RSS | Peak aggregate PSS |
+| ----------------------------------- | ------------- | ------ | ------------- | ------------------ | ------------------ |
+| 1 (previous baseline, before split) | 434 / 101     | Passed | 79.97 minutes | Not sampled        | Not sampled        |
+| 4                                   | 434 / 103     | Passed | 23.09 minutes | 6.50 GiB           | 6.24 GiB           |
+| 8                                   | 434 / 103     | Passed | 21.17 minutes | 10.14 GiB          | 9.61 GiB           |
+
+Both new runs completed with zero failed or pending cases and matched the exact
+434-name baseline inventory. Each used 103 distinct worker processes. Eight
+workers saved 115 seconds over four (8.3%); retain the existing eight-worker
+default. At peak memory use, at least 35.97 GiB remained available on this host
+(32 logical CPUs, 61 GiB RAM). Set `MIDGARD_FAULT_PROOF_FORKS` lower on smaller
+machines. RSS was sampled across the process group every second and PSS every
+five seconds; these are sampled peaks, not a per-process maximum.
+
+The split cases must start early: the installed Vitest 3.0.7 falls back to
+file-size ordering because its cache version check rejects its own version.
+The two small wrappers would otherwise run last. A sequencer moves those two
+files first while preserving Vitest's ordering for all others. The deep-deposit
+case started within nine seconds and took 20.92 minutes in the eight-worker run;
+its sequential computation now determines the suite's completion time.
+
+The measured blueprint SHA-256 was
+`11593a4edd6a400e08fd32e52d65cea498225d32ce28b471862ca6bd1435b079`.
+All 1,575 frozen source/test/config/blueprint file hashes matched after both runs.
+
+### Targeted profiles and evaluator optimization
+
+The isolated maximum deposit profile passed in 1,164.56 seconds including module
+setup (the test body took 1,155.99 seconds). Local UPLC evaluation consumed
+1,044.12 seconds, or 89.7% of that wall time. Its deposit value-fold phase alone
+spent 880.59 seconds in evaluation across 325 submitted checkpoints. CPU samples
+independently attributed 1,035.95 seconds to the evaluator and its descendants.
+
+All nine evaluator arguments were fingerprinted, including ordered UTxO CBOR,
+cost models, CPU/memory budgets and slot configuration. Of 2,675 actual calls,
+665 repeated an identical full request. Those repeated successful evaluations
+cost 261.75 seconds (22.5% of profiled wall time). Whole checkpoint planning,
+including output lookup, trace derivation and witness construction, took only
+16.12 seconds (1.4%). Fingerprinting added 0.26 seconds outside the evaluation
+timer. These profiles execute every original evaluation and assertion; they do
+not substitute an evaluator or change transaction construction.
+
+The 1,304-asset accepted-output profile also passed: 303.00 seconds including
+setup (293.79 seconds in the test), with 215.48 seconds in local evaluation.
+Its 505 identical repeat calls cost 53.94 seconds (17.8% of wall time); all
+checkpoint planning took 14.21 seconds. The raw profile is under
+`/tmp/midgard-emulator-perf/output-20260914T182944Z/`.
+
+The existing Lucid dependency patch now retains one successful evaluator request
+and result within a public transaction completion, across internal redeemer,
+fee and collateral convergence passes. Reuse requires byte equality of all
+transaction, ordered UTxO and cost-model inputs plus equality of all budget and
+slot arguments. Retained bytes are detached; each hit decodes fresh redeemer
+values. A changed request clears the entry, failures are not cached, and separate
+completions share no results. Custom evaluators retain their original behavior.
+All convergence, execution-unit and result-validation checks still run. Both
+published module formats are patched through pnpm's locked patch mechanism.
+
+The small real-evaluator regression failed before the change with four calls for
+three distinct requests, then passed with three actual evaluations and unchanged
+signed transaction bytes. It also exercises separate completions, changed
+transaction/collateral context and deliberately failing custom evaluators.
+
+Only focused regressions and the two expensive cases are rerun for this
+optimization; the full-suite scheduling results above are not a post-cache gate
+result. The targeted before/after profiles use isolated workers and preserve
+all case assertions, protocol limits and actual submissions.
+
+| Profiled test body              | Before reuse | After reuse | Real evaluations before / after |
+| ------------------------------- | ------------ | ----------- | ------------------------------- |
+| Accepted output, 1,304 assets   | 293.79 s     | 233.14 s    | 2,032 / 1,527                   |
+| Deposit, 1,295 assets, depth 64 | 1,155.99 s   | 905.72 s    | 2,675 / 2,010                   |
+
+The accepted-output case improved 20.6%. All 505 duplicate evaluations were
+removed, with zero repeated full requests afterward; the same 574 transactions
+were submitted and the same 498 phases planned. Its after-profile is retained
+under `/tmp/midgard-emulator-perf/after-cache-many-assets/`.
+The deposit case improved 21.6%. All 665 duplicate evaluations were removed,
+with zero repeated full requests afterward; the same 736 transactions were
+submitted in the same phase order and the same 658 phases planned. Its
+post-change profile is under
+`/tmp/midgard-emulator-perf/after-cache-deep-deposit/`. Both cases passed their
+original assertions. All 1,579 frozen hotspot inputs, including the dependency
+patch, lockfile and installed ESM/CJS bundles, matched after timing completed.
+
+Final focused checks passed: 12 new evaluator regressions across ESM/CommonJS,
+eight existing scheduler-refresh tests, and six transition-trace honest/corrupt
+evidence refusal cases (13 other cases intentionally filtered in that invocation).
+SDK and fault-proof package typechecks, scoped ESLint, and formatting also passed.
+No full emulator gate was rerun after the evaluator change.
+
+Reproduce the short correctness checks from the repository root:
+
+```sh
+pnpm --dir demo/midgard-sdk exec vitest run tests/lucid-completion-evaluation.test.ts tests/scheduler-refresh.test.ts
+pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-transition-trace-final.test.ts -t 'honest=true|corrupt(Index|Datum|Source)=true'
+```
+
+Run each expensive case separately for timing; the figures above include CPU
+profiling, so compare equivalent instrumentation when reproducing the numbers:
+
+```sh
+MIDGARD_FAULT_PROOF_FORKS=1 pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-transition-trace-final-many-assets.test.ts
+MIDGARD_FAULT_PROOF_FORKS=1 pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-transition-trace-final-deep-deposit.test.ts
+```
+
+Planning is a smaller target: most of its measured 14–16 seconds is the first
+value-trace derivation (11.8–12.2 seconds), rather than repeated checkpoint
+lookups. After this change, further evaluator acceleration should be measured
+before adding another optimization. A native build of the same engine would
+need exact request/result and execution-unit parity; it is not introduced here.
+
+The maximum-deposit CPU profile and exact-call measurements are retained under
+`/tmp/midgard-emulator-perf/output-20260914T181119Z/`; the small three-asset hook
+canary is under `output-20260914T181046Z/`. Diagnostic code lives under `/tmp`
+and is absent from the production/test configuration.
+
+The benchmark source inventory is
+`/tmp/midgard-emulator-perf/benchmark-source-freeze.json`; commands, process-memory
+samples and results are retained under `/tmp/midgard-emulator-perf/`.
+The old/new collected test manifests and callback comparison are
+`/tmp/midgard-transition-trace-final-split-inventory.json` and
+`/tmp/midgard-transition-trace-final-body-preservation.json`.
+These receipts establish the measured local gate result and preserved test scope;
+they do not close deployment-bound or public-testnet acceptance.
+
+## Release boundary
+
+Use [remaining acceptance](execution-plan.md) for publication, maximum-shape,
+public evidence lifetime, economics, independent-process, and preprod closure.
+The [public readiness checklist](../public_testnet_readiness.md) owns launch
+approval. A source installation or passing subset does not close these gates.

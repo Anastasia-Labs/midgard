@@ -4,7 +4,7 @@ Status: Current high-level orientation. The Excalidraw files beside this page
 are design/transaction diagrams and may describe target flows; verify them
 against the technical specification, Aiken validators, and current builders.
 
-Last reviewed: 2026-07-22
+Last reviewed: 2026-09-07
 
 ```mermaid
 flowchart LR
@@ -15,7 +15,7 @@ flowchart LR
   F --> MPF["Native MPF state owner"]
   F --> DA["DA payload and committee transport"]
   F --> L1["Cardano L1 state queue, settlement, reserve, and payout"]
-  DA --> W["DA committee / future independent watcher"]
+  DA --> W["DA committee and independent watcher"]
   L1 --> W
 ```
 

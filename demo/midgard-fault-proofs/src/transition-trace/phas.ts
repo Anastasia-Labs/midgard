@@ -140,6 +140,36 @@ export const keyValuePhasProof = async (
   return sdkProofFromCbor(proof.toCBOR());
 };
 
+/** Construct one immutable trie for multiple exact membership openings. */
+export const keyValuePhasMembershipProofs = async (
+  root: KeyValuePhasRoot,
+  openings: readonly KeyValuePhasEntry[],
+): Promise<readonly SDK.Proof[]> => {
+  if (openings.length === 0) return [];
+  const entries = new Map(
+    root.entries.map((entry) => [entry.key.toString("hex"), entry.value]),
+  );
+  for (const opening of openings) {
+    if (!entries.get(opening.key.toString("hex"))?.equals(opening.value))
+      throw transitionTraceError(
+        "missingWitnessData",
+        "Cannot build PHAS membership proof for an absent key/value.",
+      );
+  }
+  const trie = await trieFromEntries(root.entries);
+  const proofs: SDK.Proof[] = [];
+  for (const opening of openings) {
+    const proof = await trie.prove(Buffer.from(opening.key));
+    if (normalizeRoot(proof.verify(true)) !== root.root)
+      throw transitionTraceError(
+        "proofConstructionFailed",
+        "Generated PHAS membership proof does not open committed root.",
+      );
+    proofs.push(sdkProofFromCbor(proof.toCBOR()));
+  }
+  return proofs;
+};
+
 export const keyValuePhasNonMembershipProof = async (
   root: KeyValuePhasRoot,
   key: Buffer,

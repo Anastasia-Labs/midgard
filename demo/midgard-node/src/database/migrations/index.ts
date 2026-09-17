@@ -1,5 +1,4 @@
-import { createHash } from "node:crypto";
-
+import { sha256Hex } from "../../sha256.js";
 import initialSchemaSql from "./sql/0001_initial_schema.sql";
 
 export type Migration = {
@@ -9,9 +8,6 @@ export type Migration = {
   readonly sql: string;
   readonly transactional: true;
 };
-
-const sha256Hex = (value: string): string =>
-  createHash("sha256").update(value, "utf8").digest("hex");
 
 export const MIGRATIONS: readonly Migration[] = [
   {
@@ -36,6 +32,9 @@ export const MIGRATION_MANIFEST_HASH = sha256Hex(
 export const APPLICATION_TABLE_NAMES = [
   "address_history",
   "blocks",
+  "cek_program_material_admission_owners",
+  "cek_program_material_entries",
+  "cek_program_material_memberships",
   "confirmed_ledger",
   "commit_build_calibration",
   "deposits_utxos",
@@ -54,14 +53,17 @@ export const APPLICATION_TABLE_NAMES = [
   "pending_block_finalization_forced_transactions",
   "pending_block_finalization_withdrawals",
   "pending_block_finalization_txs",
-  "pending_block_finalization_utxos",
   "pending_block_finalization_transition_trace",
   "pending_block_finalization_event_to_step",
+  "pending_block_finalization_validation_traces",
+  "pending_block_finalization_validation_trace_witnesses",
   "tx_admissions",
   "tx_admission_payloads",
   "local_mutation_jobs",
   "state_queue_mutation_leases",
   "da_payloads",
+  "da_payload_terminal_outcomes",
+  "state_queue_terminal_observer_states",
   "da_payload_publications",
   "da_payload_announcements",
   "deposit_submission_attempts",
@@ -101,6 +103,7 @@ export const APPLICATION_INDEX_NAMES = [
   "uniq_state_queue_mutation_leases_active_scope",
   "idx_state_queue_mutation_leases_status_updated",
   "idx_da_payloads_created_at",
+  "idx_da_payload_terminal_outcomes_authority",
   "idx_da_payload_publications_retry",
   "idx_da_payload_announcements_retry",
   "idx_deposit_submission_attempts_deposit_event_id",

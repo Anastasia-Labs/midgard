@@ -10,10 +10,11 @@ import { afterAll, beforeAll, describe, expect, expectTypeOf } from "vitest";
 import * as Ledger from "../src/database/utils/ledger.js";
 import * as Tx from "../src/database/utils/tx.js";
 import {
-  applyLedgerOpsToUtxoPayloadAggregate,
+  applyLedgerOpsToUtxoPayloadAggregateFromFullValues,
   applyTraceLedgerOpsToMpf,
   buildTransitionTraceResult,
   computeLedgerMpfRootFromLedgerEntries,
+  computeUtxoPayloadRoot,
   configureMpfArenaLimits,
   configureMpfPathHydration,
   DecodedMempoolTxForCommit,
@@ -29,6 +30,7 @@ import {
   keyValuePhasProof,
   keyValuePhasRoot,
   keyValuePhasRootWithCount,
+  ledgerOutputToInsertBatchOp,
   type LedgerOverlayHandle,
   MidgardMpf,
   MpfBatchOp,
@@ -37,19 +39,21 @@ import {
   setMpfScratchBuild,
   type TransitionTraceSourceEvent,
   utxoPayloadAggregateFromEntries,
+  validateValidationTraceEventKeySet,
   verifyKeyValuePhasMembershipProof,
   verifyKeyValuePhasNonMembershipProof,
   withMpfBlockOverlays,
   withMpfRootTransaction,
   withMpfRootTransactions,
-} from "../src/workers/utils/mpf.js";
+} from "../src/mpf/index.js";
 import {
   AuthenticatedPackedMpfArena,
   EventFlatMutationArena,
-  ResumedEventFlatOverlayV2,
+  ResumedEventFlatOverlay,
 } from "../src/workers/utils/mpf-event-flat.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 import { compileAuthenticatedFlatMpfMultiproof } from "../src/workers/utils/mpf-flat-multiproof.js";
+import { makeOutRefCbor } from "./midgard-output-helpers.js";
 
 const TEST_DB = "test-mpf-db";
 const EMPTY_DELETE_DB = "test-mpf-empty-delete-db";
@@ -383,6 +387,59 @@ describe("Midgard MPF wrapper", () => {
     }
   });
 
+  it("rejects a validation-trace provider that substitutes a non-transaction transition event", async () => {
+    const expectedEventKey: SDK.EventKey = {
+      L2TransactionEventKey: { tx_id: "22".repeat(32) },
+    };
+    const substitutedEventKey: SDK.EventKey = {
+      DepositEventKey: {
+        deposit_id: {
+          transactionId: "33".repeat(32),
+          outputIndex: 0n,
+        },
+      },
+    };
+    const expectedKeyCbor =
+      encodeTransitionEventKeyCbor(expectedEventKey).toString("hex");
+    const substitutedKeyCbor =
+      encodeTransitionEventKeyCbor(substitutedEventKey);
+    const transitionEventKeyCbors = new Set([
+      expectedKeyCbor,
+      substitutedKeyCbor.toString("hex"),
+    ]);
+
+    await expect(
+      Effect.runPromise(
+        validateValidationTraceEventKeySet({
+          expectedEventKeys: [expectedEventKey],
+          transitionEventKeyCbors,
+          members: [
+            {
+              eventKey: substitutedEventKey,
+              keyCbor: substitutedKeyCbor,
+            },
+          ],
+        }),
+      ),
+    ).rejects.toThrow(
+      "Validation trace provider returned a duplicate, foreign, or non-canonical event key",
+    );
+    await expect(
+      Effect.runPromise(
+        validateValidationTraceEventKeySet({
+          expectedEventKeys: [expectedEventKey],
+          transitionEventKeyCbors,
+          members: [
+            {
+              eventKey: expectedEventKey,
+              keyCbor: Buffer.from(expectedKeyCbor, "hex"),
+            },
+          ],
+        }),
+      ),
+    ).resolves.toBeUndefined();
+  });
+
   it("exports the exact Phase 4 overlay promotion contract", () => {
     expectTypeOf<ReturnType<LedgerOverlayHandle["promote"]>>().toMatchTypeOf<
       Effect.Effect<void, unknown, never>
@@ -515,14 +572,20 @@ describe("Midgard MPF wrapper", () => {
         { type: "insert", key: key3, value: value3 },
       ]);
 
+      const firstOutRef = makeOutRefCbor(0x11);
+      const secondOutRef = makeOutRefCbor(0x22);
+      const outputCbor = Buffer.from(
+        "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0",
+        "hex",
+      );
       const entries: Ledger.MinimalEntry[] = [
         {
-          [Ledger.Columns.OUTREF]: key1,
-          [Ledger.Columns.OUTPUT]: value1,
+          [Ledger.Columns.OUTREF]: firstOutRef,
+          [Ledger.Columns.OUTPUT]: outputCbor,
         },
         {
-          [Ledger.Columns.OUTREF]: key2,
-          [Ledger.Columns.OUTPUT]: value2,
+          [Ledger.Columns.OUTREF]: secondOutRef,
+          [Ledger.Columns.OUTPUT]: outputCbor,
         },
       ];
       const expectedRoot =
@@ -531,10 +594,31 @@ describe("Midgard MPF wrapper", () => {
         mpf,
         entries,
       );
+      const payloadRoot = yield* computeUtxoPayloadRoot(
+        entries.map((entry) => ({
+          outref: entry[Ledger.Columns.OUTREF],
+          output: entry[Ledger.Columns.OUTPUT],
+        })),
+      );
+      const obsoleteRawOutputRoot = yield* keyValuePhasRoot(
+        entries.map((entry) => entry[Ledger.Columns.OUTREF]),
+        entries.map((entry) => entry[Ledger.Columns.OUTPUT]),
+      );
       const removedStaleEntry = yield* mpf.get(key3);
+      const hydratedDescriptor = yield* mpf.get(firstOutRef);
+      const expectedDescriptor = ledgerOutputToInsertBatchOp({
+        outRef: firstOutRef,
+        outputCbor,
+      }).value;
 
       expect(hydratedRoot).toBe(expectedRoot);
+      expect(payloadRoot).toBe(expectedRoot);
+      expect(obsoleteRawOutputRoot).not.toBe(expectedRoot);
       expect(removedStaleEntry._tag).toBe("None");
+      expect(hydratedDescriptor._tag).toBe("Some");
+      if (hydratedDescriptor._tag === "Some") {
+        expect(hydratedDescriptor.value).toEqual(expectedDescriptor);
+      }
     }),
   );
 
@@ -1951,32 +2035,34 @@ describe("Midgard MPF wrapper", () => {
     }),
   );
 
-  it.effect("resumes a no-op parked scratch overlay at the canonical empty root", () =>
-    Effect.gen(function* () {
-      const scratch = yield* MidgardMpf.createScratch(
-        "test-mpf-parked-empty-scratch",
-        { engine: "overlay" },
-      );
-      yield* scratch.beginBlockOverlay();
-      const artifact = yield* scratch.parkBlockOverlay();
-      expect(artifact.nodeCount).toBe(0);
-      expect(Buffer.from(artifact.baseRoot).toString("hex")).toBe(
-        SDK.EMPTY_MERKLE_TREE_ROOT,
-      );
-      expect(Buffer.from(artifact.candidateRoot).toString("hex")).toBe(
-        SDK.EMPTY_MERKLE_TREE_ROOT,
-      );
+  it.effect(
+    "resumes a no-op parked scratch overlay at the canonical empty root",
+    () =>
+      Effect.gen(function* () {
+        const scratch = yield* MidgardMpf.createScratch(
+          "test-mpf-parked-empty-scratch",
+          { engine: "overlay" },
+        );
+        yield* scratch.beginBlockOverlay();
+        const artifact = yield* scratch.parkBlockOverlay();
+        expect(artifact.nodeCount).toBe(0);
+        expect(Buffer.from(artifact.baseRoot).toString("hex")).toBe(
+          SDK.EMPTY_MERKLE_TREE_ROOT,
+        );
+        expect(Buffer.from(artifact.candidateRoot).toString("hex")).toBe(
+          SDK.EMPTY_MERKLE_TREE_ROOT,
+        );
 
-      const resumed = yield* MidgardMpf.resumeParkedOverlay(
-        "test-mpf-parked-empty-scratch",
-        undefined,
-        artifact,
-      );
-      expect(resumed.blockOverlayIsActive()).toBe(true);
-      expect(yield* resumed.rootIsEmpty()).toBe(true);
-      yield* resumed.discardBlockOverlay();
-      yield* resumed.close();
-    }),
+        const resumed = yield* MidgardMpf.resumeParkedOverlay(
+          "test-mpf-parked-empty-scratch",
+          undefined,
+          artifact,
+        );
+        expect(resumed.blockOverlayIsActive()).toBe(true);
+        expect(yield* resumed.rootIsEmpty()).toBe(true);
+        yield* resumed.discardBlockOverlay();
+        yield* resumed.close();
+      }),
   );
 
   it.effect("resumes an empty-base parked scratch overlay without a path", () =>
@@ -2129,19 +2215,19 @@ describe("Midgard MPF wrapper", () => {
         );
         expect(immutableSnapshot.rootHash()).toStrictEqual(immutableRoot);
         expect(immutableSnapshot.get(key1)).toStrictEqual(value1);
-        const parkedV2 = yield* Effect.promise(() =>
+        const parked = yield* Effect.promise(() =>
           arena.freezeParallel({
-            trieName: "test-mpf-event-flat-v2",
+            trieName: "test-mpf-event-flat-v1",
             baseRoot: Buffer.from(artifact.baseRoot),
             shardCount: 2,
           }),
         );
-        const transferredV2 = structuredClone(parkedV2, {
+        const transferredV1 = structuredClone(parked, {
           transfer: [
-            parkedV2.baseRoot,
-            parkedV2.candidateRoot,
-            parkedV2.closureDigest,
-            ...parkedV2.shards.flatMap((shard) => [
+            parked.baseRoot,
+            parked.candidateRoot,
+            parked.closureDigest,
+            ...parked.shards.flatMap((shard) => [
               shard.nodeHashes,
               shard.nodeValues,
               shard.nodeValueOffsets,
@@ -2149,16 +2235,16 @@ describe("Midgard MPF wrapper", () => {
             ]),
           ],
         });
-        expect(parkedV2.shards[0]!.nodeValues.byteLength).toBe(0);
-        const resumedV2 = new ResumedEventFlatOverlayV2(transferredV2);
-        expect(resumedV2.rootHash()).toStrictEqual(frozen.rootHash());
-        expect(resumedV2.get(key2)).toStrictEqual(value3);
-        expect(resumedV2.prove(key1).verify(false)).toStrictEqual(
+        expect(parked.shards[0]!.nodeValues.byteLength).toBe(0);
+        const resumedV1 = new ResumedEventFlatOverlay(transferredV1);
+        expect(resumedV1.rootHash()).toStrictEqual(frozen.rootHash());
+        expect(resumedV1.get(key2)).toStrictEqual(value3);
+        expect(resumedV1.prove(key1).verify(false)).toStrictEqual(
           frozen.rootHash(),
         );
-        const corruptedV2 = structuredClone(transferredV2);
-        new Uint8Array(corruptedV2.shards[0]!.nodeValues)[0] ^= 1;
-        expect(() => new ResumedEventFlatOverlayV2(corruptedV2)).toThrow();
+        const corruptedV1 = structuredClone(transferredV1);
+        new Uint8Array(corruptedV1.shards[0]!.nodeValues)[0] ^= 1;
+        expect(() => new ResumedEventFlatOverlay(corruptedV1)).toThrow();
         yield* reference.discardBlockOverlay();
         yield* reference.close();
       }),
@@ -2342,14 +2428,14 @@ describe("Midgard MPF wrapper", () => {
         expect((yield* eventFlat.get(numberedKey(1_000)))._tag).toBe("Some");
         const beforePark = eventFlat.eventFlatMutationDiagnostics();
         expect(beforePark).toBeDefined();
-        const artifact = yield* eventFlat.parkEventFlatOverlayV2(2);
+        const artifact = yield* eventFlat.parkEventFlatOverlayV1(2);
         expect(artifact.nodeCount).toBe(beforePark!.reachableDirtyNodeCount);
         expect(artifact.nodeCount).toBeLessThan(beforePark!.reachableNodeCount);
         expect(Buffer.from(artifact.baseRoot)).toStrictEqual(durableRoot);
         expect(Buffer.from(artifact.candidateRoot)).toStrictEqual(
           candidateRoot,
         );
-        const resumed = yield* MidgardMpf.resumeParkedEventFlatOverlayV2(
+        const resumed = yield* MidgardMpf.resumeParkedEventFlatOverlayV1(
           "test-mpf-event-flat-level",
           PATH_HYDRATION_DB,
           artifact,
@@ -2475,7 +2561,7 @@ describe("Midgard MPF wrapper", () => {
         ];
         yield* fork.primeBlockPathArena(ops, 2, false);
         const candidateRoot = yield* fork.applyBatch(ops);
-        const artifact = yield* fork.parkEventFlatOverlayV2(2);
+        const artifact = yield* fork.parkEventFlatOverlayV1(2);
         yield* owner.discardBlockOverlay();
         yield* fork.close();
         yield* owner.close();
@@ -2491,7 +2577,7 @@ describe("Midgard MPF wrapper", () => {
         const tampered = structuredClone(artifact);
         new Uint8Array(tampered.shards[0]!.nodeValues)[0] ^= 1;
         expect(
-          (yield* MidgardMpf.resumeParkedEventFlatOverlayV2(
+          (yield* MidgardMpf.resumeParkedEventFlatOverlayV1(
             "test-mpf-event-flat-phase4",
             PATH_HYDRATION_DB,
             tampered,
@@ -2505,7 +2591,7 @@ describe("Midgard MPF wrapper", () => {
         expect(yield* afterTamper.root()).toStrictEqual(durableRoot);
         yield* afterTamper.close();
 
-        const resumed = yield* MidgardMpf.resumeParkedEventFlatOverlayV2(
+        const resumed = yield* MidgardMpf.resumeParkedEventFlatOverlayV1(
           "test-mpf-event-flat-phase4",
           PATH_HYDRATION_DB,
           artifact,
@@ -3951,21 +4037,29 @@ describe("Midgard MPF wrapper", () => {
         ];
 
         for (const testCase of cases) {
-          const mpf = yield* MidgardMpf.createScratch(
-            `aggregate-${testCase.label}`,
-          );
-          yield* hydrateLedgerMpfFromLedgerEntries(
-            mpf,
-            testCase.base.map((entry) => ({
-              [Ledger.Columns.OUTREF]: entry.outref,
-              [Ledger.Columns.OUTPUT]: entry.output,
-            })),
-          );
-          const actual = yield* applyLedgerOpsToUtxoPayloadAggregate(
-            mpf,
-            utxoPayloadAggregateFromEntries(testCase.base),
-            testCase.ops,
-          );
+          const actual =
+            yield* applyLedgerOpsToUtxoPayloadAggregateFromFullValues(
+              utxoPayloadAggregateFromEntries(testCase.base),
+              testCase.ops,
+              new Map(
+                testCase.base.map((entry) => [
+                  entry.outref.toString("hex"),
+                  entry.output,
+                ]),
+              ),
+              new Map(
+                testCase.ops.flatMap((operation) =>
+                  operation.type === "delete"
+                    ? []
+                    : [
+                        [
+                          operation.key.toString("hex"),
+                          operation.value,
+                        ] as const,
+                      ],
+                ),
+              ),
+            );
           const materialized = new Map(
             testCase.base.map((entry) => [
               entry.outref.toString("hex"),
@@ -3991,20 +4085,26 @@ describe("Midgard MPF wrapper", () => {
             depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
             transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
             eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
             withdrawalCount: 0n,
             forcedTransactionCount: 0n,
             l2TransactionCount: 0n,
             depositCount: 0n,
             totalEventCount: 0n,
             transitionStepCount: 0n,
+            validationTraceCount: 0n,
             startTime: 0n,
             endTime: 1n,
+            blockSlot: 0n,
+            expectedNetworkId: 0n,
+            minFeeA: 0n,
+            minFeeB: 0n,
             prevHeaderHash: "00".repeat(28),
             operatorVkey: "11".repeat(28),
             protocolVersion: 1n,
           };
-          const payload: SDK.DaPayloadV2 = {
-            version: SDK.DA_PAYLOAD_V2_VERSION,
+          const payload: SDK.DaPayload = {
+            version: SDK.DA_PAYLOAD_VERSION,
             block_body: {
               header_hash: "22".repeat(28),
               header,
@@ -4018,6 +4118,11 @@ describe("Midgard MPF wrapper", () => {
               deposits: [],
               transition_trace: [],
               event_to_step: [],
+              transaction_preimages: [],
+              forced_transaction_preimages: [],
+              cek_program_material: [],
+              validation_traces: [],
+              validation_trace_witnesses: [],
               counts: {
                 withdrawalCount: 0n,
                 forcedTransactionCount: 0n,
@@ -4025,14 +4130,14 @@ describe("Midgard MPF wrapper", () => {
                 depositCount: 0n,
                 totalEventCount: 0n,
                 transitionStepCount: 0n,
+                validationTraceCount: 0n,
               },
             },
           };
           expect(
-            SDK.daPayloadV2EncodedSizeFromUtxoAggregate(payload, actual),
+            SDK.daPayloadEncodedSizeFromUtxoAggregate(payload, actual),
             testCase.label,
-          ).toBe(SDK.encodeDaPayloadV2(payload).length);
-          yield* mpf.close();
+          ).toBe(SDK.encodeDaPayload(payload).length);
         }
       }),
   );

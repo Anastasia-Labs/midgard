@@ -5,6 +5,8 @@
 \section{Scheduler}
 \label{h:scheduler}
 
+\paragraph{Implementation conformance.} The end-of-shift conditions below retain the original contiguous-shift and early-consent design. In the current \code{scheduler.ak} validator, \code{validate\_end\_of\_shift\_and\_get\_operators} instead requires a short bounded validity interval whose inclusive lower bound is at least the previous shift end, and sets the next shift start to that lower bound. This route is permissionless and does not use the successor signature. The original conditions are not evidence that this stronger scheduling rule is enforced.
+
 The Midgard scheduler is an L1 mechanism that indicates which operator is assigned to the current shift and controls the transitions to the next shift and next operator.
 Whenever the current shift must advance, the next operator in key-descending order from the \code{active\_operators} list can be picked to take over the next shift.
 

@@ -1,10 +1,10 @@
 import { Context, Effect, Layer } from "effect";
 
-import {
-  ProductionNativeMpfOwnerService,
-  type NativeMpfOwnerServiceOptions,
-} from "./service.js";
 import type { NativeMpfOwnerService } from "./protocol.js";
+import {
+  type NativeMpfOwnerServiceOptions,
+  ProductionNativeMpfOwnerService,
+} from "./service.js";
 
 /** Main-process ownership boundary for the sole Architecture G Level lock. */
 export class NativeMpfOwner extends Context.Tag("NativeMpfOwner")<

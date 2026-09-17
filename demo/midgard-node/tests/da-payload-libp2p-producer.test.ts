@@ -4,29 +4,31 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS_V1,
+  DA_TRANSPORT_LIMITS,
   DaGossipTopic,
   daGossipTopic,
   DaRequestResponseProtocol,
   daRequestResponseProtocolId,
-  decodeDaMetadataByHeaderResponseV1Cbor,
-  decodeDaCapabilitiesRequestV1Cbor,
-  decodeDaPayloadAnnouncementV1Cbor,
-  decodeDaPayloadByHeaderResponseV1Cbor,
-  decodeDaPayloadSubmitRequestV1Cbor,
-  encodeDaMetadataByHeaderResponseV1Cbor,
-  encodeDaCapabilitiesResponseV1Cbor,
-  encodeDaPayloadByHeaderRequestV1Cbor,
-  encodeDaPayloadSubmitResponseV1Cbor,
+  decodeDaCapabilitiesRequestCbor,
+  decodeDaMetadataByHeaderResponseCbor,
+  decodeDaPayloadAnnouncementCbor,
+  decodeDaPayloadByHeaderResponseCbor,
+  decodeDaPayloadSubmitRequestCbor,
+  encodeDaCapabilitiesResponseCbor,
+  encodeDaMetadataByHeaderResponseCbor,
+  encodeDaPayloadByHeaderRequestCbor,
+  encodeDaPayloadSubmitResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
+import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { loadDaLibp2pIdentity } from "@/da/libp2p-identity.js";
 import {
-  closeDaLibp2pPublicationTransport,
   assertDaEnvelopeCapabilityQuorum,
+  closeDaLibp2pPublicationTransport,
   createDaLibp2pProducerProbeTransport,
   createDaLibp2pRetainedPayloadRequestHandlers,
   type DaProducerProbeTransport,
@@ -40,12 +42,15 @@ import {
   runDaLibp2pPreflight,
   runDaLibp2pPreflightFromEnv,
   writeSharedDaFrameChunksForTest,
-} from "@/da/libp2p-producer.js";
-import { DaPayloadsDB } from "@/database/index.js";
+} from "../src/da/libp2p-producer.js";
+import { DaPayloadsDB } from "../src/database/index.js";
 
 const PEER_A = "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";
 const PEER_B = "12D3KooWR3iZBFz6W2fyFdRt2t45x2Ytz9p6c9JwHyDqaN49XU47";
 const PEER_C = "12D3KooWKf1kXPQFRZ6SR6WQF1Z7gqDRUjUe7S4hSm8LRmSk5kvA";
+// A dedicated, non-committee Noise identity for the public retained-DA
+// plane, as parseDaLibp2pRuntimeManifest requires.
+const PEER_RETAINED = "12D3KooWQYV9dGMFoRzNStwpXztXaBUjtPqi6aU76ZgUriHhKust";
 const DEPLOYMENT = "ab".repeat(32);
 const HEADER_HASH = Buffer.alloc(28, 0x02);
 const PAYLOAD_CBOR = Buffer.from("d87980", "hex");
@@ -53,7 +58,7 @@ const PAYLOAD_HASH = computeDaSha256Hash(PAYLOAD_CBOR);
 const PRODUCER_PRIVATE_KEY_SOURCE = `seed:${"00".repeat(31)}01`;
 
 describe("DA payload libp2p producer publication", () => {
-  it("requires a threshold of exact V3 envelope capabilities", async () => {
+  it("requires a threshold of exact V1 envelope capabilities", async () => {
     const manifest = parseThreeCommitteePeerManifest();
     let incapablePeers = new Set([PEER_C]);
     const transport: DaProducerProbeTransport = {
@@ -66,12 +71,12 @@ describe("DA payload libp2p producer publication", () => {
           ),
         );
         expect(
-          decodeDaCapabilitiesRequestV1Cbor(payload).deploymentFingerprint,
+          decodeDaCapabilitiesRequestCbor(payload).deploymentFingerprint,
         ).toEqual(Buffer.from(DEPLOYMENT, "hex"));
-        return encodeDaCapabilitiesResponseV1Cbor({
+        return encodeDaCapabilitiesResponseCbor({
           deploymentFingerprint: Buffer.from(DEPLOYMENT, "hex"),
           transportProtocolVersion: 1,
-          payloadSchemaVersions: incapablePeers.has(peer.peerId) ? [2] : [2, 3],
+          payloadSchemaVersions: [1],
           envelopeContentEncodings: incapablePeers.has(peer.peerId)
             ? [0]
             : [0, 1],
@@ -122,7 +127,7 @@ describe("DA payload libp2p producer publication", () => {
       sign: () => Buffer.alloc(64, 0x0b),
       request: async (peer, protocolId, payload) => {
         requests.push({ peerId: peer.peerId, protocolId, payload });
-        return encodeDaPayloadSubmitResponseV1Cbor({
+        return encodeDaPayloadSubmitResponseCbor({
           status: peer.peerId === PEER_A ? "accepted" : "duplicate",
           headerHash: HEADER_HASH,
           payloadHash: PAYLOAD_HASH,
@@ -151,7 +156,7 @@ describe("DA payload libp2p producer publication", () => {
         DaRequestResponseProtocol.payloadSubmit,
       ),
     );
-    const decodedRequest = decodeDaPayloadSubmitRequestV1Cbor(
+    const decodedRequest = decodeDaPayloadSubmitRequestCbor(
       requests[0]!.payload,
     );
     expect(decodedRequest.mode).toBe("inline");
@@ -161,7 +166,7 @@ describe("DA payload libp2p producer publication", () => {
     expect(published?.topic).toBe(
       daGossipTopic(DEPLOYMENT, DaGossipTopic.payloadAnnouncements),
     );
-    const announcement = decodeDaPayloadAnnouncementV1Cbor(published!.payload);
+    const announcement = decodeDaPayloadAnnouncementCbor(published!.payload);
     expect(announcement.announcedByPeerId).toBe("producer-peer");
     expect(announcement.announcedAtSlot).toBe(42);
     expect(announcement.signature).toEqual(Buffer.alloc(64, 0x0b));
@@ -179,15 +184,15 @@ describe("DA payload libp2p producer publication", () => {
         headerHash.equals(HEADER_HASH) ? rowFixture() : undefined,
     });
 
-    const byHeaderResponse = decodeDaPayloadByHeaderResponseV1Cbor(
+    const byHeaderResponse = decodeDaPayloadByHeaderResponseCbor(
       await callRetainedPayloadHandler({
         handlers,
         protocol: DaRequestResponseProtocol.payloadByHeader,
-        request: encodeDaPayloadByHeaderRequestV1Cbor({
+        request: encodeDaPayloadByHeaderRequestCbor({
           deploymentFingerprint: Buffer.from(DEPLOYMENT, "hex"),
           headerHash: HEADER_HASH,
           acceptedPayloadHashes: null,
-          maxInlineBytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
+          maxInlineBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
         }),
       }),
     );
@@ -199,11 +204,11 @@ describe("DA payload libp2p producer publication", () => {
       reasonCode: null,
     });
 
-    const metadataResponse = decodeDaMetadataByHeaderResponseV1Cbor(
+    const metadataResponse = decodeDaMetadataByHeaderResponseCbor(
       await callRetainedPayloadHandler({
         handlers,
         protocol: DaRequestResponseProtocol.metadataByHeader,
-        request: encodeDaPayloadByHeaderRequestV1Cbor({
+        request: encodeDaPayloadByHeaderRequestCbor({
           deploymentFingerprint: Buffer.from(DEPLOYMENT, "hex"),
           headerHash: HEADER_HASH,
           acceptedPayloadHashes: [PAYLOAD_HASH],
@@ -215,7 +220,7 @@ describe("DA payload libp2p producer publication", () => {
       status: "found",
       headerHash: HEADER_HASH,
       payloadHash: PAYLOAD_HASH,
-      payloadSchemaVersion: 2,
+      payloadSchemaVersion: 1,
       payloadBytes: PAYLOAD_CBOR.length,
       localStatus: "verified",
     });
@@ -223,15 +228,15 @@ describe("DA payload libp2p producer publication", () => {
       Buffer.from("15".repeat(32), "hex"),
     );
 
-    const missingResponse = decodeDaPayloadByHeaderResponseV1Cbor(
+    const missingResponse = decodeDaPayloadByHeaderResponseCbor(
       await callRetainedPayloadHandler({
         handlers,
         protocol: DaRequestResponseProtocol.payloadByHeader,
-        request: encodeDaPayloadByHeaderRequestV1Cbor({
+        request: encodeDaPayloadByHeaderRequestCbor({
           deploymentFingerprint: Buffer.from(DEPLOYMENT, "hex"),
           headerHash: Buffer.alloc(28, 0xff),
           acceptedPayloadHashes: null,
-          maxInlineBytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
+          maxInlineBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
         }),
       }),
     );
@@ -256,7 +261,7 @@ describe("DA payload libp2p producer publication", () => {
         if (peer.peerId === PEER_B) {
           throw new Error("dial failed");
         }
-        return encodeDaPayloadSubmitResponseV1Cbor({
+        return encodeDaPayloadSubmitResponseCbor({
           status: "accepted",
           headerHash: HEADER_HASH,
           payloadHash: PAYLOAD_HASH,
@@ -307,7 +312,7 @@ describe("DA payload libp2p producer publication", () => {
         if (peer.peerId === PEER_C) {
           await slowPeer;
         }
-        return encodeDaPayloadSubmitResponseV1Cbor({
+        return encodeDaPayloadSubmitResponseCbor({
           status: "accepted",
           headerHash: HEADER_HASH,
           payloadHash: PAYLOAD_HASH,
@@ -346,13 +351,13 @@ describe("DA payload libp2p producer publication", () => {
     );
   });
 
-  it("succeeds with decoder-capable peers when an old peer structurally rejects schema v3", async () => {
+  it("succeeds when one committee peer rejects the payload", async () => {
     const manifest = parseThreeCommitteePeerManifest();
     const transport: DaProducerTransport = {
       localPeerId: () => "producer-peer",
       sign: () => Buffer.alloc(64, 0x0b),
       request: async (peer) =>
-        encodeDaPayloadSubmitResponseV1Cbor({
+        encodeDaPayloadSubmitResponseCbor({
           status: peer.peerId === PEER_C ? "rejected" : "accepted",
           headerHash: HEADER_HASH,
           payloadHash: PAYLOAD_HASH,
@@ -362,7 +367,7 @@ describe("DA payload libp2p producer publication", () => {
       publish: async () => ({ recipients: [PEER_A, PEER_B] }),
     };
     const report = await publishDaPayloadInsert({
-      insert: { ...insertFixture(), [DaPayloadsDB.Columns.VERSION]: 3 },
+      insert: { ...insertFixture(), [DaPayloadsDB.Columns.VERSION]: 1 },
       manifest,
       transport,
     });
@@ -412,7 +417,7 @@ describe("DA payload libp2p producer publication", () => {
       localPeerId: () => PEER_C,
       request: async (peer, protocolId) => {
         requests.push({ peerId: peer.peerId, protocolId });
-        return encodeDaMetadataByHeaderResponseV1Cbor({
+        return encodeDaMetadataByHeaderResponseCbor({
           status: "not_found",
           headerHash: Buffer.alloc(28),
           payloadHash: null,
@@ -470,7 +475,7 @@ describe("DA payload libp2p producer publication", () => {
         if (peer.peerId === PEER_B) {
           throw new Error("dial failed");
         }
-        return encodeDaMetadataByHeaderResponseV1Cbor({
+        return encodeDaMetadataByHeaderResponseCbor({
           status: "not_found",
           headerHash: Buffer.alloc(28),
           payloadHash: null,
@@ -656,7 +661,7 @@ describe("DA payload libp2p producer publication", () => {
       localPeerId: () => "producer-peer",
       sign: () => Buffer.alloc(64, 0x0b),
       request: async (peer) =>
-        encodeDaPayloadSubmitResponseV1Cbor({
+        encodeDaPayloadSubmitResponseCbor({
           status: "accepted",
           headerHash: HEADER_HASH,
           payloadHash:
@@ -703,13 +708,59 @@ describe("DA payload libp2p producer publication", () => {
     );
   });
 
-  it("rejects v1/raw-SHA style runtime manifests", () => {
+  it("rejects an unsupported runtime-manifest schema", () => {
     const manifest = manifestFixture();
-    manifest.schemaVersion = "midgard-da-libp2p-runtime-manifest-v1";
+    manifest.schemaVersion = "midgard-da-libp2p-runtime-manifest-v999";
 
     expect(() => parseDaProducerPublicationManifest(manifest)).toThrow(
       /schemaVersion/,
     );
+  });
+
+  it("rejects missing or unknown runtime-manifest root and nested keys", () => {
+    const cases: readonly {
+      readonly mutate: (manifest: Record<string, unknown>) => void;
+      readonly error: RegExp;
+    }[] = [
+      {
+        mutate: (manifest) => {
+          delete manifest.network;
+        },
+        error: /network is required/u,
+      },
+      {
+        mutate: (manifest) => {
+          manifest.unknown_root = true;
+        },
+        error: /unknown_root is unexpected/u,
+      },
+      {
+        mutate: (manifest) => {
+          const limits = (
+            manifest.da_transport as Record<string, Record<string, unknown>>
+          ).limits;
+          limits.unknown_limit = 1;
+        },
+        error: /limits\.unknown_limit is unexpected/u,
+      },
+      {
+        mutate: (manifest) => {
+          const committee = manifest.da_committee as {
+            members: Record<string, unknown>[];
+          };
+          delete committee.members[0]!.roles;
+        },
+        error: /members\[0\]\.roles is required/u,
+      },
+    ];
+
+    for (const testCase of cases) {
+      const manifest = manifestFixture();
+      testCase.mutate(manifest);
+      expect(() => parseDaProducerPublicationManifest(manifest)).toThrow(
+        testCase.error,
+      );
+    }
   });
 
   it("rejects runtime manifests with split deployment identity", () => {
@@ -737,12 +788,18 @@ describe("DA payload libp2p producer publication", () => {
 });
 
 const manifestFixture = (): Record<string, unknown> => ({
-  schemaVersion: "midgard-da-libp2p-runtime-manifest-v2",
+  schemaVersion: "midgard-da-libp2p-runtime-manifest-v1",
+  network: "Preview",
   deployment: {
     fingerprint: DEPLOYMENT.toUpperCase(),
     contract_deployment_manifest_id: DEPLOYMENT,
     contract_deployment_info_sha256: "cd".repeat(32),
     identity_source: "contract_deployment_manifest_id",
+  },
+  runtime_topology: {
+    target: "producer",
+    profile: "public",
+    producer_peer_id: PEER_C,
   },
   da_transport: {
     kind: "libp2p",
@@ -754,14 +811,38 @@ const manifestFixture = (): Record<string, unknown> => ({
       strict_sign: true,
       emit_self: false,
       allowed_topics_only: true,
-      max_gossip_message_bytes: DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
+      max_gossip_message_bytes: DA_TRANSPORT_LIMITS.maxGossipMessageBytes,
     },
     limits: {
-      max_payload_bytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-      max_inline_response_bytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-      max_chunk_bytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-      max_streams_per_peer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-      request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+      max_payload_bytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+      max_inline_response_bytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+      max_chunk_bytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+      max_streams_per_peer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+      request_timeout_ms: DA_TRANSPORT_LIMITS.requestTimeoutMs,
+    },
+    retention_days: DA_TRANSPORT_LIMITS.minimumRetentionDays,
+  },
+  public_retained_da: {
+    profile: "public-retained-da-v1",
+    access_policy: "any_noise_authenticated_peer",
+    peer_id: PEER_RETAINED,
+    listen_multiaddrs: ["/ip4/127.0.0.1/tcp/0"],
+    announce_multiaddrs: [`/dns4/public.example/tcp/4003/p2p/${PEER_RETAINED}`],
+    protocols: [
+      "capabilities",
+      "payload-by-header",
+      "payload-chunk",
+      "metadata-by-header",
+      "proof-bundle-by-header",
+      "trace-step-by-index",
+      "event-to-step-by-event",
+    ],
+    limits: {
+      max_streams_per_peer: 4,
+      max_inflight_requests: 32,
+      max_inflight_requests_per_peer: 2,
+      max_inflight_proof_requests: 1,
+      request_timeout_ms: DA_TRANSPORT_LIMITS.requestTimeoutMs,
     },
   },
   da_committee: {
@@ -820,9 +901,6 @@ const parseThreeCommitteePeerManifest = () => {
   const parsed = parseDaProducerPublicationManifest(fixture, {
     DA_LIBP2P_PRIVATE_KEY_SOURCE: PRODUCER_PRIVATE_KEY_SOURCE,
   });
-  if (parsed === null) {
-    throw new Error("expected three-peer DA manifest");
-  }
   return parsed;
 };
 
@@ -851,7 +929,8 @@ const serverPort = (server: Server): number => {
 
 const insertFixture = (): DaPayloadsDB.InsertInput => ({
   [DaPayloadsDB.Columns.HEADER_HASH]: HEADER_HASH,
-  [DaPayloadsDB.Columns.VERSION]: 2,
+  [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]: MIDGARD_CONSENSUS_PROFILE_ID,
+  [DaPayloadsDB.Columns.VERSION]: 1,
   [DaPayloadsDB.Columns.PAYLOAD_CBOR]: PAYLOAD_CBOR,
   [DaPayloadsDB.Columns.PAYLOAD_SHA256]: PAYLOAD_HASH,
   [DaPayloadsDB.Columns.UTXOS_ROOT]: "10".repeat(32),
@@ -861,12 +940,14 @@ const insertFixture = (): DaPayloadsDB.InsertInput => ({
   [DaPayloadsDB.Columns.WITHDRAWALS_ROOT]: "14".repeat(32),
   [DaPayloadsDB.Columns.TRANSITION_TRACE_ROOT]: "15".repeat(32),
   [DaPayloadsDB.Columns.EVENT_TO_STEP_ROOT]: "16".repeat(32),
+  [DaPayloadsDB.Columns.VALIDATION_TRACES_ROOT]: EMPTY_MERKLE_TREE_ROOT,
   [DaPayloadsDB.Columns.WITHDRAWAL_COUNT]: 0n,
   [DaPayloadsDB.Columns.FORCED_TRANSACTION_COUNT]: 0n,
   [DaPayloadsDB.Columns.L2_TRANSACTION_COUNT]: 0n,
   [DaPayloadsDB.Columns.DEPOSIT_COUNT]: 0n,
   [DaPayloadsDB.Columns.TOTAL_EVENT_COUNT]: 0n,
   [DaPayloadsDB.Columns.TRANSITION_STEP_COUNT]: 0n,
+  [DaPayloadsDB.Columns.VALIDATION_TRACE_COUNT]: 0n,
   [DaPayloadsDB.Columns.BLOCK_START_TIME]: new Date("2026-06-21T00:00:00Z"),
   [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date("2026-06-21T00:00:01Z"),
 });
@@ -895,7 +976,7 @@ const callRetainedPayloadHandler = async ({
   }
   const requestFrame = encodeLengthPrefixedDaFrameForTest(
     request,
-    DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+    DA_TRANSPORT_LIMITS.maxPayloadBytes,
   );
   let responseFrame: Buffer | undefined;
   const stream: DaProducerStream = {

@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, validatorToScriptHash } from "@lucid-evolution/lucid";
+import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -40,18 +41,24 @@ type GoldenAbiFixtureFile = {
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(testDir, "../../..");
-const blueprint = JSON.parse(
-  readFileSync(path.join(repoRoot, "onchain/aiken/plutus.json"), "utf8"),
-) as Blueprint;
+const transitionTraceAbiGoldenPath = path.join(
+  testDir,
+  "fixtures/transition-trace-abi.json",
+);
+const blueprintPath =
+  process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
+  path.join(repoRoot, "onchain/aiken/plutus.json");
+const blueprint = JSON.parse(readFileSync(blueprintPath, "utf8")) as Blueprint;
 const testnetEnv = readFileSync(
   path.join(repoRoot, "onchain/aiken/env/testnet.ak"),
   "utf8",
 );
+const ledgerStateSource = readFileSync(
+  path.join(repoRoot, "onchain/aiken/lib/midgard/ledger-state.ak"),
+  "utf8",
+);
 const transitionTraceAbiGolden = JSON.parse(
-  readFileSync(
-    path.join(testDir, "fixtures/transition-trace-abi.json"),
-    "utf8",
-  ),
+  readFileSync(transitionTraceAbiGoldenPath, "utf8"),
 ) as GoldenAbiFixtureFile;
 
 const definition = (name: string): BlueprintDefinition => {
@@ -77,11 +84,21 @@ const constructor = (
 const fields = (ctor: BlueprintConstructor): readonly string[] =>
   (ctor.fields ?? []).map((field) => field.title ?? "");
 
-const testnetIntegerConst = (name: string): bigint => {
-  const match = testnetEnv.match(
+// The Aiken sources are the normative home of these protocol constants and the
+// compiler emits none of them into plutus.json, so a text read of the `pub
+// const` declaration is the only channel available. It is deliberately narrow
+// and fails closed: a missing declaration fails the lookup, and anything but a
+// product of decimal literals fails the shape check rather than being silently
+// coerced.
+const aikenIntegerConst = (
+  source: string,
+  sourceLabel: string,
+  name: string,
+): bigint => {
+  const match = source.match(
     new RegExp(`pub const ${name}: [^=]+=([\\d_\\s*]+)`, "m"),
   );
-  expect(match, `missing testnet Aiken const ${name}`).toBeDefined();
+  expect(match, `missing ${sourceLabel} Aiken const ${name}`).toBeDefined();
   const expression = match![1]!.trim().replace(/\s+/g, " ");
   expect(expression, `unsupported expression for ${name}`).toMatch(
     /^[\d_]+(?: \* [\d_]+)*$/,
@@ -91,6 +108,12 @@ const testnetIntegerConst = (name: string): bigint => {
     .map((term) => BigInt(term.replaceAll("_", "")))
     .reduce((acc, term) => acc * term, 1n);
 };
+
+const testnetIntegerConst = (name: string): bigint =>
+  aikenIntegerConst(testnetEnv, "testnet", name);
+
+const ledgerStateIntegerConst = (name: string): bigint =>
+  aikenIntegerConst(ledgerStateSource, "ledger-state", name);
 
 const h28 = "11".repeat(28);
 const h32 = "22".repeat(32);
@@ -105,37 +128,6 @@ const address: SDK.AddressData = {
 };
 const value: SDK.Value = new Map([["", new Map([["", 1n]])]]);
 const proof: SDK.Proof = [];
-const validityRange: SDK.ValidityRange = {
-  lower_bound: {
-    bound_type: "NegativeInfinity",
-    is_inclusive: false,
-  },
-  upper_bound: {
-    bound_type: "PositiveInfinity",
-    is_inclusive: false,
-  },
-};
-const midgardTxCompact: SDK.MidgardTxCompact = {
-  body: {
-    spend_inputs: h32,
-    reference_inputs: h32,
-    outputs: h32,
-    fee: 1n,
-    validity_interval: validityRange,
-    required_observers: h32,
-    required_signer_hashes: h32,
-    mint: h32,
-    script_integrity_hash: h32,
-    auxiliary_data_hash: h32,
-    network_id: "Testnet",
-  },
-  wits: h32,
-  validity: "TxIsValid",
-};
-const midgardTxCompactWithoutValidity: SDK.MidgardTxCompactWithoutValidity = {
-  body: midgardTxCompact.body,
-  wits: midgardTxCompact.wits,
-};
 const transitionPhases: readonly SDK.TransitionPhase[] = [
   "Withdrawal",
   "ForcedTransaction",
@@ -158,22 +150,46 @@ const headerFixture: SDK.Header = {
   depositsRoot: "80".repeat(32),
   transitionTraceRoot: "55".repeat(32),
   eventToStepRoot: "88".repeat(32),
+  validationTracesRoot: "89".repeat(32),
   withdrawalCount: 1n,
   forcedTransactionCount: 1n,
   l2TransactionCount: 1n,
   depositCount: 1n,
   totalEventCount: 4n,
   transitionStepCount: 4n,
+  validationTraceCount: 4n,
   startTime: 1n,
   endTime: 2n,
+  blockSlot: 0n,
+  expectedNetworkId: 0n,
+  minFeeA: 0n,
+  minFeeB: 0n,
   prevHeaderHash: h28,
   operatorVkey: h28,
   protocolVersion: 1n,
 };
 
-const forcedInclusionTxFixture: SDK.ForcedInclusionTx = {
-  tx_compact: midgardTxCompactWithoutValidity,
-  operator_validity: "FailedScript",
+const forcedInclusionTxFixture: SDK.ForcedInclusionTxV1 = {
+  tx_id: h32,
+  submitted_source: {
+    compact_cbor: "80",
+    witness_set_compact_cbor: "81",
+    field_preimage_lengths_cbor: "82",
+  },
+  verdict: {
+    ForcedTxInvalid: {
+      reason: { PlutusExecutionFailed: { execution_index: 0n } },
+    },
+  },
+};
+
+const l2TransactionSourceFixture: SDK.L2TransactionSource = {
+  tx_id: h32,
+  source: {
+    compact_cbor: "80",
+    witness_set_compact_cbor: "81",
+    field_preimage_lengths_cbor: "82",
+  },
 };
 
 const transitionStepFixture: SDK.TransitionStep = {
@@ -199,7 +215,7 @@ const eventToStepValueFixture: SDK.EventToStepValue = {
   phase: "Withdrawal",
 };
 
-const daPayloadBodyV2Fixture: SDK.DaPayloadBodyV2 = {
+const daPayloadBodyFixture: SDK.DaPayloadBody = {
   header_hash: h28,
   header: headerFixture,
   utxos: [["01", "02"]],
@@ -209,6 +225,11 @@ const daPayloadBodyV2Fixture: SDK.DaPayloadBodyV2 = {
   deposits: [["09", "0a"]],
   transition_trace: [["0b", "0c"]],
   event_to_step: [["0d", "0e"]],
+  transaction_preimages: [["0f", "10"]],
+  forced_transaction_preimages: [["11", "12"]],
+  cek_program_material: [["13", "14"]],
+  validation_traces: [["15", "16"]],
+  validation_trace_witnesses: [],
   counts: {
     withdrawalCount: 1n,
     forcedTransactionCount: 1n,
@@ -216,6 +237,7 @@ const daPayloadBodyV2Fixture: SDK.DaPayloadBodyV2 = {
     depositCount: 1n,
     totalEventCount: 4n,
     transitionStepCount: 4n,
+    validationTraceCount: 1n,
   },
 };
 
@@ -358,7 +380,7 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
     value: validWithdrawalInfo,
   };
   const forcedSourceMembership: SDK.ForcedTransactionSourceMembershipProof = {
-    domain: SDK.ROOT_DOMAINS.forcedTransactions,
+    domain: SDK.ROOT_DOMAINS.forcedTransactionsV1,
     root: headerFixture.forcedTransactionsRoot,
     phas_root: "69".repeat(32),
     count: 1n,
@@ -366,14 +388,15 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
     value: forcedInclusionTxFixture,
     proof,
   };
-  const validForcedSourceMembership: SDK.ForcedTransactionSourceMembershipProof =
-    {
-      ...forcedSourceMembership,
-      value: {
-        ...forcedInclusionTxFixture,
-        operator_validity: "TxIsValid",
-      },
-    };
+  const l2SourceMembership: SDK.L2TransactionSourceMembershipProof = {
+    domain: SDK.ROOT_DOMAINS.transactionsV1,
+    root: headerFixture.transactionsRoot,
+    phas_root: "71".repeat(32),
+    count: 1n,
+    key: h32,
+    value: Data.to(l2TransactionSourceFixture, SDK.L2TransactionSource),
+    proof,
+  };
   const depositSourceMembership: SDK.DepositSourceMembershipProof = {
     domain: SDK.ROOT_DOMAINS.deposits,
     root: headerFixture.depositsRoot,
@@ -381,15 +404,6 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
     count: 1n,
     key: outputReference,
     value: depositInfo,
-    proof,
-  };
-  const l2SourceMembership: SDK.RawRootMembershipProof = {
-    domain: SDK.ROOT_DOMAINS.transactions,
-    root: headerFixture.transactionsRoot,
-    phas_root: "71".repeat(32),
-    count: 1n,
-    key: h32,
-    value: "a1",
     proof,
   };
   const withdrawalSourceNonMembership: SDK.WithdrawalSourceNonMembershipProof =
@@ -403,7 +417,7 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
     };
   const forcedSourceNonMembership: SDK.ForcedTransactionSourceNonMembershipProof =
     {
-      domain: SDK.ROOT_DOMAINS.forcedTransactions,
+      domain: SDK.ROOT_DOMAINS.forcedTransactionsV1,
       root: headerFixture.forcedTransactionsRoot,
       phas_root: "69".repeat(32),
       count: 1n,
@@ -505,14 +519,6 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
         source_membership: forcedSourceMembership,
       },
     }),
-    "transition-fault.valid-forced-unsupported":
-      SDK.invalidOneStepTransitionFault({
-        ValidForcedTransactionUnsupported: {
-          trace_proof: traceProof,
-          event_to_step: eventToStepMembership,
-          source_membership: validForcedSourceMembership,
-        },
-      }),
     "transition-fault.valid-deposit-transition":
       SDK.invalidOneStepTransitionFault({
         ValidDepositTransition: {
@@ -554,7 +560,11 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
       OmittedDueForcedTransaction: {
         event_ref_input_index: 2n,
         event_asset_name: "cc",
-        validity_override: "FailedScript",
+        validity_override: {
+          ForcedTxInvalid: {
+            reason: { PlutusExecutionFailed: { execution_index: 0n } },
+          },
+        },
         source_non_membership: forcedSourceNonMembership,
       },
     }),
@@ -582,7 +592,11 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
       OutOfWindowForcedTransaction: {
         event_ref_input_index: 2n,
         event_asset_name: "cc",
-        validity_override: "FailedScript",
+        validity_override: {
+          ForcedTxInvalid: {
+            reason: { PlutusExecutionFailed: { execution_index: 0n } },
+          },
+        },
         source_membership: forcedSourceMembership,
       },
     }),
@@ -630,25 +644,88 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
       header: headerFixture,
       fault,
     });
-  const spendArgsFor = (
+  const routeArgsFor = (
     fault: SDK.TransitionFault,
-  ): SDK.TransitionTraceProofArgs => ({
+  ): SDK.TransitionTraceRouteArgs => ({
     input_index: 0n,
     output_index: 1n,
-    hub_ref_input_index: 2n,
-    fraud_proof_mint_redeemer_index: 3n,
     proof: proofFor(fault),
+    proof_ref_indices: [],
   });
+  const validationState: SDK.ValidationMachineState = {
+    machine_version: 1n,
+    event_key_hash: "81".repeat(32),
+    transaction_id: h32,
+    transaction_commitment: "35".repeat(32),
+    validation_context_hash: "82".repeat(32),
+    source_kind: "Normal",
+    prior_ledger_root: headerFixture.prevUtxosRoot,
+    phase: "Terminal",
+    program_counter: 1n,
+    work_root: "83".repeat(32),
+    execution_cpu: 1n,
+    execution_memory: 1n,
+    verdict: "Accepted",
+    rejection_code_hash: "00".repeat(32),
+    ledger_delta_root: "84".repeat(32),
+  };
+  const validationDescriptor: SDK.ValidationTraceDescriptor = {
+    schema_version: 1n,
+    machine_version: 1n,
+    trace_root: "85".repeat(32),
+    step_count: 1n,
+    initial_state_hash: "86".repeat(32),
+    terminal_state_hash: "87".repeat(32),
+    verdict: "Accepted",
+    rejection_code_hash: "00".repeat(32),
+  };
+  const validationProof: SDK.ValidationTraceProof = {
+    state_index: 0n,
+    state_hash: validationDescriptor.terminal_state_hash,
+    siblings: [],
+  };
+  const acceptedTransactionClaim: SDK.ValidationClaimWitness = {
+    version: 1n,
+    descriptor_membership: {
+      domain: SDK.ROOT_DOMAINS.validationTraces,
+      root: headerFixture.validationTracesRoot,
+      phas_root: "72".repeat(32),
+      count: 1n,
+      key: eventKeys[2]!,
+      value: validationDescriptor,
+      proof,
+    },
+    transition_step_membership: traceProof,
+    event_to_step_membership: eventToStepMembership,
+    source_membership: {
+      NormalValidationSource: {
+        membership: {
+          ...l2SourceMembership,
+          value: l2TransactionSourceFixture,
+        },
+      },
+    },
+    validation_context_cbor: "80",
+    initial_state: validationState,
+    terminal_state: validationState,
+    initial_state_proof: validationProof,
+    terminal_state_proof: validationProof,
+  };
+  transitionFaults["transition-fault.accepted-transaction-transition"] =
+    SDK.acceptedTransactionTransitionMismatchFault({
+      claim: acceptedTransactionClaim,
+      terminalAcceptanceWitnessCbor: "80",
+    });
   const fixtures: Record<string, AbiFixtureValue> = {
-    Header: {
-      schemaName: "Header",
+    HeaderV1: {
+      schemaName: "HeaderV1",
       value: headerFixture,
       schema: SDK.Header,
     },
-    ForcedInclusionTx: {
-      schemaName: "ForcedInclusionTx",
+    ForcedInclusionTxV1: {
+      schemaName: "ForcedInclusionTxV1",
       value: forcedInclusionTxFixture,
-      schema: SDK.ForcedInclusionTx,
+      schema: SDK.ForcedInclusionTxV1,
     },
     TransitionStep: {
       schemaName: "TransitionStep",
@@ -680,20 +757,34 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
       value: eventToStepValueFixture,
       schema: SDK.EventToStepValue,
     },
-    DaPayloadBodyV2: {
-      schemaName: "DaPayloadBodyV2",
-      value: daPayloadBodyV2Fixture,
-      schema: SDK.DaPayloadBodyV2,
+    DaPayloadBodyV1: {
+      schemaName: "DaPayloadBody",
+      value: daPayloadBodyFixture,
+      schema: SDK.DaPayloadBody,
     },
-    TransitionTraceProofSpendRedeemerCancel: {
-      schemaName: "TransitionTraceProofSpendRedeemer",
+    TransitionTraceRouteSpendRedeemerCancel: {
+      schemaName: "TransitionTraceRouteSpendRedeemer",
       value: {
         Cancel: {
           input_index: 0n,
           computation_thread_mint_redeemer_index: 1n,
         },
-      } satisfies SDK.TransitionTraceProofSpendRedeemer,
-      schema: SDK.TransitionTraceProofSpendRedeemer,
+      } satisfies SDK.TransitionTraceRouteSpendRedeemer,
+      schema: SDK.TransitionTraceRouteSpendRedeemer,
+    },
+    TransitionTraceFinalSpendRedeemerContinue: {
+      schemaName: "TransitionTraceFinalSpendRedeemer",
+      value: {
+        Continue: [
+          {
+            input_index: 0n,
+            output_index: 1n,
+            hub_ref_input_index: 2n,
+            fraud_proof_mint_redeemer_index: 3n,
+          },
+        ],
+      } satisfies SDK.TransitionTraceFinalSpendRedeemer,
+      schema: SDK.TransitionTraceFinalSpendRedeemer,
     },
   };
 
@@ -709,11 +800,11 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
       schema: SDK.TransitionFaultProof,
     };
     fixtures[`${name}.continue-redeemer`] = {
-      schemaName: "TransitionTraceProofSpendRedeemer",
+      schemaName: "TransitionTraceRouteSpendRedeemer",
       value: {
-        Continue: [spendArgsFor(fault)],
-      } satisfies SDK.TransitionTraceProofSpendRedeemer,
-      schema: SDK.TransitionTraceProofSpendRedeemer,
+        Continue: [routeArgsFor(fault)],
+      } satisfies SDK.TransitionTraceRouteSpendRedeemer,
+      schema: SDK.TransitionTraceRouteSpendRedeemer,
     };
   }
 
@@ -721,13 +812,13 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
 };
 
 describe("SDK canonical ABI fixtures", () => {
-  it("keeps SDK protocol timing constants aligned with the testnet Aiken env used by e2e", () => {
+  it("keeps SDK protocol timing constants aligned with canonical Aiken values", () => {
     expect(SDK.SHIFT_DURATION_MS).toBe(testnetIntegerConst("shift_duration"));
     expect(SDK.REGISTRATION_DURATION_MS).toBe(
       testnetIntegerConst("registration_duration"),
     );
     expect(SDK.MATURITY_DURATION_MS).toBe(
-      testnetIntegerConst("maturity_duration"),
+      ledgerStateIntegerConst("block_maturity_duration_v1"),
     );
     expect(SDK.USER_EVENTS_NEGLIGENCE_TIMEOUT_MS).toBe(
       testnetIntegerConst("user_events_negligence_timeout"),
@@ -763,10 +854,11 @@ describe("SDK canonical ABI fixtures", () => {
       fields(
         constructor(
           "midgard/state_queue/MintRedeemer",
-          "MergeToConfirmedState",
+          "MergeToConfirmedStateV1",
         ),
       ),
     ).toEqual([
+      "yield_to_ref_input_index",
       "header_node_key",
       "confirmed_state_input_outref",
       "confirmed_state_output_index",
@@ -777,12 +869,14 @@ describe("SDK canonical ABI fixtures", () => {
       "merged_block_deposits_root",
       "merged_block_transition_trace_root",
       "merged_block_event_to_step_root",
+      "merged_block_validation_traces_root",
       "merged_block_withdrawal_count",
       "merged_block_forced_transaction_count",
       "merged_block_l2_transaction_count",
       "merged_block_deposit_count",
       "merged_block_total_event_count",
       "merged_block_transition_step_count",
+      "merged_block_validation_trace_count",
     ]);
     expect(
       fields(constructor("midgard/settlement/MintRedeemer", "Spawn")),
@@ -801,14 +895,8 @@ describe("SDK canonical ABI fixtures", () => {
     ]);
     expect(
       fields(
-        constructor(
-          "midgard/ledger_state/MidgardTxCompact",
-          "MidgardTxCompact",
-        ),
+        constructor("midgard/user_events/deposit/DepositDatum", "DepositDatum"),
       ),
-    ).toEqual(["body", "wits", "validity"]);
-    expect(
-      fields(constructor("midgard/user_events/deposit/Datum", "Datum")),
     ).toEqual(["event", "inclusion_time", "witness"]);
     expect(
       fields(
@@ -847,13 +935,22 @@ describe("SDK canonical ABI fixtures", () => {
       "source_non_membership",
     ]);
     expect(
-      fields(constructor("fraud_proofs/transition_trace/proof/Args", "Args")),
+      fields(
+        constructor("fraud_proofs/transition_trace/route_v1/Args", "Args"),
+      ),
+    ).toEqual(["input_index", "output_index", "proof", "proof_ref_indices"]);
+    expect(
+      fields(
+        constructor(
+          "midgard/fraud_proofs/transition_trace/final_v1/Args",
+          "Args",
+        ),
+      ),
     ).toEqual([
       "input_index",
       "output_index",
       "hub_ref_input_index",
       "fraud_proof_mint_redeemer_index",
-      "proof",
     ]);
     expect(
       fields(
@@ -928,6 +1025,38 @@ describe("SDK canonical ABI fixtures", () => {
     );
 
     const fixtures = buildTransitionTraceAbiFixtures();
+    // Emit mode belongs to scripts/generate-transition-trace-abi-fixture.mjs:
+    // it hands us a scratch path, diffs the result against the checked-in
+    // golden itself and regenerates the Aiken golden from the same bytes. A
+    // normal run has no way to rewrite the golden it is asserting against.
+    const emitPath = process.env.MIDGARD_TRANSITION_TRACE_ABI_EMIT_PATH;
+    if (emitPath !== undefined) {
+      const emitted: GoldenAbiFixtureFile = {
+        version: 1,
+        encoding: "lucid-plutus-data-cbor-hex",
+        fixtures: Object.fromEntries(
+          Object.entries(fixtures).map(([name, fixture]) => {
+            try {
+              return [
+                name,
+                {
+                  schema: fixture.schemaName,
+                  ...encodedFixture(fixture.value, fixture.schema),
+                },
+              ];
+            } catch (error) {
+              throw new Error(
+                `failed to encode transition trace ABI fixture ${name}`,
+                { cause: error },
+              );
+            }
+          }),
+        ),
+      };
+      writeFileSync(emitPath, `${JSON.stringify(emitted, null, 2)}\n`);
+      return;
+    }
+
     expect(Object.keys(transitionTraceAbiGolden.fixtures).sort()).toEqual(
       Object.keys(fixtures).sort(),
     );
@@ -1005,18 +1134,21 @@ describe("SDK canonical ABI fixtures", () => {
       "reserve_observer",
     ]);
 
-    expectRoundTrip({ Init: { output_index: 2n } }, SDK.StateQueueRedeemer);
+    expectRoundTrip({ InitV1: { output_index: 2n } }, SDK.StateQueueRedeemer);
     expectRoundTrip("LinkedListMutation", SDK.StateQueueSpendRedeemer);
     expect(
       roundTrip(
         {
           CommitBlockHeader: {
+            yield_to_ref_input_index: 0n,
             new_block_output_index: 1n,
             continued_latest_block_output_index: 2n,
             operator: h28,
             scheduler_ref_input_index: 0n,
             active_operators_input_index: 1n,
             active_operators_redeemer_index: 1n,
+            m_confirmed_state_ref_input_index: null,
+            m_head_state_queue_node_ref_input_index: null,
           },
         },
         SDK.StateQueueRedeemer,
@@ -1025,7 +1157,8 @@ describe("SDK canonical ABI fixtures", () => {
     expect(
       roundTrip(
         {
-          MergeToConfirmedState: {
+          MergeToConfirmedStateV1: {
+            yield_to_ref_input_index: 0n,
             header_node_key: h28,
             confirmed_state_input_outref: outputReference,
             confirmed_state_output_index: 0n,
@@ -1036,17 +1169,19 @@ describe("SDK canonical ABI fixtures", () => {
             merged_block_deposits_root: h32,
             merged_block_transition_trace_root: h32,
             merged_block_event_to_step_root: h32,
+            merged_block_validation_traces_root: h32,
             merged_block_withdrawal_count: 1n,
             merged_block_forced_transaction_count: 2n,
             merged_block_l2_transaction_count: 3n,
             merged_block_deposit_count: 4n,
             merged_block_total_event_count: 10n,
             merged_block_transition_step_count: 10n,
+            merged_block_validation_trace_count: 10n,
           },
         },
         SDK.StateQueueRedeemer,
       ),
-    ).toMatchObject({ MergeToConfirmedState: { header_node_key: h28 } });
+    ).toMatchObject({ MergeToConfirmedStateV1: { header_node_key: h28 } });
 
     expect(
       roundTrip(
@@ -1084,7 +1219,7 @@ describe("SDK canonical ABI fixtures", () => {
       path.join(repoRoot, "onchain/aiken/env/testnet.ak"),
       "utf8",
     ).match(
-      /pub const user_events_witness_script_prefix: ByteArray =\n  #"([^"]+)"/,
+      /pub const user_events_witness_script_prefix: ByteArray =\n {2}#"([^"]+)"/,
     )?.[1];
     expect(SDK.USER_EVENT_WITNESS_SCRIPT_PREFIX).toBe(aikenWitnessPrefix);
 
@@ -1140,38 +1275,6 @@ describe("SDK canonical ABI fixtures", () => {
         SDK.DepositSpendRedeemer,
       ),
     ).toMatchObject({ input_index: 0n });
-
-    const txOrderForcedInclusionTx: SDK.ForcedInclusionTx = {
-      tx_compact: {
-        body: midgardTxCompact.body,
-        wits: midgardTxCompact.wits,
-      },
-      operator_validity: "TxIsValid",
-    };
-    const txOrderMembershipProof: SDK.RawRootMembershipProof = {
-      domain: SDK.ROOT_DOMAINS.forcedTransactions,
-      root: "66".repeat(32),
-      phas_root: "77".repeat(32),
-      count: 1n,
-      key: Data.to(outputReference, SDK.OutputReference),
-      value: Data.to(txOrderForcedInclusionTx, SDK.ForcedInclusionTx),
-      proof,
-    };
-    expect(
-      roundTrip(
-        {
-          input_index: 0n,
-          output_index: 0n,
-          hub_ref_input_index: 1n,
-          settlement_ref_input_index: 2n,
-          burn_redeemer_index: 3n,
-          membership_proof: txOrderMembershipProof,
-          inclusion_proof_script_withdraw_redeemer_index: 4n,
-          validity_override: "TxIsValid",
-        },
-        SDK.TxOrderSpendRedeemer,
-      ),
-    ).toMatchObject({ validity_override: "TxIsValid" });
 
     const withdrawalDatum: SDK.WithdrawalOrderDatum = {
       event: {
@@ -1255,31 +1358,24 @@ describe("SDK canonical ABI fixtures", () => {
         depositsRoot: h32,
         startTime: 1n,
         endTime: 2n,
+        blockSlot: 0n,
+        expectedNetworkId: 0n,
+        minFeeA: 0n,
+        minFeeB: 0n,
         prevHeaderHash: h28,
         operatorVkey: h28,
         protocolVersion: 1n,
       },
       SDK.Header,
     );
-    expect(
-      Object.keys(roundTrip(midgardTxCompact, SDK.MidgardTxCompact)),
-    ).toEqual(["body", "wits", "validity"]);
-    expect(
-      Object.keys(
-        roundTrip(
-          midgardTxCompactWithoutValidity,
-          SDK.MidgardTxCompactWithoutValidity,
-        ),
-      ),
-    ).toEqual(["body", "wits"]);
-    const forcedInclusionTx: SDK.ForcedInclusionTx = {
-      tx_compact: midgardTxCompactWithoutValidity,
-      operator_validity: "TxIsValid",
+    const forcedInclusionTx: SDK.ForcedInclusionTxV1 = {
+      ...forcedInclusionTxFixture,
+      verdict: "ForcedTxValid",
     };
-    expectRoundTrip(forcedInclusionTx, SDK.ForcedInclusionTx);
+    expectRoundTrip(forcedInclusionTx, SDK.ForcedInclusionTxV1);
     expect(
-      Object.keys(roundTrip(forcedInclusionTx, SDK.ForcedInclusionTx)),
-    ).toEqual(["tx_compact", "operator_validity"]);
+      Object.keys(roundTrip(forcedInclusionTx, SDK.ForcedInclusionTxV1)),
+    ).toEqual(["tx_id", "submitted_source", "verdict"]);
     for (const phase of transitionPhases) {
       expectRoundTrip(phase, SDK.TransitionPhase);
       expectRoundTrip({ step_index: 1n, phase }, SDK.EventToStepValue);
@@ -1330,6 +1426,10 @@ describe("SDK canonical ABI fixtures", () => {
       transitionStepCount: 1n,
       startTime: 1n,
       endTime: 2n,
+      blockSlot: 0n,
+      expectedNetworkId: 0n,
+      minFeeA: 0n,
+      minFeeB: 0n,
       prevHeaderHash: h28,
       operatorVkey: h28,
       protocolVersion: 1n,
@@ -1349,13 +1449,12 @@ describe("SDK canonical ABI fixtures", () => {
           {
             input_index: 0n,
             output_index: 1n,
-            hub_ref_input_index: 2n,
-            fraud_proof_mint_redeemer_index: 3n,
             proof: transitionFaultProof,
+            proof_ref_indices: [],
           },
         ],
       },
-      SDK.TransitionTraceProofSpendRedeemer,
+      SDK.TransitionTraceRouteSpendRedeemer,
     );
     expect(
       SDK.transitionTraceThreadAssetName({
@@ -1379,55 +1478,120 @@ describe("SDK canonical ABI fixtures", () => {
     expectRoundTrip("Init", SDK.FraudProofCatalogueMintRedeemer);
   });
 
+  // The baseline digest is derived, never transcribed: the preimage is the
+  // checked-in transition-trace golden `HeaderV1` entry (the same bytes the
+  // generated Aiken golden decodes), and the digest is recomputed here with
+  // @noble/hashes instead of with the SDK helper under test.
   it("commits every transition field into the block header hash", async () => {
-    const header: SDK.Header = {
-      prevUtxosRoot: h32,
-      utxosRoot: h32,
-      withdrawalsRoot: h32,
-      forcedTransactionsRoot: h32,
-      transactionsRoot: h32,
-      depositsRoot: h32,
-      transitionTraceRoot: h32,
-      eventToStepRoot: h32,
-      withdrawalCount: 1n,
-      forcedTransactionCount: 2n,
-      l2TransactionCount: 3n,
-      depositCount: 4n,
-      totalEventCount: 10n,
-      transitionStepCount: 10n,
-      startTime: 1n,
-      endTime: 2n,
-      prevHeaderHash: h28,
-      operatorVkey: h28,
-      protocolVersion: 1n,
-    };
-    const baselineHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-    expect(baselineHash).toBe(
-      "dc2377c99d0bba95803609c822a3d4009078367b3a0262e3b4c53a92",
-    );
-    const differentRoot = "44".repeat(32);
-    const mutations: readonly SDK.Header[] = [
-      { ...header, forcedTransactionsRoot: differentRoot },
-      { ...header, transitionTraceRoot: differentRoot },
-      { ...header, eventToStepRoot: differentRoot },
-      { ...header, withdrawalCount: header.withdrawalCount + 1n },
-      {
-        ...header,
-        forcedTransactionCount: header.forcedTransactionCount + 1n,
-      },
-      { ...header, l2TransactionCount: header.l2TransactionCount + 1n },
-      { ...header, depositCount: header.depositCount + 1n },
-      { ...header, totalEventCount: header.totalEventCount + 1n },
-      { ...header, transitionStepCount: header.transitionStepCount + 1n },
-    ];
+    const goldenHeaderCborHex =
+      transitionTraceAbiGolden.fixtures.HeaderV1!.cborHex;
+    expect(Data.to(headerFixture, SDK.Header)).toBe(goldenHeaderCborHex);
+    const expectedBaselineHash = Buffer.from(
+      blake2b(Buffer.from(goldenHeaderCborHex, "hex"), { dkLen: 28 }),
+    ).toString("hex");
 
-    await Promise.all(
-      mutations.map(async (mutation) => {
-        await expect(
-          Effect.runPromise(SDK.hashBlockHeader(mutation)),
-        ).resolves.not.toBe(baselineHash);
-      }),
+    const baselineHash = await Effect.runPromise(
+      SDK.hashBlockHeader(headerFixture),
     );
+    expect(baselineHash).toBe(expectedBaselineHash);
+
+    const differentRoot = "aa".repeat(32);
+    const differentDigest28 = "bb".repeat(28);
+    // Keyed by header field, so adding a header field without deciding whether
+    // it is committed fails to compile. `null` means "cannot be varied": the
+    // protocol version is pinned by the encoder and is covered by the refusal
+    // assertion below.
+    const mutations: Record<keyof SDK.Header, SDK.Header | null> = {
+      prevUtxosRoot: { ...headerFixture, prevUtxosRoot: differentRoot },
+      utxosRoot: { ...headerFixture, utxosRoot: differentRoot },
+      withdrawalsRoot: { ...headerFixture, withdrawalsRoot: differentRoot },
+      forcedTransactionsRoot: {
+        ...headerFixture,
+        forcedTransactionsRoot: differentRoot,
+      },
+      transactionsRoot: { ...headerFixture, transactionsRoot: differentRoot },
+      depositsRoot: { ...headerFixture, depositsRoot: differentRoot },
+      transitionTraceRoot: {
+        ...headerFixture,
+        transitionTraceRoot: differentRoot,
+      },
+      eventToStepRoot: { ...headerFixture, eventToStepRoot: differentRoot },
+      validationTracesRoot: {
+        ...headerFixture,
+        validationTracesRoot: differentRoot,
+      },
+      withdrawalCount: {
+        ...headerFixture,
+        withdrawalCount: headerFixture.withdrawalCount + 1n,
+      },
+      forcedTransactionCount: {
+        ...headerFixture,
+        forcedTransactionCount: headerFixture.forcedTransactionCount + 1n,
+      },
+      l2TransactionCount: {
+        ...headerFixture,
+        l2TransactionCount: headerFixture.l2TransactionCount + 1n,
+      },
+      depositCount: {
+        ...headerFixture,
+        depositCount: headerFixture.depositCount + 1n,
+      },
+      totalEventCount: {
+        ...headerFixture,
+        totalEventCount: headerFixture.totalEventCount + 1n,
+      },
+      transitionStepCount: {
+        ...headerFixture,
+        transitionStepCount: headerFixture.transitionStepCount + 1n,
+      },
+      validationTraceCount: {
+        ...headerFixture,
+        validationTraceCount: headerFixture.validationTraceCount + 1n,
+      },
+      startTime: { ...headerFixture, startTime: headerFixture.startTime + 1n },
+      endTime: { ...headerFixture, endTime: headerFixture.endTime + 1n },
+      blockSlot: { ...headerFixture, blockSlot: headerFixture.blockSlot + 1n },
+      expectedNetworkId: {
+        ...headerFixture,
+        expectedNetworkId: headerFixture.expectedNetworkId === 0n ? 1n : 0n,
+      },
+      minFeeA: { ...headerFixture, minFeeA: headerFixture.minFeeA + 1n },
+      minFeeB: { ...headerFixture, minFeeB: headerFixture.minFeeB + 1n },
+      prevHeaderHash: {
+        ...headerFixture,
+        prevHeaderHash: differentDigest28,
+      },
+      operatorVkey: { ...headerFixture, operatorVkey: differentDigest28 },
+      protocolVersion: null,
+    };
+    expect(Object.keys(mutations).sort()).toEqual(
+      Object.keys(headerFixture).sort(),
+    );
+
+    const mutatedHashes = await Promise.all(
+      Object.entries(mutations)
+        .filter((entry): entry is [string, SDK.Header] => entry[1] !== null)
+        .map(async ([field, mutation]) => {
+          const hash = await Effect.runPromise(SDK.hashBlockHeader(mutation));
+          expect(hash, `header field ${field} is not committed`).not.toBe(
+            baselineHash,
+          );
+          return hash;
+        }),
+    );
+    // Every field must move the digest to its own value, so two fields cannot
+    // share one commitment slot.
+    expect(new Set(mutatedHashes).size).toBe(mutatedHashes.length);
+
+    // Reject pair: the encoder refuses a header that claims a protocol version
+    // other than the one this ABI describes, so an unrecognised version can
+    // never be hashed into a block commitment.
+    expect(() =>
+      SDK.hashBlockHeader({
+        ...headerFixture,
+        protocolVersion: headerFixture.protocolVersion + 1n,
+      }),
+    ).toThrow(/protocol version/i);
   });
 
   it("validates transition commitment count and root invariants", async () => {
@@ -1442,6 +1606,8 @@ describe("SDK canonical ABI fixtures", () => {
           forcedTransactionCount: 0n,
           l2TransactionCount: 0n,
           depositCount: 0n,
+          validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          validationTraceCount: 0n,
         }),
       ),
     ).resolves.toEqual(SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS);
@@ -1457,6 +1623,8 @@ describe("SDK canonical ABI fixtures", () => {
           forcedTransactionCount: 0n,
           l2TransactionCount: 0n,
           depositCount: 1n,
+          validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          validationTraceCount: 0n,
         }),
       ),
     );
@@ -1480,6 +1648,8 @@ describe("SDK canonical ABI fixtures", () => {
           forcedTransactionCount: 0n,
           l2TransactionCount: 0n,
           depositCount: 1n,
+          validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          validationTraceCount: 0n,
         }),
       ),
     ).resolves.toMatchObject({
@@ -1499,6 +1669,8 @@ describe("SDK canonical ABI fixtures", () => {
           forcedTransactionCount: 0n,
           l2TransactionCount: 0n,
           depositCount: 0n,
+          validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          validationTraceCount: 0n,
         }),
       ),
     );
@@ -1508,6 +1680,9 @@ describe("SDK canonical ABI fixtures", () => {
       Effect.either(
         SDK.validateHeaderTransitionCommitmentsProgram({
           ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS,
+          withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
           withdrawalCount: -1n,
         }),
       ),

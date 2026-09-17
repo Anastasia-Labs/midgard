@@ -38,55 +38,61 @@ configureMpfRootWorkers({
 });
 
 const run = async (): Promise<void> => {
-try {
-  const durationsMs: number[] = [];
-  const domains = [
-    SDK.ROOT_DOMAINS.transitionTrace,
-    SDK.ROOT_DOMAINS.eventToStep,
-  ] as const;
-  let results: Awaited<ReturnType<typeof buildAuthenticatedMpfRootInWorker>>[] = [];
-  for (let sample = 0; sample < sampleCount; sample += 1) {
-    const startedAt = performance.now();
-    results = await Promise.all(
-      Array.from({ length: requestCount }, (_, index) =>
-        buildAuthenticatedMpfRootInWorker(
-          domains[index % domains.length]!,
-          entries,
+  try {
+    const durationsMs: number[] = [];
+    const domains = [
+      SDK.ROOT_DOMAINS.transitionTrace,
+      SDK.ROOT_DOMAINS.eventToStep,
+    ] as const;
+    let results: Awaited<
+      ReturnType<typeof buildAuthenticatedMpfRootInWorker>
+    >[] = [];
+    for (let sample = 0; sample < sampleCount; sample += 1) {
+      const startedAt = performance.now();
+      results = await Promise.all(
+        Array.from({ length: requestCount }, (_, index) =>
+          buildAuthenticatedMpfRootInWorker(
+            domains[index % domains.length]!,
+            entries,
+          ),
         ),
-      ),
+      );
+      durationsMs.push(performance.now() - startedAt);
+    }
+    const sortedDurations = [...durationsMs].sort(
+      (left, right) => left - right,
     );
-    durationsMs.push(performance.now() - startedAt);
-  }
-  const sortedDurations = [...durationsMs].sort((left, right) => left - right);
-  const p95Ms =
-    sortedDurations[
-      Math.max(0, Math.ceil(sortedDurations.length * 0.95) - 1)
-    ]!;
-  const metrics = mpfRootWorkerMetrics();
-  if (requestCount >= 2 && metrics.maxActiveWorkers < 2) {
-    throw new Error(
-      `Expected at least two simultaneous MPF root workers, observed ${metrics.maxActiveWorkers.toString()}`,
+    const p95Ms =
+      sortedDurations[
+        Math.max(0, Math.ceil(sortedDurations.length * 0.95) - 1)
+      ]!;
+    const metrics = mpfRootWorkerMetrics();
+    if (requestCount >= 2 && metrics.maxActiveWorkers < 2) {
+      throw new Error(
+        `Expected at least two simultaneous MPF root workers, observed ${metrics.maxActiveWorkers.toString()}`,
+      );
+    }
+    process.stdout.write(
+      `${JSON.stringify({
+        entryCount,
+        workerCount,
+        requestCount,
+        sampleCount,
+        durationsMs,
+        p95Ms,
+        roots: results.map((result) => result.rootHex),
+        workerTimings: results.map((result) => result.timings),
+        metrics,
+      })}\n`,
     );
+  } finally {
+    closeMpfRootWorkers();
   }
-  process.stdout.write(
-    `${JSON.stringify({
-      entryCount,
-      workerCount,
-      requestCount,
-      sampleCount,
-      durationsMs,
-      p95Ms,
-      roots: results.map((result) => result.rootHex),
-      workerTimings: results.map((result) => result.timings),
-      metrics,
-    })}\n`,
-  );
-} finally {
-  closeMpfRootWorkers();
-}
 };
 
 void run().catch((error: unknown) => {
-  process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
+  process.stderr.write(
+    `${error instanceof Error ? error.stack : String(error)}\n`,
+  );
   process.exitCode = 1;
 });

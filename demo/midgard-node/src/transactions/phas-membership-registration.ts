@@ -3,19 +3,21 @@ import { createHash } from "node:crypto";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
+  getAddressDetails,
   type LucidEvolution,
   type Script,
   type TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
+import { exactObjectKeys } from "../exact-object-keys.js";
+import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
-} from "@/transactions/utils.js";
+} from "./utils.js";
 
 export type PhasMembershipRewardRegistrationResult = {
   readonly rewardAddress: string;
@@ -83,6 +85,118 @@ export type PhasMembershipRegistrationOptions = {
   ) => void;
 };
 
+export const decodePhasMembershipRegistrationTransactionBodyEvidence = (
+  value: unknown,
+): PhasMembershipRegistrationTransactionBodyEvidence => {
+  if (
+    !exactObjectKeys(value, [
+      "schemaVersion",
+      "txHash",
+      "cborSha256",
+      "cborSizeBytes",
+      "certificate",
+    ]) ||
+    !exactObjectKeys(value.certificate, [
+      "kind",
+      "index",
+      "count",
+      "credentialType",
+      "scriptHash",
+    ])
+  ) {
+    throw new Error(
+      "PHAS registration transaction-body evidence fields do not match the exact V1 schema",
+    );
+  }
+  if (
+    value.schemaVersion !== "midgard-phas-registration-transaction-body-v1" ||
+    typeof value.txHash !== "string" ||
+    !/^[a-f0-9]{64}$/u.test(value.txHash) ||
+    typeof value.cborSha256 !== "string" ||
+    !/^[a-f0-9]{64}$/u.test(value.cborSha256) ||
+    !Number.isSafeInteger(value.cborSizeBytes) ||
+    (value.cborSizeBytes as number) <= 0 ||
+    value.certificate.kind !== "stake_registration" ||
+    value.certificate.index !== 0 ||
+    value.certificate.count !== 1 ||
+    value.certificate.credentialType !== "script" ||
+    typeof value.certificate.scriptHash !== "string" ||
+    !/^[a-f0-9]{56}$/u.test(value.certificate.scriptHash)
+  ) {
+    throw new Error(
+      "PHAS registration transaction-body evidence contains a noncanonical V1 value",
+    );
+  }
+  return value as PhasMembershipRegistrationTransactionBodyEvidence;
+};
+
+export const decodePhasMembershipRewardRegistrationResult = (
+  value: unknown,
+): PhasMembershipRewardRegistrationResult => {
+  if (
+    !exactObjectKeys(value, [
+      "status",
+      "rewardAddress",
+      "scriptHash",
+      "txHash",
+      "transactionBody",
+    ])
+  ) {
+    throw new Error(
+      "PHAS registration result fields do not match the exact V1 schema",
+    );
+  }
+  if (
+    typeof value.rewardAddress !== "string" ||
+    !/^stake(?:_test)?1[0-9a-z]+$/u.test(value.rewardAddress) ||
+    typeof value.scriptHash !== "string" ||
+    !/^[a-f0-9]{56}$/u.test(value.scriptHash)
+  ) {
+    throw new Error("PHAS registration result identity is noncanonical");
+  }
+  let rewardAddressDetails: ReturnType<typeof getAddressDetails>;
+  try {
+    rewardAddressDetails = getAddressDetails(value.rewardAddress);
+  } catch (cause) {
+    throw new Error("PHAS registration result reward address is invalid", {
+      cause,
+    });
+  }
+  if (
+    rewardAddressDetails.type !== "Reward" ||
+    rewardAddressDetails.stakeCredential?.type !== "Script" ||
+    rewardAddressDetails.stakeCredential.hash !== value.scriptHash
+  ) {
+    throw new Error(
+      "PHAS registration result reward address is not bound to its script hash",
+    );
+  }
+  if (value.status === "already_registered") {
+    if (value.txHash !== null || value.transactionBody !== null) {
+      throw new Error(
+        "PHAS already-registered result must not contain transaction evidence",
+      );
+    }
+    return value as PhasMembershipRewardRegistrationResult;
+  }
+  if (value.status !== "registration_submitted") {
+    throw new Error("PHAS registration result status is not canonical V1");
+  }
+  const transactionBody =
+    decodePhasMembershipRegistrationTransactionBodyEvidence(
+      value.transactionBody,
+    );
+  if (
+    value.txHash !== transactionBody.txHash ||
+    value.scriptHash !== transactionBody.certificate.scriptHash
+  ) {
+    throw new Error(
+      "PHAS registration result is not bound to its transaction evidence",
+    );
+  }
+  return value as PhasMembershipRewardRegistrationResult;
+};
+
 export const inspectPhasMembershipRegistrationTransaction = (
   built: SDK.BuiltPhasMembershipRewardRegistrationTx,
   expected: { readonly rewardAddress: string; readonly scriptHash: string },
@@ -136,20 +250,21 @@ export const inspectPhasMembershipRegistrationTransaction = (
     );
   }
   const bytes = Buffer.from(unsignedTransactionCborHex, "hex");
-  return {
-    evidence: {
-      schemaVersion: "midgard-phas-registration-transaction-body-v1",
-      txHash: CML.hash_transaction(body).to_hex(),
-      cborSha256: createHash("sha256").update(bytes).digest("hex"),
-      cborSizeBytes: bytes.length,
-      certificate: {
-        kind: "stake_registration",
-        index: 0,
-        count: 1,
-        credentialType: "script",
-        scriptHash: certificateScriptHash,
-      },
+  const evidence = decodePhasMembershipRegistrationTransactionBodyEvidence({
+    schemaVersion: "midgard-phas-registration-transaction-body-v1",
+    txHash: CML.hash_transaction(body).to_hex(),
+    cborSha256: createHash("sha256").update(bytes).digest("hex"),
+    cborSizeBytes: bytes.length,
+    certificate: {
+      kind: "stake_registration",
+      index: 0,
+      count: 1,
+      credentialType: "script",
+      scriptHash: certificateScriptHash,
     },
+  });
+  return {
+    evidence,
     unsignedTransactionCborHex,
   };
 };
@@ -271,24 +386,29 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
       yield* Effect.logInfo(
         `PHAS membership reward account is already registered before submission: scriptHash=${identity.scriptHash},rewardAddress=${identity.rewardAddress}`,
       );
-      return {
+      return decodePhasMembershipRewardRegistrationResult({
         status: "already_registered",
         rewardAddress: identity.rewardAddress,
         scriptHash: identity.scriptHash,
         txHash: null,
         transactionBody: null,
-      } satisfies PhasMembershipRewardRegistrationResult;
+      });
     }
 
     const built = yield* (
       options.buildRegistrationTx ?? defaultBuildRegistrationTx
     )(lucid, { script });
     const capturedTransaction = yield* Effect.try({
-      try: () =>
-        (
+      try: () => {
+        const captured = (
           options.inspectRegistrationTx ??
           inspectPhasMembershipRegistrationTransaction
-        )(built, identity),
+        )(built, identity);
+        decodePhasMembershipRegistrationTransactionBodyEvidence(
+          captured.evidence,
+        );
+        return captured;
+      },
       catch: (cause) =>
         new SDK.LucidError({
           message:
@@ -310,13 +430,13 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
         yield* Effect.logInfo(
           `PHAS membership reward account is already registered: scriptHash=${built.scriptHash},rewardAddress=${built.rewardAddress}`,
         );
-        return {
+        return decodePhasMembershipRewardRegistrationResult({
           status: "already_registered",
           rewardAddress: built.rewardAddress,
           scriptHash: built.scriptHash,
           txHash: null,
           transactionBody: null,
-        } satisfies PhasMembershipRewardRegistrationResult;
+        });
       }
       return yield* Effect.fail(submitted.left);
     }
@@ -331,11 +451,11 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
       );
     }
     options.onSubmittedRegistrationTx?.(capturedTransaction);
-    return {
+    return decodePhasMembershipRewardRegistrationResult({
       status: "registration_submitted",
       rewardAddress: built.rewardAddress,
       scriptHash: built.scriptHash,
       txHash: submitted.right,
       transactionBody: capturedTransaction.evidence,
-    } satisfies PhasMembershipRewardRegistrationResult;
+    });
   });

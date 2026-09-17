@@ -2,18 +2,18 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { type Assets, Data as LucidData, toUnit } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
-import { parseEventId, parseHexBytes } from "@/commands/command-utils.js";
-import { addressDataToBech32 } from "@/commands/withdrawal-utils.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import * as WithdrawalsDB from "@/database/withdrawals.js";
+import { DatabaseError } from "../database/utils/common.js";
+import * as WithdrawalsDB from "../database/withdrawals.js";
 import {
   Database,
   Lucid,
   MidgardContracts,
   NodeConfig,
-} from "@/services/index.js";
-import { valueToAssets } from "@/transactions/reserve-payout.js";
-import { outRefLabel } from "@/tx-context.js";
+} from "../services/index.js";
+import { valueToAssets } from "../transactions/reserve-payout.js";
+import { outRefLabel } from "../tx-context.js";
+import { parseEventId, parseHexBytes } from "./command-utils.js";
+import { addressDataToBech32 } from "./withdrawal-utils.js";
 
 export type WithdrawalStatusLookup = {
   readonly eventId?: Buffer;

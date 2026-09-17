@@ -59,39 +59,39 @@ validator mint(hub_oracle_script_hash: PolicyId) {
 
         // 1. The active operators policy ID must come from reference authentic
         //    hub oracle UTxO.
-        let hub_datum =
-          hub.get_datum(
-            self.reference_inputs,
-            hub_oracle_script_hash,
-            hub_oracle_ref_input_index,
-          )
+        let hub_datum = hub.get_datum(
+          self.reference_inputs,
+          hub_oracle_script_hash,
+          hub_oracle_ref_input_index,
+        )
 
         // 2. Generic validations for operator transfer must pass.
         {
           let
-            inserted_node_data,
-            _m_retired_operator_anchor_key,
-            _inserted_retired_operator_link,
-          <-
-            validate_transferred_operator_insertion(
-              new_retired_operator_key,
-              hub_datum.active_operators,
-              active_operators_redeemer_index,
-              fn(active_operators_redeemer_data) -> (VerificationKeyHash, Bool) {
-                expect active_operators.RetireOperator {
-                  active_operator_key,
-                  penalize_for_inactivity,
-                  ..
-                } = active_operators_redeemer_data
-                (active_operator_key, penalize_for_inactivity)
-              },
-              retired_operator_anchor_element_output_index,
-              retired_operator_inserted_node_output_index,
-              inputs,
-              outputs,
-              mint,
-              redeemers,
-            )
+              inserted_node_data,
+              _m_retired_operator_anchor_key,
+              _inserted_retired_operator_link
+            <- validate_transferred_operator_insertion(
+            new_retired_operator_key,
+            hub_datum.active_operators,
+            active_operators_redeemer_index,
+            fn(active_operators_redeemer_data) -> (VerificationKeyHash, Bool) {
+              expect
+                  active_operators.RetireOperator {
+                    active_operator_key,
+                    penalize_for_inactivity,
+                    ..
+                  }
+                = active_operators_redeemer_data
+              (active_operator_key, penalize_for_inactivity)
+            },
+            retired_operator_anchor_element_output_index,
+            retired_operator_inserted_node_output_index,
+            inputs,
+            outputs,
+            mint,
+            redeemers,
+          )
 
           // 3. Newly retired operator's bond unlock time must be preserved from
           //    the active operators set. This equality between the redeemer
@@ -110,14 +110,16 @@ validator mint(hub_oracle_script_hash: PolicyId) {
         retired_operator_anchor_element_input_outref,
         retired_operator_anchor_element_output_index,
       } -> {
-        let Transaction {
-          inputs,
-          outputs,
-          mint,
-          validity_range,
-          extra_signatories,
-          ..
-        } = self
+        let
+            Transaction {
+              inputs,
+              outputs,
+              mint,
+              validity_range,
+              extra_signatories,
+              ..
+            }
+          = self
 
         // 1. The retired operator must give consent to the transaction to show
         //    destination of the ADA bond is approved.
@@ -125,29 +127,28 @@ validator mint(hub_oracle_script_hash: PolicyId) {
 
         // 2. Specified output for removal of the retired operator's node from
         //    the linked list must exist at its index.
-        expect Some(retired_operator_anchor_element_output) =
-          outputs |> list.at(retired_operator_anchor_element_output_index)
+        expect Some(retired_operator_anchor_element_output) = outputs
+          |> list.at(retired_operator_anchor_element_output_index)
 
         // 3. Removal of the retiried operator's node from the linked list
         //    must be valid.
         {
           let
-            _anchor_input,
-            anchor_lovelace_change,
-            _m_anchor_key,
-            _anchor_data,
-            _retired_operator_removed_node_input,
-            _retired_operator_lovelace,
-            retired_operator_node_key,
-            retired_operator_node_data,
-            _retired_operator_node_link,
-          <-
-            linked_list.remove(
-              anchor_input_outref: retired_operator_anchor_element_input_outref,
-              continued_anchor_element_output: retired_operator_anchor_element_output,
-              inputs: inputs,
-              tx_mint: mint,
-            )
+              _anchor_input,
+              anchor_lovelace_change,
+              _m_anchor_key,
+              _anchor_data,
+              _retired_operator_removed_node_input,
+              _retired_operator_lovelace,
+              retired_operator_node_key,
+              retired_operator_node_data,
+              _retired_operator_node_link
+            <- linked_list.remove(
+            anchor_input_outref: retired_operator_anchor_element_input_outref,
+            continued_anchor_element_output: retired_operator_anchor_element_output,
+            inputs: inputs,
+            tx_mint: mint,
+          )
 
           // 4. ADA of the removing node's anchor element must be preserved.
           expect anchor_lovelace_change >= 0
@@ -175,19 +176,18 @@ validator mint(hub_oracle_script_hash: PolicyId) {
       SlashOperator { slashing_arguments } ->
         {
           let
-            _slashed_operator_from_redeemer,
-            _m_anchor_key,
-            _slashed_operator_node_link,
-            _hub_datum,
-            _inputs,
-            _reference_inputs,
-            _redeemers,
-          <-
-            slash_fraudulent_operator_and_get_info(
-              hub_oracle_script_hash,
-              slashing_arguments,
-              self,
-            )
+              _slashed_operator_from_redeemer,
+              _m_anchor_key,
+              _slashed_operator_node_link,
+              _hub_datum,
+              _inputs,
+              _reference_inputs,
+              _redeemers
+            <- slash_fraudulent_operator_and_get_info(
+            hub_oracle_script_hash,
+            slashing_arguments,
+            self,
+          )
 
           // Done.
           True

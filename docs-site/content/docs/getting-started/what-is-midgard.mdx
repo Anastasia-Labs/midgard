@@ -10,14 +10,14 @@ higher throughput with explicit security conditions, not an unconditional
 inheritance of every L1 guarantee.
 
 Optimistic rollups process blocks of transactions off-chain and commit those
-blocks' *headers* on-chain to the L1 ledger. Each block is committed by a Midgard
+blocks' _headers_ on-chain to the L1 ledger. Each block is committed by a Midgard
 operator who guarantees the block's validity. The block then waits in a queue for
 at least a fixed duration before it is merged into the confirmed state of the
 rollup on L1.
 
 ## The optimistic security model
 
-The word *optimistic* is literal: committed blocks are assumed valid unless
+The word _optimistic_ is literal: committed blocks are assumed valid unless
 someone proves otherwise. Security comes from economic incentives and a challenge
 window rather than from re-executing every transaction on L1.
 
@@ -34,18 +34,22 @@ before maturity. A successful proof prevents the invalid state from merging and
 drives the configured slashing/reward path.
 
 <Callout type="info" title="When the economic deterrent holds">
-A disqualified block does not affect confirmed state. Fraud is deterred only if
-data is available, an independent watcher detects the fault, a sound proof path
-can complete before maturity, and the expected slash exceeds the maximum benefit
-of the attack. Bond and reward sizing must include detection probability, watcher
-costs, congestion, and value at risk.
+  A disqualified block does not affect confirmed state. Fraud is deterred only
+  if data is available, an independent watcher detects the fault, a sound proof
+  path can complete before maturity, and the expected slash exceeds the maximum
+  benefit of the attack. Bond and reward sizing must include detection
+  probability, watcher costs, congestion, and value at risk.
 </Callout>
 
-<Callout type="warn" title="Intended protocol model, not current deployment state">
-This is how Midgard is *designed* to work. Fraud proofs, the DA layer,
-and the bond/slash/reward economics are still being finalized, and the testnet
-environment carries zero bond, slash, and reward values. Public-testnet readiness
-is tracked on [Project Status](/docs/getting-started/status).
+<Callout
+  type="warn"
+  title="Intended protocol model, not current deployment state"
+>
+  This is how Midgard is *designed* to work. Implementation, deployed coverage,
+  and economic acceptance are separate. The checked-in testnet parameters
+  contain nonzero bonds, slashing penalties, and prover rewards; those values
+  alone do not establish a safe public deployment. Public-testnet readiness is
+  tracked on [Project Status](/docs/getting-started/status).
 </Callout>
 
 The target security guarantees depend on more than parameter calibration. The
@@ -72,22 +76,24 @@ design requires at least these conditions:
   />
   <Card
     title="Watchers"
-    description="Verify queued block data on the DA layer and challenge invalid commitments with a fraud proof. Earn a share of the slashed bond when a fraud proof stops an invalid block from merging."
+    description="Verify queued block data on the DA layer and challenge invalid commitments with a fraud proof. Receive the configured prover reward through the successful slash/removal lifecycle."
   />
 </Cards>
 
 ## How a transaction reaches L1
 
-<Mermaid chart={`flowchart TD
+<Mermaid
+  chart={`flowchart TD
   U[User submits L2 transaction] --> OP[Operator batches transactions into a block]
-  OP --> BOND[Operator posts bond and publishes full block to DA layer]
+  OP --> BOND[Operator maintains bond and publishes full block to DA layer]
   BOND --> COMMIT[Block header committed to L1 state queue]
   COMMIT --> WAIT[Block waits in queue for the challenge window]
   WAIT --> WATCH{Watcher inspects block on DA layer}
   WATCH -->|Valid, window elapses| MERGE[Block merged into confirmed L2 state on L1]
   WATCH -->|Invalid| PROOF[Watcher submits fraud proof]
   PROOF --> SLASH[Block rejected, operator bond slashed, watcher rewarded]
-`} />
+`}
+/>
 
 Only the compact block **header** goes on-chain in the state queue; the full block
 body lives on the DA layer. The L2 executes off-chain, and L1 is only asked to
@@ -101,15 +107,15 @@ transaction-wide material, adjacent transition steps, prior committed state, or
 authenticated L1 events. Each deployed proof family must bind all of that context
 to the challenged header.
 
-Midgard's rollup blocks use **sparse Merkle trees** and compact state
+Midgard's rollup blocks use **authenticated Merkle maps and vectors** and compact state
 representations so proof procedures can authenticate bounded evidence. The
 intended reduction in proof size and L1 cost must be demonstrated per family with
 worst-case transaction-size and execution-budget measurements.
 
 ## Censorship resistance and the escape hatch
 
-The target optimistic mechanism protects the *validity* of covered committed
-blocks, but on its own it does not stop operators from *censoring* users.
+The target optimistic mechanism protects the _validity_ of covered committed
+blocks, but on its own it does not stop operators from _censoring_ users.
 Midgard's design adds smart-contract mechanisms for this:
 
 - **Deposits and withdrawals** are initiated via L1 smart contracts that assign
@@ -117,8 +123,10 @@ Midgard's design adds smart-contract mechanisms for this:
   these inclusion times but omits the associated event, so operators who keep
   committing blocks cannot ignore deposits and withdrawals.
 - **L2 transaction orders** let any user escalate an ignored transaction by posting
-  it on L1, which assigns an inclusion time and makes omission from a covering
-  block provable while valid block production continues.
+  it on L1. The current transaction-order path uses the ordered transaction
+  validity interval and authenticated L1 order evidence to determine when it
+  must be processed. This differs from the older inclusion-time sketch in the
+  technical specification.
 - **The target escape hatch** lowers the bond requirement for replacement
   operators if block production stops. It is not a direct user force-exit and is
   not implemented as a production recovery guarantee today; public deployments

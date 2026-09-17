@@ -7,14 +7,13 @@ import { it } from "@effect/vitest";
 import { Effect, Metric } from "effect";
 import { describe, expect } from "vitest";
 
-import * as Ledger from "@/database/utils/ledger.js";
-import * as Tx from "@/database/utils/tx.js";
+import * as Ledger from "../src/database/utils/ledger.js";
+import * as Tx from "../src/database/utils/tx.js";
 import {
   COMMIT_REJECT_CODE_DECODE_FAILED,
   commitTxDeltaFallbackDecodedCounter,
   resolveTxDeltaForCommit,
-} from "@/workers/utils/mpf.js";
-
+} from "../src/mpf/index.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
 
 describe("resolveTxDeltaForCommit", () => {

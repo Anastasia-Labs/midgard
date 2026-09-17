@@ -1,24 +1,31 @@
-import { createHash } from "node:crypto";
-
+import {
+  encodeMidgardCekProgramMaterialSidecar,
+  type MidgardCekProgramEnvelope,
+} from "@al-ft/midgard-core/cek-proof";
+import { computeMidgardNativeTxFullHashFromCanonicalCbor } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { RejectedTx } from "@al-ft/midgard-validation/types";
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Data, Duration, Effect, Metric } from "effect";
 
-import * as DepositsDB from "@/database/deposits.js";
-import * as MempoolDB from "@/database/mempool.js";
-import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
-import * as TxRejectionsDB from "@/database/txRejections.js";
+import { emitPhase1AcceptCommitCheckpoint } from "../e2e/phase1-accept-crash-checkpoint.js";
+import { NodeConfig } from "../services/config.js";
+import { Database } from "../services/database.js";
+import { WriteBehind } from "../services/write-behind.js";
+import { sha256 } from "../sha256.js";
+import { ProcessedTx } from "../utils.js";
+import * as CekProgramMaterialDB from "./cekProgramMaterial.js";
+import * as DepositsDB from "./deposits.js";
+import * as MempoolDB from "./mempool.js";
+import * as MempoolLedgerDB from "./mempoolLedger.js";
+import * as TxRejectionsDB from "./txRejections.js";
 import {
   DatabaseError,
   logDatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import type { Entry as LedgerEntry } from "@/database/utils/ledger.js";
-import { emitPhase1AcceptCommitCheckpoint } from "@/e2e/phase1-accept-crash-checkpoint.js";
-import { Database } from "@/services/database.js";
-import { WriteBehind } from "@/services/write-behind.js";
-import { ProcessedTx } from "@/utils.js";
+} from "./utils/common.js";
+import type { Entry as LedgerEntry } from "./utils/ledger.js";
 
 export const tableName = "tx_admissions";
 export const payloadTableName = "tx_admission_payloads";
@@ -95,7 +102,9 @@ export type SubmitSource = "native" | "backfill";
 export enum Columns {
   TX_ID = "tx_id",
   TX_CANONICAL_CBOR = "tx_canonical_cbor",
-  TX_CANONICAL_CBOR_SHA256 = "tx_canonical_cbor_sha256",
+  TX_FULL_HASH_V1 = "tx_full_hash_v1",
+  CEK_PROGRAM_MATERIAL_SIDECAR_CBOR = "cek_program_material_sidecar_cbor",
+  CEK_PROGRAM_MATERIAL_SIDECAR_SHA256 = "cek_program_material_sidecar_sha256",
   ARRIVAL_SEQ = "arrival_seq",
   STATUS = "status",
   FIRST_SEEN_AT = "first_seen_at",
@@ -116,7 +125,9 @@ export enum Columns {
 type RawEntry = {
   readonly [Columns.TX_ID]: Buffer;
   readonly [Columns.TX_CANONICAL_CBOR]: Buffer;
-  readonly [Columns.TX_CANONICAL_CBOR_SHA256]: Buffer;
+  readonly [Columns.TX_FULL_HASH_V1]: Buffer;
+  readonly [Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]: Buffer;
+  readonly [Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]: Buffer;
   readonly [Columns.ARRIVAL_SEQ]: bigint | number | string;
   readonly [Columns.STATUS]: Status;
   readonly [Columns.FIRST_SEEN_AT]: Date;
@@ -146,6 +157,7 @@ type RawClaimedEntry = Pick<
   RawEntry,
   | Columns.TX_ID
   | Columns.TX_CANONICAL_CBOR
+  | Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR
   | Columns.ARRIVAL_SEQ
   | Columns.FIRST_SEEN_AT
   | Columns.VALIDATION_STARTED_AT
@@ -155,13 +167,22 @@ export type ClaimedEntry = Omit<RawClaimedEntry, Columns.ARRIVAL_SEQ> & {
   readonly [Columns.ARRIVAL_SEQ]: bigint;
 };
 
+type RawClaimedPayloadEntry = RawClaimedEntry &
+  Pick<
+    RawEntry,
+    Columns.TX_FULL_HASH_V1 | Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256
+  >;
+
 /**
  * The ordered, durable half of a claim.  It intentionally omits the payload:
  * callers that serialize claim order can release their short claim lock before
  * loading CBOR blobs, while still proving the payload belongs to this exact
  * validation lease before dispatching it to a worker.
  */
-type RawClaimedLeaseEntry = Omit<RawClaimedEntry, Columns.TX_CANONICAL_CBOR>;
+type RawClaimedLeaseEntry = Omit<
+  RawClaimedEntry,
+  Columns.TX_CANONICAL_CBOR | Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR
+>;
 
 export type ClaimedLeaseEntry = Omit<
   RawClaimedLeaseEntry,
@@ -178,12 +199,17 @@ export type AdmitResult = {
 export type ReservedAdmissionRequest = {
   readonly txId: Buffer;
   readonly txCanonicalCbor: Buffer;
+  readonly programMaterialSidecarCbor: Buffer;
   readonly submitSource: Exclude<SubmitSource, "backfill">;
+  readonly maxBacklogBytes?: number;
 };
 
 export type ReservedAdmissionOutcome =
   | { readonly _tag: "Success"; readonly result: AdmitResult }
-  | { readonly _tag: "Conflict"; readonly error: TxAdmissionConflictError };
+  | {
+      readonly _tag: "Conflict";
+      readonly error: TxAdmissionConflictError | TxAdmissionBacklogFullError;
+    };
 
 export class TxAdmissionConflictError extends Data.TaggedError(
   "TxAdmissionConflictError",
@@ -197,6 +223,7 @@ export class TxAdmissionBacklogFullError extends Data.TaggedError(
 )<{
   readonly backlog: bigint;
   readonly maxBacklog: bigint;
+  readonly unit?: "rows" | "bytes";
   readonly message: string;
 }> {}
 
@@ -210,8 +237,13 @@ const normalizeRow = (row: RawEntry): Entry => ({
 });
 
 const normalizeClaimedEntry = (row: RawClaimedEntry): ClaimedEntry => ({
-  ...row,
+  [Columns.TX_ID]: row[Columns.TX_ID],
+  [Columns.TX_CANONICAL_CBOR]: row[Columns.TX_CANONICAL_CBOR],
+  [Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]:
+    row[Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR],
   [Columns.ARRIVAL_SEQ]: toBigInt(row[Columns.ARRIVAL_SEQ]),
+  [Columns.FIRST_SEEN_AT]: row[Columns.FIRST_SEEN_AT],
+  [Columns.VALIDATION_STARTED_AT]: row[Columns.VALIDATION_STARTED_AT],
 });
 
 const normalizeClaimedLeaseEntry = (
@@ -221,21 +253,62 @@ const normalizeClaimedLeaseEntry = (
   [Columns.ARRIVAL_SEQ]: toBigInt(row[Columns.ARRIVAL_SEQ]),
 });
 
-const sha256 = (bytes: Buffer): Buffer =>
-  createHash("sha256").update(bytes).digest();
+const verifyClaimedPayloadRows = (
+  rows: readonly RawClaimedPayloadEntry[],
+): Effect.Effect<readonly ClaimedEntry[], DatabaseError> =>
+  Effect.gen(function* () {
+    for (const row of rows) {
+      const txIdHex = row[Columns.TX_ID].toString("hex");
+      const expectedFullHash = computeMidgardNativeTxFullHashFromCanonicalCbor(
+        row[Columns.TX_CANONICAL_CBOR],
+      );
+      if (!expectedFullHash.equals(row[Columns.TX_FULL_HASH_V1])) {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: payloadTableName,
+            message:
+              "Admission payload canonical V1 full-transaction commitment does not match its persisted bytes",
+            cause: `tx_id=${txIdHex}`,
+          }),
+        );
+      }
+      const expectedSidecarHash = sha256(
+        row[Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR],
+      );
+      if (
+        !expectedSidecarHash.equals(
+          row[Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256],
+        )
+      ) {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: payloadTableName,
+            message:
+              "Admission payload CEK program-material sidecar commitment does not match its persisted bytes",
+            cause: `tx_id=${txIdHex}`,
+          }),
+        );
+      }
+    }
+    return rows.map(normalizeClaimedEntry);
+  });
 
 export const tryInsert = ({
   txId,
   txCanonicalCbor,
+  programMaterialSidecarCbor,
   submitSource,
 }: {
   readonly txId: Buffer;
   readonly txCanonicalCbor: Buffer;
+  readonly programMaterialSidecarCbor: Buffer;
   readonly submitSource: SubmitSource;
 }): Effect.Effect<Entry | null, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const txCanonicalCborSha256 = sha256(txCanonicalCbor);
+    const txFullHash =
+      computeMidgardNativeTxFullHashFromCanonicalCbor(txCanonicalCbor);
+    const materialSidecarSha256 = sha256(programMaterialSidecarCbor);
     const inserted = yield* sql<RawEntry>`WITH inserted_admission AS (
         INSERT INTO ${sql(tableName)} (
           ${sql(Columns.TX_ID)},
@@ -252,19 +325,25 @@ export const tryInsert = ({
         INSERT INTO ${sql(payloadTableName)} (
           ${sql(Columns.TX_ID)},
           ${sql(Columns.TX_CANONICAL_CBOR)},
-          ${sql(Columns.TX_CANONICAL_CBOR_SHA256)}
+          ${sql(Columns.TX_FULL_HASH_V1)},
+          ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
+          ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
         )
         SELECT
           ${sql(Columns.TX_ID)},
           ${txCanonicalCbor},
-          ${txCanonicalCborSha256}
+          ${txFullHash},
+          ${programMaterialSidecarCbor},
+          ${materialSidecarSha256}
         FROM inserted_admission
         RETURNING *
       )
       SELECT
         admission.*,
         payload.${sql(Columns.TX_CANONICAL_CBOR)},
-        payload.${sql(Columns.TX_CANONICAL_CBOR_SHA256)}
+        payload.${sql(Columns.TX_FULL_HASH_V1)},
+        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
+        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
       FROM inserted_admission admission
       INNER JOIN inserted_payload payload
         ON payload.${sql(Columns.TX_ID)} = admission.${sql(Columns.TX_ID)}`;
@@ -275,13 +354,17 @@ export const tryInsert = ({
 
 const touchDuplicateCount = ({
   txId,
-  txCanonicalCborSha256,
+  txFullHashV1: txFullHash,
   txCanonicalCbor,
+  programMaterialSidecarCbor,
+  programMaterialSidecarSha256,
   requestCount,
 }: {
   readonly txId: Buffer;
-  readonly txCanonicalCborSha256: Buffer;
+  readonly txFullHashV1: Buffer;
   readonly txCanonicalCbor: Buffer;
+  readonly programMaterialSidecarCbor: Buffer;
+  readonly programMaterialSidecarSha256: Buffer;
   readonly requestCount: number;
 }): Effect.Effect<Entry | null, DatabaseError, Database> =>
   Effect.gen(function* () {
@@ -304,12 +387,21 @@ const touchDuplicateCount = ({
       FROM ${sql(payloadTableName)} AS payload
       WHERE admission.${sql(Columns.TX_ID)} = ${txId}
         AND payload.${sql(Columns.TX_ID)} = admission.${sql(Columns.TX_ID)}
-        AND payload.${sql(Columns.TX_CANONICAL_CBOR_SHA256)} = ${txCanonicalCborSha256}
+        AND payload.${sql(Columns.TX_FULL_HASH_V1)} = ${txFullHash}
         AND payload.${sql(Columns.TX_CANONICAL_CBOR)} = ${txCanonicalCbor}
+        AND payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)} =
+          ${programMaterialSidecarSha256}
+        AND (
+          payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)} =
+            ${programMaterialSidecarCbor}
+          OR admission.${sql(Columns.STATUS)} IN ('accepted', 'rejected')
+        )
       RETURNING
         admission.*,
         payload.${sql(Columns.TX_CANONICAL_CBOR)},
-        payload.${sql(Columns.TX_CANONICAL_CBOR_SHA256)}`;
+        payload.${sql(Columns.TX_FULL_HASH_V1)},
+        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
+        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}`;
     return updated.length === 0 ? null : normalizeRow(updated[0]!);
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to touch duplicate admission"),
@@ -317,29 +409,35 @@ const touchDuplicateCount = ({
 
 export const touchDuplicate = ({
   txId,
-  txCanonicalCborSha256,
+  txFullHashV1: txFullHash,
   txCanonicalCbor,
+  programMaterialSidecarCbor,
 }: {
   readonly txId: Buffer;
-  readonly txCanonicalCborSha256: Buffer;
+  readonly txFullHashV1: Buffer;
   readonly txCanonicalCbor: Buffer;
+  readonly programMaterialSidecarCbor: Buffer;
 }): Effect.Effect<Entry | null, DatabaseError, Database> =>
   touchDuplicateCount({
     txId,
-    txCanonicalCborSha256,
+    txFullHashV1: txFullHash,
     txCanonicalCbor,
+    programMaterialSidecarCbor,
+    programMaterialSidecarSha256: sha256(programMaterialSidecarCbor),
     requestCount: 1,
   });
 
-export const admit = ({
+const admitWithoutByteQuota = ({
   txId,
   txCanonicalCbor,
+  programMaterialSidecarCbor,
   submitSource,
   currentBacklog,
   maxBacklog,
 }: {
   readonly txId: Buffer;
   readonly txCanonicalCbor: Buffer;
+  readonly programMaterialSidecarCbor: Buffer;
   readonly submitSource: Exclude<SubmitSource, "backfill">;
   readonly currentBacklog: bigint;
   readonly maxBacklog: number;
@@ -349,13 +447,15 @@ export const admit = ({
   Database
 > =>
   Effect.gen(function* () {
-    const txCanonicalCborSha256 = sha256(txCanonicalCbor);
+    const txFullHash =
+      computeMidgardNativeTxFullHashFromCanonicalCbor(txCanonicalCbor);
     const max = BigInt(Math.max(0, maxBacklog));
     if (currentBacklog >= max) {
       const duplicate = yield* touchDuplicate({
         txId,
-        txCanonicalCborSha256,
+        txFullHashV1: txFullHash,
         txCanonicalCbor,
+        programMaterialSidecarCbor,
       });
       if (duplicate !== null) {
         yield* Metric.increment(admissionDuplicatePathCounter);
@@ -374,6 +474,7 @@ export const admit = ({
     const inserted = yield* tryInsert({
       txId,
       txCanonicalCbor,
+      programMaterialSidecarCbor,
       submitSource,
     });
     if (inserted !== null) {
@@ -382,8 +483,9 @@ export const admit = ({
 
     const duplicate = yield* touchDuplicate({
       txId,
-      txCanonicalCborSha256,
+      txFullHashV1: txFullHash,
       txCanonicalCbor,
+      programMaterialSidecarCbor,
     });
     if (duplicate !== null) {
       yield* Metric.increment(admissionDuplicatePathCounter);
@@ -398,10 +500,96 @@ export const admit = ({
     );
   });
 
+const ADMISSION_BYTE_QUOTA_LOCK_KEY = 0x4d_49_44_47_41_52_44n;
+const DEFAULT_MAX_DURABLE_ADMISSION_BACKLOG_BYTES =
+  MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes;
+
+const normalizedMaxBacklogBytes = (value: number | undefined): bigint => {
+  const normalized = value ?? DEFAULT_MAX_DURABLE_ADMISSION_BACKLOG_BYTES;
+  if (!Number.isSafeInteger(normalized) || normalized <= 0) {
+    throw new Error("maxBacklogBytes must be a positive safe integer");
+  }
+  return BigInt(normalized);
+};
+
+const currentBacklogPayloadBytes = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{
+    readonly bytes: bigint | number | string;
+  }>`SELECT COALESCE(
+      SUM(octet_length(payload.${sql(
+        Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR,
+      )})),
+      0
+    )::bigint AS bytes
+    FROM ${sql(tableName)} admission
+    INNER JOIN ${sql(payloadTableName)} payload
+      ON payload.${sql(Columns.TX_ID)} = admission.${sql(Columns.TX_ID)}
+    WHERE admission.${sql(Columns.STATUS)} IN ('queued', 'validating')`;
+  return toBigInt(rows[0]?.bytes ?? 0);
+});
+
+export const admit = ({
+  maxBacklogBytes,
+  ...request
+}: {
+  readonly txId: Buffer;
+  readonly txCanonicalCbor: Buffer;
+  readonly programMaterialSidecarCbor: Buffer;
+  readonly submitSource: Exclude<SubmitSource, "backfill">;
+  readonly currentBacklog: bigint;
+  readonly maxBacklog: number;
+  readonly maxBacklogBytes?: number;
+}): Effect.Effect<
+  AdmitResult,
+  DatabaseError | TxAdmissionConflictError | TxAdmissionBacklogFullError,
+  Database
+> =>
+  Effect.gen(function* () {
+    const outerSql = yield* SqlClient.SqlClient;
+    return yield* outerSql.withTransaction(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`SELECT pg_advisory_xact_lock(${ADMISSION_BYTE_QUOTA_LOCK_KEY})`;
+        const existing = yield* sql<{ readonly exists: boolean }>`SELECT EXISTS(
+          SELECT 1
+          FROM ${sql(tableName)}
+          WHERE ${sql(Columns.TX_ID)} = ${request.txId}
+        ) AS exists`;
+        if (existing[0]?.exists !== true) {
+          const backlog = yield* currentBacklogPayloadBytes;
+          const maxBacklog = normalizedMaxBacklogBytes(maxBacklogBytes);
+          const requestedBytes = BigInt(
+            request.programMaterialSidecarCbor.length,
+          );
+          if (backlog + requestedBytes > maxBacklog) {
+            return yield* Effect.fail(
+              new TxAdmissionBacklogFullError({
+                backlog,
+                maxBacklog,
+                unit: "bytes",
+                message:
+                  "Durable submission admission byte backlog is full; retry later",
+              }),
+            );
+          }
+        }
+        return yield* admitWithoutByteQuota(request);
+      }),
+    );
+  }).pipe(
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to enforce durable admission byte backlog",
+    ),
+  );
+
 type ReservedAdmissionVariant = {
   readonly txId: Buffer;
   readonly txCanonicalCbor: Buffer;
-  readonly txCanonicalCborSha256: Buffer;
+  readonly txFullHashV1: Buffer;
+  readonly programMaterialSidecarCbor: Buffer;
+  readonly programMaterialSidecarSha256: Buffer;
   readonly submitSource: Exclude<SubmitSource, "backfill">;
   readonly requestIndices: readonly number[];
   readonly variantOrdinal: number;
@@ -424,12 +612,20 @@ const groupReservedAdmissionVariants = (
     const matching = variants.find(
       (variant) =>
         variant.txCanonicalCbor.equals(request.txCanonicalCbor) &&
+        variant.programMaterialSidecarCbor.equals(
+          request.programMaterialSidecarCbor,
+        ) &&
         variant.submitSource === request.submitSource,
     );
     if (matching === undefined) {
       variants.push({
         ...request,
-        txCanonicalCborSha256: sha256(request.txCanonicalCbor),
+        txFullHashV1: computeMidgardNativeTxFullHashFromCanonicalCbor(
+          request.txCanonicalCbor,
+        ),
+        programMaterialSidecarSha256: sha256(
+          request.programMaterialSidecarCbor,
+        ),
         requestIndices: [index],
         variantOrdinal: -1,
         firstVariantForTxId: variants.length === 0,
@@ -454,7 +650,7 @@ const groupReservedAdmissionVariants = (
  * their persisted bytes. Deterministic tx-id ordering prevents opposite-order
  * microbatches from acquiring conflicting unique-index locks in opposite order.
  */
-export const admitReservedBatch = (
+const persistReservedAdmissionBatch = (
   requests: readonly ReservedAdmissionRequest[],
 ): Effect.Effect<
   readonly ReservedAdmissionOutcome[],
@@ -471,7 +667,17 @@ export const admitReservedBatch = (
         FROM unnest(
           ${pg.array(postgresByteaArray(variants.map((value) => value.txId)))}::bytea[],
           ${pg.array(postgresByteaArray(variants.map((value) => value.txCanonicalCbor)))}::bytea[],
-          ${pg.array(postgresByteaArray(variants.map((value) => value.txCanonicalCborSha256)))}::bytea[],
+          ${pg.array(postgresByteaArray(variants.map((value) => value.txFullHashV1)))}::bytea[],
+          ${pg.array(
+            postgresByteaArray(
+              variants.map((value) => value.programMaterialSidecarCbor),
+            ),
+          )}::bytea[],
+          ${pg.array(
+            postgresByteaArray(
+              variants.map((value) => value.programMaterialSidecarSha256),
+            ),
+          )}::bytea[],
           ${pg.array(variants.map((value) => value.submitSource))}::text[],
           ${pg.array(variants.map((value) => value.requestIndices.length))}::integer[],
           ${pg.array(variants.map((value) => value.variantOrdinal))}::integer[],
@@ -479,7 +685,9 @@ export const admitReservedBatch = (
         ) AS batch_input(
           tx_id,
           tx_canonical_cbor,
-          tx_canonical_cbor_sha256,
+          tx_full_hash_v1,
+          cek_program_material_sidecar_cbor,
+          cek_program_material_sidecar_sha256,
           submit_source,
           request_count,
           variant_ordinal,
@@ -506,12 +714,16 @@ export const admitReservedBatch = (
         INSERT INTO ${sql(payloadTableName)} (
           ${sql(Columns.TX_ID)},
           ${sql(Columns.TX_CANONICAL_CBOR)},
-          ${sql(Columns.TX_CANONICAL_CBOR_SHA256)}
+          ${sql(Columns.TX_FULL_HASH_V1)},
+          ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
+          ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
         )
         SELECT
           inserted.${sql(Columns.TX_ID)},
           input.tx_canonical_cbor,
-          input.tx_canonical_cbor_sha256
+          input.tx_full_hash_v1,
+          input.cek_program_material_sidecar_cbor,
+          input.cek_program_material_sidecar_sha256
         FROM inserted_admission inserted
         INNER JOIN input
           ON input.tx_id = inserted.${sql(Columns.TX_ID)}
@@ -536,11 +748,18 @@ export const admitReservedBatch = (
         FROM input
         INNER JOIN ${sql(payloadTableName)} payload
           ON payload.${sql(Columns.TX_ID)} = input.tx_id
-          AND payload.${sql(Columns.TX_CANONICAL_CBOR_SHA256)} =
-            input.tx_canonical_cbor_sha256
+          AND payload.${sql(Columns.TX_FULL_HASH_V1)} =
+            input.tx_full_hash_v1
           AND payload.${sql(Columns.TX_CANONICAL_CBOR)} =
             input.tx_canonical_cbor
+          AND payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
+            = input.cek_program_material_sidecar_sha256
         WHERE admissions.${sql(Columns.TX_ID)} = input.tx_id
+          AND (
+            payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)}
+              = input.cek_program_material_sidecar_cbor
+            OR admissions.${sql(Columns.STATUS)} IN ('accepted', 'rejected')
+          )
           AND NOT EXISTS (
             SELECT 1
             FROM inserted_admission inserted
@@ -553,7 +772,9 @@ export const admitReservedBatch = (
         'new'::text AS result_kind,
         inserted.*,
         payload.${sql(Columns.TX_CANONICAL_CBOR)},
-        payload.${sql(Columns.TX_CANONICAL_CBOR_SHA256)}
+        payload.${sql(Columns.TX_FULL_HASH_V1)},
+        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
+        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
       FROM input
       INNER JOIN inserted_admission inserted
         ON inserted.${sql(Columns.TX_ID)} = input.tx_id
@@ -581,7 +802,9 @@ export const admitReservedBatch = (
         updated.${sql(Columns.SUBMIT_SOURCE)},
         updated.${sql(Columns.REQUEST_COUNT)},
         payload.${sql(Columns.TX_CANONICAL_CBOR)},
-        payload.${sql(Columns.TX_CANONICAL_CBOR_SHA256)}
+        payload.${sql(Columns.TX_FULL_HASH_V1)},
+        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
+        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
       FROM updated_existing updated
       INNER JOIN input ON input.variant_ordinal = updated.variant_ordinal
       INNER JOIN ${sql(payloadTableName)} payload
@@ -601,8 +824,10 @@ export const admitReservedBatch = (
       if (resolvedByVariant.has(variant.variantOrdinal)) continue;
       const duplicate = yield* touchDuplicateCount({
         txId: variant.txId,
-        txCanonicalCborSha256: variant.txCanonicalCborSha256,
+        txFullHashV1: variant.txFullHashV1,
         txCanonicalCbor: variant.txCanonicalCbor,
+        programMaterialSidecarCbor: variant.programMaterialSidecarCbor,
+        programMaterialSidecarSha256: variant.programMaterialSidecarSha256,
         requestCount: variant.requestIndices.length,
       });
       if (duplicate !== null) {
@@ -668,6 +893,100 @@ export const admitReservedBatch = (
     ),
   );
 
+export const admitReservedBatch = (
+  requests: readonly ReservedAdmissionRequest[],
+): Effect.Effect<
+  readonly ReservedAdmissionOutcome[],
+  DatabaseError,
+  Database
+> =>
+  Effect.gen(function* () {
+    if (requests.length === 0) return [];
+    const maxBacklogBytes = requests
+      .slice(1)
+      .reduce(
+        (minimum, request) =>
+          minimum < normalizedMaxBacklogBytes(request.maxBacklogBytes)
+            ? minimum
+            : normalizedMaxBacklogBytes(request.maxBacklogBytes),
+        normalizedMaxBacklogBytes(requests[0]?.maxBacklogBytes),
+      );
+    const outerSql = yield* SqlClient.SqlClient;
+    return yield* outerSql.withTransaction(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`SELECT pg_advisory_xact_lock(${ADMISSION_BYTE_QUOTA_LOCK_KEY})`;
+        const uniqueTxIds = [
+          ...new Map(
+            requests.map((request) => [
+              request.txId.toString("hex"),
+              request.txId,
+            ]),
+          ).values(),
+        ];
+        const existingRows = yield* sql<{
+          readonly tx_id: Buffer;
+        }>`SELECT ${sql(Columns.TX_ID)} AS tx_id
+          FROM ${sql(tableName)}
+          WHERE ${sql.in(Columns.TX_ID, uniqueTxIds)}`;
+        const existingTxIds = new Set(
+          existingRows.map((row) => row.tx_id.toString("hex")),
+        );
+        let projectedBacklogBytes = yield* currentBacklogPayloadBytes;
+        const admittedTxIds = new Set<string>();
+        const deniedTxIds = new Set<string>();
+        for (const request of requests) {
+          const txIdHex = request.txId.toString("hex");
+          if (
+            existingTxIds.has(txIdHex) ||
+            admittedTxIds.has(txIdHex) ||
+            deniedTxIds.has(txIdHex)
+          ) {
+            continue;
+          }
+          const requestedBytes = BigInt(
+            request.programMaterialSidecarCbor.length,
+          );
+          if (projectedBacklogBytes + requestedBytes > maxBacklogBytes) {
+            deniedTxIds.add(txIdHex);
+          } else {
+            admittedTxIds.add(txIdHex);
+            projectedBacklogBytes += requestedBytes;
+          }
+        }
+        const eligibleRequests = requests.filter(
+          (request) => !deniedTxIds.has(request.txId.toString("hex")),
+        );
+        const eligibleOutcomes =
+          yield* persistReservedAdmissionBatch(eligibleRequests);
+        let eligibleIndex = 0;
+        return requests.map((request): ReservedAdmissionOutcome => {
+          if (!deniedTxIds.has(request.txId.toString("hex"))) {
+            return eligibleOutcomes[eligibleIndex++]!;
+          }
+          return {
+            _tag: "Conflict",
+            error: new TxAdmissionBacklogFullError({
+              backlog: projectedBacklogBytes,
+              maxBacklog: maxBacklogBytes,
+              unit: "bytes",
+              message:
+                "Durable submission admission byte backlog is full; retry later",
+            }),
+          };
+        });
+      }),
+    );
+  }).pipe(
+    Effect.tapErrorTag("SqlError", (error) =>
+      logDatabaseError(tableName, "admitReservedBatchByteQuota", error),
+    ),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to enforce reserved admission byte backlog",
+    ),
+  );
+
 export const requeueExpiredLeases: Effect.Effect<
   number,
   DatabaseError,
@@ -704,7 +1023,9 @@ export const getByTxId = (
     const rows = yield* sql<RawEntry>`SELECT
         admission.*,
         payload.${sql(Columns.TX_CANONICAL_CBOR)},
-        payload.${sql(Columns.TX_CANONICAL_CBOR_SHA256)}
+        payload.${sql(Columns.TX_FULL_HASH_V1)},
+        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
+        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
       FROM ${sql(tableName)} AS admission
       INNER JOIN ${sql(payloadTableName)} AS payload
         ON payload.${sql(Columns.TX_ID)} = admission.${sql(Columns.TX_ID)}
@@ -713,6 +1034,47 @@ export const getByTxId = (
     return rows.length === 0 ? null : normalizeRow(rows[0]!);
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to retrieve tx admission"),
+  );
+
+export type ProgramMaterialSidecarRecord = {
+  readonly txId: Buffer;
+  readonly sidecarCbor: Buffer;
+};
+
+/**
+ * Loads immutable V1 sidecars for an exact transaction set. Missing rows are
+ * omitted so callers can compare cardinality and fail closed.
+ */
+export const retrieveProgramMaterialSidecars = (
+  txIds: readonly Buffer[],
+): Effect.Effect<
+  readonly ProgramMaterialSidecarRecord[],
+  DatabaseError,
+  Database
+> =>
+  Effect.gen(function* () {
+    if (txIds.length === 0) return [];
+    const sql = yield* SqlClient.SqlClient;
+    const pg = sql as PgClient;
+    const rows = yield* sql<{
+      readonly tx_id: Buffer;
+      readonly cek_program_material_sidecar_cbor: Buffer;
+    }>`SELECT
+        ${sql(Columns.TX_ID)},
+        ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)}
+      FROM ${sql(payloadTableName)}
+      WHERE ${sql(Columns.TX_ID)} =
+        ANY(${pg.array(postgresByteaArray(txIds))}::bytea[])
+      ORDER BY ${sql(Columns.TX_ID)} ASC`;
+    return rows.map((row) => ({
+      txId: Buffer.from(row.tx_id),
+      sidecarCbor: Buffer.from(row.cek_program_material_sidecar_cbor),
+    }));
+  }).pipe(
+    sqlErrorToDatabaseError(
+      payloadTableName,
+      "Failed to retrieve V1 program-material sidecars",
+    ),
   );
 
 export const claimBatch = ({
@@ -732,7 +1094,7 @@ export const claimBatch = ({
         // queued for safe revalidation. A later synchronous terminal commit
         // WAL-orders and flushes this lease transition first.
         yield* sql`SET LOCAL synchronous_commit = off`;
-        return yield* sql<RawClaimedEntry>`WITH candidates AS (
+        return yield* sql<RawClaimedPayloadEntry>`WITH candidates AS (
           SELECT ${sql(Columns.TX_ID)}
           FROM ${sql(tableName)}
           WHERE ${sql(Columns.STATUS)} = 'queued'
@@ -776,6 +1138,9 @@ export const claimBatch = ({
           RETURNING
             admissions.${sql(Columns.TX_ID)},
             payload.${sql(Columns.TX_CANONICAL_CBOR)},
+            payload.${sql(Columns.TX_FULL_HASH_V1)},
+            payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
+            payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)},
             admissions.${sql(Columns.ARRIVAL_SEQ)},
             admissions.${sql(Columns.FIRST_SEEN_AT)},
             admissions.${sql(Columns.VALIDATION_STARTED_AT)}
@@ -787,16 +1152,17 @@ export const claimBatch = ({
           ${sql(Columns.TX_ID)} ASC`;
       }),
     );
-    return rows.map(normalizeClaimedEntry);
+    return yield* verifyClaimedPayloadRows(rows);
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to claim admitted transactions"),
   );
 
 /**
- * Claims one oldest-first batch without transferring its payload blobs.  This
- * is deliberately separate from {@link claimBatch}: legacy callers retain the
- * original atomic claim-plus-payload contract, while the ordered validation
- * pipeline can keep its sequencing lock around only the small lease update.
+ * Claims one oldest-first batch without transferring its payload blobs. This
+ * is deliberately separate from {@link claimBatch}: callers that need an
+ * atomic claim-plus-payload result use that operation, while the ordered
+ * validation pipeline can keep its sequencing lock around only the small
+ * lease update.
  */
 export const claimBatchLease = ({
   limit,
@@ -815,8 +1181,13 @@ export const claimBatchLease = ({
         // queued for safe revalidation. A later synchronous terminal commit
         // WAL-orders and flushes this lease transition first.
         yield* sql`SET LOCAL synchronous_commit = off`;
+        // Candidates are identified by tx_id, never by ctid: a duplicate
+        // submission of a still-queued transaction rewrites the row (and so
+        // moves it physically) while leaving it queued and claimable. A ctid
+        // join would then target a tuple version this statement's snapshot
+        // cannot see and silently drop the locked row from the batch.
         return yield* sql<RawClaimedLeaseEntry>`WITH candidates AS (
-          SELECT ctid AS row_ctid
+          SELECT ${sql(Columns.TX_ID)}
           FROM ${sql(tableName)}
           WHERE ${sql(Columns.STATUS)} = 'queued'
             AND ${sql(Columns.NEXT_ATTEMPT_AT)} <= NOW()
@@ -854,7 +1225,7 @@ export const claimBatchLease = ({
               admissions.${sql(Columns.UPDATED_AT)}
             )
           FROM candidates
-          WHERE admissions.ctid = candidates.row_ctid
+          WHERE admissions.${sql(Columns.TX_ID)} = candidates.${sql(Columns.TX_ID)}
           RETURNING
             admissions.${sql(Columns.TX_ID)},
             admissions.${sql(Columns.ARRIVAL_SEQ)},
@@ -893,9 +1264,12 @@ export const loadClaimedPayloads = ({
     if (claimed.length === 0) return [];
     const sql = yield* SqlClient.SqlClient;
     const claimedIds = claimed.map((entry) => entry[Columns.TX_ID]);
-    const rows = yield* sql<RawClaimedEntry>`SELECT
+    const rows = yield* sql<RawClaimedPayloadEntry>`SELECT
         admission.${sql(Columns.TX_ID)},
         payload.${sql(Columns.TX_CANONICAL_CBOR)},
+        payload.${sql(Columns.TX_FULL_HASH_V1)},
+        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
+        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)},
         admission.${sql(Columns.ARRIVAL_SEQ)},
         admission.${sql(Columns.FIRST_SEEN_AT)},
         admission.${sql(Columns.VALIDATION_STARTED_AT)}
@@ -907,7 +1281,7 @@ export const loadClaimedPayloads = ({
       ORDER BY
         admission.${sql(Columns.ARRIVAL_SEQ)} ASC,
         admission.${sql(Columns.TX_ID)} ASC`;
-    const entries = rows.map(normalizeClaimedEntry);
+    const entries = yield* verifyClaimedPayloadRows(rows);
     const expectedIds = new Set(claimedIds.map((txId) => txId.toString("hex")));
     const actualIds = new Set(
       entries.map((entry) => entry[Columns.TX_ID].toString("hex")),
@@ -1007,11 +1381,16 @@ export const markAccepted = ({
   rows,
   leaseOwner,
   processedTxs,
+  referenceProgramEnvelopesByTxId,
 }: {
   readonly rows: readonly Pick<Entry, Columns.TX_ID>[];
   readonly leaseOwner: string;
   readonly processedTxs: readonly ProcessedTx[];
-}): Effect.Effect<void, DatabaseError, Database | WriteBehind> =>
+  readonly referenceProgramEnvelopesByTxId?: ReadonlyMap<
+    string,
+    readonly MidgardCekProgramEnvelope[]
+  >;
+}): Effect.Effect<void, DatabaseError, Database | NodeConfig | WriteBehind> =>
   Effect.gen(function* () {
     if (processedTxs.length === 0) {
       return;
@@ -1019,10 +1398,68 @@ export const markAccepted = ({
     const totalStartedAt = Date.now();
     const acceptedTxIds = processedTxs.map((tx) => tx.txId);
     const acceptedTxIdArray = postgresByteaArray(acceptedTxIds);
+    const terminalSidecar = encodeMidgardCekProgramMaterialSidecar([]);
     const sql = yield* SqlClient.SqlClient;
     const pg = sql as PgClient;
     yield* sql.withTransaction(
       Effect.gen(function* () {
+        const acceptedPayloads = yield* sql<{
+          readonly tx_id: Buffer;
+          readonly tx_canonical_cbor: Buffer;
+          readonly cek_program_material_sidecar_cbor: Buffer;
+        }>`SELECT
+            admission.${sql(Columns.TX_ID)},
+            payload.${sql(Columns.TX_CANONICAL_CBOR)},
+            payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)}
+          FROM ${sql(tableName)} admission
+          INNER JOIN ${sql(payloadTableName)} payload
+            ON payload.${sql(Columns.TX_ID)} = admission.${sql(Columns.TX_ID)}
+          WHERE admission.${sql(Columns.STATUS)} = 'validating'
+            AND admission.${sql(Columns.LEASE_OWNER)} = ${leaseOwner}
+            AND admission.${sql(Columns.TX_ID)} =
+              ANY(${pg.array(acceptedTxIdArray)}::bytea[])
+          ORDER BY admission.${sql(Columns.TX_ID)} ASC`;
+        if (acceptedPayloads.length !== processedTxs.length) {
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: payloadTableName,
+              message:
+                "Failed to load every accepted CEK sidecar under the active validation lease",
+              cause: `expected=${processedTxs.length},loaded=${acceptedPayloads.length}`,
+            }),
+          );
+        }
+        yield* Effect.forEach(
+          acceptedPayloads,
+          (payload) => {
+            const txIdHex = payload.tx_id.toString("hex");
+            const referenceProgramEnvelopes =
+              referenceProgramEnvelopesByTxId?.get(txIdHex);
+            if (
+              referenceProgramEnvelopesByTxId !== undefined &&
+              referenceProgramEnvelopes === undefined
+            ) {
+              return Effect.fail(
+                new DatabaseError({
+                  table: payloadTableName,
+                  message:
+                    "Accepted admission is missing its Phase B reference-program resolution",
+                  cause: txIdHex,
+                }),
+              );
+            }
+            return CekProgramMaterialDB.persistVerifiedAdmissionBundle({
+              txId: payload.tx_id,
+              txCanonicalCbor: payload.tx_canonical_cbor,
+              sidecarCbor: payload.cek_program_material_sidecar_cbor,
+              ...(referenceProgramEnvelopes === undefined
+                ? {}
+                : { referenceProgramEnvelopes }),
+            });
+          },
+          { discard: true },
+        );
+
         const mempoolStartedAt = Date.now();
         const { produced, spent } =
           MempoolDB.compactLedgerEffects(processedTxs);
@@ -1259,6 +1696,27 @@ export const markAccepted = ({
             }),
           );
         }
+        // Accepted rows retain the original sidecar digest for exact duplicate
+        // identity but no longer retain attacker-sized sidecar bytes. Global
+        // material promotion above and this tombstone update share the terminal
+        // acceptance transaction.
+        const scrubbedPayloads = yield* sql<{ readonly tx_id: Buffer }>`UPDATE
+            ${sql(payloadTableName)}
+          SET ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)} =
+            ${terminalSidecar}
+          WHERE ${sql(Columns.TX_ID)} =
+            ANY(${pg.array(acceptedTxIdArray)}::bytea[])
+          RETURNING ${sql(Columns.TX_ID)}`;
+        if (scrubbedPayloads.length !== acceptedTxIds.length) {
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: payloadTableName,
+              message:
+                "Failed to scrub every accepted CEK sidecar in the terminal transaction",
+              cause: `expected=${acceptedTxIds.length},scrubbed=${scrubbedPayloads.length}`,
+            }),
+          );
+        }
         yield* txAdmissionAcceptedTerminalDurationTimer(
           Effect.succeed(Duration.millis(Date.now() - terminalStartedAt)),
         );
@@ -1373,6 +1831,15 @@ export const markRejected = ({
             }),
           );
         }
+        // Terminal rejections retain the original sidecar digest for exact
+        // duplicate matching but do not retain attacker-sized sidecar bytes.
+        // Rejected rows are never claimable, so the canonical empty sidecar is
+        // a tombstone rather than validation input.
+        const terminalSidecar = encodeMidgardCekProgramMaterialSidecar([]);
+        yield* sql`UPDATE ${sql(payloadTableName)}
+          SET ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)} =
+            ${terminalSidecar}
+          WHERE ${sql.in(Columns.TX_ID, txIds)}`;
       }),
     );
     yield* txAdmissionMarkRejectedDurationTimer(

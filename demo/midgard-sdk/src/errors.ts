@@ -2,6 +2,8 @@ import { Data as EffectData } from "effect";
 
 export type GenericErrorFields = {
   readonly message: string;
+  // Effect's tagged-error unions currently rely on an open cause channel.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly cause: any;
 };
 

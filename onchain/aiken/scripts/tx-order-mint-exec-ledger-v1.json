@@ -1,0 +1,44 @@
+{
+  "measurement": "tx-order-mint-material-carriage-exec-ledger",
+  "issue": "#594 — the §8.11 forced-order material carriage lane. Rows first pinned here, in answer to the round-N review finding that §8.11 published a cost claim with no exec-ledger measurement behind it while §8.10's precedent and the #519/#523 gate-that-cannot-fail doctrine require one.",
+  "spec": "docs/spec/midgard-tx.md §8.11 (the mint is the only on-chain reader of an order's material; carriage is prover-chosen per non-empty field and the door entry point MUST be the whole-materialising one), with §5.1/§5.3 for the preimage grammar and strides, §5.4 for the byte bounds, §8.3/§8.4 for `K` and the tier-3 partition, and §8.6 for the certificate manifest",
+  "note": "Task 2 refreshed all four executable rows with the validity-free forced source and source-kind-aware carriage, then verified them without update mode. Rows are whole-test costs, including fixture construction. The aggregate-bound fixed-stride fixture and its fixture-only control do not establish worst-case variable-width capacity. The 250- and 500-item rows are measurements at those sizes only; no extrapolated acceptance ceiling is asserted. The current exact 32,768-byte aggregate variable-width fixture measures 349,051,704 memory units and 103,527,527,646 CPU units, above the 13,200,000 / 8,000,000 reliability basis; its 32,769-byte adjacent refusal measures 2,182,233 / 823,992,139. The real emulator publishes and certifies maximum carriage but cannot construct its order within the L1 execution budget. See docs/exec-plans/forced-inclusion-verdict/order-mint-capacity-dependency.md for the required bounded authenticated grammar route and exact evidence. These four within-basis rows do not close that dependency. Regenerate through scripts/verify-tx-order-mint-exec-ledger-v1.mjs --update and verify without --update; never hand-edit raw costs or basisFit.",
+  "compiler": "Fresh Task 2 readings: pinned Aiken v1.1.23+5adf783, 2026-09-11. Run the producer from onchain/aiken with this fork on PATH.",
+  "basis": {
+    "memoryUnits": 13200000,
+    "cpuUnits": 8000000000,
+    "source": "GOAL_SPEC §3.3 — 20% margin off the supported L1 floor MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits of 16,500,000 mem. Provenance, exactly as §3.3 states it: the captured in-repo artifact is the mainnet parameter snapshot in docs/midgard/decisions/0001-cardano-l1-transaction-capability-floor.md, Conway epoch 645, observed 2026-07-24."
+  },
+  "modules": [
+    {
+      "module": "midgard/user_events/tx_order_v1.test",
+      "neutralisationNote": "Both selectors are mutation-verified rather than assumed. (1) `tx_order_mint_material_fixture_sits_at_the_aggregate_bound` is the shape guard, and it is the reason a re-take cannot quietly re-pin a cheaper row: it asserts nine non-empty commitments, an aggregate of 32,742 that one more field-0 item at §5.3's 40-byte stride would push past §5.4's bound, the widened field at 32,523 bytes above §8.3's `K` with `expected_chunk_count` equal to `max_tier3_chunk_count`, field 0's stride and field 8's `walk_derived_stride` marker, both variable-width read cardinalities, and — at a width where the quadratic fold is affordable to run beside it — that the fixtures' doubling builder emits exactly what `encode_field_preimage` would. Shrink any fixture and this selector goes red before the row is re-pinned. (2) `tx_order_mint_material_at_the_aggregate_bound_refuses_a_tampered_tail_chunk` is the discrimination guard: neutralising `whole_view`'s `expect field_commitment(preimage) == expected_hash` in `lib/midgard/native-tx-field-access-v1.ak` turns it red, and the check report names that exact line as the failure it traps. The vector is honest about isolating that one guard — the certificate is the one a real certification produced, its digest vector is over the real chunks, every named chunk is the right length, and field 0 is fixed-stride so §5.1's count arithmetic is still satisfied by the tampered bytes. It is also what makes §8.11's *whole-materialising* requirement falsifiable: under the lazy tier-3 form this mint touches no item, so nothing would read the substituted chunk and the vector would pass. The door's other guards are covered by this module's small-shape negatives (positional order, exhaustion in both directions, the §8.4 lower bound, the missing policy token, the §2.4 declared-length disagreement) rather than restated at the bound, because a 32,742-byte fixture isolates none of them better than a 41-byte one does.",
+      "neutralisation": [
+        "tx_order_mint_material_fixture_sits_at_the_aggregate_bound",
+        "tx_order_mint_material_at_the_aggregate_bound_refuses_a_tampered_tail_chunk"
+      ],
+      "rows": {
+        "tx_order_mint_material_at_the_aggregate_bound": {
+          "mem": 2321455,
+          "cpu": 897004072,
+          "basisFit": "within"
+        },
+        "tx_order_mint_material_fixture_only_at_the_aggregate_bound": {
+          "mem": 752998,
+          "cpu": 385805023,
+          "basisFit": "within"
+        },
+        "tx_order_mint_material_at_two_hundred_fifty_variable_width_items": {
+          "mem": 7270694,
+          "cpu": 2230775804,
+          "basisFit": "within"
+        },
+        "tx_order_mint_material_at_five_hundred_variable_width_items": {
+          "mem": 12611202,
+          "cpu": 3811579317,
+          "basisFit": "within"
+        }
+      }
+    }
+  ]
+}

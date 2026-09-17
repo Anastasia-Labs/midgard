@@ -1,0 +1,92 @@
+{
+  "schemaVersion": "midgard-network-id-wrongful-rejection-fit-ledger-v1",
+  "category": "networkId",
+  "categoryId": "0000001c",
+  "compiler": "aiken v1.1.23+5adf783",
+  "environment": "testnet",
+  "blueprintSha256": "1a30174645c166bd33f4060f22debfbac175a8fda053e307ab7a893520b413e9",
+  "limits": {
+    "signedTransactionBytes": 16384,
+    "publicationReserveBytes": 15872,
+    "memory": "16500000",
+    "cpu": "10000000000",
+    "proofFitReserve": "20% (memory 13200000, cpu 8000000000)"
+  },
+  "referencePublications": [
+    {
+      "step": "step01",
+      "scriptHash": "f44e6f0ee5afc4900f10283d693a077a53024904439d33c060e389f8",
+      "signedBytes": 13138,
+      "reserveMarginBytes": 2734
+    },
+    {
+      "step": "step02",
+      "scriptHash": "565275d6673ef05bb725b008df489bf2e32755b924a63fa6b5ceccb3",
+      "signedBytes": 14977,
+      "reserveMarginBytes": 895
+    },
+    {
+      "step": "forcedStep",
+      "scriptHash": "8638b89aebe51077ed30888cff256a184df922d6256aa9ee1aedac88",
+      "signedBytes": 9483,
+      "reserveMarginBytes": 6389
+    },
+    {
+      "step": "forcedScan",
+      "scriptHash": "b264ff2d3ebc2acf3dcf601bccf36bd3f9cabccf123d2f4337741d01",
+      "signedBytes": 12320,
+      "reserveMarginBytes": 3552
+    }
+  ],
+  "acceptedLifecycle": {
+    "transactions": 2,
+    "maxSignedBytes": 1709,
+    "maxMemory": "5993430",
+    "maxCpu": "2266910508",
+    "coverage": "maximum-depth-post-utxo-proofs-through-published-chunks"
+  },
+  "forcedBaselineLifecycle": {
+    "transactions": 28,
+    "maxSignedBytes": 2060,
+    "maxMemory": "3054744",
+    "maxCpu": "1042680984",
+    "coverage": "cancel-every-nonterminal-step-restart-by-outref-terminal-mint-removal"
+  },
+  "forcedMaximumLifecycle": {
+    "outputs": 352,
+    "fieldBytes": 15139,
+    "carriage": "RawUtxo",
+    "scanBatch": 64,
+    "observedStages": ["open", "advance-0..5"],
+    "transactions": 12,
+    "maxSignedBytes": 2060,
+    "maxMemory": "12925621",
+    "maxCpu": "3833568859",
+    "coverage": "open-six-advance-batches-terminal-mint-removal"
+  },
+  "forcedCertifiedLifecycle": {
+    "outputs": 353,
+    "fieldBytes": 15182,
+    "carriage": "Certified",
+    "scanBatch": 48,
+    "grammarBatch": 64,
+    "observedStages": [
+      "startGrammar",
+      "resumeGrammar-1..5",
+      "finishGrammar",
+      "advance-0..7"
+    ],
+    "transactions": 20,
+    "maxSignedBytes": 2060,
+    "maxMemory": "10863844",
+    "maxCpu": "5698754189",
+    "coverage": "grammar-certification-eight-advance-batches-terminal-mint-removal"
+  },
+  "minimumMargins": {
+    "publicationBytes": 895,
+    "lifecycleBytes": 14324,
+    "memory": "274379",
+    "cpu": "2301245811"
+  },
+  "ledgerDigest": "702af43b86c5535dc8fda8750c5f14a5fbe7e206195801cfe4ff80e2bc3e0d97"
+}

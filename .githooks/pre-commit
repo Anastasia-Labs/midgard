@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+#
+# Formats and lints what you are about to commit, in place, so the enforced
+# gates (`static-demo-format`, `static-demo-lint`, `watcher-lint`,
+# `watcher-format`, and the CI "normalized Aiken auto-formatter check") cannot
+# go red on formatting alone.
+#
+# Scope is deliberately the same as those gates and no wider:
+#   - demo/**/*.{ts,tsx,md}  -> prettier --write, then eslint --fix
+#   - **/*.ak                -> the pinned fork's `aiken fmt`, then the trailing-
+#                               whitespace normalization the CI step applies
+#                               (the formatter itself emits trailing spaces for
+#                               monadic let/expect syntax, so the two run as a
+#                               pair or the check can never be clean)
+#
+# Only staged paths are touched, and only staged paths are re-staged. A file
+# with both staged and unstaged changes is REPORTED AND SKIPPED rather than
+# fixed: formatting it would have to stage the unstaged half too, and silently
+# committing work you did not stage is worse than a formatting miss.
+#
+# Escape hatch: MIDGARD_SKIP_HOOKS=1 git commit ...
+# Blueprint safety: formatting .ak sources does not change compiled output —
+# the blueprint rebuilds byte-identically across the repo-wide normalization.
+
+set -uo pipefail
+
+if [[ "${MIDGARD_SKIP_HOOKS:-0}" == "1" ]]; then
+  echo "[midgard hooks] MIDGARD_SKIP_HOOKS=1 — pre-commit checks skipped" >&2
+  exit 0
+fi
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root" || exit 1
+
+# Staged paths (Added/Copied/Modified/Renamed), NUL-delimited so paths with
+# spaces survive.
+mapfile -d '' -t staged < <(git diff --cached --name-only --diff-filter=ACMR -z)
+if [[ ${#staged[@]} -eq 0 ]]; then
+  exit 0
+fi
+
+# Paths that also carry unstaged modifications; we must not touch these.
+mapfile -d '' -t unstaged < <(git diff --name-only --diff-filter=ACMR -z)
+is_partial() {
+  local candidate="$1" other
+  [[ ${#unstaged[@]} -eq 0 ]] && return 1
+  for other in "${unstaged[@]}"; do
+    [[ "$candidate" == "$other" ]] && return 0
+  done
+  return 1
+}
+
+ts_files=()
+ak_files=()
+skipped=()
+for path in "${staged[@]}"; do
+  [[ -f "$path" ]] || continue
+  case "$path" in
+    demo/*.ts | demo/*.tsx | demo/*.md | demo/**/*.ts | demo/**/*.tsx | demo/**/*.md)
+      if is_partial "$path"; then skipped+=("$path"); else ts_files+=("$path"); fi
+      ;;
+    *.ak)
+      if is_partial "$path"; then skipped+=("$path"); else ak_files+=("$path"); fi
+      ;;
+  esac
+done
+
+if [[ ${#skipped[@]} -gt 0 ]]; then
+  echo "[midgard hooks] partially staged — not formatted, stage or stash the rest:" >&2
+  printf '  %s\n' "${skipped[@]}" >&2
+fi
+
+status=0
+
+# ---------------------------------------------------------------- TypeScript
+if [[ ${#ts_files[@]} -gt 0 ]]; then
+  prettier_bin="$repo_root/demo/node_modules/.bin/prettier"
+  eslint_bin="$repo_root/demo/node_modules/.bin/eslint"
+
+  if [[ -x "$prettier_bin" ]]; then
+    rel=()
+    for path in "${ts_files[@]}"; do rel+=("${path#demo/}"); done
+    ( cd "$repo_root/demo" && "$prettier_bin" --write --log-level warn "${rel[@]}" ) || status=1
+  else
+    echo "[midgard hooks] demo/node_modules/.bin/prettier missing — formatting skipped (run pnpm install in demo/)" >&2
+  fi
+
+  lintable=()
+  for path in "${ts_files[@]}"; do
+    case "$path" in *.ts | *.tsx) lintable+=("${path#demo/}") ;; esac
+  done
+  if [[ ${#lintable[@]} -gt 0 ]]; then
+    if [[ -x "$eslint_bin" ]]; then
+      if ! ( cd "$repo_root/demo" && "$eslint_bin" --fix --max-warnings=0 "${lintable[@]}" ); then
+        echo "[midgard hooks] eslint reported problems it could not fix automatically (see above)" >&2
+        status=1
+      fi
+    else
+      echo "[midgard hooks] demo/node_modules/.bin/eslint missing — lint skipped (run pnpm install in demo/)" >&2
+    fi
+  fi
+fi
+
+# --------------------------------------------------------------------- Aiken
+if [[ ${#ak_files[@]} -gt 0 ]]; then
+  aiken_bin="${MIDGARD_AIKEN_BIN:-}"
+  if [[ -z "$aiken_bin" ]] && command -v aiken >/dev/null 2>&1; then
+    aiken_bin="$(command -v aiken)"
+  fi
+  if [[ -n "$aiken_bin" && -x "$aiken_bin" ]]; then
+    "$aiken_bin" fmt "${ak_files[@]}" >/dev/null 2>&1 || {
+      echo "[midgard hooks] aiken fmt failed; commit the .ak change only once it parses" >&2
+      status=1
+    }
+    # The formatter's own trailing-space artifact, normalized exactly as CI does.
+    sed -i 's/[[:space:]]\+$//' "${ak_files[@]}"
+  else
+    echo "[midgard hooks] no aiken binary (set MIDGARD_AIKEN_BIN) — .ak formatting skipped" >&2
+  fi
+fi
+
+# Re-stage only the exact paths we touched. Build the list explicitly: an
+# empty array expanded with :- yields an empty-string pathspec, which git
+# rejects, which would silently drop every fix on the floor.
+to_stage=()
+[[ ${#ts_files[@]} -gt 0 ]] && to_stage+=("${ts_files[@]}")
+[[ ${#ak_files[@]} -gt 0 ]] && to_stage+=("${ak_files[@]}")
+if [[ ${#to_stage[@]} -gt 0 ]]; then
+  if ! git add -- "${to_stage[@]}"; then
+    echo "[midgard hooks] could not re-stage formatted files" >&2
+    status=1
+  fi
+fi
+
+# Preserve whatever pre-commit hook was installed before this one — the Nix
+# git-hooks framework installs a shim here for the Haskell tree (cabal-fmt,
+# fourmolu), and those file types do not overlap with ours.
+previous="$repo_root/.git/hooks/pre-commit.local"
+if [[ -x "$previous" ]]; then
+  "$previous" "$@" || status=1
+fi
+
+exit "$status"

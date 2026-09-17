@@ -1,6 +1,7 @@
 export type SlotAwareDueWorkKind =
   | "commit_scheduler_refresh"
-  | "merge_submit_validity";
+  | "merge_submit_validity"
+  | "operator_watchdog";
 
 export type SlotAwareDueWork = {
   readonly kind: SlotAwareDueWorkKind;

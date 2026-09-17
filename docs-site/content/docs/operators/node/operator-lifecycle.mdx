@@ -1,0 +1,282 @@
+---
+title: "Operator Lifecycle"
+description: "Registering, activating, retiring, and recovering an operator bond; how missed shifts are struck and taken over; duplicate registrations; and what to do when an operator key is compromised."
+---
+
+An operator is a key hash with a bond. The bond lives in one of three on-chain
+linked lists, and the scheduler decides whose turn it is to commit blocks. This
+page is the how-to and reference for every off-chain action on those lists.
+
+## The three lists and the scheduler
+
+| Set          | Keyed by                           | Node datum                                 | Meaning                                                               |
+| ------------ | ---------------------------------- | ------------------------------------------ | --------------------------------------------------------------------- |
+| `registered` | activation time (big-endian bytes) | `{ operator }`                             | Bonded, waiting for its activation time. Not yet eligible for shifts. |
+| `active`     | operator key hash                  | `{ bond_unlock_time, inactivity_strikes }` | Eligible for shifts. Strikes accrue here.                             |
+| `retired`    | operator key hash                  | `{ bond_unlock_time }`                     | Exited. Bond waits here until it can be recovered.                    |
+
+The scheduler UTxO holds either `NoActiveOperators` or
+`ActiveOperator { operator, start_time }`. Shifts rotate through the active list
+in link order; when the current operator is the head, the next shift rewinds to
+the tail.
+
+The lifecycle is one direction only:
+
+```
+register ──► activate ──► retire ──► (unlock) ──► recover bond
+   │
+   └──► deregister (only before activation)
+```
+
+There is no rekey. A new key is a new operator: it registers a new bond.
+
+## Economics (testnet profile)
+
+All values come from the deployed protocol parameters
+(`onchain/aiken/env/testnet.ak`, mirrored in `midgard-sdk` `protocol-parameters.ts`).
+
+| Parameter                                  | Value   | Where it bites                                                                      |
+| ------------------------------------------ | ------- | ----------------------------------------------------------------------------------- |
+| `required_bond`                            | 900 ADA | Locked in the operator's list node at registration.                                 |
+| `slashing_penalty`                         | 500 ADA | Fee of a duplicate-registration slash; the remaining 400 ADA rewards the submitter. |
+| `inactivity_slashing_penalty`              | 100 ADA | Fee of a forced retirement; the retired node keeps 800 ADA.                         |
+| `max_inactivity_strikes`                   | 5       | Strike count at which anyone may force-retire the operator.                         |
+| `shift_duration`                           | 1 hour  | Length of one scheduler shift.                                                      |
+| `new_shift_inactivity_grace_period`        | 5 min   | Minimum idle time after a shift starts before a strike is possible.                 |
+| `max_inactivity_between_block_commitments` | 60 s    | Idle time after the last committed block before a strike is possible.               |
+| `user_events_negligence_timeout`           | 5 min   | Time a deposit, withdrawal, or tx-order may wait for inclusion.                     |
+| `max_validity_range_length`                | 8 min   | Every lifecycle transaction must use a closed validity range this short.            |
+| `registration_duration`                    | 30 ms   | Delay between registration and earliest activation.                                 |
+
+A bond is never fully lost through inactivity. The only full-bond forfeit is a
+fraud proof or duplicate-registration slash.
+
+## Commands
+
+All commands run as `node dist/index.js <command>` from `demo/midgard-node`
+against the wallet configured by the node's seed phrase. Every command that
+locks or spends value first runs a funding preflight and, on a shortfall,
+prints the exact amount missing and exits without building a transaction.
+
+| Command                                              | Who may run it            | Effect                                                                                                                                                                                            |
+| ---------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `register-operator`                                  | the operator              | Locks the bond in a new `registered` node. Refused locally if the key is already registered, active, or retired.                                                                                  |
+| `activate-operator [--operator-key-hash <hex>]`      | anyone (default: own key) | Moves a `registered` node into `active` once its activation time has passed. The scheduler's first operator is appointed by the block-commitment worker on its first commit, not by this command. |
+| `register-active-operator`                           | the operator              | `register-operator` followed by `activate-operator` in one run.                                                                                                                                   |
+| `operator-status [--operator-key-hash <hex>]`        | anyone                    | Prints the JSON status described below. Same payload as `GET /operator/status`.                                                                                                                   |
+| `retire-operator` (alias `deactivate-operator`)      | the operator              | Voluntary exit. Moves the `active` node to `retired` with the full 900 ADA. Advances or rewinds the scheduler if the operator holds the shift.                                                    |
+| `recover-operator-bond` (alias `unlock-operator`)    | the operator              | Burns the `retired` node and returns the bond to the wallet. Refused before `bond_unlock_time`; the refusal prints the unlock time.                                                               |
+| `deregister-operator`                                | the operator              | Removes a `registered` node that was never activated and returns the bond.                                                                                                                        |
+| `strike-inactive-operator`                           | anyone                    | Strikes the scheduled operator for a missed shift and hands the shift to the next operator. Refused before the inactivity threshold.                                                              |
+| `force-retire-operator --operator-key-hash <hex>`    | anyone                    | Retires an operator with 5 strikes. Pays 100 ADA of the bond as the transaction fee; the retired node keeps 800 ADA.                                                                              |
+| `slash-duplicate-operator --operator-key-hash <hex>` | anyone                    | Removes a `registered` node whose operator is already registered, active, or retired. Fee is 500 ADA of the bond; 400 ADA goes to the submitter.                                                  |
+
+`retire-operator` cannot be used once the operator has 5 strikes. At that point
+only `force-retire-operator` applies, and anyone may run it.
+
+`force-retire-operator` and `slash-duplicate-operator` pay the penalty as the
+transaction fee, and the on-chain check is an equality, so the builder
+balances the transaction exactly with no change output. The ledger still asks
+the submitter for collateral worth the collateral percentage of that fee
+(150 ADA for a forced retirement, 750 ADA for a duplicate slash on testnet)
+in plain-ADA outputs of the submitting wallet. The collateral is not spent
+when the transaction succeeds, and one coin may back both the collateral and
+the balance, so a wallet holding a single large coin can submit. The funding
+preflight counts the collateral, and a shortfall is reported before anything
+is built.
+
+## Status payload
+
+`operator-status` and `GET /operator/status` (admin-gated with
+`x-midgard-admin-key`) return:
+
+```json
+{
+  "operatorKeyHash": "…",
+  "state": "active",
+  "duplicate": false,
+  "memberships": ["active"],
+  "bondLovelace": "900000000",
+  "inactivityStrikes": 1,
+  "maxInactivityStrikes": 5,
+  "bondUnlockTime": null,
+  "bondRecoverable": false,
+  "bondRecoverableFrom": null,
+  "registeredActivationTime": null,
+  "activationTimeReached": false,
+  "scheduler": {
+    "currentOperator": "…",
+    "shiftStartTime": "1757980000000",
+    "holdsShift": true,
+    "shiftAgeMs": 412000
+  },
+  "inactivity": {
+    "thresholdTime": "1757980300000",
+    "thresholdSource": "shift-grace",
+    "missedAgeMs": 112000,
+    "nextTakeoverTime": "1757980300001",
+    "nextPatienceTakeoverTime": "1757980420001",
+    "strikesExhausted": false,
+    "blocked": null
+  },
+  "watchdog": {
+    "enabled": true,
+    "patienceMs": 120000,
+    "lastTakeoverTxHash": null,
+    "lastTakeoverAt": null,
+    "lastTakeoverKind": null,
+    "lastSkipReason": null,
+    "lastSkipAt": null
+  },
+  "asOf": "2025-09-16T00:05:12.000Z"
+}
+```
+
+`state` is one of `none`, `registered`, `active`, `retired`. `duplicate` is true
+when the key appears in more than one list or twice in `registered`;
+`memberships` lists every list the key occupies. `bondRecoverableFrom` is the
+earliest validity lower bound a bond-recovery transaction may carry once the
+bond hold has passed. `inactivity` is `null` when the scheduler names nobody;
+`thresholdSource` says which rule set the threshold and `blocked` names the
+reason when no strike can be built right now. `missedAgeMs` is how long the
+shift has been strikable; it is `0` before the threshold. `nextTakeoverTime`
+is the earliest validity lower bound the successor's strike may carry; it is
+`null` at the strike cap, where nobody is the designated successor.
+`nextPatienceTakeoverTime` adds the local patience window and is when every
+other node's watchdog, configured like this one, would act.
+`watchdog` fields describe the local node only: the last takeover it
+submitted (`strike` or `force_retire`) and the last tick it skipped, with the
+reason. Times other than `asOf` are POSIX milliseconds as strings;
+`lastTakeoverAt`, `lastSkipAt`, and `asOf` are ISO-8601.
+
+## Missed shifts and takeover
+
+Layer 1 does nothing on its own. A missed shift stays missed until someone
+submits a strike transaction. The transaction spends the scheduler and the
+skipped operator's `active` node together, reproduces the node with one more
+strike, and names the next operator as the shift holder.
+
+The inactivity threshold is the later of:
+
+- shift start plus `new_shift_inactivity_grace_period`, and
+- the last committed block's end time plus
+  `max_inactivity_between_block_commitments`, or, when a specific user event
+  was neglected, that event's inclusion time plus
+  `user_events_negligence_timeout`.
+
+The strike transaction's validity range must lie entirely after the threshold
+and must end before the shift would have ended anyway.
+
+### The watchdog fiber
+
+Every node runs an operator watchdog on the same slot-aware due-work cadence as
+block commitment. It is on by default. A tick with nothing to act on, because
+the node holds the shift itself, is not active, the scheduler names nobody, or
+the provider could not be read, defers the next directory read by one minute.
+A tick that finds a strikable shift in the future defers until the moment the
+node may act. After the watchdog submits a takeover it ignores a provider that
+still serves the scheduler UTxO it spent, so a lagging provider cannot make it
+resubmit the same transaction.
+
+The watchdog acts on the commitment-gap threshold only. A neglected deposit or
+withdrawal can make a shift strikable earlier, but that strike needs the
+neglected event as a witness; the node does not yet select one automatically,
+and `strike-inactive-operator` has no option to name one.
+
+| Variable                        | Default  | Meaning                                                                                                                                                                              |
+| ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `OPERATOR_WATCHDOG_ENABLED`     | `true`   | Boolean (`true`/`false`, `yes`/`no`, `on`/`off`, `1`/`0`); anything else fails startup. `false` never submits strikes automatically. `strike-inactive-operator` still works by hand. |
+| `OPERATOR_WATCHDOG_PATIENCE_MS` | `120000` | How long a non-successor node waits past the threshold before it strikes on the successor's behalf.                                                                                  |
+
+Two tiers avoid every node racing for the same transaction:
+
+1. **Successor tier.** The node whose operator is next in line strikes as soon
+   as the threshold passes. It has the incentive: the shift becomes its own.
+2. **Any-active tier.** Every other active node waits the patience window and
+   then strikes too, so a dead successor cannot stall the chain. Takeover is
+   hop by hop: striking A hands the shift to B; if B is also dead, B is struck
+   after its own threshold and the shift moves to C.
+
+A node that cannot fund the strike fee logs the shortfall and skips that tick.
+The watchdog verifies the deployment manifest once when it starts and does not
+start if the manifest has drifted; the node logs an error and missed shifts
+must be struck by hand.
+The fee comes from the node's configured operator wallet.
+
+## Forced retirement (partial slash)
+
+At 5 strikes the operator can no longer take shifts and cannot retire
+voluntarily. Anyone may run `force-retire-operator`. The bond moves to the
+`retired` list minus 100 ADA, which is consumed as the transaction fee. The
+operator recovers the remaining 800 ADA after `bond_unlock_time` with
+`recover-operator-bond`.
+
+## Duplicate registrations
+
+The registered list is keyed by activation time, so nothing on-chain stops the
+same key from registering twice, or from registering while it is active or
+retired. A duplicate is a bond that could be used to re-enter the active set
+under a key that is already bonded, so the protocol lets anyone remove it and
+keep 400 ADA of it.
+
+- The node refuses locally to register a key it can already see in any list.
+- `slash-duplicate-operator` removes a duplicate `registered` node by proving
+  the same key is registered, active, or retired elsewhere.
+- A dangling duplicate whose activation time has passed blocks the scheduler's
+  rewind and first-appointment paths, because those prove that no registered
+  operator could activate. End-of-shift advance, retirement, and strikes that
+  hand the shift to the next operator read only the `active` list. The
+  watchdog reports such a rotation as blocked and does not clear it; slash or
+  activate the duplicate to unblock it.
+
+A node cannot serve as its own duplication proof: the proof is a reference
+input and the removed node is an input, and the ledger requires a transaction's
+reference inputs to be disjoint from its inputs. A lone honest registration
+therefore cannot be slashed, and the node never selects one.
+
+## Compromised key
+
+There is no rekey. Treat the key as an operator that must exit:
+
+1. Stop the node so it signs nothing further.
+2. `retire-operator` with the compromised key if you still control it. The bond
+   moves to `retired`. If the attacker retires first, the outcome is the same.
+3. Wait for `bond_unlock_time` if the node datum carries one (it is set while a
+   committed block or settlement of yours is still challengeable).
+4. `recover-operator-bond` returns the bond to whichever wallet signs with the
+   key. Sweep it immediately to a fresh wallet.
+5. Register the fresh key with `register-operator` and activate it.
+
+If the attacker commits a bad block with the key before you retire, the
+fraud-proof path slashes the bond in full; retirement does not shield it, and
+that is by design.
+
+## Verification
+
+Emulator drills for every path above live in `demo/midgard-node/tests`:
+
+- `operator-lifecycle-emulator.test.ts`: register, ordered activation, deregister.
+- `operator-exit-emulator.test.ts`: voluntary and forced retirement, voluntary
+  retirement refused at the strike cap, the shift rewinding onto the surviving
+  tail when the head retires, a dangling registration blocking that rewind
+  until it activates, bond recovery after retirement, duplicate registration
+  in all three states. Refusing recovery before an
+  unlock time is an open todo: a bond hold is only written by a committed
+  block, which the fixture does not yet produce.
+- `operator-inactivity-emulator.test.ts`: missed shifts, neglected user events,
+  strike accumulation, multi-operator and dead-successor takeover.
+- `operator-commands-emulator.test.ts`: the node command programs end to end,
+  including the funding preflight and the local refusals.
+- `operator-watchdog.test.ts`: the watchdog's tier selection and patience at
+  fixed instants. The fiber's tick itself is not under test.
+
+Run them with `pnpm test:operator-lifecycle:emulator`,
+`pnpm test:operator-exit:emulator`, `pnpm test:operator-inactivity:emulator`,
+and `pnpm test:operator-commands:emulator`.
+
+## Related
+
+- On-chain: [Operator Directory](/docs/onchain/operator-directory)
+- SDK builders: [`midgard-sdk` operator lifecycle](/docs/sdk/midgard-sdk/operator-lifecycle)
+- [Background Fibers](/docs/operators/node/background-fibers)
+- [Server HTTP API](/docs/operators/node/server-http-api)

@@ -22,54 +22,64 @@ validator spend(hub_oracle: ScriptHash) {
 
     expect datum == None
 
-    let reserve.Spend {
-      reserve_input_index,
-      payout_input_index,
-      payout_spend_redeemer_index,
+    let
+        reserve.Spend {
+          reserve_input_index,
+          payout_input_index,
+          payout_spend_redeemer_index,
+          hub_ref_input_index,
+        }
+      = redeemer
+
+    let hub.Datum { payout: payout_policy_id, payout_addr, reserve_addr, .. } = hub.get_datum(
+      reference_inputs,
+      hub_oracle,
       hub_ref_input_index,
-    } = redeemer
+    )
 
-    let hub.Datum { payout: payout_policy_id, payout_addr, reserve_addr, .. } =
-      hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
-
-    expect Some(Input {
-      output_reference: reserve_out_ref,
-      output: Output {
-        address: reserve_input_address,
-        datum: NoDatum,
-        reference_script: None,
-        ..
-      },
-    }) = inputs |> list.at(reserve_input_index)
+    expect
+        Some(Input {
+          output_reference: reserve_out_ref,
+          output: Output {
+            address: reserve_input_address,
+            datum: NoDatum,
+            reference_script: None,
+            ..
+          },
+        })
+      = inputs |> list.at(reserve_input_index)
     expect reserve_out_ref == own_out_ref
     expect reserve_input_address == reserve_addr
 
-    expect Some(Input {
-      output_reference: payout_out_ref,
-      output: Output {
-        address: payout_input_address,
-        value: payout_input_value,
-        datum: InlineDatum(_),
-        ..
-      },
-    }) = inputs |> list.at(payout_input_index)
+    expect
+        Some(Input {
+          output_reference: payout_out_ref,
+          output: Output {
+            address: payout_input_address,
+            value: payout_input_value,
+            datum: InlineDatum(_),
+            ..
+          },
+        })
+      = inputs |> list.at(payout_input_index)
     expect payout_input_address == payout_addr
     expect
       utils.quantity_of_policy_id(payout_input_value, payout_policy_id) == 1
 
-    expect payout.AddFunds {
-      reserve_input_index: payout_redeemer_reserve_input_index,
-      payout_input_index: payout_redeemer_payout_input_index,
-      reserve_spend_redeemer_index,
-      hub_ref_input_index: payout_redeemer_hub_ref_input_index,
-      payout_spend_redeemer_index: payout_redeemer_payout_spend_redeemer_index,
-      ..
-    }: payout.SpendRedeemer =
-      utils.get_redeemer_at(
-        redeemers,
-        Spend(payout_out_ref),
-        payout_spend_redeemer_index,
-      )
+    expect
+        payout.AddFunds {
+          reserve_input_index: payout_redeemer_reserve_input_index,
+          payout_input_index: payout_redeemer_payout_input_index,
+          reserve_spend_redeemer_index,
+          hub_ref_input_index: payout_redeemer_hub_ref_input_index,
+          payout_spend_redeemer_index: payout_redeemer_payout_spend_redeemer_index,
+          ..
+        }: payout.SpendRedeemer
+      = utils.get_redeemer_at(
+      redeemers,
+      Spend(payout_out_ref),
+      payout_spend_redeemer_index,
+    )
 
     expect payout_redeemer_reserve_input_index == reserve_input_index
     expect payout_redeemer_payout_input_index == payout_input_index
@@ -77,12 +87,13 @@ validator spend(hub_oracle: ScriptHash) {
     expect
       payout_redeemer_payout_spend_redeemer_index == payout_spend_redeemer_index
 
-    expect reserve.Spend { reserve_input_index: self_reserve_input_index, .. }: reserve.SpendRedeemer =
-      utils.get_redeemer_at(
-        redeemers,
-        Spend(own_out_ref),
-        reserve_spend_redeemer_index,
-      )
+    expect
+        reserve.Spend { reserve_input_index: self_reserve_input_index, .. }: reserve.SpendRedeemer
+      = utils.get_redeemer_at(
+      redeemers,
+      Spend(own_out_ref),
+      reserve_spend_redeemer_index,
+    )
     expect self_reserve_input_index == reserve_input_index
 
     expect mint == assets.zero
@@ -174,14 +185,13 @@ fn hub_ref_input() -> Input {
 }
 
 fn payout_datum_data() -> Data {
-  let datum: Data =
-    payout.Datum {
-      l2_value: [Pair(assets.ada_policy_id, [Pair(assets.ada_asset_name, 7)])],
-      l1_address: address.from_script(
-        #"66666666666666666666666666666666666666666666666666666666",
-      ),
-      l1_datum: NoDatum,
-    }
+  let datum: Data = payout.Datum {
+    l2_value: [Pair(assets.ada_policy_id, [Pair(assets.ada_asset_name, 7)])],
+    l1_address: address.from_script(
+      #"66666666666666666666666666666666666666666666666666666666",
+    ),
+    l1_datum: NoDatum,
+  }
   datum
 }
 
@@ -295,8 +305,10 @@ test reserve_spend_rejects_missing_payout_input() fail {
 }
 
 test reserve_spend_rejects_wrong_payout_redeemer_index() fail {
-  let redeemer =
-    reserve.Spend { ..reserve_redeemer(), payout_spend_redeemer_index: 0 }
+  let redeemer = reserve.Spend {
+    ..reserve_redeemer(),
+    payout_spend_redeemer_index: 0,
+  }
   spend.spend(
     hub_policy,
     None,
@@ -327,16 +339,15 @@ test reserve_spend_rejects_unrelated_mint() fail {
 test reserve_spend_rejects_reserve_input_with_datum() fail {
   let redeemer = reserve_redeemer()
   let base = reserve_test_tx(add_funds_redeemer(0))
-  let bad_reserve_input =
-    Input {
-      output_reference: reserve_ref,
-      output: Output {
-        address: address.from_script(reserve_policy),
-        value: assets.from_lovelace(8),
-        datum: InlineDatum(#""),
-        reference_script: None,
-      },
-    }
+  let bad_reserve_input = Input {
+    output_reference: reserve_ref,
+    output: Output {
+      address: address.from_script(reserve_policy),
+      value: assets.from_lovelace(8),
+      datum: InlineDatum(#""),
+      reference_script: None,
+    },
+  }
   let Transaction { inputs, .. } = base
   expect Some(payout_input) = inputs |> list.at(1)
   spend.spend(

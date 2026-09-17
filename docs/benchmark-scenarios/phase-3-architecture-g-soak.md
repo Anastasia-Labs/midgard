@@ -5,6 +5,9 @@ report is evidence that the gate passed.
 
 **Last reviewed:** 2026-07-22
 
+Documentation check: 2026-09-07 (retained runner paths and package commands;
+no benchmark or live acceptance rerun).
+
 This is the formal live-soak closure gate for Throughput Phase 3. It observes
 one already initialized, production-shaped `MPF_ENGINE=architecture_g`
 deployment while the canonical L2 workload runs for exactly 86,400 measured
@@ -22,29 +25,18 @@ offline verifier is
 Neither script claims a soak unless the workload exits zero after the full
 duration and every required sample is present.
 
-## External capacity blocker
+## Capacity prerequisites
 
-The exact 5,000 TPS day is not runnable from the retained 3,063,808-row corpus
-or its present funding. Including the harness's required 2% row headroom, the
-gate needs 440,640,000 dependency-valid rows. Current sizing projects roughly
-1.225 TB for the corpus and its shards plus 138.843 GB of submit-record
-evidence, so reserve at least 2 TB of fast local NVMe before starting. The
-generator assigns one uniform depth to all 4,096 wallets, so the minimum depth
-is 107,579 and the generated corpus is 440,643,584 rows (3,584 rows above the
-gate minimum). The current fee/amount model also requires exactly
-1,614.86837 test ADA per chain, or 6,614,500.84352 test ADA total. These are
-external storage and Preprod-funding prerequisites; reducing duration, target
-rate, corpus cardinality, evidence retention, or wallet independence does not
-close the formal gate.
+The exact 5,000 TPS day requires 440,640,000 dependency-valid rows, including
+the harness's 2% headroom. With uniform depth across 4,096 wallets, the minimum
+depth is 107,579, producing 440,643,584 rows. Generate and verify the corpus
+against the deployment's actual fee/amount model before reserving funding.
 
-The 2026-07-14 audit host is a hard no-go for the production run. `/dev/sdd`
-has 1,372,805,320,704 bytes total and 148,776,550,400 bytes free, so the volume
-is smaller than the 2 TB contract before accounting for its current contents.
-The retained Phase 1 binding records 45,990.825984 test ADA, leaving a
-6,568,510.017536 test ADA shortfall against the generator requirement. CPU
-affinity `28-31` is available and the host's 66,177,814,528 bytes of RAM is
-sufficient for the separately scheduled 8 GiB V8 / 10-12 GiB fixture work;
-disk capacity and independently verified Preprod funding remain the blockers.
+Measure storage for the corpus, shards, external-sort spool, and retained
+submit records on the intended host. Verify wallet funding independently from
+the current bound corpus; old host free-space and faucet-balance snapshots
+cannot authorize a run. Reducing duration, rate, cardinality, or evidence
+retention does not close the gate.
 
 ## Preconditions and bound identities
 

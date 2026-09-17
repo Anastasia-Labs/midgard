@@ -9,7 +9,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
-import { awaitExactTransactionConfirmation } from "@/transactions/utils.js";
+import { awaitExactTransactionConfirmation } from "./utils.js";
 
 export type SubmitWithdrawalReferenceScripts =
   SDK.SubmitWithdrawalReferenceScripts;

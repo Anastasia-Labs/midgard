@@ -1,14 +1,13 @@
 import * as LE from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 
-import { fetchLocalOgmiosShelleyGenesisSlotConfig } from "@/local-ledger-slot.js";
+import { fetchLocalOgmiosShelleyGenesisSlotConfig } from "../local-ledger-slot.js";
 import {
   fetchLocalOgmiosSubmitSlotSnapshot,
   type SubmitSlotSnapshot,
-} from "@/local-ogmios-slot.js";
-import { customSlotConfigFromShelleyGenesis } from "@/lucid-time.js";
-import { providerRouteSummary } from "@/provider-diagnostics.js";
-
+} from "../local-ogmios-slot.js";
+import { customSlotConfigFromShelleyGenesis } from "../lucid-time.js";
+import { providerRouteSummary } from "../provider-diagnostics.js";
 import { ConfigError, NodeConfig } from "./config.js";
 
 /**

@@ -1,8 +1,8 @@
 import { SqlClient } from "@effect/sql/SqlClient";
 import { Effect, Metric, Schedule } from "effect";
 
-import { MempoolDB } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
+import { MempoolDB } from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
 
 /**
  * Background mempool metrics collection.

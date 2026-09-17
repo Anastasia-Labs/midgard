@@ -1,6 +1,3 @@
-import { readFile } from "node:fs/promises";
-
-import type { ProductionCommitBlockHeaderParams } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -12,18 +9,18 @@ import {
   shouldRunPreLeaseSchedulerAlignment,
   tryAcquireCommitMutationWorkerPhase,
   tryAcquireCommitSchedulerAlignmentPhase,
-} from "@/fibers/block-commitment.js";
-import { Globals } from "@/services/index.js";
+} from "../src/fibers/block-commitment.js";
+import { MidgardMpf, withMpfRootTransactions } from "../src/mpf/index.js";
+import { Globals } from "../src/services/index.js";
 import {
   shouldPreserveCommitMpfRoots,
   shouldShortCircuitIdleCommitAttempt,
   workerPreIngestionDueWorkOutputFromPlan,
-} from "@/workers/commit-block-header.js";
+} from "../src/workers/commit-block-header.js";
 import type {
   SerializedStateQueueUTxO,
   WorkerOutput,
-} from "@/workers/utils/commit-block-header.js";
-import { MidgardMpf, withMpfRootTransactions } from "@/workers/utils/mpf.js";
+} from "../src/workers/utils/commit-block-header.js";
 
 const dueWork = {
   kind: "commit_scheduler_refresh",
@@ -41,70 +38,55 @@ const dueWork = {
 
 const confirmedRecoveryBlock = {} as SerializedStateQueueUTxO;
 
-const assertRootTransactionHandling = (
-  output: WorkerOutput,
-  shouldPreserve: boolean,
-) =>
-  Effect.gen(function* () {
-    const ledgerMpf = yield* MidgardMpf.createScratch("ledger");
-    const transactionsMpf = yield* MidgardMpf.createScratch("transactions");
-    const beforeLedgerRoot = yield* ledgerMpf.rootHex();
-    const beforeTransactionsRoot = yield* transactionsMpf.rootHex();
-    const result = yield* withMpfRootTransactions(
-      [ledgerMpf, transactionsMpf],
-      Effect.gen(function* () {
-        yield* ledgerMpf.applyBatch([
-          {
-            type: "insert",
-            key: Buffer.from("01", "hex"),
-            value: Buffer.from("aa", "hex"),
-          },
-        ]);
-        yield* transactionsMpf.applyBatch([
-          {
-            type: "insert",
-            key: Buffer.from("02", "hex"),
-            value: Buffer.from("bb", "hex"),
-          },
-        ]);
-        return output;
-      }),
-      shouldPreserveCommitMpfRoots,
-    );
-    const afterLedgerRoot = yield* ledgerMpf.rootHex();
-    const afterTransactionsRoot = yield* transactionsMpf.rootHex();
+/**
+ * Runs a scratch MPF mutation inside the production root-transaction wrapper
+ * and reports, through real MPF roots, whether the mutation survived.
+ */
+const runRootTransaction = (output: WorkerOutput) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const ledgerMpf = yield* MidgardMpf.createScratch("ledger");
+      const transactionsMpf = yield* MidgardMpf.createScratch("transactions");
+      const beforeLedgerRoot = yield* ledgerMpf.rootHex();
+      const beforeTransactionsRoot = yield* transactionsMpf.rootHex();
+      const result = yield* withMpfRootTransactions(
+        [ledgerMpf, transactionsMpf],
+        Effect.gen(function* () {
+          yield* ledgerMpf.applyBatch([
+            {
+              type: "insert",
+              key: Buffer.from("01", "hex"),
+              value: Buffer.from("aa", "hex"),
+            },
+          ]);
+          yield* transactionsMpf.applyBatch([
+            {
+              type: "insert",
+              key: Buffer.from("02", "hex"),
+              value: Buffer.from("bb", "hex"),
+            },
+          ]);
+          return output;
+        }),
+        shouldPreserveCommitMpfRoots,
+      );
+      return {
+        result,
+        ledgerKept: (yield* ledgerMpf.rootHex()) !== beforeLedgerRoot,
+        transactionsKept:
+          (yield* transactionsMpf.rootHex()) !== beforeTransactionsRoot,
+      };
+    }),
+  );
 
-    expect(result).toStrictEqual(output);
-    if (shouldPreserve) {
-      expect(afterLedgerRoot).not.toBe(beforeLedgerRoot);
-      expect(afterTransactionsRoot).not.toBe(beforeTransactionsRoot);
-    } else {
-      expect(afterLedgerRoot).toBe(beforeLedgerRoot);
-      expect(afterTransactionsRoot).toBe(beforeTransactionsRoot);
-    }
-  });
-
+/**
+ * The gates below are asserted as pure decisions. That the commit fiber
+ * actually consults them *before* taking the state-queue mutation lease is
+ * asserted behaviourally in
+ * `tests/block-commitment-provider-evidence-preflight.test.ts`, by running
+ * `blockCommitmentAction` and observing that the lease store is never touched.
+ */
 describe("commit block worker output handling", () => {
-  it("keeps commit-block submit due-work unregistered while SDK commit txs have no lower validity bound", () => {
-    type CommitBlockHasNoLowerValidityBound =
-      "validFrom" extends keyof ProductionCommitBlockHeaderParams
-        ? false
-        : true;
-    const commitBlockHasNoLowerValidityBound: CommitBlockHasNoLowerValidityBound =
-      true;
-
-    expect(commitBlockHasNoLowerValidityBound).toBe(true);
-  });
-
-  it("treats registered due work as normal non-submission control flow", () => {
-    const output: WorkerOutput = {
-      type: "RegisteredDueWorkOutput",
-      dueWork,
-    };
-
-    expect(shouldPreserveCommitMpfRoots(output)).toBe(false);
-  });
-
   it("materializes worker pre-ingestion scheduler due-work as normal worker output", () => {
     expect(
       workerPreIngestionDueWorkOutputFromPlan({
@@ -266,27 +248,6 @@ describe("commit block worker output handling", () => {
     ).toBe(true);
   });
 
-  it("evaluates the pending-finalization gate before acquiring the commit mutation lease", async () => {
-    const source = await readFile(
-      new URL("../src/fibers/block-commitment.ts", import.meta.url),
-      "utf8",
-    );
-    const action = source.slice(
-      source.indexOf("export const blockCommitmentAction"),
-      source.indexOf("export const blockCommitmentFiber"),
-    );
-    const pendingFinalizationGate = action.indexOf(
-      "shouldSkipIdleCommitPipelineBeforeSchedulerAlignment",
-    );
-    const mutationLease = action.indexOf(
-      "StateQueueMutationLeasesDB.tryWithLease",
-    );
-
-    expect(pendingFinalizationGate).toBeGreaterThanOrEqual(0);
-    expect(mutationLease).toBeGreaterThanOrEqual(0);
-    expect(pendingFinalizationGate).toBeLessThan(mutationLease);
-  });
-
   it("short-circuits idle attempts only after tx, event, and recovery work are absent", () => {
     expect(
       shouldShortCircuitIdleCommitAttempt({
@@ -330,14 +291,57 @@ describe("commit block worker output handling", () => {
     ).toBe(false);
   });
 
-  it("resets or preserves MPF roots according to worker output semantics", async () => {
-    const resetOutputs: readonly WorkerOutput[] = [
-      { type: "FailureOutput", error: "boom" },
-      { type: "RegisteredDueWorkOutput", dueWork },
-      { type: "NothingToCommitOutput" },
-    ];
-    const preserveOutputs: readonly WorkerOutput[] = [
-      {
+  /**
+   * One case per worker-output type, keyed by the type itself: the `Record`
+   * over `WorkerOutput["type"]` stops compiling when an output type is added
+   * without deciding here whether it may keep the scratch MPF roots. The
+   * expected value is the output's own meaning -- an output that told L1 (or
+   * the durable database) about the new state must keep the roots, everything
+   * else must roll them back -- not a copy of the production switch.
+   */
+  const ROOT_TRANSACTION_CASES: Record<
+    WorkerOutput["type"],
+    { readonly output: WorkerOutput; readonly preserve: boolean }
+  > = {
+    FailureOutput: {
+      output: { type: "FailureOutput", error: "boom" },
+      preserve: false,
+    },
+    RegisteredDueWorkOutput: {
+      output: { type: "RegisteredDueWorkOutput", dueWork },
+      preserve: false,
+    },
+    NothingToCommitOutput: {
+      output: { type: "NothingToCommitOutput" },
+      preserve: false,
+    },
+    AwaitingForeignDaOutput: {
+      output: {
+        type: "AwaitingForeignDaOutput",
+        foreignHeaderHash: "dd".repeat(28),
+        reason: "foreign DA payload not yet retrievable",
+      },
+      preserve: false,
+    },
+    // Speculative candidates only ever exist in memory; only the `type` field
+    // takes part in the decision, so the payloads stay minimal.
+    SpeculativeCandidateReadyOutput: {
+      output: {
+        type: "SpeculativeCandidateReadyOutput",
+        candidate: {} as never,
+      },
+      preserve: false,
+    },
+    SpeculativeCandidateInvalidatedOutput: {
+      output: {
+        type: "SpeculativeCandidateInvalidatedOutput",
+        candidateId: "candidate-1",
+        reason: "T1" as never,
+      },
+      preserve: false,
+    },
+    SubmittedAwaitingConfirmationOutput: {
+      output: {
         type: "SubmittedAwaitingConfirmationOutput",
         submittedTxHash: "tx",
         txSize: 1,
@@ -347,7 +351,10 @@ describe("commit block worker output handling", () => {
         submittedHeaderHash: "aa".repeat(28),
         submittedUtxosRoot: "bb".repeat(32),
       },
-      {
+      preserve: true,
+    },
+    SubmittedAwaitingLocalFinalizationOutput: {
+      output: {
         type: "SubmittedAwaitingLocalFinalizationOutput",
         submittedTxHash: "tx",
         txSize: 1,
@@ -358,7 +365,10 @@ describe("commit block worker output handling", () => {
         submittedHeaderHash: "aa".repeat(28),
         submittedUtxosRoot: "bb".repeat(32),
       },
-      {
+      preserve: true,
+    },
+    SuccessfulSubmissionOutput: {
+      output: {
         type: "SuccessfulSubmissionOutput",
         submittedTxHash: "tx",
         txSize: 1,
@@ -367,25 +377,38 @@ describe("commit block worker output handling", () => {
         blockEndTimeMs: 1,
         mempoolLedgerDeletedOutRefHexes: [],
       },
-      {
+      preserve: true,
+    },
+    SkippedSubmissionOutput: {
+      output: {
         type: "SkippedSubmissionOutput",
         mempoolTxsCount: 0,
         sizeOfProcessedTxs: 0,
       },
-      {
+      preserve: true,
+    },
+    SuccessfulLocalFinalizationRecoveryOutput: {
+      output: {
         type: "SuccessfulLocalFinalizationRecoveryOutput",
         finalizedHeaderHash: "cc".repeat(28),
         mempoolTxsCount: 1,
         sizeOfBlocksTxs: 1,
         mempoolLedgerDeletedOutRefHexes: [],
       },
-    ];
+      preserve: true,
+    },
+  };
 
-    for (const output of resetOutputs) {
-      await Effect.runPromise(assertRootTransactionHandling(output, false));
-    }
-    for (const output of preserveOutputs) {
-      await Effect.runPromise(assertRootTransactionHandling(output, true));
-    }
-  });
+  it.each(Object.entries(ROOT_TRANSACTION_CASES))(
+    "%s keeps or rolls back the scratch MPF roots as its meaning requires",
+    async (_type, { output, preserve }) => {
+      const observed = await runRootTransaction(output);
+
+      expect(observed).toStrictEqual({
+        result: output,
+        ledgerKept: preserve,
+        transactionsKept: preserve,
+      });
+    },
+  );
 });

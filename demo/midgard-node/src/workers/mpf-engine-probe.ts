@@ -10,16 +10,10 @@ import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Metric } from "effect";
 
-import { fullScanCounter as confirmedLedgerFullScanCounter } from "@/database/confirmedLedger.js";
-import { ProductionNativeMpfOwnerService } from "@/services/mpf-native-owner/index.js";
-
-import {
-  canonicalOutrefCborFromLabel,
-  decodeCanonicalProbeRow,
-} from "./mpf-engine-probe-corpus.js";
+import { fullScanCounter as confirmedLedgerFullScanCounter } from "../database/confirmedLedger.js";
 import {
   applyTraceLedgerOpsToMpf,
-  buildNativeProductionRootProbe,
+  buildNativeRootProbe,
   buildTransitionTraceResult,
   configureMpfPathHydration,
   deleteMpfStore,
@@ -27,7 +21,17 @@ import {
   type MpfStoreDiagnostics,
   setMpfScratchBuild,
   type TransitionTraceSourceEvent,
-} from "./utils/mpf.js";
+} from "../mpf/index.js";
+import { ProductionNativeMpfOwnerService } from "../services/mpf-native-owner/index.js";
+import {
+  canonicalOutrefCborFromLabel,
+  decodeCanonicalProbeRow,
+} from "./mpf-engine-probe-corpus.js";
+import {
+  decodeArchitectureGCorpusFunding,
+  decodeArchitectureGFixtureCreation,
+  validateArchitectureGRootProbeResult,
+} from "./utils/mpf-commit-candidate-artifacts.js";
 import { compileAuthenticatedFlatMpfMultiproof } from "./utils/mpf-flat-multiproof.js";
 import {
   closeMpfRootWorkers,
@@ -92,7 +96,7 @@ const formatErrorChain = (error: unknown): string => {
       current = current.cause;
       continue;
     }
-    rendered.push(String(current));
+    rendered.push(JSON.stringify(current) ?? "undefined");
     break;
   }
   return rendered.join("\nCaused by: ");
@@ -184,6 +188,7 @@ const loadCanonicalTransactionSlice = async (): Promise<
   | {
       readonly path: string;
       readonly sha256: string;
+      readonly corpusSha256: string;
       readonly transactionOps: readonly {
         readonly type: "insert";
         readonly key: Buffer;
@@ -191,7 +196,10 @@ const loadCanonicalTransactionSlice = async (): Promise<
       }[];
       readonly transactionIds: readonly string[];
       readonly sourceEvents: readonly TransitionTraceSourceEvent[];
-      readonly fundingRootOutrefs: readonly string[];
+      readonly fundingRoots: readonly {
+        readonly walletId: string;
+        readonly outref: string;
+      }[];
     }
   | undefined
 > => {
@@ -199,9 +207,15 @@ const loadCanonicalTransactionSlice = async (): Promise<
   if (path.length === 0) return undefined;
   const expectedSha256 =
     process.env.MPF_ENGINE_PROBE_CORPUS_SLICE_SHA256?.trim() ?? "";
+  const corpusSha256 = process.env.MPF_ENGINE_PROBE_CORPUS_SHA256?.trim() ?? "";
   if (!/^[0-9a-f]{64}$/.test(expectedSha256)) {
     throw new Error(
       "Canonical corpus slice requires MPF_ENGINE_PROBE_CORPUS_SLICE_SHA256",
+    );
+  }
+  if (!/^[0-9a-f]{64}$/u.test(corpusSha256)) {
+    throw new Error(
+      "Canonical corpus slice requires MPF_ENGINE_PROBE_CORPUS_SHA256",
     );
   }
   const bytes = await readFile(path);
@@ -216,18 +230,29 @@ const loadCanonicalTransactionSlice = async (): Promise<
     .split(/\r?\n/u)
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
-    .map((line, index) =>
-      decodeCanonicalProbeRow(
-        JSON.parse(line) as Record<string, unknown>,
-        index,
-      ),
-    );
+    .map((line, index) => {
+      const parsed = JSON.parse(line) as Record<string, unknown>;
+      const walletId = parsed.senderWalletId;
+      if (
+        typeof walletId !== "string" ||
+        walletId.trim().length === 0 ||
+        walletId.length > 4096
+      ) {
+        throw new Error(
+          `Canonical corpus slice row ${(index + 1).toString()} has an invalid senderWalletId`,
+        );
+      }
+      return {
+        decoded: decodeCanonicalProbeRow(parsed, index),
+        walletId,
+      };
+    });
   if (rows.length !== transactionCount) {
     throw new Error(
       `Canonical corpus slice row count mismatch: expected=${transactionCount.toString()},actual=${rows.length.toString()}`,
     );
   }
-  if (new Set(rows.map((row) => row.txHash)).size !== rows.length) {
+  if (new Set(rows.map((row) => row.decoded.txHash)).size !== rows.length) {
     throw new Error(
       "Canonical corpus slice contains duplicate transaction hashes",
     );
@@ -235,12 +260,16 @@ const loadCanonicalTransactionSlice = async (): Promise<
   return {
     path,
     sha256: actualSha256,
-    transactionOps: rows.map((row) => row.transactionOp),
-    transactionIds: rows.map((row) => row.txHash),
-    sourceEvents: rows.map((row) => row.sourceEvent),
-    fundingRootOutrefs: rows
-      .filter((row) => row.parentTxHash === null)
-      .map((row) => row.selectedInputOutref),
+    corpusSha256,
+    transactionOps: rows.map((row) => row.decoded.transactionOp),
+    transactionIds: rows.map((row) => row.decoded.txHash),
+    sourceEvents: rows.map((row) => row.decoded.sourceEvent),
+    fundingRoots: rows
+      .filter((row) => row.decoded.parentTxHash === null)
+      .map((row) => ({
+        walletId: row.walletId,
+        outref: row.decoded.selectedInputOutref,
+      })),
   };
 };
 
@@ -270,44 +299,31 @@ const loadCanonicalFundingMap = async (
       `Canonical corpus funding map SHA-256 mismatch: expected=${expectedSha256},actual=${actualSha256}`,
     );
   }
-  const parsed = JSON.parse(bytes.toString("utf8")) as {
-    readonly schemaVersion?: unknown;
-    readonly entries?: unknown;
-  };
-  if (
-    parsed.schemaVersion !== "midgard-architecture-g-corpus-funding-v1" ||
-    !Array.isArray(parsed.entries)
-  ) {
-    throw new Error("Canonical corpus funding map has an unsupported schema");
-  }
+  const parsed = decodeArchitectureGCorpusFunding({
+    value: JSON.parse(bytes.toString("utf8")) as unknown,
+    expectedCorpusSha256: canonicalSlice.corpusSha256,
+    expectedSliceSha256: canonicalSlice.sha256,
+    expectedFundingRoots: canonicalSlice.fundingRoots,
+  });
   const entries = new Map<string, Buffer>();
   for (const [index, value] of parsed.entries.entries()) {
-    const entry = value as {
-      readonly outref?: unknown;
-      readonly outputCbor?: unknown;
-    };
-    const outref = String(entry.outref ?? "").toLowerCase();
-    const outputCbor = String(entry.outputCbor ?? "").toLowerCase();
+    const outref = value.outref;
+    const outputCbor = value.outputCbor;
     canonicalOutrefCborFromLabel(outref);
     const output = Buffer.from(outputCbor, "hex");
-    if (
-      outputCbor.length === 0 ||
-      outputCbor.length % 2 !== 0 ||
-      output.toString("hex") !== outputCbor ||
-      entries.has(outref)
-    ) {
+    if (entries.has(outref)) {
       throw new Error(
         `Canonical corpus funding map entry ${index.toString()} is invalid or duplicated`,
       );
     }
     entries.set(outref, output);
   }
-  for (const outref of canonicalSlice.fundingRootOutrefs) {
+  for (const { outref } of canonicalSlice.fundingRoots) {
     if (!entries.has(outref)) {
       throw new Error(`Canonical corpus funding map is missing root ${outref}`);
     }
   }
-  if (entries.size !== canonicalSlice.fundingRootOutrefs.length) {
+  if (entries.size !== canonicalSlice.fundingRoots.length) {
     throw new Error(
       "Canonical corpus funding map contains roots outside the selected prefix",
     );
@@ -455,34 +471,42 @@ void Effect.runPromise(
       const diagnostics = yield* fixture.diagnostics();
       yield* fixture.close();
       closeMpfRootWorkers();
-      return {
-        fixtureCreated: true,
-        fixturePath: levelFixturePath,
-        initialUtxoCount,
-        marker,
-        durationMs: performance.now() - fixtureStartedAt,
-        diagnostics,
-        utxoPayloadAggregate: {
-          entryCount: fixtureEntries.length,
-          encodedTupleBytes: fixtureEntries.reduce(
-            (total, entry) =>
-              total +
-              SDK.daPayloadEntryEncodedSize([
-                entry.key.toString("hex"),
-                entry.value.toString("hex"),
-              ]),
-            0,
-          ),
-        },
-        canonicalFunding:
-          canonicalFunding === undefined
-            ? null
-            : {
-                path: canonicalFunding.path,
-                sha256: canonicalFunding.sha256,
-                entryCount: canonicalFunding.entries.size,
-              },
+      const utxoPayloadAggregate = {
+        entryCount: fixtureEntries.length,
+        encodedTupleBytes: fixtureEntries.reduce(
+          (total, entry) =>
+            total +
+            SDK.daPayloadEntryEncodedSize([
+              entry.key.toString("hex"),
+              entry.value.toString("hex"),
+            ]),
+          0,
+        ),
       };
+      return decodeArchitectureGFixtureCreation({
+        value: {
+          fixtureCreated: true,
+          fixturePath: levelFixturePath,
+          initialUtxoCount,
+          marker,
+          durationMs: performance.now() - fixtureStartedAt,
+          diagnostics,
+          utxoPayloadAggregate,
+          canonicalFunding:
+            canonicalFunding === undefined
+              ? null
+              : {
+                  path: canonicalFunding.path,
+                  sha256: canonicalFunding.sha256,
+                  entryCount: canonicalFunding.entries.size,
+                },
+        },
+        expectedFixturePath: levelFixturePath,
+        expectedMarker: marker,
+        expectedUtxos: initialUtxoCount,
+        expectedAggregate: utxoPayloadAggregate,
+        expectedFundingMapSha256: canonicalFunding?.sha256 ?? null,
+      });
     }
     if (architectureG) {
       if (levelFixturePath.length === 0 || !reuseLevelFixture) {
@@ -546,7 +570,7 @@ void Effect.runPromise(
       const confirmedLedgerScansBefore = yield* Metric.value(
         confirmedLedgerFullScanCounter,
       );
-      const result = yield* buildNativeProductionRootProbe({
+      const result = yield* buildNativeRootProbe({
         nativeMpf,
         sourceEvents: architectureSourceEvents,
         transactionOps: architectureTransactionOps,
@@ -558,7 +582,7 @@ void Effect.runPromise(
       const after = yield* Effect.promise(() => owner.diagnostics());
       yield* Effect.promise(() => owner.close());
       closeMpfRootWorkers();
-      return {
+      const artifact = {
         engine: "architecture_g",
         transactionCount,
         initialUtxoCount,
@@ -609,7 +633,16 @@ void Effect.runPromise(
         cpuAffinity,
         ownerBefore: before,
         ownerAfter: after,
+        probePath,
+        probeSha256,
       };
+      return validateArchitectureGRootProbeResult({
+        value: artifact,
+        expectedTransactionCount: transactionCount,
+        expectedInitialUtxoCount: initialUtxoCount,
+        expectedProbePath: probePath,
+        expectedProbeSha256: probeSha256,
+      });
     }
     if (process.env.MPF_ENGINE_PROBE_LEDGER_ONLY === "true") {
       const ledgerOnly = yield* createProbeLedger(
@@ -689,7 +722,7 @@ void Effect.runPromise(
                 );
               }
               const parkStartedAt = performance.now();
-              const artifact = yield* ledger.parkEventFlatOverlayV2(4);
+              const artifact = yield* ledger.parkEventFlatOverlayV1(4);
               const parkMs = performance.now() - parkStartedAt;
               const captured = store.diagnostics();
               if (captured.levelBatchWrites !== writesBefore) {
@@ -727,7 +760,7 @@ void Effect.runPromise(
                 );
               }
               const rehydrated =
-                yield* MidgardMpf.resumeParkedEventFlatOverlayV2(
+                yield* MidgardMpf.resumeParkedEventFlatOverlayV1(
                   "mpf-engine-probe",
                   levelFixturePath,
                   artifact,

@@ -7,7 +7,7 @@ import {
   fetchCanonicalStateQueueNodesProgram,
   fetchStateQueueSnapshotProgram,
   summarizeStateQueueTopology,
-} from "@/services/state-queue-topology.js";
+} from "../src/services/state-queue-topology.js";
 
 const policyId = "aa".repeat(28);
 const stateQueueAddress =
@@ -129,14 +129,20 @@ describe("state queue topology", () => {
       depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       withdrawalCount: 0n,
       forcedTransactionCount: 0n,
       l2TransactionCount: 0n,
       depositCount: 0n,
       totalEventCount: 0n,
       transitionStepCount: 0n,
+      validationTraceCount: 0n,
       startTime: 1_000n,
       endTime: 2_000n,
+      blockSlot: 0n,
+      expectedNetworkId: 0n,
+      minFeeA: 0n,
+      minFeeB: 0n,
       prevHeaderHash: "88".repeat(28),
       operatorVkey: "99".repeat(28),
       protocolVersion: 1n,

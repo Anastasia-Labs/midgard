@@ -1,3 +1,16 @@
+# Contributing
+
+Read [AGENTS.md](AGENTS.md) for repository-wide engineering and verification
+requirements. Install the hooks once per clone with `bash .githooks/install`.
+Run the narrow checks for your changes and record the commands and outcomes
+in the pull request. For documentation changes, follow the
+[documentation policy](docs/DOCUMENTATION_POLICY.md).
+
+## Aiken conventions
+
+The conventions below apply to on-chain Aiken code. TypeScript follows its
+package conventions and configured lint rules.
+
 1. The files are organized "vertically," meaning each file is dedicated to a
    concrete purpose/logic rather than language constructs such as types and
    constants (there are a couple of exceptions for files that are likely to be
@@ -15,15 +28,15 @@
    contents directly into their corresponding validators, i.e. don't import the
    dedicated library of a validator in a qualified manner.
 4. When it comes to naming, please follow these conventions:
-    - Avoid acronyms as much as possible. Use them only for qualified imports or
-      "temporary" variables (e.g. inside the body of a small anonymous
-      function). In general, try to be as explicit as possible. The goal is to
-      keep the code easy to read.
-    - Only use `kebab-case` for filenames.
-    - For type and data constructors, use `PascalCase`. Avoid using `_` in them.
-      If you find yourself needing to have a prefix/postfix, consider breaking
-      your file into multiple files.
-    - For variables, constants, functions, and field names, use `snake_case`.
+   - Avoid acronyms as much as possible. Use them only for qualified imports or
+     "temporary" variables (e.g. inside the body of a small anonymous
+     function). In general, try to be as explicit as possible. The goal is to
+     keep the code easy to read.
+   - Only use `kebab-case` for filenames.
+   - For type and data constructors, use `PascalCase`. Avoid using `_` in them.
+     If you find yourself needing to have a prefix/postfix, consider breaking
+     your file into multiple files.
+   - For variables, constants, functions, and field names, use `snake_case`.
 5. When pattern matching on a record type, always use the curly brackets syntax.
    Using parenthesis won't allow the compiler to detect changes in the field
    names of type definitions.

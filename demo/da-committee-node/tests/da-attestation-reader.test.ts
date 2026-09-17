@@ -10,28 +10,35 @@ import {
   MultiDaAttestationChainReader,
   type OnChainDaParams,
 } from "../src/l1/da-attestation-reader.js";
+import {
+  type CanonicalChainPoint,
+  FileChainSyncCursorStore,
+  LocalNodeChainAuthority,
+} from "../src/l1/provider.js";
 import { bytesToHex } from "../src/utils/hex.js";
 import { minimalConfig, tempDir } from "./helpers.js";
 
 describe("LucidDaAttestationChainReader", () => {
   it("fetches and decodes the unique DA params UTxO", async () => {
     const dir = await tempDir();
-    const committeeHex = "01".repeat(32);
+    // Q63 (F04 §4) floors both governed thresholds at two, so the smallest
+    // representable committee has two sorted-unique members.
+    const committeeHex = "01".repeat(32) + "02".repeat(32);
     const config = minimalConfig({
       dir,
       manifestPath: `${dir}/manifest.json`,
       deploymentInfoPath: `${dir}/deployment.json`,
       signerSeed: "00".repeat(32),
-      signerPublicKey: committeeHex,
+      signerPublicKey: "01".repeat(32),
     });
     const daParamsDatum: SDK.DaParamsDatum = {
       committee: committeeHex,
       committee_signers_hash: bytesToHex(
         blake2b(Buffer.from(committeeHex, "hex"), { dkLen: 32 }),
       ),
-      da_threshold: 1n,
-      owners: [],
-      update_threshold: 1n,
+      da_threshold: 2n,
+      owners: ["22".repeat(28), "33".repeat(28)],
+      update_threshold: 2n,
     };
     const paramsUnit = toUnit(
       config.daParamsGovernorPolicyId,
@@ -50,15 +57,21 @@ describe("LucidDaAttestationChainReader", () => {
       lucid,
       config,
       providerSource: "fake",
+      ...pointResolvers("fake"),
     });
     await expect(reader.fetchDaParams()).resolves.toMatchObject({
       outRef: `${"aa".repeat(32)}#0`,
       committeeHex,
-      threshold: 1,
+      threshold: 2,
+      observedChainPoint: {
+        network: "Preview",
+        slot: 99,
+        blockHash: "ab".repeat(32),
+      },
     });
   });
 
-  it("fetches DA attestation candidates by header hash and filters malformed/foreign datums", async () => {
+  it("fails closed when a policy-matched DA attestation has a foreign header", async () => {
     const dir = await tempDir();
     const committeeHex = "01".repeat(32);
     const config = minimalConfig({
@@ -75,14 +88,20 @@ describe("LucidDaAttestationChainReader", () => {
     );
     const datum: SDK.DaAttestationDatum = {
       header_hash: headerHash,
+      availability_commitment: availabilityCommitment(headerHash),
       da_threshold: 2n,
       committee_signers_hash: "34".repeat(32),
+      rescue_beneficiary: {
+        paymentCredential: { PublicKeyCredential: ["56".repeat(28)] },
+        stakeCredential: null,
+      },
       attested_signers: "80" + "00".repeat(31),
       attestation_count: 1n,
     };
     const foreignDatum: SDK.DaAttestationDatum = {
       ...datum,
       header_hash: "99".repeat(28),
+      availability_commitment: availabilityCommitment("99".repeat(28)),
     };
     const lucid = fakeLucid([
       {
@@ -104,24 +123,92 @@ describe("LucidDaAttestationChainReader", () => {
       lucid,
       config,
       providerSource: "fake",
+      ...pointResolvers("fake"),
     });
     await expect(
       reader.fetchDaAttestationCandidates(headerHash),
-    ).resolves.toEqual([
-      expect.objectContaining({
-        headerHash,
-        outRef: `${"bb".repeat(32)}#0`,
-        attestationCount: 1,
-        threshold: 2,
-        status: "signed",
-      }),
-    ]);
+    ).rejects.toThrow(/has header hash .* expected/u);
+  });
+
+  it("fails closed on malformed bytes at a policy-matched DA UTxO", async () => {
+    const dir = await tempDir();
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: "00".repeat(32),
+      signerPublicKey: "01".repeat(32),
+    });
+    const headerHash = "12".repeat(28);
+    const unit = toUnit(
+      config.daAttestationPolicyId,
+      SDK.daAttestationAssetName(headerHash),
+    );
+    const reader = new LucidDaAttestationChainReader({
+      lucid: fakeLucid([
+        {
+          txHash: "dd".repeat(32),
+          outputIndex: 0,
+          address: config.daAttestationAddress,
+          assets: { lovelace: 5_000_000n, [unit]: 1n },
+          datum: "00",
+        },
+      ]),
+      config,
+      providerSource: "fake",
+      ...pointResolvers("fake"),
+    });
+
+    await expect(
+      reader.fetchDaAttestationCandidates(headerHash),
+    ).rejects.toThrow();
+  });
+
+  it("rejects an empty local query result when its indexer point is stale", async () => {
+    const dir = await tempDir();
+    const committeeHex = "01".repeat(32);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: "00".repeat(32),
+      signerPublicKey: committeeHex,
+    });
+    const canonical = chainPoint("chain-sync:node-a", 100, "ab");
+    const authority = new LocalNodeChainAuthority(
+      "node-a",
+      "Preview",
+      {
+        next: async () => ({
+          event: { direction: "roll_forward", point: canonical },
+          tip: canonical,
+        }),
+      },
+      new FileChainSyncCursorStore(`${dir}/cursor.json`, "11".repeat(32)),
+    );
+    const reader = new LucidDaAttestationChainReader({
+      lucid: fakeLucid([]),
+      config,
+      providerSource: "query:node-a:0",
+      inclusionPointResolver: async () =>
+        chainPoint("query:node-a:0", 99, "cd"),
+      queryPointResolver: async () => chainPoint("query:node-a:0", 99, "cd"),
+      localAuthority: authority,
+    });
+
+    await expect(
+      reader.fetchDaAttestationCandidates("12".repeat(28)),
+    ).rejects.toThrow(/stale or on a mismatched chain point/u);
   });
 
   it("requires DA params and candidate agreement across L1 readers", async () => {
     const daParams = daParamsFixture();
     const candidate = candidateFixture({
-      observedChainPoint: { providerSource: "provider-a" },
+      observedChainPoint: {
+        ...chainPoint("provider-a", 100, "ab"),
+        depth: 10,
+        finalized: true,
+      },
     });
     const reader = new MultiDaAttestationChainReader([
       fakeReader({
@@ -133,7 +220,11 @@ describe("LucidDaAttestationChainReader", () => {
         candidates: [
           {
             ...candidate,
-            observedChainPoint: { providerSource: "provider-b" },
+            observedChainPoint: {
+              ...chainPoint("provider-b", 100, "ab"),
+              depth: 3,
+              finalized: false,
+            },
           },
         ],
       }),
@@ -147,6 +238,8 @@ describe("LucidDaAttestationChainReader", () => {
         outRef: candidate.outRef,
         observedChainPoint: {
           providerSource: "provider-a,provider-b",
+          depth: 3,
+          finalized: false,
         },
       },
     ]);
@@ -155,11 +248,11 @@ describe("LucidDaAttestationChainReader", () => {
   it("fails closed when DA params providers disagree", async () => {
     const reader = new MultiDaAttestationChainReader([
       fakeReader({
-        daParams: daParamsFixture({ threshold: 1 }),
+        daParams: daParamsFixture({ threshold: 2 }),
         candidates: [],
       }),
       fakeReader({
-        daParams: daParamsFixture({ threshold: 2 }),
+        daParams: daParamsFixture({ threshold: 3 }),
         candidates: [],
       }),
     ]);
@@ -184,7 +277,69 @@ describe("LucidDaAttestationChainReader", () => {
       reader.fetchDaAttestationCandidates(candidate.headerHash),
     ).rejects.toThrow(/candidate provider disagreement/);
   });
+
+  it("fails closed when external readers report incompatible current chain points", async () => {
+    const daParams = daParamsFixture();
+    const candidate = candidateFixture();
+    const reader = new MultiDaAttestationChainReader([
+      fakeReader({
+        daParams,
+        candidates: [candidate],
+        queryPoint: chainPoint("provider-a", 100, "ab"),
+      }),
+      fakeReader({
+        daParams,
+        candidates: [candidate],
+        queryPoint: chainPoint("provider-b", 99, "cd"),
+      }),
+    ]);
+
+    await expect(
+      reader.fetchDaAttestationCandidates(candidate.headerHash),
+    ).rejects.toThrow(/chain-point disagreement/u);
+  });
+
+  it("fails closed when readers agree on data but not observation provenance", async () => {
+    const daParams = daParamsFixture();
+    const candidate = candidateFixture();
+    const reader = new MultiDaAttestationChainReader([
+      fakeReader({
+        daParams,
+        candidates: [candidate],
+        queryPoint: chainPoint("provider-a", 100, "ab"),
+      }),
+      fakeReader({
+        daParams,
+        candidates: [
+          {
+            ...candidate,
+            observedChainPoint: chainPoint("provider-b", 99, "cd"),
+          },
+        ],
+        queryPoint: chainPoint("provider-b", 100, "ab"),
+      }),
+    ]);
+
+    await expect(
+      reader.fetchDaAttestationCandidates(candidate.headerHash),
+    ).rejects.toThrow(/observation provenance disagreement/u);
+  });
 });
+
+const availabilityCommitment = (
+  headerHash: string,
+): SDK.DaAvailabilityCommitment =>
+  SDK.buildDaAvailabilityCommitment({
+    deploymentIdentity: "99".repeat(28),
+    headerHash,
+    payload: Buffer.from("public retained DA"),
+    bondOwner: "76".repeat(28),
+    responseGeometry: SDK.availabilityResponseGeometry({
+      chunkByteLength: 14_020,
+      trancheByteLength: 4 * 1_024 * 1_024,
+      maxTrancheCount: 16,
+    }),
+  });
 
 const fakeLucid = (utxos: readonly UTxO[]) =>
   ({
@@ -194,35 +349,59 @@ const fakeLucid = (utxos: readonly UTxO[]) =>
       ),
   }) as never;
 
+const chainPoint = (
+  providerSource: string,
+  slot: number,
+  blockByte: string,
+): CanonicalChainPoint => ({
+  network: "Preview",
+  slot,
+  blockHash: blockByte.repeat(32),
+  providerSource,
+  observedAt: "2026-07-28T00:00:00.000Z",
+});
+
+const pointResolvers = (providerSource: string) => ({
+  inclusionPointResolver: async (_utxo: UTxO) =>
+    chainPoint(providerSource, 99, "ab"),
+  queryPointResolver: async () => chainPoint(providerSource, 100, "cd"),
+});
+
+/**
+ * A floor-compliant DA params fixture: a three-member sorted-unique committee
+ * over a two-member owner set, so thresholds of both 2 and 3 stay within the
+ * Q63 (F04 §4) governed bounds.
+ */
 const daParamsFixture = ({
-  threshold = 1,
+  threshold = 2,
 }: {
   readonly threshold?: number;
 } = {}): OnChainDaParams => {
-  const committeeHex = "01".repeat(32);
+  const committeeHex = "01".repeat(32) + "02".repeat(32) + "03".repeat(32);
+  const owners = ["22".repeat(28), "33".repeat(28)];
   const rawDatum: SDK.DaParamsDatum = {
     committee: committeeHex,
     committee_signers_hash: bytesToHex(
       blake2b(Buffer.from(committeeHex, "hex"), { dkLen: 32 }),
     ),
     da_threshold: BigInt(threshold),
-    owners: [],
-    update_threshold: 1n,
+    owners,
+    update_threshold: 2n,
   };
   return {
     outRef: `${"aa".repeat(32)}#0`,
     committeeHex,
     committeeSignersHash: rawDatum.committee_signers_hash,
     threshold,
-    ownerCount: 0,
-    updateThreshold: 1,
+    ownerCount: owners.length,
+    updateThreshold: 2,
     rawDatum,
   };
 };
 
 const candidateFixture = ({
   bitmap = "00".repeat(32),
-  observedChainPoint = { providerSource: "provider-a" },
+  observedChainPoint = chainPoint("provider-a", 100, "ab"),
 }: {
   readonly bitmap?: string;
   readonly observedChainPoint?: DaAttestationCandidateRecord["observedChainPoint"];
@@ -242,10 +421,13 @@ const candidateFixture = ({
 const fakeReader = ({
   daParams,
   candidates,
+  queryPoint,
 }: {
   readonly daParams: OnChainDaParams;
   readonly candidates: readonly DaAttestationCandidateRecord[];
+  readonly queryPoint?: CanonicalChainPoint;
 }): DaAttestationChainReader => ({
   fetchDaParams: async () => daParams,
   fetchDaAttestationCandidates: async () => candidates,
+  ...(queryPoint === undefined ? {} : { currentQueryPoint: () => queryPoint }),
 });

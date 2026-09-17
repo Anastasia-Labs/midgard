@@ -14,25 +14,26 @@ Use `midgard-sdk` if you are running an operator, running a watcher, or building
 protocol tooling that submits L1 transactions. Application developers moving funds on
 L2 want [`lucid-midgard`](/docs/sdk/lucid-midgard/quickstart) instead.
 
-The SDK is built with `effect`, but it does not impose `effect` on dependent packages.
-Functions returning `Effect` blueprints are postfixed with `Program`, following the
-Lucid Evolution convention.
+The SDK uses `effect` and declares it as a peer dependency. `Program` functions
+return `Effect`; wrappers let callers use Promise results without composing
+Effect programs. Datum/redeemer schemas use Lucid `Data`.
+
 </Callout>
 
 ## Module layout
 
 The package uses a **vertical** layout: each transaction family is its own module
-with globally unique names, re-exported from `src/index.ts`. The modules group into:
+with public exports collected in `src/index.ts`. The modules group into:
 
-| Group | Modules | Docs |
-|-------|---------|------|
-| Operator lifecycle | `operator-lifecycle`, `active-operators`, `registered-operators`, `retired-operators` | [Operator Lifecycle](/docs/sdk/midgard-sdk/operator-lifecycle) |
-| Blocks &amp; scheduling | `state-queue`, `state-queue-production`, `scheduler`, `scheduler-refresh` | [Blocks &amp; Scheduling](/docs/sdk/midgard-sdk/blocks-and-scheduling) |
-| Settlement &amp; proofs | `settlement`, `transition-trace`, `fraud-proof`, `fraud-proofs` | [Settlement &amp; Proofs](/docs/sdk/midgard-sdk/settlement-and-proofs) |
-| User events | `user-events` (`deposit`, `withdrawal`, `tx-order`) | [User Events](/docs/sdk/midgard-sdk/user-events) |
-| Reserve &amp; payout | `reserve`, `reserve-payout`, `payout` | [Reserve &amp; Payout](/docs/sdk/midgard-sdk/reserve-and-payout) |
-| DA &amp; oracle | `da-attestation`, `da-payload`, `hub-oracle`, `initialization`, `escape-hatch` | [DA &amp; Oracle](/docs/sdk/midgard-sdk/da-and-oracle) |
-| Protocol primitives | `reference-scripts`, `phas-membership`, `protocol-parameters`, `ledger-state`, `ledger-constants`, `linked-list` | [Protocol Primitives](/docs/sdk/midgard-sdk/protocol-primitives) |
+| Group                   | Modules                                                                                                          | Docs                                                                   |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Operator lifecycle      | `operator-lifecycle`, `active-operators`, `registered-operators`, `retired-operators`                            | [Operator Lifecycle](/docs/sdk/midgard-sdk/operator-lifecycle)         |
+| Blocks &amp; scheduling | `state-queue`, `state-queue-transactions`, `scheduler`, `scheduler-refresh`                                      | [Blocks &amp; Scheduling](/docs/sdk/midgard-sdk/blocks-and-scheduling) |
+| Settlement &amp; proofs | `settlement`, `transition-trace`, `fraud-proof/`                                                                 | [Settlement &amp; Proofs](/docs/sdk/midgard-sdk/settlement-and-proofs) |
+| User events             | `user-events` (`deposit`, `withdrawal`, `tx-order`)                                                              | [User Events](/docs/sdk/midgard-sdk/user-events)                       |
+| Reserve &amp; payout    | `reserve`, `reserve-payout`, `payout`                                                                            | [Reserve &amp; Payout](/docs/sdk/midgard-sdk/reserve-and-payout)       |
+| DA &amp; oracle         | `da-attestation`, `da-payload`, `hub-oracle`, `initialization`, `availability-challenge`, `escape-hatch`         | [DA &amp; Oracle](/docs/sdk/midgard-sdk/da-and-oracle)                 |
+| Protocol primitives     | `reference-scripts`, `phas-membership`, `protocol-parameters`, `ledger-state`, `ledger-constants`, `linked-list` | [Protocol Primitives](/docs/sdk/midgard-sdk/protocol-primitives)       |
 
 Shared internals include `common`, `internals`, `errors`, `cbor`,
 `cardano-addresses`, `tx-completion`, `tx-context-redeemer`, and the

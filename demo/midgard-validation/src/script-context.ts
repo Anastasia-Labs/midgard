@@ -19,7 +19,7 @@ type ResolvedInput = {
   readonly output: MidgardTxOutput;
 };
 
-type AddressEncoding = "cardano" | "midgard";
+export type ScriptContextAddressEncoding = "cardano" | "midgard";
 
 export type ScriptMintValue = ReadonlyMap<string, ReadonlyMap<string, bigint>>;
 
@@ -58,7 +58,7 @@ const stakingCredentialData = (
 
 const addressData = (
   output: MidgardTxOutput,
-  encoding: AddressEncoding,
+  encoding: ScriptContextAddressEncoding,
 ): Constr<unknown> => {
   const decoded = decodeMidgardAddressBytes(output.address);
   const constructor = encoding === "midgard" && decoded.protected ? 1 : 0;
@@ -72,12 +72,12 @@ const valueData = (
   output: MidgardTxOutput,
 ): Map<string, Map<string, bigint>> => {
   const result = new Map<string, Map<string, bigint>>();
-  for (const [policyId, assets] of output.value.assets.entries()) {
-    result.set(policyId, new Map(assets));
-  }
   const coin = output.value.lovelace;
   if (coin !== 0n) {
     result.set("", new Map([["", coin]]));
+  }
+  for (const [policyId, assets] of output.value.assets.entries()) {
+    result.set(policyId, new Map(assets));
   }
   return result;
 };
@@ -103,9 +103,9 @@ const datumData = (output: MidgardTxOutput): Constr<unknown> => {
   return new Constr(2, [Data.from(datum.cbor.toString("hex")) as unknown]);
 };
 
-const txOutData = (
+export const scriptContextTxOutData = (
   output: MidgardTxOutput,
-  addressEncoding: AddressEncoding,
+  addressEncoding: ScriptContextAddressEncoding,
 ): Constr<unknown> => {
   const scriptRef = output.script_ref;
   return new Constr(0, [
@@ -118,13 +118,13 @@ const txOutData = (
   ]);
 };
 
-const txInInfoData = (
+export const scriptContextTxInInfoData = (
   input: ResolvedInput,
-  addressEncoding: AddressEncoding,
+  addressEncoding: ScriptContextAddressEncoding,
 ): Constr<unknown> =>
   new Constr(0, [
     txOutRefData(input.outRefHex),
-    txOutData(input.output, addressEncoding),
+    scriptContextTxOutData(input.output, addressEncoding),
   ]);
 
 const validRangeData = (
@@ -169,9 +169,11 @@ const baseTxInfoData = (
   purposeData: (purpose: MidgardScriptPurpose) => Constr<unknown> | undefined,
 ): Constr<unknown> =>
   new Constr(0, [
-    view.inputs.map((input) => txInInfoData(input, "cardano")),
-    view.referenceInputs.map((input) => txInInfoData(input, "cardano")),
-    view.outputs.map((output) => txOutData(output, "cardano")),
+    view.inputs.map((input) => scriptContextTxInInfoData(input, "cardano")),
+    view.referenceInputs.map((input) =>
+      scriptContextTxInInfoData(input, "cardano"),
+    ),
+    view.outputs.map((output) => scriptContextTxOutData(output, "cardano")),
     view.fee,
     mintData(view.mint),
     [],
@@ -237,16 +239,18 @@ export const buildPlutusV3ScriptContext = (
     cardanoScriptInfoData(view, purpose),
   ]);
 
-export const buildMidgardV1ScriptContext = (
+export const buildMidgardScriptContext = (
   view: ScriptContextView,
   purpose: MidgardScriptPurpose,
   redeemer: MidgardLedgerRedeemer,
 ): Constr<unknown> =>
   new Constr(0, [
     new Constr(0, [
-      view.inputs.map((input) => txInInfoData(input, "midgard")),
-      view.referenceInputs.map((input) => txInInfoData(input, "midgard")),
-      view.outputs.map((output) => txOutData(output, "midgard")),
+      view.inputs.map((input) => scriptContextTxInInfoData(input, "midgard")),
+      view.referenceInputs.map((input) =>
+        scriptContextTxInInfoData(input, "midgard"),
+      ),
+      view.outputs.map((output) => scriptContextTxOutData(output, "midgard")),
       view.fee,
       validRangeData(view.validityIntervalStart, view.validityIntervalEnd),
       [...view.observers].sort(),

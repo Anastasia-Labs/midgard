@@ -13,8 +13,14 @@ describe("watcher startup DA params checks", () => {
     const dir = await tempDir();
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
+    const cosigner = await loadDaSigner(`hex:${"00".repeat(31)}02`);
+    // Q63 (F04 §4) floors the governed thresholds at two, so the smallest
+    // representable committee has two sorted-unique members. The signer's own
+    // index follows that ordering rather than being assumed to be zero.
+    const committeeKeys = [signer.publicKeyHex, cosigner.publicKeyHex].sort();
+    const committeeHex = committeeKeys.join("");
     const committeeSignersHash = bytesToHex(
-      blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
+      blake2b(Buffer.from(committeeHex, "hex"), { dkLen: 32 }),
     );
     const config = {
       ...minimalConfig({
@@ -25,15 +31,15 @@ describe("watcher startup DA params checks", () => {
         signerPublicKey: signer.publicKeyHex,
       }),
       daParams: {
-        committeeHex: signer.publicKeyHex,
+        committeeHex,
         committeeSignersHash,
-        threshold: 1,
+        threshold: 2,
       },
     };
     const signerValidation = validateDaSignerMembership({
       daParams: config.daParams,
       signer,
-      signerIndex: 0,
+      signerIndex: committeeKeys.indexOf(signer.publicKeyHex),
     });
     const service = new WatcherService({
       config,
@@ -47,13 +53,15 @@ describe("watcher startup DA params checks", () => {
       signer,
       signerValidation,
       daChainReader: {
+        // Floor-compliant, but a different committee than the config names —
+        // the mismatch is the whole point of the test.
         fetchDaParams: async () => ({
           outRef: "tx#0",
-          committeeHex: "ff".repeat(32),
+          committeeHex: "fe".repeat(32) + "ff".repeat(32),
           committeeSignersHash,
-          threshold: 1,
-          ownerCount: 0,
-          updateThreshold: 1,
+          threshold: 2,
+          ownerCount: 2,
+          updateThreshold: 2,
           rawDatum: {} as never,
         }),
         fetchDaAttestationCandidates: async () => [],

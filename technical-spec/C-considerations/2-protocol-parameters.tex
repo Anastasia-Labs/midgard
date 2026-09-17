@@ -9,36 +9,23 @@
 
 The following parameters must be set before Midgard is initialized.
 Their production values must be determined from implementation evidence, adversarial tests, transaction budgets, L1 congestion and rollback assumptions, DA latency and retention, and economic analysis.
-However, for the reader's intuition, we provide approximate values that we expect for the parameters:
+The compiled environment and deployment manifest determine the values for a particular deployment; development values are not production economic recommendations.
+The implementation sources are \path{onchain/aiken/env/testnet.ak}, the block maturity constant in \path{onchain/aiken/lib/midgard/ledger-state.ak}, and the governed DA parameter datum. Offchain parameter application validates deployment inputs once before scripts are deployed.
 
 \begin{table}[H]
 \centering
-\begin{tabular}{llr}\toprule
-  Parameter & Definition & Expected approx. value \\ \midrule
-  \code{event\_wait\_duration} &
-    \cref{h:deposit} &
-    2--4 minutes \\
-  \code{fraud\_prover\_reward} &
-    \cref{h:operator-directory} &
-    30\%--50\% of the \code{required\_bond} parameter \\
-  \code{maturity\_duration} &
-    \cref{h:state-queue} &
-    3--7 days \\
-  \code{registration\_duration} &
-    \cref{h:operator-directory} &
-    1 day \\
-  \code{required\_bond} &
-    \cref{h:operator-directory} &
-    50K--200K~ADA \\
-  \code{shift\_duration} &
-    \cref{h:time-model} &
-    1 hour \\
-  \code{slashing\_penalty} &
-    \cref{h:operator-directory} &
-    50\%--70\% of the \code{required\_bond} parameter
-  \\ \bottomrule
+\begin{tabular}{ll}\toprule
+  Parameter & Definition \\ \midrule
+  \code{event\_wait\_duration} & \cref{h:deposit} \\
+  \code{fraud\_prover\_reward} & \cref{h:operator-directory} \\
+  \code{maturity\_duration} & \cref{h:state-queue} \\
+  \code{registration\_duration} & \cref{h:operator-directory} \\
+  \code{required\_bond} & \cref{h:operator-directory} \\
+  \code{shift\_duration} & \cref{h:time-model} \\
+  \code{slashing\_penalty} & \cref{h:operator-directory} \\
+  \bottomrule
 \end{tabular}
-\caption[Midgard consensus protocol parameters]{Midgard consensus protocol parameters.}
+\caption[Midgard consensus protocol parameters]{Principal consensus parameters; this table is not a complete deployment manifest.}
 \label{table:midgard-consensus-protocol-parameters}
 \end{table}
 
@@ -49,18 +36,14 @@ Its L1 commitments and disputes are nevertheless settled by Cardano and therefor
 \label{h:midgard-ledger-parameters}
 
 Midgard's L2 transactions transition its ledger similarly to Cardano's ledger but with the exceptions defined in \cref{h:deviations-from-cardano-transaction-types}.
-Consequently, Midgard uses the same ledger-associated protocol parameters as Cardano but omits certain parameters as follows:
-\begin{itemize}
-  \item No staking or governance parameters.
-  \item No parameters for obsolete pre-Conway features.
-\end{itemize}
+The enabled native transaction profile has its own explicit consensus limits and validation context. Cardano parameters are not inherited automatically: the corresponding Midgard rules, compiled constants, and offchain mirrors must agree. See \path{demo/midgard-core/src/consensus-profile.ts} and the Aiken validation rules for the implemented profile.
 
 \subsection{Midgard fee structure}
 \label{h:midgard-fee-structure}
 
 Midgard will collect fees from all L2 transactions, in a similar way to how fees are collected for Cardano L1 transactions.
 Furthermore, Midgard may collect fees for processing deposits and withdrawals, as these user events incur costs separate from L2 transactions.
-However, Midgard's fee parameters are expected to be orders of magnitude smaller than Cardano's fee parameters.
+No fixed fee reduction relative to Cardano is established by this specification.
 
 Some Midgard L1 operating costs are approximately fixed per block, while others vary with transaction size, proof paths, settlement activity, script budgets, congestion, retries, and the number of DA attestations.
 DA storage, replication, retrieval, and retention costs vary with payload size and the deployed availability model.
@@ -75,7 +58,6 @@ The specific values of Midgard's fee parameters will be determined before launch
 Technically, Midgard operator nodes do not need to communicate with each for consensus.
 Instead, they participate in the consensus protocol by interacting with Midgard's smart contracts on L1.
 
-However, in practice, an offchain peer-to-peer gossip network between operators may help them run things a bit more smoothly for users.
-If so, there may be associated protocol parameters to help peers discover the network topology and communicate with other peers.
+The current DA committee and retained-payload retrieval services use libp2p transports. Their peer identities, bootstrap addresses, retention, size limits, and timeouts are operational parameters; the governed committee and quorum parameters are consensus-relevant. This DA network does not replace L1 operator scheduling or L1 settlement.
 
 \end{document}

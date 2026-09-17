@@ -5,9 +5,63 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 
-const TX_HASH_PATTERN = /^[0-9a-f]{64}$/iu;
-const SHA256_PATTERN = /^[0-9a-f]{64}$/iu;
+import {
+  computeMidgardNativeTxId,
+  decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+} from "@al-ft/midgard-core/codec";
+
+const TX_HASH_PATTERN = /^[0-9a-f]{64}$/u;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
+const OUTREF_PATTERN = /^[0-9a-f]{64}#(0|[1-9][0-9]*)$/u;
 const SHAPES = new Set(["fanout", "chain", "mixed"]);
+const CORPUS_MANIFEST_SCHEMA = "midgard-stress-corpus-manifest-v1";
+const CORPUS_MANIFEST_KEYS = [
+  "schemaVersion",
+  "targetRateTps",
+  "durationMs",
+  "warmupCount",
+  "cooldownCount",
+  "safetyFactor",
+  "assumedAcceptanceLatencyMs",
+  "chainCount",
+  "chainDepth",
+  "corpusShape",
+  "corpusSliceIds",
+  "generatedAtIso",
+  "generatorGitSha",
+  "lucidMidgardVersion",
+  "feeParams",
+  "network",
+  "networkId",
+  "maxSubmitTxCborBytes",
+  "amountTemplate",
+  "verification",
+  "fundingSummary",
+  "walletSetIdentity",
+  "sliceSummary",
+  "files",
+];
+const CORPUS_ROW_KEYS = [
+  "txHash",
+  "canonicalCborHex",
+  "canonicalCborSha256",
+  "canonicalCborByteLength",
+  "senderWalletId",
+  "selectedInputOutref",
+  "outputOutrefs",
+  "planShape",
+  "parentTxHash",
+  "corpusSliceId",
+];
+const CORPUS_INDEX_KEYS = [
+  "corpusSliceId",
+  "planShape",
+  "chainId",
+  "startByteOffset",
+  "endByteOffset",
+  "rowCount",
+];
 const DEFAULT_UNIQUENESS_CHUNK_ENTRIES = 50_000;
 const MAX_STREAMING_CORPUS_BUFFERED_ROWS = 8_192;
 const POSITIONAL_READ_BYTES = 64 * 1024;
@@ -55,6 +109,349 @@ const parseJsonLine = (line, label) => {
   }
 };
 
+const exactObject = (value, label, keys) => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be a JSON object`);
+  }
+  const missing = keys.filter((key) => !Object.hasOwn(value, key));
+  const extra = Object.keys(value).filter((key) => !keys.includes(key));
+  if (missing.length > 0 || extra.length > 0) {
+    throw new Error(
+      `${label} keys must be exact; missing=[${missing.join(",")}], extra=[${extra.join(",")}]`,
+    );
+  }
+  return value;
+};
+
+const exactString = (value, label) => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value !== value.trim()
+  ) {
+    throw new Error(`${label} must be a non-empty exact string`);
+  }
+  return value;
+};
+
+const safeInteger = (value, label, minimum) => {
+  if (!Number.isSafeInteger(value) || value < minimum) {
+    throw new Error(`${label} must be a safe integer >= ${minimum.toString()}`);
+  }
+  return value;
+};
+
+const finiteNumber = (value, label, allowZero = false) => {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    (allowZero ? value < 0 : value <= 0)
+  ) {
+    throw new Error(
+      `${label} must be a finite ${allowZero ? "non-negative" : "positive"} number`,
+    );
+  }
+  return value;
+};
+
+const canonicalDecimal = (value, label) => {
+  const text = exactString(value, label);
+  if (!/^(0|[1-9][0-9]*)$/u.test(text)) {
+    throw new Error(`${label} must be a canonical non-negative decimal`);
+  }
+  return text;
+};
+
+const exactSha256 = (value, label) => {
+  const digest = exactString(value, label);
+  if (!SHA256_PATTERN.test(digest)) {
+    throw new Error(`${label} must be an exact lowercase SHA-256`);
+  }
+  return digest;
+};
+
+export const parseCorpusManifest = (value) => {
+  const manifest = exactObject(value, "corpus manifest", CORPUS_MANIFEST_KEYS);
+  if (manifest.schemaVersion !== CORPUS_MANIFEST_SCHEMA) {
+    throw new Error(
+      `unsupported corpus manifest schemaVersion ${String(manifest.schemaVersion)}`,
+    );
+  }
+  finiteNumber(manifest.targetRateTps, "corpus manifest targetRateTps");
+  safeInteger(manifest.durationMs, "corpus manifest durationMs", 1);
+  safeInteger(manifest.warmupCount, "corpus manifest warmupCount", 0);
+  safeInteger(manifest.cooldownCount, "corpus manifest cooldownCount", 0);
+  finiteNumber(manifest.safetyFactor, "corpus manifest safetyFactor");
+  safeInteger(
+    manifest.assumedAcceptanceLatencyMs,
+    "corpus manifest assumedAcceptanceLatencyMs",
+    1,
+  );
+  const chainCount = safeInteger(
+    manifest.chainCount,
+    "corpus manifest chainCount",
+    1,
+  );
+  const chainDepth = safeInteger(
+    manifest.chainDepth,
+    "corpus manifest chainDepth",
+    1,
+  );
+  if (!SHAPES.has(manifest.corpusShape)) {
+    throw new Error("corpus manifest corpusShape is unsupported");
+  }
+  if (
+    !Array.isArray(manifest.corpusSliceIds) ||
+    manifest.corpusSliceIds.length === 0
+  ) {
+    throw new Error("corpus manifest corpusSliceIds must be non-empty");
+  }
+  const corpusSliceIds = manifest.corpusSliceIds.map((entry, index) =>
+    exactString(entry, `corpus manifest corpusSliceIds[${index}]`),
+  );
+  if (new Set(corpusSliceIds).size !== corpusSliceIds.length) {
+    throw new Error("corpus manifest corpusSliceIds must be unique");
+  }
+  const generatedAtIso = exactString(
+    manifest.generatedAtIso,
+    "corpus manifest generatedAtIso",
+  );
+  if (
+    Number.isNaN(Date.parse(generatedAtIso)) ||
+    new Date(generatedAtIso).toISOString() !== generatedAtIso
+  ) {
+    throw new Error(
+      "corpus manifest generatedAtIso must be canonical ISO-8601",
+    );
+  }
+  exactString(manifest.generatorGitSha, "corpus manifest generatorGitSha");
+  exactString(
+    manifest.lucidMidgardVersion,
+    "corpus manifest lucidMidgardVersion",
+  );
+  const feeParams = exactObject(
+    manifest.feeParams,
+    "corpus manifest feeParams",
+    ["minFeeA", "minFeeB"],
+  );
+  canonicalDecimal(feeParams.minFeeA, "corpus manifest feeParams.minFeeA");
+  canonicalDecimal(feeParams.minFeeB, "corpus manifest feeParams.minFeeB");
+  if (manifest.network !== "Mainnet" && manifest.network !== "Preprod") {
+    throw new Error("corpus manifest network is unsupported");
+  }
+  const networkId = canonicalDecimal(
+    manifest.networkId,
+    "corpus manifest networkId",
+  );
+  if (
+    (manifest.network === "Mainnet" && networkId !== "1") ||
+    (manifest.network === "Preprod" && networkId !== "0")
+  ) {
+    throw new Error("corpus manifest networkId does not match network");
+  }
+  safeInteger(
+    manifest.maxSubmitTxCborBytes,
+    "corpus manifest maxSubmitTxCborBytes",
+    1,
+  );
+  const amountTemplate = exactObject(
+    manifest.amountTemplate,
+    "corpus manifest amountTemplate",
+    ["lovelace", "shape"],
+  );
+  canonicalDecimal(
+    amountTemplate.lovelace,
+    "corpus manifest amountTemplate.lovelace",
+  );
+  if (amountTemplate.shape !== "self-transfer-change-chain") {
+    throw new Error("corpus manifest amountTemplate.shape is unsupported");
+  }
+  const verification = exactObject(
+    manifest.verification,
+    "corpus manifest verification",
+    ["rebuildSampleRate", "rebuildSampleAlgorithm"],
+  );
+  const rebuildSampleRate = finiteNumber(
+    verification.rebuildSampleRate,
+    "corpus manifest verification.rebuildSampleRate",
+  );
+  if (rebuildSampleRate > 1) {
+    throw new Error(
+      "corpus manifest verification.rebuildSampleRate must be <= 1",
+    );
+  }
+  if (
+    verification.rebuildSampleAlgorithm !== "sha256-corpus-chain-id-order-v1"
+  ) {
+    throw new Error(
+      "corpus manifest verification.rebuildSampleAlgorithm is unsupported",
+    );
+  }
+  const fundingSummary = exactObject(
+    manifest.fundingSummary,
+    "corpus manifest fundingSummary",
+    ["walletCount", "perWalletFundingLovelace", "totalFundingLovelace"],
+  );
+  const fundingWalletCount = safeInteger(
+    fundingSummary.walletCount,
+    "corpus manifest fundingSummary.walletCount",
+    1,
+  );
+  const perWalletFundingLovelace = canonicalDecimal(
+    fundingSummary.perWalletFundingLovelace,
+    "corpus manifest fundingSummary.perWalletFundingLovelace",
+  );
+  const totalFundingLovelace = canonicalDecimal(
+    fundingSummary.totalFundingLovelace,
+    "corpus manifest fundingSummary.totalFundingLovelace",
+  );
+  const walletSetIdentity = exactObject(
+    manifest.walletSetIdentity,
+    "corpus manifest walletSetIdentity",
+    [
+      "walletCount",
+      "fundingRowCount",
+      "uniqueFirstFundingOutrefCount",
+      "walletSetHashAlgorithm",
+      "walletSetSha256",
+      "fundingSetHashAlgorithm",
+      "fundingSetSha256",
+    ],
+  );
+  const walletSetCount = safeInteger(
+    walletSetIdentity.walletCount,
+    "corpus manifest walletSetIdentity.walletCount",
+    1,
+  );
+  safeInteger(
+    walletSetIdentity.fundingRowCount,
+    "corpus manifest walletSetIdentity.fundingRowCount",
+    1,
+  );
+  const uniqueFirstFundingOutrefCount = safeInteger(
+    walletSetIdentity.uniqueFirstFundingOutrefCount,
+    "corpus manifest walletSetIdentity.uniqueFirstFundingOutrefCount",
+    1,
+  );
+  if (
+    walletSetIdentity.walletSetHashAlgorithm !==
+      "sha256-wallet-id-l2-address-lines-v1" ||
+    walletSetIdentity.fundingSetHashAlgorithm !==
+      "sha256-wallet-id-outref-output-cbor-sha256-lines-v1"
+  ) {
+    throw new Error(
+      "corpus manifest walletSetIdentity hash algorithm is unsupported",
+    );
+  }
+  exactSha256(
+    walletSetIdentity.walletSetSha256,
+    "corpus manifest walletSetIdentity.walletSetSha256",
+  );
+  exactSha256(
+    walletSetIdentity.fundingSetSha256,
+    "corpus manifest walletSetIdentity.fundingSetSha256",
+  );
+  if (
+    !Array.isArray(manifest.sliceSummary) ||
+    manifest.sliceSummary.length === 0
+  ) {
+    throw new Error("corpus manifest sliceSummary must be non-empty");
+  }
+  let sliceRowCount = 0;
+  let sliceWalletCount = 0;
+  const observedSliceIds = [];
+  for (const [index, entry] of manifest.sliceSummary.entries()) {
+    const exactEntry = exactObject(
+      entry,
+      `corpus manifest sliceSummary[${index}]`,
+      ["corpusSliceId", "walletCount", "rowCount"],
+    );
+    observedSliceIds.push(
+      exactString(
+        exactEntry.corpusSliceId,
+        `corpus manifest sliceSummary[${index}].corpusSliceId`,
+      ),
+    );
+    const walletCount = safeInteger(
+      exactEntry.walletCount,
+      `corpus manifest sliceSummary[${index}].walletCount`,
+      1,
+    );
+    sliceWalletCount += walletCount;
+    const rowCount = safeInteger(
+      exactEntry.rowCount,
+      `corpus manifest sliceSummary[${index}].rowCount`,
+      1,
+    );
+    if (rowCount !== walletCount * chainDepth) {
+      throw new Error(
+        `corpus manifest sliceSummary[${index}].rowCount must equal walletCount*chainDepth`,
+      );
+    }
+    sliceRowCount += rowCount;
+  }
+  if (
+    new Set(observedSliceIds).size !== observedSliceIds.length ||
+    JSON.stringify(observedSliceIds) !== JSON.stringify(corpusSliceIds)
+  ) {
+    throw new Error(
+      "corpus manifest sliceSummary identities must exactly match corpusSliceIds",
+    );
+  }
+  const files = exactObject(manifest.files, "corpus manifest files", [
+    "corpus",
+    "index",
+    "shards",
+  ]);
+  for (const artifact of ["corpus", "index"]) {
+    const entry = exactObject(
+      files[artifact],
+      `corpus manifest files.${artifact}`,
+      ["path", "sha256", "rowCount"],
+    );
+    if (
+      exactString(entry.path, `corpus manifest files.${artifact}.path`) ===
+        "" ||
+      exactSha256(entry.sha256, `corpus manifest files.${artifact}.sha256`) ===
+        "" ||
+      safeInteger(
+        entry.rowCount,
+        `corpus manifest files.${artifact}.rowCount`,
+        1,
+      ) < 1
+    ) {
+      throw new Error(`corpus manifest files.${artifact} is malformed`);
+    }
+  }
+  if (
+    !Array.isArray(files.shards) ||
+    files.shards.length === 0 ||
+    files.shards.some(
+      (entry, index) =>
+        exactString(entry, `corpus manifest files.shards[${index}]`) === "",
+    ) ||
+    new Set(files.shards).size !== files.shards.length
+  ) {
+    throw new Error(
+      "corpus manifest files.shards must be non-empty and unique",
+    );
+  }
+  if (
+    files.corpus.rowCount !== sliceRowCount ||
+    files.corpus.rowCount !== chainCount * chainDepth ||
+    files.index.rowCount !== chainCount ||
+    chainCount !== fundingWalletCount ||
+    sliceWalletCount !== fundingWalletCount ||
+    fundingWalletCount !== walletSetCount ||
+    uniqueFirstFundingOutrefCount !== walletSetCount ||
+    BigInt(totalFundingLovelace) !==
+      BigInt(fundingWalletCount) * BigInt(perWalletFundingLovelace)
+  ) {
+    throw new Error("corpus manifest cardinality binding is inconsistent");
+  }
+  return manifest;
+};
+
 export const defaultCorpusIndexPath = (corpusPath) =>
   `${corpusPath}.index.ndjson`;
 
@@ -62,11 +459,7 @@ export const defaultCorpusManifestPath = (corpusPath) =>
   `${corpusPath}.manifest.json`;
 
 export const loadCorpusManifest = async (manifestPath) => {
-  const parsed = JSON.parse(await readFile(manifestPath, "utf8"));
-  if (typeof parsed !== "object" || parsed === null) {
-    throw new Error(`corpus manifest ${manifestPath} must be a JSON object`);
-  }
-  return parsed;
+  return parseCorpusManifest(JSON.parse(await readFile(manifestPath, "utf8")));
 };
 
 const sha256File = async (filePath) =>
@@ -94,16 +487,35 @@ export const verifyCorpusArtifactIdentity = async ({
   manifestPath,
   manifest,
 }) => {
+  const exactManifest = parseCorpusManifest(manifest);
+  const persistedManifest = await loadCorpusManifest(manifestPath);
+  if (JSON.stringify(exactManifest) !== JSON.stringify(persistedManifest)) {
+    throw new Error(
+      "supplied corpus manifest does not match the persisted manifest bytes",
+    );
+  }
+  if (
+    path.resolve(exactManifest.files.corpus.path) !==
+      path.resolve(corpusPath) ||
+    path.resolve(exactManifest.files.index.path) !== path.resolve(indexPath)
+  ) {
+    throw new Error(
+      "corpus manifest paths do not bind the requested corpus and index",
+    );
+  }
   const [corpusSha256, indexSha256, manifestSha256] = await Promise.all([
     sha256File(corpusPath),
     sha256File(indexPath),
     sha256File(manifestPath),
   ]);
   const expectedCorpusSha256 = requiredManifestArtifactSha256(
-    manifest,
+    exactManifest,
     "corpus",
   );
-  const expectedIndexSha256 = requiredManifestArtifactSha256(manifest, "index");
+  const expectedIndexSha256 = requiredManifestArtifactSha256(
+    exactManifest,
+    "index",
+  );
   if (corpusSha256 !== expectedCorpusSha256) {
     throw new Error(
       `corpus sha256 ${corpusSha256} does not match manifest ${expectedCorpusSha256}`,
@@ -130,10 +542,12 @@ export const loadCorpusIndex = async (indexPath) =>
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
     .map((line, index) => {
-      const parsed = parseJsonLine(line, `corpus index row ${index + 1}`);
+      const parsed = exactObject(
+        parseJsonLine(line, `corpus index row ${index + 1}`),
+        `corpus index row ${index + 1}`,
+        CORPUS_INDEX_KEYS,
+      );
       if (
-        typeof parsed !== "object" ||
-        parsed === null ||
         typeof parsed.corpusSliceId !== "string" ||
         typeof parsed.chainId !== "string" ||
         !SHAPES.has(parsed.planShape) ||
@@ -177,11 +591,7 @@ export const selectCorpusIndexEntries = ({
 };
 
 export const parseCorpusRowLine = (line, label) => {
-  const parsed = parseJsonLine(line, label);
-  if (typeof parsed !== "object" || parsed === null) {
-    throw new Error(`${label} must be a JSON object`);
-  }
-  const row = parsed;
+  const row = exactObject(parseJsonLine(line, label), label, CORPUS_ROW_KEYS);
   for (const field of [
     "txHash",
     "canonicalCborHex",
@@ -190,13 +600,19 @@ export const parseCorpusRowLine = (line, label) => {
     "selectedInputOutref",
     "corpusSliceId",
   ]) {
-    if (typeof row[field] !== "string" || row[field].trim().length === 0) {
-      throw new Error(`${label}.${field} must be a non-empty string`);
+    if (
+      typeof row[field] !== "string" ||
+      row[field].length === 0 ||
+      row[field] !== row[field].trim()
+    ) {
+      throw new Error(`${label}.${field} must be an exact non-empty string`);
     }
   }
-  row.txHash = row.txHash.trim().toLowerCase();
-  row.canonicalCborHex = row.canonicalCborHex.trim().toLowerCase();
-  row.canonicalCborSha256 = row.canonicalCborSha256.trim().toLowerCase();
+  for (const field of ["txHash", "canonicalCborHex", "canonicalCborSha256"]) {
+    if (row[field] !== row[field].trim().toLowerCase()) {
+      throw new Error(`${label}.${field} must use exact lowercase encoding`);
+    }
+  }
   if (!TX_HASH_PATTERN.test(row.txHash)) {
     throw new Error(`${label}.txHash must be 32-byte hex`);
   }
@@ -220,17 +636,58 @@ export const parseCorpusRowLine = (line, label) => {
   ) {
     throw new Error(`${label}.canonicalCborByteLength does not match CBOR`);
   }
-  if (!Array.isArray(row.outputOutrefs)) {
-    throw new Error(`${label}.outputOutrefs must be an array`);
+  let outputCount;
+  let computedTxHash;
+  try {
+    const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(cborBytes);
+    computedTxHash = computeMidgardNativeTxId(nativeTx).toString("hex");
+    outputCount = decodeMidgardNativeByteListPreimage(
+      nativeTx.body.outputsPreimageCbor,
+      `${label}.outputs`,
+    ).length;
+  } catch (cause) {
+    throw new Error(
+      `${label}.canonicalCborHex must be canonical Midgard native V1 transaction CBOR: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
+  }
+  if (computedTxHash !== row.txHash) {
+    throw new Error(`${label}.txHash does not bind canonicalCborHex`);
+  }
+  if (!OUTREF_PATTERN.test(row.selectedInputOutref)) {
+    throw new Error(
+      `${label}.selectedInputOutref must be canonical <64hex>#<index>`,
+    );
+  }
+  if (
+    !Array.isArray(row.outputOutrefs) ||
+    row.outputOutrefs.some(
+      (entry) =>
+        typeof entry !== "string" ||
+        entry.length === 0 ||
+        entry !== entry.trim(),
+    )
+  ) {
+    throw new Error(`${label}.outputOutrefs must be an exact string array`);
+  }
+  if (
+    row.outputOutrefs.length !== outputCount ||
+    row.outputOutrefs.some(
+      (outref, outputIndex) =>
+        outref !== `${row.txHash}#${outputIndex.toString()}`,
+    )
+  ) {
+    throw new Error(
+      `${label}.outputOutrefs must exactly enumerate canonicalCborHex outputs`,
+    );
   }
   if (!SHAPES.has(row.planShape)) {
     throw new Error(`${label}.planShape is unsupported`);
   }
   if (
     row.parentTxHash !== null &&
-    row.parentTxHash !== undefined &&
     (typeof row.parentTxHash !== "string" ||
-      !TX_HASH_PATTERN.test(row.parentTxHash))
+      !TX_HASH_PATTERN.test(row.parentTxHash) ||
+      row.parentTxHash !== row.parentTxHash.toLowerCase())
   ) {
     throw new Error(`${label}.parentTxHash must be null or 32-byte hex`);
   }
@@ -241,12 +698,9 @@ export const parseCorpusRowLine = (line, label) => {
     canonicalCborByteLength: row.canonicalCborByteLength,
     senderWalletId: row.senderWalletId,
     selectedInputOutref: row.selectedInputOutref,
-    outputOutrefs: row.outputOutrefs.map((entry) => String(entry)),
+    outputOutrefs: row.outputOutrefs,
     planShape: row.planShape,
-    parentTxHash:
-      row.parentTxHash === null || row.parentTxHash === undefined
-        ? null
-        : row.parentTxHash.toLowerCase(),
+    parentTxHash: row.parentTxHash === null ? null : row.parentTxHash,
     corpusSliceId: row.corpusSliceId,
   };
 };
@@ -682,17 +1136,26 @@ export const scanCorpusPrefixEvidence = async ({
   consumption,
   expectedCorpusSha256,
 }) => {
+  const exactConsumption = exactObject(consumption, "corpus prefix evidence", [
+    "schemaVersion",
+    "rowCount",
+    "chains",
+  ]);
   if (
-    consumption?.schemaVersion !== CORPUS_PREFIX_EVIDENCE_SCHEMA ||
-    !Array.isArray(consumption?.chains) ||
-    consumption.chains.length !== selectedEntries.length
+    exactConsumption.schemaVersion !== CORPUS_PREFIX_EVIDENCE_SCHEMA ||
+    !Array.isArray(exactConsumption.chains) ||
+    exactConsumption.chains.length !== selectedEntries.length
   ) {
     throw new Error("corpus prefix evidence is missing or malformed");
   }
   const expectedByRange = new Map();
   let expectedRows = 0;
   for (const [chainIndex, entry] of selectedEntries.entries()) {
-    const expected = consumption.chains[chainIndex];
+    const expected = exactObject(
+      exactConsumption.chains[chainIndex],
+      `corpus prefix evidence chains[${chainIndex.toString()}]`,
+      ["chainIndex", "chainId", "rowCount", "prefixSha256"],
+    );
     if (
       expected?.chainIndex !== chainIndex ||
       expected?.chainId !== entry.chainId ||
@@ -715,7 +1178,7 @@ export const scanCorpusPrefixEvidence = async ({
       },
     );
   }
-  if (consumption.rowCount !== expectedRows) {
+  if (exactConsumption.rowCount !== expectedRows) {
     throw new Error("corpus prefix evidence row count is inconsistent");
   }
 

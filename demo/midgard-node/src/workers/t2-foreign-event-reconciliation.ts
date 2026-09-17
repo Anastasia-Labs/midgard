@@ -1,5 +1,6 @@
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
+import { assertDeploymentMarkerMatches } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
@@ -12,10 +13,10 @@ import {
   ForeignTipReconciliationsDB,
   MempoolLedgerDB,
   WithdrawalsDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
-import { computeDaPayloadRoots } from "@/workers/commit-block-header/da-payload.js";
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { ContractDeploymentIdentity, Database } from "../services/index.js";
+import { computeDaPayloadRoots } from "./commit-block-header/da-payload.js";
 
 export type T2CandidateEventIds = {
   readonly deposits: readonly string[];
@@ -49,7 +50,7 @@ const normalizedIds = (ids: readonly string[]): readonly string[] =>
   [...new Set(ids.map((id) => id.toLowerCase()))].sort();
 
 const countsMatchHeader = (
-  payload: SDK.DaPayloadV2,
+  payload: SDK.DaPayload,
   header: SDK.Header,
 ): boolean => {
   const body = payload.block_body;
@@ -65,7 +66,9 @@ const countsMatchHeader = (
     counts.withdrawalCount === header.withdrawalCount &&
     counts.l2TransactionCount === header.l2TransactionCount &&
     counts.totalEventCount === header.totalEventCount &&
-    counts.transitionStepCount === header.transitionStepCount
+    counts.transitionStepCount === header.transitionStepCount &&
+    counts.validationTraceCount === header.validationTraceCount &&
+    BigInt(body.validation_traces.length) === header.validationTraceCount
   );
 };
 
@@ -76,7 +79,7 @@ const verifyForeignPayload = ({
 }: {
   readonly foreignHeaderHash: string;
   readonly header: SDK.Header;
-  readonly payload: SDK.DaPayloadV2;
+  readonly payload: SDK.DaPayload;
 }): Effect.Effect<boolean> =>
   Effect.gen(function* () {
     const [computedHeaderHash, payloadHeaderHash, roots] = yield* Effect.all(
@@ -98,6 +101,7 @@ const verifyForeignPayload = ({
       roots.utxosRoot === header.utxosRoot &&
       roots.transitionTraceRoot === header.transitionTraceRoot &&
       roots.eventToStepRoot === header.eventToStepRoot &&
+      roots.validationTracesRoot === header.validationTracesRoot &&
       countsMatchHeader(payload, header)
     );
   }).pipe(Effect.catchAll(() => Effect.succeed(false)));
@@ -147,7 +151,7 @@ export const resolveT2ForeignEventEvidence = ({
   readonly foreignHeaderHash: string;
   readonly header: SDK.Header;
   readonly candidateIds: T2CandidateEventIds;
-  readonly payload?: SDK.DaPayloadV2;
+  readonly payload?: SDK.DaPayload;
   readonly payloadError?: string;
 }): Effect.Effect<T2ForeignEventResolution> =>
   Effect.gen(function* () {
@@ -283,11 +287,14 @@ const decodeStoredPayload = ({
 }: {
   readonly payloadCbor: Buffer;
   readonly schemaVersion: number;
-}): Promise<SDK.DaPayloadV2> =>
-  unwrapDaPayload(payloadCbor, {
-    maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-    schemaVersion,
-  }).then((unwrapped) => SDK.decodeDaPayloadV2Canonical(unwrapped.innerBytes));
+}): Promise<SDK.DaPayload> =>
+  schemaVersion !== Number(SDK.DA_PAYLOAD_VERSION)
+    ? Promise.reject(
+        new Error("Stored DA payload schema version must equal canonical V1"),
+      )
+    : unwrapDaPayload(payloadCbor, {
+        maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+      }).then((unwrapped) => SDK.decodeDaPayload(unwrapped.innerBytes));
 
 export const reconcileOverdueAwaitingEventsAgainstForeignTip = ({
   foreignHeaderHash,
@@ -295,7 +302,11 @@ export const reconcileOverdueAwaitingEventsAgainstForeignTip = ({
 }: {
   readonly foreignHeaderHash: string;
   readonly header: SDK.Header;
-}): Effect.Effect<T2ForeignEventResolution, DatabaseError, Database> =>
+}): Effect.Effect<
+  T2ForeignEventResolution,
+  DatabaseError,
+  Database | ContractDeploymentIdentity
+> =>
   Effect.gen(function* () {
     const suppliedHash = yield* SDK.hashBlockHeader(header).pipe(
       Effect.mapError(
@@ -403,7 +414,11 @@ const decodeRetainedHeader = (
 
 const reconcileRetainedForeignTipEntry = (
   initialEntry: ForeignTipReconciliationsDB.Entry,
-): Effect.Effect<T2ForeignEventResolution, DatabaseError, Database> =>
+): Effect.Effect<
+  T2ForeignEventResolution,
+  DatabaseError,
+  Database | ContractDeploymentIdentity
+> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     return yield* sql.withTransaction(
@@ -420,6 +435,34 @@ const reconcileRetainedForeignTipEntry = (
           return { type: "Ready", absent: emptyIds() } as const;
         }
         const entry = currentEntry.value;
+        const reconciliation =
+          ForeignTipReconciliationsDB.decodeForeignTipReconciliation(entry);
+        const deploymentIdentity = yield* ContractDeploymentIdentity;
+        if (deploymentIdentity.deploymentMarker === undefined) {
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: ForeignTipReconciliationsDB.tableName,
+              message:
+                "Foreign-tip recovery requires the exact active deployment marker",
+              cause: "missing_deployment_marker",
+            }),
+          );
+        }
+        yield* Effect.try({
+          try: () =>
+            assertDeploymentMarkerMatches(
+              reconciliation.deploymentMarker,
+              deploymentIdentity.deploymentMarker,
+              "ForeignTipReconciliationV1 recovery",
+            ),
+          catch: (cause) =>
+            new DatabaseError({
+              table: ForeignTipReconciliationsDB.tableName,
+              message:
+                "Foreign-tip reconciliation belongs to a different deployment",
+              cause,
+            }),
+        });
         const header = yield* decodeRetainedHeader(entry);
         const startTime =
           entry[ForeignTipReconciliationsDB.Columns.BLOCK_START_TIME];
@@ -470,35 +513,77 @@ const reconcileRetainedForeignTipEntry = (
           entry[ForeignTipReconciliationsDB.Columns.VERIFIED_DA_PAYLOAD_CBOR];
         const retainedSchemaVersion =
           entry[ForeignTipReconciliationsDB.Columns.VERIFIED_DA_SCHEMA_VERSION];
+        const retainedPayloadSha256 =
+          entry[ForeignTipReconciliationsDB.Columns.VERIFIED_DA_PAYLOAD_SHA256];
         const availablePayload =
-          retainedPayloadCbor !== null && retainedSchemaVersion !== null
+          retainedPayloadCbor !== null &&
+          retainedSchemaVersion !== null &&
+          retainedPayloadSha256 !== null
             ? {
+                headerHash:
+                  entry[
+                    ForeignTipReconciliationsDB.Columns.FOREIGN_HEADER_HASH
+                  ],
+                consensusProfileId:
+                  entry[
+                    ForeignTipReconciliationsDB.Columns.CONSENSUS_PROFILE_ID
+                  ],
                 payloadCbor: retainedPayloadCbor,
                 schemaVersion: retainedSchemaVersion,
+                payloadSha256: retainedPayloadSha256,
               }
             : Option.getOrUndefined(
                 yield* DaPayloadsDB.retrieveByHeaderHash(
                   Buffer.from(foreignHeaderHash, "hex"),
                 ),
               );
-        const payloadCbor =
+        const daIdentityCandidate =
           availablePayload === undefined
             ? undefined
             : "payloadCbor" in availablePayload
-              ? availablePayload.payloadCbor
-              : availablePayload[DaPayloadsDB.Columns.PAYLOAD_CBOR];
-        const schemaVersion =
-          availablePayload === undefined
-            ? undefined
-            : "schemaVersion" in availablePayload
-              ? availablePayload.schemaVersion
-              : availablePayload[DaPayloadsDB.Columns.VERSION];
-        let payload: SDK.DaPayloadV2 | undefined;
+              ? availablePayload
+              : {
+                  headerHash:
+                    availablePayload[DaPayloadsDB.Columns.HEADER_HASH],
+                  schemaVersion: availablePayload[DaPayloadsDB.Columns.VERSION],
+                  consensusProfileId:
+                    availablePayload[DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID],
+                  payloadCbor:
+                    availablePayload[DaPayloadsDB.Columns.PAYLOAD_CBOR],
+                  payloadSha256:
+                    availablePayload[DaPayloadsDB.Columns.PAYLOAD_SHA256],
+                };
+        let authenticatedDa:
+          | ForeignTipReconciliationsDB.ForeignTipDaIdentity
+          | undefined;
+        let payload: SDK.DaPayload | undefined;
         let payloadError: string | undefined;
-        if (payloadCbor !== undefined && schemaVersion !== undefined) {
+        if (daIdentityCandidate !== undefined) {
+          const authenticated = yield* Effect.either(
+            Effect.try({
+              try: () =>
+                ForeignTipReconciliationsDB.authenticateForeignTipDaEvidence({
+                  reconciliation,
+                  deploymentMarker: deploymentIdentity.deploymentMarker,
+                  evidence: daIdentityCandidate,
+                }),
+              catch: (cause) => cause,
+            }),
+          );
+          if (authenticated._tag === "Left") {
+            payloadError = String(authenticated.left);
+          } else {
+            authenticatedDa = authenticated.right;
+          }
+        }
+        if (authenticatedDa !== undefined) {
           const decoded = yield* Effect.either(
             Effect.tryPromise({
-              try: () => decodeStoredPayload({ payloadCbor, schemaVersion }),
+              try: () =>
+                decodeStoredPayload({
+                  payloadCbor: authenticatedDa.payloadCbor,
+                  schemaVersion: authenticatedDa.schemaVersion,
+                }),
               catch: (cause) => cause,
             }),
           );
@@ -547,14 +632,32 @@ const reconcileRetainedForeignTipEntry = (
             ),
           );
         }
+        const requiresDaEvidence =
+          header.depositsRoot !== SDK.EMPTY_MERKLE_TREE_ROOT ||
+          header.forcedTransactionsRoot !== SDK.EMPTY_MERKLE_TREE_ROOT ||
+          header.withdrawalsRoot !== SDK.EMPTY_MERKLE_TREE_ROOT;
+        const resolvedEvidence: ForeignTipReconciliationsDB.ResolveForeignTipEvidence =
+          !requiresDaEvidence
+            ? {
+                kind: ForeignTipReconciliationsDB.EvidenceKind.VerifiedEmpty,
+              }
+            : authenticatedDa !== undefined && payload !== undefined
+              ? {
+                  kind: ForeignTipReconciliationsDB.EvidenceKind.VerifiedDa,
+                  daIdentity: authenticatedDa,
+                }
+              : yield* Effect.fail(
+                  new DatabaseError({
+                    table: ForeignTipReconciliationsDB.tableName,
+                    message:
+                      "Foreign-tip resolution lost its authenticated DA identity",
+                    cause: foreignHeaderHash,
+                  }),
+                );
         yield* ForeignTipReconciliationsDB.markResolved({
           foreignHeaderHash,
-          ...(payloadCbor === undefined || schemaVersion === undefined
-            ? {}
-            : {
-                verifiedDaPayloadCbor: payloadCbor,
-                verifiedDaSchemaVersion: schemaVersion,
-              }),
+          deploymentMarker: deploymentIdentity.deploymentMarker,
+          evidence: resolvedEvidence,
         });
         return resolution;
       }),
@@ -613,7 +716,11 @@ const resolvedWindowHasAwaitingEvents = (
  * live state-queue tip advances beyond the foreign header.
  */
 export const reconcileOverdueAwaitingEventsAgainstRetainedForeignTips =
-  (): Effect.Effect<T2ForeignEventResolution, DatabaseError, Database> =>
+  (): Effect.Effect<
+    T2ForeignEventResolution,
+    DatabaseError,
+    Database | ContractDeploymentIdentity
+  > =>
     Effect.gen(function* () {
       const history =
         yield* ForeignTipReconciliationsDB.retrieveEvidenceHistory;

@@ -107,8 +107,7 @@ Defined in
 
 The database adapter rejects inserting a tx id under a different header if the
 tx id is already present
-([blocks.ts](src/database/blocks.ts)). Inserts de-duplicate input tx ids
-and use `ON CONFLICT (tx_id) DO NOTHING` only after checking that an existing
+([blocks.ts](src/database/blocks.ts)). Inserts use `ON CONFLICT (tx_id) DO NOTHING` only after checking that an existing
 row is linked to the same header
 ([blocks.ts](src/database/blocks.ts)).
 
@@ -328,9 +327,12 @@ trailing bytes, undefined values, indefinite encoding, and duplicate map keys
 
 ### Writers
 
-`MempoolDB.insert` and `MempoolDB.insertMultiple` write deltas in the same SQL
-transaction that inserts the tx into `mempool`, updates `mempool_ledger`, marks
-consumed deposits, and writes address history
+`MempoolDB.insert` and `MempoolDB.insertMultiple` commit membership, ledger
+effects, and consumed-deposit state first, then enqueue deltas and address
+history through `enqueueAcceptedWriteBehind`. The normal admission path also
+commits its terminal status atomically with those core effects. Auxiliary
+projections are bounded write-behind work, with inline overflow handling and
+graceful-shutdown draining; a crash may lose the unflushed window
 ([mempool.ts](src/database/mempool.ts),
 [mempool.ts](src/database/mempool.ts)).
 
@@ -338,10 +340,10 @@ consumed deposits, and writes address history
 
 `processMpfs` reads deltas for the mempool tx ids it is about to include in an
 MPF build
-([mpf.ts](src/workers/utils/mpf.ts)). If a delta is missing or invalid,
+([process.ts](src/mpf/process.ts)). If a delta is missing or invalid,
 the commit path has to fall back to resolving the tx effect, or reject the tx
 depending on the decoding outcome
-([mpf.ts](src/workers/utils/mpf.ts)).
+([commit-rejection.ts](src/mpf/commit-rejection.ts)).
 
 ### Lifecycle
 
@@ -414,13 +416,14 @@ Writers include:
   `tx_admissions` in one transaction
   ([txAdmissions.ts](src/database/txAdmissions.ts));
 - commitment preprocessing for malformed mempool txs
-  ([mpf.ts](src/workers/utils/mpf.ts));
+  ([commit-rejection.ts](src/mpf/commit-rejection.ts));
 - local submit tooling that records immediate local rejection evidence
   ([submit-l2-transfer.ts](src/commands/submit-l2-transfer.ts)).
 
 ### Readers
 
-`/tx-status` reads `tx_rejections` first to report rejection metadata
+`/tx-status` reads rejection metadata, but `resolveTxStatus` prioritizes
+immutable, processed-mempool, and accepted-mempool placement before rejection
 ([listen-router.ts](src/commands/listen-router.ts)).
 
 The retention sweeper prunes old rejection rows
@@ -565,9 +568,10 @@ Typical successful tx-backed path:
 2. Submit succeeds or is recovered from L1.
 3. `markSubmitted` stores `submitted_tx_hash`.
 4. Local finalization inserts `immutable`/`blocks`, clears relevant mempool
-   state, marks deposits projected by header, and calls
+   state, preserves the deposit journal membership, and calls
    `markLocalFinalizationComplete`.
-5. Confirmation observes the header on the L1 state queue.
+5. Confirmation observes the header on the L1 state queue and assigns deposit
+   header identities, making those projected rows spendable.
 6. The journal moves to `observed_waiting_stability` or `finalized`, depending
    on whether local finalization still requires recovery.
 7. A stale or non-canonical submission can be marked `abandoned`.
@@ -592,10 +596,14 @@ Expected invariants:
 
 Known gaps:
 
-- The journal now carries base/expected roots, the full header, source payload
-  hashes, UTxOs, and transition records, but it is not a complete executable
-  mutation plan for every SQL and MPF side effect.
-- It does not by itself prove MPT/SQL root consistency.
+- The journal carries base/expected roots, the full header, source payload
+  hashes, UTxOs, transition records, and an explicit replay discriminator.
+  Architecture G additionally binds the owner binary, event log and digest,
+  ordered event roots, and base/candidate roots. Recovery consumes these fields;
+  it does not reconstruct the block from the current mempool.
+- SQL persistence and native MPF promotion remain separate durability boundaries.
+  Their consistency depends on the recovery and promotion checks, not merely on
+  the existence of the SQL row.
 
 ## `pending_block_finalization_deposits`
 
@@ -795,7 +803,9 @@ Columns:
 
 - `tx_id BYTEA PRIMARY KEY REFERENCES tx_admissions(tx_id) ON DELETE CASCADE`
 - `tx_canonical_cbor BYTEA NOT NULL`
-- `tx_canonical_cbor_sha256 BYTEA NOT NULL`
+- `tx_full_hash_v1 BYTEA NOT NULL`
+- `cek_program_material_sidecar_cbor BYTEA NOT NULL`
+- `cek_program_material_sidecar_sha256 BYTEA NOT NULL`
 
 Statuses:
 
@@ -1181,9 +1191,11 @@ The pending block recovery model spans:
 - persistent MPT state
 - L1 state queue headers
 
-`pending_block_finalizations` records lifecycle status, but it is not a complete
-mutation plan. Stronger fingerprints and replay/adoption metadata remain needed
-for complete crash-boundary evidence.
+`pending_block_finalizations` records lifecycle status and exact replay inputs.
+The native replay variant binds the event log, event roots, owner identity, and
+base/candidate roots; the delta variant carries its ledger delta. Recovery uses
+these persisted inputs and checks the durable marker. A populated journal alone
+is not evidence that every crash boundary has been exercised.
 
 ### MPT relationship
 

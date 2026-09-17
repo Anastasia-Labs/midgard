@@ -1,52 +1,52 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { withDaRequestDeadline } from "@al-ft/midgard-core/da-request-deadline";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS_V1,
+  DA_TRANSPORT_LIMITS,
   DA_TRANSPORT_PROTOCOL_VERSION,
-  type DaCapabilitiesResponseV1,
+  type DaCapabilitiesResponse,
   daDeploymentFingerprintFromHex,
   DaGossipTopic,
   daGossipTopic,
-  type DaMetadataByHeaderResponseV1,
-  type DaPayloadByHeaderResponseV1,
-  type DaPayloadChunkManifestV1,
-  type DaPayloadSubmitResponseV1,
+  type DaLibp2pRuntimeManifest,
+  type DaMetadataByHeaderResponse,
+  type DaPayloadByHeaderResponse,
+  type DaPayloadChunkManifest,
+  type DaPayloadSubmitResponse,
   DaRequestResponseProtocol,
   daRequestResponseProtocolId,
   DaTransportSigningDomain,
-  decodeDaCapabilitiesResponseV1Cbor,
-  decodeDaMetadataByHeaderResponseV1Cbor,
-  decodeDaPayloadByHeaderRequestV1Cbor,
-  decodeDaPayloadChunkRequestV1Cbor,
-  decodeDaPayloadSubmitResponseV1Cbor,
-  encodeDaCapabilitiesRequestV1Cbor,
-  encodeDaMetadataByHeaderResponseV1Cbor,
-  encodeDaPayloadAnnouncementV1Cbor,
-  encodeDaPayloadByHeaderRequestV1Cbor,
-  encodeDaPayloadByHeaderResponseV1Cbor,
-  encodeDaPayloadChunkResponseV1Cbor,
-  encodeDaPayloadSubmitRequestV1Cbor,
-  parseDaLibp2pRuntimeManifestDeploymentIdentity,
+  decodeDaCapabilitiesResponseCbor,
+  decodeDaMetadataByHeaderResponseCbor,
+  decodeDaPayloadByHeaderRequestCbor,
+  decodeDaPayloadChunkRequestCbor,
+  decodeDaPayloadSubmitResponseCbor,
+  encodeDaCapabilitiesRequestCbor,
+  encodeDaMetadataByHeaderResponseCbor,
+  encodeDaPayloadAnnouncementCbor,
+  encodeDaPayloadByHeaderRequestCbor,
+  encodeDaPayloadByHeaderResponseCbor,
+  encodeDaPayloadChunkResponseCbor,
+  encodeDaPayloadSubmitRequestCbor,
+  parseDaLibp2pRuntimeManifest,
 } from "@al-ft/midgard-core/da-transport";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Metric } from "effect";
 
-import { readDaHardeningConfig } from "@/da/hardening-config.js";
-import { loadDaLibp2pIdentity } from "@/da/libp2p-identity.js";
 import {
   DaPayloadAnnouncementsDB,
   DaPayloadPublicationsDB,
   DaPayloadsDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import type { Database } from "@/services/database.js";
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import type { Database } from "../services/database.js";
+import { readDaHardeningConfig } from "./hardening-config.js";
 
 const MANIFEST_PATH_ENV = "MIDGARD_DEPLOYMENT_MANIFEST_PATH";
-const FALLBACK_MANIFEST_PATH_ENV = "MIDGARD_DA_DEPLOYMENT_MANIFEST_PATH";
 const LIBP2P_PRIVATE_KEY_SOURCE_ENV = "DA_LIBP2P_PRIVATE_KEY_SOURCE";
 const ACCEPTED_RESPONSE_STATUSES = new Set(["accepted", "duplicate"]);
 const daPublishPeerDurationTimer = Metric.timer(
@@ -121,7 +121,7 @@ export type DaProducerPeerResult = {
   readonly peerId: string;
   readonly signerIndex: number;
   readonly protocolId: string;
-  readonly status: DaPayloadSubmitResponseV1["status"] | "transport_error";
+  readonly status: DaPayloadSubmitResponse["status"] | "transport_error";
   readonly payloadHash: string;
   readonly error?: string;
 };
@@ -172,7 +172,7 @@ export type DaLibp2pPreflightPeerResult = {
   readonly address: readonly string[];
   readonly protocolId: string;
   readonly status: DaLibp2pPreflightPeerStatus;
-  readonly metadataStatus?: DaMetadataByHeaderResponseV1["status"];
+  readonly metadataStatus?: DaMetadataByHeaderResponse["status"];
   readonly error?: string;
 };
 
@@ -233,7 +233,7 @@ export type DaEnvelopeCapabilityPeerResult = {
   readonly peerId: string;
   readonly signerIndex: number;
   readonly capable: boolean;
-  readonly capabilities?: DaCapabilitiesResponseV1;
+  readonly capabilities?: DaCapabilitiesResponse;
   readonly error?: string;
 };
 
@@ -281,43 +281,17 @@ export class DaPayloadPublicationError extends Error {
 }
 
 export const parseDaProducerPublicationManifest = (
-  manifest: Record<string, unknown>,
+  value: unknown,
   env: NodeJS.ProcessEnv = process.env,
-): DaProducerPublicationManifest | null => {
-  const rawDaTransport =
-    objectAt(manifest, ["da_transport"]) ?? objectAt(manifest, ["daTransport"]);
-  if (rawDaTransport === undefined) {
-    return null;
+): DaProducerPublicationManifest => {
+  const manifest = parseDaLibp2pRuntimeManifest(value);
+  if (manifest.runtime_topology.target !== "producer") {
+    throw new Error("runtime_topology.target must be producer");
   }
-  const kind = stringAt(rawDaTransport, [["kind"], ["mode"]]);
-  if (kind !== "libp2p") {
-    return null;
-  }
-  const deploymentIdentity = parseDaLibp2pRuntimeManifestDeploymentIdentity(
-    manifest,
-    "producer DA libp2p runtime manifest",
-  );
-  const daTransport = rawDaTransport;
+  const { da_committee: daCommittee, da_transport: daTransport } = manifest;
   rejectUrlShapedLibp2pDaConfig(daTransport, "da_transport");
-  if (daTransport.no_http_da_transport !== true) {
-    throw new Error(
-      "da_transport.no_http_da_transport must be true in libp2p DA mode",
-    );
-  }
-  const daCommittee =
-    objectAt(manifest, ["da_committee"]) ?? objectAt(manifest, ["daCommittee"]);
-  if (daCommittee === undefined) {
-    throw new Error("da_committee is required for libp2p DA publication");
-  }
   rejectUrlShapedLibp2pDaConfig(daCommittee, "da_committee");
-  const threshold = numberAt(daCommittee, ["threshold"]);
-  if (
-    threshold === undefined ||
-    !Number.isSafeInteger(threshold) ||
-    threshold <= 0
-  ) {
-    throw new Error("da_committee.threshold must be a positive safe integer");
-  }
+  const threshold = daCommittee.threshold;
   const peers = parseCommitteePeers(daCommittee);
   const committeePeers = peers.filter((peer) =>
     peer.roles.includes("committee"),
@@ -327,65 +301,37 @@ export const parseDaProducerPublicationManifest = (
       "libp2p DA publication requires at least threshold committee peers",
     );
   }
-  const limits = objectAt(daTransport, ["limits"]);
   return {
-    deploymentFingerprint: deploymentIdentity.fingerprint,
+    deploymentFingerprint: manifest.deployment.fingerprint,
     contractDeploymentManifestId:
-      deploymentIdentity.contractDeploymentManifestId,
+      manifest.deployment.contract_deployment_manifest_id,
     localPrivateKeySource: requiredLibp2pPrivateKeySource(env),
     threshold,
-    requestTimeoutMs: exactLimit(
-      limits,
-      "request_timeout_ms",
-      DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+    requestTimeoutMs: daTransport.limits.request_timeout_ms,
+    maxPayloadBytes: daTransport.limits.max_payload_bytes,
+    maxInlineResponseBytes: daTransport.limits.max_inline_response_bytes,
+    maxChunkBytes: daTransport.limits.max_chunk_bytes,
+    maxStreamsPerPeer: daTransport.limits.max_streams_per_peer,
+    maxGossipMessageBytes: daTransport.gossip.max_gossip_message_bytes,
+    listenMultiaddrs: daTransport.listen_multiaddrs.map((address) =>
+      address.trim(),
     ),
-    maxPayloadBytes: exactLimit(
-      limits,
-      "max_payload_bytes",
-      DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+    announceMultiaddrs: daTransport.announce_multiaddrs.map((address) =>
+      address.trim(),
     ),
-    maxInlineResponseBytes: exactLimit(
-      limits,
-      "max_inline_response_bytes",
-      DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
+    bootstrapMultiaddrs: daTransport.bootstrap_multiaddrs.map((address) =>
+      address.trim(),
     ),
-    maxChunkBytes: exactLimit(
-      limits,
-      "max_chunk_bytes",
-      DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-    ),
-    maxStreamsPerPeer: exactLimit(
-      limits,
-      "max_streams_per_peer",
-      DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-    ),
-    maxGossipMessageBytes:
-      numberAt(daTransport, [["gossip", "max_gossip_message_bytes"]]) ??
-      DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
-    listenMultiaddrs: stringArrayAt(daTransport, [
-      ["listen_multiaddrs"],
-      ["listenMultiaddrs"],
-    ]),
-    announceMultiaddrs: stringArrayAt(daTransport, [
-      ["announce_multiaddrs"],
-      ["announceMultiaddrs"],
-    ]),
-    bootstrapMultiaddrs: stringArrayAt(daTransport, [
-      ["bootstrap_multiaddrs"],
-      ["bootstrapMultiaddrs"],
-    ]),
     committeePeers,
   };
 };
 
 export const loadDaProducerPublicationManifestFromEnv = async (
   env: NodeJS.ProcessEnv = process.env,
-): Promise<DaProducerPublicationManifest | null> => {
-  const manifestPath =
-    optionalNonEmpty(env[MANIFEST_PATH_ENV]) ??
-    optionalNonEmpty(env[FALLBACK_MANIFEST_PATH_ENV]);
+): Promise<DaProducerPublicationManifest> => {
+  const manifestPath = optionalNonEmpty(env[MANIFEST_PATH_ENV]);
   if (manifestPath === undefined) {
-    return null;
+    throw new Error(`${MANIFEST_PATH_ENV} is required for libp2p DA`);
   }
   const raw = await readFile(manifestPath, "utf8");
   const parsed = JSON.parse(raw) as unknown;
@@ -437,12 +383,12 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
 
   addHandler(DaRequestResponseProtocol.payloadByHeader, async (requestCbor) => {
     const request = decodeRetainedPayloadRequest(
-      () => decodeDaPayloadByHeaderRequestV1Cbor(requestCbor),
+      () => decodeDaPayloadByHeaderRequestCbor(requestCbor),
       "payload-by-header request",
     );
     const headerHash = request.headerHash;
     if (!request.deploymentFingerprint.equals(deploymentFingerprint)) {
-      return encodeDaPayloadByHeaderResponseV1Cbor({
+      return encodeDaPayloadByHeaderResponseCbor({
         status: "rejected",
         headerHash,
         payloadHash: null,
@@ -454,7 +400,7 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
 
     const resolved = await resolveRow(headerHash);
     if (resolved.kind !== "found") {
-      return encodeDaPayloadByHeaderResponseV1Cbor(
+      return encodeDaPayloadByHeaderResponseCbor(
         retainedPayloadAbsentResponse(headerHash, resolved),
       );
     }
@@ -462,7 +408,7 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
       request.acceptedPayloadHashes !== null &&
       !containsHash(request.acceptedPayloadHashes, resolved.payloadHash)
     ) {
-      return encodeDaPayloadByHeaderResponseV1Cbor({
+      return encodeDaPayloadByHeaderResponseCbor({
         status: "conflict",
         headerHash,
         payloadHash: resolved.payloadHash,
@@ -477,7 +423,7 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
       manifest.maxInlineResponseBytes,
     );
     if (resolved.payloadBytes.length <= inlineLimit) {
-      return encodeDaPayloadByHeaderResponseV1Cbor({
+      return encodeDaPayloadByHeaderResponseCbor({
         status: "found_inline",
         headerHash,
         payloadHash: resolved.payloadHash,
@@ -487,7 +433,7 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
       });
     }
 
-    return encodeDaPayloadByHeaderResponseV1Cbor({
+    return encodeDaPayloadByHeaderResponseCbor({
       status: "found_chunked",
       headerHash,
       payloadHash: resolved.payloadHash,
@@ -502,13 +448,13 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
 
   addHandler(DaRequestResponseProtocol.payloadChunk, async (requestCbor) => {
     const request = decodeRetainedPayloadRequest(
-      () => decodeDaPayloadChunkRequestV1Cbor(requestCbor),
+      () => decodeDaPayloadChunkRequestCbor(requestCbor),
       "payload-chunk request",
     );
     const headerHash = request.headerHash;
     const payloadHash = request.payloadHash;
     if (!request.deploymentFingerprint.equals(deploymentFingerprint)) {
-      return encodeDaPayloadChunkResponseV1Cbor({
+      return encodeDaPayloadChunkResponseCbor({
         status: "rejected",
         headerHash,
         payloadHash,
@@ -542,7 +488,7 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
       offset,
       Math.min(offset + manifest.maxChunkBytes, resolved.payloadBytes.length),
     );
-    return encodeDaPayloadChunkResponseV1Cbor({
+    return encodeDaPayloadChunkResponseCbor({
       status: "found",
       headerHash,
       payloadHash,
@@ -556,12 +502,12 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
     DaRequestResponseProtocol.metadataByHeader,
     async (requestCbor) => {
       const request = decodeRetainedPayloadRequest(
-        () => decodeDaPayloadByHeaderRequestV1Cbor(requestCbor),
+        () => decodeDaPayloadByHeaderRequestCbor(requestCbor),
         "metadata-by-header request",
       );
       const headerHash = request.headerHash;
       if (!request.deploymentFingerprint.equals(deploymentFingerprint)) {
-        return encodeDaMetadataByHeaderResponseV1Cbor({
+        return encodeDaMetadataByHeaderResponseCbor({
           ...emptyRetainedPayloadMetadataResponse(headerHash),
           status: "rejected",
         });
@@ -569,7 +515,7 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
 
       const resolved = await resolveRow(headerHash);
       if (resolved.kind !== "found") {
-        return encodeDaMetadataByHeaderResponseV1Cbor(
+        return encodeDaMetadataByHeaderResponseCbor(
           retainedPayloadMetadataAbsentResponse(headerHash, resolved),
         );
       }
@@ -577,14 +523,14 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
         request.acceptedPayloadHashes !== null &&
         !containsHash(request.acceptedPayloadHashes, resolved.payloadHash)
       ) {
-        return encodeDaMetadataByHeaderResponseV1Cbor({
+        return encodeDaMetadataByHeaderResponseCbor({
           ...emptyRetainedPayloadMetadataResponse(headerHash),
           status: "conflict",
           payloadHash: resolved.payloadHash,
         });
       }
 
-      return encodeDaMetadataByHeaderResponseV1Cbor(
+      return encodeDaMetadataByHeaderResponseCbor(
         metadataForRetainedPayload(headerHash, resolved),
       );
     },
@@ -666,7 +612,7 @@ export const publishDaPayloadAnnouncement = async ({
       payloadAnnouncementSigningPreimage(announcementWithoutSignature),
     ),
   );
-  const announcementBytes = encodeDaPayloadAnnouncementV1Cbor({
+  const announcementBytes = encodeDaPayloadAnnouncementCbor({
     ...announcementWithoutSignature,
     signature,
   });
@@ -716,7 +662,7 @@ export const publishDaPayloadInsert = async ({
     manifest.deploymentFingerprint,
     DaRequestResponseProtocol.payloadSubmit,
   );
-  const request = encodeDaPayloadSubmitRequestV1Cbor({
+  const request = encodeDaPayloadSubmitRequestCbor({
     deploymentFingerprint,
     headerHash,
     payloadHash,
@@ -1131,7 +1077,7 @@ export const reconcileDaPayloadPeerFromEnv = (
           manifest.deploymentFingerprint,
           DaRequestResponseProtocol.payloadSubmit,
         );
-        const request = encodeDaPayloadSubmitRequestV1Cbor({
+        const request = encodeDaPayloadSubmitRequestCbor({
           deploymentFingerprint: daDeploymentFingerprintFromHex(
             manifest.deploymentFingerprint,
           ),
@@ -1250,7 +1196,7 @@ export const runDaLibp2pPreflightFromEnv = async (
 const capabilityMismatch = (
   manifest: DaProducerPublicationManifest,
   mode: DaEnvelopeCapabilityMode,
-  response: DaCapabilitiesResponseV1,
+  response: DaCapabilitiesResponse,
 ): string | undefined => {
   if (
     !response.deploymentFingerprint.equals(
@@ -1259,11 +1205,8 @@ const capabilityMismatch = (
   ) {
     return "deployment fingerprint mismatch";
   }
-  if (response.transportProtocolVersion !== DA_TRANSPORT_PROTOCOL_VERSION) {
-    return `transport protocol version ${response.transportProtocolVersion.toString()} is not ${DA_TRANSPORT_PROTOCOL_VERSION.toString()}`;
-  }
-  if (!response.payloadSchemaVersions.includes(3)) {
-    return "payload schema version 3 is not supported";
+  if (!response.payloadSchemaVersions.includes(1)) {
+    return "payload schema version 1 is not supported";
   }
   const requiredEncoding = mode === "identity" ? 0 : 1;
   if (!response.envelopeContentEncodings.includes(requiredEncoding)) {
@@ -1309,7 +1252,7 @@ export const probeDaEnvelopeCapabilities = async ({
     manifest.deploymentFingerprint,
     DaRequestResponseProtocol.capabilities,
   );
-  const request = encodeDaCapabilitiesRequestV1Cbor({
+  const request = encodeDaCapabilitiesRequestCbor({
     deploymentFingerprint: daDeploymentFingerprintFromHex(
       manifest.deploymentFingerprint,
     ),
@@ -1317,7 +1260,7 @@ export const probeDaEnvelopeCapabilities = async ({
   return Promise.all(
     manifest.committeePeers.map(async (peer) => {
       try {
-        const capabilities = decodeDaCapabilitiesResponseV1Cbor(
+        const capabilities = decodeDaCapabilitiesResponseCbor(
           await transport.request(
             peer,
             protocolId,
@@ -1405,7 +1348,7 @@ export const runDaLibp2pPreflight = async ({
     manifest.deploymentFingerprint,
     DaRequestResponseProtocol.metadataByHeader,
   );
-  const request = encodeDaPayloadByHeaderRequestV1Cbor({
+  const request = encodeDaPayloadByHeaderRequestCbor({
     deploymentFingerprint: daDeploymentFingerprintFromHex(
       manifest.deploymentFingerprint,
     ),
@@ -1913,7 +1856,7 @@ const submitPayloadToPeer = async ({
             maxChunkBytes,
           )
         : await transport.request(peer, protocolId, request, timeoutMs);
-    const response = decodeDaPayloadSubmitResponseV1Cbor(responseBytes);
+    const response = decodeDaPayloadSubmitResponseCbor(responseBytes);
     if (!response.headerHash.equals(headerHash)) {
       throw new Error("payload-submit response header_hash mismatch");
     }
@@ -1960,7 +1903,7 @@ const preflightCommitteePeer = async ({
       request,
       timeoutMs,
     );
-    const response = decodeDaMetadataByHeaderResponseV1Cbor(responseBytes);
+    const response = decodeDaMetadataByHeaderResponseCbor(responseBytes);
     if (response.status === "not_found" || response.status === "found") {
       return {
         peerId: peer.peerId,
@@ -2031,7 +1974,7 @@ const resolveRetainedPayloadRow = (
 const retainedPayloadAbsentResponse = (
   headerHash: Buffer,
   resolution: Exclude<RetainedPayloadResolution, { readonly kind: "found" }>,
-): DaPayloadByHeaderResponseV1 => {
+): DaPayloadByHeaderResponse => {
   switch (resolution.kind) {
     case "missing":
       return {
@@ -2056,7 +1999,7 @@ const retainedPayloadAbsentResponse = (
 
 const emptyRetainedPayloadMetadataResponse = (
   headerHash: Buffer,
-): Omit<DaMetadataByHeaderResponseV1, "status"> => ({
+): Omit<DaMetadataByHeaderResponse, "status"> => ({
   headerHash,
   payloadHash: null,
   payloadSchemaVersion: null,
@@ -2072,7 +2015,7 @@ const emptyRetainedPayloadMetadataResponse = (
 const retainedPayloadMetadataAbsentResponse = (
   headerHash: Buffer,
   resolution: Exclude<RetainedPayloadResolution, { readonly kind: "found" }>,
-): DaMetadataByHeaderResponseV1 => {
+): DaMetadataByHeaderResponse => {
   switch (resolution.kind) {
     case "missing":
       return {
@@ -2090,7 +2033,7 @@ const retainedPayloadMetadataAbsentResponse = (
 const metadataForRetainedPayload = (
   headerHash: Buffer,
   resolved: Extract<RetainedPayloadResolution, { readonly kind: "found" }>,
-): DaMetadataByHeaderResponseV1 => ({
+): DaMetadataByHeaderResponse => ({
   status: "found",
   headerHash,
   payloadHash: resolved.payloadHash,
@@ -2116,7 +2059,7 @@ const rootHexToBytes = (value: string, fieldName: string): Buffer =>
 const retainedPayloadChunkManifestFor = (
   payloadBytes: Buffer,
   chunkSize: number,
-): DaPayloadChunkManifestV1 => {
+): DaPayloadChunkManifest => {
   const chunkHashes: Buffer[] = [];
   for (let offset = 0; offset < payloadBytes.length; offset += chunkSize) {
     chunkHashes.push(
@@ -2136,7 +2079,7 @@ const encodeRetainedPayloadChunkNotFound = (
   payloadHash: Buffer,
   chunkIndex: number,
 ): Buffer =>
-  encodeDaPayloadChunkResponseV1Cbor({
+  encodeDaPayloadChunkResponseCbor({
     status: "not_found",
     headerHash,
     payloadHash,
@@ -2160,7 +2103,7 @@ const payloadAnnouncementSigningPreimage = (message: {
   readonly deploymentFingerprint: Buffer;
   readonly headerHash: Buffer;
   readonly payloadHash: Buffer;
-  readonly payloadSchemaVersion: number;
+  readonly payloadSchemaVersion: 1;
   readonly payloadBytes: number;
   readonly chunkSize: number;
   readonly chunkCount: number;
@@ -2172,7 +2115,7 @@ const payloadAnnouncementSigningPreimage = (message: {
     Buffer.from(DaTransportSigningDomain.payloadAnnouncement, "utf8"),
     Buffer.from([0]),
     Buffer.from([DA_TRANSPORT_PROTOCOL_VERSION]),
-    encodeDaPayloadAnnouncementV1Cbor({
+    encodeDaPayloadAnnouncementCbor({
       ...message,
       signature: Buffer.alloc(0),
     }),
@@ -2237,56 +2180,26 @@ const verifyPayloadHash = (insert: DaPayloadsDB.InsertInput): Buffer => {
 };
 
 const parseCommitteePeers = (
-  daCommittee: Record<string, unknown>,
+  daCommittee: DaLibp2pRuntimeManifest["da_committee"],
 ): readonly DaProducerCommitteePeer[] => {
   const members = daCommittee.members;
-  if (!Array.isArray(members) || members.length === 0) {
-    throw new Error("da_committee.members must be a non-empty array");
-  }
   const seenSignerIndexes = new Set<number>();
   const seenPeerIds = new Set<string>();
   return members
     .map((member, index) => {
-      if (!isRecord(member)) {
-        throw new Error("da_committee.members entries must be objects");
-      }
-      const signerIndex = numberAt(member, [
-        ["signer_index"],
-        ["signerIndex"],
-        ["index"],
-      ]);
-      if (
-        signerIndex === undefined ||
-        !Number.isSafeInteger(signerIndex) ||
-        signerIndex < 0 ||
-        signerIndex > 255
-      ) {
-        throw new Error(
-          `da_committee.members[${index.toString()}].signer_index must fit in one byte`,
-        );
-      }
+      const signerIndex = member.signer_index;
       if (seenSignerIndexes.has(signerIndex)) {
         throw new Error(
           `duplicate da_committee.members signer_index ${signerIndex.toString()}`,
         );
       }
       seenSignerIndexes.add(signerIndex);
-      const peerId = stringAt(member, [["peer_id"], ["peerId"]]);
-      if (peerId === undefined || peerId.trim().length === 0) {
-        throw new Error(
-          `da_committee.members[${index.toString()}].peer_id is required`,
-        );
-      }
+      const peerId = member.peer_id.trim();
       if (seenPeerIds.has(peerId)) {
         throw new Error(`duplicate da_committee.members peer_id ${peerId}`);
       }
       seenPeerIds.add(peerId);
-      const multiaddrs = stringArrayAt(member, [["multiaddrs"]]);
-      if (multiaddrs.length === 0) {
-        throw new Error(
-          `da_committee.members[${index.toString()}].multiaddrs must be non-empty`,
-        );
-      }
+      const multiaddrs = member.multiaddrs.map((address) => address.trim());
       for (const multiaddr of multiaddrs) {
         if (!multiaddr.endsWith(`/p2p/${peerId}`)) {
           throw new Error(
@@ -2294,16 +2207,11 @@ const parseCommitteePeers = (
           );
         }
       }
-      const roles = stringArrayAt(member, [["roles"]]);
-      if (roles.length === 0) {
-        throw new Error(
-          `da_committee.members[${index.toString()}].roles must be non-empty`,
-        );
-      }
+      const roles = member.roles.map((role) => role.trim());
       return {
         signerIndex,
         daVkey: normalizeHex32(
-          stringAt(member, [["da_vkey"], ["daVkey"], ["vkey"]]) ?? "",
+          member.da_vkey,
           `da_committee.members[${index.toString()}].da_vkey`,
         ),
         peerId,
@@ -2453,26 +2361,6 @@ const withTimeout = async <T>(
   }
 };
 
-const exactLimit = (
-  limits: Record<string, unknown> | undefined,
-  key: string,
-  expected: number,
-): number => {
-  if (limits === undefined) {
-    return expected;
-  }
-  const configured = limits[key];
-  if (configured === undefined) {
-    return expected;
-  }
-  if (configured !== expected) {
-    throw new Error(
-      `da_transport.limits.${key} must be ${expected.toString()}`,
-    );
-  }
-  return expected;
-};
-
 const rejectUrlShapedLibp2pDaConfig = (value: unknown, path: string): void => {
   if (Array.isArray(value)) {
     value.forEach((entry, index) =>
@@ -2503,87 +2391,6 @@ const optionalNonEmpty = (value: string | undefined): string | undefined => {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const objectAt = (
-  source: Record<string, unknown>,
-  path: readonly string[],
-): Record<string, unknown> | undefined => {
-  let current: unknown = source;
-  for (const key of path) {
-    if (!isRecord(current)) {
-      return undefined;
-    }
-    current = current[key];
-  }
-  return isRecord(current) ? current : undefined;
-};
-
-const valueAt = (
-  source: Record<string, unknown>,
-  path: readonly string[],
-): unknown => {
-  let current: unknown = source;
-  for (const key of path) {
-    if (!isRecord(current)) {
-      return undefined;
-    }
-    current = current[key];
-  }
-  return current;
-};
-
-const stringAt = (
-  source: Record<string, unknown>,
-  paths: readonly string[] | readonly (readonly string[])[],
-): string | undefined => {
-  for (const path of normalizePaths(paths)) {
-    const value = valueAt(source, path);
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value.trim();
-    }
-  }
-  return undefined;
-};
-
-const numberAt = (
-  source: Record<string, unknown>,
-  paths: readonly string[] | readonly (readonly string[])[],
-): number | undefined => {
-  for (const path of normalizePaths(paths)) {
-    const value = valueAt(source, path);
-    if (typeof value === "number") {
-      return value;
-    }
-  }
-  return undefined;
-};
-
-const stringArrayAt = (
-  source: Record<string, unknown>,
-  paths: readonly string[] | readonly (readonly string[])[],
-): readonly string[] => {
-  for (const path of normalizePaths(paths)) {
-    const value = valueAt(source, path);
-    if (Array.isArray(value)) {
-      return value.map((entry, index) => {
-        if (typeof entry !== "string" || entry.trim().length === 0) {
-          throw new Error(
-            `${path.join(".")}[${index.toString()}] must be a string`,
-          );
-        }
-        return entry.trim();
-      });
-    }
-  }
-  return [];
-};
-
-const normalizePaths = (
-  paths: readonly string[] | readonly (readonly string[])[],
-): readonly (readonly string[])[] =>
-  typeof paths[0] === "string"
-    ? [paths as readonly string[]]
-    : (paths as readonly (readonly string[])[]);
-
 const normalizeHex32 = (value: string, fieldName: string): string => {
   return normalizeHexBytes(value, fieldName, 32);
 };
@@ -2607,7 +2414,7 @@ export const encodeLengthPrefixedDaFrameForTest = encodeFrame;
 export const writeSharedDaFrameChunksForTest = writeSharedFrameChunks;
 export const decodeLengthPrefixedDaFrameForTest = (
   frame: Buffer,
-  maxBytes = DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+  maxBytes = DA_TRANSPORT_LIMITS.maxPayloadBytes,
 ): Buffer => {
   if (frame.length < 4) {
     throw new Error("frame is truncated");

@@ -16,16 +16,16 @@ import {
   type PrepareHubOracleNonceOptions,
   prepareHubOracleOneShotNonceProgram,
   reconcileHubOracleOneShotNonceAttemptProgram,
-} from "@/commands/prepare-hub-oracle-nonce.js";
-import { Lucid as LucidService } from "@/services/lucid.js";
-import { TxConfirmError } from "@/transactions/utils.js";
+} from "../src/commands/prepare-hub-oracle-nonce.js";
+import { Lucid as LucidService } from "../src/services/lucid.js";
+import { TxConfirmError } from "../src/transactions/utils.js";
 
 const signSubmitTransactionMock = vi.hoisted(() => vi.fn());
 const awaitSubmittedTransactionConfirmationMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/transactions/utils.js", async (importOriginal) => {
+vi.mock("../src/transactions/utils.js", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/transactions/utils.js")>();
+    await importOriginal<typeof import("../src/transactions/utils.js")>();
   return {
     ...actual,
     signSubmitTransaction: signSubmitTransactionMock,

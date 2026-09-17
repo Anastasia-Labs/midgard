@@ -13,7 +13,7 @@ import {
   resolveEarlyValidityRetryDelayMs,
   signSubmitTransaction,
   submitSignedTxWithRecovery,
-} from "@/transactions/utils.js";
+} from "../src/transactions/utils.js";
 
 describe("parseOutsideValidityIntervalDetails", () => {
   it("parses typed Kupmios/Ogmios early-validity submit errors", () => {
@@ -907,7 +907,7 @@ describe("sign/submit wrapper recovery options", () => {
         ),
       );
 
-      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.advanceTimersByTimeAsync(0);
 
       await expect(confirmation).resolves.toBe("tx-emulator-confirmation");
       expect(awaitTx).toHaveBeenCalledWith("tx-emulator-confirmation", 100);
@@ -979,7 +979,7 @@ describe("sign/submit wrapper recovery options", () => {
         { timeout: 120_000, checkInterval: 100 },
       );
 
-      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.advanceTimersByTimeAsync(0);
 
       await expect(confirmation).resolves.toBe(
         "tx-transient-confirmation-provider",
@@ -1024,7 +1024,7 @@ describe("sign/submit wrapper recovery options", () => {
         timeout: 120_000,
         checkInterval: 1_000,
       });
-      await vi.advanceTimersByTimeAsync(14_999);
+      await vi.advanceTimersByTimeAsync(9_999);
 
       await expect(confirmation).resolves.toBe("tx-long-confirmation");
     } finally {
@@ -1106,6 +1106,7 @@ describe("sign/submit wrapper recovery options", () => {
     const result = await Effect.runPromise(
       Effect.either(
         signSubmitTransaction(fakeWrapperLucid() as never, signBuilder, {
+          label: "operator registration",
           slotSnapshot: () =>
             Effect.succeed({
               source: "test",

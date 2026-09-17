@@ -34,8 +34,10 @@ The ledger ingests three L1 user events plus L2 requests:
 
 ## Confirmed state
 
-**Confirmed state** is the portion of the ledger that has settled and is safe to
-rely on, as opposed to state still inside the challenge window.
+**Confirmed state** is the protocol state after a mature queued header merges
+into the confirmed-state UTxO. It remains subject to Cardano finality and the
+configured rollback/recovery policy. This differs from the node client's
+local `committed` transaction status.
 
 ## In the codebase
 

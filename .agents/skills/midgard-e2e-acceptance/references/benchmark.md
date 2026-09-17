@@ -33,9 +33,8 @@ the one matching the request rather than copying an old local command:
 - `docs/benchmark-scenarios/mixed-workload-multi-io.md`;
 - `docs/benchmark-scenarios/phase-2-validation-gates.md`;
 - `docs/benchmark-scenarios/phase-3-architecture-g-closure.md`;
-- `docs/benchmark-scenarios/phase-3-architecture-g-soak.md`;
-- `docs/benchmark-scenarios/phase-4-pipelined-one-hour.md`; or
-- `docs/benchmark-scenarios/phase-5-da-50k-distribution.md`.
+- `docs/benchmark-scenarios/phase-3-architecture-g-soak.md`; or
+- `docs/benchmark-scenarios/phase-4-pipelined-one-hour.md`.
 
 Run the named gate and verifier from `demo/midgard-node/package.json`. Do not
 substitute an ad hoc smoke for a named scenario. Never cite ignored or missing

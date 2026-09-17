@@ -1,9 +1,20 @@
-import type { Assets, LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import {
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  type Assets,
+  credentialToAddress,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  assertReferenceScriptRawBodiesFitL1Envelope,
   createReferenceScriptAuthPolicy,
   hasReferenceScriptAuthRole,
+  REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   referenceScriptAuthPolicyDeploymentInfo,
   referenceScriptAuthPolicyFromDeploymentInfo,
   referenceScriptAuthTokenName,
@@ -39,11 +50,133 @@ const utxo = ({
 });
 
 describe("reference-script SDK boundary", () => {
-  it("creates restorable native auth-policy deployment info", () => {
+  it("rejects a reference script whose raw body alone cannot fit the L1 transaction envelope", () => {
+    expect(() =>
+      assertReferenceScriptRawBodiesFitL1Envelope([
+        {
+          name: "availability-challenge minting",
+          script: {
+            type: "PlutusV3",
+            script: "00".repeat(20_017),
+          },
+        },
+      ]),
+    ).toThrow(
+      /availability-challenge minting raw script is 20017 bytes, exceeding the 16384-byte L1 transaction envelope by at least 3633 bytes/u,
+    );
+  });
+
+  it("admits only the raw-body lower bound and leaves complete signed fit to the publisher", () => {
+    expect(() =>
+      assertReferenceScriptRawBodiesFitL1Envelope([
+        {
+          name: "boundary",
+          script: { type: "PlutusV3", script: "00".repeat(16_383) },
+        },
+      ]),
+    ).not.toThrow();
+    expect(() =>
+      assertReferenceScriptRawBodiesFitL1Envelope([
+        {
+          name: "exact-envelope",
+          script: { type: "PlutusV3", script: "00".repeat(16_384) },
+        },
+      ]),
+    ).toThrow(/exact-envelope raw script is 16384 bytes/u);
+  });
+
+  it("authenticates all availability mint arms with distinct deployment roles", () => {
+    const arms = [
+      ["bond", "Bond", "Bond"],
+      ["open", "Open", "Open"],
+      ["settle", "Settle", "Settle"],
+      ["close", "Close", "Close"],
+      ["timeout", "Timeout", "Expiry"],
+    ] as const;
+    for (const [arm, contract, token] of arms) {
+      const role = `availability-challenge ${arm} withdrawal` as const;
+      const tokenName = `AvailabilityChallenge${token}Yield`;
+      expect(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES[role]).toBe(tokenName);
+      expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES[role]).toBe(
+        tokenName,
+      );
+      expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[role]).toBe(
+        `availabilityChallenge${contract}Withdraw`,
+      );
+      expect(Buffer.byteLength(tokenName)).toBeLessThanOrEqual(32);
+    }
+  });
+
+  it("assigns unique <=32-byte auth tokens to every registered fraud-proof role", () => {
+    const fraudProofEntries = Object.entries(
+      REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
+    ).filter(
+      ([role]) =>
+        role.startsWith("V1 fraud-proof ") ||
+        role.startsWith("value conservation "),
+    );
+    const tokenNames = fraudProofEntries.map(([, tokenName]) => tokenName);
+
+    const canonicalFraudProofEntries = Object.entries(
+      DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
+    ).filter(
+      ([role]) =>
+        role.startsWith("V1 fraud-proof ") ||
+        role.startsWith("value conservation "),
+    );
+    expect(Object.fromEntries(fraudProofEntries)).toEqual(
+      Object.fromEntries(canonicalFraudProofEntries),
+    );
+    expect(new Set(tokenNames).size).toBe(tokenNames.length);
+    expect(tokenNames.every((name) => Buffer.byteLength(name) <= 32)).toBe(
+      true,
+    );
+    expect(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES).toMatchObject({
+      "V1 fraud-proof transition-trace route": "V1FpTransitionTraceRoute",
+      "V1 fraud-proof transition-trace final-0": "V1FpTransitionTraceFinal0",
+      "V1 fraud-proof transition-trace final-7": "V1FpTransitionTraceFinal7",
+      "V1 fraud-proof missing-native-script-tx step-06":
+        "V1FpMissingNativeScriptTxS06",
+      "V1 fraud-proof missing-native-script-tx step-07":
+        "V1FpMissingNativeScriptTxS07",
+      "V1 fraud-proof missing-native-script-tx step-08":
+        "V1FpMissingNativeScriptTxS08",
+      "V1 fraud-proof withdrawn-input step-03": "V1FpWithdrawnInputS03",
+      "V1 fraud-proof value-not-preserved step-04": "V1FpValueNotPreservedS04",
+      "value conservation accepted-source": "ValueConservationAcceptedSource",
+      "value conservation forced-source": "ValueConservationForcedSource",
+      "value conservation event": "ValueConservationEvent",
+      "value conservation pre-state": "ValueConservationPreState",
+      "value conservation inputs": "ValueConservationInputs",
+      "value conservation input-value": "ValueConservationInputValue",
+      "value conservation assets": "ValueConservationAssets",
+      "value conservation field-grammar": "ValueConservationFieldGrammar",
+      "value conservation outputs": "ValueConservationOutputs",
+      "value conservation output-scan": "ValueConservationOutputScan",
+      "value conservation mint": "ValueConservationMint",
+      "value conservation update": "ValueConservationUpdate",
+      "value conservation terminal": "ValueConservationTerminal",
+
+      "V1 fraud-proof input-set-uniqueness step-02":
+        "V1FpInputSetUniquenessS02",
+      "V1 fraud-proof mint-authorization step-05": "V1FpMintAuthorizationS05",
+      "V1 fraud-proof mint-authorization step-06": "V1FpMintAuthorizationS06",
+      "V1 fraud-proof mint-authorization step-07": "V1FpMintAuthorizationS07",
+    });
+  });
+
+  it("creates restorable publisher-authorized native auth-policy deployment info", async () => {
     const lucid = {
       unixTimeToSlot: (time: number) => Math.floor(time / 1000),
+      wallet: () => ({
+        address: async () =>
+          credentialToAddress("Custom", {
+            type: "Key",
+            hash: "ab".repeat(28),
+          }),
+      }),
     } as unknown as LucidEvolution;
-    const policy = createReferenceScriptAuthPolicy(lucid, 1_000, 10_000);
+    const policy = await createReferenceScriptAuthPolicy(lucid, 1_000, 10_000);
     const info = referenceScriptAuthPolicyDeploymentInfo(policy);
     const restored = referenceScriptAuthPolicyFromDeploymentInfo(info);
 
@@ -53,6 +186,7 @@ describe("reference-script SDK boundary", () => {
       expiresAtUnixTime: 11_000,
       timelockDurationMs: 10_000,
     });
+    expect(info.postTimelockAudit.required).toBe(false);
   });
 
   it("derives role-token assets for publication outputs", () => {

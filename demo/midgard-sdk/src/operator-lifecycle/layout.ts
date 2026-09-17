@@ -4,8 +4,8 @@
 import { compareHex } from "@al-ft/midgard-core/hex";
 import { type UTxO } from "@lucid-evolution/lucid";
 
-import type { OutputReference } from "@/common.js";
-import * as SDK from "@/operator-lifecycle/primitives.js";
+import type { OutputReference } from "../common.js";
+import * as SDK from "./primitives.js";
 
 export type ReferenceScriptPublication = {
   readonly name: string;
@@ -105,17 +105,6 @@ export const orderedNotMemberWitness = (
     node.next === "Empty" || compareHash28(keyHash, node.next.Key.key) < 0;
   return lowerBoundSatisfied && upperBoundSatisfied;
 };
-
-/**
- * Returns whether a node is the correct append-anchor witness for the active
- * operators list.
- */
-export const activeAppendAnchorWitness = (
-  node: SDK.LinkedListNodeView,
-  keyHash: string,
-): boolean =>
-  node.next === "Empty" &&
-  (node.key === "Empty" || compareHash28(node.key.Key.key, keyHash) < 0);
 
 /**
  * Extracts the unique asset name minted under a given policy from an asset map.

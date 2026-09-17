@@ -14,6 +14,8 @@ on:
       - "demo/midgard-core/**"
       # Sources check-docs-facts.mjs derives from; a change here must rebuild.
       - "demo/midgard-node/src/index.ts"
+      - "demo/midgard-sdk/src/fraud-proof/catalogue.ts"
+      - "demo/midgard-watcher/src/fault-proofs/fault-proof-application.ts"
       - "demo/pnpm-workspace.yaml"
       - "l1-services/.env.example"
       - ".github/workflows/pages-deploy.yml"

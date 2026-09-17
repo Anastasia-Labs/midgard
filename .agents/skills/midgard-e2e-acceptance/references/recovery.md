@@ -113,7 +113,7 @@ acceptance. The running merge fiber must prove liveness.
 | Scheduler/commit validity expired                      | Rebuild through the worker path with fresh timing; never reuse expired signed transactions or pending rows.                                                                |
 | Automatic merge wait times out                         | Inspect readiness, queue, lease, scheduler, finalization, DA status, and merge logs. Fix the merge fiber; do not call `/merge`.                                            |
 | Hash mismatch                                          | Preserve raw body/log separately; report command, tx hash, expected/actual hash, script policy/outref, and artifact path.                                                  |
-| Local state wiped under an old deployment              | Stop all value-submitting activity and perform a complete fresh on-chain deployment or restore provably matching durable state.                                            |
+| Local state wiped under an old deployment              | Stop all value-submitting activity and perform a complete fresh on-chain deployment under the state-reset rules.                                                           |
 
 ## Recovery completion
 

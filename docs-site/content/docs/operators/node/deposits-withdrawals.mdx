@@ -6,68 +6,77 @@ description: "The operator flows for moving funds between L1 and the Midgard L2 
 Deposits and withdrawals are the bridge between Cardano L1 and the Midgard L2
 ledger, implementing the [User-Event Protocol](/docs/spec/user-event-protocol).
 
-<Mermaid chart={`
+<Mermaid
+  chart={`
 flowchart LR
-  U([User]) -->|deposit/build| L1[L1 Deposit Validator]
-  L1 -->|confirmed| P[Projection]
-  P -->|absorb| R[(L2 Reserve)]
-  R -->|withdrawal| W[Withdrawal Order]
-  W -->|payout| U
-`} />
+  U([User]) -->|L1 deposit submission| D[L1 deposit UTxO]
+  D -->|visible and inclusion time due| P[Local projected output]
+  P -->|deposit block confirmed| L[Spendable L2 ledger]
+  D -->|deposit event settled and absorbed| R[(L1 reserve)]
+  L -->|signed withdrawal order| W[L1 withdrawal order]
+  W -->|valid event settled| A[Payout accumulator]
+  R -->|fund| A
+  A -->|conclude payout| U
+`}
+/>
 
 ## Actors
 
 <ActorCard actor="user" name="Depositor">
-Locks funds at the L1 deposit validator and later redeems them via a withdrawal
-order. The node holds no signing key: it builds the unsigned deposit and the
-depositor signs externally.
+  Locks funds at the L1 deposit validator and later redeems them via a
+  withdrawal order. The HTTP deposit builder needs no depositor signing key: it
+  returns an unsigned transaction for external signing. The CLI submission
+  command instead uses the user wallet selected explicitly for that command.
 </ActorCard>
 
 <ActorCard actor="operator">
-Projects confirmed L1 deposits into the L2 ledger and processes withdrawal
-payouts from the reserve.
+  Reconciles visible L1 deposits and projects due events into the local ledger
+  and processes withdrawal payouts from the reserve.
 </ActorCard>
 
 ## Deposits
 
 <InvariantBox>
-A deposit is only absorbed into the L2 reserve **after** it is confirmed on L1.
-Projecting an unconfirmed deposit would let an operator credit funds that can
-still be rolled back.
+  The reserve is on Cardano L1. Absorption requires a settled deposit event and
+  its authenticated settlement proof. Local projection is provisional: the
+  output remains hidden from spendable queries until confirmation assigns its
+  block header, and recovery can invalidate the matching assignment.
 </InvariantBox>
 
-| Command | Effect |
-| --- | --- |
-| `submit-deposit` | Builds and submits the L1 deposit transaction. Funds move to the deposit validator. |
-| `project-deposits-once` | Projects deposits whose inclusion time is due into the mempool ledger. This is where the depositor is credited on L2. |
-| `deposit-projected` | Reports whether a deposit has been projected. Read-only. |
-| `absorb-confirmed-deposit-to-reserve` | Moves a confirmed deposit's funds into the protocol reserve. |
-| `reconcile-deposit-submission` | Repairs local state after an interrupted deposit submission, by re-reading L1. |
+| Command                               | Effect                                                                                                                  |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `submit-deposit`                      | Builds and submits the L1 deposit transaction. Funds move to the deposit validator.                                     |
+| `project-deposits-once`               | Projects due deposits into the local mempool ledger; their spendability also requires confirmed-header assignment.      |
+| `reconcile deposit-projected`         | Inspects visibility/projection; `--repair` fetches visible deposits and projects due events.                            |
+| `absorb-confirmed-deposit-to-reserve` | Moves a settled deposit's funds into the L1 protocol reserve using its settlement proof.                                |
+| `reconcile-deposit-submission`        | Checks a persisted deposit submission against provider evidence before retry; unresolved observations remain ambiguous. |
 
-A deposit is not credited when it is submitted. It is credited when it is projected, and
-that happens only once its inclusion time is due. `deposits_utxos.inclusion_time` is the
-field to inspect when a deposit appears stuck.
+Submission, due-time projection, confirmed-header assignment and settlement are
+separate milestones. Inspect inclusion time and the projected header when a
+deposit appears stuck. The acceptance flow waits for the deposit block to merge
+before spending it. Within one block, deposits execute after L2 transactions,
+so a transaction cannot spend that block's newly introduced deposit.
 
 ## Withdrawals
 
 <RiskCallout level="high" title="Irreversible payout">
-Reserve payouts settle on L1 and cannot be reversed. Verify the withdrawal order
-and reserve balance before submitting a payout.
+  Reserve payouts settle on L1 and cannot be reversed. Verify the withdrawal
+  order and reserve balance before submitting a payout.
 </RiskCallout>
 
-| Command | Effect |
-| --- | --- |
-| `submit-withdrawal` | Builds and submits the L1 withdrawal order. Starts the withdrawal, does not pay it out. |
+| Command                  | Effect                                                                                  |
+| ------------------------ | --------------------------------------------------------------------------------------- |
+| `submit-withdrawal`      | Builds and submits the L1 withdrawal order. Starts the withdrawal, does not pay it out. |
 | `fetch-withdrawals-once` | Reads pending L1 withdrawal orders and records them locally, so they can be classified. |
-| `withdrawal-status` | Reports the order's classification and payout progress. Read-only. |
+| `withdrawal-status`      | Reports the order's classification and payout progress. Read-only.                      |
 
 A withdrawal order is classified before it is paid. An order can be found invalid, for
 example `NonExistentWithdrawalUtxo` or `IncorrectWithdrawalOwner`. Payment happens
 separately, through [reserve and payout](/docs/operators/node/reserve-payout).
 
-The deposit and withdrawal fetching above is also run continuously by the
-[background fibers](/docs/operators/node/background-fibers). These commands are the
-one-shot equivalents.
+Deposit fetching/projection and withdrawal fetching also run continuously in
+the [background fibers](/docs/operators/node/background-fibers). Their relevant
+one-shot commands can inspect or advance the same stages.
 
 ## HTTP endpoints
 
@@ -78,10 +87,24 @@ and status are CLI and background operations, not HTTP routes. See the
 [CLI Reference](/docs/operators/node/cli-reference). Full route graph:
 [Server HTTP API](/docs/operators/node/server-http-api).
 
-<EndpointTable rows={[
-  { method: 'POST', path: '/deposit/build', auth: 'public', description: 'Build an unsigned L1 deposit transaction from a caller-supplied wallet view; returns CBOR for external signing.' },
-  { method: 'GET', path: '/deposit-status', auth: 'public', description: 'Return one serialized deposit row by event id or L1 tx hash.' },
-]} />
+<EndpointTable
+  rows={[
+    {
+      method: "POST",
+      path: "/deposit/build",
+      auth: "public",
+      description:
+        "Build an unsigned L1 deposit transaction from a caller-supplied wallet view; returns CBOR for external signing.",
+    },
+    {
+      method: "GET",
+      path: "/deposit-status",
+      auth: "public",
+      description:
+        "Return one serialized deposit row by event id or L1 tx hash.",
+    },
+  ]}
+/>
 
 ## Related
 

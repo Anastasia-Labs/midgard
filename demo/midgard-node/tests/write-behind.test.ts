@@ -11,12 +11,12 @@ import {
 } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { addressHistoryInsertSqlDurationTimer } from "@/database/addressHistory.js";
+import { addressHistoryInsertSqlDurationTimer } from "../src/database/addressHistory.js";
 import {
   mempoolTxDeltasPreparationDurationTimer,
   mempoolTxDeltasSqlDurationTimer,
-} from "@/database/mempoolTxDeltas.js";
-import type { WriteBehindItem } from "@/services/write-behind.js";
+} from "../src/database/mempoolTxDeltas.js";
+import type { WriteBehindItem } from "../src/services/write-behind.js";
 import {
   persistWriteBehindInlineOverflowWithRetry,
   readWriteBehindTelemetry,
@@ -26,7 +26,7 @@ import {
   takeWriteBehindRowBatch,
   writeBehindFlushDurationTimer,
   writeBehindInlineFallbackCounter,
-} from "@/services/write-behind.js";
+} from "../src/services/write-behind.js";
 
 const deltaItem = (count: number): WriteBehindItem => ({
   kind: "tx_deltas",

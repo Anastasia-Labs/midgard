@@ -1,0 +1,31 @@
+import {
+  midgardSourceSsr,
+  rawSqlLoaderPlugin,
+} from "@al-ft/midgard-test-support/vitest";
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  plugins: [rawSqlLoaderPlugin()],
+  test: {
+    environment: "node",
+    include: ["./tests/**/*.test.ts"],
+    restoreMocks: true,
+    // Several files perform CPU-heavy replay and emulator evaluation. An
+    // unbounded thread pool can starve Vitest's worker RPC long enough for
+    // successful tests to be reported as `Timeout calling onTaskUpdate`.
+    // Isolated forks keep evaluator state file-local; the two-fork ceiling
+    // bounds contention and memory on shared CI runners.
+    pool: "forks",
+    poolOptions: {
+      forks: {
+        isolate: true,
+        minForks: 1,
+        maxForks: 2,
+      },
+    },
+    // The heaviest restart/rewind tests can exceed Vitest's 5s default on
+    // shared runners. Headroom for slow runners, not a license for slow tests.
+    testTimeout: 60_000,
+  },
+  ssr: midgardSourceSsr(),
+});

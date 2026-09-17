@@ -17,14 +17,24 @@ import { Level } from "level";
 
 import {
   createCanonicalCorpusPrefixSelector,
+  projectStressWalletFundingRecord,
+  stressWalletFileNameFromId,
   validateCanonicalCorpusVerificationEvidence,
 } from "./mpf-architecture-g-corpus.mjs";
+import {
+  parseCorpusManifest,
+  parseCorpusRowLine,
+} from "./throughput-valid-stress-corpus.mjs";
 import {
   captureArchitectureGPhase1FormalBindingIdentity,
   captureArchitectureGRuntimeIdentity,
   discoverArchitectureGSourceFiles,
+  percentile,
   resolveArchitectureGGateConfig,
+  validateArchitectureGCorpusPreparationV1,
+  validateArchitectureGCorpusFundingV1,
   validateArchitectureGFixtureCreationEvidence,
+  validateArchitectureGRootGateSummary,
   validateArchitectureGSourceFileList,
 } from "./mpf-architecture-g-gate-config.mjs";
 
@@ -187,12 +197,9 @@ const sha256File = async (path) => {
 };
 const prepareCanonicalCorpusSlice = async () => {
   if (!usesCanonicalCorpus) return null;
-  const manifest = JSON.parse(readFileSync(corpusManifestPath, "utf8"));
-  if (manifest.schemaVersion !== "midgard-stress-corpus-manifest-v1") {
-    throw new Error(
-      `Unsupported canonical corpus manifest schema: ${String(manifest.schemaVersion)}`,
-    );
-  }
+  const manifest = parseCorpusManifest(
+    JSON.parse(readFileSync(corpusManifestPath, "utf8")),
+  );
   const expectedCorpusSha256 = manifest.files?.corpus?.sha256;
   if (!/^[0-9a-f]{64}$/.test(expectedCorpusSha256 ?? "")) {
     throw new Error(
@@ -244,7 +251,10 @@ const prepareCanonicalCorpusSlice = async () => {
   for await (const line of input) {
     if (line.trim().length === 0) continue;
     corpusRows += 1;
-    const row = JSON.parse(line);
+    const row = parseCorpusRowLine(
+      line,
+      `Architecture G corpus row ${corpusRows.toString()}`,
+    );
     selector.consider({ line, row, corpusRowNumber: corpusRows });
   }
   assert.equal(
@@ -258,20 +268,23 @@ const prepareCanonicalCorpusSlice = async () => {
   const sliceBytes = Buffer.from(`${selection.selectedLines.join("\n")}\n`);
   writeFileSync(slicePath, sliceBytes);
   const walletRecords = new Map();
-  for (const entry of readdirSync(walletsDirectory, { withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
-    const record = JSON.parse(
-      readFileSync(resolve(walletsDirectory, entry.name), "utf8"),
+  for (const walletId of new Set(
+    selection.fundingRoots.map((root) => root.walletId),
+  )) {
+    const record = projectStressWalletFundingRecord(
+      JSON.parse(
+        readFileSync(
+          resolve(walletsDirectory, stressWalletFileNameFromId(walletId)),
+          "utf8",
+        ),
+      ),
     );
-    if (
-      record?.schemaVersion === "midgard-stress-wallet-v1" &&
-      typeof record.walletId === "string"
-    ) {
-      if (walletRecords.has(record.walletId)) {
-        throw new Error(`Duplicate stress wallet record ${record.walletId}`);
-      }
-      walletRecords.set(record.walletId, record);
+    if (record.walletId !== walletId) {
+      throw new Error(
+        `Stress wallet file for ${walletId} contains ${record.walletId}`,
+      );
     }
+    walletRecords.set(record.walletId, record);
   }
   const fundingEntries = selection.fundingRoots.map(({ walletId, outref }) => {
     const record = walletRecords.get(walletId);
@@ -280,7 +293,7 @@ const prepareCanonicalCorpusSlice = async () => {
         `Missing stress wallet record for corpus chain ${walletId}`,
       );
     }
-    const funding = record.latestFunding?.fundingUtxos?.find(
+    const funding = record.fundingUtxos.find(
       (candidate) => candidate?.outref === outref,
     );
     const outputCbor = funding?.outputCbor;
@@ -301,17 +314,20 @@ const prepareCanonicalCorpusSlice = async () => {
     dirname(outPath),
     "canonical-corpus-funding.json",
   );
+  const sliceSha256 = createHash("sha256").update(sliceBytes).digest("hex");
+  const fundingMap = validateArchitectureGCorpusFundingV1({
+    artifact: {
+      schemaVersion: "midgard-architecture-g-corpus-funding-v1",
+      corpusSha256,
+      sliceSha256,
+      entries: fundingEntries,
+    },
+    expectedCorpusSha256: corpusSha256,
+    expectedSliceSha256: sliceSha256,
+    expectedFundingRoots: selection.fundingRoots,
+  });
   const fundingMapBytes = Buffer.from(
-    `${JSON.stringify(
-      {
-        schemaVersion: "midgard-architecture-g-corpus-funding-v1",
-        corpusSha256,
-        sliceSha256: createHash("sha256").update(sliceBytes).digest("hex"),
-        entries: fundingEntries,
-      },
-      null,
-      2,
-    )}\n`,
+    `${JSON.stringify(fundingMap, null, 2)}\n`,
   );
   writeFileSync(fundingMapPath, fundingMapBytes);
   return {
@@ -338,6 +354,7 @@ const prepareCanonicalCorpusSlice = async () => {
     completeChainCount: selection.completeChainCount,
     finalChainPrefixLength: selection.finalChainPrefixLength,
     fundingRootOutrefs: selection.fundingRootOutrefs,
+    fundingRoots: selection.fundingRoots,
     fundingRootsSha256: selection.fundingRootsSha256,
     fundingMapPath,
     fundingMapSha256: createHash("sha256")
@@ -345,7 +362,7 @@ const prepareCanonicalCorpusSlice = async () => {
       .digest("hex"),
     fundingEntryCount: fundingEntries.length,
     slicePath,
-    sliceSha256: createHash("sha256").update(sliceBytes).digest("hex"),
+    sliceSha256,
     sliceRowCount: selection.selectedRowCount,
   };
 };
@@ -383,15 +400,17 @@ if (prepareCorpusOnly) {
       "--prepare-corpus-only=true requires canonical corpus inputs",
     );
   }
-  process.stdout.write(
-    `${JSON.stringify({
+  const corpusPreparation = validateArchitectureGCorpusPreparationV1({
+    artifact: {
       schemaVersion: "midgard-architecture-g-corpus-preparation-v1",
       formalGateEvidence: false,
       phase1FormalBinding,
       runtimeIdentity,
       canonicalCorpus,
-    })}\n`,
-  );
+    },
+    transactions: transactionCount,
+  });
+  process.stdout.write(`${JSON.stringify(corpusPreparation)}\n`);
   process.exit(0);
 }
 for (const path of [
@@ -544,10 +563,6 @@ const cgroupMemoryMax =
     ? "unavailable"
     : readFileSync(memoryMaxPath, "utf8").trim();
 
-const percentile = (values, quantile) => {
-  const sorted = [...values].sort((left, right) => left - right);
-  return sorted[Math.max(0, Math.ceil(sorted.length * quantile) - 1)];
-};
 const median = (values) => percentile(values, 0.5);
 const execute = (initialUtxos, fixturePath, index) => {
   const run = spawnSync(
@@ -575,6 +590,7 @@ const execute = (initialUtxos, fixturePath, index) => {
           : {
               MPF_ENGINE_PROBE_CORPUS_SLICE_PATH: canonicalCorpus.slicePath,
               MPF_ENGINE_PROBE_CORPUS_SLICE_SHA256: canonicalCorpus.sliceSha256,
+              MPF_ENGINE_PROBE_CORPUS_SHA256: canonicalCorpus.corpusSha256,
               MPF_ENGINE_PROBE_CORPUS_FUNDING_PATH:
                 canonicalCorpus.fundingMapPath,
               MPF_ENGINE_PROBE_CORPUS_FUNDING_SHA256:
@@ -830,42 +846,48 @@ assert.deepEqual(
   runtimeIdentity,
   "Runtime identity mutated during root gate execution",
 );
-const summary = {
-  schemaVersion: gateConfig.formal
-    ? "midgard-architecture-g-production-root-gate-v1"
-    : "midgard-architecture-g-root-diagnostic-smoke-v1",
-  formal: gateConfig.formal,
-  profile,
-  requiredCardinality: gateConfig.required,
-  generatedAt: new Date().toISOString(),
-  mode,
-  freshProcessRunsPerFixture: runs,
-  transactionCount,
-  phase1FormalBinding,
-  runtimeIdentity,
-  canonicalCorpus,
-  binaryPath,
-  binarySha256,
-  probePath,
-  probeSha256,
-  gitHead,
-  sourceSha256,
-  diffSha256,
-  gitStatusSha256,
-  gitStatusEntries,
-  sourceFiles,
-  cpuSet,
-  nodeOptions: "--max-old-space-size=4096",
-  cgroup: {
-    membership: cgroupMembership,
-    memoryMaxPath: memoryMaxPath ?? "unavailable",
-    memoryMax: cgroupMemoryMax,
+const summary = validateArchitectureGRootGateSummary({
+  summary: {
+    schemaVersion: gateConfig.formal
+      ? "midgard-architecture-g-production-root-gate-v1"
+      : "midgard-architecture-g-root-diagnostic-smoke-v1",
+    formal: gateConfig.formal,
+    profile,
+    requiredCardinality: gateConfig.required,
+    generatedAt: new Date().toISOString(),
+    mode,
+    freshProcessRunsPerFixture: runs,
+    transactionCount,
+    phase1FormalBinding,
+    runtimeIdentity,
+    canonicalCorpus,
+    binaryPath,
+    binarySha256,
+    probePath,
+    probeSha256,
+    gitHead,
+    sourceSha256,
+    diffSha256,
+    gitStatusSha256,
+    gitStatusEntries,
+    sourceFiles,
+    cpuSet,
+    nodeOptions: "--max-old-space-size=4096",
+    cgroup: {
+      membership: cgroupMembership,
+      memoryMaxPath: memoryMaxPath ?? "unavailable",
+      memoryMax: cgroupMemoryMax,
+    },
+    percentileMethod:
+      "nearest-rank: sorted[max(0, ceil(N*q)-1)]; q=0.5 median, q=0.95 p95",
+    groups,
+    verdict,
   },
-  percentileMethod:
-    "nearest-rank: sorted[max(0, ceil(N*q)-1)]; q=0.5 median, q=0.95 p95",
-  groups,
-  verdict,
-};
+  mode,
+  runs,
+  transactions: transactionCount,
+  cpuSet,
+});
 mkdirSync(dirname(outPath), { recursive: true });
 writeFileSync(outPath, `${JSON.stringify(summary, null, 2)}\n`);
 const markdownPath = outPath.replace(/\.json$/, ".md");

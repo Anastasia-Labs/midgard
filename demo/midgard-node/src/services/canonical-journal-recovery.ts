@@ -1,10 +1,10 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Option } from "effect";
 
-import { PendingBlockFinalizationsDB } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { Database, Lucid, MidgardContracts } from "@/services/index.js";
-import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+import { PendingBlockFinalizationsDB } from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
+import { Database, Lucid, MidgardContracts } from "./index.js";
 
 export type CanonicalCommittedHeaderIdentity = {
   readonly headerHash: Buffer;

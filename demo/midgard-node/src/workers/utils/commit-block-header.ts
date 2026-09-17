@@ -1,15 +1,21 @@
 import type { MessagePort } from "node:worker_threads";
 
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML, coreToUtxo, UTxO, utxoToCore } from "@lucid-evolution/lucid";
+import {
+  CML,
+  coreToUtxo,
+  type SlotConfig,
+  UTxO,
+  utxoToCore,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { SlotAwareDueWork } from "@/fibers/slot-aware-due-work.js";
+import type { SlotAwareDueWork } from "../../fibers/slot-aware-due-work.js";
 import type {
   SpeculativeCandidateSummary,
   SpeculativeInvalidationReason,
   UserEventBarrierWatermarks,
-} from "@/fibers/speculative-commit-state.js";
+} from "../../fibers/speculative-commit-state.js";
 
 export type SpeculativeCommitBaseInput = {
   readonly headerHash: string;
@@ -35,6 +41,11 @@ export type WorkerInput = {
      * worker thread has stopped, including timeout and interruption paths.
      */
     ledgerStoreLeaseOwner: string;
+    /**
+     * Immutable, node-selected time mapping used by canonical V1 forced
+     * validation. Plain data keeps candidate construction provider-free.
+     */
+    forcedValidationSlotConfig?: SlotConfig;
     mempoolTxsCountSoFar: number;
     sizeOfProcessedTxsSoFar: number;
     stateQueueLeaseToken?: string;
@@ -193,7 +204,7 @@ export const serializeStateQueueUTxO = (
       try: () => utxoToCore(stateQueueUTxO.utxo),
       catch: (e) =>
         new SDK.CmlUnexpectedError({
-          message: `Failed to serialize state queue UTxO: ${e}`,
+          message: `Failed to serialize state queue UTxO: ${String(e)}`,
           cause: e,
         }),
     });
@@ -201,7 +212,7 @@ export const serializeStateQueueUTxO = (
       try: () => SDK.encodeLinkedListNodeView(stateQueueUTxO.datum),
       catch: (e) =>
         new SDK.CborSerializationError({
-          message: `Failed to serialize state queue datum: ${e}`,
+          message: `Failed to serialize state queue datum: ${String(e)}`,
           cause: e,
         }),
     });
@@ -226,7 +237,7 @@ export const deserializeStateQueueUTxO = (
         ),
       catch: (e) =>
         new SDK.CmlUnexpectedError({
-          message: `Failed to convert state queue UTxO to CML: ${e}`,
+          message: `Failed to convert state queue UTxO to CML: ${String(e)}`,
           cause: e,
         }),
     });
@@ -234,7 +245,7 @@ export const deserializeStateQueueUTxO = (
       Effect.mapError(
         (e) =>
           new SDK.CborDeserializationError({
-            message: `Failed to deserialize datum: ${e}`,
+            message: `Failed to deserialize datum: ${e.message}`,
             cause: e,
           }),
       ),

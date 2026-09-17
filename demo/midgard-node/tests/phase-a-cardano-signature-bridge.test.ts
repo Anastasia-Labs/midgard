@@ -1,7 +1,9 @@
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   cardanoTxBytesToMidgardNativeTxCanonicalCbor,
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
 import {
   type QueuedTx,
@@ -29,6 +31,7 @@ const phaseAConfig = {
   concurrency: 1,
   strictnessProfile: "phase1_midgard",
 } as const;
+const emptyProgramMaterialSidecar = encodeMidgardCekProgramMaterialSidecar([]);
 
 const makePubKeyOutput = (
   keyHash: CML.Ed25519KeyHash,
@@ -54,6 +57,7 @@ describe("phase-a converted fixture signature bridge", () => {
     const queued: QueuedTx = {
       txId,
       txCbor: nativeBytes,
+      programMaterialSidecarCbor: emptyProgramMaterialSidecar,
       arrivalSeq: 0n,
       createdAt: new Date(0),
     };
@@ -133,6 +137,7 @@ describe("phase-a converted fixture signature bridge", () => {
     const queued: QueuedTx = {
       txId,
       txCbor: nativeBytes,
+      programMaterialSidecarCbor: emptyProgramMaterialSidecar,
       arrivalSeq: 0n,
       createdAt: new Date(0),
     };
@@ -142,9 +147,14 @@ describe("phase-a converted fixture signature bridge", () => {
     expect(phaseA.rejected, JSON.stringify(phaseA.rejected)).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
 
+    // Phase B keys the pre-state by the §5.3 fixed-index item form, not CML's
+    // minimal TransactionInput encoding.
     const preState = new Map<string, Buffer>([
       [
-        Buffer.from(input.to_cbor_bytes()).toString("hex"),
+        encodeMidgardSpendInputItem({
+          txId: Buffer.from("11".repeat(32), "hex"),
+          outputIndex: 0,
+        }).toString("hex"),
         makePubKeyOutput(
           signerKey.to_public().hash(),
           CML.Value.from_coin(3_000_000n),

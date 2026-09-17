@@ -1,0 +1,396 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 54ade4cc06055f06a13b9a5134d4ea79f072004b..8b24c3757901d7db8c364be476546af688b66752 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -636,7 +636,11 @@ var addOutput = (config, outputBuilder, assets) => (0, import_core_utils5.withCM
+ });
+ var ToAddressWithData = (address, outputDatum, assets, scriptRef) => import_effect7.Effect.gen(function* () {
+   const { config } = yield* TxConfig;
+-  const outputBuilder = buildBaseOutput(address, outputDatum, scriptRef);
++  const datum = config.canonicalOutputs && outputDatum?.kind === "inline" ? {
++    ...outputDatum,
++    value: (0, import_core_utils5.withCMLScope)((own) => own(CML.PlutusData.from_cbor_hex(outputDatum.value)).to_canonical_cbor_hex())
++  } : outputDatum;
++  const outputBuilder = buildBaseOutput(address, datum, scriptRef);
+   assets ??= {};
+   addOutput(config, outputBuilder, assets);
+ });
+@@ -3977,6 +3981,7 @@ var completeCurrentConfig = (options = {}, internalOptions = {}) => import_effec
+     catch: (error) => completeTxError(error)
+   }) : presetWalletInputs;
+   config.walletInputs = walletInputs;
++  config.canonicalOutputs = canonical || internalOptions.forceCanonical === true;
+   yield* import_effect22.Effect.all(config.programs);
+   yield* finalizeVotes();
+   yield* applyTreasuryDonationToBuilder(config);
+@@ -4005,10 +4010,14 @@ var completeCurrentConfig = (options = {}, internalOptions = {}) => import_effec
+         )
+       )
+     );
++    const collateralCandidates = wallet.getCollateral === undefined ? walletInputs : yield* import_effect22.Effect.tryPromise({
++      try: () => wallet.getCollateral(),
++      catch: (error) => completeTxError(error)
++    });
+     const collateralInput = yield* findCollateral(
+       config.lucidConfig.protocolParameters.coinsPerUtxoByte,
+       totalCollateral,
+-      walletInputs
++      collateralCandidates
+     );
+     yield* applyCollateral(totalCollateral, collateralInput, changeAddress);
+     evaluatedScriptBody = (yield* selectionAndEvaluation(
+@@ -4087,6 +4096,7 @@ var completeCurrentConfig = (options = {}, internalOptions = {}) => import_effec
+ }).pipe(import_effect22.Effect.catchAllDefect((cause) => new RunTimeError({ cause })));
+ var completeStaticFromActions = (sourceConfig, options) => {
+   const replayConfig = makeReplayConfig(sourceConfig);
++  replayConfig.canonicalOutputs = options.canonical === true;
+   return (0, import_effect22.pipe)(
+     import_effect22.Effect.gen(function* () {
+       yield* replayTxActions(sourceConfig.actions);
+@@ -4116,6 +4126,7 @@ var completeDelayedFromActions = (sourceConfig, options) => import_effect22.Effe
+   let bootstrapWalletInputs = [];
+   for (let attempt = 0; attempt < MAX_EVALUATION_ATTEMPTS; attempt++) {
+     const replayConfig = makeReplayConfig(sourceConfig);
++    replayConfig.canonicalOutputs = true;
+     let usedBootstrapExUnits = false;
+     const completion = yield* (0, import_effect22.pipe)(
+       import_effect22.Effect.gen(function* () {
+@@ -4266,12 +4277,18 @@ var collectKnownRedeemerExUnits = (tx, config) => import_effect22.Effect.gen(fun
+ });
+ var complete = (options = {}) => import_effect22.Effect.gen(function* () {
+   const { config } = yield* TxConfig;
++  // Keep default evaluation reuse within one completion, including its internal
++  // fee, collateral and delayed-redeemer replays. Custom evaluators stay intact.
++  const completionOptions = options.localUPLCEval !== false &&
++    options.evaluator == null && config.lucidConfig.evaluator == null
++    ? { ...options, evaluator: makeDefaultAikenEvaluator() }
++    : options;
+   if (config.actions.length === 0)
+-    return yield* completeCurrentConfig(options);
++    return yield* completeCurrentConfig(completionOptions);
+   if (hasDelayedActions(config)) {
+-    return yield* completeDelayedFromActions(config, options);
++    return yield* completeDelayedFromActions(config, completionOptions);
+   }
+-  return yield* completeStaticFromActions(config, options);
++  return yield* completeStaticFromActions(config, completionOptions);
+ });
+ var selectionAndEvaluation = (walletInputs, changeAddress, coinSelection, localUPLCEval, evaluator, includeLeftoverLovelaceAsFee, script_calculation, bootstrapExUnits = false, knownRedeemerExUnits, redeemerInputFingerprint) => import_effect22.Effect.gen(function* () {
+   const { config } = yield* TxConfig;
+@@ -5012,8 +5029,11 @@ var evaluateUntilStable = (config, walletInputs, changeAddress, script_calculati
+       applyBootstrapRedeemerExUnits(
+         redeemers,
+         config.txBuilder,
+-        config.lucidConfig.protocolParameters.maxTxExMem,
+-        config.lucidConfig.protocolParameters.maxTxExSteps
++        // An explicitly funded transaction must bootstrap its canonical context
++        // without charging the aggregate maximum before its redeemers exist.
++        // Resolved redeemers still undergo normal local evaluation and fee checks.
++        config.minFee === void 0 ? config.lucidConfig.protocolParameters.maxTxExMem : 0n,
++        config.minFee === void 0 ? config.lucidConfig.protocolParameters.maxTxExSteps : 0n
+       );
+       (0, import_core_utils14.freeCML)(redeemers, candidate);
+       return true;
+@@ -5063,32 +5083,78 @@ var makeProviderEvaluator = (provider) => ({
+   name: "provider",
+   evaluate: ({ tx, additionalUTxOs }) => provider.evaluateTx(tx, additionalUTxOs)
+ });
+-var makeDefaultAikenEvaluator = () => ({
+-  name: "aiken",
+-  evaluate: async ({ tx, additionalUTxOs, context }) => {
+-    const { txBytes, inputBytes, outputBytes } = (0, import_core_utils14.withCMLScope)((own) => ({
+-      txBytes: own(CML.Transaction.from_cbor_hex(tx)).to_cbor_bytes(),
+-      inputBytes: additionalUTxOs.map(
+-        (utxo) => own((0, import_utils11.utxoToTransactionInput)(utxo)).to_cbor_bytes()
+-      ),
+-      outputBytes: additionalUTxOs.map(
+-        (utxo) => own((0, import_utils11.utxoToTransactionOutput)(utxo)).to_cbor_bytes()
+-      )
+-    }));
+-    const uplcEval = UPLC.eval_phase_two_raw(
+-      txBytes,
+-      inputBytes,
+-      outputBytes,
+-      context.costModels.to_cbor_bytes(),
+-      context.protocolParameters.maxTxExSteps,
+-      context.protocolParameters.maxTxExMem,
+-      BigInt(context.slotConfig.zeroTime),
+-      BigInt(context.slotConfig.zeroSlot),
+-      context.slotConfig.slotLength
+-    );
+-    return decodeLegacyRedeemers(uplcEval);
+-  }
+-});
++var makeDefaultAikenEvaluator = () => {
++  let previous;
++  const sameBytes = (left, right) => left.length === right.length &&
++    left.every((byte, index) => byte === right[index]);
++  const sameByteArrays = (left, right) => left.length === right.length &&
++    left.every((bytes, index) => sameBytes(bytes, right[index]));
++  return {
++    name: "aiken",
++    evaluate: async ({ tx, additionalUTxOs, context }) => {
++      const { txBytes, inputBytes, outputBytes } = (0, import_core_utils14.withCMLScope)((own) => ({
++        txBytes: own(CML.Transaction.from_cbor_hex(tx)).to_cbor_bytes(),
++        inputBytes: additionalUTxOs.map(
++          (utxo) => own((0, import_utils11.utxoToTransactionInput)(utxo)).to_cbor_bytes()
++        ),
++        outputBytes: additionalUTxOs.map(
++          (utxo) => own((0, import_utils11.utxoToTransactionOutput)(utxo)).to_cbor_bytes()
++        )
++      }));
++      const request = {
++        txBytes,
++        inputBytes,
++        outputBytes,
++        costModels: context.costModels.to_cbor_bytes(),
++        maxSteps: context.protocolParameters.maxTxExSteps,
++        maxMemory: context.protocolParameters.maxTxExMem,
++        zeroTime: BigInt(context.slotConfig.zeroTime),
++        zeroSlot: BigInt(context.slotConfig.zeroSlot),
++        slotLength: context.slotConfig.slotLength
++      };
++      const prior = previous?.request;
++      if (prior &&
++          sameBytes(prior.txBytes, request.txBytes) &&
++          sameByteArrays(prior.inputBytes, request.inputBytes) &&
++          sameByteArrays(prior.outputBytes, request.outputBytes) &&
++          sameBytes(prior.costModels, request.costModels) &&
++          prior.maxSteps === request.maxSteps &&
++          prior.maxMemory === request.maxMemory &&
++          prior.zeroTime === request.zeroTime &&
++          prior.zeroSlot === request.zeroSlot &&
++          Object.is(prior.slotLength, request.slotLength)) {
++        // Decode anew so callers never receive the retained result's objects.
++        return decodeLegacyRedeemers(previous.redeemers);
++      }
++      previous = void 0;
++      const retainedRequest = {
++        ...request,
++        txBytes: txBytes.slice(),
++        inputBytes: inputBytes.map((bytes) => bytes.slice()),
++        outputBytes: outputBytes.map((bytes) => bytes.slice()),
++        costModels: request.costModels.slice()
++      };
++      const uplcEval = UPLC.eval_phase_two_raw(
++        txBytes,
++        inputBytes,
++        outputBytes,
++        request.costModels,
++        request.maxSteps,
++        request.maxMemory,
++        request.zeroTime,
++        request.zeroSlot,
++        request.slotLength
++      );
++      const result = decodeLegacyRedeemers(uplcEval);
++      // Retain only a successful exact request, and never share mutable bytes.
++      previous = {
++        request: retainedRequest,
++        redeemers: uplcEval.map((bytes) => bytes.slice())
++      };
++      return result;
++    }
++  };
++};
+ var resolveEvaluatorAdapter = (config, localUPLCEval, evaluator) => localUPLCEval === false ? makeProviderEvaluator(config.lucidConfig.provider) : evaluator ?? config.lucidConfig.evaluator ?? makeDefaultAikenEvaluator();
+ var makeEvaluationContext = (config) => ({
+   network: config.lucidConfig.network,
+diff --git a/dist/index.js b/dist/index.js
+index 2fb0a21504d818b19e60bedee4f41c0db999ad62..6f7011db80ec2d5fd2ebb2b3ce065f6bd392bae4 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -499,7 +499,11 @@ var addOutput = (config, outputBuilder, assets) => withCMLScope5((own) => {
+ });
+ var ToAddressWithData = (address, outputDatum, assets, scriptRef) => Effect6.gen(function* () {
+   const { config } = yield* TxConfig;
+-  const outputBuilder = buildBaseOutput(address, outputDatum, scriptRef);
++  const datum = config.canonicalOutputs && outputDatum?.kind === "inline" ? {
++    ...outputDatum,
++    value: withCMLScope5((own) => own(CML.PlutusData.from_cbor_hex(outputDatum.value)).to_canonical_cbor_hex())
++  } : outputDatum;
++  const outputBuilder = buildBaseOutput(address, datum, scriptRef);
+   assets ??= {};
+   addOutput(config, outputBuilder, assets);
+ });
+@@ -3875,6 +3879,7 @@ var completeCurrentConfig = (options = {}, internalOptions = {}) => Effect21.gen
+     catch: (error) => completeTxError(error)
+   }) : presetWalletInputs;
+   config.walletInputs = walletInputs;
++  config.canonicalOutputs = canonical || internalOptions.forceCanonical === true;
+   yield* Effect21.all(config.programs);
+   yield* finalizeVotes();
+   yield* applyTreasuryDonationToBuilder(config);
+@@ -3903,10 +3908,14 @@ var completeCurrentConfig = (options = {}, internalOptions = {}) => Effect21.gen
+         )
+       )
+     );
++    const collateralCandidates = wallet.getCollateral === undefined ? walletInputs : yield* Effect21.tryPromise({
++      try: () => wallet.getCollateral(),
++      catch: (error) => completeTxError(error)
++    });
+     const collateralInput = yield* findCollateral(
+       config.lucidConfig.protocolParameters.coinsPerUtxoByte,
+       totalCollateral,
+-      walletInputs
++      collateralCandidates
+     );
+     yield* applyCollateral(totalCollateral, collateralInput, changeAddress);
+     evaluatedScriptBody = (yield* selectionAndEvaluation(
+@@ -3985,6 +3994,7 @@ var completeCurrentConfig = (options = {}, internalOptions = {}) => Effect21.gen
+ }).pipe(Effect21.catchAllDefect((cause) => new RunTimeError({ cause })));
+ var completeStaticFromActions = (sourceConfig, options) => {
+   const replayConfig = makeReplayConfig(sourceConfig);
++  replayConfig.canonicalOutputs = options.canonical === true;
+   return pipe10(
+     Effect21.gen(function* () {
+       yield* replayTxActions(sourceConfig.actions);
+@@ -4014,6 +4024,7 @@ var completeDelayedFromActions = (sourceConfig, options) => Effect21.gen(functio
+   let bootstrapWalletInputs = [];
+   for (let attempt = 0; attempt < MAX_EVALUATION_ATTEMPTS; attempt++) {
+     const replayConfig = makeReplayConfig(sourceConfig);
++    replayConfig.canonicalOutputs = true;
+     let usedBootstrapExUnits = false;
+     const completion = yield* pipe10(
+       Effect21.gen(function* () {
+@@ -4164,12 +4175,18 @@ var collectKnownRedeemerExUnits = (tx, config) => Effect21.gen(function* () {
+ });
+ var complete = (options = {}) => Effect21.gen(function* () {
+   const { config } = yield* TxConfig;
++  // Keep default evaluation reuse within one completion, including its internal
++  // fee, collateral and delayed-redeemer replays. Custom evaluators stay intact.
++  const completionOptions = options.localUPLCEval !== false &&
++    options.evaluator == null && config.lucidConfig.evaluator == null
++    ? { ...options, evaluator: makeDefaultAikenEvaluator() }
++    : options;
+   if (config.actions.length === 0)
+-    return yield* completeCurrentConfig(options);
++    return yield* completeCurrentConfig(completionOptions);
+   if (hasDelayedActions(config)) {
+-    return yield* completeDelayedFromActions(config, options);
++    return yield* completeDelayedFromActions(config, completionOptions);
+   }
+-  return yield* completeStaticFromActions(config, options);
++  return yield* completeStaticFromActions(config, completionOptions);
+ });
+ var selectionAndEvaluation = (walletInputs, changeAddress, coinSelection, localUPLCEval, evaluator, includeLeftoverLovelaceAsFee, script_calculation, bootstrapExUnits = false, knownRedeemerExUnits, redeemerInputFingerprint) => Effect21.gen(function* () {
+   const { config } = yield* TxConfig;
+@@ -4910,8 +4927,11 @@ var evaluateUntilStable = (config, walletInputs, changeAddress, script_calculati
+       applyBootstrapRedeemerExUnits(
+         redeemers,
+         config.txBuilder,
+-        config.lucidConfig.protocolParameters.maxTxExMem,
+-        config.lucidConfig.protocolParameters.maxTxExSteps
++        // An explicitly funded transaction must bootstrap its canonical context
++        // without charging the aggregate maximum before its redeemers exist.
++        // Resolved redeemers still undergo normal local evaluation and fee checks.
++        config.minFee === void 0 ? config.lucidConfig.protocolParameters.maxTxExMem : 0n,
++        config.minFee === void 0 ? config.lucidConfig.protocolParameters.maxTxExSteps : 0n
+       );
+       freeCML(redeemers, candidate);
+       return true;
+@@ -4961,32 +4981,78 @@ var makeProviderEvaluator = (provider) => ({
+   name: "provider",
+   evaluate: ({ tx, additionalUTxOs }) => provider.evaluateTx(tx, additionalUTxOs)
+ });
+-var makeDefaultAikenEvaluator = () => ({
+-  name: "aiken",
+-  evaluate: async ({ tx, additionalUTxOs, context }) => {
+-    const { txBytes, inputBytes, outputBytes } = withCMLScope12((own) => ({
+-      txBytes: own(CML.Transaction.from_cbor_hex(tx)).to_cbor_bytes(),
+-      inputBytes: additionalUTxOs.map(
+-        (utxo) => own(utxoToTransactionInput(utxo)).to_cbor_bytes()
+-      ),
+-      outputBytes: additionalUTxOs.map(
+-        (utxo) => own(utxoToTransactionOutput2(utxo)).to_cbor_bytes()
+-      )
+-    }));
+-    const uplcEval = UPLC.eval_phase_two_raw(
+-      txBytes,
+-      inputBytes,
+-      outputBytes,
+-      context.costModels.to_cbor_bytes(),
+-      context.protocolParameters.maxTxExSteps,
+-      context.protocolParameters.maxTxExMem,
+-      BigInt(context.slotConfig.zeroTime),
+-      BigInt(context.slotConfig.zeroSlot),
+-      context.slotConfig.slotLength
+-    );
+-    return decodeLegacyRedeemers(uplcEval);
+-  }
+-});
++var makeDefaultAikenEvaluator = () => {
++  let previous;
++  const sameBytes = (left, right) => left.length === right.length &&
++    left.every((byte, index) => byte === right[index]);
++  const sameByteArrays = (left, right) => left.length === right.length &&
++    left.every((bytes, index) => sameBytes(bytes, right[index]));
++  return {
++    name: "aiken",
++    evaluate: async ({ tx, additionalUTxOs, context }) => {
++      const { txBytes, inputBytes, outputBytes } = withCMLScope12((own) => ({
++        txBytes: own(CML.Transaction.from_cbor_hex(tx)).to_cbor_bytes(),
++        inputBytes: additionalUTxOs.map(
++          (utxo) => own(utxoToTransactionInput(utxo)).to_cbor_bytes()
++        ),
++        outputBytes: additionalUTxOs.map(
++          (utxo) => own(utxoToTransactionOutput2(utxo)).to_cbor_bytes()
++        )
++      }));
++      const request = {
++        txBytes,
++        inputBytes,
++        outputBytes,
++        costModels: context.costModels.to_cbor_bytes(),
++        maxSteps: context.protocolParameters.maxTxExSteps,
++        maxMemory: context.protocolParameters.maxTxExMem,
++        zeroTime: BigInt(context.slotConfig.zeroTime),
++        zeroSlot: BigInt(context.slotConfig.zeroSlot),
++        slotLength: context.slotConfig.slotLength
++      };
++      const prior = previous?.request;
++      if (prior &&
++          sameBytes(prior.txBytes, request.txBytes) &&
++          sameByteArrays(prior.inputBytes, request.inputBytes) &&
++          sameByteArrays(prior.outputBytes, request.outputBytes) &&
++          sameBytes(prior.costModels, request.costModels) &&
++          prior.maxSteps === request.maxSteps &&
++          prior.maxMemory === request.maxMemory &&
++          prior.zeroTime === request.zeroTime &&
++          prior.zeroSlot === request.zeroSlot &&
++          Object.is(prior.slotLength, request.slotLength)) {
++        // Decode anew so callers never receive the retained result's objects.
++        return decodeLegacyRedeemers(previous.redeemers);
++      }
++      previous = void 0;
++      const retainedRequest = {
++        ...request,
++        txBytes: txBytes.slice(),
++        inputBytes: inputBytes.map((bytes) => bytes.slice()),
++        outputBytes: outputBytes.map((bytes) => bytes.slice()),
++        costModels: request.costModels.slice()
++      };
++      const uplcEval = UPLC.eval_phase_two_raw(
++        txBytes,
++        inputBytes,
++        outputBytes,
++        request.costModels,
++        request.maxSteps,
++        request.maxMemory,
++        request.zeroTime,
++        request.zeroSlot,
++        request.slotLength
++      );
++      const result = decodeLegacyRedeemers(uplcEval);
++      // Retain only a successful exact request, and never share mutable bytes.
++      previous = {
++        request: retainedRequest,
++        redeemers: uplcEval.map((bytes) => bytes.slice())
++      };
++      return result;
++    }
++  };
++};
+ var resolveEvaluatorAdapter = (config, localUPLCEval, evaluator) => localUPLCEval === false ? makeProviderEvaluator(config.lucidConfig.provider) : evaluator ?? config.lucidConfig.evaluator ?? makeDefaultAikenEvaluator();
+ var makeEvaluationContext = (config) => ({
+   network: config.lucidConfig.network,

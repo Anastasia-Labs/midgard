@@ -45,6 +45,14 @@ const runPhaseA = (request: PhaseAJobRequest): ValidationWorkerResponse => {
         descriptor.cborOffset,
         descriptor.cborLength,
       ),
+      programMaterialSidecarCbor:
+        descriptor.programMaterialLength === 0
+          ? null
+          : Buffer.from(
+              request.arena,
+              descriptor.programMaterialOffset,
+              descriptor.programMaterialLength,
+            ),
       arrivalSeq: descriptor.arrivalSeq,
       createdAt: new Date(descriptor.createdAtMs),
     };

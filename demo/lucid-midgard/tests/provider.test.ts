@@ -1,4 +1,15 @@
-import { MIDGARD_SUPPORTED_SCRIPT_LANGUAGES } from "@al-ft/midgard-core/codec";
+import {
+  decodeMidgardProofSubmission,
+  encodeMidgardCekTermNode,
+  hashMidgardCekTermNode,
+} from "@al-ft/midgard-core/cek-proof";
+import {
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+} from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -21,19 +32,24 @@ const outRef: OutRef = {
   txHash: "11".repeat(32),
   outputIndex: 0,
 };
+const deploymentMarker = makeDeploymentMarker("ab".repeat(32));
 
 const protocolInfo: MidgardProtocolInfo = {
   apiVersion: 1,
   network: "Preview",
   midgardNativeTxVersion: 1,
   currentSlot: 123456n,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+  deploymentMarker,
   supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+  codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   protocolFeeParameters: {
     minFeeA: 44n,
     minFeeB: 155381n,
   },
   submissionLimits: {
-    maxSubmitTxCborBytes: 32768,
+    maxSubmitTxCborBytes:
+      MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
   },
   validation: {
     strictnessProfile: "phase1_midgard",
@@ -46,13 +62,17 @@ const protocolInfoJson = {
   network: "Preview",
   midgardNativeTxVersion: 1,
   currentSlot: "123456",
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+  deploymentMarker,
   supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+  codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   protocolFeeParameters: {
     minFeeA: "44",
     minFeeB: "155381",
   },
   submissionLimits: {
-    maxSubmitTxCborBytes: 32768,
+    maxSubmitTxCborBytes:
+      MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
   },
   validation: {
     strictnessProfile: "phase1_midgard",
@@ -73,11 +93,22 @@ const encodedUtxo = (ref: OutRef = outRef) => ({
   }).toString("hex"),
 });
 
+const submitTxHex =
+  "84018c418041804180002020418041804180582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff8341804180418000";
 const submitTx = {
-  txHex:
-    "84018c418041804180002020418041804180582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff8341804180418000",
-  txId: "fcc1ff60638b4a94e1316d4510ad07818b87268e9167a10c6b423e5c2f4dc9df",
+  txHex: submitTxHex,
+  txId: computeMidgardNativeTxId(
+    decodeMidgardNativeTxFullFromCanonicalCbor(Buffer.from(submitTxHex, "hex")),
+  ).toString("hex"),
 };
+const submitProgramTerm = { kind: "error" } as const;
+const submitProgramMaterial = [
+  {
+    kind: "term" as const,
+    root: hashMidgardCekTermNode(submitProgramTerm),
+    preimage: encodeMidgardCekTermNode(submitProgramTerm),
+  },
+];
 
 const submitAdmission = (
   payload: Record<string, unknown> = {},
@@ -111,6 +142,37 @@ const makeProvider = (fetchImpl: MidgardFetch): Promise<MidgardNodeProvider> =>
   });
 
 describe("MidgardNodeProvider", () => {
+  it("accepts only the exact V1 profile and full language surface", async () => {
+    const v1ProtocolInfoJson = {
+      ...protocolInfoJson,
+      apiVersion: 1,
+    };
+    const provider = await MidgardNodeProvider.create({
+      endpoint: "http://127.0.0.1:3000/",
+      fetch: async () => jsonResponse(v1ProtocolInfoJson),
+    });
+
+    await expect(provider.getProtocolInfo()).resolves.toMatchObject({
+      apiVersion: 1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+      deploymentMarker,
+      supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+    });
+    await expect(
+      MidgardNodeProvider.create({
+        endpoint: "http://127.0.0.1:3000/",
+        fetch: async () =>
+          jsonResponse({
+            ...v1ProtocolInfoJson,
+            consensusProfile: {
+              ...MIDGARD_CONSENSUS_PROFILE,
+              protocolVersion: 2,
+            },
+          }),
+      }),
+    ).rejects.toThrow(/does not exactly match/);
+  });
+
   it("rejects direct runtime construction so protocol-info cannot be bypassed", () => {
     const UnsafeConstructor = MidgardNodeProvider as unknown as new (
       options: object,
@@ -242,7 +304,7 @@ describe("MidgardNodeProvider", () => {
     await expect(provider.getUtxosByOutRefs([outRef])).resolves.toHaveLength(1);
   });
 
-  it("parses protocol info and current slot from the node", async () => {
+  it("accepts the exact current protocol-info shape from the node", async () => {
     const provider = await MidgardNodeProvider.create({
       endpoint: "http://127.0.0.1:3000",
       fetch: async () => jsonResponse(protocolInfoJson),
@@ -254,9 +316,116 @@ describe("MidgardNodeProvider", () => {
       minFeeA: 44n,
       minFeeB: 155381n,
       networkId: 0n,
-      maxSubmitTxCborBytes: 32768,
+      deploymentManifestId: deploymentMarker.manifestId,
+      maxSubmitTxCborBytes:
+        MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
     });
     expect(provider.diagnostics().protocolInfoSource).toBe("node");
+  });
+
+  it("rejects unknown root protocol-info fields", async () => {
+    await expect(
+      MidgardNodeProvider.create({
+        endpoint: "http://127.0.0.1:3000",
+        fetch: async () =>
+          jsonResponse({
+            ...protocolInfoJson,
+            unknownRootField: true,
+          }),
+      }),
+    ).rejects.toBeInstanceOf(ProviderPayloadError);
+  });
+
+  it("rejects unknown nested protocol-info fields", async () => {
+    const unknownKeyProtocolInfos = [
+      {
+        ...protocolInfoJson,
+        deploymentMarker: {
+          ...protocolInfoJson.deploymentMarker,
+          legacyFingerprint: protocolInfoJson.deploymentMarker.manifestId,
+        },
+      },
+      {
+        ...protocolInfoJson,
+        protocolFeeParameters: {
+          ...protocolInfoJson.protocolFeeParameters,
+          unknownFeeField: true,
+        },
+      },
+      {
+        ...protocolInfoJson,
+        submissionLimits: {
+          ...protocolInfoJson.submissionLimits,
+          unknownLimitField: true,
+        },
+      },
+      {
+        ...protocolInfoJson,
+        validation: {
+          ...protocolInfoJson.validation,
+          unknownValidationField: true,
+        },
+      },
+      {
+        ...protocolInfoJson,
+        consensusProfile: {
+          ...protocolInfoJson.consensusProfile,
+          unknownProfileField: true,
+        },
+      },
+      {
+        ...protocolInfoJson,
+        supportedScriptLanguages: [
+          {
+            ...MIDGARD_SUPPORTED_SCRIPT_LANGUAGES[0],
+            unknownLanguageField: true,
+          },
+          ...MIDGARD_SUPPORTED_SCRIPT_LANGUAGES.slice(1),
+        ],
+      },
+      {
+        ...protocolInfoJson,
+        codecSupportedScriptLanguages: [
+          {
+            ...MIDGARD_SUPPORTED_SCRIPT_LANGUAGES[0],
+            unknownCodecLanguageField: true,
+          },
+          ...MIDGARD_SUPPORTED_SCRIPT_LANGUAGES.slice(1),
+        ],
+      },
+    ];
+
+    for (const payload of unknownKeyProtocolInfos) {
+      await expect(
+        MidgardNodeProvider.create({
+          endpoint: "http://127.0.0.1:3000",
+          fetch: async () => jsonResponse(payload),
+        }),
+      ).rejects.toBeInstanceOf(ProviderPayloadError);
+    }
+  });
+
+  it("rejects a missing or malformed final deployment marker", async () => {
+    const { deploymentMarker: _missing, ...missingMarker } = protocolInfoJson;
+    await expect(
+      MidgardNodeProvider.create({
+        endpoint: "http://127.0.0.1:3000",
+        fetch: async () => jsonResponse(missingMarker),
+      }),
+    ).rejects.toThrow(/deploymentMarker/u);
+    await expect(
+      MidgardNodeProvider.create({
+        endpoint: "http://127.0.0.1:3000",
+        fetch: async () =>
+          jsonResponse({
+            ...protocolInfoJson,
+            deploymentMarker: {
+              ...deploymentMarker,
+              schemaVersion: "midgard-deployment-marker-v0",
+            },
+          }),
+      }),
+    ).rejects.toThrow(/deploymentMarker/u);
   });
 
   it("redacts endpoint credentials and query strings in diagnostics", async () => {
@@ -270,8 +439,45 @@ describe("MidgardNodeProvider", () => {
     );
   });
 
-  it("fails closed on missing or incompatible supported script languages", async () => {
+  it("accepts a lower bounded submit cap from protocol-info", async () => {
+    const maxSubmitTxCborBytes =
+      MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes - 1;
+    const provider = await MidgardNodeProvider.create({
+      endpoint: "http://127.0.0.1:3000",
+      fetch: async () =>
+        jsonResponse({
+          ...protocolInfoJson,
+          submissionLimits: { maxSubmitTxCborBytes },
+        }),
+    });
+
+    await expect(provider.getProtocolInfo()).resolves.toMatchObject({
+      submissionLimits: { maxSubmitTxCborBytes },
+    });
+  });
+
+  it("fails closed on incompatible V1 profiles and feature matrices", async () => {
     const malformedProtocolInfos = [
+      { ...protocolInfoJson, apiVersion: 99 },
+      { ...protocolInfoJson, consensusProfile: undefined },
+      {
+        ...protocolInfoJson,
+        consensusProfile: {
+          ...MIDGARD_CONSENSUS_PROFILE,
+          protocolVersion: 99,
+        },
+      },
+      {
+        ...protocolInfoJson,
+        submissionLimits: {
+          maxSubmitTxCborBytes:
+            MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes + 1,
+        },
+      },
+      {
+        ...protocolInfoJson,
+        submissionLimits: { maxSubmitTxCborBytes: 0 },
+      },
       { ...protocolInfoJson, supportedScriptLanguages: undefined },
       {
         ...protocolInfoJson,
@@ -338,60 +544,13 @@ describe("MidgardNodeProvider", () => {
     ).rejects.toBeInstanceOf(ProviderPayloadError);
   });
 
-  it("fails closed when protocol-info is unavailable without fallback", async () => {
+  it("fails closed when the required protocol-info endpoint is unavailable", async () => {
     await expect(
       MidgardNodeProvider.create({
         endpoint: "http://127.0.0.1:3000",
         fetch: async () => new Response("not found", { status: 404 }),
       }),
     ).rejects.toBeInstanceOf(ProviderCapabilityError);
-  });
-
-  it("uses explicit protocol-info fallback with diagnostics", async () => {
-    const provider = await MidgardNodeProvider.create({
-      endpoint: "http://127.0.0.1:3000",
-      fetch: async () => new Response("not found", { status: 404 }),
-      protocolInfoFallback: {
-        protocolInfo,
-        reason: "test-only explicit fallback",
-      },
-    });
-
-    await expect(provider.getProtocolInfo()).resolves.toEqual(protocolInfo);
-    expect(provider.diagnostics()).toMatchObject({
-      protocolInfoSource: "fallback",
-      protocolInfoFallbackReason: "test-only explicit fallback",
-    });
-  });
-
-  it("validates explicit protocol-info fallback at runtime", async () => {
-    await expect(
-      MidgardNodeProvider.create({
-        endpoint: "http://127.0.0.1:3000",
-        fetch: async () => new Response("not found", { status: 404 }),
-        protocolInfoFallback: {
-          protocolInfo: {
-            ...protocolInfo,
-            currentSlot: "123" as unknown as bigint,
-          },
-          reason: "invalid fallback",
-        },
-      }),
-    ).rejects.toBeInstanceOf(ProviderPayloadError);
-
-    await expect(
-      MidgardNodeProvider.create({
-        endpoint: "http://127.0.0.1:3000",
-        fetch: async () => new Response("not found", { status: 404 }),
-        protocolInfoFallback: {
-          protocolInfo: {
-            ...protocolInfo,
-            protocolFeeParameters: undefined,
-          } as unknown as MidgardProtocolInfo,
-          reason: "invalid fallback",
-        },
-      }),
-    ).rejects.toBeInstanceOf(ProviderPayloadError);
   });
 
   it("preserves rejected transaction status code and detail", async () => {
@@ -458,22 +617,29 @@ describe("MidgardNodeProvider", () => {
       expect(url.pathname).toBe("/submit");
       expect(init?.method).toBe("POST");
       expect(init?.headers).toMatchObject({
-        "content-type": "application/cbor",
+        "content-type": "application/vnd.midgard.v1+cbor",
       });
       const body =
         init?.body instanceof Uint8Array
           ? Buffer.from(init.body)
           : Buffer.from(await new Response(init?.body).arrayBuffer());
-      submittedBodies.push(body.toString("hex"));
+      const submission = decodeMidgardProofSubmission(body);
+      expect(submission.transactionCbor.toString("hex")).toBe(submitTx.txHex);
+      expect(submission.programMaterial).toEqual(submitProgramMaterial);
+      submittedBodies.push(submission.transactionCbor.toString("hex"));
       return responses.shift()!;
     });
 
-    await expect(provider.submitTx(submitTx.txHex)).resolves.toMatchObject({
+    await expect(
+      provider.submitTx(submitTx.txHex, submitProgramMaterial),
+    ).resolves.toMatchObject({
       txId: submitTx.txId,
       httpStatus: 202,
       duplicate: false,
     });
-    await expect(provider.submitTx(submitTx.txHex)).resolves.toMatchObject({
+    await expect(
+      provider.submitTx(submitTx.txHex, submitProgramMaterial),
+    ).resolves.toMatchObject({
       txId: submitTx.txId,
       httpStatus: 200,
       duplicate: true,

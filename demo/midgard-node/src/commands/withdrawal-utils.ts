@@ -6,7 +6,7 @@ import {
   type Network,
 } from "@lucid-evolution/lucid";
 
-import { parseHexBytes, parseTxOutRefLabel } from "@/commands/command-utils.js";
+import { parseHexBytes, parseTxOutRefLabel } from "./command-utils.js";
 
 export const parseWithdrawalTxOutRefLabel = (
   value: unknown,

@@ -1,0 +1,854 @@
+import { MIDGARD_BOUNDED_ITEM_CHUNK_BYTES } from "./bounded-item.js";
+import { decodeMidgardAddressBytes } from "./codec/address.js";
+import {
+  compareBytes,
+  encodeCbor,
+  readCborArrayHeader,
+  readCborBytes,
+  readCborBytesHeader,
+  readCborMapHeader,
+  readCborUnsigned,
+} from "./codec/cbor.js";
+import {
+  hashMidgardLedgerOutputAssetLeaf,
+  type MidgardLedgerOutputAsset,
+} from "./ledger-output-commitment.js";
+import {
+  appendMidgardValidationMerkleLeaf,
+  emptyMidgardValidationMerkleFrontier,
+  MIDGARD_VALIDATION_MERKLE_MAX_LEAF_COUNT,
+  type MidgardValidationMerkleFrontier,
+  validateMidgardValidationMerkleFrontier,
+} from "./validation-merkle.js";
+
+export const MIDGARD_LEDGER_OUTPUT_SCAN_VERSION = 1 as const;
+
+export const MidgardLedgerOutputScanStages = Object.freeze({
+  RequiredFields: 0,
+  ValueHeader: 1,
+  PolicyHeader: 2,
+  Asset: 3,
+  OptionalField: 4,
+  DatumPayload: 5,
+  ReferenceScriptPayload: 6,
+  Terminal: 7,
+} as const);
+
+export type MidgardLedgerOutputScanStage =
+  (typeof MidgardLedgerOutputScanStages)[keyof typeof MidgardLedgerOutputScanStages];
+
+export type MidgardLedgerOutputScanControl = {
+  readonly version: typeof MIDGARD_LEDGER_OUTPUT_SCAN_VERSION;
+  readonly stage: MidgardLedgerOutputScanStage;
+  readonly cursor: number;
+  readonly mapEntryCount: number;
+  readonly optionalFieldCount: number;
+  readonly address: Buffer;
+  readonly lovelace: bigint;
+  readonly cardanoValueSize: number;
+  readonly policyRemaining: number;
+  readonly assetRemaining: number;
+  readonly policyAssetCursor: number;
+  readonly previousPolicy: Buffer;
+  readonly currentPolicy: Buffer;
+  readonly previousAssetName: Buffer;
+  readonly assetFrontier: MidgardValidationMerkleFrontier;
+  readonly datumOffset: number;
+  readonly datumLength: number;
+  readonly payloadRemaining: number;
+  readonly referenceScriptLanguage: -1 | 0 | 3 | 128;
+  readonly referenceScriptItemOffset: number;
+  readonly referenceScriptOffset: number;
+  readonly referenceScriptLength: number;
+};
+
+export type MidgardLedgerOutputScanTraceStep = {
+  readonly control: MidgardLedgerOutputScanControl;
+  readonly next: MidgardLedgerOutputScanControl;
+  readonly chunkIndex: number | null;
+  readonly nextChunkIndex: number | null;
+  readonly asset: MidgardLedgerOutputAsset | null;
+};
+
+export type MidgardLedgerOutputScanTrace = {
+  readonly initial: MidgardLedgerOutputScanControl;
+  readonly steps: readonly MidgardLedgerOutputScanTraceStep[];
+  readonly terminal: MidgardLedgerOutputScanControl;
+};
+
+export const initialMidgardLedgerOutputScanControl =
+  (): MidgardLedgerOutputScanControl => ({
+    version: MIDGARD_LEDGER_OUTPUT_SCAN_VERSION,
+    stage: MidgardLedgerOutputScanStages.RequiredFields,
+    cursor: 0,
+    mapEntryCount: 0,
+    optionalFieldCount: 0,
+    address: Buffer.alloc(0),
+    lovelace: 0n,
+    cardanoValueSize: 0,
+    policyRemaining: 0,
+    assetRemaining: 0,
+    policyAssetCursor: 0,
+    previousPolicy: Buffer.alloc(0),
+    currentPolicy: Buffer.alloc(0),
+    previousAssetName: Buffer.alloc(0),
+    assetFrontier: emptyMidgardValidationMerkleFrontier(),
+    datumOffset: -1,
+    datumLength: 0,
+    payloadRemaining: 0,
+    referenceScriptLanguage: -1,
+    referenceScriptItemOffset: -1,
+    referenceScriptOffset: -1,
+    referenceScriptLength: 0,
+  });
+
+const assertSafeControlInteger = ({
+  value,
+  field,
+  minimum,
+  maximum = Number.MAX_SAFE_INTEGER,
+}: {
+  readonly value: number;
+  readonly field: string;
+  readonly minimum: number;
+  readonly maximum?: number;
+}): void => {
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`Invalid V1 ledger output scan ${field}`);
+  }
+};
+
+export const encodeMidgardLedgerOutputScanControl = (
+  control: MidgardLedgerOutputScanControl,
+): Buffer => {
+  if (control.version !== MIDGARD_LEDGER_OUTPUT_SCAN_VERSION) {
+    throw new Error("Invalid V1 ledger output scan version");
+  }
+  assertSafeControlInteger({
+    value: control.stage,
+    field: "stage",
+    minimum: MidgardLedgerOutputScanStages.RequiredFields,
+    maximum: MidgardLedgerOutputScanStages.Terminal,
+  });
+  assertSafeControlInteger({
+    value: control.cursor,
+    field: "cursor",
+    minimum: 0,
+  });
+  assertSafeControlInteger({
+    value: control.mapEntryCount,
+    field: "map entry count",
+    minimum: 0,
+    maximum: 4,
+  });
+  if (control.mapEntryCount !== 0 && control.mapEntryCount < 2) {
+    throw new Error("Invalid V1 ledger output scan map entry count");
+  }
+  assertSafeControlInteger({
+    value: control.optionalFieldCount,
+    field: "optional field count",
+    minimum: 0,
+    maximum: 2,
+  });
+  if (control.address.length !== 0) {
+    decodeMidgardAddressBytes(control.address);
+  }
+  if (control.lovelace < 0n) {
+    throw new Error("Invalid V1 ledger output scan lovelace");
+  }
+  for (const [field, value] of [
+    ["Cardano Value size", control.cardanoValueSize],
+    ["policy remaining", control.policyRemaining],
+    ["asset remaining", control.assetRemaining],
+    ["policy asset cursor", control.policyAssetCursor],
+    ["datum length", control.datumLength],
+    ["payload remaining", control.payloadRemaining],
+    ["reference script length", control.referenceScriptLength],
+  ] as const) {
+    assertSafeControlInteger({ value, field, minimum: 0 });
+  }
+  for (const [field, bytes, maximum] of [
+    ["previous policy", control.previousPolicy, 28],
+    ["current policy", control.currentPolicy, 28],
+    ["previous asset name", control.previousAssetName, 32],
+  ] as const) {
+    if (
+      bytes.length > maximum ||
+      (maximum === 28 && bytes.length !== 0 && bytes.length !== 28)
+    ) {
+      throw new Error(`Invalid V1 ledger output scan ${field}`);
+    }
+  }
+  validateMidgardValidationMerkleFrontier(control.assetFrontier);
+  for (const [field, value] of [
+    ["datum offset", control.datumOffset],
+    ["reference script item offset", control.referenceScriptItemOffset],
+    ["reference script offset", control.referenceScriptOffset],
+  ] as const) {
+    assertSafeControlInteger({ value, field, minimum: -1 });
+  }
+  if (control.datumOffset === -1 && control.datumLength !== 0) {
+    throw new Error("Invalid V1 ledger output scan datum span");
+  }
+  if (
+    control.referenceScriptLanguage !== -1 &&
+    control.referenceScriptLanguage !== 0 &&
+    control.referenceScriptLanguage !== 3 &&
+    control.referenceScriptLanguage !== 128
+  ) {
+    throw new Error("Invalid V1 ledger output scan reference language");
+  }
+  if (
+    control.referenceScriptLanguage === -1
+      ? control.referenceScriptItemOffset !== -1 ||
+        control.referenceScriptOffset !== -1 ||
+        control.referenceScriptLength !== 0
+      : control.referenceScriptItemOffset < 0 ||
+        control.referenceScriptOffset < control.referenceScriptItemOffset
+  ) {
+    throw new Error("Invalid V1 ledger output scan reference span");
+  }
+  return encodeCbor([
+    1n,
+    BigInt(control.stage),
+    BigInt(control.cursor),
+    BigInt(control.mapEntryCount),
+    BigInt(control.optionalFieldCount),
+    control.address,
+    control.lovelace,
+    BigInt(control.cardanoValueSize),
+    BigInt(control.policyRemaining),
+    BigInt(control.assetRemaining),
+    BigInt(control.policyAssetCursor),
+    control.previousPolicy,
+    control.currentPolicy,
+    control.previousAssetName,
+    BigInt(control.assetFrontier.count),
+    control.assetFrontier.peaks.map(({ height, hash }) => [
+      BigInt(height),
+      hash,
+    ]),
+    BigInt(control.datumOffset),
+    BigInt(control.datumLength),
+    BigInt(control.payloadRemaining),
+    BigInt(control.referenceScriptLanguage),
+    BigInt(control.referenceScriptItemOffset),
+    BigInt(control.referenceScriptOffset),
+    BigInt(control.referenceScriptLength),
+  ]);
+};
+
+export const isWellFormedMidgardLedgerOutputScanControl = (
+  control: MidgardLedgerOutputScanControl,
+): boolean => {
+  try {
+    encodeMidgardLedgerOutputScanControl(control);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const absoluteOffset = ({
+  control,
+  windowOffset,
+  localOffset,
+}: {
+  readonly control: MidgardLedgerOutputScanControl;
+  readonly windowOffset: number;
+  readonly localOffset: number;
+}): number => control.cursor + localOffset - windowOffset;
+
+const readKey = (
+  window: Uint8Array,
+  offset: number,
+  expected: bigint,
+): number => {
+  const key = readCborUnsigned(window, offset, "ledger_output.key");
+  if (key.value !== expected) {
+    throw new Error(`V1 ledger output expected key ${expected.toString(10)}`);
+  }
+  return key.nextOffset;
+};
+
+const optionalFieldsComplete = (
+  control: MidgardLedgerOutputScanControl,
+): boolean => control.optionalFieldCount + 2 === control.mapEntryCount;
+
+const encodedCborLength = (value: bigint | Uint8Array): number =>
+  encodeCbor(value).length;
+
+const encodedMapHeaderLength = (entryCount: number): number => {
+  if (entryCount < 24) return 1;
+  if (entryCount <= 0xff) return 2;
+  if (entryCount <= 0xffff) return 3;
+  if (entryCount <= 0xffff_ffff) return 5;
+  throw new Error("V1 Cardano Value map exceeds the uint32 envelope");
+};
+
+const stepRequiredFields = ({
+  control,
+  window,
+  windowOffset,
+}: {
+  readonly control: MidgardLedgerOutputScanControl;
+  readonly window: Uint8Array;
+  readonly windowOffset: number;
+}): MidgardLedgerOutputScanControl => {
+  const outputMap = readCborMapHeader(window, windowOffset, "ledger_output");
+  if (outputMap.length < 2 || outputMap.length > 4) {
+    throw new Error("V1 ledger output must contain two to four fields");
+  }
+  const addressOffset = readKey(window, outputMap.nextOffset, 0n);
+  const address = readCborBytes(window, addressOffset, "ledger_output.address");
+  decodeMidgardAddressBytes(address.value);
+  return {
+    ...control,
+    stage: MidgardLedgerOutputScanStages.ValueHeader,
+    cursor: absoluteOffset({
+      control,
+      windowOffset,
+      localOffset: address.nextOffset,
+    }),
+    mapEntryCount: outputMap.length,
+    address: address.value,
+  };
+};
+
+const stepValueHeader = ({
+  control,
+  window,
+  windowOffset,
+}: {
+  readonly control: MidgardLedgerOutputScanControl;
+  readonly window: Uint8Array;
+  readonly windowOffset: number;
+}): MidgardLedgerOutputScanControl => {
+  const valueOffset = readKey(window, windowOffset, 1n);
+  const value = readCborArrayHeader(window, valueOffset, "ledger_output.value");
+  if (value.length !== 2) {
+    throw new Error("V1 ledger output Value must contain two fields");
+  }
+  const lovelace = readCborUnsigned(
+    window,
+    value.nextOffset,
+    "ledger_output.value.lovelace",
+  );
+  const policies = readCborMapHeader(
+    window,
+    lovelace.nextOffset,
+    "ledger_output.value.assets",
+  );
+  return {
+    ...control,
+    stage:
+      policies.length === 0
+        ? MidgardLedgerOutputScanStages.OptionalField
+        : MidgardLedgerOutputScanStages.PolicyHeader,
+    cursor: absoluteOffset({
+      control,
+      windowOffset,
+      localOffset: policies.nextOffset,
+    }),
+    lovelace: lovelace.value,
+    cardanoValueSize:
+      policies.length === 0
+        ? encodedCborLength(lovelace.value)
+        : 1 +
+          encodedCborLength(lovelace.value) +
+          encodedMapHeaderLength(policies.length),
+    policyRemaining: policies.length,
+  };
+};
+
+const stepPolicyHeader = ({
+  control,
+  window,
+  windowOffset,
+}: {
+  readonly control: MidgardLedgerOutputScanControl;
+  readonly window: Uint8Array;
+  readonly windowOffset: number;
+}): MidgardLedgerOutputScanControl => {
+  const policy = readCborBytes(
+    window,
+    windowOffset,
+    "ledger_output.value.policy",
+  );
+  const assets = readCborMapHeader(
+    window,
+    policy.nextOffset,
+    "ledger_output.value.policy.assets",
+  );
+  if (
+    policy.value.length !== 28 ||
+    assets.length === 0 ||
+    assets.length > MIDGARD_VALIDATION_MERKLE_MAX_LEAF_COUNT ||
+    control.policyRemaining <= 0 ||
+    (control.previousPolicy.length !== 0 &&
+      compareBytes(control.previousPolicy, policy.value) >= 0)
+  ) {
+    throw new Error("Invalid V1 ledger output policy header");
+  }
+  return {
+    ...control,
+    stage: MidgardLedgerOutputScanStages.Asset,
+    cursor: absoluteOffset({
+      control,
+      windowOffset,
+      localOffset: assets.nextOffset,
+    }),
+    assetRemaining: assets.length,
+    policyAssetCursor: 0,
+    currentPolicy: policy.value,
+    previousAssetName: Buffer.alloc(0),
+    cardanoValueSize:
+      control.cardanoValueSize +
+      encodedCborLength(policy.value) +
+      encodedMapHeaderLength(assets.length),
+  };
+};
+
+const compareCanonicalAssetNames = (
+  left: Uint8Array,
+  right: Uint8Array,
+): number => left.length - right.length || compareBytes(left, right);
+
+const stepAsset = ({
+  control,
+  window,
+  windowOffset,
+}: {
+  readonly control: MidgardLedgerOutputScanControl;
+  readonly window: Uint8Array;
+  readonly windowOffset: number;
+}): MidgardLedgerOutputScanControl => {
+  const assetName = readCborBytes(
+    window,
+    windowOffset,
+    "ledger_output.value.asset_name",
+  );
+  const quantity = readCborUnsigned(
+    window,
+    assetName.nextOffset,
+    "ledger_output.value.quantity",
+  );
+  if (
+    control.currentPolicy.length !== 28 ||
+    assetName.value.length > 32 ||
+    quantity.value <= 0n ||
+    control.assetRemaining <= 0 ||
+    control.assetFrontier.count >= MIDGARD_VALIDATION_MERKLE_MAX_LEAF_COUNT ||
+    (control.policyAssetCursor > 0 &&
+      compareCanonicalAssetNames(control.previousAssetName, assetName.value) >=
+        0)
+  ) {
+    throw new Error("Invalid V1 ledger output asset");
+  }
+  const nextAssetRemaining = control.assetRemaining - 1;
+  const policyComplete = nextAssetRemaining === 0;
+  const nextPolicyRemaining =
+    control.policyRemaining - (policyComplete ? 1 : 0);
+  return {
+    ...control,
+    stage: policyComplete
+      ? nextPolicyRemaining === 0
+        ? MidgardLedgerOutputScanStages.OptionalField
+        : MidgardLedgerOutputScanStages.PolicyHeader
+      : MidgardLedgerOutputScanStages.Asset,
+    cursor: absoluteOffset({
+      control,
+      windowOffset,
+      localOffset: quantity.nextOffset,
+    }),
+    policyRemaining: nextPolicyRemaining,
+    assetRemaining: nextAssetRemaining,
+    policyAssetCursor: policyComplete ? 0 : control.policyAssetCursor + 1,
+    previousPolicy: policyComplete
+      ? control.currentPolicy
+      : control.previousPolicy,
+    currentPolicy: policyComplete ? Buffer.alloc(0) : control.currentPolicy,
+    previousAssetName: policyComplete ? Buffer.alloc(0) : assetName.value,
+    assetFrontier: appendMidgardValidationMerkleLeaf(
+      control.assetFrontier,
+      hashMidgardLedgerOutputAssetLeaf({
+        policyId: control.currentPolicy,
+        assetName: assetName.value,
+        quantity: quantity.value,
+      }),
+    ),
+    cardanoValueSize:
+      control.cardanoValueSize +
+      encodedCborLength(assetName.value) +
+      encodedCborLength(quantity.value),
+  };
+};
+
+const stepReferenceScriptHeader = ({
+  control,
+  window,
+  windowOffset,
+}: {
+  readonly control: MidgardLedgerOutputScanControl;
+  readonly window: Uint8Array;
+  readonly windowOffset: number;
+}): MidgardLedgerOutputScanControl => {
+  const scriptOffset = readKey(window, windowOffset, 3n);
+  const scriptItemOffset = absoluteOffset({
+    control,
+    windowOffset,
+    localOffset: scriptOffset,
+  });
+  const script = readCborArrayHeader(
+    window,
+    scriptOffset,
+    "ledger_output.reference_script",
+  );
+  if (script.length !== 2) {
+    throw new Error("V1 reference script must contain two fields");
+  }
+  const language = readCborUnsigned(
+    window,
+    script.nextOffset,
+    "ledger_output.reference_script.language",
+  );
+  if (
+    language.value !== 0n &&
+    language.value !== 3n &&
+    language.value !== 128n
+  ) {
+    throw new Error("Unsupported V1 reference-script language");
+  }
+  const payload = readCborBytesHeader(
+    window,
+    language.nextOffset,
+    "ledger_output.reference_script.payload",
+  );
+  const payloadOffset = absoluteOffset({
+    control,
+    windowOffset,
+    localOffset: payload.nextOffset,
+  });
+  return {
+    ...control,
+    stage:
+      payload.length === 0
+        ? MidgardLedgerOutputScanStages.Terminal
+        : MidgardLedgerOutputScanStages.ReferenceScriptPayload,
+    cursor: payloadOffset,
+    optionalFieldCount: control.optionalFieldCount + 1,
+    payloadRemaining: payload.length,
+    referenceScriptLanguage: Number(language.value) as 0 | 3 | 128,
+    referenceScriptItemOffset: scriptItemOffset,
+    referenceScriptOffset: payloadOffset,
+    referenceScriptLength: payload.length,
+  };
+};
+
+const stepDatumHeader = ({
+  control,
+  window,
+  windowOffset,
+}: {
+  readonly control: MidgardLedgerOutputScanControl;
+  readonly window: Uint8Array;
+  readonly windowOffset: number;
+}): MidgardLedgerOutputScanControl => {
+  const datumOffset = readKey(window, windowOffset, 2n);
+  const datum = readCborBytesHeader(window, datumOffset, "ledger_output.datum");
+  if (datum.length === 0) {
+    throw new Error("V1 inline datum must contain canonical Plutus Data");
+  }
+  const payloadOffset = absoluteOffset({
+    control,
+    windowOffset,
+    localOffset: datum.nextOffset,
+  });
+  return {
+    ...control,
+    stage: MidgardLedgerOutputScanStages.DatumPayload,
+    cursor: payloadOffset,
+    optionalFieldCount: control.optionalFieldCount + 1,
+    datumOffset: payloadOffset,
+    datumLength: datum.length,
+    payloadRemaining: datum.length,
+  };
+};
+
+const stepOptionalField = ({
+  control,
+  window,
+  windowOffset,
+}: {
+  readonly control: MidgardLedgerOutputScanControl;
+  readonly window: Uint8Array;
+  readonly windowOffset: number;
+}): MidgardLedgerOutputScanControl => {
+  if (optionalFieldsComplete(control)) {
+    return {
+      ...control,
+      stage: MidgardLedgerOutputScanStages.Terminal,
+    };
+  }
+  if (control.mapEntryCount === 4 && control.optionalFieldCount === 0) {
+    return stepDatumHeader({
+      control,
+      window,
+      windowOffset,
+    });
+  }
+  const key = readCborUnsigned(window, windowOffset, "ledger_output.key");
+  if (key.value === 2n) {
+    return stepDatumHeader({
+      control,
+      window,
+      windowOffset,
+    });
+  }
+  if (key.value === 3n) {
+    return stepReferenceScriptHeader({ control, window, windowOffset });
+  }
+  throw new Error("Unknown V1 ledger output optional field");
+};
+
+const stepPayload = ({
+  control,
+  totalLength,
+}: {
+  readonly control: MidgardLedgerOutputScanControl;
+  readonly totalLength: number;
+}): MidgardLedgerOutputScanControl => {
+  const chunkRemaining =
+    MIDGARD_BOUNDED_ITEM_CHUNK_BYTES -
+    (control.cursor % MIDGARD_BOUNDED_ITEM_CHUNK_BYTES);
+  const consumed = Math.min(control.payloadRemaining, chunkRemaining);
+  if (
+    control.payloadRemaining <= 0 ||
+    consumed <= 0 ||
+    consumed > totalLength - control.cursor
+  ) {
+    throw new Error("Invalid V1 ledger output payload span");
+  }
+  const payloadRemaining = control.payloadRemaining - consumed;
+  return {
+    ...control,
+    stage:
+      payloadRemaining === 0
+        ? MidgardLedgerOutputScanStages.OptionalField
+        : control.stage,
+    cursor: control.cursor + consumed,
+    payloadRemaining,
+  };
+};
+
+export const advanceMidgardLedgerOutputScan = ({
+  control,
+  totalLength,
+  window,
+  windowOffset,
+}: {
+  readonly control: MidgardLedgerOutputScanControl;
+  readonly totalLength: number;
+  readonly window: Uint8Array;
+  readonly windowOffset: number;
+}): MidgardLedgerOutputScanControl | null => {
+  try {
+    if (
+      !isWellFormedMidgardLedgerOutputScanControl(control) ||
+      !Number.isSafeInteger(control.cursor) ||
+      control.cursor < 0 ||
+      control.cursor > totalLength ||
+      !Number.isSafeInteger(windowOffset) ||
+      windowOffset < 0 ||
+      windowOffset >= window.length
+    ) {
+      return null;
+    }
+    let next: MidgardLedgerOutputScanControl;
+    // Unknown numeric stages fail closed through the default arm.
+    // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
+    switch (control.stage) {
+      case MidgardLedgerOutputScanStages.RequiredFields:
+        next = stepRequiredFields({ control, window, windowOffset });
+        break;
+      case MidgardLedgerOutputScanStages.ValueHeader:
+        next = stepValueHeader({ control, window, windowOffset });
+        break;
+      case MidgardLedgerOutputScanStages.PolicyHeader:
+        next = stepPolicyHeader({ control, window, windowOffset });
+        break;
+      case MidgardLedgerOutputScanStages.Asset:
+        next = stepAsset({ control, window, windowOffset });
+        break;
+      case MidgardLedgerOutputScanStages.OptionalField:
+        next = stepOptionalField({ control, window, windowOffset });
+        break;
+      case MidgardLedgerOutputScanStages.DatumPayload:
+      case MidgardLedgerOutputScanStages.ReferenceScriptPayload:
+        next = stepPayload({ control, totalLength });
+        break;
+      default:
+        return null;
+    }
+    if (
+      !isWellFormedMidgardLedgerOutputScanControl(next) ||
+      next.cursor < control.cursor ||
+      next.cursor > totalLength ||
+      (next.cursor === control.cursor && next.stage === control.stage)
+    ) {
+      return null;
+    }
+    return next;
+  } catch {
+    return null;
+  }
+};
+
+export const finishMidgardLedgerOutputScan = ({
+  control,
+  totalLength,
+}: {
+  readonly control: MidgardLedgerOutputScanControl;
+  readonly totalLength: number;
+}): MidgardLedgerOutputScanControl | null =>
+  isWellFormedMidgardLedgerOutputScanControl(control) &&
+  control.stage === MidgardLedgerOutputScanStages.OptionalField &&
+  optionalFieldsComplete(control) &&
+  control.cursor === totalLength &&
+  control.payloadRemaining === 0
+    ? {
+        ...control,
+        stage: MidgardLedgerOutputScanStages.Terminal,
+      }
+    : null;
+
+export const isExactMidgardLedgerOutputScanTerminal = ({
+  control,
+  totalLength,
+}: {
+  readonly control: MidgardLedgerOutputScanControl;
+  readonly totalLength: number;
+}): boolean =>
+  isWellFormedMidgardLedgerOutputScanControl(control) &&
+  control.stage === MidgardLedgerOutputScanStages.Terminal &&
+  control.cursor === totalLength &&
+  control.mapEntryCount >= 2 &&
+  control.mapEntryCount <= 4 &&
+  optionalFieldsComplete(control) &&
+  (control.address.length === 29 || control.address.length === 57) &&
+  control.lovelace >= 0n &&
+  control.cardanoValueSize > 0 &&
+  control.policyRemaining === 0 &&
+  control.assetRemaining === 0 &&
+  control.policyAssetCursor === 0 &&
+  control.currentPolicy.length === 0 &&
+  control.previousAssetName.length === 0 &&
+  control.payloadRemaining === 0 &&
+  (control.datumOffset === -1
+    ? control.datumLength === 0
+    : control.datumOffset >= 0 &&
+      control.datumLength > 0 &&
+      control.datumOffset + control.datumLength <= totalLength) &&
+  (control.referenceScriptLanguage === -1
+    ? control.referenceScriptItemOffset === -1 &&
+      control.referenceScriptOffset === -1 &&
+      control.referenceScriptLength === 0
+    : control.referenceScriptItemOffset >= 0 &&
+      control.referenceScriptItemOffset < control.referenceScriptOffset &&
+      control.referenceScriptLength >= 0 &&
+      control.referenceScriptOffset + control.referenceScriptLength ===
+        totalLength);
+
+export const buildMidgardLedgerOutputScanTrace = (
+  outputCbor: Uint8Array,
+): MidgardLedgerOutputScanTrace => {
+  const bytes = Buffer.from(outputCbor);
+  const initial = initialMidgardLedgerOutputScanControl();
+  const steps: MidgardLedgerOutputScanTraceStep[] = [];
+  let control = initial;
+  const maximumSteps = bytes.length + 32;
+  while (
+    control.stage !== MidgardLedgerOutputScanStages.Terminal &&
+    steps.length < maximumSteps
+  ) {
+    const finished = finishMidgardLedgerOutputScan({
+      control,
+      totalLength: bytes.length,
+    });
+    if (finished !== null) {
+      steps.push({
+        control,
+        next: finished,
+        chunkIndex: null,
+        nextChunkIndex: null,
+        asset: null,
+      });
+      control = finished;
+      continue;
+    }
+    const chunkIndex = Math.floor(
+      control.cursor / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
+    );
+    const chunkStart = chunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES;
+    const currentChunk = bytes.subarray(
+      chunkStart,
+      chunkStart + MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
+    );
+    const tokenStage =
+      control.stage <= MidgardLedgerOutputScanStages.OptionalField;
+    const nextChunkStart = chunkStart + MIDGARD_BOUNDED_ITEM_CHUNK_BYTES;
+    const hasNextChunk = nextChunkStart < bytes.length;
+    const nextChunk =
+      tokenStage && hasNextChunk
+        ? bytes.subarray(
+            nextChunkStart,
+            nextChunkStart + MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
+          )
+        : Buffer.alloc(0);
+    const window = Buffer.concat([currentChunk, nextChunk]);
+    const next = advanceMidgardLedgerOutputScan({
+      control,
+      totalLength: bytes.length,
+      window,
+      windowOffset: control.cursor - chunkStart,
+    });
+    if (next === null) {
+      throw new Error("Canonical V1 ledger output scan failed closed");
+    }
+    let asset: MidgardLedgerOutputAsset | null = null;
+    if (control.stage === MidgardLedgerOutputScanStages.Asset) {
+      const assetName = readCborBytes(
+        window,
+        control.cursor - chunkStart,
+        "ledger_output.trace.asset_name",
+      );
+      const quantity = readCborUnsigned(
+        window,
+        assetName.nextOffset,
+        "ledger_output.trace.quantity",
+      );
+      asset = {
+        policyId: Buffer.from(control.currentPolicy),
+        assetName: assetName.value,
+        quantity: quantity.value,
+      };
+    }
+    steps.push({
+      control,
+      next,
+      chunkIndex,
+      nextChunkIndex: tokenStage && hasNextChunk ? chunkIndex + 1 : null,
+      asset,
+    });
+    control = next;
+  }
+  if (
+    !isExactMidgardLedgerOutputScanTerminal({
+      control,
+      totalLength: bytes.length,
+    })
+  ) {
+    throw new Error("Canonical V1 ledger output scan did not terminate");
+  }
+  return { initial, steps, terminal: control };
+};

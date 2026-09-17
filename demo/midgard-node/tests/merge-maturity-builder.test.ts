@@ -4,7 +4,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Ref } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Globals, NodeConfig } from "@/services/index.js";
+import { Globals, NodeConfig } from "../src/services/index.js";
 
 const fetchConfirmedStateAndItsLinkProgramMock = vi.hoisted(() => vi.fn());
 const getStateQueueNodeFromStateQueueDatumMock = vi.hoisted(() => vi.fn());
@@ -28,26 +28,26 @@ vi.mock("@al-ft/midgard-sdk", async (importOriginal) => {
   };
 });
 
-vi.mock("@/transactions/utils.js", async (importOriginal) => {
+vi.mock("../src/transactions/utils.js", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/transactions/utils.js")>();
+    await importOriginal<typeof import("../src/transactions/utils.js")>();
   return {
     ...actual,
     fetchFirstBlockTxs: fetchFirstBlockTxsMock,
   };
 });
 
-vi.mock("@/utils.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/utils.js")>();
+vi.mock("../src/utils.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/utils.js")>();
   return {
     ...actual,
     breakDownTx: breakDownTxMock,
   };
 });
 
-vi.mock("@/local-ledger-slot.js", async (importOriginal) => {
+vi.mock("../src/local-ledger-slot.js", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/local-ledger-slot.js")>();
+    await importOriginal<typeof import("../src/local-ledger-slot.js")>();
   return {
     ...actual,
     makeLocalOgmiosSubmitSlotSnapshotProvider:
@@ -59,8 +59,8 @@ import {
   buildAndSubmitMergeTx,
   mergeNoInlineSubmitDueWorkFromDefer,
   type MergeTxResult,
-} from "@/transactions/state-queue/merge-to-confirmed-state.js";
-import { NoInlineSubmitDefer } from "@/transactions/utils.js";
+} from "../src/transactions/state-queue/merge-to-confirmed-state.js";
+import { NoInlineSubmitDefer } from "../src/transactions/utils.js";
 
 const fetchConfig: SDK.StateQueueFetchConfig = {
   stateQueueAddress: "addr_test1statequeue",
@@ -111,7 +111,7 @@ const configureCandidate = ({
   daAttestation,
   endTime,
 }: {
-  readonly daAttestation: string;
+  readonly daAttestation: SDK.DaAvailabilityStateQueueStatus;
   readonly endTime: bigint;
 }) => {
   const blockHeader = {
@@ -166,7 +166,11 @@ describe("merge builder maturity preflight", () => {
     fakeLucidUtxosAt.mockReset();
 
     configureCandidate({
-      daAttestation: "22".repeat(28),
+      // A state-queue node's `da_attestation` is the
+      // `DaAvailabilityStateQueueStatus` enum, not a raw policy-id string;
+      // `Attested` is one of the two merge-permitting kinds, so the maturity
+      // window (not availability) is what this default exercises.
+      daAttestation: { Attested: { da_bond_asset_name: "22".repeat(32) } },
       endTime: 500_000n,
     });
     fetchFirstBlockTxsMock.mockImplementation(() =>
@@ -199,7 +203,7 @@ describe("merge builder maturity preflight", () => {
     expect(result).toMatchObject({
       status: "skipped_oldest_block_not_mature",
       headerHash,
-      readyAfterUnixTime: 521_000,
+      readyAfterUnixTime: 605_320_000,
       nowUnixTime: 510_000,
     });
     expect(fetchFirstBlockTxsMock).not.toHaveBeenCalled();
@@ -209,17 +213,17 @@ describe("merge builder maturity preflight", () => {
 
   it("returns DA-unattested before BlocksDB lookup or decode", async () => {
     configureCandidate({
-      daAttestation: "11".repeat(28),
+      daAttestation: SDK.NO_DA_ATTESTATION,
       endTime: 500_000n,
     });
-    vi.setSystemTime(530_000);
+    vi.setSystemTime(605_330_000);
 
     const result = await runBuilder();
 
     expect(result).toMatchObject({
       status: "skipped_oldest_block_unattested",
       headerHash,
-      reason: expect.stringContaining("current_da_attestation="),
+      reason: expect.stringContaining("current_da_availability=Unattested"),
     });
     expect(fetchFirstBlockTxsMock).not.toHaveBeenCalled();
     expect(breakDownTxMock).not.toHaveBeenCalled();
@@ -227,7 +231,7 @@ describe("merge builder maturity preflight", () => {
   });
 
   it("lets a semantically ready candidate proceed to the local submit-ledger gate", async () => {
-    vi.setSystemTime(530_000);
+    vi.setSystemTime(605_330_000);
 
     const result = await runBuilder();
 
@@ -235,7 +239,7 @@ describe("merge builder maturity preflight", () => {
       status: "skipped_oldest_block_local_ledger_not_ready",
       headerHash,
       reason: expect.stringContaining("local_ledger_slot=0"),
-      readyAfterUnixTime: 521_000,
+      readyAfterUnixTime: 605_320_000,
     });
     expect(fetchFirstBlockTxsMock).toHaveBeenCalledTimes(1);
     expect(breakDownTxMock).not.toHaveBeenCalled();

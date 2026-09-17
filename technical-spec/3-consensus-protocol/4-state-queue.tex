@@ -5,6 +5,14 @@
 \section{State queue}
 \label{h:state-queue}
 
+\paragraph{Current representation and authorization.}
+An ordinary node stores \code{StateQueueNode\{header, da\_attestation\}}; its key hashes the immutable header, not the status wrapper.
+The root stores \code{ConfirmedState}.
+The schematic header-only datum below omits this availability status.
+Merge requires status \code{Attested} or \code{Published}, maturity, a valid versioned header, and exact commitment/count binding.
+Spending also permits authenticated DA-attestation and availability-status updates through their coupled policies; only structural list mutations forward to the state-queue mint policy.
+The policy additionally supports attestation-timeout correction and correction-lock ordering, described after the schematic below.
+
 The state queue is an L1 data structure that stores Midgard operators' committed block headers until they are confirmed.
 Active operators from the operator directory (see \cref{h:operator-directory}) take turns committing block headers to the state queue according to the rotating schedule enforced by the scheduler (see \cref{h:scheduler}).
 
@@ -20,7 +28,7 @@ Each \code{state\_queue} node's key is its block header's hash.
 \end{align*}
 
 Committing a block header to the \code{state\_queue} means appending a node containing the block header to the end of the queue.
-After staying there for the \code{maturity\_duration} (a protocol parameter), it is merged to the confirmed state (held at the \code{state\_queue} root node) in the first-in-first-out (FIFO) order.
+After staying there for the \code{maturity\_duration} (a protocol parameter), it becomes eligible, subject to availability and the merge predicates, to merge to the confirmed state (held at the \code{state\_queue} root node) in the first-in-first-out (FIFO) order.
 
 \subsection{Minting policy}
 \label{h:state-queue-minting-policy}
@@ -35,11 +43,11 @@ Redeemers:
         \begin{enumerate}
             \item The transaction must mint the Midgard hub oracle token.
             \item The transaction must Init the \code{state\_queue}.
-            \item The validity range of the transaction must be bounded on both ends, and must not be longer than five minutes (TODO).
+            \item The validity range of the transaction must be bounded on both ends, and must not be longer than eight minutes.
             \item The inclusive upper bound of the validity range must be used as both the \code{start\_time} and \code{end\_time} of the produced confirmed state data.
             \item \code{header\_hash} and \code{prev\_header\_hash} must have genesis values (28 zero bytes).
             \item \code{utxo\_root} must be set to the root of an empty Merkle tree.
-            \item \code{protocol\_version} must be set to 0 (TODO).
+            \item \code{protocol\_version} must be set to the genesis sentinel value \(0\).
         \end{enumerate}
 
     \item[Commit Block Header.] An operator commits a block header to the state queue if it is the operator's turn according to the rotating schedule.
@@ -66,6 +74,8 @@ Redeemers:
             \item Verify block timestamps:
             \begin{enumerate}[resume]
                 \item The \code{start\_time} of \code{header\_node} must be equal to the \code{end\_time} of the \code{previous\_element}.
+                \item The commit transaction validity range must be bounded on both ends and no longer than eight minutes.
+                \item The \code{end\_time} of \code{header\_node} must equal the normalized inclusive upper bound of that validity range and must be strictly greater than its \code{start\_time}.
             \end{enumerate}
             
             \item Update the operator's timestamp in the active operators set:
@@ -76,7 +86,8 @@ Redeemers:
                 \begin{enumerate}[resume]
                   \item Its \code{header\_hash} must be preserved under new node's \code{prev\_header\_hash}.
                   \item Its ledger must be preserved under new node's \code{prev\_utxos\_root}.
-                  \item Protocol version must also be preserved from \code{previous\_element} (TODO).
+                  \item An ordinary predecessor must carry protocol version \(1\) forward unchanged.
+                    If \code{previous\_element} is the exact authenticated genesis confirmed state at protocol \(0\), the first ordinary header must instead use protocol version \(1\).
                 \end{enumerate}
         \end{itemize}
 
@@ -90,9 +101,9 @@ Redeemers:
         \item \code{confirmed\_state\_node\_output} must match:
           \begin{enumerate}
             \item \code{start\_time} and \code{header\_hash} from \code{confirmed\_state\_node\_input} under \code{start\_time} and \code{prev\_header\_hash} respectively.
-            \item Key of \code{header\_node} under \code{header\_hash}, along with its ledger and protocol version (TODO?) under \code{utxo\_root} and \code{protocol\_version} respectively.
+            \item Key of \code{header\_node} under \code{header\_hash}, along with its ledger and protocol version under \code{utxo\_root} and \code{protocol\_version} respectively.
           \end{enumerate}
-        \item If either the \code{deposits\_root}, \code{withdrawals\_root} or \code{transactions\_root} of \code{header\_node} is \emph{not} the MPT root hash of the empty set, a \code{settlement} utxo must be produced via the Spawn redeemer.
+        \item If either the \code{deposits\_root}, \code{withdrawals\_root}, \code{forced\_transactions\_root}, or \code{transactions\_root} of \code{header\_node} is \emph{not} the MPT root hash of the empty set, a \code{settlement} utxo must be produced via the Spawn redeemer.
           The redeemer must mention \code{settlement\_id} equal to \code{header\_node} as a coupling medium.
         \item Otherwise no settlement minting must be present in the transaction.
     \end{enumerate}
@@ -147,11 +158,38 @@ Redeemers:
     \end{itemize}
 \end{description}
 
+\subsection{Unattested commitment timeout}
+\label{h:state-queue-unattested-timeout}
+
+Any pending commitment with status \code{Unattested} becomes removable when the inclusive lower bound of the transaction validity interval reaches its immutable header's \code{end\_time} plus \code{da\_attestation\_timeout} (one hour).
+The target need not immediately follow the confirmed root, and its predecessors need not be mature.
+The target NFT key must match both the redeemer's target hash and the hash of its valid versioned header.
+An authenticated immediate predecessor, either the root or an ordinary node, must link to that target.
+
+Correction proceeds through the existing correction-lock singleton and two coupled state-queue minting actions:
+\begin{enumerate}
+    \item If the target has descendants, reference its immediate predecessor, consume the target and its immediate child, burn that child's NFT, and continue the target with the child's successor link.
+      Consume the correction lock and continue it as \code{Locked} with the target hash and \code{AttestationTimeout} identity.
+      Repeat until the target has no descendants; descendants are removed regardless of operator identity or attestation status because their transitions depend on discarded state.
+    \item Consume the terminal target and its immediate predecessor, burn the target NFT, and continue the predecessor with an empty successor link.
+      Preserve the predecessor's committed data, address, and value, and return the correction lock to \code{Idle}.
+      The remaining prefix is unchanged.
+\end{enumerate}
+Each step rechecks the target's unattested status and deadline.
+The lock may begin Idle or already belong to this exact target and timeout identity; it cannot be taken from another correction.
+Appends and merges require a reference to the Idle lock, so acquiring it atomically with the first removal prevents concurrent structural growth during correction.
+A terminal target can be removed in one transaction that consumes and recreates the Idle lock.
+The state-queue minting policy delegates this action to its authenticated unattested-timeout rewarding validator; state-queue spending and correction-lock spending are coupled to that mint action.
+
+This is permissionless liveness recovery without fraud slashing.
+It does not change the separate availability-challenge timeout, the operator bond, or DA-attestation refund conditions.
+The operator node drives recovery for expired commitments throughout the pending queue, while watchers observe and alert.
+
 \subsection{Spending validator}
 \label{h:state-queue-spending-validator}
 
-The spending validator of \code{state\_queue\_addr} always forwards to its corresponding minting policy (statically parametrized) and requires the transaction to invoke it.
-It does not allow any in-place modifications to the \code{data} field of nodes in \code{state\_queue}.
+For structural list mutations, the spending validator of \code{state\_queue\_addr} forwards to its corresponding minting policy (statically parametrized) and requires the transaction to invoke it.
+It preserves the header while separately authorizing the availability-status transitions described above.
 Conditions:
 \begin{enumerate}
     \item The transaction must mint or burn tokens of the \code{state\_queue} minting policy.

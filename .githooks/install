@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+#
+# Installs the repository's versioned hooks into .git/hooks.
+#
+# Idempotent. Any pre-existing hook that is a real file rather than one of our
+# symlinks is preserved as <hook>.local and still runs — the Nix git-hooks
+# framework installs such a shim for the Haskell tree, and losing it silently
+# would drop cabal-fmt and fourmolu from the commit path.
+#
+# Usage:  bash .githooks/install
+#         pnpm --dir demo run hooks:install
+
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+hooks_src="$repo_root/.githooks"
+hooks_dst="$(git rev-parse --git-common-dir)/hooks"
+mkdir -p "$hooks_dst"
+
+for src in "$hooks_src"/*; do
+  name="$(basename "$src")"
+  [[ "$name" == "install" ]] && continue
+  [[ -f "$src" ]] || continue
+
+  dst="$hooks_dst/$name"
+
+  if [[ -e "$dst" && ! -L "$dst" ]]; then
+    if [[ ! -e "$dst.local" ]]; then
+      mv "$dst" "$dst.local"
+      chmod +x "$dst.local"
+      echo "preserved existing $name as $name.local (it will still run)"
+    else
+      echo "warning: $dst and $dst.local both exist; leaving $dst.local untouched" >&2
+      rm -f "$dst"
+    fi
+  fi
+
+  chmod +x "$src"
+  ln -sfn "$src" "$dst"
+  echo "installed $name"
+done
+
+echo
+echo "Hooks installed into $hooks_dst"
+echo "Skip them for one commit with: MIDGARD_SKIP_HOOKS=1 git commit ..."

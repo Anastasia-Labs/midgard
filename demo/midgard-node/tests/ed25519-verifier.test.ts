@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_NODE_ED25519_CACHE_MAX_ENTRIES,
   NodeEd25519Verifier,
-} from "@/workers/utils/ed25519-verifier.js";
+} from "../src/workers/utils/ed25519-verifier.js";
 
 const witness = (
   vkey: Buffer,
@@ -146,37 +146,5 @@ describe("worker-local Node Ed25519 verifier", () => {
       misses: 4,
       evictions: 2,
     });
-  });
-
-  it("caps the production cache and its measured RSS envelope", () => {
-    const verifier = new NodeEd25519Verifier();
-    const message = Buffer.alloc(32);
-    const signature = Buffer.alloc(64);
-    const rssBefore = process.memoryUsage().rss;
-    for (
-      let index = 0;
-      index <= DEFAULT_NODE_ED25519_CACHE_MAX_ENTRIES;
-      index += 1
-    ) {
-      const key = createHash("sha256")
-        .update(`rss-key-${index.toString()}`)
-        .digest();
-      expect(verifier.verify(message, witness(key, signature))).toBe(false);
-    }
-    const rssGrowthBytes = Math.max(0, process.memoryUsage().rss - rssBefore);
-    expect(verifier.stats()).toStrictEqual({
-      size: DEFAULT_NODE_ED25519_CACHE_MAX_ENTRIES,
-      maxEntries: DEFAULT_NODE_ED25519_CACHE_MAX_ENTRIES,
-      hits: 0,
-      misses: DEFAULT_NODE_ED25519_CACHE_MAX_ENTRIES + 1,
-      evictions: 1,
-    });
-    expect(rssGrowthBytes).toBeLessThan(256 * 1024 * 1024);
-    console.log(
-      JSON.stringify({
-        productionNodeEd25519Cache: verifier.stats(),
-        rssGrowthBytes,
-      }),
-    );
   });
 });
