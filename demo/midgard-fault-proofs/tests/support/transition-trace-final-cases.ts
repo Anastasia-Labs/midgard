@@ -8,10 +8,7 @@ import {
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  createReferenceScriptAuthPolicy,
-  FraudProofTokenDatum,
-} from "@al-ft/midgard-sdk";
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { assetsToValue, CML } from "@lucid-evolution/lucid";
 import {
@@ -49,6 +46,7 @@ import * as yieldDataModule from "../../src/transition-trace/yield-data.js";
 import * as structuredDataModule from "../../src/workflow/structured-data-preimage.js";
 import { captureLocallyEvaluatedTransaction } from "../../src/workflow/transaction-boundary.js";
 import { measureCompleteSignedTransaction } from "./emulator/measurement.js";
+import { createReferenceScriptPublisher } from "./emulator/reference-script-publisher.js";
 import {
   publishFaultProofWitnessReferenceScripts,
   publishOperatorLifecycleReferenceScripts,
@@ -204,15 +202,8 @@ export const registerTransitionTraceFinalCases = (
         proverSigner.selectWallet(proverLucid);
 
         await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
-        const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
-        if (nonceUtxo === undefined) {
-          throw new Error("Expected funder wallet to expose a nonce UTxO");
-        }
-
-        const referenceScriptAuth = await createReferenceScriptAuthPolicy(
-          proverLucid,
-          emulator.now(),
-        );
+        const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
+          await createReferenceScriptPublisher(funderLucid, emulator.now());
         const baseContracts = {
           ...(await buildMinimalFaultProofContracts(
             realBlueprint,
@@ -225,6 +216,7 @@ export const registerTransitionTraceFinalCases = (
             },
           )),
           referenceScriptAuth,
+          referenceScriptPublisher,
         };
         // Operator registration and activation source their four directory
         // validators from published reference scripts. Published from the prover

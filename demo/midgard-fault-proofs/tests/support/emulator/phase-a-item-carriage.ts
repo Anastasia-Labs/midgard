@@ -17,6 +17,7 @@ import { Effect } from "effect";
 
 import { type ResolvedProverSigner } from "../../../src/runtime.js";
 import { SCRIPT_SOURCES_OBSERVER_YIELD_ROLES } from "../../../src/validation-dispute/script-sources-yields.js";
+import { type ReferenceScriptPublisher } from "./reference-script-publisher.js";
 import {
   publishAuthenticatedValidationDisputeControl,
   publishPlainReferenceScriptUtxo,
@@ -42,6 +43,7 @@ export const preparePhaseAItemCarriage = async ({
   chain,
   certificate,
   authPolicy,
+  publisher,
   trace,
   stateIndex,
   source,
@@ -55,6 +57,7 @@ export const preparePhaseAItemCarriage = async ({
     mintingScript: Script;
     spendingScriptAddress: string;
   };
+  publisher?: ReferenceScriptPublisher;
   authPolicy: Awaited<ReturnType<typeof createReferenceScriptAuthPolicy>>;
   trace: DeterministicValidationMachineTrace;
   stateIndex: number;
@@ -110,6 +113,7 @@ export const preparePhaseAItemCarriage = async ({
     const publication = await publishAuthenticatedValidationDisputeControl({
       lucid,
       authPolicy,
+      publisher,
       target: {
         control: spec.contract,
         name: spec.role,

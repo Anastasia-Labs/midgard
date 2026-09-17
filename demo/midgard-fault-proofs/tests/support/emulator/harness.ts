@@ -2,7 +2,6 @@ import {} from "node:path";
 
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
-  createReferenceScriptAuthPolicy,
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   type FraudProofCatalogueCategoryDeploymentInfo,
   FraudProofComputationThreadRedeemer,
@@ -64,6 +63,10 @@ import {
   registerPhasMembershipRewardAccount,
 } from "./emulator-context.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
+import {
+  createReferenceScriptPublisher,
+  type ReferenceScriptPublisher,
+} from "./reference-script-publisher.js";
 import {
   type MinAdaYieldReferenceScripts,
   type OperatorLifecycleReferenceScripts,
@@ -319,6 +322,7 @@ export type FaultProofEmulatorHarness = {
     ReturnType<typeof buildMinimalFaultProofContracts>
   > & {
     readonly referenceScriptAuth: ReferenceScriptAuthPolicy;
+    readonly referenceScriptPublisher: ReferenceScriptPublisher;
     readonly operatorLifecycleReferenceScripts: OperatorLifecycleReferenceScripts;
     readonly minAdaYieldReferenceScripts?: MinAdaYieldReferenceScripts;
   };
@@ -334,7 +338,7 @@ export type FaultProofEmulatorHarness = {
  * exact order the suites performed it: read both blueprints, stand up the
  * funder/prover party, register the PHAS membership reward account (then any
  * family-specific reward accounts the caller registers, in the caller's own
- * order), take the funder's first UTxO as the parameterizing nonce, build the
+ * order), reserve a funder UTxO as the parameterizing nonce, build the
  * minimal contract set for the family under test, then derive the catalogue
  * deployment info.
  *
@@ -387,14 +391,8 @@ export const makeFaultProofEmulatorHarness = async ({
   if (registerAdditionalRewardAccounts !== undefined) {
     await registerAdditionalRewardAccounts(funderLucid, realBlueprint);
   }
-  const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
-  if (nonceUtxo === undefined) {
-    throw new Error("Expected funder wallet to expose a nonce UTxO");
-  }
-  const referenceScriptAuth = await createReferenceScriptAuthPolicy(
-    proverLucid,
-    emulator.now(),
-  );
+  const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
+    await createReferenceScriptPublisher(funderLucid, emulator.now());
   const baseContracts = {
     ...(await buildMinimalFaultProofContracts(
       realBlueprint,
@@ -410,12 +408,13 @@ export const makeFaultProofEmulatorHarness = async ({
     // policy here lets strict manifest consumers validate the policy id and
     // canonical role-token map rather than accepting an empty sidecar.
     referenceScriptAuth,
+    referenceScriptPublisher,
   };
   const operatorLifecycleReferenceScripts =
     await publishOperatorLifecycleReferenceScripts({
-      // Keep the funder's deployment nonce unspent. These immutable reference
-      // scripts are chain-global and the prover wallet is already the harness
-      // publisher for the fraud-proof witness roster below.
+      // Plain references share the prover's witness-publication funding.
+      // Authenticated roles use contracts.referenceScriptPublisher, funded
+      // by the deployment wallet while preserving its reserved nonce.
       lucid: proverLucid,
       contracts: baseContracts,
     });

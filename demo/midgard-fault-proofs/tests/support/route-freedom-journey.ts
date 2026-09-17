@@ -18,11 +18,9 @@
  * nothing — so suites built on this harness must gate themselves with
  * {@link blueprintSpeaksOptionBCompleteItemWire} and skip loudly instead.
  */
-
 import { outRefLabel } from "@al-ft/midgard-core";
 import {
   buildValidationTraceDisputeFaultProofContracts,
-  createReferenceScriptAuthPolicy,
   parseFaultProofBlueprint,
   validationMachineStateDataFromCore,
   validationTraceProofDataFromCore,
@@ -48,6 +46,7 @@ import {
   validationDisputeValidityRange,
   type ValidationProofItemDelivery,
 } from "../../src/index.js";
+import { createReferenceScriptPublisher } from "./emulator/reference-script-publisher.js";
 import { submitInit } from "./legacy-submit-emulator.js";
 import { buildInvalidForcedValidationDisputeFixture } from "./submit-init-emulator-fixtures.js";
 import {
@@ -314,14 +313,8 @@ export const prepareRouteFreedomJourney = async ({
   };
 
   await registerPhasMembershipRewardAccount(operatorLucid, realBlueprint);
-  const nonceUtxo = (await operatorLucid.wallet().getUtxos())[0];
-  if (nonceUtxo === undefined) {
-    throw new Error("Expected operator wallet to expose a nonce UTxO");
-  }
-  const referenceScriptAuth = await createReferenceScriptAuthPolicy(
-    challengerLucid,
-    emulator.now(),
-  );
+  const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
+    await createReferenceScriptPublisher(operatorLucid, emulator.now());
   const baseContracts = {
     ...(await buildMinimalFaultProofContracts(
       realBlueprint,
@@ -334,6 +327,7 @@ export const prepareRouteFreedomJourney = async ({
       },
     )),
     referenceScriptAuth,
+    referenceScriptPublisher,
   };
   // Operator registration and activation source their four directory
   // validators from published reference scripts, so the roster has to exist
@@ -409,6 +403,7 @@ export const prepareRouteFreedomJourney = async ({
     operatorSeedPhrase: challenger.seedPhrase,
     contracts,
     authPolicy: referenceScriptAuth,
+    publisher: referenceScriptPublisher,
     runStage: runCapturedLifecycleStage,
   });
   const publishPlain = (label: string, script: Script) =>

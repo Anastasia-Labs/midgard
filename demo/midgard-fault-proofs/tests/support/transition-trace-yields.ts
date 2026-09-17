@@ -1,7 +1,4 @@
-import type {
-  createReferenceScriptAuthPolicy,
-  MidgardValidators,
-} from "@al-ft/midgard-sdk";
+import type { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
   type LucidEvolution,
   type UTxO,
@@ -10,11 +7,12 @@ import {
 
 import { TRANSITION_TRACE_YIELD_REFERENCES } from "../../src/transition-trace/yield-references.js";
 import { network } from "./emulator/blueprints.js";
+import { type ReferenceScriptPublishingContracts } from "./emulator/reference-script-publisher.js";
 import { publishAuthenticatedValidationDisputeControl } from "./emulator/reference-scripts.js";
 
 export const publishTransitionTraceYields = async (
   lucid: LucidEvolution,
-  contracts: MidgardValidators & {
+  contracts: ReferenceScriptPublishingContracts & {
     referenceScriptAuth: Awaited<
       ReturnType<typeof createReferenceScriptAuthPolicy>
     >;
@@ -29,6 +27,7 @@ export const publishTransitionTraceYields = async (
     const result = await publishAuthenticatedValidationDisputeControl({
       lucid,
       authPolicy: contracts.referenceScriptAuth,
+      publisher: contracts.referenceScriptPublisher,
       target: {
         name: identity.role,
         control: identity.entry,

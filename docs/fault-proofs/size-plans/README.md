@@ -6,10 +6,10 @@ compiler, blueprint, and shape; retaining a file does not make it current.
 
 ## Verification contracts
 
-| Contract                                      | Executable authority                                                                                                                                                                                                                                              | What it establishes                                                                                                                                 |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Complete live resolver publication comparison | [Resolver publication test](../../../demo/midgard-fault-proofs/tests/validation-trace-resolver-publication.test.ts)                                                                                                                                               | Rebuilds measurements and compares the full saved ledger, including current blueprint/compiler identity.                                            |
-| Historical snapshot consistency               | Family tests listed below                                                                                                                                                                                                                                         | Checks saved rows/digests or a hardcoded measurement table; does not establish current-build fit.                                                   |
+| Contract                                      | Executable authority                                                                                                | What it establishes                                                                                      |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Complete live resolver publication comparison | [Resolver publication test](../../../demo/midgard-fault-proofs/tests/validation-trace-resolver-publication.test.ts) | Rebuilds measurements and compares the full saved ledger, including current blueprint/compiler identity. |
+| Historical snapshot consistency               | Family tests listed below                                                                                           | Checks saved rows/digests or a hardcoded measurement table; does not establish current-build fit.        |
 
 The `*-fit-ledger.test.ts` readers were removed on 2026-09-09: they compared
 a saved ledger to a transcribed copy of itself (or to a stale blueprint digest)
@@ -39,12 +39,17 @@ results with the release artifact. Publication rows alone do not prove execution
 atomic maximum rows do not prove registered lifecycle provenance.
 
 ScriptSources, Phase-A, LOP publication and transition test writers can emit
-measurement reports, but no current test reads their former checked-in snapshots.
-Those reports are run outputs, not repository regression inputs. Transition
-installed/subvariant suites currently write them on ordinary runs; other writers
-are opt-in. Do not recommit generated reports merely because running a test
-recreates a deleted historical path. The live measurements and assertions remain
-in their owning tests.
+measurement reports. Most are run outputs, not repository regression inputs;
+the transition installed suite writes its report on ordinary runs. Do not
+recommit reports merely because a test regenerates a historical path.
+
+The forced-window ledger, `transition-trace-forced-window-fit-ledger.json`, is an
+active regression input: the transition subvariant suite checks its current
+blueprint identity, digest, and scenario/row coverage. Regenerate it with
+`MIDGARD_WRITE_FIT_LEDGER=1` by running the complete
+`submit-init-emulator-transition-trace-subvariants.test.ts` suite, then rerun that
+suite without the write flag to verify the saved evidence. Never change its
+blueprint digest without fresh lifecycle measurements.
 
 [Availability challenge](availability-challenge.md) is the remaining active
 publication plan. Implemented resolver decisions live in

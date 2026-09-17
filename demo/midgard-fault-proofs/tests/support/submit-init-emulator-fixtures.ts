@@ -43,7 +43,6 @@ import {
   buildPhasMembershipRewardRegistrationTxProgram,
   commitCountedRootProgram,
   CORRECTION_LOCK_ASSET_NAME,
-  createReferenceScriptAuthPolicy,
   DA_PAYLOAD_VERSION,
   DoubleSpendStep02Datum,
   DoubleSpendStep03Datum,
@@ -135,6 +134,7 @@ import {
   buildNonMembershipProof,
   type TrieEntry,
 } from "../../src/ne-proofs.js";
+import { createReferenceScriptPublisher } from "./emulator/reference-script-publisher.js";
 import { findStateQueueYieldReferenceScript } from "./emulator/reference-scripts.js";
 import {
   nativeTxFromCoreCompact,
@@ -1895,15 +1895,8 @@ export const buildProvedDoubleSpendFixture = async ({
   proverSigner.selectWallet(proverLucid);
 
   await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
-  const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
-  if (nonceUtxo === undefined) {
-    throw new Error("Expected funder wallet to expose a nonce UTxO");
-  }
-
-  const referenceScriptAuth = await createReferenceScriptAuthPolicy(
-    proverLucid,
-    emulator.now(),
-  );
+  const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
+    await createReferenceScriptPublisher(funderLucid, emulator.now());
   const baseContracts = {
     ...(await buildMinimalFaultProofContracts(
       realBlueprint,
@@ -1915,6 +1908,7 @@ export const buildProvedDoubleSpendFixture = async ({
       },
     )),
     referenceScriptAuth,
+    referenceScriptPublisher,
   };
   // Operator registration and activation source their four directory
   // validators from published reference scripts. Published from the prover

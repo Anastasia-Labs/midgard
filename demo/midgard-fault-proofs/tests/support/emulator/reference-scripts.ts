@@ -35,6 +35,10 @@ import {
   type CompleteSignedTransactionMeasurement,
   measureCompleteSignedTransaction,
 } from "./measurement.js";
+import {
+  type ReferenceScriptPublisher,
+  type ReferenceScriptPublishingContracts,
+} from "./reference-script-publisher.js";
 
 export const VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE =
   "V1 validation-trace dispute";
@@ -86,6 +90,7 @@ export const publishAuthenticatedValidationDisputeControl = async ({
   lucid,
   target,
   authPolicy,
+  publisher,
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
   readonly target: {
@@ -93,12 +98,19 @@ export const publishAuthenticatedValidationDisputeControl = async ({
     readonly name: ReferenceScriptAuthTokenTarget;
     readonly script: Script;
   };
+  readonly publisher?: ReferenceScriptPublisher;
   readonly authPolicy: Awaited<
     ReturnType<typeof createReferenceScriptAuthPolicy>
   >;
 }) => {
+  // A deployment supplies its funding authority explicitly. Standalone
+  // publication tests use their caller wallet; neither path changes a wallet.
+  const publicationLucid = publisher?.lucid ?? lucid;
+  const reserved = new Set(publisher?.reservedInputs.map(outRefLabel));
   const selectedFundingInputs = selectReferenceScriptFundingUtxos(
-    await lucid.wallet().getUtxos(),
+    (await publicationLucid.wallet().getUtxos()).filter(
+      (utxo) => !reserved.has(outRefLabel(utxo)),
+    ),
     referenceScriptPublicationFundingTarget(1),
   );
   if (selectedFundingInputs.length === 0) {
@@ -106,10 +118,10 @@ export const publishAuthenticatedValidationDisputeControl = async ({
       `Expected a plain-Ada input for authenticated validation-dispute ${target.control} reference-script publication`,
     );
   }
-  const referenceScriptsAddress = await lucid.wallet().address();
+  const referenceScriptsAddress = await publicationLucid.wallet().address();
   const { tx, layout } = await Effect.runPromise(
     completeReferenceScriptPublicationTxProgram({
-      lucid,
+      lucid: publicationLucid,
       selectedFundingInputs,
       walletAddress: referenceScriptsAddress,
       referenceScriptsAddress,
@@ -136,12 +148,12 @@ export const publishAuthenticatedValidationDisputeControl = async ({
     );
   }
   const txHash = await signed.submit();
-  await lucid.awaitTx(txHash);
+  await publicationLucid.awaitTx(txHash);
   const outRef = {
     txHash,
     outputIndex: localOutput.outputIndex,
   };
-  const published = await lucid.utxosByOutRef([outRef]);
+  const published = await publicationLucid.utxosByOutRef([outRef]);
   if (published.length !== 1) {
     throw new Error(
       `Expected one live validation-dispute ${target.control} reference-script UTxO at ${txHash}#${localOutput.outputIndex.toString()}, found ${published.length.toString()}`,
@@ -161,7 +173,7 @@ export const publishValidationDisputeReferenceScript = async ({
   now,
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
-  readonly contracts: MidgardValidators;
+  readonly contracts: ReferenceScriptPublishingContracts;
   readonly now: number;
 }) => {
   const target = validationDisputeControlPublicationTargets(contracts)[0];
@@ -178,7 +190,7 @@ export const publishStateQueueYieldReferenceScript = async ({
   arm,
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
-  readonly contracts: MidgardValidators;
+  readonly contracts: ReferenceScriptPublishingContracts;
   readonly arm: keyof MidgardValidators["stateQueue"]["yields"];
 }) => {
   const targetByArm = {
@@ -211,6 +223,7 @@ export const publishStateQueueYieldReferenceScript = async ({
   return publishAuthenticatedValidationDisputeControl({
     lucid,
     target: targetByArm[arm],
+    publisher: contracts.referenceScriptPublisher,
     authPolicy: contracts.referenceScriptAuth as Awaited<
       ReturnType<typeof createReferenceScriptAuthPolicy>
     >,
@@ -223,7 +236,7 @@ export const findStateQueueYieldReferenceScript = async ({
   arm,
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
-  readonly contracts: MidgardValidators;
+  readonly contracts: ReferenceScriptPublishingContracts;
   readonly arm: keyof MidgardValidators["stateQueue"]["yields"];
 }): Promise<UTxO> => {
   const roleByArm = {
@@ -237,21 +250,20 @@ export const findStateQueueYieldReferenceScript = async ({
     contracts.referenceScriptAuth.policyId,
     roleByArm[arm],
   );
-  const matches = await lucid.utxosAtWithUnit(
-    await lucid.wallet().address(),
-    unit,
-  );
-  if (matches.length !== 1) {
+  // The publishing authority and consuming operator/prover are different
+  // wallets. Resolve the unique deployment role token across the provider.
+  const reference = await lucid.utxoByUnit(unit);
+  if (reference === undefined) {
     throw new Error(
-      `Expected exactly one authenticated ${roleByArm[arm]} reference script, found ${matches.length.toString()}`,
+      `Expected an authenticated ${roleByArm[arm]} reference script`,
     );
   }
-  if (matches[0]?.scriptRef == null) {
+  if (reference.scriptRef == null) {
     throw new Error(
-      `Authenticated ${roleByArm[arm]} reference script token sits at ${outRefLabel(matches[0]!)} without a reference script`,
+      `Authenticated ${roleByArm[arm]} reference script token sits at ${outRefLabel(reference)} without a reference script`,
     );
   }
-  return matches[0];
+  return reference;
 };
 
 export type MinAdaYieldReferenceScripts = Readonly<{
@@ -269,7 +281,7 @@ export const publishMinAdaYieldReferenceScripts = async ({
   contracts,
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
-  readonly contracts: MidgardValidators;
+  readonly contracts: ReferenceScriptPublishingContracts;
 }): Promise<MinAdaYieldReferenceScripts> => {
   const targets = [
     {
@@ -293,6 +305,7 @@ export const publishMinAdaYieldReferenceScripts = async ({
     const published = await publishAuthenticatedValidationDisputeControl({
       lucid,
       target,
+      publisher: contracts.referenceScriptPublisher,
       authPolicy: contracts.referenceScriptAuth as Awaited<
         ReturnType<typeof createReferenceScriptAuthPolicy>
       >,
@@ -382,7 +395,8 @@ export type OperatorLifecycleReferenceScripts = {
 
 /**
  * Publish the nine distinct reference scripts consumed by genesis plus the
- * genuine register-then-activate setup lifecycle. Each script is deliberately
+ * genuine register-then-activate setup lifecycle and the authenticated commit
+ * reference consumed by the operator. Each script is deliberately
  * placed in its own bounded transaction so a shared publication cannot hide
  * an individually unpublishable validator.
  */
@@ -391,7 +405,7 @@ export const publishOperatorLifecycleReferenceScripts = async ({
   contracts,
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
-  readonly contracts: MidgardValidators;
+  readonly contracts: ReferenceScriptPublishingContracts;
 }): Promise<OperatorLifecycleReferenceScripts> => {
   const roster = [
     {
@@ -466,6 +480,13 @@ export const publishOperatorLifecycleReferenceScripts = async ({
   if (initial.length !== 7) {
     throw new Error("Initial setup reference publication omitted a role");
   }
+  // Publish through the explicit deployment funding authority before the
+  // header clock is sampled; operator setup consumes this ready reference.
+  await publishStateQueueYieldReferenceScript({
+    lucid,
+    contracts,
+    arm: "commit",
+  });
   return { registered, active, initial };
 };
 
@@ -520,7 +541,7 @@ export const publishHarnessFaultProofReferenceScripts = async ({
   contracts,
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
-  readonly contracts: MidgardValidators;
+  readonly contracts: ReferenceScriptPublishingContracts;
 }): Promise<
   Readonly<Record<string, { readonly scriptHash: string; readonly utxo: UTxO }>>
 > => {
@@ -682,7 +703,7 @@ export const publishRemovalReferenceScripts = async ({
   contracts,
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
-  readonly contracts: MidgardValidators;
+  readonly contracts: ReferenceScriptPublishingContracts;
 }): Promise<{
   readonly published: RemovalReferenceScriptPublications;
   readonly measurements: RemovalReferenceScriptMeasurements;

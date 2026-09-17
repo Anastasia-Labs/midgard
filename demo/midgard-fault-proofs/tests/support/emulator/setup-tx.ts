@@ -74,9 +74,9 @@ import {
   SETUP_OUTPUT_INDEX,
 } from "./header-fixtures.js";
 import {
+  findStateQueueYieldReferenceScript,
   type MinAdaYieldReferenceScripts,
   publishMinAdaYieldReferenceScripts,
-  publishStateQueueYieldReferenceScript,
 } from "./reference-scripts.js";
 import { type OperatorLifecycleReferenceScripts } from "./reference-scripts.js";
 
@@ -884,7 +884,7 @@ const submitHeaderCommitTx = async ({
   readonly continuedActiveOperatorNode: UTxO;
 }> => {
   await registerStateQueueYieldRewardAccounts(lucid, contracts);
-  const commitYieldPublication = await publishStateQueueYieldReferenceScript({
+  const commitYieldReference = await findStateQueueYieldReferenceScript({
     lucid,
     contracts,
     arm: "commit",
@@ -975,7 +975,7 @@ const submitHeaderCommitTx = async ({
         stateQueueSpendingScript: contracts.stateQueue.spendingScript,
         stateQueueMintingScript: contracts.stateQueue.mintingScript,
         yieldWitness: {
-          referenceInput: commitYieldPublication.utxo,
+          referenceInput: commitYieldReference,
           script: contracts.stateQueue.yields.commit.withdrawalScript,
         },
       },

@@ -8,7 +8,6 @@
  * script evaluation and vitest isolates per FILE; that leak is fixed upstream,
  * and the split is kept so each file runs in its own fresh process.
  */
-
 import {
   MIDGARD_ENVELOPE_MEASUREMENTS,
   outRefLabel,
@@ -46,6 +45,7 @@ import {
   validationDisputeValidityRange,
   validationSemanticResolverGlobalIndex,
 } from "../src/index.js";
+import { createReferenceScriptPublisher } from "./support/emulator/reference-script-publisher.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import { buildInvalidForcedValidationDisputeFixture } from "./support/submit-init-emulator-fixtures.js";
 import {
@@ -318,14 +318,8 @@ describe("fault-proof emulator integration", () => {
         validationDisputeValidityRange(emulator.now());
 
       await registerPhasMembershipRewardAccount(operatorLucid, realBlueprint);
-      const nonceUtxo = (await operatorLucid.wallet().getUtxos())[0];
-      if (nonceUtxo === undefined) {
-        throw new Error("Expected operator wallet to expose a nonce UTxO");
-      }
-      const referenceScriptAuth = await createReferenceScriptAuthPolicy(
-        challengerLucid,
-        emulator.now(),
-      );
+      const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
+        await createReferenceScriptPublisher(operatorLucid, emulator.now());
       const baseContracts = {
         ...(await buildMinimalFaultProofContracts(
           realBlueprint,
@@ -338,6 +332,7 @@ describe("fault-proof emulator integration", () => {
           },
         )),
         referenceScriptAuth,
+        referenceScriptPublisher,
       };
       // Operator registration and activation source their four directory
       // validators from published reference scripts, so the roster has to
@@ -464,6 +459,7 @@ describe("fault-proof emulator integration", () => {
                     lucid: referenceScriptPublisherLucid,
                     target,
                     authPolicy,
+                    publisher: referenceScriptPublisher,
                   });
               }
               return publications;

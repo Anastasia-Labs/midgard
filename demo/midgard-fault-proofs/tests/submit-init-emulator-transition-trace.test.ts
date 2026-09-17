@@ -7,12 +7,8 @@
  * script evaluation and vitest isolates per FILE; that leak is fixed upstream,
  * and the split is kept so each file runs in its own fresh process.
  */
-
 import { outRefLabel } from "@al-ft/midgard-core";
-import {
-  createReferenceScriptAuthPolicy,
-  FraudProofTokenDatum,
-} from "@al-ft/midgard-sdk";
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
 import {
   Data,
   Emulator,
@@ -29,6 +25,7 @@ import {
   submitRemoveFraudulentBlock,
   submitTransitionTraceProof,
 } from "../src/index.js";
+import { createReferenceScriptPublisher } from "./support/emulator/reference-script-publisher.js";
 import {
   publishFaultProofWitnessReferenceScripts,
   publishOperatorLifecycleReferenceScripts,
@@ -78,15 +75,8 @@ describe("fault-proof emulator integration", () => {
     proverSigner.selectWallet(proverLucid);
 
     await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
-    const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
-    if (nonceUtxo === undefined) {
-      throw new Error("Expected funder wallet to expose a nonce UTxO");
-    }
-
-    const referenceScriptAuth = await createReferenceScriptAuthPolicy(
-      proverLucid,
-      emulator.now(),
-    );
+    const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
+      await createReferenceScriptPublisher(funderLucid, emulator.now());
     const baseContracts = {
       ...(await buildMinimalFaultProofContracts(
         realBlueprint,
@@ -99,6 +89,7 @@ describe("fault-proof emulator integration", () => {
         },
       )),
       referenceScriptAuth,
+      referenceScriptPublisher,
     };
     // Operator registration and activation source their four directory
     // validators from published reference scripts. Published from the prover

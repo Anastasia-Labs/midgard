@@ -2,10 +2,11 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
+  CML,
   Emulator,
   generateEmulatorAccount,
+  getAddressDetails,
   Lucid,
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -23,7 +24,9 @@ import {
 } from "./support/emulator/blueprints.js";
 import { buildMinimalFaultProofContracts } from "./support/emulator/contracts.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
+import { createReferenceScriptPublisher } from "./support/emulator/reference-script-publisher.js";
 import {
+  findStateQueueYieldReferenceScript,
   publishPlainReferenceScriptUtxo,
   publishStateQueueYieldReferenceScript,
 } from "./support/emulator/reference-scripts.js";
@@ -38,16 +41,32 @@ const ledgerPath = fileURLToPath(
 describe("state-queue withdraw-zero publication admission V1", () => {
   it("publishes the mint policy and every arm-specific rewarding script under Van Rossem limits", async () => {
     const account = generateEmulatorAccount({ lovelace: 40_000_000_000n });
-    const emulator = new Emulator([account], EMULATOR_PROTOCOL_PARAMETERS);
+    const consumer = generateEmulatorAccount({ lovelace: 1_000_000_000n });
+    const emulator = new Emulator(
+      [account, consumer],
+      EMULATOR_PROTOCOL_PARAMETERS,
+    );
+    const consumerLucid = await Lucid(emulator, "Custom");
+    consumerLucid.selectWallet.fromSeed(consumer.seedPhrase);
     const lucid = await Lucid(emulator, "Custom");
     lucid.selectWallet.fromSeed(account.seedPhrase);
-    const nonceUtxo = (await lucid.wallet().getUtxos())[0];
-    if (nonceUtxo === undefined) throw new Error("missing publication nonce");
-
-    const referenceScriptAuth = await createReferenceScriptAuthPolicy(
-      lucid,
-      emulator.now(),
+    const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
+      await createReferenceScriptPublisher(lucid, emulator.now());
+    const policy = CML.NativeScript.from_cbor_hex(
+      referenceScriptAuth.mintingScriptCBOR,
     );
+    const signers = policy.get_required_signers();
+    expect(signers.len()).toBe(1);
+    const publisherKey = signers.get(0);
+    expect(publisherKey.to_hex()).toBe(
+      getAddressDetails(account.address).paymentCredential!.hash,
+    );
+    expect(publisherKey.to_hex()).not.toBe(
+      getAddressDetails(consumer.address).paymentCredential!.hash,
+    );
+    publisherKey.free();
+    signers.free();
+    policy.free();
     const contracts = {
       ...(await buildMinimalFaultProofContracts(
         readBlueprint(realBlueprintPath),
@@ -56,14 +75,16 @@ describe("state-queue withdraw-zero publication admission V1", () => {
         { referenceScriptAuthPolicyId: referenceScriptAuth.policyId },
       )),
       referenceScriptAuth,
+      referenceScriptPublisher,
     };
 
     const measurements: VanRossemFitMeasurement[] = [];
     const mint = await publishPlainReferenceScriptUtxo({
-      lucid,
+      lucid: consumerLucid,
       script: contracts.stateQueue.mintingScript,
       label: "state-queue mint publication admission",
     });
+    const consumerInputs = await consumerLucid.wallet().getUtxos();
     const record = (
       name: string,
       measurement: typeof mint.publicationMeasurement,
@@ -89,11 +110,27 @@ describe("state-queue withdraw-zero publication admission V1", () => {
       "merge",
     ] as const) {
       const publication = await publishStateQueueYieldReferenceScript({
-        lucid,
+        lucid: consumerLucid,
         contracts,
         arm,
       });
       record(arm, publication.publicationMeasurement);
+      expect(publication.utxo.address).toBe(account.address);
+      await expect(lucid.utxosByOutRef([nonceUtxo])).resolves.toEqual([
+        nonceUtxo,
+      ]);
+      await expect(consumerLucid.wallet().getUtxos()).resolves.toEqual(
+        consumerInputs,
+      );
+      // Authenticated references are deployment resources shared by operators
+      // and provers; the consumer wallet does not own the publisher key.
+      await expect(
+        findStateQueueYieldReferenceScript({
+          lucid: consumerLucid,
+          contracts,
+          arm,
+        }),
+      ).resolves.toEqual(publication.utxo);
     }
     // Every publication the admission claim covers was actually measured: the
     // mint policy plus one rewarding script per state-queue arm, no arm

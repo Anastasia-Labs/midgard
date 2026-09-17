@@ -4,7 +4,6 @@ import {
   CEK_MATERIAL_TASK_YIELD_ROLES,
   CEK_SELECTION_YIELD_ROLES,
   cekContextReferenceScripts,
-  createReferenceScriptAuthPolicy,
   PreparedValidationResolutionDatum,
   PreparedValidationResolutionState,
   sharedRedeemerItemReferenceScripts,
@@ -87,6 +86,7 @@ import {
   PHASE_A_ITEM_YIELD_SPECS,
   preparePhaseAItemCarriage,
 } from "./phase-a-item-carriage.js";
+import { createReferenceScriptPublisher } from "./reference-script-publisher.js";
 import {
   publishAuthenticatedValidationDisputeControl,
   publishFaultProofWitnessReferenceScripts,
@@ -199,14 +199,8 @@ export const runForcedValidationDisputeScenario = async (
     };
   }
   await registerPhasMembershipRewardAccount(operatorLucid, realBlueprint);
-  const nonceUtxo = (await operatorLucid.wallet().getUtxos())[0];
-  if (nonceUtxo === undefined) {
-    throw new Error("Expected operator wallet to expose a nonce UTxO");
-  }
-  const referenceScriptAuth = await createReferenceScriptAuthPolicy(
-    challengerLucid,
-    emulator.now(),
-  );
+  const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
+    await createReferenceScriptPublisher(operatorLucid, emulator.now());
   const baseContracts = {
     ...(await buildMinimalFaultProofContracts(
       realBlueprint,
@@ -219,6 +213,7 @@ export const runForcedValidationDisputeScenario = async (
       },
     )),
     referenceScriptAuth,
+    referenceScriptPublisher,
   };
   // Operator registration and activation source their four directory
   // validators from published reference scripts, so the roster has to exist
@@ -280,6 +275,7 @@ export const runForcedValidationDisputeScenario = async (
               chain: contracts.fraudProofContracts.validationTraceDispute,
               certificate: contracts.fieldPreimageCertificate,
               authPolicy: referenceScriptAuth,
+              publisher: referenceScriptPublisher,
               kind: scriptSourcesItemMaximum
                 ? "redeemer"
                 : phaseAObserverItemMaximum
@@ -315,6 +311,7 @@ export const runForcedValidationDisputeScenario = async (
     operatorSeedPhrase: challenger.seedPhrase,
     contracts,
     authPolicy: referenceScriptAuth,
+    publisher: referenceScriptPublisher,
     runStage: runEmulatorLifecycleStage,
   });
   const prepareResolverContract =
@@ -581,6 +578,7 @@ export const runForcedValidationDisputeScenario = async (
       : await publishAuthenticatedValidationDisputeControl({
           lucid: challengerLucid,
           authPolicy: referenceScriptAuth,
+          publisher: referenceScriptPublisher,
           target: {
             control: "value-and-mint asset-fold",
             name: "V1 validation-trace value-and-mint asset-fold yield",
@@ -662,6 +660,7 @@ export const runForcedValidationDisputeScenario = async (
       const publication = await publishAuthenticatedValidationDisputeControl({
         lucid: challengerLucid,
         authPolicy: referenceScriptAuth,
+        publisher: referenceScriptPublisher,
         target: {
           control: deploymentEntry,
           name: role,
@@ -700,6 +699,7 @@ export const runForcedValidationDisputeScenario = async (
         (await publishAuthenticatedValidationDisputeControl({
           lucid: challengerLucid,
           authPolicy: referenceScriptAuth,
+          publisher: referenceScriptPublisher,
           target: {
             control: spec.contract,
             name: spec.role,
@@ -730,6 +730,7 @@ export const runForcedValidationDisputeScenario = async (
       const publication = await publishAuthenticatedValidationDisputeControl({
         lucid: challengerLucid,
         authPolicy: referenceScriptAuth,
+        publisher: referenceScriptPublisher,
         target: {
           control: spec.contract,
           name: spec.role,
@@ -764,6 +765,7 @@ export const runForcedValidationDisputeScenario = async (
         (await publishAuthenticatedValidationDisputeControl({
           lucid: challengerLucid,
           authPolicy: referenceScriptAuth,
+          publisher: referenceScriptPublisher,
           target: {
             control: spec.contract,
             name: spec.role,
@@ -794,6 +796,7 @@ export const runForcedValidationDisputeScenario = async (
       const publication = await publishAuthenticatedValidationDisputeControl({
         lucid: challengerLucid,
         authPolicy: referenceScriptAuth,
+        publisher: referenceScriptPublisher,
         target: {
           control: spec.contract,
           name: spec.role,
@@ -858,6 +861,7 @@ export const runForcedValidationDisputeScenario = async (
       const publication = await publishAuthenticatedValidationDisputeControl({
         lucid: challengerLucid,
         authPolicy: referenceScriptAuth,
+        publisher: referenceScriptPublisher,
         target: {
           control: spec.contract,
           name: spec.role,
@@ -891,6 +895,7 @@ export const runForcedValidationDisputeScenario = async (
       const publication = await publishAuthenticatedValidationDisputeControl({
         lucid: challengerLucid,
         authPolicy: referenceScriptAuth,
+        publisher: referenceScriptPublisher,
         target: {
           control: spec.contract,
           name: spec.role,
@@ -927,6 +932,7 @@ export const runForcedValidationDisputeScenario = async (
       const publication = await publishAuthenticatedValidationDisputeControl({
         lucid: challengerLucid,
         authPolicy: referenceScriptAuth,
+        publisher: referenceScriptPublisher,
         target: {
           control: deploymentEntry,
           name: role,
@@ -957,6 +963,7 @@ export const runForcedValidationDisputeScenario = async (
       const publication = await publishAuthenticatedValidationDisputeControl({
         lucid: challengerLucid,
         authPolicy: referenceScriptAuth,
+        publisher: referenceScriptPublisher,
         target: {
           control: `CEK core ${key}`,
           name: spec.role,
@@ -984,6 +991,7 @@ export const runForcedValidationDisputeScenario = async (
     const publication = await publishAuthenticatedValidationDisputeControl({
       lucid: challengerLucid,
       authPolicy: referenceScriptAuth,
+      publisher: referenceScriptPublisher,
       target: {
         control: "CEK material traversal",
         name: "V1 validation-trace CEK material traversal",

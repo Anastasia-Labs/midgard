@@ -7,7 +7,6 @@ import {
   selectMidgardValidationDisputeReveal,
 } from "@al-ft/midgard-core";
 import {
-  createReferenceScriptAuthPolicy,
   FraudProofComputationThreadStepDatum,
   validationDisputeCoreFromData,
   ValidationDisputeDatum,
@@ -20,6 +19,8 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
+
+import { createReferenceScriptPublisher } from "./support/emulator/reference-script-publisher.js";
 
 const hooks = vi.hoisted(() => ({
   binding: undefined as unknown,
@@ -185,14 +186,8 @@ const stageInstalledValidationTraceDisputeJourney = async (
     validityRange,
   } = await createValidationDisputeParties();
   await registerPhasMembershipRewardAccount(operatorLucid, realBlueprint);
-  const nonceUtxo = (await operatorLucid.wallet().getUtxos())[0];
-  if (nonceUtxo === undefined) {
-    throw new Error("Expected operator wallet to expose a nonce UTxO");
-  }
-  const referenceScriptAuth = await createReferenceScriptAuthPolicy(
-    challengerLucid,
-    emulator.now(),
-  );
+  const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
+    await createReferenceScriptPublisher(operatorLucid, emulator.now());
   const baseContracts = {
     ...(await buildMinimalFaultProofContracts(
       realBlueprint,
@@ -204,6 +199,7 @@ const stageInstalledValidationTraceDisputeJourney = async (
       },
     )),
     referenceScriptAuth,
+    referenceScriptPublisher,
   };
   const contracts = {
     ...baseContracts,
@@ -255,6 +251,7 @@ const stageInstalledValidationTraceDisputeJourney = async (
     operatorSeedPhrase: challenger.seedPhrase,
     contracts,
     authPolicy: referenceScriptAuth,
+    publisher: referenceScriptPublisher,
     runStage: runEmulatorLifecycleStage,
   });
   const resolverIndex = fixture.evidence.oneStepArgument.resolverIndex;

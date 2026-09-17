@@ -4,7 +4,6 @@
  * ledger both start from, and the explicit maxTxSize pinning for
  * reference-script publications within the shared strict L1 envelope.
  */
-
 import {
   createReferenceScriptAuthPolicy,
   type MidgardValidators,
@@ -24,6 +23,7 @@ import {
 import { network } from "./blueprints.js";
 import { seedDualAddressPartyAccounts } from "./emulator-context.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
+import { type ReferenceScriptPublisher } from "./reference-script-publisher.js";
 import {
   publishAuthenticatedValidationDisputeControl,
   publishValidationDisputeReferenceScript,
@@ -130,12 +130,14 @@ export const stageAuthenticatedValidationDisputePublication = async ({
   operatorSeedPhrase,
   contracts,
   authPolicy: suppliedAuthPolicy,
+  publisher,
   runStage,
 }: {
   readonly emulator: Emulator;
   readonly operatorLucid: LucidEvolution;
   readonly operatorSeedPhrase: string;
   readonly contracts: MidgardValidators;
+  readonly publisher?: ReferenceScriptPublisher;
   readonly authPolicy?: Awaited<
     ReturnType<typeof createReferenceScriptAuthPolicy>
   >;
@@ -177,6 +179,7 @@ export const stageAuthenticatedValidationDisputePublication = async ({
               lucid: referenceScriptPublisherLucid,
               target,
               authPolicy,
+              publisher,
             });
         }
         return publications;
