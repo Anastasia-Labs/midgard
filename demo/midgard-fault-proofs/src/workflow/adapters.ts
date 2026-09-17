@@ -680,6 +680,8 @@ const workflowAdapterRegistrationRows = [
     status: "missing",
     reason: "constrained_adapter_is_not_launch_scope_complete",
     existingSurface: [
+      "receive-purpose-language/manifest-workflow.ts",
+      "workflow/manifest-bound-family-assembly.ts",
       "receive-purpose-language production runner surface is centrally installed",
     ],
     requiredClosure:

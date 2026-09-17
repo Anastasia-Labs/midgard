@@ -9,11 +9,14 @@
  *   1. bind the deployment with the definition's step datum schemas;
  *   2. assert the signer is the manifest-network enterprise address;
  *   3. require the field-preimage certificate when the definition declares it;
- *   4. bind every reference script (spec step names, then declared witness
- *      roles, then the certificate mint) against the finalized manifest;
+ *   4. bind every reference script (step contract names, then declared
+ *      witness roles, then the certificate mint) against the finalized
+ *      manifest;
  *   5. open the lazy L1 observation port and require its raw-L1 and
  *      publication authorities;
- *   6. ask the family for its transaction port and replayer;
+ *   6. ask the family for its transaction port and replayer, and build the
+ *      adapter the definition's arm names: linear, or cursor from the arm's
+ *      spec and action refiner;
  *   7. decorate the adapter: field carriage first (in declared order), then
  *      proof chunks, each only when declared;
  *   8. attach the terminal verifier, release-finality authority and any
@@ -25,7 +28,9 @@
  */
 import type { UTxO } from "@lucid-evolution/lucid";
 
+import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
+import { createCursorFamilyWorkflowAdapter } from "./cursor-family-adapter.js";
 import {
   assertManifestBoundWorkflowSigner,
   bindFraudProofWorkflowDeployment,
@@ -33,19 +38,25 @@ import {
   requireManifestBoundReferenceScriptUtxo,
 } from "./deployment-manifest-binding.js";
 import type {
+  FamilyAssemblyContext,
+  FamilyCategory,
+  FamilyDefinition,
+  FamilyReferenceScripts,
+  FamilyTransactionPort,
   FaultProofWitnessRole,
   FieldPreimageCertificateBinding,
-  LinearFamilyAssemblyContext,
-  LinearFamilyDefinition,
-  LinearFamilyReferenceScripts,
   LinearFamilyStepDatumSchema,
-  ManifestBoundLinearFamilyWorkflow,
-  ManifestBoundLinearFamilyWorkflowConfig,
+  ManifestBoundFamilyWorkflow,
+  ManifestBoundFamilyWorkflowConfig,
 } from "./family-definition.js";
-import { LINEAR_FAMILY_DEFINITION_VERSION } from "./family-definition.js";
+import {
+  familyStepContractNames,
+  LINEAR_FAMILY_DEFINITION_VERSION,
+} from "./family-definition.js";
 import {
   createFraudProofFamilyAuthenticatedL1TerminalVerifier,
   createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
   observeFraudProofWorkflowHeader,
 } from "./family-l1-observation.js";
 import {
@@ -54,10 +65,7 @@ import {
 } from "./field-carriage-prerequisite.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import { createLinearFamilyWorkflowAdapter } from "./linear-family-adapter.js";
-import {
-  type LinearFamilyCategory,
-  linearFamilySpec,
-} from "./linear-family-spec.js";
+import type { LinearFamilyCategory } from "./linear-family-spec.js";
 import {
   createFraudProofWorkflowRegistry,
   type FraudProofFamilyWorkflowAdapter,
@@ -70,12 +78,13 @@ import {
 } from "./proof-chunk-prerequisite.js";
 
 const requireDefinition = <
-  Category extends LinearFamilyCategory,
+  Category extends FamilyCategory,
   Witness extends FaultProofWitnessRole,
   Certificate extends boolean,
+  StepCount extends number,
 >(
-  definition: LinearFamilyDefinition<Category, Witness, Certificate>,
-): void => {
+  definition: FamilyDefinition<Category, Witness, Certificate, StepCount>,
+): readonly string[] => {
   if (
     definition.definitionVersion !== LINEAR_FAMILY_DEFINITION_VERSION ||
     !Object.isFrozen(definition)
@@ -84,11 +93,23 @@ const requireDefinition = <
       `${definition.category} family definition changed identity`,
     );
   }
-  const spec = linearFamilySpec(definition.category);
+  const { adapter } = definition;
+  if (adapter.kind === "cursor") {
+    const names = adapter.stepContractNames as readonly string[];
+    if (
+      adapter.spec.category !== definition.category ||
+      names.length !== adapter.spec.stepCount
+    ) {
+      throw new Error(
+        `${definition.category} definition's cursor spec disagrees with its step contract names`,
+      );
+    }
+  }
+  const stepContractNames = familyStepContractNames(definition);
   const schemas = definition.stepDatumSchemas as readonly unknown[];
-  if (schemas.length !== spec.steps.length) {
+  if (schemas.length !== stepContractNames.length) {
     throw new Error(
-      `${definition.category} definition declares ${schemas.length.toString()} step datum schemas for a ${spec.steps.length.toString()}-step spec`,
+      `${definition.category} definition declares ${schemas.length.toString()} step datum schemas for a ${stepContractNames.length.toString()}-step spec`,
     );
   }
   if (
@@ -98,39 +119,48 @@ const requireDefinition = <
       `${definition.category} definition repeats a witness reference role`,
     );
   }
+  return stepContractNames;
 };
 
 const bindReferenceScripts = <
-  Category extends LinearFamilyCategory,
+  Category extends FamilyCategory,
   Witness extends FaultProofWitnessRole,
   Certificate extends boolean,
+  StepCount extends number,
 >({
   definition,
+  stepContractNames,
   binding,
   supplied,
 }: {
-  readonly definition: LinearFamilyDefinition<Category, Witness, Certificate>;
+  readonly definition: FamilyDefinition<
+    Category,
+    Witness,
+    Certificate,
+    StepCount
+  >;
+  readonly stepContractNames: readonly string[];
   readonly binding: Parameters<
     typeof requireManifestBoundReferenceScriptUtxo
   >[0]["binding"];
-  readonly supplied: LinearFamilyReferenceScripts<
+  readonly supplied: FamilyReferenceScripts<
     Category,
     Witness,
-    Certificate
+    Certificate,
+    StepCount
   >;
-}): LinearFamilyReferenceScripts<Category, Witness, Certificate> => {
+}): FamilyReferenceScripts<Category, Witness, Certificate, StepCount> => {
   const { category } = definition;
-  const spec = linearFamilySpec(category);
   const suppliedSteps = supplied.steps as readonly UTxO[];
-  if (suppliedSteps.length !== spec.steps.length) {
+  if (suppliedSteps.length !== stepContractNames.length) {
     throw new Error(
-      `${category} workflow config supplied ${suppliedSteps.length.toString()} step reference scripts for a ${spec.steps.length.toString()}-step spec`,
+      `${category} workflow config supplied ${suppliedSteps.length.toString()} step reference scripts for a ${stepContractNames.length.toString()}-step spec`,
     );
   }
-  const steps = spec.steps.map((step, index) =>
+  const steps = stepContractNames.map((contractName, index) =>
     requireManifestBoundReferenceScriptUtxo({
       binding,
-      contractName: step.manifestContractName,
+      contractName,
       utxo: suppliedSteps[index]!,
     }),
   );
@@ -172,7 +202,75 @@ const bindReferenceScripts = <
     steps: Object.freeze(steps),
     witnesses: Object.freeze(witnesses),
     ...certificateMint,
-  }) as unknown as LinearFamilyReferenceScripts<Category, Witness, Certificate>;
+  }) as unknown as FamilyReferenceScripts<
+    Category,
+    Witness,
+    Certificate,
+    StepCount
+  >;
+};
+
+/**
+ * The family's transaction port and the undecorated adapter its arm names.
+ * The linear arm's port is typed for `Category & LinearFamilyCategory`;
+ * `familyStepContractNames` has already resolved the category's linear spec,
+ * so the category is linear here even though the generic cannot show it.
+ */
+const familyAdapter = <
+  Category extends FamilyCategory,
+  Witness extends FaultProofWitnessRole,
+  Certificate extends boolean,
+  StepCount extends number,
+>({
+  definition,
+  context,
+  stateQueueMutationLeaseCoordinator,
+}: {
+  readonly definition: FamilyDefinition<
+    Category,
+    Witness,
+    Certificate,
+    StepCount
+  >;
+  readonly context: FamilyAssemblyContext<
+    Category,
+    Witness,
+    Certificate,
+    StepCount
+  >;
+  readonly stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
+}): {
+  readonly transactions: FamilyTransactionPort<Category>;
+  readonly adapter: FraudProofFamilyWorkflowAdapter;
+} => {
+  const arm = definition.adapter;
+  if (arm.kind === "linear") {
+    const transactions = arm.transactionPort(context);
+    return {
+      transactions,
+      adapter: createLinearFamilyWorkflowAdapter({
+        category: definition.category as Category & LinearFamilyCategory,
+        l1: context.l1 as FraudProofFamilyL1ObservationPort<
+          Category & LinearFamilyCategory
+        >,
+        transactions,
+        stateQueueMutationLeaseCoordinator,
+      }),
+    };
+  }
+  const transactions = arm.transactionPort(context);
+  return {
+    transactions,
+    adapter: createCursorFamilyWorkflowAdapter({
+      spec: arm.spec,
+      l1: context.l1,
+      transactions,
+      stateQueueMutationLeaseCoordinator,
+      ...(arm.refineAction === undefined
+        ? {}
+        : { refineAction: arm.refineAction }),
+    }),
+  };
 };
 
 /**
@@ -182,18 +280,20 @@ const bindReferenceScripts = <
  * bound to this assembly's context.
  */
 export const assembleManifestBoundFamilyWorkflow = async <
-  Category extends LinearFamilyCategory,
+  Category extends FamilyCategory,
   Witness extends FaultProofWitnessRole,
   Certificate extends boolean,
+  StepCount extends number = number,
 >(
-  definition: LinearFamilyDefinition<Category, Witness, Certificate>,
-  config: ManifestBoundLinearFamilyWorkflowConfig<
+  definition: FamilyDefinition<Category, Witness, Certificate, StepCount>,
+  config: ManifestBoundFamilyWorkflowConfig<
     Category,
     Witness,
-    Certificate
+    Certificate,
+    StepCount
   >,
-): Promise<ManifestBoundLinearFamilyWorkflow<Category, Certificate>> => {
-  requireDefinition(definition);
+): Promise<ManifestBoundFamilyWorkflow<Category, Certificate, StepCount>> => {
+  const stepContractNames = requireDefinition(definition);
   const { category } = definition;
   const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
@@ -221,6 +321,7 @@ export const assembleManifestBoundFamilyWorkflow = async <
   }
   const references = bindReferenceScripts({
     definition,
+    stepContractNames,
     binding,
     supplied: config.referenceScripts,
   });
@@ -241,39 +342,37 @@ export const assembleManifestBoundFamilyWorkflow = async <
     readonly rawL1: NonNullable<typeof observed.rawL1>;
     readonly publications: NonNullable<typeof observed.publications>;
   };
-  const context: LinearFamilyAssemblyContext<Category, Witness, Certificate> =
-    Object.freeze({
-      binding,
-      lucid: config.lucid,
-      signer: config.signer,
-      references,
-      l1,
-      certificate: certificate as LinearFamilyAssemblyContext<
-        Category,
-        Witness,
-        Certificate
-      >["certificate"],
-      ...(config.replayContext === undefined
-        ? {}
-        : { replayContext: config.replayContext }),
-      stateQueueMutationLeaseCoordinator:
-        config.stateQueueMutationLeaseCoordinator,
-    });
-  if (definition.adapter.kind !== "linear") {
-    throw new Error(
-      `${category} cursor adapter arm is not assembled by this module yet`,
-    );
-  }
-  const transactions = definition.adapter.transactionPort(context);
+  const context: FamilyAssemblyContext<
+    Category,
+    Witness,
+    Certificate,
+    StepCount
+  > = Object.freeze({
+    binding,
+    lucid: config.lucid,
+    signer: config.signer,
+    references,
+    l1,
+    certificate: certificate as FamilyAssemblyContext<
+      Category,
+      Witness,
+      Certificate,
+      StepCount
+    >["certificate"],
+    ...(config.replayContext === undefined
+      ? {}
+      : { replayContext: config.replayContext }),
+    stateQueueMutationLeaseCoordinator:
+      config.stateQueueMutationLeaseCoordinator,
+  });
+  const { transactions, adapter: familyAdapterBase } = familyAdapter({
+    definition,
+    context,
+    stateQueueMutationLeaseCoordinator:
+      config.stateQueueMutationLeaseCoordinator,
+  });
   const replayer = definition.replayer(context);
-  let adapter: FraudProofFamilyWorkflowAdapter =
-    createLinearFamilyWorkflowAdapter({
-      category,
-      l1,
-      transactions,
-      stateQueueMutationLeaseCoordinator:
-        config.stateQueueMutationLeaseCoordinator,
-    });
+  let adapter = familyAdapterBase;
   const transactionConfirmed = async (input: {
     readonly headerHash: string;
     readonly txHash: string;
@@ -314,7 +413,11 @@ export const assembleManifestBoundFamilyWorkflow = async <
       }),
     });
   }
-  const workflow: ManifestBoundLinearFamilyWorkflow<Category, Certificate> = {
+  const workflow: ManifestBoundFamilyWorkflow<
+    Category,
+    Certificate,
+    StepCount
+  > = {
     definition,
     binding,
     l1,
@@ -342,14 +445,19 @@ export const assembleManifestBoundFamilyWorkflow = async <
  * terminal verifier and release-finality authority to the retained-DA runner.
  */
 export const runOrResumeManifestBoundFamilyWorkflow = async <
-  Category extends LinearFamilyCategory,
+  Category extends FamilyCategory,
   Certificate extends boolean,
+  StepCount extends number = number,
 >({
   workflow,
   sources,
   journal,
 }: {
-  readonly workflow: ManifestBoundLinearFamilyWorkflow<Category, Certificate>;
+  readonly workflow: ManifestBoundFamilyWorkflow<
+    Category,
+    Certificate,
+    StepCount
+  >;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
 }): Promise<FraudProofWorkflowRunResult> =>

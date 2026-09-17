@@ -7,7 +7,6 @@ import {
   DaLibp2pRetainedDaSource,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
@@ -19,8 +18,8 @@ import {
 } from "../workflow/adapters.js";
 import { RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
-  createCursorFamilyWorkflowAdapter,
   CURSOR_FAMILY_TRANSACTION_PORT,
+  type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
 import {
   cursorFamilyActionInput,
@@ -28,35 +27,25 @@ import {
 } from "../workflow/cursor-family-runtime.js";
 import type { CursorFamilySpec } from "../workflow/cursor-family-state.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  releaseFinalityAuthorityFromDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
-import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
-  createFraudProofFamilyLocalKupmiosL1ObservationPort,
-} from "../workflow/family-l1-observation.js";
+  defineFamily,
+  type FamilyAssemblyContext,
+  type ManifestBoundFamilyWorkflow,
+  type ManifestBoundFamilyWorkflowConfig,
+} from "../workflow/family-definition.js";
 import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
   DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowJournalStore,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
   createCanonicalFamilyArtifactPort,
   executeManifestBoundFamilyRecovery,
 } from "../workflow/manifest-bound-family-recovery.js";
-import {
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
-} from "../workflow/orchestrator.js";
+import { type FraudProofWorkflowRunResult } from "../workflow/orchestrator.js";
 import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
-import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import {
-  type BoundReceivePurposeLanguageActuatorConfig,
   createReceivePurposeLanguageActuator,
   type ReceivePurposeLanguageWorkflowReferences,
 } from "./actuator.js";
@@ -89,12 +78,35 @@ export const RECEIVE_PURPOSE_LANGUAGE_STEP_DATUM_SCHEMAS = Object.freeze([
   ReceivePurposeStep02DatumSchema,
   ReceivePurposeStep03DatumSchema,
 ] as const);
-export const RECEIVE_PURPOSE_LANGUAGE_CURSOR_SPEC: CursorFamilySpec<"receivePurposeLanguage"> =
-  Object.freeze<CursorFamilySpec<"receivePurposeLanguage">>({
-    category: "receivePurposeLanguage",
-    stepCount: 3,
-    successors: { 1: [2], 2: [3], 3: ["proof_token"] },
-  });
+export const RECEIVE_PURPOSE_LANGUAGE_CURSOR_SPEC = Object.freeze({
+  category: "receivePurposeLanguage",
+  stepCount: 3,
+  successors: Object.freeze({
+    1: Object.freeze([2] as const),
+    2: Object.freeze([3] as const),
+    3: Object.freeze(["proof_token"] as const),
+  }),
+}) satisfies CursorFamilySpec<"receivePurposeLanguage">;
+
+const STEP_CONTRACT_NAMES = [
+  "fraudProofReceivePurposeLanguage",
+  "fraudProofReceivePurposeLanguageStep02",
+  "fraudProofReceivePurposeLanguageStep03",
+] as const;
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+  "pexcludesWithdraw",
+] as const;
+
+type BoundContext = FamilyAssemblyContext<
+  "receivePurposeLanguage",
+  (typeof WITNESS_ROLES)[number],
+  false,
+  3
+>;
 
 export type ReceivePurposeLanguageRemovalReferences = Readonly<{
   correctionLockSpend: UTxO;
@@ -120,20 +132,153 @@ export type ManifestBoundReceivePurposeLanguageWorkflowConfig = Readonly<{
   referenceScripts: ReceivePurposeLanguageWorkflowReferences &
     Readonly<{ removal: ReceivePurposeLanguageRemovalReferences }>;
 }>;
-export type ManifestBoundReceivePurposeLanguageWorkflow = Readonly<{
-  adapter: FraudProofFamilyWorkflowAdapter;
-  terminalVerifier: FraudProofWorkflowTerminalVerifier;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-  binding: FraudProofWorkflowDeploymentBinding<never> &
-    BoundReceivePurposeLanguageActuatorConfig["binding"];
+/** The members `extend` adds to the assembled workflow. */
+type ReceivePurposeLanguageWorkflowExtension = Readonly<{
   actuator: ReturnType<typeof createReceivePurposeLanguageActuator>;
   lucid: LucidEvolution;
-  decisionDigest: string;
-  l1: ReturnType<typeof createFraudProofFamilyLocalKupmiosL1ObservationPort>;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
+export type ManifestBoundReceivePurposeLanguageWorkflow =
+  ManifestBoundFamilyWorkflow<"receivePurposeLanguage", false, 3> &
+    ReceivePurposeLanguageWorkflowExtension &
+    Readonly<{ decisionDigest: string }>;
 
-/** Strict manifest/reference binding; its input admits no callback authority. */
+/**
+ * The family's contracts and actuator over one assembly context. Built once
+ * per context: the transaction port captures through the actuator, and
+ * `extend` exposes that same actuator on the workflow.
+ */
+const bound = new WeakMap<
+  BoundContext,
+  ReturnType<typeof bindReceivePurposeLanguage>
+>();
+const bindReceivePurposeLanguage = (context: BoundContext) => {
+  const { binding, references } = context;
+  const chain = binding.resolvedContracts.contracts.receivePurposeLanguage;
+  const { hubOraclePolicyId, stateQueuePolicyId } = binding.resolvedContracts;
+  if (
+    chain === undefined ||
+    chain.steps.length !== 3 ||
+    stateQueuePolicyId === undefined
+  )
+    throw new Error("receivePurposeLanguage manifest omitted three-step chain");
+  const contracts: ReceivePurposeLanguageContracts = {
+    steps: chain.steps.map((step, index) => ({
+      ...step,
+      blueprintTitle: RECEIVE_PURPOSE_LANGUAGE_BLUEPRINT_TITLES[index]!,
+      referenceOutRef: `${references.steps[index]!.txHash}#${references.steps[index]!.outputIndex.toString()}`,
+    })) as unknown as ReceivePurposeLanguageContracts["steps"],
+    computationThread: binding.resolvedContracts.contracts.computationThread,
+    fraudProof: binding.resolvedContracts.contracts.fraudProof,
+    hubOraclePolicyId,
+    stateQueuePolicyId,
+  };
+  return {
+    actuator: createReceivePurposeLanguageActuator({
+      binding,
+      lucid: context.lucid,
+      signer: context.signer,
+      contracts,
+      references,
+      stateQueueMutationLeaseCoordinator:
+        context.stateQueueMutationLeaseCoordinator,
+    }),
+    artifacts: createCanonicalFamilyArtifactPort(({ evidence }) =>
+      prepareReceivePurposeLanguageArtifact(evidence),
+    ),
+  };
+};
+const boundFor = (context: BoundContext) => {
+  const existing = bound.get(context);
+  if (existing !== undefined) return existing;
+  const created = bindReceivePurposeLanguage(context);
+  bound.set(context, created);
+  return created;
+};
+
+const createTransactionPort = (
+  context: BoundContext,
+): CursorFamilyTransactionPort<"receivePurposeLanguage"> => {
+  const { actuator, artifacts } = boundFor(context);
+  return {
+    portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
+    category: "receivePurposeLanguage",
+    prepare: artifacts.prepare,
+    validatePreparedArtifact: artifacts.validatePreparedArtifact,
+    capture: async ({ action, artifact }) => {
+      const input = cursorFamilyActionInput({
+        category: "receivePurposeLanguage",
+        action,
+      });
+      const restored = artifacts.require(artifact);
+      if (input.stage === "init")
+        return actuator.capture({
+          artifact: restored,
+          action: {
+            stage: "init",
+            stateQueueBlockOutRef: cursorStringField(
+              input,
+              "stateQueueBlockOutRef",
+            ),
+          },
+        });
+      if (input.stage === "remove")
+        return actuator.capture({
+          artifact: restored,
+          action: {
+            stage: "remove",
+            nextRemovalOutRef: cursorStringField(input, "nextRemovalOutRef"),
+            fraudProofOutRef: cursorStringField(input, "fraudProofOutRef"),
+          },
+        });
+      const stages = ["step_01", "step_02", "step_03"] as const;
+      const stage = stages[Number(input.ordinal) - 1];
+      if (stage === undefined)
+        throw new Error("receivePurposeLanguage cursor ordinal changed");
+      const threadOutRef = cursorStringField(input, "threadOutRef");
+      return actuator.capture({
+        artifact: restored,
+        action:
+          stage === "step_01"
+            ? {
+                stage,
+                threadOutRef,
+                stateQueueBlockOutRef: cursorStringField(
+                  input,
+                  "stateQueueBlockOutRef",
+                ),
+              }
+            : { stage, threadOutRef },
+      });
+    },
+  };
+};
+
+export const RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION = defineFamily({
+  category: "receivePurposeLanguage",
+  stepDatumSchemas: RECEIVE_PURPOSE_LANGUAGE_STEP_DATUM_SCHEMAS,
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: false,
+  replayer: () => RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
+    spec: RECEIVE_PURPOSE_LANGUAGE_CURSOR_SPEC,
+    stepContractNames: STEP_CONTRACT_NAMES,
+    transactionPort: createTransactionPort,
+  },
+  extend: (context): ReceivePurposeLanguageWorkflowExtension => ({
+    actuator: boundFor(context).actuator,
+    lucid: context.lucid,
+    stateQueueMutationLeaseCoordinator:
+      context.stateQueueMutationLeaseCoordinator,
+  }),
+});
+
+/**
+ * Strict manifest/reference binding; its input admits no callback authority.
+ * The decision digest is invocation-bound rather than assembly-bound, so the
+ * constructor attaches it after the assembly.
+ */
 export const createManifestBoundReceivePurposeLanguageWorkflow = async (
   config: ManifestBoundReceivePurposeLanguageWorkflowConfig,
 ): Promise<ManifestBoundReceivePurposeLanguageWorkflow> => {
@@ -146,175 +291,19 @@ export const createManifestBoundReceivePurposeLanguageWorkflow = async (
     );
   if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
     throw new Error("receivePurposeLanguage decision digest is malformed");
-  const raw = await bindFraudProofWorkflowDeployment({
-    manifest: config.manifest,
-    blueprintJson: config.blueprintJson,
-    deploymentInfo: config.deploymentInfo,
-    category: "receivePurposeLanguage" as never,
-    headerHash: config.headerHash,
-    proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: RECEIVE_PURPOSE_LANGUAGE_STEP_DATUM_SCHEMAS,
-  });
-  assertManifestBoundWorkflowSigner({
-    network: raw.network,
-    address: config.signer.address,
-    paymentKeyHash: config.signer.paymentKeyHash,
-  });
-  const binding = raw as unknown as FraudProofWorkflowDeploymentBinding<never> &
-    BoundReceivePurposeLanguageActuatorConfig["binding"] & {
-      resolvedContracts: {
-        contracts: {
-          computationThread: ReceivePurposeLanguageContracts["computationThread"];
-          fraudProof: ReceivePurposeLanguageContracts["fraudProof"] & {
-            spendingScriptHash: string;
-          };
-          receivePurposeLanguage?: {
-            steps: ReceivePurposeLanguageContracts["steps"];
-          };
-        };
-      };
-    };
-  const chain = binding.resolvedContracts.contracts.receivePurposeLanguage;
-  const hubOraclePolicyId = raw.contractEntries.hubOracleMint?.scriptHash;
-  const stateQueuePolicyId = raw.resolvedContracts.stateQueuePolicyId;
-  if (
-    chain === undefined ||
-    chain.steps.length !== 3 ||
-    hubOraclePolicyId === undefined ||
-    stateQueuePolicyId === undefined
-  )
-    throw new Error("receivePurposeLanguage manifest omitted three-step chain");
-  const bind = (name: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxo({
-      binding: raw,
-      contractName: name,
-      utxo,
-    });
-  const names = [
-    "fraudProofReceivePurposeLanguage",
-    "fraudProofReceivePurposeLanguageStep02",
-    "fraudProofReceivePurposeLanguageStep03",
-  ] as const;
-  const steps = names.map((name, index) =>
-    bind(name, config.referenceScripts.steps[index]!),
-  ) as unknown as ReceivePurposeLanguageWorkflowReferences["steps"];
-  const witnessNames = {
-    computationThreadMint: "computationThreadMint",
-    fraudProofMint: "fraudProofMint",
-    phasMembershipWithdraw: "phasMembershipWithdraw",
-    chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
-    pexcludesWithdraw: "pexcludesWithdraw",
-  } as const;
-  const witnesses = Object.fromEntries(
-    Object.entries(witnessNames).map(([role, name]) => [
-      role,
-      bind(
-        name,
-        config.referenceScripts.witnesses[
-          role as keyof FaultProofWitnessReferenceScripts
-        ]!,
-      ),
-    ]),
-  ) as Required<FaultProofWitnessReferenceScripts>;
-  const contracts: ReceivePurposeLanguageContracts = {
-    steps: chain.steps.map((step, index) => ({
-      ...step,
-      blueprintTitle: RECEIVE_PURPOSE_LANGUAGE_BLUEPRINT_TITLES[index]!,
-      referenceOutRef: `${steps[index]!.txHash}#${steps[index]!.outputIndex.toString()}`,
-    })) as unknown as ReceivePurposeLanguageContracts["steps"],
-    computationThread: binding.resolvedContracts.contracts.computationThread,
-    fraudProof: binding.resolvedContracts.contracts.fraudProof,
-    hubOraclePolicyId,
-    stateQueuePolicyId,
-  };
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
-    source: config.source,
-    releaseFinality: binding.releaseFinality,
-    releaseEconomics: binding.releaseEconomics,
-    definition: binding.definition,
-  });
-  const actuator = createReceivePurposeLanguageActuator({
-    binding,
-    lucid: config.lucid,
-    signer: config.signer,
-    contracts,
-    references: { steps, witnesses },
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-  });
-  const artifacts = createCanonicalFamilyArtifactPort(({ evidence }) =>
-    prepareReceivePurposeLanguageArtifact(evidence),
+  const { decisionDigest, ...assemblyConfig } = config;
+  const workflow = await assembleManifestBoundFamilyWorkflow(
+    RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION,
+    assemblyConfig satisfies ManifestBoundFamilyWorkflowConfig<
+      "receivePurposeLanguage",
+      (typeof WITNESS_ROLES)[number],
+      false,
+      3
+    >,
   );
-  const adapter = createCursorFamilyWorkflowAdapter({
-    spec: RECEIVE_PURPOSE_LANGUAGE_CURSOR_SPEC,
-    l1,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-    transactions: {
-      portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
-      category: "receivePurposeLanguage",
-      prepare: artifacts.prepare,
-      validatePreparedArtifact: artifacts.validatePreparedArtifact,
-      capture: async ({ action, artifact }) => {
-        const input = cursorFamilyActionInput({
-          category: "receivePurposeLanguage",
-          action,
-        });
-        const restored = artifacts.require(artifact);
-        if (input.stage === "init")
-          return actuator.capture({
-            artifact: restored,
-            action: {
-              stage: "init",
-              stateQueueBlockOutRef: cursorStringField(
-                input,
-                "stateQueueBlockOutRef",
-              ),
-            },
-          });
-        if (input.stage === "remove")
-          return actuator.capture({
-            artifact: restored,
-            action: {
-              stage: "remove",
-              nextRemovalOutRef: cursorStringField(input, "nextRemovalOutRef"),
-              fraudProofOutRef: cursorStringField(input, "fraudProofOutRef"),
-            },
-          });
-        const stages = ["step_01", "step_02", "step_03"] as const;
-        const stage = stages[Number(input.ordinal) - 1];
-        if (stage === undefined)
-          throw new Error("receivePurposeLanguage cursor ordinal changed");
-        const threadOutRef = cursorStringField(input, "threadOutRef");
-        return actuator.capture({
-          artifact: restored,
-          action:
-            stage === "step_01"
-              ? {
-                  stage,
-                  threadOutRef,
-                  stateQueueBlockOutRef: cursorStringField(
-                    input,
-                    "stateQueueBlockOutRef",
-                  ),
-                }
-              : { stage, threadOutRef },
-        });
-      },
-    },
-  });
   return Object.freeze({
-    binding,
-    lucid: config.lucid,
-    decisionDigest: config.decisionDigest,
-    l1,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-    actuator,
-    adapter,
-    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
-    releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBinding(binding),
+    ...(workflow as typeof workflow & ReceivePurposeLanguageWorkflowExtension),
+    decisionDigest,
   });
 };
 export const executeManifestBoundReceivePurposeLanguageWorkflow = async ({

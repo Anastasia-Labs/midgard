@@ -108,12 +108,14 @@ _Avoid_: full on-chain decode, datum Merkleization
 ### Fault-proof workflow assembly
 
 **Family definition**:
-The frozen, per-category record from which a linear fault-proof family's
+The frozen, per-category record from which a fault-proof family's
 manifest-bound workflow is assembled: step datum schemas, witness roles,
 replayer, adapter arm, and the prerequisites the family declares (field
-carriage, proof chunks). It is separate from the linear family spec, which
-fixes the step contract names and chain shape; a definition never re-declares
-them.
+carriage, proof chunks). It is separate from the family's spec. A linear
+arm takes its step contract names and chain shape from the linear family
+spec and never re-declares them; a cursor arm carries the cursor spec, which
+fixes only the chain topology, together with the step contract names, the
+action refiner and the cursor transaction port.
 _Avoid_: family config, workflow definition, spec (for the definition)
 
 **Manifest-bound family assembly**:
