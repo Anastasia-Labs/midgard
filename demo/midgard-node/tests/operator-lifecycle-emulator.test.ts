@@ -10,7 +10,7 @@ import {
   toUnit,
   UTxO,
 } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Effect, Either } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -21,9 +21,11 @@ import {
   activateOperatorProgram,
   deployReferenceScriptCommandProgram,
   deregisterOperatorProgram,
+  OperatorRegistrationRefusal,
   registerAndActivateOperatorProgram,
   registerOperatorProgram,
 } from "../src/transactions/register-active-operator.js";
+import * as LifecycleClock from "../src/transactions/register-active-operator/clock.js";
 import { inspectSignedTxValidityInterval } from "../src/transactions/utils.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
@@ -396,6 +398,87 @@ const advanceEmulatorPastRegistrationDelay = (emulator: Emulator): void => {
   emulator.awaitSlot(180);
 };
 
+/**
+ * Activates the fixture operator, then registers a second operator behind it.
+ * With the active set occupied, the second registration has no immediate
+ * activation exception, so its activation is gated by its activation time.
+ */
+const registerSecondOperatorBehindActiveFirst = async (
+  fixture: Awaited<ReturnType<typeof initOperatorLifecycleFixture>>,
+) => {
+  const { emulator, lucid, referenceScriptsLucid, contracts } = fixture;
+  await Effect.runPromise(
+    registerOperatorProgram(
+      lucid,
+      contracts,
+      EMULATOR_REQUIRED_BOND_LOVELACE,
+      referenceScriptsLucid,
+    ),
+  );
+  advanceEmulatorPastRegistrationDelay(emulator);
+  await Effect.runPromise(
+    activateOperatorProgram(
+      lucid,
+      contracts,
+      EMULATOR_REQUIRED_BOND_LOVELACE,
+      referenceScriptsLucid,
+    ),
+  );
+
+  const second = generateEmulatorAccount({ lovelace: 0n });
+  const funding = await lucid
+    .newTx()
+    .pay.ToAddress(second.address, { lovelace: 4_000_000_000n })
+    .complete({ localUPLCEval: true });
+  await lucid.awaitTx(
+    await (await funding.sign.withWallet().complete()).submit(),
+  );
+  const secondLucid = await Lucid(emulator, "Custom");
+  secondLucid.selectWallet.fromSeed(second.seedPhrase);
+  const secondKeyHash = paymentCredentialOf(second.address).hash;
+  await Effect.runPromise(
+    registerOperatorProgram(
+      secondLucid,
+      contracts,
+      EMULATOR_REQUIRED_BOND_LOVELACE,
+      referenceScriptsLucid,
+    ),
+  );
+
+  const registeredNodes = await Promise.all(
+    (await fetchRegisteredOperatorNodes(lucid, contracts)).map((utxo) =>
+      Effect.runPromise(SDK.getLinkedListNodeViewFromUTxO(utxo)),
+    ),
+  );
+  const registration = registeredNodes.find(
+    (node) =>
+      node.key !== "Empty" &&
+      Data.castFrom(node.data, SDK.RegisteredOperatorDatum).operator ===
+        secondKeyHash,
+  );
+  const activationTime =
+    registration === undefined
+      ? undefined
+      : SDK.registeredNodeKeyToPosixTime(registration.key);
+  if (activationTime === undefined) {
+    throw new Error("Missing the second operator's registration");
+  }
+  expect(BigInt(emulator.now())).toBeLessThan(activationTime);
+
+  return {
+    secondLucid,
+    secondKeyHash,
+    activationTime,
+    secondActiveNodeUnit: toUnit(
+      contracts.activeOperators.policyId,
+      SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + secondKeyHash,
+    ),
+  };
+};
+
+const describePosixTime = (posixMs: bigint): string =>
+  `${new Date(Number(posixMs)).toISOString()} (${posixMs.toString()})`;
+
 describe("operator lifecycle emulator", () => {
   it("early activation restores an empty set only for its earliest registration", async () => {
     const {
@@ -446,8 +529,18 @@ describe("operator lifecycle emulator", () => {
 
     // Force an early interval only in the adversarial builder: the deployed
     // validator must reject a newer registration while the earliest is pending.
+    // The program refuses an early activation locally before it builds, so the
+    // adversary also lies about the clock to reach the builder at all.
     const originalBuild = SDK.buildActivateOperatorTx;
     const rejectForcedEarlyActivation = async (expectedEmpty: boolean) => {
+      const clock = vi
+        .spyOn(LifecycleClock, "resolveCurrentTimeMs")
+        .mockImplementation((lucid) =>
+          Effect.succeed(
+            LifecycleClock.currentTimeMsForLucidOrEmulatorFallback(lucid) +
+              365n * 24n * 60n * 60n * 1000n,
+          ),
+        );
       const build = vi
         .spyOn(SDK, "buildActivateOperatorTx")
         .mockImplementation((parameters) => {
@@ -474,8 +567,10 @@ describe("operator lifecycle emulator", () => {
           "Failed to build activation transaction with final redeemer context",
         );
         expect(build).toHaveBeenCalled();
+        expect(clock).toHaveBeenCalled();
       } finally {
         build.mockRestore();
+        clock.mockRestore();
       }
     };
     await rejectForcedEarlyActivation(true);
@@ -860,6 +955,86 @@ describe("operator lifecycle emulator", () => {
       /found no registered node for operator .*; run register-operator first/,
     );
   });
+
+  it("refuses activate-only before the activation time, naming the time, without submitting", async () => {
+    const fixture = await initOperatorLifecycleFixture();
+    const { emulator, referenceScriptsLucid, contracts } = fixture;
+    const { secondLucid, secondKeyHash, activationTime, secondActiveNodeUnit } =
+      await registerSecondOperatorBehindActiveFirst(fixture);
+    const nowMs = BigInt(emulator.now());
+
+    const submit = vi.spyOn(emulator, "submitTx");
+    try {
+      const outcome = await Effect.runPromise(
+        Effect.either(
+          activateOperatorProgram(
+            secondLucid,
+            contracts,
+            EMULATOR_REQUIRED_BOND_LOVELACE,
+            referenceScriptsLucid,
+          ),
+        ),
+      );
+      if (Either.isRight(outcome)) {
+        throw new Error("Expected activation to be refused");
+      }
+      if (!(outcome.left instanceof OperatorRegistrationRefusal)) {
+        throw new Error(
+          `Expected a registration refusal, got ${String(outcome.left)}`,
+        );
+      }
+      expect(outcome.left.message).toEqual(
+        `Operator ${secondKeyHash} cannot be activated before its activation time ${describePosixTime(activationTime)}; the chain time is ${describePosixTime(nowMs)}`,
+      );
+      expect(outcome.left.message).not.toContain("\n");
+      expect(submit).not.toHaveBeenCalled();
+    } finally {
+      submit.mockRestore();
+    }
+    // The emulator clock did not move, so the refusal did not wait.
+    expect(BigInt(emulator.now())).toEqual(nowMs);
+    expect(
+      await secondLucid.utxosAtWithUnit(
+        contracts.activeOperators.spendingScriptAddress,
+        secondActiveNodeUnit,
+      ),
+    ).toHaveLength(0);
+    expect(
+      (await fetchRegisteredOperatorNodes(secondLucid, contracts)).length,
+    ).toEqual(1);
+  }, 240_000);
+
+  it("activates once the chain time reaches the activation time", async () => {
+    const fixture = await initOperatorLifecycleFixture();
+    const { emulator, referenceScriptsLucid, contracts } = fixture;
+    const { secondLucid, secondKeyHash, activationTime, secondActiveNodeUnit } =
+      await registerSecondOperatorBehindActiveFirst(fixture);
+
+    // Advance to the first slot at or after the activation time, not beyond.
+    const slotsUntilActivation = Math.ceil(
+      Number(activationTime - BigInt(emulator.now())) / 1000,
+    );
+    emulator.awaitSlot(slotsUntilActivation);
+    const nowMs = BigInt(emulator.now());
+    expect(nowMs).toBeGreaterThanOrEqual(activationTime);
+    expect(nowMs - activationTime).toBeLessThan(1000n);
+
+    const activated = await Effect.runPromise(
+      activateOperatorProgram(
+        secondLucid,
+        contracts,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
+        referenceScriptsLucid,
+      ),
+    );
+    expect(activated.activateTxHash).toHaveLength(64);
+    await assertOperatorActivatedState({
+      lucid: secondLucid,
+      contracts,
+      activeNodeUnit: secondActiveNodeUnit,
+      operatorKeyHash: secondKeyHash,
+    });
+  }, 240_000);
 
   it("runs register-only then activate-only with fragmented wallet UTxOs to stress coin selection", async () => {
     const {

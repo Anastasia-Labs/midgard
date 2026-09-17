@@ -1041,16 +1041,30 @@ const operatorLifecycleProgram = (
       contracts.activeOperators,
     );
     const initialNow = yield* resolveCurrentTimeMs(lucid);
-    if (
-      !immediateActivation &&
-      !usesWallClockTime &&
-      initialNow < activationTime
-    ) {
-      const waitMs = activationTime - initialNow + 1_000n;
-      yield* Effect.logInfo(
-        `Waiting ${waitMs.toString()}ms until operator activation time (ledger_now=${initialNow.toString()},activation_time=${activationTime.toString()})`,
-      );
-      yield* Effect.sleep(Number(waitMs));
+    if (!immediateActivation && initialNow < activationTime) {
+      // `activate-only` is an operator verb: refuse now and name the time,
+      // like the other time-gated verbs, instead of holding the process.
+      if (mode === "activate-only") {
+        return yield* Effect.fail(
+          new OperatorRegistrationRefusal({
+            message: `Operator ${operatorKeyHash} cannot be activated before its activation time ${describePosixTime(activationTime)}; the chain time is ${describePosixTime(initialNow)}`,
+            cause: {
+              activationTime: activationTime.toString(),
+              nowMs: initialNow.toString(),
+            },
+          }),
+        );
+      }
+      // `register-and-activate` has just registered, so its activation time
+      // cannot have arrived yet: wait for it on networks whose clock the
+      // node can read exactly.
+      if (!usesWallClockTime) {
+        const waitMs = activationTime - initialNow + 1_000n;
+        yield* Effect.logInfo(
+          `Waiting ${waitMs.toString()}ms until operator activation time (ledger_now=${initialNow.toString()},activation_time=${activationTime.toString()})`,
+        );
+        yield* Effect.sleep(Number(waitMs));
+      }
     }
     const resolveActivationValidityWindow = (): {
       readonly validFrom: bigint;
@@ -1239,11 +1253,16 @@ const operatorLifecycleProgram = (
 
 /**
  * A refusal decided from the directory before anything is built or spent:
- * the operator is already in the directory, or is not registered when the
- * flow needs it to be. Shares the `StateQueueError` tag so the programs' error
- * unions are unchanged; the CLI prints it as one line.
+ * the operator is already in the directory, is not registered when the flow
+ * needs it to be, or its activation time has not arrived. Shares the
+ * `StateQueueError` tag so the programs' error unions are unchanged; the CLI
+ * prints it as one line.
  */
 export class OperatorRegistrationRefusal extends SDK.StateQueueError {}
+
+/** ISO-8601 UTC followed by the raw POSIX milliseconds, for refusal messages. */
+const describePosixTime = (posixMs: bigint): string =>
+  `${new Date(Number(posixMs)).toISOString()} (${posixMs.toString()})`;
 
 export const registerAndActivateOperatorProgram = (
   lucid: LucidEvolution,
