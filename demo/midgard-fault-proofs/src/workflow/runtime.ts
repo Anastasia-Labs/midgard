@@ -179,21 +179,7 @@ import {
   type WorkflowAdapterRunnerInput,
 } from "./adapters.js";
 import {
-  createManifestBoundCanonicalDecodabilityWorkflow,
-  type ManifestBoundCanonicalDecodabilityWorkflow,
-  type ManifestBoundCanonicalDecodabilityWorkflowConfig,
-  runOrResumeManifestBoundCanonicalDecodabilityWorkflow,
-} from "./canonical-decodability.js";
-import {
-  createManifestBoundCommittedFieldShapeWorkflow,
-  type ManifestBoundCommittedFieldShapeWorkflow,
-  type ManifestBoundCommittedFieldShapeWorkflowConfig,
-  runOrResumeManifestBoundCommittedFieldShapeWorkflow,
-} from "./committed-field-shape.js";
-import {
-  createManifestBoundDaHashPreimageWorkflow,
   type ManifestBoundDaHashPreimageWorkflow,
-  type ManifestBoundDaHashPreimageWorkflowConfig,
   runOrResumeManifestBoundDaHashPreimageWorkflow,
 } from "./da-hash-preimage.js";
 import {
@@ -202,57 +188,23 @@ import {
   type ManifestBoundDoubleSpendWorkflowConfig,
   runOrResumeManifestBoundDoubleSpendWorkflow,
 } from "./double-spend-adapter.js";
-import {
-  createManifestBoundDoubleWithdrawWorkflow,
-  type ManifestBoundDoubleWithdrawWorkflow,
-  type ManifestBoundDoubleWithdrawWorkflowConfig,
-  runOrResumeManifestBoundDoubleWithdrawWorkflow,
-} from "./double-withdraw.js";
-import {
-  createManifestBoundFabricatedDepositWorkflow,
-  type ManifestBoundFabricatedDepositWorkflow,
-  type ManifestBoundFabricatedDepositWorkflowConfig,
-  runOrResumeManifestBoundFabricatedDepositWorkflow,
-} from "./fabricated-deposit.js";
-import {
-  createManifestBoundFabricatedWithdrawalWorkflow,
-  type ManifestBoundFabricatedWithdrawalWorkflow,
-  type ManifestBoundFabricatedWithdrawalWorkflowConfig,
-  runOrResumeManifestBoundFabricatedWithdrawalWorkflow,
-} from "./fabricated-withdrawal.js";
+import type {
+  FamilyDefinition,
+  FaultProofWitnessRole,
+  LinearFamilyDefinitionOf,
+  ManifestBoundFamilyWorkflow,
+  ManifestBoundFamilyWorkflowConfig,
+} from "./family-definition.js";
 import type { WorkflowFundingRequirements } from "./funding-requirements.js";
 import { bindWorkflowFundingReservationJournal } from "./funding-reservation-permit.js";
-import {
-  createManifestBoundInputNoIdxWorkflow,
-  type ManifestBoundInputNoIdxWorkflow,
-  type ManifestBoundInputNoIdxWorkflowConfig,
-  runOrResumeManifestBoundInputNoIdxWorkflow,
-} from "./input-no-idx.js";
-import {
-  createManifestBoundInputSetUniquenessWorkflow,
-  type ManifestBoundInputSetUniquenessWorkflow,
-  type ManifestBoundInputSetUniquenessWorkflowConfig,
-  runOrResumeManifestBoundInputSetUniquenessWorkflow,
-} from "./input-set-uniqueness.js";
-import {
-  createManifestBoundInvalidSignatureWorkflow,
-  type ManifestBoundInvalidSignatureWorkflow,
-  type ManifestBoundInvalidSignatureWorkflowConfig,
-  runOrResumeManifestBoundInvalidSignatureWorkflow,
-} from "./invalid-signature.js";
+import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import { DirectoryFraudProofWorkflowJournalStore } from "./journal.js";
+import { LINEAR_FAMILY_DEFINITIONS } from "./linear-family-definitions.js";
+import type { LinearFamilyCategory } from "./linear-family-spec.js";
 import {
-  createManifestBoundL2TxMistagWorkflow,
-  type ManifestBoundL2TxMistagWorkflow,
-  type ManifestBoundL2TxMistagWorkflowConfig,
-  runOrResumeManifestBoundL2TxMistagWorkflow,
-} from "./l2-tx-mistag.js";
-import {
-  createManifestBoundMinFeeWorkflow,
-  type ManifestBoundMinFeeWorkflow,
-  type ManifestBoundMinFeeWorkflowConfig,
-  runOrResumeManifestBoundMinFeeWorkflow,
-} from "./min-fee.js";
+  assembleManifestBoundFamilyWorkflow,
+  runOrResumeManifestBoundFamilyWorkflow,
+} from "./manifest-bound-family-assembly.js";
 import {
   createManifestBoundMissingSignatureWorkflow,
   type ManifestBoundMissingSignatureWorkflow,
@@ -260,56 +212,17 @@ import {
   runOrResumeManifestBoundMissingSignatureWorkflow,
 } from "./missing-signature.js";
 import {
-  createManifestBoundInvalidRangeWorkflow,
-  createManifestBoundZeroInputWorkflow,
-  type ManifestBoundInvalidRangeWorkflow,
-  type ManifestBoundInvalidRangeWorkflowConfig,
-  type ManifestBoundZeroInputWorkflow,
-  type ManifestBoundZeroInputWorkflowConfig,
-  runOrResumeManifestBoundInvalidRangeWorkflow,
-  runOrResumeManifestBoundZeroInputWorkflow,
-} from "./native-inclusion-two-step.js";
-import {
-  createManifestBoundNoReferenceInputWorkflow,
-  type ManifestBoundNoReferenceInputWorkflow,
-  type ManifestBoundNoReferenceInputWorkflowConfig,
-  runOrResumeManifestBoundNoReferenceInputWorkflow,
-} from "./no-reference-input.js";
-import {
-  createManifestBoundNonExistentInputWorkflow,
-  type ManifestBoundNonExistentInputWorkflow,
-  type ManifestBoundNonExistentInputWorkflowConfig,
-  runOrResumeManifestBoundNonExistentInputWorkflow,
-} from "./non-existent-input.js";
-import {
   type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowRunResult,
   type FraudProofWorkflowTerminalVerifier,
   resumeRecordedFraudProofWorkflow,
 } from "./orchestrator.js";
 import { continuePendingWorkflow } from "./pending-continuation.js";
-import {
-  createManifestBoundReferenceInputNoIdxWorkflow,
-  type ManifestBoundReferenceInputNoIdxWorkflow,
-  type ManifestBoundReferenceInputNoIdxWorkflowConfig,
-  runOrResumeManifestBoundReferenceInputNoIdxWorkflow,
-} from "./reference-input-no-idx.js";
 import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
 import {
   createAdmittedWorkflowRunner,
   WORKFLOW_ADAPTER_RUNNER,
 } from "./runner-admission.js";
-import {
-  createManifestBoundWithdrawnInputWorkflow,
-  type ManifestBoundWithdrawnInputWorkflow,
-  type ManifestBoundWithdrawnInputWorkflowConfig,
-  runOrResumeManifestBoundWithdrawnInputWorkflow,
-} from "./withdrawn-input.js";
-import {
-  createManifestBoundWithdrawnReferenceInputWorkflow,
-  type ManifestBoundWithdrawnReferenceInputWorkflow,
-  type ManifestBoundWithdrawnReferenceInputWorkflowConfig,
-  runOrResumeManifestBoundWithdrawnReferenceInputWorkflow,
-} from "./withdrawn-reference-input.js";
 
 export const WORKFLOW_RUNTIME_CONFIG =
   "midgard-production-fraud-proof-runtime-config-v1" as const;
@@ -497,6 +410,119 @@ const runnerFunding = (
   fundingRequirements === undefined
     ? Object.freeze({})
     : Object.freeze({ fundingRequirements });
+
+/**
+ * Any exact linear definition: the distributed union the table's `satisfies`
+ * guard admits, so each member keeps its own category, roles and polarity.
+ */
+type AnyLinearFamilyDefinition = {
+  readonly [Category in LinearFamilyCategory]: LinearFamilyDefinitionOf<Category>;
+}[LinearFamilyCategory];
+
+type AssembledLinearFamilyWorkflow = ManifestBoundFamilyWorkflow<
+  LinearFamilyCategory,
+  boolean
+>;
+
+type LinearFamilyLaunch = (input: {
+  readonly workflow: AssembledLinearFamilyWorkflow;
+  readonly sources: readonly RetainedDaPayloadSource[];
+  readonly journal: FraudProofWorkflowJournalStore;
+}) => Promise<FraudProofWorkflowRunResult>;
+
+/**
+ * Q44 is the one linear family that does not launch through the generic
+ * retained-DA runner: it fetches its raw source leaf through the dedicated
+ * orchestrator entry, so no canonical replayer is consulted.
+ */
+const launchDaHashPreimage: LinearFamilyLaunch = async ({
+  workflow,
+  sources,
+  journal,
+}) =>
+  await runOrResumeManifestBoundDaHashPreimageWorkflow({
+    workflow: workflow as ManifestBoundDaHashPreimageWorkflow,
+    sources,
+    journal,
+  });
+
+export type LinearFamilyWorkflowRunnerFactory<
+  Category extends LinearFamilyCategory,
+  Witness extends FaultProofWitnessRole,
+  Certificate extends boolean,
+> = (
+  loadRuntimeConfig: WorkflowRuntimeConfigLoader<
+    ManifestBoundFamilyWorkflowConfig<Category, Witness, Certificate>
+  >,
+  fundingRequirements?: WorkflowFundingRequirements,
+) => WorkflowAdapterRunner;
+
+/**
+ * One admitted factory row per linear family definition. The row is minted
+ * through the module-private admission exactly like the fixed-category rows
+ * below; the definition supplies the assembly and selects the launch route.
+ * The definition is widened once here because a union member's polarity
+ * cannot be correlated with its own callbacks at the type level; the exact
+ * row types are restored by `LinearFamilyWorkflowRunnerFactories`.
+ */
+const linearFamilyWorkflowRunnerFactory =
+  (definition: AnyLinearFamilyDefinition) =>
+  (
+    loadRuntimeConfig: WorkflowRuntimeConfigLoader<
+      ManifestBoundFamilyWorkflowConfig<
+        LinearFamilyCategory,
+        FaultProofWitnessRole,
+        boolean
+      >
+    >,
+    fundingRequirements?: WorkflowFundingRequirements,
+  ): WorkflowAdapterRunner => {
+    const { category } = definition;
+    const launch: LinearFamilyLaunch =
+      category === "daHashPreimage"
+        ? launchDaHashPreimage
+        : runOrResumeManifestBoundFamilyWorkflow;
+    return createAdmittedWorkflowRunner({
+      category,
+      ...runnerFunding(fundingRequirements),
+      runOrResume: createManifestBoundWorkflowRunOrResume({
+        category,
+        loadRuntimeConfig,
+        constructWorkflow: (config): Promise<AssembledLinearFamilyWorkflow> =>
+          assembleManifestBoundFamilyWorkflow(
+            definition as FamilyDefinition<
+              LinearFamilyCategory,
+              FaultProofWitnessRole,
+              boolean
+            >,
+            config,
+          ),
+        execute: async ({ workflow, sources, journal }) =>
+          await launch({ workflow, sources, journal }),
+      }),
+    });
+  };
+
+type LinearFamilyWorkflowRunnerFactories = {
+  readonly [Category in LinearFamilyCategory]: (typeof LINEAR_FAMILY_DEFINITIONS)[Category] extends FamilyDefinition<
+    Category,
+    infer Witness,
+    infer Certificate
+  >
+    ? LinearFamilyWorkflowRunnerFactory<Category, Witness, Certificate>
+    : never;
+};
+
+const LINEAR_FAMILY_WORKFLOW_RUNNER_FACTORIES = Object.freeze(
+  Object.fromEntries(
+    Object.values(LINEAR_FAMILY_DEFINITIONS).map(
+      (definition): readonly [LinearFamilyCategory, unknown] => [
+        definition.category,
+        linearFamilyWorkflowRunnerFactory(definition),
+      ],
+    ),
+  ),
+) as LinearFamilyWorkflowRunnerFactories;
 
 export const createDoubleSpendWorkflowRunner = (
   loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundDoubleSpendWorkflowConfig>,
@@ -1065,86 +1091,6 @@ export const createMissingNativeScriptUtxoWorkflowRunner = (
     }),
   });
 
-export const createDaHashPreimageWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundDaHashPreimageWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "daHashPreimage",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "daHashPreimage",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundDaHashPreimageWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundDaHashPreimageWorkflow({
-          workflow: workflow as ManifestBoundDaHashPreimageWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createCommittedFieldShapeWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundCommittedFieldShapeWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "committedFieldShape",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "committedFieldShape",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundCommittedFieldShapeWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundCommittedFieldShapeWorkflow({
-          workflow: workflow as ManifestBoundCommittedFieldShapeWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createCanonicalDecodabilityWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundCanonicalDecodabilityWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "canonicalDecodability",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "canonicalDecodability",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundCanonicalDecodabilityWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundCanonicalDecodabilityWorkflow({
-          workflow: workflow as ManifestBoundCanonicalDecodabilityWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createDoubleWithdrawWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundDoubleWithdrawWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "doubleWithdraw",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "doubleWithdraw",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundDoubleWithdrawWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundDoubleWithdrawWorkflow({
-          workflow: workflow as ManifestBoundDoubleWithdrawWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
 export const createMissingSignatureWorkflowRunner = (
   loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundMissingSignatureWorkflowConfig>,
   fundingRequirements?: WorkflowFundingRequirements,
@@ -1185,314 +1131,19 @@ export const createMissingNativeScriptTxWorkflowRunner = (
     }),
   });
 
-export const createInvalidRangeWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundInvalidRangeWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "invalidRange",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "invalidRange",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundInvalidRangeWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundInvalidRangeWorkflow({
-          workflow: workflow as ManifestBoundInvalidRangeWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createInvalidSignatureWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundInvalidSignatureWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "invalidSignature",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "invalidSignature",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundInvalidSignatureWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundInvalidSignatureWorkflow({
-          workflow: workflow as ManifestBoundInvalidSignatureWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createInputNoIdxWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundInputNoIdxWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "nonExistentInputNoIndex",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "nonExistentInputNoIndex",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundInputNoIdxWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundInputNoIdxWorkflow({
-          workflow: workflow as ManifestBoundInputNoIdxWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createNonExistentInputWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundNonExistentInputWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "nonExistentInput",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "nonExistentInput",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundNonExistentInputWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundNonExistentInputWorkflow({
-          workflow: workflow as ManifestBoundNonExistentInputWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createNoReferenceInputWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundNoReferenceInputWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "noReferenceInput",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "noReferenceInput",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundNoReferenceInputWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundNoReferenceInputWorkflow({
-          workflow: workflow as ManifestBoundNoReferenceInputWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createReferenceInputNoIdxWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundReferenceInputNoIdxWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "referenceInputNoIdx",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "referenceInputNoIdx",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundReferenceInputNoIdxWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundReferenceInputNoIdxWorkflow({
-          workflow: workflow as ManifestBoundReferenceInputNoIdxWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createInputSetUniquenessWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundInputSetUniquenessWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "inputSetUniqueness",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "inputSetUniqueness",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundInputSetUniquenessWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundInputSetUniquenessWorkflow({
-          workflow: workflow as ManifestBoundInputSetUniquenessWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createZeroInputWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundZeroInputWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "zeroInput",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "zeroInput",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundZeroInputWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundZeroInputWorkflow({
-          workflow: workflow as ManifestBoundZeroInputWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createL2TxMistagWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundL2TxMistagWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "l2TxMistag",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "l2TxMistag",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundL2TxMistagWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundL2TxMistagWorkflow({
-          workflow: workflow as ManifestBoundL2TxMistagWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createMinFeeWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundMinFeeWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "minFee",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "minFee",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundMinFeeWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundMinFeeWorkflow({
-          workflow: workflow as ManifestBoundMinFeeWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createWithdrawnInputWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundWithdrawnInputWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "withdrawnInput",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "withdrawnInput",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundWithdrawnInputWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundWithdrawnInputWorkflow({
-          workflow: workflow as ManifestBoundWithdrawnInputWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createFabricatedDepositWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundFabricatedDepositWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "fabricatedDeposit",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "fabricatedDeposit",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundFabricatedDepositWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundFabricatedDepositWorkflow({
-          workflow: workflow as ManifestBoundFabricatedDepositWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createFabricatedWithdrawalWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundFabricatedWithdrawalWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "fabricatedWithdrawal",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "fabricatedWithdrawal",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundFabricatedWithdrawalWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundFabricatedWithdrawalWorkflow({
-          workflow: workflow as ManifestBoundFabricatedWithdrawalWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createWithdrawnReferenceInputWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundWithdrawnReferenceInputWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "withdrawnReferenceInput",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "withdrawnReferenceInput",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundWithdrawnReferenceInputWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundWithdrawnReferenceInputWorkflow({
-          workflow: workflow as ManifestBoundWithdrawnReferenceInputWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
 /**
- * Explicit factories for the current families whose complete shared workflow
- * drivers exist. This is deliberately separate from launch readiness: a
- * factory is not ready until a compiled application supplies its concrete
- * public-libp2p runtime loader and installs the resulting executable runner.
+ * Factories for the current families whose complete shared workflow drivers
+ * exist: every linear family's row is derived from its definition, the rest
+ * are the explicit rows below. This is deliberately separate from launch
+ * readiness: a factory is not ready until a compiled application supplies its
+ * concrete public-libp2p runtime loader and installs the resulting executable
+ * runner.
  */
 export const WORKFLOW_RUNNER_FACTORIES = Object.freeze({
+  ...LINEAR_FAMILY_WORKFLOW_RUNNER_FACTORIES,
   doubleSpend: createDoubleSpendWorkflowRunner,
-  nonExistentInput: createNonExistentInputWorkflowRunner,
-  nonExistentInputNoIndex: createInputNoIdxWorkflowRunner,
-  invalidRange: createInvalidRangeWorkflowRunner,
-  zeroInput: createZeroInputWorkflowRunner,
-  daHashPreimage: createDaHashPreimageWorkflowRunner,
-  noReferenceInput: createNoReferenceInputWorkflowRunner,
-  referenceInputNoIdx: createReferenceInputNoIdxWorkflowRunner,
-  invalidSignature: createInvalidSignatureWorkflowRunner,
-  fabricatedDeposit: createFabricatedDepositWorkflowRunner,
-  fabricatedWithdrawal: createFabricatedWithdrawalWorkflowRunner,
-  withdrawnReferenceInput: createWithdrawnReferenceInputWorkflowRunner,
-  canonicalDecodability: createCanonicalDecodabilityWorkflowRunner,
-  committedFieldShape: createCommittedFieldShapeWorkflowRunner,
-  minFee: createMinFeeWorkflowRunner,
-  doubleWithdraw: createDoubleWithdrawWorkflowRunner,
-  l2TxMistag: createL2TxMistagWorkflowRunner,
-  withdrawnInput: createWithdrawnInputWorkflowRunner,
   missingSignature: createMissingSignatureWorkflowRunner,
   missingNativeScriptTx: createMissingNativeScriptTxWorkflowRunner,
-  inputSetUniqueness: createInputSetUniquenessWorkflowRunner,
   networkId: createNetworkIdWorkflowRunner,
   missingNativeScriptUtxo: createMissingNativeScriptUtxoWorkflowRunner,
   mintAuthorization: createMintAuthorizationWorkflowRunner,

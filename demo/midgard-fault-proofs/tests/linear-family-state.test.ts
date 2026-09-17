@@ -1,6 +1,7 @@
 import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import { CURSOR_FAMILY_SPECS } from "../src/workflow/cursor-family-spec.js";
 import type { FraudProofWorkflowTerminal } from "../src/workflow/journal.js";
 import {
   LINEAR_FAMILY_CATEGORIES,
@@ -280,6 +281,21 @@ describe("production linear family authenticated state machine V1", () => {
     expect(() =>
       linearFamilySpec("missingSignature" as "daHashPreimage"),
     ).toThrow("no production linear family spec");
+  });
+
+  it("refuses cross-block-duplicate-event because its workflow runs on the cursor adapter", () => {
+    expect(LINEAR_FAMILY_CATEGORIES).not.toContain("crossBlockDuplicateEvent");
+    expect(() =>
+      linearFamilySpec("crossBlockDuplicateEvent" as "daHashPreimage"),
+    ).toThrow("no production linear family spec");
+    expect(CURSOR_FAMILY_SPECS.crossBlockDuplicateEvent).toMatchObject({
+      category: "crossBlockDuplicateEvent",
+      stepCount: 2,
+      successors: { 1: [2], 2: ["proof_token"] },
+    });
+    for (const category of Object.keys(CURSOR_FAMILY_SPECS)) {
+      expect(LINEAR_FAMILY_CATEGORIES).not.toContain(category);
+    }
   });
 
   it("content-addresses init, every exact step, and removal", () => {

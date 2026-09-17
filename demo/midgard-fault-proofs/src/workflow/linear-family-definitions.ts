@@ -22,24 +22,10 @@ import { WITHDRAWN_INPUT_FAMILY_DEFINITION } from "./withdrawn-input.js";
 import { WITHDRAWN_REFERENCE_INPUT_FAMILY_DEFINITION } from "./withdrawn-reference-input.js";
 
 /**
- * Linear-spec categories whose live workflow is not a linear-arm assembly.
- * `crossBlockDuplicateEvent` has a two-step row in the linear spec, but its
- * workflow (`src/cross-block-duplicate-event/workflow.ts`) runs on the cursor
- * adapter over `CROSS_BLOCK_DUPLICATE_EVENT_CURSOR_SPEC`; whether it moves onto
- * the cursor arm or leaves the linear spec is an owner call.
- */
-export const UNMIGRATED_LINEAR_FAMILY_CATEGORIES = Object.freeze([
-  "crossBlockDuplicateEvent",
-] as const satisfies readonly LinearFamilyCategory[]);
-
-export type UnmigratedLinearFamilyCategory =
-  (typeof UNMIGRATED_LINEAR_FAMILY_CATEGORIES)[number];
-
-/**
  * The manifest-bound linear family definitions, keyed by category. The
- * `satisfies` guard requires exactly one definition per linear category
- * outside the list above, with the definition's own category as its key, so
- * an omitted family fails typecheck.
+ * `satisfies` guard requires exactly one definition per linear category, with
+ * the definition's own category as its key, so an omitted family fails
+ * typecheck.
  */
 export const LINEAR_FAMILY_DEFINITIONS = Object.freeze({
   nonExistentInput: NON_EXISTENT_INPUT_FAMILY_DEFINITION,
@@ -61,11 +47,5 @@ export const LINEAR_FAMILY_DEFINITIONS = Object.freeze({
   withdrawnInput: WITHDRAWN_INPUT_FAMILY_DEFINITION,
   inputSetUniqueness: INPUT_SET_UNIQUENESS_FAMILY_DEFINITION,
 } satisfies {
-  readonly [Category in Exclude<
-    LinearFamilyCategory,
-    UnmigratedLinearFamilyCategory
-  >]: LinearFamilyDefinitionOf<Category>;
+  readonly [Category in LinearFamilyCategory]: LinearFamilyDefinitionOf<Category>;
 });
-
-export type MigratedLinearFamilyCategory =
-  keyof typeof LINEAR_FAMILY_DEFINITIONS;

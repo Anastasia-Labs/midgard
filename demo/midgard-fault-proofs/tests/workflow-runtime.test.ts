@@ -67,6 +67,8 @@ import {
   journalJsonDigest,
   MemoryFraudProofWorkflowJournalStore,
 } from "../src/workflow/journal.js";
+import { LINEAR_FAMILY_DEFINITIONS } from "../src/workflow/linear-family-definitions.js";
+import { LINEAR_FAMILY_CATEGORIES } from "../src/workflow/linear-family-spec.js";
 import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
 import { continuePendingWorkflow } from "../src/workflow/pending-continuation.js";
 import {
@@ -75,11 +77,11 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy.js";
 import {
-  createDaHashPreimageWorkflowRunner,
   createManifestBoundWorkflowRunner,
   WORKFLOW_RUNNER_FACTORIES,
   WORKFLOW_RUNTIME_CONFIG,
 } from "../src/workflow/runtime.js";
+import * as runtime from "../src/workflow/runtime.js";
 import {
   createWorkflowRuntimeFundingPolicy,
   readWorkflowRuntimeFundingPolicy,
@@ -1410,6 +1412,33 @@ describe("compiled manifest-bound production runtime V1", () => {
     }
   });
 
+  it("derives one factory per linear family definition and exports no per-family constructor for them", () => {
+    expect(Object.keys(LINEAR_FAMILY_DEFINITIONS).sort()).toEqual(
+      [...LINEAR_FAMILY_CATEGORIES].sort(),
+    );
+    const exportedConstructors = Object.entries(runtime)
+      .filter(
+        ([name, value]) =>
+          /^create\w+WorkflowRunner$/.test(name) &&
+          name !== "createManifestBoundWorkflowRunner" &&
+          typeof value === "function",
+      )
+      .map(([, value]) => value);
+    for (const category of LINEAR_FAMILY_CATEGORIES) {
+      const factory = WORKFLOW_RUNNER_FACTORIES[category];
+      expect(typeof factory).toBe("function");
+      expect(exportedConstructors).not.toContain(factory);
+    }
+    const linear = new Set<string>(LINEAR_FAMILY_CATEGORIES);
+    for (const [category, factory] of Object.entries(
+      WORKFLOW_RUNNER_FACTORIES,
+    )) {
+      if (!linear.has(category)) {
+        expect(exportedConstructors).toContain(factory);
+      }
+    }
+  });
+
   it("does not admit the public generic constructor as a production family runner", () => {
     const generic = createManifestBoundWorkflowRunner({
       category: "doubleSpend",
@@ -1435,7 +1464,7 @@ describe("compiled manifest-bound production runtime V1", () => {
   });
 
   it("installs an immutable deployment-bound application overlay without mutating the static catalogue", () => {
-    const runner = createDaHashPreimageWorkflowRunner(async () => {
+    const runner = WORKFLOW_RUNNER_FACTORIES.daHashPreimage(async () => {
       throw new Error("installed Q44 loader reached");
     });
     const registry = installWorkflowApplicationRegistry({

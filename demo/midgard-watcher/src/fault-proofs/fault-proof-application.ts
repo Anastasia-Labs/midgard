@@ -11,37 +11,27 @@ import {
   type ManifestBoundValueConservationWorkflowConfig,
   TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
   TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES,
+  WORKFLOW_RUNNER_FACTORIES,
 } from "@al-ft/midgard-fault-proofs";
 import {
   bindFraudProofTerminalDeployment,
   bindFraudProofWorkflowDeployment,
   classifyHeader as classifyProductionHeaderV1,
   type CompleteCanonicalReplayContext,
-  createCanonicalDecodabilityWorkflowRunner,
   createCatalogueCompleteCanonicalReplay,
-  createCommittedFieldShapeWorkflowRunner,
   createCrossBlockDuplicateEventWorkflowRunner,
   createCrossBlockSettlementAuthority,
-  createDaHashPreimageWorkflowRunner,
   createDistinctAssetAccumulationWorkflowRunner,
   createDoubleSpendWorkflowRunner,
-  createDoubleWithdrawWorkflowRunner,
   createExecutionNativeScriptInvalidWorkflowRunner,
   createExecutionSourceScriptDecodingWorkflowRunner,
   createExternalHistoricalNativeScriptSourceRoster,
-  createFabricatedDepositWorkflowRunner,
-  createFabricatedWithdrawalWorkflowRunner,
   createFieldItemWidthIllegalWorkflowRunner,
   createFieldPreimageLengthWorkflowRunner,
   createHeaderClassifier,
   createHistoricalNativeScriptHistorySource,
   createHistoricalNativeScriptProviderRoster,
   createHttpStateQueueMutationLeaseCoordinator,
-  createInputNoIdxWorkflowRunner,
-  createInputSetUniquenessWorkflowRunner,
-  createInvalidRangeWorkflowRunner,
-  createInvalidSignatureWorkflowRunner,
-  createL2TxMistagWorkflowRunner,
   createLocalKupmiosFraudProofRawL1SnapshotAuthority,
   createLocalKupmiosHttpOgmiosRawSource,
   createManifestBoundCanonicalDecodabilityWorkflow,
@@ -97,7 +87,6 @@ import {
   createManifestBoundWitnessScriptDecodingWorkflow,
   createManifestBoundZeroInputWorkflow,
   createMinAdaWorkflowRunner,
-  createMinFeeWorkflowRunner,
   createMintAuthorizationWorkflowRunner,
   createMintDeclaredAssetLimitWorkflowRunner,
   createMintItemNonCanonicalWorkflowRunner,
@@ -109,15 +98,12 @@ import {
   createNativeScriptDecodingWorkflowRunner,
   createNativeScriptInvalidWorkflowRunner,
   createNetworkIdWorkflowRunner,
-  createNonExistentInputWorkflowRunner,
-  createNoReferenceInputWorkflowRunner,
   createObserverOrderInvalidWorkflowRunner,
   createObserversForbiddenOnUntaggedNetworkWorkflowRunner,
   createOutputReferenceScriptDecodingWorkflowRunner,
   createProtectedOutputSignerMissingWorkflowRunner,
   createReceivePurposeLanguageWorkflowRunner,
   createRedeemerCanonicityWorkflowRunner,
-  createReferenceInputNoIdxWorkflowRunner,
   createResolvedOutputNonCanonicalWorkflowRunner,
   createScriptIntegrityHashMismatchWorkflowRunner,
   createScriptIntegrityHashMissingWorkflowRunner,
@@ -127,10 +113,7 @@ import {
   createUnusedScriptWitnessWorkflowRunner,
   createValidationTraceDisputeWorkflowRunner,
   createWithdrawalMistagWorkflowRunner,
-  createWithdrawnInputWorkflowRunner,
-  createWithdrawnReferenceInputWorkflowRunner,
   createWitnessScriptDecodingWorkflowRunner,
-  createZeroInputWorkflowRunner,
   executionNativeScriptInvalid as executionNativeScriptInvalidV1,
   type FraudProofCompletedVerification,
   type FraudProofWorkflowJournalEntry,
@@ -5396,60 +5379,63 @@ const createApplication = ({
       doubleSpendLoader,
       fundingProfile("doubleSpend"),
     ),
-    nonExistentInput: createNonExistentInputWorkflowRunner(
+    nonExistentInput: WORKFLOW_RUNNER_FACTORIES.nonExistentInput(
       nonExistentInputLoader,
       fundingProfile("nonExistentInput"),
     ),
-    nonExistentInputNoIndex: createInputNoIdxWorkflowRunner(
+    nonExistentInputNoIndex: WORKFLOW_RUNNER_FACTORIES.nonExistentInputNoIndex(
       inputNoIdxLoader,
       fundingProfile("nonExistentInputNoIndex"),
     ),
-    invalidRange: createInvalidRangeWorkflowRunner(
+    invalidRange: WORKFLOW_RUNNER_FACTORIES.invalidRange(
       invalidRangeLoader,
       fundingProfile("invalidRange"),
     ),
-    zeroInput: createZeroInputWorkflowRunner(
+    zeroInput: WORKFLOW_RUNNER_FACTORIES.zeroInput(
       zeroInputLoader,
       fundingProfile("zeroInput"),
     ),
-    daHashPreimage: createDaHashPreimageWorkflowRunner(
+    daHashPreimage: WORKFLOW_RUNNER_FACTORIES.daHashPreimage(
       daHashPreimageLoader,
       fundingProfile("daHashPreimage"),
     ),
-    noReferenceInput: createNoReferenceInputWorkflowRunner(
+    noReferenceInput: WORKFLOW_RUNNER_FACTORIES.noReferenceInput(
       noReferenceInputLoader,
       fundingProfile("noReferenceInput"),
     ),
-    referenceInputNoIdx: createReferenceInputNoIdxWorkflowRunner(
+    referenceInputNoIdx: WORKFLOW_RUNNER_FACTORIES.referenceInputNoIdx(
       referenceInputNoIdxLoader,
       fundingProfile("referenceInputNoIdx"),
     ),
-    invalidSignature: createInvalidSignatureWorkflowRunner(
+    invalidSignature: WORKFLOW_RUNNER_FACTORIES.invalidSignature(
       invalidSignatureLoader,
       fundingProfile("invalidSignature"),
     ),
-    fabricatedDeposit: createFabricatedDepositWorkflowRunner(
+    fabricatedDeposit: WORKFLOW_RUNNER_FACTORIES.fabricatedDeposit(
       fabricatedDepositLoader,
       fundingProfile("fabricatedDeposit"),
     ),
-    fabricatedWithdrawal: createFabricatedWithdrawalWorkflowRunner(
+    fabricatedWithdrawal: WORKFLOW_RUNNER_FACTORIES.fabricatedWithdrawal(
       fabricatedWithdrawalLoader,
       fundingProfile("fabricatedWithdrawal"),
     ),
-    withdrawnReferenceInput: createWithdrawnReferenceInputWorkflowRunner(
+    withdrawnReferenceInput: WORKFLOW_RUNNER_FACTORIES.withdrawnReferenceInput(
       withdrawnReferenceInputLoader,
       fundingProfile("withdrawnReferenceInput"),
     ),
-    canonicalDecodability: createCanonicalDecodabilityWorkflowRunner(
+    canonicalDecodability: WORKFLOW_RUNNER_FACTORIES.canonicalDecodability(
       canonicalDecodabilityLoader,
       fundingProfile("canonicalDecodability"),
     ),
-    committedFieldShape: createCommittedFieldShapeWorkflowRunner(
+    committedFieldShape: WORKFLOW_RUNNER_FACTORIES.committedFieldShape(
       committedFieldShapeLoader,
       fundingProfile("committedFieldShape"),
     ),
-    minFee: createMinFeeWorkflowRunner(minFeeLoader, fundingProfile("minFee")),
-    doubleWithdraw: createDoubleWithdrawWorkflowRunner(
+    minFee: WORKFLOW_RUNNER_FACTORIES.minFee(
+      minFeeLoader,
+      fundingProfile("minFee"),
+    ),
+    doubleWithdraw: WORKFLOW_RUNNER_FACTORIES.doubleWithdraw(
       doubleWithdrawLoader,
       fundingProfile("doubleWithdraw"),
     ),
@@ -5461,15 +5447,15 @@ const createApplication = ({
       missingNativeScriptTxLoader,
       fundingProfile("missingNativeScriptTx"),
     ),
-    l2TxMistag: createL2TxMistagWorkflowRunner(
+    l2TxMistag: WORKFLOW_RUNNER_FACTORIES.l2TxMistag(
       l2TxMistagLoader,
       fundingProfile("l2TxMistag"),
     ),
-    withdrawnInput: createWithdrawnInputWorkflowRunner(
+    withdrawnInput: WORKFLOW_RUNNER_FACTORIES.withdrawnInput(
       withdrawnInputLoader,
       fundingProfile("withdrawnInput"),
     ),
-    inputSetUniqueness: createInputSetUniquenessWorkflowRunner(
+    inputSetUniqueness: WORKFLOW_RUNNER_FACTORIES.inputSetUniqueness(
       inputSetUniquenessLoader,
       fundingProfile("inputSetUniqueness"),
     ),

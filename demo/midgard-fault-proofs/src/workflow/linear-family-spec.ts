@@ -3,6 +3,11 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 export const LINEAR_FAMILY_SPEC =
   "midgard-production-linear-family-spec-v1" as const;
 
+/**
+ * Categories whose production workflows use the linear adapter. A cursor
+ * workflow stays in the cursor spec even when its chain has no self-loop,
+ * as with cross-block-duplicate-event.
+ */
 export const LINEAR_FAMILY_CATEGORIES = Object.freeze([
   "nonExistentInput",
   "nonExistentInputNoIndex",
@@ -19,7 +24,6 @@ export const LINEAR_FAMILY_CATEGORIES = Object.freeze([
   "committedFieldShape",
   "minFee",
   "doubleWithdraw",
-  "crossBlockDuplicateEvent",
   "l2TxMistag",
   "withdrawnInput",
   "inputSetUniqueness",
@@ -206,10 +210,6 @@ const rows = [
   spec("doubleWithdraw", [
     "fraudProofDoubleWithdraw",
     "fraudProofDoubleWithdrawStep02",
-  ]),
-  spec("crossBlockDuplicateEvent", [
-    "fraudProofCrossBlockDuplicateEvent",
-    "fraudProofCrossBlockDuplicateEventStep02",
   ]),
   spec("l2TxMistag", ["fraudProofL2TxMistag", "fraudProofL2TxMistagStep02"]),
   spec("withdrawnInput", [
