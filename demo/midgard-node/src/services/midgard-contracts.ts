@@ -1751,19 +1751,10 @@ export const midgardContractsFromDeploymentManifest = (
 /**
  * Blueprint titles for the real state-queue scripts.
  */
-export const REAL_STATE_QUEUE_SCRIPT_TITLES = {
-  mint: "state_queue.mint.mint",
-  spend: "state_queue.spend.spend",
-  commitYield: "state_queue_yields.commit.withdraw",
-  unattestedTimeoutYield: "state_queue_yields.remove_unattested.withdraw",
-  unavailableTimeoutYield: "state_queue_yields.remove_unavailable.withdraw",
-  fraudRemovalYield: "state_queue_yields.remove_fraudulent.withdraw",
-  mergeYield: "state_queue_yields.merge.withdraw",
-} as const;
+export const REAL_STATE_QUEUE_SCRIPT_TITLES = SDK.STATE_QUEUE_SCRIPT_TITLES;
 
-export const REAL_CORRECTION_LOCK_SCRIPT_TITLES = {
-  spend: "correction_lock.spend.spend",
-} as const;
+export const REAL_CORRECTION_LOCK_SCRIPT_TITLES =
+  SDK.CORRECTION_LOCK_SCRIPT_TITLES;
 
 export const REAL_DA_PARAMS_GOVERNOR_SCRIPT_TITLES = {
   mint: "da_params_governor.da_params_governor.mint",
@@ -2660,112 +2651,22 @@ const buildRealStateQueueValidator = (
   referenceScriptAuthPolicyId: string,
 ): Effect.Effect<SDK.StateQueueValidator, Error> =>
   Effect.gen(function* () {
-    const activeOperatorsAddress = yield* Effect.mapError(
-      Effect.map(
-        SDK.addressDataFromBech32(
-          contracts.activeOperators.spendingScriptAddress,
-        ),
-        (addressData) => Data.from(Data.to(addressData, SDK.AddressData)),
-      ),
-      (cause) =>
-        new Error(
-          `Failed to encode active-operators address for state_queue mint parameters: ${String(cause)}`,
-        ),
-    );
-    const blueprint = yield* loadRealBlueprint();
-    const mintParameters = [
-      contracts.hubOracle.policyId,
-      contracts.correctionLock.spendingScriptHash,
-      contracts.activeOperators.policyId,
-      activeOperatorsAddress,
-      contracts.retiredOperators.policyId,
-      contracts.scheduler.policyId,
-      contracts.fraudProof.policyId,
-      contracts.settlement.policyId,
-      contracts.daAttestation.policyId,
-      contracts.availabilityChallenge.policyId,
+    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    return yield* SDK.buildStateQueueValidator({
+      blueprint,
+      network,
+      hubOraclePolicyId: contracts.hubOracle.policyId,
+      correctionLockScriptHash: contracts.correctionLock.spendingScriptHash,
+      activeOperatorsPolicyId: contracts.activeOperators.policyId,
+      activeOperatorsAddress: contracts.activeOperators.spendingScriptAddress,
+      retiredOperatorsPolicyId: contracts.retiredOperators.policyId,
+      schedulerPolicyId: contracts.scheduler.policyId,
+      fraudProofPolicyId: contracts.fraudProof.policyId,
+      settlementPolicyId: contracts.settlement.policyId,
+      daAttestationPolicyId: contracts.daAttestation.policyId,
+      availabilityChallengePolicyId: contracts.availabilityChallenge.policyId,
       referenceScriptAuthPolicyId,
-    ] as const;
-    const mintingScriptCBOR = yield* applyBlueprintDeclaredParams(
-      yield* getBlueprintValidator(
-        blueprint,
-        REAL_STATE_QUEUE_SCRIPT_TITLES.mint,
-      ),
-      mintParameters,
-    );
-    const minting = makeMintingPolicy(mintingScriptCBOR);
-    const spendingScriptCBOR = yield* applyBlueprintDeclaredParams(
-      yield* getBlueprintValidator(
-        blueprint,
-        REAL_STATE_QUEUE_SCRIPT_TITLES.spend,
-      ),
-      [
-        minting.policyId,
-        contracts.daAttestation.policyId,
-        contracts.availabilityChallenge.policyId,
-      ],
-    );
-    const buildYield = (
-      title: string,
-      parameters: readonly Data[],
-    ): Effect.Effect<SDK.WithdrawalValidator, Error> =>
-      Effect.gen(function* () {
-        const compiledCode = yield* applyBlueprintDeclaredParams(
-          yield* getBlueprintValidator(blueprint, title),
-          parameters,
-        );
-        return makeWithdrawalValidator(compiledCode);
-      });
-    return {
-      ...minting,
-      ...makeSpendingValidator(network, spendingScriptCBOR),
-      yields: {
-        commit: yield* buildYield(REAL_STATE_QUEUE_SCRIPT_TITLES.commitYield, [
-          minting.policyId,
-          contracts.hubOracle.policyId,
-          contracts.correctionLock.spendingScriptHash,
-          contracts.activeOperators.policyId,
-          activeOperatorsAddress,
-          contracts.scheduler.policyId,
-          contracts.daAttestation.policyId,
-        ]),
-        unattestedTimeout: yield* buildYield(
-          REAL_STATE_QUEUE_SCRIPT_TITLES.unattestedTimeoutYield,
-          [
-            minting.policyId,
-            contracts.hubOracle.policyId,
-            contracts.correctionLock.spendingScriptHash,
-          ],
-        ),
-        unavailableTimeout: yield* buildYield(
-          REAL_STATE_QUEUE_SCRIPT_TITLES.unavailableTimeoutYield,
-          [
-            minting.policyId,
-            contracts.hubOracle.policyId,
-            contracts.correctionLock.spendingScriptHash,
-            contracts.availabilityChallenge.policyId,
-          ],
-        ),
-        fraudRemoval: yield* buildYield(
-          REAL_STATE_QUEUE_SCRIPT_TITLES.fraudRemovalYield,
-          [
-            minting.policyId,
-            contracts.hubOracle.policyId,
-            contracts.correctionLock.spendingScriptHash,
-            contracts.activeOperators.policyId,
-            contracts.retiredOperators.policyId,
-            contracts.fraudProof.policyId,
-          ],
-        ),
-        merge: yield* buildYield(REAL_STATE_QUEUE_SCRIPT_TITLES.mergeYield, [
-          minting.policyId,
-          contracts.hubOracle.policyId,
-          contracts.correctionLock.spendingScriptHash,
-          contracts.settlement.policyId,
-          contracts.daAttestation.policyId,
-        ]),
-      },
-    };
+    });
   });
 
 const buildRealCorrectionLockValidator = (
@@ -2774,18 +2675,13 @@ const buildRealCorrectionLockValidator = (
   availabilityChallengePolicyId: string,
 ): Effect.Effect<SDK.SpendingValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = yield* loadRealBlueprint();
-    const spendValidator = yield* getBlueprintValidator(
+    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    return yield* SDK.buildCorrectionLockValidator({
       blueprint,
-      REAL_CORRECTION_LOCK_SCRIPT_TITLES.spend,
-    );
-    return makeSpendingValidator(
       network,
-      yield* applyBlueprintDeclaredParams(spendValidator, [
-        hubOraclePolicyId,
-        availabilityChallengePolicyId,
-      ]),
-    );
+      hubOraclePolicyId,
+      availabilityChallengePolicyId,
+    });
   });
 
 /**

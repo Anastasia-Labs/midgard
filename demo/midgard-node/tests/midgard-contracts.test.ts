@@ -1,4 +1,5 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -15,7 +16,7 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { describe, expect, it as unitIt } from "vitest";
+import { describe, expect, it as unitIt, vi } from "vitest";
 
 import {
   buildContractDeploymentInfoFromContracts,
@@ -103,6 +104,20 @@ describe("midgard contracts registry", () => {
         },
       );
 
+      // Captured from the production recipes at 4cb2f2336 before extraction.
+      // Includes every applied CBOR, hash, policy id, address, and queue yield.
+      expect(
+        createHash("sha256")
+          .update(
+            JSON.stringify({
+              stateQueue: resolved.stateQueue,
+              correctionLock: resolved.correctionLock,
+            }),
+          )
+          .digest("hex"),
+      ).toBe(
+        "2ef4597c7a616d1a9ce982dda61e8f00b624b523292596a5faa17aa6ce93180f",
+      );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test
       // built on this registry. Rather than name a handful of roles and assert
@@ -215,6 +230,89 @@ describe("midgard contracts registry", () => {
       );
       expect(result._tag).toEqual("Left");
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+  );
+
+  unitIt.each([
+    {
+      title: "correction_lock.spend.spend",
+      mutation: "missing",
+      error: /not found in blueprint/,
+    },
+    {
+      title: "state_queue.mint.mint",
+      mutation: "missing",
+      error: /not found in blueprint/,
+    },
+    {
+      title: "state_queue.spend.spend",
+      mutation: "extra",
+      error: /declares 4 parameter/,
+    },
+    {
+      title: "state_queue_yields.merge.withdraw",
+      mutation: "fewer",
+      error: /declares 4 parameter/,
+    },
+    {
+      title: "state_queue.mint.mint",
+      mutation: "shape",
+      error: /hub_oracle_script_hash.*must be an integer/,
+    },
+  ] as const)(
+    "refuses $mutation deployment metadata for $title",
+    async ({ title, mutation, error }) => {
+      const dir = await mkdtemp(join(tmpdir(), "midgard-queue-blueprint-"));
+      const blueprintPath = join(dir, "plutus.json");
+      const raw = JSON.parse(
+        await readFile(
+          new URL("../../../onchain/aiken/plutus.json", import.meta.url),
+          "utf8",
+        ),
+      ) as {
+        validators: {
+          title: string;
+          compiledCode: string;
+          parameters?: { title: string; schema?: { $ref: string } }[];
+        }[];
+      };
+      const entry = raw.validators.find(
+        (validator) => validator.title === title,
+      );
+      if (entry === undefined || entry.parameters === undefined)
+        throw new Error(`Missing blueprint fixture ${title}`);
+      if (mutation === "missing")
+        raw.validators = raw.validators.filter(
+          (validator) => validator.title !== title,
+        );
+      else if (mutation === "extra") entry.parameters.push({ title: "extra" });
+      else if (mutation === "fewer") entry.parameters.pop();
+      else entry.parameters[0]!.schema = { $ref: "#/definitions/Int" };
+      try {
+        await writeFile(blueprintPath, JSON.stringify(raw));
+        vi.stubEnv("MIDGARD_REAL_BLUEPRINT_PATH", blueprintPath);
+        const contracts = await Effect.runPromise(
+          AlwaysSucceedsContract.pipe(
+            Effect.provide(AlwaysSucceedsContract.Default),
+          ),
+        );
+        await expect(
+          Effect.runPromise(
+            withRealStateQueueAndOperatorContracts(
+              "Preprod",
+              contracts,
+              oneShotOutRef,
+              {
+                referenceScriptAuth: contracts.referenceScriptAuth,
+                availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
+              },
+            ),
+          ),
+        ).rejects.toThrow(error);
+      } finally {
+        vi.unstubAllEnvs();
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
   );
 
   unitIt(

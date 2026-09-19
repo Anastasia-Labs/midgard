@@ -35,6 +35,7 @@ export * from "./script-reward-registration.js";
 export * from "./settlement.js";
 export * from "./state-queue.js";
 export * from "./state-queue-authenticated-replay-checkpoint.js";
+export * from "./state-queue-contracts.js";
 export * from "./state-queue-correction-transition.js";
 export * from "./state-queue-transactions.js";
 export * from "./transition-trace.js";

@@ -16,7 +16,6 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  applyCompiledScript,
   network,
   readBlueprint,
   realBlueprintPath,
@@ -36,46 +35,43 @@ const referenceAddress = credentialToAddress(network, {
   type: "Script",
   hash: referencePolicy,
 });
-const blueprint = readBlueprint(realBlueprintPath);
-const apply = (title: string, parameters: readonly Data[]): Script => ({
-  type: "PlutusV3",
-  script: applyCompiledScript(blueprint, title, parameters),
-});
+const blueprint = SDK.parseFaultProofBlueprint(
+  readBlueprint(realBlueprintPath),
+);
 
-const buildContracts = async () => {
-  const unusedAddress = await Effect.runPromise(
-    SDK.addressDataFromBech32(referenceAddress),
+const buildContracts = () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const lock = yield* SDK.buildCorrectionLockValidator({
+        blueprint,
+        network,
+        hubOraclePolicyId: hubPolicy,
+        availabilityChallengePolicyId: availabilityPolicy,
+      });
+      const queue = yield* SDK.buildStateQueueValidator({
+        blueprint,
+        network,
+        hubOraclePolicyId: hubPolicy,
+        correctionLockScriptHash: lock.spendingScriptHash,
+        activeOperatorsPolicyId: unrelatedPolicy,
+        activeOperatorsAddress: referenceAddress,
+        retiredOperatorsPolicyId: unrelatedPolicy,
+        schedulerPolicyId: unrelatedPolicy,
+        fraudProofPolicyId: unrelatedPolicy,
+        settlementPolicyId: unrelatedPolicy,
+        daAttestationPolicyId: unrelatedPolicy,
+        availabilityChallengePolicyId: availabilityPolicy,
+        referenceScriptAuthPolicyId: referencePolicy,
+      });
+      return {
+        mint: queue.mintingScript,
+        spend: queue.spendingScript,
+        lock: lock.spendingScript,
+        withdrawal: queue.yields.unattestedTimeout.withdrawalScript,
+        stateQueuePolicyId: queue.policyId,
+      };
+    }),
   );
-  const lock = apply("correction_lock.spend.spend", [
-    hubPolicy,
-    availabilityPolicy,
-  ]);
-  const mint = apply("state_queue.mint.mint", [
-    hubPolicy,
-    validatorToScriptHash(lock),
-    unrelatedPolicy,
-    Data.from(Data.to(unusedAddress, SDK.AddressData)),
-    unrelatedPolicy,
-    unrelatedPolicy,
-    unrelatedPolicy,
-    unrelatedPolicy,
-    unrelatedPolicy,
-    availabilityPolicy,
-    referencePolicy,
-  ]);
-  const stateQueuePolicyId = validatorToScriptHash(mint);
-  const spend = apply("state_queue.spend.spend", [
-    stateQueuePolicyId,
-    unrelatedPolicy,
-    availabilityPolicy,
-  ]);
-  const withdrawal = apply("state_queue_yields.remove_unattested.withdraw", [
-    stateQueuePolicyId,
-    hubPolicy,
-    validatorToScriptHash(lock),
-  ]);
-  return { mint, spend, lock, withdrawal, stateQueuePolicyId };
-};
 const contractsPromise = buildContracts();
 const rent = 30_000_000n;
 const key = (hash: string) => ({ Key: { key: hash } }) as const;
