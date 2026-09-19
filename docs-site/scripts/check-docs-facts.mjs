@@ -55,8 +55,16 @@ const FACTS = [
     label: "fiber",
     source: "demo/midgard-node/src/fibers/index.ts",
     doc: "docs-site/content/docs/operators/node/background-fibers.mdx",
+    // The barrel also exposes watchdog policy helpers. Count worker modules
+    // by their exported *Fiber entrypoints, not every re-exported module.
     extract: (src) =>
-      [...src.matchAll(/export \* from "\.\/([\w-]+)\.js";/g)].map((m) => m[1]),
+      [...src.matchAll(/export \* from "\.\/([\w-]+)\.js";/g)]
+        .map((m) => m[1])
+        .filter((module) =>
+          /export const \w+Fiber\b/.test(
+            read(`demo/midgard-node/src/fibers/${module}.ts`),
+          ),
+        ),
     countPhrase: "The {n} long-running fibers",
   },
   {

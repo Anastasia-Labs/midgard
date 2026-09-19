@@ -11,7 +11,7 @@ on:
       - "demo/midgard-core/**"
       # Sources whose exported symbols the docs restate.
       # See docs-site/scripts/check-docs-facts.mjs.
-      - "demo/midgard-node/src/fibers/index.ts"
+      - "demo/midgard-node/src/fibers/**"
       - "demo/midgard-node/src/index.ts"
       - "demo/midgard-sdk/src/fraud-proof/catalogue.ts"
       - "demo/midgard-watcher/src/fault-proofs/fault-proof-application.ts"
@@ -33,7 +33,7 @@ on:
       - "demo/midgard-core/**"
       # Sources whose exported symbols the docs restate.
       # See docs-site/scripts/check-docs-facts.mjs.
-      - "demo/midgard-node/src/fibers/index.ts"
+      - "demo/midgard-node/src/fibers/**"
       - "demo/midgard-node/src/index.ts"
       - "demo/midgard-sdk/src/fraud-proof/catalogue.ts"
       - "demo/midgard-watcher/src/fault-proofs/fault-proof-application.ts"
