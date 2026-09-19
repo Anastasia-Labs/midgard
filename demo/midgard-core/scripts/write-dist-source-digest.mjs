@@ -28,6 +28,8 @@ export const computeMidgardCoreSourceDigest = async () => {
   );
   hash.update("build\0");
   hash.update(packageJson.scripts.build);
+  // Bundling policy changes also invalidate compiled package consumers.
+  files.push(resolve(packageRoot, "tsup.config.ts"));
   for (const file of files) {
     hash.update("\0file\0");
     hash.update(relative(packageRoot, file));

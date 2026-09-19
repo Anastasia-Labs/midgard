@@ -4,6 +4,7 @@ import {
   type AuthenticatedValidator,
   buildCanonicalDecodabilityFaultProofContracts,
   buildCommittedFieldShapeFaultProofContracts,
+  buildCorrectionLockValidator,
   buildCrossBlockDuplicateEventFaultProofContracts,
   buildDaHashPreimageFaultProofContracts,
   buildDistinctAssetAccumulationLimitFaultProofContracts,
@@ -42,6 +43,7 @@ import {
   buildScriptIntegrityHashMismatchFaultProofContracts,
   buildScriptIntegrityHashMissingFaultProofContracts,
   buildSpendInputSignerMissingFaultProofContracts,
+  buildStateQueueValidator,
   buildTransactionOutputNonCanonicalFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildTxOrderValidators,
@@ -671,93 +673,34 @@ export const buildMinimalFaultProofContracts = async (
   // state-queue harness: these emulator flows never open a challenge, the
   // parameter only has to be a distinct policy id.
   const availabilityChallengePolicyId = base.escapeHatch.policyId;
-  const correctionLock = makeSpendingValidator(
-    applyCompiledScript(realBlueprint, "correction_lock.spend.spend", [
-      hubOracle.policyId,
+  const parsedBlueprint = parseFaultProofBlueprint(realBlueprint);
+  const correctionLock = await Effect.runPromise(
+    buildCorrectionLockValidator({
+      blueprint: parsedBlueprint,
+      network,
+      hubOraclePolicyId: hubOracle.policyId,
       availabilityChallengePolicyId,
-    ]),
+    }),
   );
-  const stateQueueMinting = makeMintingValidator(
-    applyCompiledScript(realBlueprint, "state_queue.mint.mint", [
-      hubOracle.policyId,
-      correctionLock.spendingScriptHash,
-      withScheduler.activeOperators.policyId,
-      activeOperatorsAddressData,
-      withScheduler.retiredOperators.policyId,
-      withScheduler.scheduler.policyId,
-      doubleSpendContracts.fraudProof.policyId,
-      withScheduler.settlement.policyId,
-      withScheduler.daAttestation.policyId,
+  const productionStateQueue = await Effect.runPromise(
+    buildStateQueueValidator({
+      blueprint: parsedBlueprint,
+      network,
+      hubOraclePolicyId: hubOracle.policyId,
+      correctionLockScriptHash: correctionLock.spendingScriptHash,
+      activeOperatorsPolicyId: withScheduler.activeOperators.policyId,
+      activeOperatorsAddress:
+        withScheduler.activeOperators.spendingScriptAddress,
+      retiredOperatorsPolicyId: withScheduler.retiredOperators.policyId,
+      schedulerPolicyId: withScheduler.scheduler.policyId,
+      fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
+      settlementPolicyId: withScheduler.settlement.policyId,
+      daAttestationPolicyId: withScheduler.daAttestation.policyId,
       availabilityChallengePolicyId,
-      referenceScriptAuthPolicyId ?? base.referenceScriptAuth.policyId,
-    ]),
+      referenceScriptAuthPolicyId:
+        referenceScriptAuthPolicyId ?? base.referenceScriptAuth.policyId,
+    }),
   );
-  const stateQueueSpending = makeSpendingValidator(
-    applyCompiledScript(realBlueprint, "state_queue.spend.spend", [
-      stateQueueMinting.policyId,
-      withScheduler.daAttestation.policyId,
-      availabilityChallengePolicyId,
-    ]),
-  );
-  const stateQueueYields = {
-    commit: makeWithdrawalValidator(
-      applyCompiledScript(realBlueprint, "state_queue_yields.commit.withdraw", [
-        stateQueueMinting.policyId,
-        hubOracle.policyId,
-        correctionLock.spendingScriptHash,
-        withScheduler.activeOperators.policyId,
-        activeOperatorsAddressData,
-        withScheduler.scheduler.policyId,
-        withScheduler.daAttestation.policyId,
-      ]),
-    ),
-    unattestedTimeout: makeWithdrawalValidator(
-      applyCompiledScript(
-        realBlueprint,
-        "state_queue_yields.remove_unattested.withdraw",
-        [
-          stateQueueMinting.policyId,
-          hubOracle.policyId,
-          correctionLock.spendingScriptHash,
-        ],
-      ),
-    ),
-    unavailableTimeout: makeWithdrawalValidator(
-      applyCompiledScript(
-        realBlueprint,
-        "state_queue_yields.remove_unavailable.withdraw",
-        [
-          stateQueueMinting.policyId,
-          hubOracle.policyId,
-          correctionLock.spendingScriptHash,
-          availabilityChallengePolicyId,
-        ],
-      ),
-    ),
-    fraudRemoval: makeWithdrawalValidator(
-      applyCompiledScript(
-        realBlueprint,
-        "state_queue_yields.remove_fraudulent.withdraw",
-        [
-          stateQueueMinting.policyId,
-          hubOracle.policyId,
-          correctionLock.spendingScriptHash,
-          withScheduler.activeOperators.policyId,
-          withScheduler.retiredOperators.policyId,
-          doubleSpendContracts.fraudProof.policyId,
-        ],
-      ),
-    ),
-    merge: makeWithdrawalValidator(
-      applyCompiledScript(realBlueprint, "state_queue_yields.merge.withdraw", [
-        stateQueueMinting.policyId,
-        hubOracle.policyId,
-        correctionLock.spendingScriptHash,
-        withScheduler.settlement.policyId,
-        withScheduler.daAttestation.policyId,
-      ]),
-    ),
-  };
   const stateQueue = alwaysStateQueue
     ? (() => {
         const isolated = makeIsolatedAlwaysSucceedsAuthenticatedValidator();
@@ -775,11 +718,7 @@ export const buildMinimalFaultProofContracts = async (
           },
         };
       })()
-    : {
-        ...stateQueueMinting,
-        ...stateQueueSpending,
-        yields: stateQueueYields,
-      };
+    : productionStateQueue;
 
   // The Q39/Q40 submitters take an explicit focused contracts record. Assemble
   // it from the same parameterized chains whose step-01 hashes occupy their

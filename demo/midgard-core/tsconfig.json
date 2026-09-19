@@ -22,6 +22,6 @@
     "outDir": "dist",
     "baseUrl": "."
   },
-  "include": ["src", "tests"],
+  "include": ["src", "tests", "tsup.config.ts"],
   "exclude": ["node_modules", "dist"]
 }

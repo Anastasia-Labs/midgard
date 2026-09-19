@@ -79,6 +79,7 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "check:builder-exports": "node scripts/check-builder-exports.mjs",
     "test:cardano-capability-p2-retained-da": "node tests/fixtures/verify-cardano-capability-p2-retained-da-v1.mjs"
   },
   "keywords": [

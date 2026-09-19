@@ -4,6 +4,8 @@ Status: Active
 
 Last reviewed: 2026-09-07 (catalogue and installation wiring).
 
+Builder and fixture boundary reviewed: 2026-09-19.
+
 ## SDK and catalogue
 
 [`catalogue.ts`](../../demo/midgard-sdk/src/fraud-proof/catalogue.ts) owns
@@ -53,6 +55,49 @@ supervision, and deadlines. See the [watcher README](../../demo/midgard-watcher/
 for the operational CLI. Source installation is distinct from public acceptance.
 
 ## Emulator acceptance basis
+
+Real proof families in envelope, publication-fit, and emulator tests use the
+public `build*FaultProofContracts` SDK builders. Keep low-level chain assembly
+internal to the SDK; parameter-sensitivity tests that require it belong there.
+Node deployment and the main and seeded-timeout emulator scenarios share
+`buildCorrectionLockValidator` and `buildStateQueueValidator`, including all
+five queue yields.
+
+The harness reads raw compiler JSON and normalizes it through
+`parseFaultProofBlueprint` at the SDK boundary. Its application and identity
+adapters delegate to the SDK's strict checks and constructors. Do not reparse
+normalized blueprint objects: raw `schema.$ref` and normalized `schemaRef`
+are different representations, and losing that metadata weakens shape checks.
+Separate production runtime/node application paths remain outside this
+test-construction boundary.
+
+Keep test-only scenario composition explicit. The always-succeeds registry
+avoids deploying unrelated protocols; its isolated validator prevents scaffold
+identity collisions. `alwaysStateQueue` admits malformed headers only where a
+focused proof scenario needs to reach its real validator. Seeded state and
+valid placeholder policies remain local fixture inputs. Validation-dispute
+fixtures start from production traces, use
+`encodeValidationTerminalWitnessCbor` for canonical terminal bytes, then
+deliberately restamp claims or replace terminal states. These mutations must
+not become permissive production trace-builder options.
+
+Source-condition tests cannot establish published package resolution. From
+`demo/`, using its declared Node/pnpm toolchain and a prepared testnet
+`onchain/aiken/plutus.json`, run:
+
+```sh
+pnpm --dir midgard-validation run build
+pnpm --dir midgard-sdk run build
+pnpm --dir midgard-fault-proofs run check:builder-exports
+```
+
+The first build includes core. The export check loads the local built core,
+validation, and SDK through ordinary ESM and CommonJS package resolution,
+checks a canonical terminal vector, and exercises queue/lock construction and
+strict refusal. Core bundles the ESM-only `cborg` dependency so its advertised
+CommonJS exports remain usable. After builder changes, run the affected
+positive/refusal scenarios and `pnpm test` from `demo/`; also run
+`pnpm --dir da-committee-node test`, which the workspace lane runner omits.
 
 `tests/support/emulator/protocol-parameters.ts` is the single fault-proof
 emulator configuration. It pins Van Rossem's `maxTxSize` to 16,384 bytes,
