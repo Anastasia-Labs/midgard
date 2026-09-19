@@ -41,6 +41,10 @@ export {
   redeemerTagForPurposeKind,
 } from "./redeemer-purpose.js";
 export {
+  encodeValidationTerminalWitnessCbor,
+  type ValidationTerminalWitness,
+} from "./terminal-witness.js";
+export {
   buildDeterministicValidationMachineTrace,
   DirectValidationTraceUnavailable,
 } from "./trace-builder.js";

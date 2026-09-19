@@ -209,6 +209,7 @@ import {
   redeemerPointerMatchesPurpose,
   redeemerTagForPurposeKind,
 } from "./redeemer-purpose.js";
+import { encodeValidationTerminalWitnessCbor } from "./terminal-witness.js";
 import {
   type DeterministicValidationMachineTrace,
   type ValidationMachineReplayInput,
@@ -6700,19 +6701,11 @@ export const buildDeterministicValidationMachineTrace = (
     const terminalWitness: ValidationMachineWorkWitness = {
       phase: "terminal",
       programCounter: witnesses.length,
-      cbor: encodeCbor([
-        verdict === "accepted" ? 1n : 2n,
+      cbor: encodeValidationTerminalWitnessCbor(
         rejectionCode === null
-          ? Buffer.alloc(0)
-          : Buffer.from(rejectionCode, "ascii"),
-        postLedgerRoot,
-        verdict === "accepted"
-          ? encodeCbor([
-              BigInt(ledgerDeltaFrontier.count),
-              encodeFrontierPeaks(ledgerDeltaFrontier),
-            ])
-          : Buffer.from("80", "hex"),
-      ]),
+          ? { verdict: "accepted", postLedgerRoot, ledgerDeltaFrontier }
+          : { verdict: "rejected", rejectionCode, priorLedgerRoot },
+      ),
       auxiliary: null,
     };
     witnesses.push(terminalWitness);

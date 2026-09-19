@@ -2777,6 +2777,58 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     ).rejects.toThrow(/ledger delta differs/u);
   });
 
+  it("refuses ledger changes claimed by a rejected transaction", async () => {
+    const transaction = makeNativeTx({
+      version: 1n,
+      spendInputs: [],
+      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE)],
+    });
+    const input = {
+      ...context,
+      sourceKind: "forced" as const,
+      transactionId: transaction.txId,
+      canonicalTransactionCbor: encodeMidgardForcedTxCanonical(
+        materializeMidgardForcedTxFromCanonical(transaction.tx),
+      ),
+      priorUtxosRoot: root(3),
+      postUtxosRoot: root(3),
+      ledgerWitnessEntries: [],
+      expectedLedgerOps: [],
+      expectedVerdict: "rejected" as const,
+      expectedRejectionCode: RejectCodes.EmptyInputs,
+    };
+    const trace = await Effect.runPromise(
+      buildDeterministicValidationMachineTrace(input),
+    );
+    expect(trace.verdict).toBe("rejected");
+    // Definite [2, h'E_EMPTY_INPUTS', prior root, h'80']: the final bytes
+    // encode an empty operation list, not an accepted-delta frontier.
+    expect(trace.witnesses.at(-1)!.cbor.toString("hex")).toBe(
+      "84024e455f454d5054595f494e505554535820" + "03".repeat(32) + "4180",
+    );
+
+    await expect(
+      Effect.runPromise(
+        buildDeterministicValidationMachineTrace({
+          ...input,
+          expectedLedgerOps: [{ type: "delete", key: outRefFromByte(0x11) }],
+        }),
+      ),
+    ).rejects.toThrow(
+      "validation replay ledger delta differs from block transition",
+    );
+    await expect(
+      Effect.runPromise(
+        buildDeterministicValidationMachineTrace({
+          ...input,
+          postUtxosRoot: root(4),
+        }),
+      ),
+    ).rejects.toThrow(
+      "validation replay ledger-mutation terminal root differs from the block transition",
+    );
+  });
+
   // ==========================================================================
   // C29 — canonical retained CBOR verification.
   //

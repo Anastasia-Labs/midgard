@@ -17,7 +17,10 @@ import {
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { ensureHash32 } from "@al-ft/midgard-core/codec/hash";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
+import {
+  buildCanonicalMidgardLedgerOutputMaterial,
+  encodeValidationTerminalWitnessCbor,
+} from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -389,12 +392,11 @@ export const buildAcceptedClaimTransitionFixture = async ({
     honest ? opening.trace_proof.value.post_utxos_root : "cc".repeat(32),
     "hex",
   );
-  const terminalWitness = encodeCbor([
-    1n,
-    Buffer.alloc(0),
-    root,
-    encodeCbor([0n, []]),
-  ]);
+  const terminalWitness = encodeValidationTerminalWitnessCbor({
+    verdict: "accepted",
+    postLedgerRoot: root,
+    ledgerDeltaFrontier: { count: 0, peaks: [] },
+  });
   const initial: MidgardValidationMachineState = {
     machineVersion: 1,
     eventKeyHash: hashMidgardValidationEventKey(

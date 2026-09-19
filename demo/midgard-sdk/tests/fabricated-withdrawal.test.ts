@@ -41,11 +41,11 @@ import {
   fabricatedWithdrawalStep04State,
   fabricatedWithdrawalThreadTokenAssetName,
   isFabricatedWithdrawalFault,
+  withdrawalContentBytes,
+  withdrawalContentCommitment,
   withdrawalEventDatumBytes,
   withdrawalEventDatumCommitment,
   withdrawalEventNonce,
-  withdrawalContentBytes,
-  withdrawalContentCommitment,
 } from "../src/fraud-proof/fabricated-withdrawal.js";
 import {
   type WithdrawalInfo,

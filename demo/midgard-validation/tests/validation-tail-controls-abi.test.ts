@@ -12,7 +12,10 @@ import { Constr, Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
-import type { ValidationMachineWorkWitness } from "../src/validation-machine/index.js";
+import {
+  encodeValidationTerminalWitnessCbor,
+  type ValidationMachineWorkWitness,
+} from "../src/index.js";
 import {
   encodeValidationAuxiliaryWitnessCbor,
   validationAuxiliaryWitnessData,
@@ -312,19 +315,17 @@ const acceptanceFrontierCbor = encodeCbor([
   BigInt(acceptanceFrontier.count),
   encodeFrontier(acceptanceFrontier.peaks),
 ]);
-const terminalAcceptanceCbor = encodeCbor([
-  1n,
-  Buffer.alloc(0),
-  h32(0x72),
-  acceptanceFrontierCbor,
-]);
+const terminalAcceptanceCbor = encodeValidationTerminalWitnessCbor({
+  verdict: "accepted",
+  postLedgerRoot: h32(0x72),
+  ledgerDeltaFrontier: acceptanceFrontier,
+});
 const rejectionCode = Buffer.from("E_VALUE_NOT_PRESERVED", "ascii");
-const terminalRejectionCbor = encodeCbor([
-  2n,
-  rejectionCode,
-  h32(0x73),
-  bytes("80"),
-]);
+const terminalRejectionCbor = encodeValidationTerminalWitnessCbor({
+  verdict: "rejected",
+  rejectionCode: "E_VALUE_NOT_PRESERVED",
+  priorLedgerRoot: h32(0x73),
+});
 
 const decodeExactTerminalWitness = (
   input: Uint8Array,
@@ -387,6 +388,8 @@ const EXPECTED = {
   pendingMutationCbor: "8a01000142010242030445840100008020404000",
   ledgerDeltaControlHash:
     "92e07c0c935ac73750a521ed638aed060414828d766774495885b56a04f5481b",
+  // Independent Aiken vectors: validation-tail-controls-v1-abi.test.ak,
+  // terminal_acceptance_and_rejection_v1_typescript_vectors_are_exact.
   terminalAcceptanceCbor:
     "840140582072727272727272727272727272727272727272727272727272727272727272725827820281820158207171717171717171717171717171717171717171717171717171717171717171",
   terminalAcceptanceHash:

@@ -52,6 +52,7 @@ import {
   buildValidationMachineLedgerMutationSteps,
   type DeterministicValidationMachineTrace,
   encodeValidationAuxiliaryWitnessCbor,
+  encodeValidationTerminalWitnessCbor,
   outputCborMeetsMinAda,
   RejectCodes,
   validationSemanticResolverIndex,
@@ -375,12 +376,11 @@ export const rejectingTerminalWorkRoot = ({
     hashMidgardValidationWorkWitness({
       phase: "terminal",
       programCounter,
-      witnessCbor: encodeCbor([
-        2n,
-        Buffer.from(rejectionCode, "ascii"),
+      witnessCbor: encodeValidationTerminalWitnessCbor({
+        verdict: "rejected",
+        rejectionCode,
         priorLedgerRoot,
-        Buffer.from("80", "hex"),
-      ]),
+      }),
     }),
   );
 

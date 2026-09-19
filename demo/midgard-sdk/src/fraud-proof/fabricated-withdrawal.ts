@@ -62,8 +62,8 @@ import {
   WithdrawalBody,
   WithdrawalBodySchema,
   WithdrawalInfo,
-  WithdrawalSignatureSchema,
   type WithdrawalSignature,
+  WithdrawalSignatureSchema,
 } from "../ledger-state.js";
 import {
   type RootMembershipProof,
