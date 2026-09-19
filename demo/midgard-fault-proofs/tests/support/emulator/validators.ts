@@ -2,20 +2,14 @@ import {
   type AuthenticatedValidator,
   type FaultProofContractChains,
   fraudProofContractsToFirstSteps,
+  makeAuthenticatedValidator as makeSdkAuthenticatedValidator,
+  makeMintingPolicy,
+  makeSpendingValidator as makeSdkSpendingValidator,
+  makeWithdrawalValidator as makeSdkWithdrawalValidator,
   type MidgardValidators,
-  type MintingValidator,
   type SpendingValidator as SdkSpendingValidator,
-  type WithdrawalValidator as SdkWithdrawalValidator,
 } from "@al-ft/midgard-sdk";
-import {
-  applyDoubleCborEncoding,
-  type MintingPolicy,
-  mintingPolicyToId,
-  type SpendingValidator,
-  validatorToAddress,
-  validatorToScriptHash,
-  type WithdrawalValidator,
-} from "@lucid-evolution/lucid";
+import { applyDoubleCborEncoding } from "@lucid-evolution/lucid";
 
 import { type Blueprint, getCompiledScript, network } from "./blueprints.js";
 
@@ -43,56 +37,20 @@ const scaffoldChain = <const Length extends number>(
   steps: repeatValidator(firstStep, length),
 });
 
-export const makeMintingValidator = (
-  mintingScriptCBOR: string,
-): MintingValidator => {
-  const mintingScript: MintingPolicy = {
-    type: "PlutusV3",
-    script: mintingScriptCBOR,
-  };
-  return {
-    mintingScriptCBOR,
-    mintingScript,
-    policyId: mintingPolicyToId(mintingScript),
-  };
-};
+export const makeMintingValidator = makeMintingPolicy;
 
 export const makeSpendingValidator = (
   spendingScriptCBOR: string,
-): SdkSpendingValidator => {
-  const spendingScript: SpendingValidator = {
-    type: "PlutusV3",
-    script: spendingScriptCBOR,
-  };
-  return {
-    spendingScriptCBOR,
-    spendingScript,
-    spendingScriptAddress: validatorToAddress(network, spendingScript),
-    spendingScriptHash: validatorToScriptHash(spendingScript),
-  };
-};
+): SdkSpendingValidator =>
+  makeSdkSpendingValidator(network, spendingScriptCBOR);
 
-export const makeWithdrawalValidator = (
-  withdrawalScriptCBOR: string,
-): SdkWithdrawalValidator => {
-  const withdrawalScript: WithdrawalValidator = {
-    type: "PlutusV3",
-    script: withdrawalScriptCBOR,
-  };
-  return {
-    withdrawalScriptCBOR,
-    withdrawalScript,
-    withdrawalScriptHash: validatorToScriptHash(withdrawalScript),
-  };
-};
+export const makeWithdrawalValidator = makeSdkWithdrawalValidator;
 
 export const makeAuthenticatedValidator = (
   mintingScriptCBOR: string,
   spendingScriptCBOR: string,
-): AuthenticatedValidator => ({
-  ...makeMintingValidator(mintingScriptCBOR),
-  ...makeSpendingValidator(spendingScriptCBOR),
-});
+): AuthenticatedValidator =>
+  makeSdkAuthenticatedValidator(network, mintingScriptCBOR, spendingScriptCBOR);
 
 /**
  * A test-only, uniquely hashed `\context -> ()` Plutus V3 program. Unlike the

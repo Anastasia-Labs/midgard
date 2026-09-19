@@ -1,9 +1,15 @@
 export {
+  applyBlueprintParams,
   assertParameterShapes,
   deriveValidationTraceDeploymentId,
   type FaultProofBlueprint,
   type FaultProofBlueprintParameter,
   type FaultProofBlueprintValidator,
+  getUnappliedScript,
+  makeAuthenticatedValidator,
+  makeMintingPolicy,
+  makeSpendingValidator,
+  makeWithdrawalValidator,
   parseFaultProofBlueprint,
 } from "./blueprint.js";
 export {
