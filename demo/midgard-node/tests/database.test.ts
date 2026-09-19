@@ -54,6 +54,8 @@ import {
   Option,
   Ref,
   Schedule,
+  Stream,
+  SubscriptionRef,
   TestClock,
 } from "effect";
 // Test-only reach into the tooling package (a dev-only workspace cycle, like
@@ -1764,6 +1766,14 @@ describe("TxAdmissionsDB", () => {
     () =>
       isolatedDb(
         Effect.gen(function* () {
+          const originalGlobals = yield* Globals;
+          const backlogGauge = yield* SubscriptionRef.make(
+            yield* Ref.get(originalGlobals.ADMISSION_BACKLOG_GAUGE),
+          );
+          const globals = Globals.make({
+            ...originalGlobals,
+            ADMISSION_BACKLOG_GAUGE: backlogGauge,
+          });
           const admissionSql = yield* AdmissionSql;
           const baseConfig = yield* NodeConfig;
           const testConfig = {
@@ -1779,6 +1789,7 @@ describe("TxAdmissionsDB", () => {
             ).pipe(
               Effect.provideService(SqlClient.SqlClient, admissionSql),
               Effect.provideService(NodeConfig, testConfig),
+              Effect.provideService(Globals, globals),
             );
           const maxBacklog = 5;
           for (let index = 0; index < 3; index += 1) {
@@ -1794,15 +1805,24 @@ describe("TxAdmissionsDB", () => {
               maxBacklog,
             });
           }
-          yield* refreshAdmissionBacklogGauge;
-          expect(yield* readAdmissionBacklogGauge).toBe(3n);
+          yield* refreshAdmissionBacklogGauge.pipe(
+            Effect.provideService(Globals, globals),
+          );
+          expect(
+            yield* readAdmissionBacklogGauge.pipe(
+              Effect.provideService(Globals, globals),
+            ),
+          ).toBe(3n);
 
           const unfreeze = yield* Deferred.make<void>();
           const refreshFiber = yield* Effect.fork(
             admissionBacklogGaugeFiber(
               Schedule.spaced(Duration.millis(10)),
               Deferred.await(unfreeze),
-            ).pipe(Effect.provideService(NodeConfig, testConfig)),
+            ).pipe(
+              Effect.provideService(NodeConfig, testConfig),
+              Effect.provideService(Globals, globals),
+            ),
           );
           yield* Effect.gen(function* () {
             const attempts = Array.from({ length: 10 }, () =>
@@ -1838,16 +1858,22 @@ describe("TxAdmissionsDB", () => {
               SET status = 'accepted', terminal_at = NOW(), updated_at = NOW()
               WHERE status IN ('queued', 'validating')`;
             yield* Deferred.succeed(unfreeze, undefined);
-            let refreshed = false;
-            for (let attempt = 0; attempt < 50; attempt += 1) {
-              const currentGauge = yield* readAdmissionBacklogGauge;
-              if (currentGauge === 0n) {
-                refreshed = true;
-                break;
-              }
-              yield* TestClock.adjust(Duration.millis(10));
-            }
-            expect(refreshed).toBe(true);
+            // Observe the refresh's real PostgreSQL completion, not elapsed
+            // virtual time: TestClock cannot make the COUNT query finish.
+            yield* backlogGauge.changes.pipe(
+              Stream.filter(
+                (state) =>
+                  state.ADMISSION_BACKLOG_BASE === 0n &&
+                  state.ADMISSION_BACKLOG_LOCAL_DELTA === 0n &&
+                  state.ADMISSION_BACKLOG_IN_FLIGHT === 0n,
+              ),
+              Stream.runHead,
+            );
+            expect(
+              yield* readAdmissionBacklogGauge.pipe(
+                Effect.provideService(Globals, globals),
+              ),
+            ).toBe(0n);
             const recoveryTx = makeNativeSubmitTx();
             expect((yield* submit(recoveryTx.txCanonicalCbor)).status).toBe(
               202,
@@ -1876,7 +1902,13 @@ describe("TxAdmissionsDB", () => {
             ...nodeConfig,
             SUBMIT_INGRESS_MAX_CONCURRENCY: 64,
           };
-          const globals = yield* Globals;
+          const processorActivity = yield* SubscriptionRef.make(0);
+          const globals = Globals.make({
+            ...(yield* Globals),
+            TX_QUEUE_PROCESSOR_ACTIVE: processorActivity,
+          });
+          const validationStarted = yield* Deferred.make<void>();
+          const finishValidation = yield* Deferred.make<void>();
           let validationRuns = 0;
           const cache = yield* makeMempoolLedgerCacheService(
             globals,
@@ -1899,7 +1931,8 @@ describe("TxAdmissionsDB", () => {
               Effect.sync(() => {
                 validationRuns += 1;
               }).pipe(
-                Effect.zipRight(Effect.sleep(Duration.millis(250))),
+                Effect.zipRight(Deferred.succeed(validationStarted, undefined)),
+                Effect.zipRight(Deferred.await(finishValidation)),
                 Effect.as({
                   accepted: [],
                   rejected: txs.map((tx) => ({
@@ -1926,6 +1959,7 @@ describe("TxAdmissionsDB", () => {
             submitThroughRouter(wrapNativeSubmitTx(txCanonicalCbor), wake).pipe(
               Effect.provideService(SqlClient.SqlClient, admissionSql),
               Effect.provideService(NodeConfig, ingressTestConfig),
+              Effect.provideService(Globals, globals),
               Effect.provideService(ValidationPool, validationPool),
               Effect.provideService(MempoolLedgerCache, cache),
               Effect.provideService(Lucid, lucid),
@@ -1974,6 +2008,7 @@ describe("TxAdmissionsDB", () => {
             Deferred.succeed(release, undefined),
           ).pipe(
             Effect.zipRight(Effect.forEach(holders, Fiber.interrupt)),
+            Effect.zipRight(Deferred.succeed(finishValidation, undefined)),
             Effect.asVoid,
           );
           yield* Effect.gen(function* () {
@@ -2013,15 +2048,10 @@ describe("TxAdmissionsDB", () => {
             ).toBeGreaterThan(0);
 
             yield* Deferred.succeed(releases[0]!, undefined);
-            let drainObserved = false;
-            for (let attempt = 0; attempt < 100; attempt += 1) {
-              if (validationRuns > 0) {
-                drainObserved = true;
-                break;
-              }
-              yield* TestClock.adjust(Duration.millis(5));
-            }
-            expect(drainObserved).toBe(true);
+            // Pool release and PostgreSQL queries complete on real I/O time.
+            // The validation stub signals that the production drain resumed.
+            yield* Deferred.await(validationStarted);
+            expect(validationRuns).toBeGreaterThan(0);
             const batchBackends = yield* admissionSql<{
               readonly application_name: string;
               readonly count: number;
@@ -2038,12 +2068,11 @@ describe("TxAdmissionsDB", () => {
               Deferred.succeed(release, undefined),
             );
             yield* Effect.forEach(holders, Fiber.join);
-            for (let attempt = 0; attempt < 100; attempt += 1) {
-              if ((yield* Ref.get(globals.TX_QUEUE_PROCESSOR_ACTIVE)) === 0) {
-                break;
-              }
-              yield* TestClock.adjust(Duration.millis(5));
-            }
+            yield* Deferred.succeed(finishValidation, undefined);
+            yield* processorActivity.changes.pipe(
+              Stream.filter((active) => active === 0),
+              Stream.runHead,
+            );
             expect(yield* Ref.get(globals.TX_QUEUE_PROCESSOR_ACTIVE)).toBe(0);
           }).pipe(Effect.ensuring(releaseHolders));
         }).pipe(Effect.provide(Globals.Default)),
