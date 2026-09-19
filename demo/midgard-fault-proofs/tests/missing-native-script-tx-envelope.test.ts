@@ -1,17 +1,14 @@
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
-import { AddressData, addressDataFromBech32 } from "@al-ft/midgard-sdk";
 import {
-  credentialToAddress,
-  Data,
-  scriptHashToCredential,
-} from "@lucid-evolution/lucid";
+  buildMissingNativeScriptTxFaultProofContracts,
+  parseFaultProofBlueprint,
+} from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES } from "../src/missing-native-script-tx/contracts.js";
 import { measureBlueprintValidatorBytes } from "../src/runtime.js";
 import {
-  buildMissingNativeScriptTxChain,
   network,
   readBlueprint,
   realBlueprintPath,
@@ -71,19 +68,16 @@ describe("missing-native-script-tx envelope and reference-script deployment", ()
   });
 
   it("applies eight distinct scripts and fits each oversized publication host", async () => {
-    const addressData = await Effect.runPromise(
-      addressDataFromBech32(
-        credentialToAddress(network, scriptHashToCredential("22".repeat(28))),
-      ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
+    const {
+      missingNativeScriptTx: { steps },
+    } = await Effect.runPromise(
+      buildMissingNativeScriptTxFaultProofContracts({
+        blueprint: parseFaultProofBlueprint(blueprint),
+        network,
+        hubOraclePolicyId: "55".repeat(28),
+        fraudProofCataloguePolicyId: "66".repeat(28),
+      }),
     );
-    const steps = buildMissingNativeScriptTxChain({
-      realBlueprint: blueprint,
-      computationThreadPolicyId: "11".repeat(28),
-      fraudProofPolicyId: "33".repeat(28),
-      fraudProofTokenAddressData: addressData,
-      fieldPreimageCertificatePolicyId: "44".repeat(28),
-      hubOraclePolicyId: "55".repeat(28),
-    });
     expect(steps).toHaveLength(8);
     expect(new Set(steps.map((step) => step.spendingScriptHash)).size).toBe(8);
     for (const step of steps) {

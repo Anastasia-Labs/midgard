@@ -7,17 +7,12 @@ import {
   MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
 } from "@al-ft/midgard-core";
 import {
-  AddressData,
-  addressDataFromBech32,
+  buildCanonicalDecodabilityFaultProofContracts,
   CanonicalDecodabilityStep01SpendRedeemer,
   type CanonicalDecodabilityStep01SpendRedeemer as Step01Redeemer,
+  parseFaultProofBlueprint,
 } from "@al-ft/midgard-sdk";
-import {
-  credentialToAddress,
-  Data,
-  scriptHashToCredential,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -32,7 +27,6 @@ import {
   network,
 } from "./support/canonical-decodability-emulator.js";
 import {
-  buildCanonicalDecodabilityChain,
   EMULATOR_PROTOCOL_PARAMETERS,
   makeNativeTx,
   readBlueprint,
@@ -59,19 +53,16 @@ describe("canonical-decodability envelope and deployment frontiers", () => {
         title,
       ).toBeGreaterThan(0);
     }
-    const addressData = await Effect.runPromise(
-      addressDataFromBech32(
-        credentialToAddress(network, scriptHashToCredential("22".repeat(28))),
-      ).pipe(Effect.map((value) => Data.from(Data.to(value, AddressData)))),
+    const {
+      canonicalDecodability: { steps },
+    } = await Effect.runPromise(
+      buildCanonicalDecodabilityFaultProofContracts({
+        blueprint: parseFaultProofBlueprint(blueprint),
+        network,
+        hubOraclePolicyId: "55".repeat(28),
+        fraudProofCataloguePolicyId: "66".repeat(28),
+      }),
     );
-    const steps = buildCanonicalDecodabilityChain({
-      realBlueprint: blueprint,
-      computationThreadPolicyId: "11".repeat(28),
-      fraudProofPolicyId: "33".repeat(28),
-      fraudProofTokenAddressData: addressData,
-      fieldPreimageCertificatePolicyId: "44".repeat(28),
-      hubOraclePolicyId: "55".repeat(28),
-    });
     expect(new Set(steps.map((step) => step.spendingScriptHash)).size).toBe(2);
     for (const step of steps) {
       expect(step.spendingScriptCBOR.length / 2 + 2_048).toBeLessThan(

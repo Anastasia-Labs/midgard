@@ -1,6 +1,12 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { Data } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { buildMissingSignatureChain } from "../src/fraud-proof/contracts/families/missing-signature.js";
+import { buildSharedFaultProofContracts } from "../src/fraud-proof/contracts/shared.js";
 import * as SDK from "../src/index.js";
 
 const h32 = (byte: string) => byte.repeat(32);
@@ -151,5 +157,55 @@ describe("missing-signature v1 SDK wire twins", () => {
     expect(
       SDK.missingSignatureThreadTokenAssetName("0000000e", "cc".repeat(28)),
     ).toBe(`0000000e${"cc".repeat(28)}`);
+  });
+});
+
+describe("missing-signature deployment parameter sensitivity", () => {
+  it("rebinds every main step when only the fraud-proof policy changes", async () => {
+    const blueprint = SDK.parseFaultProofBlueprint(
+      JSON.parse(
+        readFileSync(
+          process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
+            fileURLToPath(
+              new URL("../../../onchain/aiken/plutus.json", import.meta.url),
+            ),
+          "utf8",
+        ),
+      ) as unknown,
+    );
+    const params = {
+      blueprint,
+      network: "Preprod" as const,
+      hubOraclePolicyId: h28("55"),
+      fraudProofCataloguePolicyId: h28("66"),
+    };
+    const shared = await Effect.runPromise(
+      buildSharedFaultProofContracts(params),
+    );
+    const chain = await Effect.runPromise(
+      buildMissingSignatureChain({ ...params, ...shared }),
+    );
+    // Keep the computation-thread policy, token address and certificate policy
+    // fixed: a public rebuild would also change dependent shared identities.
+    const rebound = await Effect.runPromise(
+      buildMissingSignatureChain({
+        ...params,
+        ...shared,
+        fraudProof: { ...shared.fraudProof, policyId: h28("99") },
+      }),
+    );
+    expect(chain.steps).toHaveLength(4);
+    expect(rebound.steps).toHaveLength(4);
+    const hashes = chain.steps.map((step) => step.spendingScriptHash);
+    for (const [index, step] of rebound.steps.entries()) {
+      expect(
+        step.spendingScriptHash,
+        `step ${String(index + 1)} must rebind`,
+      ).not.toBe(hashes[index]);
+      expect(
+        hashes,
+        "no main-step identity may survive the policy change",
+      ).not.toContain(step.spendingScriptHash);
+    }
   });
 });

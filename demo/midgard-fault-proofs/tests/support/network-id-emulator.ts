@@ -8,21 +8,18 @@ import {
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import {
-  AddressData,
-  addressDataFromBech32,
+  buildNetworkIdFaultProofContracts,
   EMPTY_MERKLE_TREE_ROOT,
   NETWORK_ID_FRAUD_CATEGORY_ID,
   NetworkIdFault,
+  parseFaultProofBlueprint,
   Proof,
 } from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data, type Script, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  NETWORK_ID_BLUEPRINT_TITLES,
-  type NetworkIdContracts,
-} from "../../src/network-id/contracts.js";
+import { type NetworkIdContracts } from "../../src/network-id/contracts.js";
 import type {
   PreparedNetworkIdPostUtxoProof,
   PreparedNetworkIdProof,
@@ -31,12 +28,11 @@ import { nativeTxFromCoreCompact } from "../../src/submit-step-01.js";
 import { type CompleteSignedTransactionMeasurement } from "./emulator/measurement.js";
 import { registerPexcludesExclusionRewardAccount } from "./submit-init-emulator-fixtures.js";
 import {
-  applyCompiledScript,
   buildCatalogueDeploymentInfo,
   l2TransactionSourceCbor as l2TransactionSourceCborV1,
   makeFaultProofEmulatorHarness,
   makeNativeTx,
-  makeSpendingValidator,
+  network,
   publishPlainReferenceScriptUtxo,
   registerChunkedVerifyRewardAccount,
   trieRootHex,
@@ -200,73 +196,29 @@ export const makeNetworkIdEmulatorHarness = async () => {
       await registerChunkedVerifyRewardAccount(lucid, blueprint);
     },
   });
-  const fraudProofTokenAddressData = await Effect.runPromise(
-    addressDataFromBech32(
-      harness.contracts.fraudProof.spendingScriptAddress,
-    ).pipe(
-      Effect.map((addressData) => Data.from(Data.to(addressData, AddressData))),
-    ),
+  const built = await Effect.runPromise(
+    buildNetworkIdFaultProofContracts({
+      blueprint: parseFaultProofBlueprint(harness.realBlueprint),
+      network,
+      hubOraclePolicyId: harness.contracts.hubOracle.policyId,
+      fraudProofCataloguePolicyId:
+        harness.contracts.fraudProofCatalogue.policyId,
+    }),
   );
-  const step02 = makeSpendingValidator(
-    applyCompiledScript(
-      harness.realBlueprint,
-      NETWORK_ID_BLUEPRINT_TITLES.step02,
-      [
-        harness.contracts.fraudProof.policyId,
-        fraudProofTokenAddressData,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.fieldPreimageCertificate.policyId,
-      ],
-    ),
-  );
-  const forcedScan = makeSpendingValidator(
-    applyCompiledScript(
-      harness.realBlueprint,
-      NETWORK_ID_BLUEPRINT_TITLES.forcedScan,
-      [
-        step02.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.fieldPreimageCertificate.policyId,
-      ],
-    ),
-  );
-  const forcedStep = makeSpendingValidator(
-    applyCompiledScript(
-      harness.realBlueprint,
-      NETWORK_ID_BLUEPRINT_TITLES.forcedStep,
-      [
-        forcedScan.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        0n,
-      ],
-    ),
-  );
-  const step01 = makeSpendingValidator(
-    applyCompiledScript(
-      harness.realBlueprint,
-      NETWORK_ID_BLUEPRINT_TITLES.step01,
-      [
-        step02.spendingScriptHash,
-        forcedStep.spendingScriptHash,
-        harness.contracts.computationThread.policyId,
-        harness.contracts.hubOracle.policyId,
-        0n,
-      ],
-    ),
-  );
+  const { steps, forcedStep, forcedScan } = built.networkId;
+  const [step01] = steps;
   const networkId: NetworkIdContracts = {
-    steps: [step01, step02],
+    steps,
     forcedStep,
     forcedScan,
     expectedNetworkId: 0n,
-    computationThread: harness.contracts.computationThread,
-    fraudProof: harness.contracts.fraudProof,
+    computationThread: built.computationThread,
+    fraudProof: built.fraudProof,
     hubOraclePolicyId: harness.contracts.hubOracle.policyId,
     stateQueuePolicyId: harness.contracts.stateQueue.policyId,
-    fieldPreimageCertificatePolicyId:
-      harness.contracts.fieldPreimageCertificate.policyId,
+    fieldPreimageCertificatePolicyId: built.fieldPreimageCertificate.policyId,
     fieldPreimageCertificateMintingScript:
-      harness.contracts.fieldPreimageCertificate.mintingScript,
+      built.fieldPreimageCertificate.mintingScript,
   };
   const catalogue = await buildCatalogueDeploymentInfo({
     ...harness.contracts.fraudProofs,

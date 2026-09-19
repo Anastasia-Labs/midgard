@@ -37,9 +37,8 @@ import {
 } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
 import {
-  AddressData,
-  addressDataFromBech32,
   type BoundedItemChunkProof,
+  buildNativeScriptDecodingFaultProofContracts,
   type FieldCarriage,
   NativeScriptDecodingStep01SpendRedeemer,
   NativeScriptDecodingStep02SpendRedeemer,
@@ -47,13 +46,10 @@ import {
   NativeScriptDecodingStep03BindDescriptorSpendRedeemer,
   NativeScriptDecodingStep03OpenSubjectSpendRedeemer,
   NativeScriptDecodingStep04SpendRedeemer,
+  parseFaultProofBlueprint,
   Proof,
 } from "@al-ft/midgard-sdk";
-import {
-  credentialToAddress,
-  Data,
-  scriptHashToCredential,
-} from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -67,7 +63,6 @@ import {
   PROOF_TRANSACTION_BRANCH_LEVEL_BYTES,
 } from "./support/submit-init-emulator-fixtures.js";
 import {
-  buildNativeScriptDecodingChain,
   h32,
   makeHeader,
   makeNativeTx,
@@ -137,26 +132,17 @@ describe("native-script-decoding compiled sizes and deployability (Q3)", () => {
   const blueprint = readBlueprint(realBlueprintPath);
 
   it("proves Q3 by arithmetic and fits every applied step in the publication host", async () => {
-    // Parameter VALUES do not change applied sizes (all three parameter kinds
-    // are fixed-width: 28-byte policies/hashes and a constant-shape address),
-    // so a dummy-parameterized chain measures the deployed bytes exactly.
-    const fraudProofTokenAddressData = await Effect.runPromise(
-      addressDataFromBech32(
-        credentialToAddress(network, scriptHashToCredential("22".repeat(28))),
-      ).pipe(
-        Effect.map((addressData) =>
-          Data.from(Data.to(addressData, AddressData)),
-        ),
-      ),
+    // Measure the fully applied production family, including its shared policies.
+    const {
+      nativeScriptDecoding: { steps },
+    } = await Effect.runPromise(
+      buildNativeScriptDecodingFaultProofContracts({
+        blueprint: parseFaultProofBlueprint(blueprint),
+        network,
+        hubOraclePolicyId: "55".repeat(28),
+        fraudProofCataloguePolicyId: "66".repeat(28),
+      }),
     );
-    const steps = buildNativeScriptDecodingChain({
-      realBlueprint: blueprint,
-      computationThreadPolicyId: "11".repeat(28),
-      fraudProofPolicyId: "33".repeat(28),
-      fraudProofTokenAddressData,
-      fieldPreimageCertificatePolicyId: "44".repeat(28),
-      hubOraclePolicyId: "55".repeat(28),
-    });
 
     // Six distinct scripts: equal hashes would mean a parameter list was
     // mis-ordered into another step's (the #609/#610 guards check arity, not

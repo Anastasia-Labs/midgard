@@ -5,21 +5,17 @@ import {
   planMidgardFieldCarriage,
 } from "@al-ft/midgard-core";
 import {
-  AddressData,
-  addressDataFromBech32,
+  buildMissingSignatureFaultProofContracts,
   MissingSignatureStep01SpendRedeemer,
   type MissingSignatureStep01SpendRedeemer as MissingSignatureStep01SpendRedeemerType,
   MissingSignatureStep02SpendRedeemer,
   type MissingSignatureStep02SpendRedeemer as MissingSignatureStep02SpendRedeemerType,
   MissingSignatureStep04SpendRedeemer,
   type MissingSignatureStep04SpendRedeemer as MissingSignatureStep04SpendRedeemerType,
+  parseFaultProofBlueprint,
   Proof,
 } from "@al-ft/midgard-sdk";
-import {
-  credentialToAddress,
-  Data,
-  scriptHashToCredential,
-} from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -47,7 +43,6 @@ import {
 } from "./support/submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
-  buildMissingSignatureChain,
   funderPaymentKeyHash,
   makeHeader,
   network,
@@ -97,19 +92,16 @@ describe("missing-signature compiled envelope", () => {
   const blueprint = readBlueprint(realBlueprintPath);
 
   it("applies four parameter-distinct steps that fit reference-script deployment", async () => {
-    const fraudProofAddressData = await Effect.runPromise(
-      addressDataFromBech32(
-        credentialToAddress(network, scriptHashToCredential("33".repeat(28))),
-      ).pipe(Effect.map((value) => Data.from(Data.to(value, AddressData)))),
+    const {
+      missingSignature: { steps: chain },
+    } = await Effect.runPromise(
+      buildMissingSignatureFaultProofContracts({
+        blueprint: parseFaultProofBlueprint(blueprint),
+        network,
+        hubOraclePolicyId: "55".repeat(28),
+        fraudProofCataloguePolicyId: "66".repeat(28),
+      }),
     );
-    const chain = buildMissingSignatureChain({
-      realBlueprint: blueprint,
-      computationThreadPolicyId: "11".repeat(28),
-      fraudProofPolicyId: "22".repeat(28),
-      fraudProofTokenAddressData: fraudProofAddressData,
-      fieldPreimageCertificatePolicyId: "44".repeat(28),
-      hubOraclePolicyId: "55".repeat(28),
-    });
     expect(chain, "the missing-signature chain length").toHaveLength(
       MISSING_SIGNATURE_STEP_COUNT,
     );
@@ -124,28 +116,6 @@ describe("missing-signature compiled envelope", () => {
         "applied step plus deployment overhead must fit a reference-script output",
       ).toBeLessThan(65_536);
     }
-
-    // Every applied parameter must be load-bearing: changing one deployment
-    // parameter must move every step's hash, so a chain built against the
-    // wrong deployment can never collide with the right one.
-    const rebound = buildMissingSignatureChain({
-      realBlueprint: blueprint,
-      computationThreadPolicyId: "11".repeat(28),
-      fraudProofPolicyId: "99".repeat(28),
-      fraudProofTokenAddressData: fraudProofAddressData,
-      fieldPreimageCertificatePolicyId: "44".repeat(28),
-      hubOraclePolicyId: "55".repeat(28),
-    });
-    expect(
-      rebound.map(({ spendingScriptHash }) => spendingScriptHash),
-      "a different fraud-proof policy must rebind every step",
-    ).not.toEqual(hashes);
-    expect(
-      hashes.filter((hash) =>
-        rebound.some((step) => step.spendingScriptHash === hash),
-      ),
-      "no step may survive a parameter change unchanged",
-    ).toEqual([]);
   });
 
   it("fits a deep step-01 inclusion under reference-script deployment", async () => {

@@ -1,36 +1,36 @@
+import {
+  buildTransactionOutputNonCanonicalFaultProofContracts,
+  parseFaultProofBlueprint,
+} from "@al-ft/midgard-sdk";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES } from "../src/transaction-output-non-canonical/contracts.js";
 import {
-  applyCompiledScript,
+  network,
   readBlueprint,
   realBlueprintPath,
 } from "./support/emulator/blueprints.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
-import { makeSpendingValidator } from "./support/emulator/validators.js";
 
 describe("transactionOutputNonCanonical real publication fit", () => {
   it("publishes every fully applied physical validator under ordinary limits", async () => {
     const blueprint = readBlueprint(realBlueprintPath);
-    const h28 = "11".repeat(28);
-    const scripts = Object.values(
-      TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES,
-    ).map(
-      (title, index) =>
-        makeSpendingValidator(
-          applyCompiledScript(
-            blueprint,
-            title,
-            Array.from({ length: index === 2 ? 2 : 3 }, () => h28),
-          ),
-        ).spendingScript,
+    const {
+      transactionOutputNonCanonical: { steps },
+    } = await Effect.runPromise(
+      buildTransactionOutputNonCanonicalFaultProofContracts({
+        blueprint: parseFaultProofBlueprint(blueprint),
+        network,
+        hubOraclePolicyId: "55".repeat(28),
+        fraudProofCataloguePolicyId: "66".repeat(28),
+      }),
     );
     const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { alwaysFraudProofCatalogue: true },
     });
-    for (const [index, script] of scripts.entries()) {
+    for (const [index, { spendingScript: script }] of steps.entries()) {
       const capture = await captureEmulatorSubmission(harness.emulator, () =>
         publishPlainReferenceScriptUtxo({
           lucid: harness.funderLucid,
