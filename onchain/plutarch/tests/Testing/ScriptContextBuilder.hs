@@ -17,6 +17,8 @@ module Testing.ScriptContextBuilder (
   withSpendingScript,
   withRewardingScript,
   withRewardingScriptWithBuilder,
+  withCertificate,
+  withCertifyingScript,
   withOutput,
   withInput,
   withScriptInput,
@@ -487,6 +489,30 @@ withRewardingScriptWithBuilder mkRedeemer cred adaAmount =
           , scbRedeemer = redeemer
           , scbScriptInfo = RewardingScript cred
           }
+
+{- | Appends a certificate to the transaction's certificate list.
+
+Order is preserved, and it is significant: certificate indices are positions in
+this list.
+-}
+withCertificate :: TxCert -> ScriptContextBuilder
+withCertificate cert = ScriptContextBuilder $ \scb ->
+  scb {scbCerts = scbCerts scb <> [cert]}
+
+{- | Configures a certifying script on the script-context builder.
+
+Unlike the spending and rewarding cases, this does /not/ add the certificate to
+the transaction — the certificate a certifying purpose names and the list it is
+drawn from are separate things in Plutus V3, and a test needs to be able to make
+them disagree. Pair this with 'withCertificate' for the consistent case.
+-}
+withCertifyingScript :: BuiltinData -> Integer -> TxCert -> ScriptContextBuilder
+withCertifyingScript redeemer index cert = ScriptContextBuilder $ \scb ->
+  scb
+    { scbScriptInfo = CertifyingScript index cert
+    , scbRedeemers = Map.insert (Certifying index cert) (Redeemer redeemer) (scbRedeemers scb)
+    , scbRedeemer = redeemer
+    }
 
 -- | Adds a withdrawal to the script-context builder.
 withWithdrawal :: Credential -> Integer -> ScriptContextBuilder
