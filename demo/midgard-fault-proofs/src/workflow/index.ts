@@ -24,6 +24,8 @@ export * from "./double-withdraw.js";
 export * from "./fabricated-deposit.js";
 export * from "./fabricated-withdrawal.js";
 export * from "./fabricated-withdrawal-evidence.js";
+export * from "./family-application.js";
+export * from "./family-application-registry.js";
 export * from "./family-definition.js";
 export * from "./family-definitions.js";
 export * from "./family-l1-observation.js";

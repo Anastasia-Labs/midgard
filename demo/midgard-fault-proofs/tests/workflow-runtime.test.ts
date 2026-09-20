@@ -37,6 +37,10 @@ import {
 } from "../src/workflow/adapters.js";
 import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
 import {
+  applyFamilyApplicationRecord,
+  defineFamilyApplication,
+} from "../src/workflow/family-application.js";
+import {
   assertWorkflowFundingReservationReadyToSubmit,
   beginWorkflowFundingReservationAction,
   bindWorkflowFundingReservationJournal,
@@ -77,6 +81,7 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy.js";
 import {
+  createFamilyApplicationWorkflowRunner,
   createManifestBoundWorkflowRunner,
   WORKFLOW_RUNNER_FACTORIES,
   WORKFLOW_RUNTIME_CONFIG,
@@ -2174,6 +2179,109 @@ describe("compiled manifest-bound production runtime V1", () => {
         checkpoint,
       });
     }
+  });
+
+  it("exempts a family's requirements only under real reconciliation authority", async () => {
+    const actuation = await admittedActuation();
+    const record = defineFamilyApplication({
+      category: "doubleSpend" as const,
+      roster: {},
+      requires: ["replayContext"] as const,
+      bindConfig: () => undefined,
+      constructWorkflow: async () => ({
+        binding: {
+          deploymentFingerprint: DEPLOYMENT,
+          definition: {
+            category: "doubleSpend" as const,
+            headerHash: actuation.headerHash,
+          },
+        },
+      }),
+      execute: async () => ({}),
+      bindsDecisionDigest: false,
+    });
+    const apply = () =>
+      applyFamilyApplicationRecord({
+        record,
+        infrastructure: {
+          manifest: {},
+          blueprintJson: "{}",
+          deploymentInfo: {},
+          headerHash: actuation.headerHash,
+          lucid: {} as never,
+          signer: {} as never,
+          source: {} as never,
+          stateQueueMutationLeaseCoordinator: {} as never,
+        },
+        resolveReferenceScript: async () => {
+          throw new Error("empty roster resolves nothing");
+        },
+        invocation: {
+          deploymentFingerprint: DEPLOYMENT,
+          category: "doubleSpend",
+          headerHash: actuation.headerHash,
+          reconciliationAuthority: actuation.actuationPermit,
+        },
+      });
+    await expect(apply()).rejects.toThrow(
+      "doubleSpend application claimed the reconciliation exemption under a permit that still admits actuation",
+    );
+    actuation.restrictToReconciliation("runtime test");
+    await expect(apply()).resolves.toMatchObject({
+      referenceScriptOutRefs: {},
+    });
+  });
+
+  it("checks the constructed decision digest only when the record binds it", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "midgard-runtime-digest-"));
+    const execute = vi.fn(async () => ({ kind: "executed" }));
+    const run = async (bindsDecisionDigest: boolean, index: number) => {
+      const actuation = await admittedActuation();
+      const runner = createFamilyApplicationWorkflowRunner(
+        defineFamilyApplication({
+          category: "doubleSpend" as const,
+          roster: {},
+          requires: [],
+          bindConfig: () => undefined,
+          constructWorkflow: async () => ({
+            binding: {
+              deploymentFingerprint: DEPLOYMENT,
+              definition: {
+                category: "doubleSpend" as const,
+                headerHash: actuation.headerHash,
+              },
+            },
+            decisionDigest: "ab".repeat(32),
+          }),
+          execute,
+          bindsDecisionDigest,
+        }),
+        async () => ({
+          schemaVersion: WORKFLOW_RUNTIME_CONFIG,
+          config: undefined,
+          retainedDaSources: [retainedDaSource()],
+          close: async () => undefined,
+        }),
+      );
+      return await runner.runOrResume({
+        mode: "run",
+        category: "doubleSpend",
+        deploymentFingerprint: DEPLOYMENT,
+        headerHash: actuation.headerHash,
+        decisionDigest: actuation.decisionDigest,
+        actuationPermit: actuation.actuationPermit,
+        fundingReservationPermit: actuation.fundingReservationPermit,
+        journalDirectory: join(directory, `journal-${index}`),
+        runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
+      });
+    };
+    await expect(run(true, 0)).rejects.toThrow(
+      "doubleSpend manifest-bound workflow decision digest differs from invocation",
+    );
+    expect(execute).not.toHaveBeenCalled();
+    await run(false, 1);
+    expect(execute).toHaveBeenCalledOnce();
+    await rm(directory, { recursive: true, force: true });
   });
 
   it("rejects substituted manifest identity and non-libp2p DA sources before execution", async () => {

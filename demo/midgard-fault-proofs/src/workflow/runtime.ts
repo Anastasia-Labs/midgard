@@ -188,10 +188,14 @@ import {
   type ManifestBoundDoubleSpendWorkflowConfig,
   runOrResumeManifestBoundDoubleSpendWorkflow,
 } from "./double-spend-adapter.js";
+import {
+  assertManifestBoundWorkflowIdentity,
+  type FamilyApplicationRecord,
+  type FamilyApplicationWorkflowIdentity,
+} from "./family-application.js";
 import type {
   FamilyDefinition,
   FaultProofWitnessRole,
-  LinearFamilyDefinitionOf,
   ManifestBoundFamilyWorkflow,
   ManifestBoundFamilyWorkflowConfig,
 } from "./family-definition.js";
@@ -199,7 +203,10 @@ import type { WorkflowFundingRequirements } from "./funding-requirements.js";
 import { bindWorkflowFundingReservationJournal } from "./funding-reservation-permit.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import { DirectoryFraudProofWorkflowJournalStore } from "./journal.js";
-import { LINEAR_FAMILY_DEFINITIONS } from "./linear-family-definitions.js";
+import {
+  type AnyLinearFamilyDefinition,
+  LINEAR_FAMILY_DEFINITIONS,
+} from "./linear-family-definitions.js";
 import type { LinearFamilyCategory } from "./linear-family-spec.js";
 import {
   assembleManifestBoundFamilyWorkflow,
@@ -244,17 +251,10 @@ export type WorkflowRuntimeConfigLoader<Config> = (input: {
 
 type ManifestBoundWorkflowIdentity<
   Category extends FraudProofCatalogueCategoryName,
-> = {
+> = FamilyApplicationWorkflowIdentity<Category> & {
   readonly adapter?: FraudProofFamilyWorkflowAdapter;
   readonly terminalVerifier?: FraudProofWorkflowTerminalVerifier;
   readonly releaseFinalityAuthority?: FraudProofReleaseFinalityAuthority;
-  readonly binding: {
-    readonly deploymentFingerprint: string;
-    readonly definition: {
-      readonly category: Category;
-      readonly headerHash: string;
-    };
-  };
 };
 
 const admitPublicDaSources = (
@@ -287,10 +287,16 @@ const createManifestBoundWorkflowRunOrResume =
     loadRuntimeConfig,
     constructWorkflow,
     execute,
+    bindsDecisionDigest = false,
   }: {
     readonly category: Category;
     readonly loadRuntimeConfig: WorkflowRuntimeConfigLoader<Config>;
     readonly constructWorkflow: (config: Config) => Promise<Workflow>;
+    /**
+     * Whether the constructed workflow must carry the invocation's admitted
+     * decision digest. The families that check it today all check it here.
+     */
+    readonly bindsDecisionDigest?: boolean;
     readonly execute: (input: {
       readonly workflow: Workflow;
       readonly sources: readonly RetainedDaPayloadSource[];
@@ -341,16 +347,14 @@ const createManifestBoundWorkflowRunOrResume =
       }
       const sources = admitPublicDaSources(loaded.retainedDaSources);
       const workflow = await constructWorkflow(loaded.config);
-      if (
-        workflow.binding.deploymentFingerprint !==
-          invocation.deploymentFingerprint ||
-        workflow.binding.definition.category !== category ||
-        workflow.binding.definition.headerHash !== invocation.headerHash
-      ) {
-        throw new Error(
-          "manifest-bound workflow identity differs from the compiled CLI invocation",
-        );
-      }
+      assertManifestBoundWorkflowIdentity({
+        workflow,
+        category,
+        deploymentFingerprint: invocation.deploymentFingerprint,
+        headerHash: invocation.headerHash,
+        bindsDecisionDigest,
+        decisionDigest: invocation.decisionDigest,
+      });
       return await continuePendingWorkflow({
         invocation,
         journal,
@@ -412,12 +416,32 @@ const runnerFunding = (
     : Object.freeze({ fundingRequirements });
 
 /**
- * Any exact linear definition: the distributed union the table's `satisfies`
- * guard admits, so each member keeps its own category, roles and polarity.
+ * Mints the admitted production runner for a family application record. The
+ * record supplies the category, the construction and the launch route, so the
+ * generic run-or-resume body above is the only place a manifest-bound family
+ * is bound to an invocation. The public `createManifestBoundWorkflowRunner`
+ * stays non-admissible: only this module can mint the registry identity.
  */
-type AnyLinearFamilyDefinition = {
-  readonly [Category in LinearFamilyCategory]: LinearFamilyDefinitionOf<Category>;
-}[LinearFamilyCategory];
+export const createFamilyApplicationWorkflowRunner = <
+  Category extends FraudProofCatalogueCategoryName,
+  Config,
+  Workflow extends ManifestBoundWorkflowIdentity<Category>,
+>(
+  record: FamilyApplicationRecord<Category, Config, Workflow>,
+  loadRuntimeConfig: WorkflowRuntimeConfigLoader<Config>,
+  fundingRequirements?: WorkflowFundingRequirements,
+): WorkflowAdapterRunner =>
+  createAdmittedWorkflowRunner({
+    category: record.category,
+    ...runnerFunding(fundingRequirements),
+    runOrResume: createManifestBoundWorkflowRunOrResume({
+      category: record.category,
+      loadRuntimeConfig,
+      constructWorkflow: record.constructWorkflow,
+      execute: record.execute,
+      bindsDecisionDigest: record.bindsDecisionDigest,
+    }),
+  });
 
 type AssembledLinearFamilyWorkflow = ManifestBoundFamilyWorkflow<
   LinearFamilyCategory,

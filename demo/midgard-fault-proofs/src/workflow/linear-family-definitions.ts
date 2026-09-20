@@ -49,3 +49,14 @@ export const LINEAR_FAMILY_DEFINITIONS = Object.freeze({
 } satisfies {
   readonly [Category in LinearFamilyCategory]: LinearFamilyDefinitionOf<Category>;
 });
+
+/**
+ * Any exact linear definition: the distributed union the table's `satisfies`
+ * guard admits, so each member keeps its own category, roles and polarity.
+ * Readers that iterate the table work from this union, because a union
+ * member's polarity cannot be correlated with its own callbacks at the type
+ * level; each reader restores the exact row types in its own result type.
+ */
+export type AnyLinearFamilyDefinition = {
+  readonly [Category in LinearFamilyCategory]: LinearFamilyDefinitionOf<Category>;
+}[LinearFamilyCategory];

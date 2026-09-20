@@ -120,6 +120,25 @@ _Avoid_: full on-chain decode, datum Merkleization
 
 ### Fault-proof workflow assembly
 
+**Family application registry**:
+The single frozen table, keyed by catalogue category, that says how each
+fault-proof family is applied to a deployment: one family record per
+registered category, and a shrinking allow-list of the categories not yet
+registered. It states a family's reference-script roster, its optional
+requirements and its construction once, so that readiness, configuration and
+the runner can be driven from one place rather than from parallel per-family
+branches.
+_Avoid_: family table, workflow registry (that is the adapter registration set)
+
+**Family record**:
+One row of the family application registry: the category, the roster of role
+to deployment-manifest contract name, the optional parts the family requires
+(replay context, validation challenge, historical native-script authority),
+and the callbacks that bind its config, construct its workflow and launch it.
+Linear rows are derived from the family definition and the linear family
+spec; a family that is not derivable is hand-written.
+_Avoid_: family entry, registry record (unqualified)
+
 **Family definition**:
 The frozen, per-category record from which a fault-proof family's
 manifest-bound workflow is assembled: step datum schemas, witness roles,
