@@ -1,11 +1,10 @@
 import {
-  applyParamsToScript,
-  type Data,
-  type Network,
-  type Script,
-  validatorToAddress,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
+  buildWitnessScriptDecodingChain,
+  parseFaultProofBlueprint,
+  type SpendingValidator,
+} from "@al-ft/midgard-sdk";
+import { type Data, type Network, type Script } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
 export const WITNESS_SCRIPT_DECODING_CATEGORY_LABEL = "witness-script-decoding";
 
@@ -53,27 +52,8 @@ type Blueprint = Readonly<{
   }>[];
 }>;
 
-const applyExact = (
-  blueprint: Blueprint,
-  title: string,
-  parameters: readonly Data[],
-): Script => {
-  const validator = blueprint.validators.find((entry) => entry.title === title);
-  if (validator === undefined)
-    throw new Error(`witnessScriptDecoding: blueprint omitted ${title}`);
-  if ((validator.parameters?.length ?? 0) !== parameters.length)
-    throw new Error(`witnessScriptDecoding: ${title} parameter arity changed`);
-  return {
-    type: "PlutusV3",
-    script: applyParamsToScript(validator.compiledCode, [...parameters]),
-  };
-};
-
 /**
- * Family-side application of the four physical validators in deployment
- * order (step 04 first, since each earlier step is parameterised on its
- * successor's hash). A lifecycle suite asserts this reproduces the registered
- * SDK chain step for step before driving the registered chain.
+ * Submission adapter for the SDK's four physical validators in deployment order.
  */
 export const applyWitnessScriptDecodingScripts = ({
   blueprint,
@@ -92,35 +72,22 @@ export const applyWitnessScriptDecodingScripts = ({
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOracleScriptHash: string;
 }): WitnessScriptDecodingContracts["steps"] => {
-  const applied = (
-    blueprintTitle: string,
-    parameters: readonly Data[],
-  ): WitnessScriptDecodingStepContract => {
-    const spendingScript = applyExact(blueprint, blueprintTitle, parameters);
-    return Object.freeze({
-      spendingScript,
-      spendingScriptHash: validatorToScriptHash(spendingScript),
-      spendingScriptAddress: validatorToAddress(network, spendingScript),
+  const { steps } = Effect.runSync(
+    buildWitnessScriptDecodingChain({
+      blueprint: parseFaultProofBlueprint(blueprint),
+      network,
+      hubOraclePolicyId: hubOracleScriptHash,
+      computationThread: { policyId: computationThreadPolicyId },
+      fraudProof: { policyId: fraudProofPolicyId },
+      fraudProofTokenAddressData,
+      fieldPreimageCertificatePolicyId,
+    }),
+  );
+  const adapt = (step: SpendingValidator) =>
+    Object.freeze({
+      spendingScript: step.spendingScript,
+      spendingScriptHash: step.spendingScriptHash,
+      spendingScriptAddress: step.spendingScriptAddress,
     });
-  };
-  const step04 = applied(WITNESS_SCRIPT_DECODING_BLUEPRINT_TITLES.step04, [
-    computationThreadPolicyId,
-    fraudProofPolicyId,
-    fraudProofTokenAddressData,
-  ]);
-  const step03 = applied(WITNESS_SCRIPT_DECODING_BLUEPRINT_TITLES.step03, [
-    step04.spendingScriptHash,
-    computationThreadPolicyId,
-  ]);
-  const step02 = applied(WITNESS_SCRIPT_DECODING_BLUEPRINT_TITLES.step02, [
-    step03.spendingScriptHash,
-    computationThreadPolicyId,
-    fieldPreimageCertificatePolicyId,
-  ]);
-  const step01 = applied(WITNESS_SCRIPT_DECODING_BLUEPRINT_TITLES.step01, [
-    step02.spendingScriptHash,
-    computationThreadPolicyId,
-    hubOracleScriptHash,
-  ]);
-  return [step01, step02, step03, step04];
+  return [adapt(steps[0]), adapt(steps[1]), adapt(steps[2]), adapt(steps[3])];
 };

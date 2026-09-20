@@ -8,7 +8,7 @@ import {
 import {
   buildFaultProofSpendingStep,
   buildSharedFaultProofContracts,
-  type SharedFaultProofContracts,
+  type FaultProofChainInputs,
 } from "../shared.js";
 import {
   type BuildFaultProofContractsParams,
@@ -38,7 +38,7 @@ export const buildL2TxMistagChain = ({
   computationThread,
   fraudProof,
   fraudProofTokenAddressData,
-}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+}: FaultProofChainInputs): Effect.Effect<
   L2TxMistagFaultProofContracts["l2TxMistag"],
   Error
 > =>

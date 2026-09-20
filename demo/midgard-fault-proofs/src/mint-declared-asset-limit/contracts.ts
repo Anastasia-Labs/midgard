@@ -1,11 +1,16 @@
 import {
-  applyParamsToScript,
+  buildMintDeclaredAssetLimitChain,
+  parseFaultProofBlueprint,
+  type SpendingValidator,
+} from "@al-ft/midgard-sdk";
+import {
   type Data,
   type Network,
   type Script,
   validatorToAddress,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
 import {
   MINT_DECLARED_ASSET_LIMIT_CATEGORY,
@@ -57,22 +62,6 @@ export type MintDeclaredAssetLimitBlueprint = Readonly<{
   }>[];
 }>;
 
-const applyExact = (
-  blueprint: MintDeclaredAssetLimitBlueprint,
-  title: string,
-  parameters: readonly Data[],
-): Script => {
-  const validator = blueprint.validators.find((entry) => entry.title === title);
-  if (validator === undefined)
-    throw new Error(`mintDeclaredAssetLimit: blueprint omitted ${title}`);
-  if ((validator.parameters?.length ?? 0) !== parameters.length)
-    throw new Error(`mintDeclaredAssetLimit: ${title} parameter arity changed`);
-  return {
-    type: "PlutusV3",
-    script: applyParamsToScript(validator.compiledCode, [...parameters]),
-  };
-};
-
 /** Applies the four scripts backwards, in their blueprint-declared order. */
 export const applyMintDeclaredAssetLimitScripts = ({
   blueprint,
@@ -91,41 +80,32 @@ export const applyMintDeclaredAssetLimitScripts = ({
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOracleScriptHash: string;
 }): MintDeclaredAssetLimitContracts["steps"] => {
-  const applied = (
-    index: number,
-    parameters: readonly Data[],
-  ): MintDeclaredAssetLimitStepContract => {
-    const blueprintTitle = MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES[index]!;
-    const spendingScript = applyExact(blueprint, blueprintTitle, parameters);
-    return Object.freeze({
-      blueprintTitle,
-      spendingScript,
-      spendingScriptHash: validatorToScriptHash(spendingScript),
-      spendingScriptAddress: validatorToAddress(network, spendingScript),
-      referenceOutRef: "0".repeat(64).concat("#0"),
+  const { steps } = Effect.runSync(
+    buildMintDeclaredAssetLimitChain({
+      blueprint: parseFaultProofBlueprint(blueprint),
+      network,
+      hubOraclePolicyId: hubOracleScriptHash,
+      computationThread: { policyId: computationThreadPolicyId },
+      fraudProof: { policyId: fraudProofPolicyId },
+      fraudProofTokenAddressData,
+      fieldPreimageCertificatePolicyId,
+    }),
+  );
+  const titles = Object.values(MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES);
+  const adapt = (step: SpendingValidator, index: number) =>
+    Object.freeze({
+      blueprintTitle: titles[index]!,
+      spendingScript: step.spendingScript,
+      spendingScriptHash: step.spendingScriptHash,
+      spendingScriptAddress: step.spendingScriptAddress,
+      referenceOutRef: `${"0".repeat(64)}#0`,
     });
-  };
-  const step04 = applied(3, [
-    fraudProofPolicyId,
-    fraudProofTokenAddressData,
-    computationThreadPolicyId,
-  ]);
-  const step03 = applied(2, [
-    step04.spendingScriptHash,
-    computationThreadPolicyId,
-    fieldPreimageCertificatePolicyId,
-  ]);
-  const step02 = applied(1, [
-    step03.spendingScriptHash,
-    computationThreadPolicyId,
-    fieldPreimageCertificatePolicyId,
-  ]);
-  const step01 = applied(0, [
-    step02.spendingScriptHash,
-    computationThreadPolicyId,
-    hubOracleScriptHash,
-  ]);
-  return [step01, step02, step03, step04];
+  return [
+    adapt(steps[0], 0),
+    adapt(steps[1], 1),
+    adapt(steps[2], 2),
+    adapt(steps[3], 3),
+  ];
 };
 
 export type MintDeclaredAssetLimitManifest = Readonly<{

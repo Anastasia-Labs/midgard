@@ -10,6 +10,7 @@ import type {
 import {
   applyBlueprintParams,
   type FaultProofBlueprint,
+  getBlueprintValidator,
   getUnappliedScript,
   makeAuthenticatedValidator,
   makeMintingPolicy,
@@ -43,11 +44,7 @@ const assertRecipe = (
   title: string,
   parameterNames: readonly string[],
 ): void => {
-  const matches = blueprint.validators.filter((entry) => entry.title === title);
-  const entry = matches[0];
-  if (matches.length !== 1 || entry === undefined) {
-    throw new Error(`User-event blueprint must contain exactly one "${title}"`);
-  }
+  const entry = getBlueprintValidator(blueprint, title);
   if (
     entry.parameters.length !== parameterNames.length ||
     entry.parameters.some(

@@ -1,4 +1,3 @@
-import { Data, Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -8,10 +7,10 @@ import {
 } from "../../../common.js";
 import {
   applyBlueprintParams,
-  type FaultProofBlueprint,
   makeSpendingValidator,
   tryBuild,
 } from "../blueprint.js";
+import type { CertifiedFaultProofChainInputs } from "../shared.js";
 import { buildSharedFaultProofContracts } from "../shared.js";
 import {
   type BuildFaultProofContractsParams,
@@ -42,15 +41,10 @@ export const buildZeroInputChain = ({
   fraudProof,
   fraudProofTokenAddressData,
   fieldPreimageCertificatePolicyId,
-}: {
-  readonly blueprint: FaultProofBlueprint;
-  readonly network: Network;
-  readonly hubOraclePolicyId: string;
-  readonly computationThread: MintingValidator;
-  readonly fraudProof: AuthenticatedValidator;
-  readonly fraudProofTokenAddressData: Data;
-  readonly fieldPreimageCertificatePolicyId: string;
-}): Effect.Effect<ZeroInputFaultProofContracts["zeroInput"], Error> =>
+}: CertifiedFaultProofChainInputs): Effect.Effect<
+  ZeroInputFaultProofContracts["zeroInput"],
+  Error
+> =>
   Effect.gen(function* () {
     const zeroInputStep02 = yield* tryBuild(
       "Failed to build zero-input step 02",

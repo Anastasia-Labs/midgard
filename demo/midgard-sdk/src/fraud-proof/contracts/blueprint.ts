@@ -124,6 +124,7 @@ export const parseFaultProofBlueprint = (
           const candidateParameter = parameter as {
             readonly title?: unknown;
             readonly schema?: unknown;
+            readonly schemaRef?: unknown;
           };
           const parameterTitle = candidateParameter.title;
           if (typeof parameterTitle !== "string") {
@@ -135,7 +136,7 @@ export const parseFaultProofBlueprint = (
             typeof candidateParameter.schema === "object" &&
             candidateParameter.schema !== null
               ? (candidateParameter.schema as { readonly $ref?: unknown }).$ref
-              : undefined;
+              : candidateParameter.schemaRef;
           return typeof schemaRef === "string"
             ? { title: parameterTitle, schemaRef }
             : { title: parameterTitle };
@@ -149,9 +150,15 @@ export const getBlueprintValidator = (
   blueprint: FaultProofBlueprint,
   title: string,
 ): FaultProofBlueprintValidator => {
-  const found = blueprint.validators.find(
+  const matches = blueprint.validators.filter(
     (validator) => validator.title === title,
   );
+  if (matches.length > 1) {
+    throw new Error(
+      `Blueprint must contain exactly one validator with title "${title}"; found ${matches.length.toString()}.`,
+    );
+  }
+  const found = matches[0];
   if (found === undefined) {
     throw new Error(`Validator with title "${title}" not found in blueprint`);
   }
@@ -435,6 +442,28 @@ export const makeAuthenticatedValidator = (
   ...makeSpendingValidator(network, spendingScriptCBOR),
   ...makeMintingPolicy(mintingScriptCBOR),
 });
+
+/** Link a minting policy to its spending validator in declared parameter order. */
+export const buildAuthenticatedBlueprintValidator = (
+  blueprint: FaultProofBlueprint,
+  network: Network,
+  titles: { readonly mint: string; readonly spend: string },
+  mintParams: readonly Data[],
+  spendParams?: (policyId: string) => readonly Data[],
+): AuthenticatedValidator => {
+  const minting = makeMintingPolicy(
+    applyBlueprintParams(blueprint, titles.mint, mintParams),
+  );
+  const spendingScript =
+    spendParams === undefined
+      ? getUnappliedScript(blueprint, titles.spend)
+      : applyBlueprintParams(
+          blueprint,
+          titles.spend,
+          spendParams(minting.policyId),
+        );
+  return { ...makeSpendingValidator(network, spendingScript), ...minting };
+};
 
 export const asAddressDataParam = (
   address: Address,

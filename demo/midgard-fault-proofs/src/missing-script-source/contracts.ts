@@ -1,11 +1,10 @@
 import {
-  applyParamsToScript,
-  type Data,
-  type Network,
-  type Script,
-  validatorToAddress,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
+  buildMissingScriptSourceChain,
+  parseFaultProofBlueprint,
+  type SpendingValidator,
+} from "@al-ft/midgard-sdk";
+import { type Data, type Network, type Script } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
 export const MISSING_SCRIPT_SOURCE_BLUEPRINT_TITLES = Object.freeze([
   "fraud_proofs/missing_script_source/step_01.main.spend",
@@ -66,56 +65,31 @@ export const applyMissingScriptSourceScripts = ({
   fraudProofTokenAddressData: Data;
   hubOracleScriptHash: string;
 }): MissingScriptSourceContracts["steps"] => {
-  const apply = (index: number, parameters: readonly Data[]) => {
-    const blueprintTitle = MISSING_SCRIPT_SOURCE_BLUEPRINT_TITLES[index]!;
-    const validator = blueprint.validators.find(
-      ({ title }) => title === blueprintTitle,
-    );
-    if (validator === undefined)
-      throw new Error(
-        `missingScriptSource: blueprint omitted ${blueprintTitle}`,
-      );
-    if ((validator.parameters?.length ?? 0) !== parameters.length)
-      throw new Error(
-        `missingScriptSource: ${blueprintTitle} parameter arity changed`,
-      );
-    const spendingScript: Script = {
-      type: "PlutusV3",
-      script: applyParamsToScript(validator.compiledCode, [...parameters]),
-    };
-    return Object.freeze({
-      blueprintTitle,
-      spendingScript,
-      spendingScriptHash: validatorToScriptHash(spendingScript),
-      spendingScriptAddress: validatorToAddress(network, spendingScript),
+  const { steps } = Effect.runSync(
+    buildMissingScriptSourceChain({
+      blueprint: parseFaultProofBlueprint(blueprint),
+      network,
+      hubOraclePolicyId: hubOracleScriptHash,
+      computationThread: { policyId: computationThreadPolicyId },
+      fraudProof: { policyId: fraudProofPolicyId },
+      fraudProofTokenAddressData,
+    }),
+  );
+  const titles = Object.values(MISSING_SCRIPT_SOURCE_BLUEPRINT_TITLES);
+  const adapt = (step: SpendingValidator, index: number) =>
+    Object.freeze({
+      blueprintTitle: titles[index]!,
+      spendingScript: step.spendingScript,
+      spendingScriptHash: step.spendingScriptHash,
+      spendingScriptAddress: step.spendingScriptAddress,
       referenceOutRef: `${"0".repeat(64)}#0`,
     });
-  };
-  const step06 = apply(5, [
-    computationThreadPolicyId,
-    fraudProofPolicyId,
-    fraudProofTokenAddressData,
-  ]);
-  const step05 = apply(4, [
-    step06.spendingScriptHash,
-    computationThreadPolicyId,
-  ]);
-  const step04 = apply(3, [
-    step05.spendingScriptHash,
-    computationThreadPolicyId,
-  ]);
-  const step03 = apply(2, [
-    step04.spendingScriptHash,
-    computationThreadPolicyId,
-  ]);
-  const step02 = apply(1, [
-    step03.spendingScriptHash,
-    computationThreadPolicyId,
-  ]);
-  const step01 = apply(0, [
-    step02.spendingScriptHash,
-    computationThreadPolicyId,
-    hubOracleScriptHash,
-  ]);
-  return [step01, step02, step03, step04, step05, step06];
+  return [
+    adapt(steps[0], 0),
+    adapt(steps[1], 1),
+    adapt(steps[2], 2),
+    adapt(steps[3], 3),
+    adapt(steps[4], 4),
+    adapt(steps[5], 5),
+  ];
 };

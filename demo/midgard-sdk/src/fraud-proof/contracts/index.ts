@@ -5,6 +5,7 @@ export {
   type FaultProofBlueprint,
   type FaultProofBlueprintParameter,
   type FaultProofBlueprintValidator,
+  getBlueprintValidator,
   getUnappliedScript,
   makeAuthenticatedValidator,
   makeMintingPolicy,
@@ -48,6 +49,7 @@ export {
   type DaHashPreimageFaultProofContracts,
 } from "./families/da-hash-preimage.js";
 export {
+  buildDistinctAssetAccumulationLimitChain,
   buildDistinctAssetAccumulationLimitFaultProofContracts,
   type BuildDistinctAssetAccumulationLimitFaultProofContractsParams,
   DISTINCT_ASSET_ACCUMULATION_LIMIT_FAULT_PROOF_TITLES,
@@ -66,12 +68,14 @@ export {
   type DoubleWithdrawFaultProofContracts,
 } from "./families/double-withdraw.js";
 export {
+  buildExecutionNativeScriptInvalidChain,
   buildExecutionNativeScriptInvalidFaultProofContracts,
   type BuildExecutionNativeScriptInvalidFaultProofContractsParams,
   EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES,
   type ExecutionNativeScriptInvalidFaultProofContracts,
 } from "./families/execution-native-script-invalid.js";
 export {
+  buildExecutionSourceScriptDecodingChain,
   buildExecutionSourceScriptDecodingFaultProofContracts,
   type BuildExecutionSourceScriptDecodingFaultProofContractsParams,
   EXECUTION_SOURCE_SCRIPT_DECODING_FAULT_PROOF_TITLES,
@@ -90,6 +94,7 @@ export {
   type FabricatedWithdrawalFaultProofContracts,
 } from "./families/fabricated-withdrawal.js";
 export {
+  buildFieldItemWidthIllegalChain,
   buildFieldItemWidthIllegalFaultProofContracts,
   type BuildFieldItemWidthIllegalFaultProofContractsParams,
   FIELD_ITEM_WIDTH_ILLEGAL_FAULT_PROOF_TITLES,
@@ -126,6 +131,7 @@ export {
   type InvalidSignatureFaultProofContracts,
 } from "./families/invalid-signature.js";
 export {
+  buildL2TxMistagChain,
   buildL2TxMistagFaultProofContracts,
   type BuildL2TxMistagFaultProofContractsParams,
   L2_TX_MISTAG_FAULT_PROOF_TITLES,
@@ -150,6 +156,7 @@ export {
   type MintAuthorizationFaultProofContracts,
 } from "./families/mint-authorization.js";
 export {
+  buildMintDeclaredAssetLimitChain,
   buildMintDeclaredAssetLimitFaultProofContracts,
   type BuildMintDeclaredAssetLimitFaultProofContractsParams,
   MINT_DECLARED_ASSET_LIMIT_FAULT_PROOF_TITLES,
@@ -175,12 +182,14 @@ export {
   type MissingNativeScriptUtxoFaultProofContracts,
 } from "./families/missing-native-script-utxo.js";
 export {
+  buildMissingRedeemerChain,
   buildMissingRedeemerFaultProofContracts,
   type BuildMissingRedeemerFaultProofContractsParams,
   MISSING_REDEEMER_FAULT_PROOF_TITLES,
   type MissingRedeemerFaultProofContracts,
 } from "./families/missing-redeemer.js";
 export {
+  buildMissingScriptSourceChain,
   buildMissingScriptSourceFaultProofContracts,
   type BuildMissingScriptSourceFaultProofContractsParams,
   MISSING_SCRIPT_SOURCE_FAULT_PROOF_TITLES,
@@ -224,36 +233,42 @@ export {
   type NonExistentInputFaultProofContracts,
 } from "./families/non-existent-input.js";
 export {
+  buildObserverOrderInvalidChain,
   buildObserverOrderInvalidFaultProofContracts,
   type BuildObserverOrderInvalidFaultProofContractsParams,
   OBSERVER_ORDER_INVALID_FAULT_PROOF_TITLES,
   type ObserverOrderInvalidFaultProofContracts,
 } from "./families/observer-order-invalid.js";
 export {
+  buildObserversForbiddenOnUntaggedNetworkChain,
   buildObserversForbiddenOnUntaggedNetworkFaultProofContracts,
   type BuildObserversForbiddenOnUntaggedNetworkFaultProofContractsParams,
   OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FAULT_PROOF_TITLES,
   type ObserversForbiddenOnUntaggedNetworkFaultProofContracts,
 } from "./families/observers-forbidden-on-untagged-network.js";
 export {
+  buildOutputReferenceScriptDecodingChain,
   buildOutputReferenceScriptDecodingFaultProofContracts,
   type BuildOutputReferenceScriptDecodingFaultProofContractsParams,
   OUTPUT_REFERENCE_SCRIPT_DECODING_FAULT_PROOF_TITLES,
   type OutputReferenceScriptDecodingFaultProofContracts,
 } from "./families/output-reference-script-decoding.js";
 export {
+  buildProtectedOutputSignerMissingChain,
   buildProtectedOutputSignerMissingFaultProofContracts,
   type BuildProtectedOutputSignerMissingFaultProofContractsParams,
   PROTECTED_OUTPUT_SIGNER_MISSING_FAULT_PROOF_TITLES,
   type ProtectedOutputSignerMissingFaultProofContracts,
 } from "./families/protected-output-signer-missing.js";
 export {
+  buildReceivePurposeLanguageChain,
   buildReceivePurposeLanguageFaultProofContracts,
   type BuildReceivePurposeLanguageFaultProofContractsParams,
   RECEIVE_PURPOSE_LANGUAGE_FAULT_PROOF_TITLES,
   type ReceivePurposeLanguageFaultProofContracts,
 } from "./families/receive-purpose-language.js";
 export {
+  buildRedeemerCanonicityChain,
   buildRedeemerCanonicityFaultProofContracts,
   type BuildRedeemerCanonicityFaultProofContractsParams,
   REDEEMER_CANONICITY_FAULT_PROOF_TITLES,
@@ -266,12 +281,14 @@ export {
   type ReferenceInputNoIdxFaultProofContracts,
 } from "./families/reference-input-no-idx.js";
 export {
+  buildResolvedOutputNonCanonicalChain,
   buildResolvedOutputNonCanonicalFaultProofContracts,
   type BuildResolvedOutputNonCanonicalFaultProofContractsParams,
   RESOLVED_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES,
   type ResolvedOutputNonCanonicalFaultProofContracts,
 } from "./families/resolved-output-non-canonical.js";
 export {
+  buildScriptIntegrityHashMismatchChain,
   buildScriptIntegrityHashMismatchFaultProofContracts,
   type BuildScriptIntegrityHashMismatchFaultProofContractsParams,
   SCRIPT_INTEGRITY_HASH_MISMATCH_FAULT_PROOF_TITLES,
@@ -285,12 +302,14 @@ export {
 } from "./families/script-integrity-hash-missing.js";
 export * from "./families/shared-redeemer-item.js";
 export {
+  buildSpendInputSignerMissingChain,
   buildSpendInputSignerMissingFaultProofContracts,
   type BuildSpendInputSignerMissingFaultProofContractsParams,
   SPEND_INPUT_SIGNER_MISSING_FAULT_PROOF_TITLES,
   type SpendInputSignerMissingFaultProofContracts,
 } from "./families/spend-input-signer-missing.js";
 export {
+  buildTransactionOutputNonCanonicalChain,
   buildTransactionOutputNonCanonicalFaultProofContracts,
   type BuildTransactionOutputNonCanonicalFaultProofContractsParams,
   TRANSACTION_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES,
@@ -305,12 +324,14 @@ export {
   type TransitionTraceFaultProofContracts,
 } from "./families/transition-trace.js";
 export {
+  buildUnusedRedeemerChain,
   buildUnusedRedeemerFaultProofContracts,
   type BuildUnusedRedeemerFaultProofContractsParams,
   UNUSED_REDEEMER_FAULT_PROOF_TITLES,
   type UnusedRedeemerFaultProofContracts,
 } from "./families/unused-redeemer.js";
 export {
+  buildUnusedScriptWitnessChain,
   buildUnusedScriptWitnessFaultProofContracts,
   type BuildUnusedScriptWitnessFaultProofContractsParams,
   UNUSED_SCRIPT_WITNESS_FAULT_PROOF_TITLES,
@@ -348,12 +369,14 @@ export {
   type WithdrawnReferenceInputFaultProofContracts,
 } from "./families/withdrawn-reference-input.js";
 export {
+  buildWitnessScriptDecodingChain,
   buildWitnessScriptDecodingFaultProofContracts,
   type BuildWitnessScriptDecodingFaultProofContractsParams,
   WITNESS_SCRIPT_DECODING_FAULT_PROOF_TITLES,
   type WitnessScriptDecodingFaultProofContracts,
 } from "./families/witness-script-decoding.js";
 export {
+  buildZeroInputChain,
   buildZeroInputFaultProofContracts,
   type BuildZeroInputFaultProofContractsParams,
   ZERO_INPUT_FAULT_PROOF_TITLES,

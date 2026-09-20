@@ -96,7 +96,7 @@ describe("PHAS membership SDK boundary", () => {
           ],
         }),
       ),
-    ).toThrow("Expected exactly one");
+    ).toThrow(/exactly one/);
   });
 
   it("refuses to deploy the withdrawal script bare once it declares a parameter", () => {
@@ -126,7 +126,7 @@ describe("PHAS membership SDK boundary", () => {
           ],
         }),
       ),
-    ).toThrow(/declares 1 parameter\(s\).*deploys compiledCode bare/su);
+    ).toThrow(/declares 1 parameter\(s\).*deployed with none applied/su);
     // An explicit empty declaration is the same as no declaration: the door
     // stays open for the zero-arity validator the blueprint publishes today.
     expect(

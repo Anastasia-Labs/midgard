@@ -8,6 +8,7 @@ import {
   parseOutRefLabel,
 } from "@al-ft/midgard-core/out-ref";
 import {
+  applyBlueprintParams,
   buildCanonicalDecodabilityFaultProofContracts,
   buildCommittedFieldShapeFaultProofContracts,
   buildCrossBlockDuplicateEventFaultProofContracts,
@@ -68,6 +69,8 @@ import {
   type FaultProofContracts,
   type FraudProofCatalogueCategoryDeploymentInfo,
   type FraudProofCatalogueCategoryName,
+  getBlueprintValidator,
+  getUnappliedScript,
   type InputNoIdxFaultProofContracts,
   type InvalidRangeFaultProofContracts,
   type InvalidSignatureFaultProofContracts,
@@ -83,7 +86,6 @@ import {
   type ZeroInputFaultProofContracts,
 } from "@al-ft/midgard-sdk";
 import {
-  applyParamsToScript,
   Blockfrost,
   CML,
   credentialToAddress,
@@ -1826,76 +1828,11 @@ export const phasMembershipRewardAddress = (
   return CML.RewardAddress.new(networkId, credential).to_address().to_bech32();
 };
 
-/**
- * The bare-load door (#610). Every caller of this function deploys the returned
- * `compiledCode` as-is, applying nothing — so it is only sound while the
- * validator declares no parameters.
- *
- * A declared parameter deployed unapplied is the #605 under-application shape:
- * the remaining `validator main(...)` parameters stay as lambdas, the ledger's
- * single Plutus V3 script-context application reduces to a lambda VALUE instead
- * of running the validator body, evaluation terminates without error, and the
- * ledger reads "no error" as SUCCESS. The deployment is an unconditional
- * always-succeeds script standing where an authenticated one should be, and
- * nothing downstream can tell the difference. Before this check an arity
- * mismatch surfaced only as an opaque `→ undefined` evaluation failure several
- * hundred milliseconds into a submission, if at all.
- *
- * `parseFaultProofBlueprint` normalises an absent `parameters` key to the empty
- * list, so ABSENT MEANS ZERO here — never "unknown, skip the check".
- */
-type ParsedFaultProofBlueprintValidator = ReturnType<
-  typeof parseFaultProofBlueprint
->["validators"][number];
+/** Deployable bare scripts must declare no parameters. */
+export const getCompiledScript = (blueprint: unknown, title: string): string =>
+  getUnappliedScript(parseFaultProofBlueprint(blueprint), title);
 
-const requireUniqueBlueprintValidator = (
-  blueprint: unknown,
-  title: string,
-): ParsedFaultProofBlueprintValidator => {
-  const parsed = parseFaultProofBlueprint(blueprint);
-  const matches = parsed.validators.filter(
-    (validator) => validator.title === title,
-  );
-  if (matches.length === 0) {
-    throw new Error(`Validator with title "${title}" not found in blueprint.`);
-  }
-  if (matches.length > 1) {
-    throw new Error(
-      `Blueprint must contain exactly one validator with title "${title}"; found ${matches.length.toString()}.`,
-    );
-  }
-  const found = matches[0];
-  if (found === undefined) {
-    throw new Error(
-      `Blueprint uniqueness check for validator "${title}" succeeded without a matching validator.`,
-    );
-  }
-  return found;
-};
-
-export const getCompiledScript = (
-  blueprint: unknown,
-  title: string,
-): string => {
-  const found = requireUniqueBlueprintValidator(blueprint, title);
-  const declaredParameters = found.parameters;
-  if (declaredParameters.length !== 0) {
-    throw new Error(
-      `${title} declares ${declaredParameters.length} parameter(s) but this loader deploys compiledCode bare — declared: ${declaredParameters
-        .map((parameter) => parameter.title)
-        .join(
-          ", ",
-        )}. An unapplied declared parameter deploys an always-succeeds script; route this title through an arity-checking parameter-applying helper instead of widening this zero-arity door (#610).`,
-    );
-  }
-  return found.compiledCode;
-};
-
-/**
- * Apply one blueprint validator only after proving the supplied parameter list
- * has exactly the declared arity. This is the parameterized counterpart to
- * {@link getCompiledScript}; neither under- nor over-application is permitted.
- */
+/** Runtime JSON adapter to the SDK's strict parameter application boundary. */
 export const applyBlueprintParamsExact = ({
   blueprint,
   title,
@@ -1904,15 +1841,8 @@ export const applyBlueprintParamsExact = ({
   readonly blueprint: unknown;
   readonly title: string;
   readonly params: readonly Data[];
-}): string => {
-  const found = requireUniqueBlueprintValidator(blueprint, title);
-  if (found.parameters.length !== params.length) {
-    throw new Error(
-      `${title} declares ${found.parameters.length.toString()} parameter(s), but ${params.length.toString()} were supplied. Apply exactly the declared parameters; under-application deploys an always-succeeds script (#609).`,
-    );
-  }
-  return applyParamsToScript<Data[]>(found.compiledCode, [...params]);
-};
+}): string =>
+  applyBlueprintParams(parseFaultProofBlueprint(blueprint), title, params);
 
 /**
  * Measure an unapplied blueprint body without deploying it. The caller must
@@ -1928,7 +1858,10 @@ export const measureBlueprintValidatorBytes = ({
   readonly title: string;
   readonly expectedDeclaredParameterCount: number;
 }): number => {
-  const found = requireUniqueBlueprintValidator(blueprint, title);
+  const found = getBlueprintValidator(
+    parseFaultProofBlueprint(blueprint),
+    title,
+  );
   if (found.parameters.length !== expectedDeclaredParameterCount) {
     throw new Error(
       `${title} declares ${found.parameters.length.toString()} parameter(s), not the measured invariant ${expectedDeclaredParameterCount.toString()}.`,

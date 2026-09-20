@@ -5,10 +5,10 @@ import {
   MintingValidator,
   SpendingValidator,
 } from "../../../common.js";
+import type { FaultProofChainInputs } from "../shared.js";
 import {
   buildFaultProofSpendingStep,
   buildSharedFaultProofContracts,
-  type SharedFaultProofContracts,
 } from "../shared.js";
 import {
   type BuildFaultProofContractsParams,
@@ -48,7 +48,7 @@ export const buildExecutionSourceScriptDecodingChain = ({
   computationThread,
   fraudProof,
   fraudProofTokenAddressData,
-}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+}: FaultProofChainInputs): Effect.Effect<
   ExecutionSourceScriptDecodingFaultProofContracts["executionSourceScriptDecoding"],
   Error
 > =>

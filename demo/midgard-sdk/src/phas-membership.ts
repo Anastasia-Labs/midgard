@@ -9,6 +9,10 @@ import { Effect } from "effect";
 
 import { scriptRewardAddress } from "./cardano-addresses.js";
 import { LucidError, UnspecifiedNetworkError } from "./errors.js";
+import {
+  getUnappliedScript,
+  parseFaultProofBlueprint,
+} from "./fraud-proof/contracts/blueprint.js";
 import { completeTxWithLocalUPLCEvalProgram } from "./tx-completion.js";
 
 export const PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE =
@@ -96,31 +100,13 @@ export const parsePhasMembershipBlueprint = (
 
 export const phasMembershipWithdrawalScriptFromBlueprint = (
   blueprint: PhasMembershipBlueprint,
-): Script => {
-  const matches = blueprint.validators.filter(
-    ({ title }) => title === PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE,
-  );
-  if (matches.length !== 1) {
-    throw new Error(
-      `Expected exactly one ${PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE} validator in blueprint, found ${matches.length}`,
-    );
-  }
-  // The zero-arity door (#610). This loader deploys `compiledCode` bare, so
-  // it is only sound while the validator declares no parameters: a declared
-  // parameter deployed unapplied is the #605 under-application shape — an
-  // always-succeeds script standing where an authenticated one should be.
-  // Fail closed here instead of letting a future blueprint change through.
-  const declaredParameters = matches[0]!.parameters ?? [];
-  if (declaredParameters.length !== 0) {
-    throw new Error(
-      `${PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE} declares ${declaredParameters.length} parameter(s) but this loader deploys compiledCode bare; route it through the parameter-applying blueprint helper instead of widening this zero-arity door (#610)`,
-    );
-  }
-  return {
-    type: "PlutusV3",
-    script: matches[0]!.compiledCode,
-  };
-};
+): Script => ({
+  type: "PlutusV3",
+  script: getUnappliedScript(
+    parseFaultProofBlueprint(blueprint),
+    PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE,
+  ),
+});
 
 export const phasMembershipRewardAddress = (
   network: Network,

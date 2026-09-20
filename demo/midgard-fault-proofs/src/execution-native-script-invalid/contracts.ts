@@ -1,11 +1,10 @@
 import {
-  applyParamsToScript,
-  type Data,
-  type Network,
-  type Script,
-  validatorToAddress,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
+  buildExecutionNativeScriptInvalidChain,
+  parseFaultProofBlueprint,
+  type SpendingValidator,
+} from "@al-ft/midgard-sdk";
+import { type Data, type Network, type Script } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
 export const EXECUTION_NATIVE_SCRIPT_INVALID_BLUEPRINT_TITLES = Object.freeze(
   Array.from(
@@ -80,153 +79,46 @@ export const applyExecutionNativeScriptInvalidScripts = ({
   hubOracleScriptHash: string;
   fieldPreimageCertificatePolicyId: string;
 }): ExecutionNativeScriptInvalidAppliedScripts => {
-  const apply = (index: number, parameters: readonly Data[]) => {
-    const blueprintTitle =
-      EXECUTION_NATIVE_SCRIPT_INVALID_BLUEPRINT_TITLES[index]!;
-    const validator = blueprint.validators.find(
-      ({ title }) => title === blueprintTitle,
-    );
-    if (validator === undefined)
-      throw new Error(
-        `executionNativeScriptInvalid: blueprint omitted ${blueprintTitle}`,
-      );
-    if ((validator.parameters?.length ?? 0) !== parameters.length)
-      throw new Error(
-        `executionNativeScriptInvalid: ${blueprintTitle} parameter arity changed`,
-      );
-    const spendingScript: Script = {
-      type: "PlutusV3",
-      script: applyParamsToScript(validator.compiledCode, [...parameters]),
-    };
-    return Object.freeze({
-      blueprintTitle,
-      spendingScript,
-      spendingScriptHash: validatorToScriptHash(spendingScript),
-      spendingScriptAddress: validatorToAddress(network, spendingScript),
+  const { steps } = Effect.runSync(
+    buildExecutionNativeScriptInvalidChain({
+      blueprint: parseFaultProofBlueprint(blueprint),
+      network,
+      hubOraclePolicyId: hubOracleScriptHash,
+      computationThread: { policyId: computationThreadPolicyId },
+      fraudProof: { policyId: fraudProofPolicyId },
+      fraudProofTokenAddressData,
+      fieldPreimageCertificatePolicyId,
+    }),
+  );
+  const titles = [
+    ...EXECUTION_NATIVE_SCRIPT_INVALID_BLUEPRINT_TITLES,
+    ...EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES,
+  ];
+  const adapt = (step: SpendingValidator, index: number) =>
+    Object.freeze({
+      blueprintTitle: titles[index]!,
+      spendingScript: step.spendingScript,
+      spendingScriptHash: step.spendingScriptHash,
+      spendingScriptAddress: step.spendingScriptAddress,
       referenceOutRef: `${"0".repeat(64)}#0`,
     });
-  };
-  const applyTitle = (blueprintTitle: string, parameters: readonly Data[]) => {
-    const validator = blueprint.validators.find(
-      ({ title }) => title === blueprintTitle,
-    );
-    if (validator === undefined)
-      throw new Error(
-        `executionNativeScriptInvalid: blueprint omitted ${blueprintTitle}`,
-      );
-    if ((validator.parameters?.length ?? 0) !== parameters.length)
-      throw new Error(
-        `executionNativeScriptInvalid: ${blueprintTitle} parameter arity changed`,
-      );
-    const spendingScript: Script = {
-      type: "PlutusV3",
-      script: applyParamsToScript(validator.compiledCode, [...parameters]),
-    };
-    return Object.freeze({
-      blueprintTitle,
-      spendingScript,
-      spendingScriptHash: validatorToScriptHash(spendingScript),
-      spendingScriptAddress: validatorToAddress(network, spendingScript),
-      referenceOutRef: `${"0".repeat(64)}#0`,
-    });
-  };
-  const step06 = apply(5, [
-    computationThreadPolicyId,
-    fraudProofPolicyId,
-    fraudProofTokenAddressData,
-  ]);
-  const step05 = apply(4, [
-    step06.spendingScriptHash,
-    computationThreadPolicyId,
-    fieldPreimageCertificatePolicyId,
-  ]);
-  const step04 = apply(3, [
-    step05.spendingScriptHash,
-    computationThreadPolicyId,
-    fraudProofPolicyId,
-    fraudProofTokenAddressData,
-    fieldPreimageCertificatePolicyId,
-  ]);
-  const step03 = apply(2, [
-    step04.spendingScriptHash,
-    computationThreadPolicyId,
-  ]);
-  const step02 = apply(1, [
-    step03.spendingScriptHash,
-    computationThreadPolicyId,
-  ]);
-  const acceptedReferenceSource = applyTitle(
-    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES[6],
-    [
-      step03.spendingScriptHash,
-      computationThreadPolicyId,
-      fieldPreimageCertificatePolicyId,
-    ],
-  );
-  const acceptedInlineSource = applyTitle(
-    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES[5],
-    [
-      step03.spendingScriptHash,
-      acceptedReferenceSource.spendingScriptHash,
-      computationThreadPolicyId,
-      fieldPreimageCertificatePolicyId,
-    ],
-  );
-  const acceptedReceive = applyTitle(
-    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES[4],
-    [
-      acceptedInlineSource.spendingScriptHash,
-      computationThreadPolicyId,
-      fieldPreimageCertificatePolicyId,
-    ],
-  );
-  const acceptedObserver = applyTitle(
-    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES[3],
-    [
-      acceptedReceive.spendingScriptHash,
-      acceptedInlineSource.spendingScriptHash,
-      computationThreadPolicyId,
-      fieldPreimageCertificatePolicyId,
-    ],
-  );
-  const acceptedMint = applyTitle(
-    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES[2],
-    [
-      acceptedObserver.spendingScriptHash,
-      acceptedInlineSource.spendingScriptHash,
-      computationThreadPolicyId,
-      fieldPreimageCertificatePolicyId,
-    ],
-  );
-  const acceptedSpend = applyTitle(
-    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES[1],
-    [
-      acceptedMint.spendingScriptHash,
-      acceptedInlineSource.spendingScriptHash,
-      computationThreadPolicyId,
-      fieldPreimageCertificatePolicyId,
-    ],
-  );
-  const acceptedInit = applyTitle(
-    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES[0],
-    [acceptedSpend.spendingScriptHash, computationThreadPolicyId],
-  );
-  const step01 = apply(0, [
-    acceptedInit.spendingScriptHash,
-    step02.spendingScriptHash,
-    computationThreadPolicyId,
-    hubOracleScriptHash,
-  ]);
-  const logicalSteps = [step01, step02, step03, step04, step05, step06];
+  const logicalSteps = [
+    adapt(steps[0], 0),
+    adapt(steps[1], 1),
+    adapt(steps[2], 2),
+    adapt(steps[3], 3),
+    adapt(steps[4], 4),
+    adapt(steps[5], 5),
+  ];
   Object.defineProperty(logicalSteps, "acceptedPrelude", {
     value: Object.freeze([
-      acceptedInit,
-      acceptedSpend,
-      acceptedMint,
-      acceptedObserver,
-      acceptedReceive,
-      acceptedInlineSource,
-      acceptedReferenceSource,
+      adapt(steps[6], 6),
+      adapt(steps[7], 7),
+      adapt(steps[8], 8),
+      adapt(steps[9], 9),
+      adapt(steps[10], 10),
+      adapt(steps[11], 11),
+      adapt(steps[12], 12),
     ]),
     enumerable: false,
   });

@@ -21,6 +21,7 @@ export * from "./native-tx-field-access.js";
 export * from "./operator-lifecycle.js";
 export * from "./payout.js";
 export * from "./phas-membership.js";
+export * from "./protocol-contracts.js";
 export * from "./protocol-parameters.js";
 export * from "./reference-scripts.js";
 export * from "./registered-operators.js";

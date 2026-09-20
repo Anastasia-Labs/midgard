@@ -5,10 +5,10 @@ import {
   MintingValidator,
   SpendingValidator,
 } from "../../../common.js";
+import type { FaultProofChainInputs } from "../shared.js";
 import {
   buildFaultProofSpendingStep,
   buildSharedFaultProofContracts,
-  type SharedFaultProofContracts,
 } from "../shared.js";
 import {
   type BuildFaultProofContractsParams,
@@ -44,7 +44,7 @@ export const buildReceivePurposeLanguageChain = ({
   computationThread,
   fraudProof,
   fraudProofTokenAddressData,
-}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+}: FaultProofChainInputs): Effect.Effect<
   ReceivePurposeLanguageFaultProofContracts["receivePurposeLanguage"],
   Error
 > =>

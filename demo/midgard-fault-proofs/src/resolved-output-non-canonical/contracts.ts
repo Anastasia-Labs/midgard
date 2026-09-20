@@ -1,11 +1,16 @@
 import {
-  applyParamsToScript,
+  buildResolvedOutputNonCanonicalChain,
+  parseFaultProofBlueprint,
+  type SpendingValidator,
+} from "@al-ft/midgard-sdk";
+import {
   type Data,
   type Network,
   type Script,
   validatorToAddress,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
 import {
   RESOLVED_OUTPUT_NON_CANONICAL_CATEGORY,
@@ -98,59 +103,33 @@ export const applyResolvedOutputNonCanonicalScripts = ({
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOracleScriptHash: string;
 }): ResolvedOutputNonCanonicalManifest["steps"] => {
-  const applied = (
-    index: number,
-    parameters: readonly Data[],
-  ): ResolvedOutputNonCanonicalAppliedStep => {
-    const blueprintTitle =
-      RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES[index]!;
-    const validator = blueprint.validators.find(
-      (entry) => entry.title === blueprintTitle,
-    );
-    if (validator === undefined)
-      throw new Error(
-        `resolvedOutputNonCanonical: blueprint omitted ${blueprintTitle}`,
-      );
-    if ((validator.parameters?.length ?? 0) !== parameters.length)
-      throw new Error(
-        `resolvedOutputNonCanonical: ${blueprintTitle} parameter arity changed`,
-      );
-    const spendingScript: Script = {
-      type: "PlutusV3",
-      script: applyParamsToScript(validator.compiledCode, [...parameters]),
-    };
-    return Object.freeze({
-      blueprintTitle,
-      spendingScript,
-      spendingScriptHash: validatorToScriptHash(spendingScript),
-      spendingScriptAddress: validatorToAddress(network, spendingScript),
+  const { steps } = Effect.runSync(
+    buildResolvedOutputNonCanonicalChain({
+      blueprint: parseFaultProofBlueprint(blueprint),
+      network,
+      hubOraclePolicyId: hubOracleScriptHash,
+      computationThread: { policyId: computationThreadPolicyId },
+      fraudProof: { policyId: fraudProofPolicyId },
+      fraudProofTokenAddressData,
+      fieldPreimageCertificatePolicyId,
+    }),
+  );
+  const titles = Object.values(RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES);
+  const adapt = (step: SpendingValidator, index: number) =>
+    Object.freeze({
+      blueprintTitle: titles[index]!,
+      spendingScript: step.spendingScript,
+      spendingScriptHash: step.spendingScriptHash,
+      spendingScriptAddress: step.spendingScriptAddress,
       referenceOutRef: `${"0".repeat(64)}#0`,
     });
-  };
-  const step05 = applied(4, [
-    fraudProofPolicyId,
-    fraudProofTokenAddressData,
-    computationThreadPolicyId,
-  ]);
-  const step04 = applied(3, [
-    step05.spendingScriptHash,
-    computationThreadPolicyId,
-  ]);
-  const step03 = applied(2, [
-    step04.spendingScriptHash,
-    computationThreadPolicyId,
-  ]);
-  const step02 = applied(1, [
-    step03.spendingScriptHash,
-    computationThreadPolicyId,
-    fieldPreimageCertificatePolicyId,
-  ]);
-  const step01 = applied(0, [
-    step02.spendingScriptHash,
-    computationThreadPolicyId,
-    hubOracleScriptHash,
-  ]);
-  return [step01, step02, step03, step04, step05];
+  return [
+    adapt(steps[0], 0),
+    adapt(steps[1], 1),
+    adapt(steps[2], 2),
+    adapt(steps[3], 3),
+    adapt(steps[4], 4),
+  ];
 };
 
 const h = (value: string, bytes: number, label: string): void => {

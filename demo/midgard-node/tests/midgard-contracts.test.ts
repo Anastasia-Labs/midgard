@@ -104,6 +104,12 @@ describe("midgard contracts registry", () => {
         },
       );
 
+      // Full production bundle captured at 2bc9bdbcdc21 before builder consolidation.
+      expect(
+        createHash("sha256").update(JSON.stringify(resolved)).digest("hex"),
+      ).toBe(
+        "8453fdfe9546ca85cace812dea8bf16e3bd64edd0eacb7676cbfac1417bfb86c",
+      );
       // Captured from the production recipes at 4cb2f2336 before extraction.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
       expect(

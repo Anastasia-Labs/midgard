@@ -1,11 +1,10 @@
 import {
-  applyParamsToScript,
-  type Data,
-  type Network,
-  type Script,
-  validatorToAddress,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
+  buildZeroInputChain,
+  parseFaultProofBlueprint,
+  type SpendingValidator,
+} from "@al-ft/midgard-sdk";
+import { type Data, type Network, type Script } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
 export const ZERO_INPUT_BLUEPRINT_TITLES = Object.freeze([
   "fraud_proofs/zero_input/step_01.main.spend",
@@ -46,22 +45,6 @@ type Blueprint = Readonly<{
   }>[];
 }>;
 
-const applyExact = (
-  blueprint: Blueprint,
-  title: string,
-  parameters: readonly Data[],
-): Script => {
-  const validator = blueprint.validators.find((entry) => entry.title === title);
-  if (validator === undefined)
-    throw new Error(`zeroInput: blueprint omitted ${title}`);
-  if ((validator.parameters?.length ?? 0) !== parameters.length)
-    throw new Error(`zeroInput: ${title} parameter arity changed`);
-  return {
-    type: "PlutusV3",
-    script: applyParamsToScript(validator.compiledCode, [...parameters]),
-  };
-};
-
 export const applyZeroInputScripts = ({
   blueprint,
   network,
@@ -79,27 +62,25 @@ export const applyZeroInputScripts = ({
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOracleScriptHash: string;
 }): ZeroInputContracts["steps"] => {
-  const applied = (index: number, parameters: readonly Data[]) => {
-    const blueprintTitle = ZERO_INPUT_BLUEPRINT_TITLES[index]!;
-    const spendingScript = applyExact(blueprint, blueprintTitle, parameters);
-    return Object.freeze({
-      blueprintTitle,
-      spendingScript,
-      spendingScriptHash: validatorToScriptHash(spendingScript),
-      spendingScriptAddress: validatorToAddress(network, spendingScript),
+  const { steps } = Effect.runSync(
+    buildZeroInputChain({
+      blueprint: parseFaultProofBlueprint(blueprint),
+      network,
+      hubOraclePolicyId: hubOracleScriptHash,
+      computationThread: { policyId: computationThreadPolicyId },
+      fraudProof: { policyId: fraudProofPolicyId },
+      fraudProofTokenAddressData,
+      fieldPreimageCertificatePolicyId,
+    }),
+  );
+  const titles = Object.values(ZERO_INPUT_BLUEPRINT_TITLES);
+  const adapt = (step: SpendingValidator, index: number) =>
+    Object.freeze({
+      blueprintTitle: titles[index]!,
+      spendingScript: step.spendingScript,
+      spendingScriptHash: step.spendingScriptHash,
+      spendingScriptAddress: step.spendingScriptAddress,
       referenceOutRef: `${"0".repeat(64)}#0`,
     });
-  };
-  const step02 = applied(1, [
-    fraudProofPolicyId,
-    fraudProofTokenAddressData,
-    computationThreadPolicyId,
-    fieldPreimageCertificatePolicyId,
-  ]);
-  const step01 = applied(0, [
-    step02.spendingScriptHash,
-    computationThreadPolicyId,
-    hubOracleScriptHash,
-  ]);
-  return [step01, step02];
+  return [adapt(steps[0], 0), adapt(steps[1], 1)];
 };

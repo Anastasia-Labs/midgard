@@ -1,11 +1,10 @@
 import {
-  applyParamsToScript,
-  type Data,
-  type Network,
-  type Script,
-  validatorToAddress,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
+  buildMissingRedeemerChain,
+  parseFaultProofBlueprint,
+  type SpendingValidator,
+} from "@al-ft/midgard-sdk";
+import { type Data, type Network, type Script } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
 export const MISSING_REDEEMER_BLUEPRINT_TITLES = Object.freeze([
   "fraud_proofs/missing_redeemer/step_01.main.spend",
@@ -72,52 +71,33 @@ export const applyMissingRedeemerScripts = ({
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOracleScriptHash: string;
 }): MissingRedeemerContracts["steps"] => {
-  const apply = (
-    index: number,
-    parameters: readonly Data[],
-  ): MissingRedeemerStepContract => {
-    const title = MISSING_REDEEMER_BLUEPRINT_TITLES[index]!;
-    const entry = blueprint.validators.find(
-      (candidate) => candidate.title === title,
-    );
-    if (entry === undefined)
-      throw new Error(`missingRedeemer: blueprint omitted ${title}`);
-    if ((entry.parameters?.length ?? 0) !== parameters.length)
-      throw new Error(`missingRedeemer: ${title} parameter arity changed`);
-    const spendingScript: Script = {
-      type: "PlutusV3",
-      script: applyParamsToScript(entry.compiledCode, [...parameters]),
-    };
-    return Object.freeze({
-      blueprintTitle: title,
-      spendingScript,
-      spendingScriptHash: validatorToScriptHash(spendingScript),
-      spendingScriptAddress: validatorToAddress(network, spendingScript),
+  const { steps } = Effect.runSync(
+    buildMissingRedeemerChain({
+      blueprint: parseFaultProofBlueprint(blueprint),
+      network,
+      hubOraclePolicyId: hubOracleScriptHash,
+      computationThread: { policyId: computationThreadPolicyId },
+      fraudProof: { policyId: fraudProofPolicyId },
+      fraudProofTokenAddressData,
+      fieldPreimageCertificatePolicyId,
+    }),
+  );
+  const titles = Object.values(MISSING_REDEEMER_BLUEPRINT_TITLES);
+  const adapt = (step: SpendingValidator, index: number) =>
+    Object.freeze({
+      blueprintTitle: titles[index]!,
+      spendingScript: step.spendingScript,
+      spendingScriptHash: step.spendingScriptHash,
+      spendingScriptAddress: step.spendingScriptAddress,
       referenceOutRef: `${"0".repeat(64)}#0`,
     });
-  };
-  const s5 = apply(6, [
-    fraudProofPolicyId,
-    fraudProofTokenAddressData,
-    computationThreadPolicyId,
-  ]);
-  const s4 = apply(5, [
-    s5.spendingScriptHash,
-    computationThreadPolicyId,
-    fieldPreimageCertificatePolicyId,
-  ]);
-  const s3 = apply(4, [
-    s4.spendingScriptHash,
-    computationThreadPolicyId,
-    fieldPreimageCertificatePolicyId,
-  ]);
-  const s2b = apply(3, [s3.spendingScriptHash, computationThreadPolicyId]);
-  const s2a = apply(2, [s2b.spendingScriptHash, computationThreadPolicyId]);
-  const s2 = apply(1, [s2a.spendingScriptHash, computationThreadPolicyId]);
-  const s1 = apply(0, [
-    s2.spendingScriptHash,
-    computationThreadPolicyId,
-    hubOracleScriptHash,
-  ]);
-  return [s1, s2, s2a, s2b, s3, s4, s5];
+  return [
+    adapt(steps[0], 0),
+    adapt(steps[1], 1),
+    adapt(steps[2], 2),
+    adapt(steps[3], 3),
+    adapt(steps[4], 4),
+    adapt(steps[5], 5),
+    adapt(steps[6], 6),
+  ];
 };

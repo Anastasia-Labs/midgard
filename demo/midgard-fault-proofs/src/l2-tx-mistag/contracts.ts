@@ -1,3 +1,8 @@
+import {
+  buildL2TxMistagChain as buildSdkChain,
+  parseFaultProofBlueprint,
+  type SpendingValidator,
+} from "@al-ft/midgard-sdk";
 /**
  * Explicit pre-registration contract record for `l2-tx-mistag`.
  *
@@ -6,15 +11,8 @@
  * - step_01: `[step_02_validator_script_hash, computation_thread_token_policy_id, hub_oracle]`
  * - step_02: `[fraud_proof_token_policy_id, fraud_proof_token_address, computation_thread_token_policy_id]`
  */
-import {
-  type Data,
-  type Network,
-  type Script,
-  validatorToAddress,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
-
-import { applyBlueprintParamsExact } from "../runtime.js";
+import { type Data, type Network, type Script } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
 export const L2_TX_MISTAG_CATEGORY_LABEL = "l2-tx-mistag";
 
@@ -46,26 +44,6 @@ export type L2TxMistagContracts = {
 
 export type L2TxMistagBlueprint = unknown;
 
-const applyExact = (
-  blueprint: L2TxMistagBlueprint,
-  title: string,
-  params: readonly Data[],
-): string => {
-  return applyBlueprintParamsExact({ blueprint, title, params });
-};
-
-const spendingContract = (
-  network: Network,
-  scriptCbor: string,
-): L2TxMistagStepContract => {
-  const spendingScript: Script = { type: "PlutusV3", script: scriptCbor };
-  return {
-    spendingScript,
-    spendingScriptHash: validatorToScriptHash(spendingScript),
-    spendingScriptAddress: validatorToAddress(network, spendingScript),
-  };
-};
-
 export const buildL2TxMistagChain = ({
   blueprint,
   network,
@@ -81,21 +59,20 @@ export const buildL2TxMistagChain = ({
   readonly fraudProofTokenAddressData: Data;
   readonly hubOraclePolicyId: string;
 }): readonly [L2TxMistagStepContract, L2TxMistagStepContract] => {
-  const step02 = spendingContract(
-    network,
-    applyExact(blueprint, L2_TX_MISTAG_BLUEPRINT_TITLES.step02, [
-      fraudProofPolicyId,
-      fraudProofTokenAddressData,
-      computationThreadPolicyId,
-    ]),
-  );
-  const step01 = spendingContract(
-    network,
-    applyExact(blueprint, L2_TX_MISTAG_BLUEPRINT_TITLES.step01, [
-      step02.spendingScriptHash,
-      computationThreadPolicyId,
+  const { steps } = Effect.runSync(
+    buildSdkChain({
+      blueprint: parseFaultProofBlueprint(blueprint),
+      network,
       hubOraclePolicyId,
-    ]),
+      computationThread: { policyId: computationThreadPolicyId },
+      fraudProof: { policyId: fraudProofPolicyId },
+      fraudProofTokenAddressData,
+    }),
   );
-  return [step01, step02];
+  const adapt = (step: SpendingValidator): L2TxMistagStepContract => ({
+    spendingScript: step.spendingScript,
+    spendingScriptHash: step.spendingScriptHash,
+    spendingScriptAddress: step.spendingScriptAddress,
+  });
+  return [adapt(steps[0]), adapt(steps[1])];
 };

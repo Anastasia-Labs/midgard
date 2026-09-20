@@ -2,7 +2,7 @@
 
 Status: Active
 
-Last reviewed: 2026-09-17 (shared family assembly and recovery).
+Last reviewed: 2026-09-19 (production contract construction ownership).
 
 ## End-to-end path
 
@@ -27,6 +27,21 @@ The system uses two proof shapes:
 
 `transitionTrace` is a separate routed family for boundary, link, event,
 source, duplicate, omission, window, count, and one-step transition faults.
+
+## Contract construction
+
+The SDK owns blueprint parameter validation, script identities, and family
+recipes. Node and runtime consumers use those builders; runtime `contracts.ts`
+modules adapt their results to submission records. The SDK's unique-title lookup
+rejects missing and duplicated titles before any application or bare load, and
+parameter arity and declared shapes are checked before cache hits. Raw byte
+measurement is separate from deployment construction.
+
+Protocol recipes and the intentional native-policy, hub-oracle credential, and
+submission metadata adapters are described in the
+[SDK construction ownership guide](../../demo/midgard-sdk/README.md#contract-construction-ownership).
+Adversarial emulator adapters remain explicit. Publication/deployment continues
+to use funding-wallet authority; prover consumption is a separate operation.
 
 ## Family workflow assembly
 

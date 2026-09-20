@@ -65,6 +65,33 @@ The convention is the same as Lucid Evolution, i.e. functions that return
 Note that this SDK is under ongoing development and these conventions may not
 hold for every single function yet.
 
+## Contract construction ownership
+
+Production construction is shared across the node, fault-proof runtime, and
+ordinary emulator fixtures:
+
+- `src/fraud-proof/contracts/blueprint.ts` owns unique title lookup, exact arity,
+  declared parameter shape checks, application caching, and Plutus V3 identities.
+  `getUnappliedScript` only admits zero-parameter validators, including the PHAS
+  reward registration loader. Its JSON adapter retains the nonempty-code check. Parsing preserves
+  schema references even when its input was already normalized.
+- `src/protocol-contracts.ts` owns operator directory, scheduler, DA governor,
+  attestation, availability challenge, settlement, reserve, payout, catalogue,
+  computation-thread, and fraud-proof token recipes. User-event and state-queue
+  builders remain in their dedicated modules.
+- `src/fraud-proof/contracts/families` owns each fault-proof chain's parameter
+  order and dependency graph. Exported chain builders accept already-derived
+  policy identities; full family builders derive those identities from the
+  deployment blueprint first.
+
+The node owns blueprint file/config loading, Effect error adaptation, deployment
+ordering, and manifest verification. Its native reference-script policy and the
+hub oracle's mint-policy spending credential are intentional adapters. Runtime
+family adapters retain submission-specific reference outrefs, metadata, and the
+native-execution accepted prelude without reimplementing chain recipes.
+`measureBlueprintValidatorBytes` remains a runtime measurement-only operation;
+its raw body must never be used as a deployable parameterized script.
+
 ## Availability challenge transactions
 
 The availability lifecycle uses the completed `buildOpenDaAvailabilityChallengeTxProgram`,

@@ -19,10 +19,7 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { normalizeOutRef } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  applyParamsToScript,
-  Constr,
   credentialToAddress,
-  Data,
   MintingPolicy,
   mintingPolicyToId,
   Network,
@@ -55,22 +52,7 @@ import { NodeConfig, type NodeConfigDep } from "./config.js";
  * derive the real script set from a blueprint, applying protocol parameters
  * where required.
  */
-type BlueprintValidator = {
-  title: string;
-  compiledCode: string;
-  /**
-   * The compile-time parameters the blueprint declares for this validator, in
-   * order. Optional because the compiler OMITS the key for a validator that
-   * takes none — so absent means zero declared, never "unknown, skip the
-   * check". {@link applyBlueprintDeclaredParams} reads it that way (#609): an
-   * abstaining check is what let ten fraud-proof validators ship under-applied.
-   */
-  parameters?: readonly { title?: string }[];
-};
-
-type Blueprint = {
-  validators: BlueprintValidator[];
-};
+type Blueprint = SDK.FaultProofBlueprint;
 
 export type ContractDeploymentIdentityValue = {
   readonly kind: "manifest" | "derived";
@@ -132,17 +114,11 @@ let cachedRealBlueprint:
   | undefined;
 
 const parseBlueprint = (raw: string, sourcePath: string): Blueprint => {
-  const parsed = JSON.parse(raw) as unknown;
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    !Array.isArray((parsed as { validators?: unknown }).validators)
-  ) {
-    throw new Error(
-      `Blueprint at "${sourcePath}" does not have a validators array`,
-    );
+  try {
+    return SDK.parseFaultProofBlueprint(JSON.parse(raw) as unknown);
+  } catch (cause) {
+    throw new Error(`Invalid blueprint at "${sourcePath}"`, { cause });
   }
-  return parsed as Blueprint;
 };
 
 const resolveDefaultRealBlueprintPath = (): string => {
@@ -1756,25 +1732,14 @@ export const REAL_STATE_QUEUE_SCRIPT_TITLES = SDK.STATE_QUEUE_SCRIPT_TITLES;
 export const REAL_CORRECTION_LOCK_SCRIPT_TITLES =
   SDK.CORRECTION_LOCK_SCRIPT_TITLES;
 
-export const REAL_DA_PARAMS_GOVERNOR_SCRIPT_TITLES = {
-  mint: "da_params_governor.da_params_governor.mint",
-  spend: "da_params_governor.da_params_governor.spend",
-} as const;
+export const REAL_DA_PARAMS_GOVERNOR_SCRIPT_TITLES =
+  SDK.DA_PARAMS_GOVERNOR_SCRIPT_TITLES;
 
-export const REAL_DA_ATTESTATION_SCRIPT_TITLES = {
-  mint: "da_attestation.da_attestation.mint",
-  spend: "da_attestation.da_attestation.spend",
-} as const;
+export const REAL_DA_ATTESTATION_SCRIPT_TITLES =
+  SDK.DA_ATTESTATION_SCRIPT_TITLES;
 
-export const REAL_AVAILABILITY_CHALLENGE_SCRIPT_TITLES = {
-  mint: "availability_challenge.availability_challenge.mint",
-  spend: "availability_challenge.availability_challenge.spend",
-  bondYield: "availability_challenge_yields.bond.withdraw",
-  openYield: "availability_challenge_yields.open.withdraw",
-  settleYield: "availability_challenge_yields.settle.withdraw",
-  closeYield: "availability_challenge_yields.close.withdraw",
-  timeoutYield: "availability_challenge_yields.timeout.withdraw",
-} as const;
+export const REAL_AVAILABILITY_CHALLENGE_SCRIPT_TITLES =
+  SDK.AVAILABILITY_CHALLENGE_SCRIPT_TITLES;
 
 /**
  * Blueprint titles for the real hub-oracle scripts.
@@ -1785,34 +1750,25 @@ export const REAL_HUB_ORACLE_SCRIPT_TITLES =
 /**
  * Blueprint titles for the real registered-operators scripts.
  */
-export const REAL_REGISTERED_OPERATORS_SCRIPT_TITLES = {
-  mint: "operator_directory/registered_operators.mint.mint",
-  spend: "operator_directory/registered_operators.spend.spend",
-} as const;
+export const REAL_REGISTERED_OPERATORS_SCRIPT_TITLES =
+  SDK.REGISTERED_OPERATORS_SCRIPT_TITLES;
 
 /**
  * Blueprint titles for the real active-operators scripts.
  */
-export const REAL_ACTIVE_OPERATORS_SCRIPT_TITLES = {
-  mint: "operator_directory/active_operators.mint.mint",
-  spend: "operator_directory/active_operators.spend.spend",
-} as const;
+export const REAL_ACTIVE_OPERATORS_SCRIPT_TITLES =
+  SDK.ACTIVE_OPERATORS_SCRIPT_TITLES;
 
 /**
  * Blueprint titles for the real retired-operators scripts.
  */
-export const REAL_RETIRED_OPERATORS_SCRIPT_TITLES = {
-  mint: "operator_directory/retired_operators.mint.mint",
-  spend: "operator_directory/retired_operators.spend.spend",
-} as const;
+export const REAL_RETIRED_OPERATORS_SCRIPT_TITLES =
+  SDK.RETIRED_OPERATORS_SCRIPT_TITLES;
 
 /**
  * Blueprint titles for the real scheduler scripts.
  */
-export const REAL_SCHEDULER_SCRIPT_TITLES = {
-  mint: "scheduler.mint.mint",
-  spend: "scheduler.spend.spend",
-} as const;
+export const REAL_SCHEDULER_SCRIPT_TITLES = SDK.SCHEDULER_SCRIPT_TITLES;
 
 /**
  * Blueprint titles for the real deposit scripts.
@@ -1835,40 +1791,25 @@ export const REAL_WITHDRAWAL_SCRIPT_TITLES =
 /**
  * Blueprint titles for the real settlement scripts.
  */
-export const REAL_SETTLEMENT_SCRIPT_TITLES = {
-  mint: "settlement.mint.mint",
-  spend: "settlement.spend.spend",
-} as const;
+export const REAL_SETTLEMENT_SCRIPT_TITLES = SDK.SETTLEMENT_SCRIPT_TITLES;
 
 /**
  * Blueprint titles for the real reserve scripts.
  */
-export const REAL_RESERVE_SCRIPT_TITLES = {
-  spend: "reserve.spend.spend",
-  withdraw: "reserve.withdraw.else",
-} as const;
+export const REAL_RESERVE_SCRIPT_TITLES = SDK.RESERVE_SCRIPT_TITLES;
 
 /**
  * Blueprint titles for the real payout scripts.
  */
-export const REAL_PAYOUT_SCRIPT_TITLES = {
-  mint: "payout.mint.mint",
-  spend: "payout.spend.spend",
-} as const;
+export const REAL_PAYOUT_SCRIPT_TITLES = SDK.PAYOUT_SCRIPT_TITLES;
 
-export const REAL_FRAUD_PROOF_CATALOGUE_SCRIPT_TITLES = {
-  mint: "fraud_proof_catalogue.mint.mint",
-  spend: "fraud_proof_catalogue.spend.else",
-} as const;
+export const REAL_FRAUD_PROOF_CATALOGUE_SCRIPT_TITLES =
+  SDK.FRAUD_PROOF_CATALOGUE_SCRIPT_TITLES;
 
-export const REAL_COMPUTATION_THREAD_SCRIPT_TITLES = {
-  mint: "computation_thread.mint.mint",
-} as const;
+export const REAL_COMPUTATION_THREAD_SCRIPT_TITLES =
+  SDK.COMPUTATION_THREAD_SCRIPT_TITLES;
 
-export const REAL_FRAUD_PROOF_SCRIPT_TITLES = {
-  mint: "fraud_proof.mint.mint",
-  spend: "fraud_proof.spend.else",
-} as const;
+export const REAL_FRAUD_PROOF_SCRIPT_TITLES = SDK.FRAUD_PROOF_SCRIPT_TITLES;
 
 /**
  * One-shot outref used to parameterize the real hub-oracle policy.
@@ -1886,13 +1827,6 @@ export type RealContractDeploymentParameters = {
   readonly daParamsMaxOwnerCount?: number;
 };
 
-type ScriptParams = Data[];
-
-type AuthenticatedScriptTitles = {
-  readonly mint: string;
-  readonly spend: string;
-};
-
 /**
  * Normalizes the configured one-shot outref used to parameterize the real
  * hub-oracle policy.
@@ -1907,174 +1841,6 @@ const normalizeHubOracleOneShotOutRef = (
   });
 
 /**
- * Looks up a compiled script by title inside the resolved blueprint.
- */
-const getBlueprintValidator = (
-  blueprint: Blueprint,
-  title: string,
-): Effect.Effect<BlueprintValidator, Error> =>
-  Effect.gen(function* () {
-    const found = blueprint.validators.find(
-      (validator) => validator.title === title,
-    );
-    if (found === undefined) {
-      return yield* Effect.fail(
-        new Error(`Validator with title "${title}" not found in blueprint`),
-      );
-    }
-    return found;
-  });
-
-/**
- * `applyParamsToScript` with the blueprint's own declared arity asserted first —
- * the single door every deployment in this module goes through (#609).
- *
- * `applyParamsToScript` applies whatever list it is handed. Applying too MANY
- * terms does not fail there: it yields a well-formed script with a wrong hash,
- * so the mismatch surfaces as a policy id that matches nothing on chain — days
- * later and nowhere near this line. Applying too FEW is worse and silent: the
- * unapplied `validator main(...)` parameters remain lambdas, the ledger's single
- * script-context application reduces to a lambda VALUE rather than running the
- * body, and "no error" is read as SUCCESS. The validator becomes an
- * unconditional always-succeeds script with its Aiken guards never executing.
- * Ten fraud-proof semantic resolvers shipped exactly that way (#605/#609).
- *
- * It originally guarded one call site — the tx-order mint, whose source arity
- * moved in #594 — and abstained when the blueprint omitted `parameters`.
- * #609 removed both escapes: absent `parameters` is the compiler's encoding of
- * "declares none" and is now read as zero, and every load site in this module
- * applies through here.
- */
-const applyBlueprintDeclaredParams = (
-  validator: BlueprintValidator,
-  params: readonly Data[],
-): Effect.Effect<string, Error> =>
-  Effect.gen(function* () {
-    const declared = validator.parameters ?? [];
-    if (declared.length !== params.length) {
-      return yield* Effect.fail(
-        new Error(
-          `Blueprint validator "${validator.title}" declares ${declared.length.toString()} ` +
-            `parameter(s) (${
-              declared.length === 0
-                ? "none"
-                : declared.map((parameter) => parameter.title ?? "?").join(", ")
-            }) but ${params.length.toString()} were applied. ` +
-            "Under-application deploys an always-succeeds script and " +
-            "over-application deploys a wrong hash (#609).",
-        ),
-      );
-    }
-    return applyParamsToScript(validator.compiledCode, [...params]);
-  });
-
-/**
- * The same fail-closed reading for a validator deployed with no parameters at
- * all: a title that silently grows one must not keep being deployed bare.
- */
-const unappliedBlueprintScript = (
-  validator: BlueprintValidator,
-): Effect.Effect<string, Error> =>
-  Effect.gen(function* () {
-    const declared = validator.parameters ?? [];
-    if (declared.length !== 0) {
-      return yield* Effect.fail(
-        new Error(
-          `Blueprint validator "${validator.title}" declares ${declared.length.toString()} ` +
-            `parameter(s) (${declared
-              .map((parameter) => parameter.title ?? "?")
-              .join(", ")}) but is deployed with none applied, ` +
-            "which is an always-succeeds script (#609).",
-        ),
-      );
-    }
-    return validator.compiledCode;
-  });
-
-const makeMintingPolicy = (mintingScriptCBOR: string): SDK.MintingValidator => {
-  const mintingScript: MintingPolicy = {
-    type: "PlutusV3",
-    script: mintingScriptCBOR,
-  };
-  return {
-    mintingScriptCBOR,
-    mintingScript,
-    policyId: mintingPolicyToId(mintingScript),
-  };
-};
-
-const makeSpendingValidator = (
-  network: Network,
-  spendingScriptCBOR: string,
-): SDK.SpendingValidator => {
-  const spendingScript: SpendingValidator = {
-    type: "PlutusV3",
-    script: spendingScriptCBOR,
-  };
-  return {
-    spendingScriptCBOR,
-    spendingScript,
-    spendingScriptAddress: validatorToAddress(network, spendingScript),
-    spendingScriptHash: validatorToScriptHash(spendingScript),
-  };
-};
-
-const makeWithdrawalValidator = (
-  withdrawalScriptCBOR: string,
-): SDK.WithdrawalValidator => {
-  const withdrawalScript: WithdrawalValidator = {
-    type: "PlutusV3",
-    script: withdrawalScriptCBOR,
-  };
-  return {
-    withdrawalScriptCBOR,
-    withdrawalScript,
-    withdrawalScriptHash: validatorToScriptHash(withdrawalScript),
-  };
-};
-
-const makeAuthenticatedValidator = (
-  network: Network,
-  mintingScriptCBOR: string,
-  spendingScriptCBOR: string,
-): SDK.AuthenticatedValidator => ({
-  ...makeSpendingValidator(network, spendingScriptCBOR),
-  ...makeMintingPolicy(mintingScriptCBOR),
-});
-
-const buildRealAuthenticatedValidator = (
-  network: Network,
-  titles: AuthenticatedScriptTitles,
-  mintParams: ScriptParams,
-  spendParams?: (policyId: string) => ScriptParams,
-): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
-  Effect.gen(function* () {
-    const blueprint = yield* loadRealBlueprint();
-    const mintValidator = yield* getBlueprintValidator(blueprint, titles.mint);
-    const spendValidator = yield* getBlueprintValidator(
-      blueprint,
-      titles.spend,
-    );
-    const mintingScriptCBOR = yield* applyBlueprintDeclaredParams(
-      mintValidator,
-      mintParams,
-    );
-    const { policyId } = makeMintingPolicy(mintingScriptCBOR);
-    const spendingScriptCBOR =
-      spendParams === undefined
-        ? yield* unappliedBlueprintScript(spendValidator)
-        : yield* applyBlueprintDeclaredParams(
-            spendValidator,
-            spendParams(policyId),
-          );
-    return makeAuthenticatedValidator(
-      network,
-      mintingScriptCBOR,
-      spendingScriptCBOR,
-    );
-  });
-
-/**
  * Builds the real hub-oracle minting validator parameterized by the configured
  * one-shot outref.
  */
@@ -2084,7 +1850,7 @@ const buildRealHubOracleValidator = (
   oneShotOutRef: HubOracleOneShotOutRef,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const blueprint = yield* loadRealBlueprint();
     const { mintingScriptCBOR, mintingScript, policyId } = yield* Effect.try({
       try: () =>
         SDK.buildHubOracleMintingValidator({ blueprint, oneShotOutRef }),
@@ -2111,36 +1877,41 @@ const buildRealFraudProofCatalogueValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
-  buildRealAuthenticatedValidator(
-    network,
-    REAL_FRAUD_PROOF_CATALOGUE_SCRIPT_TITLES,
-    [contracts.hubOracle.policyId],
-  );
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    return yield* Effect.try({
+      try: () =>
+        SDK.buildFraudProofCatalogueValidator(blueprint, network, contracts),
+      catch: (cause) =>
+        new Error("Failed to build FraudProofCatalogueValidator", { cause }),
+    });
+  });
 
 const buildRealComputationThreadValidator = (
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<SDK.MintingValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
-    const mintValidator = yield* getBlueprintValidator(
-      blueprint,
-      REAL_COMPUTATION_THREAD_SCRIPT_TITLES.mint,
-    );
-    return makeMintingPolicy(
-      yield* applyBlueprintDeclaredParams(mintValidator, [
-        contracts.fraudProofCatalogue.policyId,
-        contracts.hubOracle.policyId,
-      ]),
-    );
+    return yield* Effect.try({
+      try: () => SDK.buildComputationThreadValidator(blueprint, contracts),
+      catch: (cause) =>
+        new Error("Failed to build ComputationThreadValidator", { cause }),
+    });
   });
 
 const buildRealFraudProofValidator = (
   network: Network,
   computationThread: SDK.MintingValidator,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
-  buildRealAuthenticatedValidator(network, REAL_FRAUD_PROOF_SCRIPT_TITLES, [
-    computationThread.policyId,
-  ]);
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    return yield* Effect.try({
+      try: () =>
+        SDK.buildFraudProofValidator(blueprint, network, computationThread),
+      catch: (cause) =>
+        new Error("Failed to build FraudProofValidator", { cause }),
+    });
+  });
 
 const buildRealFraudProofSharedWithdrawalValidators = (): Effect.Effect<
   Readonly<{
@@ -2151,26 +1922,14 @@ const buildRealFraudProofSharedWithdrawalValidators = (): Effect.Effect<
 > =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
-    const chunkedVerify = yield* getBlueprintValidator(
-      blueprint,
-      SDK.MPF_CHUNKED_VERIFY_WITHDRAW_TITLE,
-    );
-    const pexcludes = yield* getBlueprintValidator(
-      blueprint,
-      SDK.PEXCLUDES_EXCLUSION_WITHDRAW_TITLE,
-    );
-    return {
-      chunkedVerify: makeWithdrawalValidator(
-        yield* unappliedBlueprintScript(chunkedVerify),
-      ),
-      pexcludes: makeWithdrawalValidator(
-        yield* unappliedBlueprintScript(pexcludes),
-      ),
-    };
+    return yield* Effect.try({
+      try: () => SDK.buildFraudProofSharedWithdrawalValidators(blueprint),
+      catch: (cause) =>
+        new Error("Failed to build FraudProofSharedWithdrawalValidators", {
+          cause,
+        }),
+    });
   });
-
-const outputReferenceParam = (outRef: HubOracleOneShotOutRef): Constr<Data> =>
-  new Constr(0, [outRef.txHash, BigInt(outRef.outputIndex)]);
 
 const buildRealDaParamsGovernorValidator = (
   network: Network,
@@ -2178,47 +1937,43 @@ const buildRealDaParamsGovernorValidator = (
   maxCommitteeSize: number,
   maxOwnerCount: number,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
-  buildRealAuthenticatedValidator(
-    network,
-    REAL_DA_PARAMS_GOVERNOR_SCRIPT_TITLES,
-    [
-      outputReferenceParam(initOutRef),
-      BigInt(maxCommitteeSize),
-      BigInt(maxOwnerCount),
-    ],
-    () => [
-      outputReferenceParam(initOutRef),
-      BigInt(maxCommitteeSize),
-      BigInt(maxOwnerCount),
-    ],
-  );
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    return yield* Effect.try({
+      try: () =>
+        SDK.buildDaParamsGovernorValidator(
+          blueprint,
+          network,
+          initOutRef,
+          maxCommitteeSize,
+          maxOwnerCount,
+        ),
+      catch: (cause) =>
+        new Error("Failed to build DaParamsGovernorValidator", { cause }),
+    });
+  });
 
 const buildRealDaAttestationValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
   referenceScriptAuthPolicyId: string,
   availabilityParameters: SDK.DaAvailabilityParameters,
-): Effect.Effect<SDK.AuthenticatedValidator, Error> => {
-  const encodedParameters = Data.from(
-    SDK.encodeDaAvailabilityParameters(availabilityParameters),
-  );
-  return buildRealAuthenticatedValidator(
-    network,
-    REAL_DA_ATTESTATION_SCRIPT_TITLES,
-    [
-      contracts.daParamsGovernor.policyId,
-      referenceScriptAuthPolicyId,
-      contracts.availabilityChallenge.policyId,
-      encodedParameters,
-    ],
-    () => [
-      contracts.daParamsGovernor.policyId,
-      referenceScriptAuthPolicyId,
-      contracts.availabilityChallenge.policyId,
-      encodedParameters,
-    ],
-  );
-};
+): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    return yield* Effect.try({
+      try: () =>
+        SDK.buildDaAttestationValidator(
+          blueprint,
+          network,
+          contracts,
+          referenceScriptAuthPolicyId,
+          availabilityParameters,
+        ),
+      catch: (cause) =>
+        new Error("Failed to build DaAttestationValidator", { cause }),
+    });
+  });
 
 const buildRealAvailabilityChallengeValidator = (
   network: Network,
@@ -2227,46 +1982,19 @@ const buildRealAvailabilityChallengeValidator = (
   parameters: SDK.DaAvailabilityParameters,
 ): Effect.Effect<SDK.AvailabilityChallengeValidator, Error> =>
   Effect.gen(function* () {
-    const encodedParameters = Data.from(
-      SDK.encodeDaAvailabilityParameters(parameters),
-    );
-    const dispatcherParameters = [
-      hubOraclePolicyId,
-      referenceScriptAuthPolicyId,
-      encodedParameters,
-    ];
-    const dispatcher = yield* buildRealAuthenticatedValidator(
-      network,
-      REAL_AVAILABILITY_CHALLENGE_SCRIPT_TITLES,
-      dispatcherParameters,
-      () => dispatcherParameters,
-    );
     const blueprint = yield* loadRealBlueprint();
-    const buildYield = (
-      arm: string,
-    ): Effect.Effect<SDK.WithdrawalValidator, Error> =>
-      Effect.gen(function* () {
-        const validator = yield* getBlueprintValidator(
+    return yield* Effect.try({
+      try: () =>
+        SDK.buildAvailabilityChallengeValidator(
           blueprint,
-          `availability_challenge_yields.${arm}.withdraw`,
-        );
-        const compiledCode = yield* applyBlueprintDeclaredParams(validator, [
-          dispatcher.policyId,
+          network,
           hubOraclePolicyId,
-          encodedParameters,
-        ]);
-        return makeWithdrawalValidator(compiledCode);
-      });
-    return {
-      ...dispatcher,
-      yields: {
-        bond: yield* buildYield("bond"),
-        open: yield* buildYield("open"),
-        settle: yield* buildYield("settle"),
-        close: yield* buildYield("close"),
-        timeout: yield* buildYield("timeout"),
-      },
-    };
+          referenceScriptAuthPolicyId,
+          parameters,
+        ),
+      catch: (cause) =>
+        new Error("Failed to build AvailabilityChallengeValidator", { cause }),
+    });
   });
 
 const expectDerivedScriptHash = (
@@ -2289,7 +2017,7 @@ const buildRealFaultProofContracts = (
   fraudProof: SDK.AuthenticatedValidator,
 ): Effect.Effect<SDK.FaultProofContractChains, Error> =>
   Effect.gen(function* () {
-    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const blueprint = yield* loadRealBlueprint();
     const derived = yield* SDK.buildFaultProofContracts({
       blueprint,
       network,
@@ -2324,7 +2052,7 @@ export const buildRealDoubleSpendFirstStepValidator = (
   fraudProof: SDK.AuthenticatedValidator,
 ): Effect.Effect<SDK.SpendingValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const blueprint = yield* loadRealBlueprint();
     const doubleSpendContracts = yield* SDK.buildDoubleSpendFaultProofContracts(
       {
         blueprint,
@@ -2360,7 +2088,7 @@ export const buildRealTransitionTraceProofValidator = (
   fraudProof: SDK.AuthenticatedValidator,
 ): Effect.Effect<SDK.SpendingValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const blueprint = yield* loadRealBlueprint();
     const transitionTraceContracts =
       yield* SDK.buildTransitionTraceFaultProofContracts({
         blueprint,
@@ -2396,7 +2124,7 @@ export const buildRealValidationTraceDisputeValidator = (
   fraudProof: SDK.AuthenticatedValidator,
 ): Effect.Effect<SDK.ValidationTraceDisputeValidators, Error> =>
   Effect.gen(function* () {
-    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const blueprint = yield* loadRealBlueprint();
     const validationTraceContracts =
       yield* SDK.buildValidationTraceDisputeFaultProofContracts({
         blueprint,
@@ -2440,7 +2168,7 @@ export const buildRealNonExistentInputFirstStepValidator = (
   fraudProof: SDK.AuthenticatedValidator,
 ): Effect.Effect<SDK.SpendingValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const blueprint = yield* loadRealBlueprint();
     const nonExistentInputContracts =
       yield* SDK.buildNonExistentInputFaultProofContracts({
         blueprint,
@@ -2475,7 +2203,7 @@ export const buildRealZeroInputFirstStepValidator = (
   fraudProof: SDK.AuthenticatedValidator,
 ): Effect.Effect<SDK.SpendingValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const blueprint = yield* loadRealBlueprint();
     const zeroInputContracts = yield* SDK.buildZeroInputFaultProofContracts({
       blueprint,
       network,
@@ -2509,7 +2237,7 @@ export const buildRealDaHashPreimageFirstStepValidator = (
   fraudProof: SDK.AuthenticatedValidator,
 ): Effect.Effect<SDK.SpendingValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const blueprint = yield* loadRealBlueprint();
     const daHashPreimageContracts =
       yield* SDK.buildDaHashPreimageFaultProofContracts({
         blueprint,
@@ -2544,7 +2272,7 @@ export const buildRealNoReferenceInputFirstStepValidator = (
   fraudProof: SDK.AuthenticatedValidator,
 ): Effect.Effect<SDK.SpendingValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const blueprint = yield* loadRealBlueprint();
     const noReferenceInputContracts =
       yield* SDK.buildNoReferenceInputFaultProofContracts({
         blueprint,
@@ -2579,7 +2307,7 @@ export const buildRealReferenceInputNoIdxFirstStepValidator = (
   fraudProof: SDK.AuthenticatedValidator,
 ): Effect.Effect<SDK.SpendingValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const blueprint = yield* loadRealBlueprint();
     const referenceInputNoIdxContracts =
       yield* SDK.buildReferenceInputNoIdxFaultProofContracts({
         blueprint,
@@ -2614,7 +2342,7 @@ export const buildRealInvalidSignatureFirstStepValidator = (
   fraudProof: SDK.AuthenticatedValidator,
 ): Effect.Effect<SDK.SpendingValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const blueprint = yield* loadRealBlueprint();
     const invalidSignatureContracts =
       yield* SDK.buildInvalidSignatureFaultProofContracts({
         blueprint,
@@ -2651,7 +2379,7 @@ const buildRealStateQueueValidator = (
   referenceScriptAuthPolicyId: string,
 ): Effect.Effect<SDK.StateQueueValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const blueprint = yield* loadRealBlueprint();
     return yield* SDK.buildStateQueueValidator({
       blueprint,
       network,
@@ -2675,7 +2403,7 @@ const buildRealCorrectionLockValidator = (
   availabilityChallengePolicyId: string,
 ): Effect.Effect<SDK.SpendingValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const blueprint = yield* loadRealBlueprint();
     return yield* SDK.buildCorrectionLockValidator({
       blueprint,
       network,
@@ -2691,12 +2419,15 @@ const buildRealRegisteredOperatorsValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
-  buildRealAuthenticatedValidator(
-    network,
-    REAL_REGISTERED_OPERATORS_SCRIPT_TITLES,
-    [contracts.retiredOperators.policyId, contracts.hubOracle.policyId],
-    (policyId) => [policyId],
-  );
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    return yield* Effect.try({
+      try: () =>
+        SDK.buildRegisteredOperatorsValidator(blueprint, network, contracts),
+      catch: (cause) =>
+        new Error("Failed to build RegisteredOperatorsValidator", { cause }),
+    });
+  });
 
 /**
  * Builds the real active-operators authenticated validator.
@@ -2705,16 +2436,15 @@ const buildRealActiveOperatorsValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
-  buildRealAuthenticatedValidator(
-    network,
-    REAL_ACTIVE_OPERATORS_SCRIPT_TITLES,
-    [
-      contracts.hubOracle.policyId,
-      contracts.registeredOperators.policyId,
-      contracts.retiredOperators.policyId,
-    ],
-    (policyId) => [policyId, contracts.hubOracle.policyId],
-  );
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    return yield* Effect.try({
+      try: () =>
+        SDK.buildActiveOperatorsValidator(blueprint, network, contracts),
+      catch: (cause) =>
+        new Error("Failed to build ActiveOperatorsValidator", { cause }),
+    });
+  });
 
 /**
  * Builds the real retired-operators authenticated validator.
@@ -2723,12 +2453,15 @@ const buildRealRetiredOperatorsValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
-  buildRealAuthenticatedValidator(
-    network,
-    REAL_RETIRED_OPERATORS_SCRIPT_TITLES,
-    [contracts.hubOracle.policyId],
-    (policyId) => [policyId],
-  );
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    return yield* Effect.try({
+      try: () =>
+        SDK.buildRetiredOperatorsValidator(blueprint, network, contracts),
+      catch: (cause) =>
+        new Error("Failed to build RetiredOperatorsValidator", { cause }),
+    });
+  });
 
 /**
  * Builds the real scheduler authenticated validator.
@@ -2738,30 +2471,12 @@ const buildRealSchedulerValidator = (
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
-    const activeOperatorsAddress = yield* Effect.mapError(
-      Effect.map(
-        SDK.addressDataFromBech32(
-          contracts.activeOperators.spendingScriptAddress,
-        ),
-        (addressData) => Data.from(Data.to(addressData, SDK.AddressData)),
-      ),
-      (cause) =>
-        new Error(
-          `Failed to encode active-operators address for scheduler spend parameters: ${String(cause)}`,
-        ),
-    );
-    return yield* buildRealAuthenticatedValidator(
-      network,
-      REAL_SCHEDULER_SCRIPT_TITLES,
-      [contracts.hubOracle.policyId],
-      (policyId) => [
-        contracts.registeredOperators.policyId,
-        activeOperatorsAddress,
-        contracts.activeOperators.policyId,
-        policyId,
-        contracts.hubOracle.policyId,
-      ],
-    );
+    const blueprint = yield* loadRealBlueprint();
+    return yield* Effect.try({
+      try: () => SDK.buildSchedulerValidator(blueprint, network, contracts),
+      catch: (cause) =>
+        new Error("Failed to build SchedulerValidator", { cause }),
+    });
   });
 
 /**
@@ -2772,7 +2487,7 @@ const buildRealDepositValidator = (
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
       try: () =>
         SDK.buildDepositValidators({
@@ -2798,7 +2513,7 @@ export const buildRealTxOrderContracts = (
   hubOraclePolicyId: string,
 ): Effect.Effect<TxOrderContracts, Error> =>
   Effect.gen(function* () {
-    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
       try: () =>
         SDK.buildTxOrderValidators({ blueprint, network, hubOraclePolicyId }),
@@ -2812,7 +2527,7 @@ const buildRealWithdrawalValidator = (
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
       try: () =>
         SDK.buildWithdrawalValidators({
@@ -2829,12 +2544,14 @@ const buildRealSettlementValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
-  buildRealAuthenticatedValidator(
-    network,
-    REAL_SETTLEMENT_SCRIPT_TITLES,
-    [contracts.hubOracle.policyId],
-    (policyId) => [contracts.hubOracle.policyId, policyId],
-  );
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    return yield* Effect.try({
+      try: () => SDK.buildSettlementValidator(blueprint, network, contracts),
+      catch: (cause) =>
+        new Error("Failed to build SettlementValidator", { cause }),
+    });
+  });
 
 const buildRealReserveValidator = (
   network: Network,
@@ -2842,38 +2559,24 @@ const buildRealReserveValidator = (
 ): Effect.Effect<SDK.SpendingValidator & SDK.WithdrawalValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
-    const spendValidator = yield* getBlueprintValidator(
-      blueprint,
-      REAL_RESERVE_SCRIPT_TITLES.spend,
-    );
-    const withdrawValidator = yield* getBlueprintValidator(
-      blueprint,
-      REAL_RESERVE_SCRIPT_TITLES.withdraw,
-    );
-    const withdrawScriptCBOR =
-      yield* unappliedBlueprintScript(withdrawValidator);
-
-    const spendingScriptCBOR = yield* applyBlueprintDeclaredParams(
-      spendValidator,
-      [contracts.hubOracle.policyId],
-    );
-
-    return {
-      ...makeSpendingValidator(network, spendingScriptCBOR),
-      ...makeWithdrawalValidator(withdrawScriptCBOR),
-    };
+    return yield* Effect.try({
+      try: () => SDK.buildReserveValidator(blueprint, network, contracts),
+      catch: (cause) =>
+        new Error("Failed to build ReserveValidator", { cause }),
+    });
   });
 
 const buildRealPayoutValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
-  buildRealAuthenticatedValidator(
-    network,
-    REAL_PAYOUT_SCRIPT_TITLES,
-    [contracts.hubOracle.policyId],
-    () => [contracts.hubOracle.policyId],
-  );
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    return yield* Effect.try({
+      try: () => SDK.buildPayoutValidator(blueprint, network, contracts),
+      catch: (cause) => new Error("Failed to build PayoutValidator", { cause }),
+    });
+  });
 
 /**
  * Replaces hub-oracle, deposit, operator-list, scheduler, and state-queue

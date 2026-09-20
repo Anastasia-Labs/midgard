@@ -5,10 +5,10 @@ import {
   MintingValidator,
   SpendingValidator,
 } from "../../../common.js";
+import type { CertifiedFaultProofChainInputs } from "../shared.js";
 import {
   buildFaultProofSpendingStep,
   buildSharedFaultProofContracts,
-  type SharedFaultProofContracts,
 } from "../shared.js";
 import {
   type BuildFaultProofContractsParams,
@@ -53,7 +53,7 @@ export const buildMissingRedeemerChain = ({
   fraudProof,
   fraudProofTokenAddressData,
   fieldPreimageCertificatePolicyId,
-}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+}: CertifiedFaultProofChainInputs): Effect.Effect<
   MissingRedeemerFaultProofContracts["missingRedeemer"],
   Error
 > =>

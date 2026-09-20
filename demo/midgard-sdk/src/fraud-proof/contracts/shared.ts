@@ -11,16 +11,33 @@ import {
   SpendingValidator,
 } from "../../common.js";
 import {
+  buildComputationThreadValidator,
+  buildFraudProofValidator,
+} from "../../protocol-contracts.js";
+import {
   applyBlueprintParams,
   asAddressDataParam,
   getUnappliedScript,
-  makeAuthenticatedValidator,
   makeMintingPolicy,
   makeSpendingValidator,
   tryBuild,
 } from "./blueprint.js";
 import { FAULT_PROOF_SHARED_TITLES } from "./titles.js";
 import { type BuildFaultProofContractsParams } from "./types.js";
+
+/** Inputs needed to link a family to already-derived deployment identities. */
+export type FaultProofChainInputs = Pick<
+  BuildFaultProofContractsParams,
+  "blueprint" | "network" | "hubOraclePolicyId"
+> & {
+  readonly computationThread: Pick<MintingValidator, "policyId">;
+  readonly fraudProof: Pick<AuthenticatedValidator, "policyId">;
+  readonly fraudProofTokenAddressData: Data;
+};
+
+export type CertifiedFaultProofChainInputs = FaultProofChainInputs & {
+  readonly fieldPreimageCertificatePolicyId: string;
+};
 
 export type SharedFaultProofContracts = {
   readonly computationThread: MintingValidator;
@@ -53,30 +70,15 @@ export const buildSharedFaultProofContracts = ({
     const computationThread = yield* tryBuild(
       "Failed to build computation-thread minting policy",
       () =>
-        makeMintingPolicy(
-          applyBlueprintParams(
-            blueprint,
-            FAULT_PROOF_SHARED_TITLES.computationThreadMint,
-            [fraudProofCataloguePolicyId, hubOraclePolicyId],
-          ),
-        ),
+        buildComputationThreadValidator(blueprint, {
+          fraudProofCatalogue: { policyId: fraudProofCataloguePolicyId },
+          hubOracle: { policyId: hubOraclePolicyId },
+        }),
     );
 
     const fraudProof = yield* tryBuild(
       "Failed to build fraud-proof token validator",
-      () =>
-        makeAuthenticatedValidator(
-          network,
-          applyBlueprintParams(
-            blueprint,
-            FAULT_PROOF_SHARED_TITLES.fraudProofMint,
-            [computationThread.policyId],
-          ),
-          getUnappliedScript(
-            blueprint,
-            FAULT_PROOF_SHARED_TITLES.fraudProofSpend,
-          ),
-        ),
+      () => buildFraudProofValidator(blueprint, network, computationThread),
     );
 
     const fraudProofTokenAddressData = yield* asAddressDataParam(
