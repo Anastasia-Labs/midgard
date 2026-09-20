@@ -7,17 +7,9 @@ import {
   runOrResumeManifestBoundCrossBlockDuplicateEventWorkflow,
 } from "../cross-block-duplicate-event/workflow.js";
 import {
-  createDistinctAssetAccumulationWorkflowRunnerSurface,
-  type LoadDistinctAssetAccumulationWorkflow,
-} from "../distinct-asset-accumulation-limit/v1.js";
-import {
   createExecutionNativeScriptInvalidWorkflowRunnerSurface,
   type LoadExecutionNativeScriptInvalidWorkflow,
 } from "../execution-native-script-invalid/v1.js";
-import {
-  createExecutionSourceScriptDecodingWorkflowRunnerSurface,
-  type LoadExecutionSourceScriptDecodingWorkflow,
-} from "../execution-source-script-decoding/v1.js";
 import {
   createFieldItemWidthIllegalWorkflowRunnerSurface,
   type LoadFieldItemWidthIllegalWorkflow,
@@ -41,10 +33,6 @@ import {
   runOrResumeManifestBoundMintAuthorizationWorkflow,
 } from "../mint-authorization/workflow.js";
 import {
-  createMintDeclaredAssetLimitWorkflowRunnerSurface,
-  type LoadMintDeclaredAssetLimitWorkflow,
-} from "../mint-declared-asset-limit/v1.js";
-import {
   createMintItemNonCanonicalWorkflowRunnerSurface,
   type LoadMintItemNonCanonicalWorkflow,
 } from "../mint-item-non-canonical/workflow.js";
@@ -60,14 +48,6 @@ import {
   type ManifestBoundMissingNativeScriptUtxoWorkflowConfig,
   runOrResumeManifestBoundMissingNativeScriptUtxoWorkflow,
 } from "../missing-native-script-utxo/workflow.js";
-import {
-  createMissingRedeemerWorkflowRunnerSurface,
-  type LoadMissingRedeemerWorkflow,
-} from "../missing-redeemer/v1.js";
-import {
-  createMissingScriptSourceWorkflowRunnerSurface,
-  type LoadMissingScriptSourceWorkflow,
-} from "../missing-script-source/v1.js";
 import {
   createManifestBoundNativeScriptDecodingWorkflow,
   type ManifestBoundNativeScriptDecodingWorkflow,
@@ -87,14 +67,6 @@ import {
   runOrResumeManifestBoundNetworkIdWorkflow,
 } from "../network-id/workflow-adapter.js";
 import {
-  createObserverOrderInvalidWorkflowRunnerSurface,
-  type LoadObserverOrderInvalidWorkflow,
-} from "../observer-order-invalid/v1.js";
-import {
-  createObserversForbiddenWorkflowRunnerSurface,
-  type LoadObserversForbiddenWorkflow,
-} from "../observers-forbidden-on-untagged-network/v1.js";
-import {
   createOutputReferenceScriptDecodingWorkflowRunnerSurface,
   type LoadOutputReferenceScriptDecodingWorkflow,
 } from "../output-reference-script-decoding/authenticated-workflow.js";
@@ -103,25 +75,9 @@ import {
   type LoadProtectedOutputSignerMissingWorkflow,
 } from "../protected-output-signer-missing/authenticated-workflow.js";
 import {
-  createReceivePurposeLanguageWorkflowRunnerSurface,
-  type LoadReceivePurposeLanguageWorkflow,
-} from "../receive-purpose-language/manifest-workflow.js";
-import {
-  createRedeemerCanonicityWorkflowRunnerSurface,
-  type LoadRedeemerCanonicityWorkflow,
-} from "../redeemer-canonicity/runtime.js";
-import {
   createResolvedOutputNonCanonicalWorkflowRunnerSurface,
   type LoadResolvedOutputNonCanonicalWorkflow,
 } from "../resolved-output-non-canonical/authenticated-workflow.js";
-import {
-  createScriptIntegrityHashMismatchWorkflowRunnerSurface,
-  type LoadScriptIntegrityHashMismatchWorkflow,
-} from "../script-integrity-hash-mismatch/v1.js";
-import {
-  createScriptIntegrityHashMissingWorkflowRunnerSurface,
-  type LoadScriptIntegrityHashMissingWorkflow,
-} from "../script-integrity-hash-missing/v1.js";
 import {
   createSpendInputSignerMissingWorkflowRunnerSurface,
   type LoadSpendInputSignerMissingWorkflow,
@@ -140,10 +96,6 @@ import {
   type ManifestBoundTransitionTraceWorkflowConfig,
   runOrResumeManifestBoundTransitionTraceWorkflow,
 } from "../transition-trace/workflow.js";
-import {
-  createUnusedRedeemerWorkflowRunnerSurface,
-  type LoadUnusedRedeemerWorkflow,
-} from "../unused-redeemer/v1.js";
 import {
   createUnusedScriptWitnessWorkflowRunnerSurface,
   type LoadUnusedScriptWitnessWorkflow,
@@ -193,6 +145,20 @@ import {
   type FamilyApplicationRecord,
   type FamilyApplicationWorkflowIdentity,
 } from "./family-application.js";
+import {
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_APPLICATION_RECORD,
+  EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
+  MINT_DECLARED_ASSET_LIMIT_FAMILY_APPLICATION_RECORD,
+  MISSING_REDEEMER_FAMILY_APPLICATION_RECORD,
+  MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD,
+  OBSERVER_ORDER_INVALID_FAMILY_APPLICATION_RECORD,
+  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FAMILY_APPLICATION_RECORD,
+  RECEIVE_PURPOSE_LANGUAGE_FAMILY_APPLICATION_RECORD,
+  REDEEMER_CANONICITY_FAMILY_APPLICATION_RECORD,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_APPLICATION_RECORD,
+  SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_APPLICATION_RECORD,
+  UNUSED_REDEEMER_FAMILY_APPLICATION_RECORD,
+} from "./family-application-registry.js";
 import type {
   FamilyDefinition,
   FaultProofWitnessRole,
@@ -443,6 +409,29 @@ export const createFamilyApplicationWorkflowRunner = <
     }),
   });
 
+/**
+ * The runner-table row of a family application record: the record supplies
+ * the construction, the launch route and the digest binding, so the row is
+ * the record applied to a compiled host's loader.
+ */
+const familyApplicationWorkflowRunnerFactory =
+  <
+    Category extends FraudProofCatalogueCategoryName,
+    Config,
+    Workflow extends ManifestBoundWorkflowIdentity<Category>,
+  >(
+    record: FamilyApplicationRecord<Category, Config, Workflow>,
+  ) =>
+  (
+    loadRuntimeConfig: WorkflowRuntimeConfigLoader<Config>,
+    fundingRequirements?: WorkflowFundingRequirements,
+  ): WorkflowAdapterRunner =>
+    createFamilyApplicationWorkflowRunner(
+      record,
+      loadRuntimeConfig,
+      fundingRequirements,
+    );
+
 type AssembledLinearFamilyWorkflow = ManifestBoundFamilyWorkflow<
   LinearFamilyCategory,
   boolean
@@ -602,20 +591,6 @@ export const createFieldPreimageLengthWorkflowRunner = (
     }),
   });
 
-export const createScriptIntegrityHashMissingWorkflowRunner = (
-  loadRuntimeConfig: LoadScriptIntegrityHashMissingWorkflow,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner => {
-  const surface = createScriptIntegrityHashMissingWorkflowRunnerSurface({
-    loadRuntimeConfig,
-  });
-  return createAdmittedWorkflowRunner({
-    category: "scriptIntegrityHashMissing",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: surface.runOrResume,
-  });
-};
-
 export const createTransactionOutputNonCanonicalWorkflowRunner = (
   loadRuntimeConfig: LoadTransactionOutputNonCanonicalWorkflow,
   fundingRequirements?: WorkflowFundingRequirements,
@@ -658,20 +633,6 @@ export const createResolvedOutputNonCanonicalWorkflowRunner = (
   });
 };
 
-export const createMintDeclaredAssetLimitWorkflowRunner = (
-  loadRuntimeConfig: LoadMintDeclaredAssetLimitWorkflow,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner => {
-  const surface = createMintDeclaredAssetLimitWorkflowRunnerSurface({
-    loadRuntimeConfig,
-  });
-  return createAdmittedWorkflowRunner({
-    category: "mintDeclaredAssetLimit",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: surface.runOrResume,
-  });
-};
-
 export const createSpendInputSignerMissingWorkflowRunner = (
   loadRuntimeConfig: LoadSpendInputSignerMissingWorkflow,
   fundingRequirements?: WorkflowFundingRequirements,
@@ -695,20 +656,6 @@ export const createProtectedOutputSignerMissingWorkflowRunner = (
   });
   return createAdmittedWorkflowRunner({
     category: "protectedOutputSignerMissing",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: surface.runOrResume,
-  });
-};
-
-export const createObserversForbiddenOnUntaggedNetworkWorkflowRunner = (
-  loadRuntimeConfig: LoadObserversForbiddenWorkflow,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner => {
-  const surface = createObserversForbiddenWorkflowRunnerSurface({
-    loadRuntimeConfig,
-  });
-  return createAdmittedWorkflowRunner({
-    category: "observersForbiddenOnUntaggedNetwork",
     ...runnerFunding(fundingRequirements),
     runOrResume: surface.runOrResume,
   });
@@ -742,20 +689,6 @@ export const createWitnessScriptDecodingWorkflowRunner = (
   });
 };
 
-export const createExecutionSourceScriptDecodingWorkflowRunner = (
-  loadRuntimeConfig: LoadExecutionSourceScriptDecodingWorkflow,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner => {
-  const surface = createExecutionSourceScriptDecodingWorkflowRunnerSurface({
-    loadRuntimeConfig,
-  });
-  return createAdmittedWorkflowRunner({
-    category: "executionSourceScriptDecoding",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: surface.runOrResume,
-  });
-};
-
 export const createExecutionNativeScriptInvalidWorkflowRunner = (
   loadRuntimeConfig: LoadExecutionNativeScriptInvalidWorkflow,
   fundingRequirements?: WorkflowFundingRequirements,
@@ -770,48 +703,6 @@ export const createExecutionNativeScriptInvalidWorkflowRunner = (
   });
 };
 
-export const createObserverOrderInvalidWorkflowRunner = (
-  loadRuntimeConfig: LoadObserverOrderInvalidWorkflow,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner => {
-  const surface = createObserverOrderInvalidWorkflowRunnerSurface({
-    loadRuntimeConfig,
-  });
-  return createAdmittedWorkflowRunner({
-    category: "observerOrderInvalid",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: surface.runOrResume,
-  });
-};
-
-export const createRedeemerCanonicityWorkflowRunner = (
-  loadRuntimeConfig: LoadRedeemerCanonicityWorkflow,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner => {
-  const surface = createRedeemerCanonicityWorkflowRunnerSurface({
-    loadRuntimeConfig,
-  });
-  return createAdmittedWorkflowRunner({
-    category: "redeemerCanonicity",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: surface.runOrResume,
-  });
-};
-
-export const createReceivePurposeLanguageWorkflowRunner = (
-  loadRuntimeConfig: LoadReceivePurposeLanguageWorkflow,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner => {
-  const surface = createReceivePurposeLanguageWorkflowRunnerSurface({
-    loadRuntimeConfig,
-  });
-  return createAdmittedWorkflowRunner({
-    category: "receivePurposeLanguage",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: surface.runOrResume,
-  });
-};
-
 export const createUnusedScriptWitnessWorkflowRunner = (
   loadRuntimeConfig: LoadUnusedScriptWitnessWorkflow,
   fundingRequirements?: WorkflowFundingRequirements,
@@ -821,76 +712,6 @@ export const createUnusedScriptWitnessWorkflowRunner = (
   });
   return createAdmittedWorkflowRunner({
     category: "unusedScriptWitness",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: surface.runOrResume,
-  });
-};
-
-export const createMissingScriptSourceWorkflowRunner = (
-  loadRuntimeConfig: LoadMissingScriptSourceWorkflow,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner => {
-  const surface = createMissingScriptSourceWorkflowRunnerSurface({
-    loadRuntimeConfig,
-  });
-  return createAdmittedWorkflowRunner({
-    category: "missingScriptSource",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: surface.runOrResume,
-  });
-};
-
-export const createMissingRedeemerWorkflowRunner = (
-  loadRuntimeConfig: LoadMissingRedeemerWorkflow,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner => {
-  const surface = createMissingRedeemerWorkflowRunnerSurface({
-    loadRuntimeConfig,
-  });
-  return createAdmittedWorkflowRunner({
-    category: "missingRedeemer",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: surface.runOrResume,
-  });
-};
-
-export const createUnusedRedeemerWorkflowRunner = (
-  loadRuntimeConfig: LoadUnusedRedeemerWorkflow,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner => {
-  const surface = createUnusedRedeemerWorkflowRunnerSurface({
-    loadRuntimeConfig,
-  });
-  return createAdmittedWorkflowRunner({
-    category: "unusedRedeemer",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: surface.runOrResume,
-  });
-};
-
-export const createScriptIntegrityHashMismatchWorkflowRunner = (
-  loadRuntimeConfig: LoadScriptIntegrityHashMismatchWorkflow,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner => {
-  const surface = createScriptIntegrityHashMismatchWorkflowRunnerSurface({
-    loadRuntimeConfig,
-  });
-  return createAdmittedWorkflowRunner({
-    category: "scriptIntegrityHashMismatch",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: surface.runOrResume,
-  });
-};
-
-export const createDistinctAssetAccumulationWorkflowRunner = (
-  loadRuntimeConfig: LoadDistinctAssetAccumulationWorkflow,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner => {
-  const surface = createDistinctAssetAccumulationWorkflowRunnerSurface({
-    loadRuntimeConfig,
-  });
-  return createAdmittedWorkflowRunner({
-    category: "distinctAssetAccumulationLimit",
     ...runnerFunding(fundingRequirements),
     runOrResume: surface.runOrResume,
   });
@@ -1157,8 +978,9 @@ export const createMissingNativeScriptTxWorkflowRunner = (
 
 /**
  * Factories for the current families whose complete shared workflow drivers
- * exist: every linear family's row is derived from its definition, the rest
- * are the explicit rows below. This is deliberately separate from launch
+ * exist: every linear family's row is derived from its definition, every
+ * registered decision-digest family's row from its application record, the
+ * rest are the explicit rows below. This is deliberately separate from launch
  * readiness: a factory is not ready until a compiled application supplies its
  * concrete public-libp2p runtime loader and installs the resulting executable
  * runner.
@@ -1181,31 +1003,53 @@ export const WORKFLOW_RUNNER_FACTORIES = Object.freeze({
   fieldPreimageLengthMismatch: createFieldPreimageLengthWorkflowRunner,
   fieldItemWidthIllegal: createFieldItemWidthIllegalWorkflowRunner,
   witnessScriptDecoding: createWitnessScriptDecodingWorkflowRunner,
-  scriptIntegrityHashMissing: createScriptIntegrityHashMissingWorkflowRunner,
+  scriptIntegrityHashMissing: familyApplicationWorkflowRunnerFactory(
+    SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_APPLICATION_RECORD,
+  ),
   transactionOutputNonCanonical:
     createTransactionOutputNonCanonicalWorkflowRunner,
   mintItemNonCanonical: createMintItemNonCanonicalWorkflowRunner,
   resolvedOutputNonCanonical: createResolvedOutputNonCanonicalWorkflowRunner,
-  mintDeclaredAssetLimit: createMintDeclaredAssetLimitWorkflowRunner,
+  mintDeclaredAssetLimit: familyApplicationWorkflowRunnerFactory(
+    MINT_DECLARED_ASSET_LIMIT_FAMILY_APPLICATION_RECORD,
+  ),
   spendInputSignerMissing: createSpendInputSignerMissingWorkflowRunner,
   protectedOutputSignerMissing:
     createProtectedOutputSignerMissingWorkflowRunner,
-  observersForbiddenOnUntaggedNetwork:
-    createObserversForbiddenOnUntaggedNetworkWorkflowRunner,
-  observerOrderInvalid: createObserverOrderInvalidWorkflowRunner,
-  redeemerCanonicity: createRedeemerCanonicityWorkflowRunner,
+  observersForbiddenOnUntaggedNetwork: familyApplicationWorkflowRunnerFactory(
+    OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FAMILY_APPLICATION_RECORD,
+  ),
+  observerOrderInvalid: familyApplicationWorkflowRunnerFactory(
+    OBSERVER_ORDER_INVALID_FAMILY_APPLICATION_RECORD,
+  ),
+  redeemerCanonicity: familyApplicationWorkflowRunnerFactory(
+    REDEEMER_CANONICITY_FAMILY_APPLICATION_RECORD,
+  ),
   outputReferenceScriptDecoding:
     createOutputReferenceScriptDecodingWorkflowRunner,
-  executionSourceScriptDecoding:
-    createExecutionSourceScriptDecodingWorkflowRunner,
-  receivePurposeLanguage: createReceivePurposeLanguageWorkflowRunner,
+  executionSourceScriptDecoding: familyApplicationWorkflowRunnerFactory(
+    EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
+  ),
+  receivePurposeLanguage: familyApplicationWorkflowRunnerFactory(
+    RECEIVE_PURPOSE_LANGUAGE_FAMILY_APPLICATION_RECORD,
+  ),
   unusedScriptWitness: createUnusedScriptWitnessWorkflowRunner,
-  missingScriptSource: createMissingScriptSourceWorkflowRunner,
-  missingRedeemer: createMissingRedeemerWorkflowRunner,
-  unusedRedeemer: createUnusedRedeemerWorkflowRunner,
+  missingScriptSource: familyApplicationWorkflowRunnerFactory(
+    MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD,
+  ),
+  missingRedeemer: familyApplicationWorkflowRunnerFactory(
+    MISSING_REDEEMER_FAMILY_APPLICATION_RECORD,
+  ),
+  unusedRedeemer: familyApplicationWorkflowRunnerFactory(
+    UNUSED_REDEEMER_FAMILY_APPLICATION_RECORD,
+  ),
   executionNativeScriptInvalid:
     createExecutionNativeScriptInvalidWorkflowRunner,
-  scriptIntegrityHashMismatch: createScriptIntegrityHashMismatchWorkflowRunner,
-  distinctAssetAccumulationLimit: createDistinctAssetAccumulationWorkflowRunner,
+  scriptIntegrityHashMismatch: familyApplicationWorkflowRunnerFactory(
+    SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_APPLICATION_RECORD,
+  ),
+  distinctAssetAccumulationLimit: familyApplicationWorkflowRunnerFactory(
+    DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_APPLICATION_RECORD,
+  ),
   validationTraceDispute: createValidationTraceDisputeWorkflowRunner,
 });

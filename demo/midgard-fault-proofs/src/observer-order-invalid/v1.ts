@@ -11,26 +11,17 @@ import {
 } from "../prepare-double-spend.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import {
-  DaLibp2pRetainedDaSource,
-  type RetainedDaPayloadSource,
-} from "../transition-trace/fetch.js";
-import {
-  assertWorkflowJournalActuation,
-  bindWorkflowActuationJournal,
   workflowActuationAuthorizingDecisionDigest,
   workflowJournalIsReconciliationOnly,
 } from "../workflow/actuation-permit.js";
-import {
-  WORKFLOW_ADAPTER_RUNNER,
-  type WorkflowAdapterReadinessInput,
-  type WorkflowAdapterRunner,
-} from "../workflow/adapters.js";
 import { OBSERVER_ORDER_INVALID_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
+import { STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS } from "../workflow/cursor-family-runtime.js";
 import {
   defineFamily,
   type FamilyAssemblyContext,
@@ -38,9 +29,7 @@ import {
 } from "../workflow/family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { type FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
-import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
-  DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowJournalStore,
   journalJsonDigest,
 } from "../workflow/journal.js";
@@ -52,7 +41,6 @@ import {
   resumeRecordedFraudProofWorkflow,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
-import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import type { FraudProofRawL1FamilyStage } from "../workflow/raw-l1-family-derivation.js";
 import {
   createObserverOrderInvalidActuator,
@@ -270,6 +258,7 @@ export const OBSERVER_ORDER_INVALID_FAMILY_DEFINITION = defineFamily<
   ],
   witnessRoles: WITNESS_ROLES,
   fieldPreimageCertificate: true,
+  auxiliaryReferenceScripts: STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
   replayer: () => OBSERVER_ORDER_INVALID_COMPLETE_CANONICAL_REPLAY,
   adapter: {
     kind: "cursor",
@@ -336,7 +325,10 @@ export const createManifestBoundObserverOrderInvalidWorkflow = async (
   const { decisionDigest, ...assemblyConfig } = config;
   const workflow = await assembleManifestBoundFamilyWorkflow(
     OBSERVER_ORDER_INVALID_FAMILY_DEFINITION,
-    assemblyConfig,
+    {
+      ...assemblyConfig,
+      auxiliaryReferenceScripts: config.referenceScripts.removal,
+    },
   );
   return Object.freeze({
     ...(workflow as typeof workflow & WorkflowExtension),
@@ -453,90 +445,3 @@ export const executeManifestBoundObserverOrderInvalidWorkflow = async ({
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
   });
 };
-
-export type LoadedObserverOrderInvalidWorkflow = Readonly<{
-  schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundObserverOrderInvalidWorkflowConfig;
-  retainedDaSources: readonly DaLibp2pRetainedDaSource[];
-  close: () => Promise<void>;
-}>;
-
-export type LoadObserverOrderInvalidWorkflow = (input: {
-  readonly runtimeConfigPath: string;
-  readonly invocation: WorkflowAdapterReadinessInput;
-}) => Promise<LoadedObserverOrderInvalidWorkflow>;
-
-/** Standard runtime-loader-compatible package runner; core config has no callbacks. */
-export const createObserverOrderInvalidWorkflowRunnerSurface = ({
-  loadRuntimeConfig,
-}: {
-  readonly loadRuntimeConfig: LoadObserverOrderInvalidWorkflow;
-}): WorkflowAdapterRunner =>
-  Object.freeze({
-    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
-    runOrResume: async (invocation) => {
-      if (invocation.category !== (CATEGORY as string))
-        throw new Error("observerOrderInvalid runner category changed");
-      const journal = bindWorkflowFundingReservationJournal({
-        permit: invocation.fundingReservationPermit,
-        journal: bindWorkflowActuationJournal({
-          journal: new DirectoryFraudProofWorkflowJournalStore(
-            invocation.journalDirectory,
-          ),
-          permit: invocation.actuationPermit,
-          decisionDigest: invocation.decisionDigest,
-          deploymentFingerprint: invocation.deploymentFingerprint,
-          category: CATEGORY,
-          headerHash: invocation.headerHash,
-        }),
-      });
-      assertWorkflowJournalActuation({
-        journal,
-        deploymentFingerprint: invocation.deploymentFingerprint,
-        category: CATEGORY,
-        headerHash: invocation.headerHash,
-        checkpoint: "runner_start",
-      });
-      const loaded = await loadRuntimeConfig({
-        runtimeConfigPath: invocation.runtimeConfigPath,
-        invocation,
-      });
-      try {
-        if (
-          loaded.schemaVersion !==
-            "midgard-production-fraud-proof-runtime-config-v1" ||
-          loaded.retainedDaSources.length === 0 ||
-          loaded.retainedDaSources.some(
-            (source) => !(source instanceof DaLibp2pRetainedDaSource),
-          )
-        )
-          throw new Error(
-            "observerOrderInvalid runtime requires concrete public retained DA",
-          );
-        const workflow = await createManifestBoundObserverOrderInvalidWorkflow(
-          loaded.config,
-        );
-        if (
-          workflow.binding.deploymentFingerprint !==
-            invocation.deploymentFingerprint ||
-          workflow.binding.definition.headerHash !== invocation.headerHash ||
-          workflow.decisionDigest !== invocation.decisionDigest
-        )
-          throw new Error(
-            "observerOrderInvalid runtime binding changed invocation",
-          );
-        return (await continuePendingWorkflow({
-          invocation,
-          journal: journal,
-          execute: () =>
-            executeManifestBoundObserverOrderInvalidWorkflow({
-              workflow,
-              sources: loaded.retainedDaSources,
-              journal,
-            }),
-        })) as never;
-      } finally {
-        await loaded.close();
-      }
-    },
-  });

@@ -21,10 +21,8 @@ import {
 } from "../src/receive-purpose-language/family.js";
 import {
   createManifestBoundReceivePurposeLanguageWorkflow,
-  createReceivePurposeLanguageWorkflowRunnerSurface,
   RECEIVE_PURPOSE_LANGUAGE_CONFIG_KEYS,
   RECEIVE_PURPOSE_LANGUAGE_STEP_DATUM_SCHEMAS,
-  runOrResumeManifestBoundReceivePurposeLanguageWorkflow,
 } from "../src/receive-purpose-language/manifest-workflow.js";
 import { detectReceivePurposeLanguageAcceptedReplay } from "../src/receive-purpose-language/replay.js";
 import {
@@ -41,6 +39,7 @@ import {
   type ReceivePurposeLanguageJournalEntry,
   runReceivePurposeLanguageWorkflow,
 } from "../src/receive-purpose-language/workflow.js";
+import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
 
 const txId = "00".repeat(32);
 const txIdGolden =
@@ -151,23 +150,15 @@ describe("receivePurposeLanguage V1", () => {
         submit: async () => "00".repeat(32),
       } as never),
     ).rejects.toThrow(/callback authority/u);
-    await expect(
-      runOrResumeManifestBoundReceivePurposeLanguageWorkflow({
-        workflow: {} as never,
-        sources: [],
-        journal: {} as never,
-        evidence: evidence(3),
-      } as never),
-    ).rejects.toThrow(/caller-authored evidence/u);
-    const runner = createReceivePurposeLanguageWorkflowRunnerSurface({
-      loadRuntimeConfig: async () => ({}) as never,
-    });
+    const runner = WORKFLOW_RUNNER_FACTORIES.receivePurposeLanguage(
+      async () => ({}) as never,
+    );
     expect(runner.runnerVersion).toBe(
       "midgard-production-fraud-proof-workflow-runner-v1",
     );
     await expect(
       runner.runOrResume({ category: "doubleSpend" } as never),
-    ).rejects.toThrow(/category changed/u);
+    ).rejects.toThrow(/category mismatch/u);
   });
   it("round-trips the canonical authenticated state wire encoding", () => {
     const value = {

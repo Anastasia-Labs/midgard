@@ -3,6 +3,7 @@ import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 import { credentialToAddress, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES } from "../src/remove-fraudulent-block.js";
 import {
   type FamilyCommonInfrastructure,
   familyStepRole,
@@ -12,13 +13,14 @@ import {
   NOT_YET_REGISTERED_FAMILY_CATEGORIES,
   REGISTERED_FAMILY_CATEGORIES,
 } from "../src/workflow/family-application-registry.js";
-import { LINEAR_FAMILY_DEFINITIONS } from "../src/workflow/linear-family-definitions.js";
-import { linearFamilySpec } from "../src/workflow/linear-family-spec.js";
+import { familyStepContractNames } from "../src/workflow/family-definition.js";
+import { FAMILY_DEFINITIONS } from "../src/workflow/family-definitions.js";
 
 type BoundReferenceScripts = Readonly<{
   steps: readonly unknown[];
   witnesses: Readonly<Record<string, unknown>>;
   fieldPreimageCertificateMint?: unknown;
+  removal?: Readonly<Record<string, unknown>>;
 }>;
 
 const registry: Readonly<
@@ -27,13 +29,45 @@ const registry: Readonly<
     Readonly<{
       category: string;
       roster: Readonly<Record<string, string>>;
+      bindsDecisionDigest: boolean;
       bindConfig: (input: {
         readonly infrastructure: FamilyCommonInfrastructure;
         readonly references: Readonly<Record<string, UTxO>>;
-      }) => Readonly<{ referenceScripts: BoundReferenceScripts }>;
+      }) => Readonly<{
+        decisionDigest?: string;
+        referenceScripts: BoundReferenceScripts;
+      }>;
     }>
   >
 > = FAMILY_APPLICATION_REGISTRY;
+
+/** Definitions of the registered families that are assembled from one. */
+const definitions: Readonly<
+  Partial<
+    Record<
+      string,
+      Readonly<{
+        category: string;
+        witnessRoles: readonly string[];
+        fieldPreimageCertificate: boolean;
+        auxiliaryReferenceScripts?: Readonly<Record<string, string>>;
+        adapter: Readonly<
+          | { kind: "linear" }
+          | { kind: "cursor"; stepContractNames: readonly string[] }
+        >;
+      }>
+    >
+  >
+> = FAMILY_DEFINITIONS;
+
+const definedCategories = Object.keys(registry).filter(
+  (category) => definitions[category] !== undefined,
+);
+
+const referenceRoles = (roster: Readonly<Record<string, string>>) =>
+  Object.fromEntries(
+    Object.keys(roster).map((role, index) => [role, reference(index)]),
+  );
 
 const reference = (outputIndex: number): UTxO => ({
   txHash: "22".repeat(32),
@@ -45,6 +79,8 @@ const reference = (outputIndex: number): UTxO => ({
   assets: { lovelace: 2_000_000n },
 });
 
+const DECISION_DIGEST = "44".repeat(32);
+
 const infrastructure = {
   manifest: {},
   blueprintJson: "{}",
@@ -54,7 +90,11 @@ const infrastructure = {
   signer: {} as never,
   source: {} as never,
   stateQueueMutationLeaseCoordinator: {} as never,
+  decisionDigest: DECISION_DIGEST,
 } satisfies FamilyCommonInfrastructure;
+
+const { decisionDigest: _undecided, ...undecidedInfrastructure } =
+  infrastructure;
 
 describe("family application registry table", () => {
   it.each(Object.keys(registry))(
@@ -112,17 +152,20 @@ describe("family application rosters name deployed contracts", () => {
     (key) => {
       const roster = registry[key]!.roster;
       const roles = Object.keys(roster);
-      const references = Object.fromEntries(
-        roles.map((role, index) => [role, reference(index)]),
-      );
+      const references = referenceRoles(roster);
       const { referenceScripts } = registry[key]!.bindConfig({
         infrastructure,
         references,
       });
       const stepRoles = roles.filter((role) => /^step[0-9]{2}$/u.test(role));
+      const removalRoles = Object.keys(
+        definitions[key]?.auxiliaryReferenceScripts ?? {},
+      );
       const witnessRoles = roles.filter(
         (role) =>
-          !stepRoles.includes(role) && role !== "fieldPreimageCertificateMint",
+          !stepRoles.includes(role) &&
+          !removalRoles.includes(role) &&
+          role !== "fieldPreimageCertificateMint",
       );
       expect(referenceScripts.steps).toEqual(
         stepRoles.map((role) => references[role]),
@@ -130,26 +173,36 @@ describe("family application rosters name deployed contracts", () => {
       expect(Object.keys(referenceScripts.witnesses).sort()).toEqual(
         [...witnessRoles].sort(),
       );
+      // Double-spend alone carries the certificate as a bare reference script
+      // beside its bundle; every definition-assembled family binds it inside.
+      if (definitions[key] !== undefined) {
+        expect(referenceScripts.fieldPreimageCertificateMint).toBe(
+          references.fieldPreimageCertificateMint,
+        );
+      }
+      if (removalRoles.length === 0) {
+        expect(referenceScripts.removal).toBeUndefined();
+      } else {
+        expect(referenceScripts.removal).toEqual(
+          Object.fromEntries(
+            removalRoles.map((role) => [role, references[role]]),
+          ),
+        );
+      }
       expect(roles).toContain("computationThreadMint");
     },
   );
 
-  it.each(Object.keys(LINEAR_FAMILY_DEFINITIONS))(
-    "covers the %s definition's witness roles and step roles",
+  it.each(definedCategories)(
+    "covers the %s definition's step, witness, certificate and auxiliary roles exactly",
     (category) => {
-      const spec = linearFamilySpec(
-        category as keyof typeof LINEAR_FAMILY_DEFINITIONS,
-      );
+      const definition = definitions[category]!;
       const roster = registry[category]!.roster;
-      const steps = spec.steps.map((step) => step.manifestContractName);
+      const steps = familyStepContractNames(definition as never);
       expect(
         steps.map((_, index) => roster[familyStepRole(index + 1)]),
       ).toEqual(steps);
       expect(roster[familyStepRole(steps.length + 1)]).toBeUndefined();
-      const definition =
-        LINEAR_FAMILY_DEFINITIONS[
-          category as keyof typeof LINEAR_FAMILY_DEFINITIONS
-        ];
       for (const role of definition.witnessRoles) {
         expect(roster[role]).toBe(role);
       }
@@ -158,6 +211,75 @@ describe("family application rosters name deployed contracts", () => {
           ? "fieldPreimageCertificateMint"
           : undefined,
       );
+      const auxiliary = definition.auxiliaryReferenceScripts ?? {};
+      for (const [role, contractName] of Object.entries(auxiliary)) {
+        expect(roster[role]).toBe(contractName);
+      }
+      expect(Object.keys(roster).length).toBe(
+        steps.length +
+          definition.witnessRoles.length +
+          (definition.fieldPreimageCertificate ? 1 : 0) +
+          Object.keys(auxiliary).length,
+      );
     },
   );
+});
+
+describe("family application records bind the admitted decision digest", () => {
+  it.each(Object.keys(registry))(
+    "lays the digest into %s exactly when its record binds it",
+    (key) => {
+      const record = registry[key]!;
+      const references = referenceRoles(record.roster);
+      const config = record.bindConfig({ infrastructure, references });
+      expect(config.decisionDigest).toBe(
+        record.bindsDecisionDigest ? DECISION_DIGEST : undefined,
+      );
+      if (record.bindsDecisionDigest) {
+        expect(() =>
+          record.bindConfig({
+            infrastructure: undecidedInfrastructure,
+            references,
+          }),
+        ).toThrow(`${key} binds the admitted decision digest`);
+      } else {
+        expect(
+          record.bindConfig({
+            infrastructure: undecidedInfrastructure,
+            references,
+          }).decisionDigest,
+        ).toBeUndefined();
+      }
+    },
+  );
+
+  it("registers the twelve state-queue-removal families as digest-bound", () => {
+    const bound = Object.values(registry)
+      .filter((record) => record.bindsDecisionDigest)
+      .map((record) => record.category)
+      .sort();
+    expect(bound).toEqual(
+      [
+        "distinctAssetAccumulationLimit",
+        "executionSourceScriptDecoding",
+        "missingScriptSource",
+        "receivePurposeLanguage",
+        "scriptIntegrityHashMismatch",
+        "unusedRedeemer",
+        "mintDeclaredAssetLimit",
+        "missingRedeemer",
+        "observerOrderInvalid",
+        "observersForbiddenOnUntaggedNetwork",
+        "redeemerCanonicity",
+        "scriptIntegrityHashMissing",
+      ].sort(),
+    );
+    for (const category of bound) {
+      expect(Object.keys(registry[category]!.roster)).toEqual(
+        expect.arrayContaining([
+          ...REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES,
+        ]),
+      );
+    }
+  });
 });

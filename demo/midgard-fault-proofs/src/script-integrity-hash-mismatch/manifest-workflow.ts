@@ -3,19 +3,7 @@ import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import {
-  DaLibp2pRetainedDaSource,
-  type RetainedDaPayloadSource,
-} from "../transition-trace/fetch.js";
-import {
-  assertWorkflowJournalActuation,
-  bindWorkflowActuationJournal,
-} from "../workflow/actuation-permit.js";
-import {
-  WORKFLOW_ADAPTER_RUNNER,
-  type WorkflowAdapterReadinessInput,
-  type WorkflowAdapterRunner,
-} from "../workflow/adapters.js";
+import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
@@ -24,6 +12,7 @@ import {
 import {
   cursorFamilyActionInput,
   cursorStringField,
+  STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
 } from "../workflow/cursor-family-runtime.js";
 import type { CursorFamilySpec } from "../workflow/cursor-family-state.js";
 import {
@@ -31,11 +20,7 @@ import {
   type FamilyAssemblyContext,
   type ManifestBoundFamilyWorkflow,
 } from "../workflow/family-definition.js";
-import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
-import {
-  DirectoryFraudProofWorkflowJournalStore,
-  type FraudProofWorkflowJournalStore,
-} from "../workflow/journal.js";
+import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
@@ -43,7 +28,6 @@ import {
   executeManifestBoundFamilyRecovery,
 } from "../workflow/manifest-bound-family-recovery.js";
 import { type FraudProofWorkflowRunResult } from "../workflow/orchestrator.js";
-import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import {
   SCRIPT_INTEGRITY_HASH_MISMATCH_BLUEPRINT_TITLES,
   type ScriptIntegrityHashMismatchContracts,
@@ -141,17 +125,7 @@ const contractRoles = Object.freeze({
     chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
     pexcludesWithdraw: "pexcludesWithdraw",
   },
-  removal: {
-    correctionLockSpend: "correctionLockSpend",
-    stateQueueSpend: "stateQueueSpend",
-    stateQueueMint: "stateQueueMint",
-    stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
-    activeOperatorsSpend: "activeOperatorsSpend",
-    activeOperatorsMint: "activeOperatorsMint",
-    retiredOperatorsSpend: "retiredOperatorsSpend",
-    retiredOperatorsMint: "retiredOperatorsMint",
-    schedulerSpend: "schedulerSpend",
-  },
+  removal: STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
 } as const);
 
 const WITNESS_ROLES = [
@@ -355,96 +329,3 @@ export const executeManifestBoundScriptIntegrityHashMismatchWorkflow = async ({
     replayer: SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
   });
 };
-
-export type LoadedScriptIntegrityHashMismatchWorkflow = Readonly<{
-  schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundScriptIntegrityHashMismatchWorkflowConfig;
-  retainedDaSources: readonly DaLibp2pRetainedDaSource[];
-  close: () => Promise<void>;
-}>;
-
-export type LoadScriptIntegrityHashMismatchWorkflow = (input: {
-  readonly runtimeConfigPath: string;
-  readonly invocation: WorkflowAdapterReadinessInput;
-}) => Promise<LoadedScriptIntegrityHashMismatchWorkflow>;
-
-export const createScriptIntegrityHashMismatchWorkflowRunnerSurface = ({
-  loadRuntimeConfig,
-}: {
-  readonly loadRuntimeConfig: LoadScriptIntegrityHashMismatchWorkflow;
-}): WorkflowAdapterRunner =>
-  Object.freeze({
-    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
-    runOrResume: async (invocation) => {
-      if (invocation.category !== "scriptIntegrityHashMismatch")
-        throw new Error(
-          `scriptIntegrityHashMismatch production runner category mismatch: ${invocation.category}`,
-        );
-      const journal = bindWorkflowFundingReservationJournal({
-        permit: invocation.fundingReservationPermit,
-        journal: bindWorkflowActuationJournal({
-          journal: new DirectoryFraudProofWorkflowJournalStore(
-            invocation.journalDirectory,
-          ),
-          permit: invocation.actuationPermit,
-          decisionDigest: invocation.decisionDigest,
-          deploymentFingerprint: invocation.deploymentFingerprint,
-          category: "scriptIntegrityHashMismatch",
-          headerHash: invocation.headerHash,
-        }),
-      });
-      assertWorkflowJournalActuation({
-        journal,
-        deploymentFingerprint: invocation.deploymentFingerprint,
-        category: "scriptIntegrityHashMismatch",
-        headerHash: invocation.headerHash,
-        checkpoint: "runner_start",
-      });
-      const loaded = await loadRuntimeConfig({
-        runtimeConfigPath: invocation.runtimeConfigPath,
-        invocation,
-      });
-      if (typeof loaded.close !== "function")
-        throw new Error(
-          "scriptIntegrityHashMismatch runtime omitted its disposer",
-        );
-      try {
-        if (
-          loaded.schemaVersion !==
-            "midgard-production-fraud-proof-runtime-config-v1" ||
-          loaded.retainedDaSources.length === 0 ||
-          loaded.retainedDaSources.some(
-            (source) => !(source instanceof DaLibp2pRetainedDaSource),
-          )
-        )
-          throw new Error(
-            "scriptIntegrityHashMismatch requires concrete public retained DA",
-          );
-        const workflow =
-          await createManifestBoundScriptIntegrityHashMismatchWorkflow(
-            loaded.config,
-          );
-        if (
-          workflow.binding.deploymentFingerprint !==
-            invocation.deploymentFingerprint ||
-          workflow.binding.definition.headerHash !== invocation.headerHash ||
-          workflow.decisionDigest !== invocation.decisionDigest
-        )
-          throw new Error(
-            "scriptIntegrityHashMismatch runtime binding changed invocation",
-          );
-        return await continuePendingWorkflow({
-          invocation,
-          journal: journal,
-          execute: () =>
-            executeManifestBoundScriptIntegrityHashMismatchWorkflow({
-              workflow,
-              sources: loaded.retainedDaSources,
-              journal,
-            }),
-        });
-      } finally {
-        await loaded.close();
-      }
-    },
-  });

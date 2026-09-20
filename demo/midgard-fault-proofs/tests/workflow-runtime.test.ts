@@ -40,6 +40,7 @@ import {
   applyFamilyApplicationRecord,
   defineFamilyApplication,
 } from "../src/workflow/family-application.js";
+import { REGISTERED_FAMILY_CATEGORIES } from "../src/workflow/family-application-registry.js";
 import {
   assertWorkflowFundingReservationReadyToSubmit,
   beginWorkflowFundingReservationAction,
@@ -1417,7 +1418,7 @@ describe("compiled manifest-bound production runtime V1", () => {
     }
   });
 
-  it("derives one factory per linear family definition and exports no per-family constructor for them", () => {
+  it("derives one factory per linear definition and per registered record, and exports no per-family constructor for them", () => {
     expect(Object.keys(LINEAR_FAMILY_DEFINITIONS).sort()).toEqual(
       [...LINEAR_FAMILY_CATEGORIES].sort(),
     );
@@ -1429,16 +1430,20 @@ describe("compiled manifest-bound production runtime V1", () => {
           typeof value === "function",
       )
       .map(([, value]) => value);
-    for (const category of LINEAR_FAMILY_CATEGORIES) {
-      const factory = WORKFLOW_RUNNER_FACTORIES[category];
-      expect(typeof factory).toBe("function");
-      expect(exportedConstructors).not.toContain(factory);
-    }
-    const linear = new Set<string>(LINEAR_FAMILY_CATEGORIES);
+    const derived = new Set<string>([
+      ...LINEAR_FAMILY_CATEGORIES,
+      ...REGISTERED_FAMILY_CATEGORIES,
+    ]);
+    // doubleSpend is registered but its runner-table row is still explicit
+    // until the runtime's remaining explicit rows move onto the registry.
+    derived.delete("doubleSpend");
     for (const [category, factory] of Object.entries(
       WORKFLOW_RUNNER_FACTORIES,
     )) {
-      if (!linear.has(category)) {
+      expect(typeof factory).toBe("function");
+      if (derived.has(category)) {
+        expect(exportedConstructors).not.toContain(factory);
+      } else {
         expect(exportedConstructors).toContain(factory);
       }
     }

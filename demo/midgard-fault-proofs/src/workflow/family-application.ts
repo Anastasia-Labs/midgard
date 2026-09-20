@@ -10,10 +10,11 @@
  * config, how the workflow is constructed and executed, and whether the
  * constructed workflow binds the admitted decision digest.
  *
- * This slice establishes the record, the registry table and the shared
- * application loop. The runtime's runner table and the watcher's fault-proof
- * application still carry their own per-family branches; moving them onto the
- * registry is the work of the later slices of the parent spec.
+ * The registry table holds the records; the runtime's runner table derives
+ * one factory per registered record, and the watcher's fault-proof application
+ * launches those families through that table. The families still on the
+ * allow-list keep their own per-family branches until the later slices of the
+ * parent spec register them.
  */
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
@@ -173,23 +174,30 @@ export const defineFamilyApplication = <
 export const familyStepRole = (ordinal: number): string =>
   `step${ordinal.toString().padStart(2, "0")}`;
 
+/** The members of a definition a derived roster is read from. */
+export type FamilyRosterDefinition = Readonly<{
+  category: FamilyCategory;
+  witnessRoles: readonly FaultProofWitnessRole[];
+  fieldPreimageCertificate: boolean;
+  /** Family-specific published script roles, mapped to manifest contracts. */
+  auxiliaryReferenceScripts?: Readonly<Record<string, string>>;
+  adapter: Readonly<
+    | { kind: "linear" }
+    | { kind: "cursor"; stepContractNames: readonly string[] }
+  >;
+}>;
+
 /**
  * The roster of a family assembled from a definition: one role per chain step
- * in step order, one per declared witness role, and the field-preimage
- * certificate minting policy when the definition binds the certificate. Every
- * witness role and the certificate role name their manifest contract
- * identically, so the mapping is the identity.
+ * in step order, one per declared witness role, the field-preimage
+ * certificate minting policy when the definition binds the certificate, and
+ * one role per declared auxiliary reference script. Every witness role and
+ * the certificate role name their manifest contract identically, so that
+ * mapping is the identity; an auxiliary role maps to the contract its
+ * definition names.
  */
 export const familyDefinitionRoster = (
-  definition: Readonly<{
-    category: FamilyCategory;
-    witnessRoles: readonly FaultProofWitnessRole[];
-    fieldPreimageCertificate: boolean;
-    adapter: Readonly<
-      | { kind: "linear" }
-      | { kind: "cursor"; stepContractNames: readonly string[] }
-    >;
-  }>,
+  definition: FamilyRosterDefinition,
 ): Readonly<Record<string, string>> =>
   Object.freeze({
     ...Object.fromEntries(
@@ -202,13 +210,14 @@ export const familyDefinitionRoster = (
     ...(definition.fieldPreimageCertificate
       ? { fieldPreimageCertificateMint: "fieldPreimageCertificateMint" }
       : {}),
+    ...definition.auxiliaryReferenceScripts,
   });
 
 /**
  * Refuses a derived roster that does not cover its definition: one role per
  * chain step, in step order and naming that step's contract; one per declared
  * witness role; the certificate role exactly when the definition binds it;
- * and nothing besides.
+ * one per declared auxiliary reference script; and nothing besides.
  *
  * `bindConfig` reads exactly these roles, so a roster that drifts from the
  * definition would otherwise surface as an unresolved reference while a fault
@@ -217,15 +226,7 @@ export const familyDefinitionRoster = (
  * so a change to the shared builder refuses at import instead.
  */
 export const assertFamilyDefinitionRoster = (
-  definition: Readonly<{
-    category: FamilyCategory;
-    witnessRoles: readonly FaultProofWitnessRole[];
-    fieldPreimageCertificate: boolean;
-    adapter: Readonly<
-      | { kind: "linear" }
-      | { kind: "cursor"; stepContractNames: readonly string[] }
-    >;
-  }>,
+  definition: FamilyRosterDefinition,
   roster: Readonly<Record<string, string>>,
 ): void => {
   const refuse = (detail: string): never => {
@@ -246,6 +247,7 @@ export const assertFamilyDefinitionRoster = (
           ["fieldPreimageCertificateMint", "fieldPreimageCertificateMint"],
         ] as const)
       : []),
+    ...Object.entries(definition.auxiliaryReferenceScripts ?? {}),
   ]);
   for (const [role, contractName] of expected) {
     if (roster[role] !== contractName) {

@@ -21,10 +21,8 @@ import {
   createCatalogueCompleteCanonicalReplay,
   createCrossBlockDuplicateEventWorkflowRunner,
   createCrossBlockSettlementAuthority,
-  createDistinctAssetAccumulationWorkflowRunner,
   createDoubleSpendWorkflowRunner,
   createExecutionNativeScriptInvalidWorkflowRunner,
-  createExecutionSourceScriptDecodingWorkflowRunner,
   createExternalHistoricalNativeScriptSourceRoster,
   createFieldItemWidthIllegalWorkflowRunner,
   createFieldPreimageLengthWorkflowRunner,
@@ -88,28 +86,18 @@ import {
   createManifestBoundZeroInputWorkflow,
   createMinAdaWorkflowRunner,
   createMintAuthorizationWorkflowRunner,
-  createMintDeclaredAssetLimitWorkflowRunner,
   createMintItemNonCanonicalWorkflowRunner,
   createMissingNativeScriptTxWorkflowRunner,
   createMissingNativeScriptUtxoWorkflowRunner,
-  createMissingRedeemerWorkflowRunner,
-  createMissingScriptSourceWorkflowRunner,
   createMissingSignatureWorkflowRunner,
   createNativeScriptDecodingWorkflowRunner,
   createNativeScriptInvalidWorkflowRunner,
   createNetworkIdWorkflowRunner,
-  createObserverOrderInvalidWorkflowRunner,
-  createObserversForbiddenOnUntaggedNetworkWorkflowRunner,
   createOutputReferenceScriptDecodingWorkflowRunner,
   createProtectedOutputSignerMissingWorkflowRunner,
-  createReceivePurposeLanguageWorkflowRunner,
-  createRedeemerCanonicityWorkflowRunner,
   createResolvedOutputNonCanonicalWorkflowRunner,
-  createScriptIntegrityHashMismatchWorkflowRunner,
-  createScriptIntegrityHashMissingWorkflowRunner,
   createSpendInputSignerMissingWorkflowRunner,
   createTransactionOutputNonCanonicalWorkflowRunner,
-  createUnusedRedeemerWorkflowRunner,
   createUnusedScriptWitnessWorkflowRunner,
   createValidationTraceDisputeWorkflowRunner,
   createWithdrawalMistagWorkflowRunner,
@@ -5504,10 +5492,11 @@ const createApplication = ({
       fieldItemWidthIllegalLoader,
       fundingProfile("fieldItemWidthIllegal"),
     ),
-    scriptIntegrityHashMissing: createScriptIntegrityHashMissingWorkflowRunner(
-      scriptIntegrityHashMissingLoader,
-      fundingProfile("scriptIntegrityHashMissing"),
-    ),
+    scriptIntegrityHashMissing:
+      WORKFLOW_RUNNER_FACTORIES.scriptIntegrityHashMissing(
+        scriptIntegrityHashMissingLoader,
+        fundingProfile("scriptIntegrityHashMissing"),
+      ),
     transactionOutputNonCanonical:
       createTransactionOutputNonCanonicalWorkflowRunner(
         transactionOutputNonCanonicalLoader,
@@ -5521,7 +5510,7 @@ const createApplication = ({
       resolvedOutputNonCanonicalLoader,
       fundingProfile("resolvedOutputNonCanonical"),
     ),
-    mintDeclaredAssetLimit: createMintDeclaredAssetLimitWorkflowRunner(
+    mintDeclaredAssetLimit: WORKFLOW_RUNNER_FACTORIES.mintDeclaredAssetLimit(
       mintDeclaredAssetLimitLoader,
       fundingProfile("mintDeclaredAssetLimit"),
     ),
@@ -5535,7 +5524,7 @@ const createApplication = ({
         fundingProfile("protectedOutputSignerMissing"),
       ),
     observersForbiddenOnUntaggedNetwork:
-      createObserversForbiddenOnUntaggedNetworkWorkflowRunner(
+      WORKFLOW_RUNNER_FACTORIES.observersForbiddenOnUntaggedNetwork(
         observersForbiddenOnUntaggedNetworkLoader,
         fundingProfile("observersForbiddenOnUntaggedNetwork"),
       ),
@@ -5549,7 +5538,7 @@ const createApplication = ({
         fundingProfile("outputReferenceScriptDecoding"),
       ),
     executionSourceScriptDecoding:
-      createExecutionSourceScriptDecodingWorkflowRunner(
+      WORKFLOW_RUNNER_FACTORIES.executionSourceScriptDecoding(
         executionSourceScriptDecodingLoader,
         fundingProfile("executionSourceScriptDecoding"),
       ),
@@ -5558,15 +5547,15 @@ const createApplication = ({
         executionNativeScriptInvalidLoader,
         fundingProfile("executionNativeScriptInvalid"),
       ),
-    observerOrderInvalid: createObserverOrderInvalidWorkflowRunner(
+    observerOrderInvalid: WORKFLOW_RUNNER_FACTORIES.observerOrderInvalid(
       observerOrderInvalidLoader,
       fundingProfile("observerOrderInvalid"),
     ),
-    redeemerCanonicity: createRedeemerCanonicityWorkflowRunner(
+    redeemerCanonicity: WORKFLOW_RUNNER_FACTORIES.redeemerCanonicity(
       redeemerCanonicityLoader,
       fundingProfile("redeemerCanonicity"),
     ),
-    receivePurposeLanguage: createReceivePurposeLanguageWorkflowRunner(
+    receivePurposeLanguage: WORKFLOW_RUNNER_FACTORIES.receivePurposeLanguage(
       receivePurposeLanguageLoader,
       fundingProfile("receivePurposeLanguage"),
     ),
@@ -5574,25 +5563,25 @@ const createApplication = ({
       unusedScriptWitnessLoader,
       fundingProfile("unusedScriptWitness"),
     ),
-    missingScriptSource: createMissingScriptSourceWorkflowRunner(
+    missingScriptSource: WORKFLOW_RUNNER_FACTORIES.missingScriptSource(
       missingScriptSourceLoader,
       fundingProfile("missingScriptSource"),
     ),
-    missingRedeemer: createMissingRedeemerWorkflowRunner(
+    missingRedeemer: WORKFLOW_RUNNER_FACTORIES.missingRedeemer(
       missingRedeemerLoader,
       fundingProfile("missingRedeemer"),
     ),
-    unusedRedeemer: createUnusedRedeemerWorkflowRunner(
+    unusedRedeemer: WORKFLOW_RUNNER_FACTORIES.unusedRedeemer(
       unusedRedeemerLoader,
       fundingProfile("unusedRedeemer"),
     ),
     scriptIntegrityHashMismatch:
-      createScriptIntegrityHashMismatchWorkflowRunner(
+      WORKFLOW_RUNNER_FACTORIES.scriptIntegrityHashMismatch(
         scriptIntegrityHashMismatchLoader,
         fundingProfile("scriptIntegrityHashMismatch"),
       ),
     distinctAssetAccumulationLimit:
-      createDistinctAssetAccumulationWorkflowRunner(
+      WORKFLOW_RUNNER_FACTORIES.distinctAssetAccumulationLimit(
         distinctAssetAccumulationLimitLoader,
         fundingProfile("distinctAssetAccumulationLimit"),
       ),

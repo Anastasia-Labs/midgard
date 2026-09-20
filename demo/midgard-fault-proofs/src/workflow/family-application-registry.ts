@@ -7,8 +7,10 @@
  * A linear family's record is derived from its `FamilyDefinition`: the step
  * contract names come from its linear spec, the witness roles and the
  * field-preimage certificate flag from the definition itself, so nothing is
- * restated. A family whose config shape is its own writes a short record by
- * hand; `doubleSpend` is the first.
+ * restated. A decision-digest cursor family's record is derived the same way,
+ * with the state-queue removal set read from the definition's auxiliary
+ * reference scripts. A family whose config shape is its own writes a short
+ * record by hand; `doubleSpend` is the first.
  *
  * `NOT_YET_REGISTERED_FAMILY_CATEGORIES` is a shrinking allow-list of
  * catalogue categories that have no record yet, following the pattern the
@@ -20,8 +22,95 @@ import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk";
-import type { UTxO } from "@lucid-evolution/lucid";
+import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
+import {
+  createManifestBoundDistinctAssetAccumulationWorkflow,
+  DISTINCT_ASSET_ACCUMULATION_FAMILY_DEFINITION,
+  executeManifestBoundDistinctAssetAccumulationWorkflow,
+  type ManifestBoundDistinctAssetAccumulationWorkflow,
+  type ManifestBoundDistinctAssetAccumulationWorkflowConfig,
+} from "../distinct-asset-accumulation-limit/v1.js";
+import {
+  createManifestBoundExecutionSourceScriptDecodingWorkflow,
+  executeManifestBoundExecutionSourceScriptDecodingWorkflow,
+  EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION,
+  type ManifestBoundExecutionSourceScriptDecodingWorkflow,
+  type ManifestBoundExecutionSourceScriptDecodingWorkflowConfig,
+} from "../execution-source-script-decoding/v1.js";
+import {
+  createManifestBoundMintDeclaredAssetLimitWorkflow,
+  executeManifestBoundMintDeclaredAssetLimitWorkflow,
+  type ManifestBoundMintDeclaredAssetLimitWorkflow,
+  type ManifestBoundMintDeclaredAssetLimitWorkflowConfig,
+  MINT_DECLARED_ASSET_LIMIT_FAMILY_DEFINITION,
+} from "../mint-declared-asset-limit/v1.js";
+import {
+  createManifestBoundMissingRedeemerWorkflow,
+  executeManifestBoundMissingRedeemerWorkflow,
+  type ManifestBoundMissingRedeemerWorkflow,
+  type ManifestBoundMissingRedeemerWorkflowConfig,
+  MISSING_REDEEMER_FAMILY_DEFINITION,
+} from "../missing-redeemer/v1.js";
+import {
+  createManifestBoundMissingScriptSourceWorkflow,
+  executeManifestBoundMissingScriptSourceWorkflow,
+  type ManifestBoundMissingScriptSourceWorkflow,
+  type ManifestBoundMissingScriptSourceWorkflowConfig,
+  MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION,
+} from "../missing-script-source/v1.js";
+import {
+  createManifestBoundObserverOrderInvalidWorkflow,
+  executeManifestBoundObserverOrderInvalidWorkflow,
+  type ManifestBoundObserverOrderInvalidWorkflow,
+  type ManifestBoundObserverOrderInvalidWorkflowConfig,
+  OBSERVER_ORDER_INVALID_FAMILY_DEFINITION,
+} from "../observer-order-invalid/v1.js";
+import {
+  createManifestBoundObserversForbiddenWorkflow,
+  executeManifestBoundObserversForbiddenWorkflow,
+  type ManifestBoundObserversForbiddenWorkflow,
+  type ManifestBoundObserversForbiddenWorkflowConfig,
+  OBSERVERS_FORBIDDEN_FAMILY_DEFINITION,
+} from "../observers-forbidden-on-untagged-network/v1.js";
+import {
+  createManifestBoundReceivePurposeLanguageWorkflow,
+  executeManifestBoundReceivePurposeLanguageWorkflow,
+  type ManifestBoundReceivePurposeLanguageWorkflow,
+  type ManifestBoundReceivePurposeLanguageWorkflowConfig,
+  RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION,
+} from "../receive-purpose-language/manifest-workflow.js";
+import {
+  createManifestBoundRedeemerCanonicityWorkflow,
+  executeManifestBoundRedeemerCanonicityWorkflow,
+  type ManifestBoundRedeemerCanonicityWorkflow,
+  type ManifestBoundRedeemerCanonicityWorkflowConfig,
+  REDEEMER_CANONICITY_FAMILY_DEFINITION,
+} from "../redeemer-canonicity/runtime.js";
+import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
+import type { ResolvedProverSigner } from "../runtime.js";
+import {
+  createManifestBoundScriptIntegrityHashMismatchWorkflow,
+  executeManifestBoundScriptIntegrityHashMismatchWorkflow,
+  type ManifestBoundScriptIntegrityHashMismatchWorkflow,
+  type ManifestBoundScriptIntegrityHashMismatchWorkflowConfig,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION,
+} from "../script-integrity-hash-mismatch/manifest-workflow.js";
+import {
+  createManifestBoundScriptIntegrityHashMissingWorkflow,
+  executeManifestBoundScriptIntegrityHashMissingWorkflow,
+  type ManifestBoundScriptIntegrityHashMissingWorkflow,
+  type ManifestBoundScriptIntegrityHashMissingWorkflowConfig,
+  SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION,
+} from "../script-integrity-hash-missing/v1.js";
+import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
+import {
+  createManifestBoundUnusedRedeemerWorkflow,
+  executeManifestBoundUnusedRedeemerWorkflow,
+  type ManifestBoundUnusedRedeemerWorkflow,
+  type ManifestBoundUnusedRedeemerWorkflowConfig,
+  UNUSED_REDEEMER_FAMILY_DEFINITION,
+} from "../unused-redeemer/v1.js";
 import {
   type ManifestBoundDaHashPreimageWorkflow,
   runOrResumeManifestBoundDaHashPreimageWorkflow,
@@ -37,17 +126,22 @@ import {
   defineFamilyApplication,
   type FamilyApplicationRecord,
   type FamilyApplicationRequirement,
+  type FamilyApplicationWorkflowIdentity,
   familyDefinitionRoster,
   type FamilyResolvedReferenceScripts,
+  type FamilyRosterDefinition,
   familyStepRole,
   type LinearFamilyApplicationRecord,
 } from "./family-application.js";
-import type {
-  FamilyDefinition,
-  FaultProofWitnessRole,
-  ManifestBoundFamilyWorkflow,
-  ManifestBoundFamilyWorkflowConfig,
+import {
+  type FamilyCategory,
+  type FamilyDefinition,
+  familyStepContractNames,
+  type FaultProofWitnessRole,
+  type ManifestBoundFamilyWorkflow,
+  type ManifestBoundFamilyWorkflowConfig,
 } from "./family-definition.js";
+import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import {
   type AnyLinearFamilyDefinition,
   LINEAR_FAMILY_DEFINITIONS,
@@ -56,6 +150,7 @@ import {
   type LinearFamilyCategory,
   linearFamilySpec,
 } from "./linear-family-spec.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
 import {
   assembleManifestBoundFamilyWorkflow,
   runOrResumeManifestBoundFamilyWorkflow,
@@ -314,6 +409,256 @@ export const DOUBLE_SPEND_FAMILY_APPLICATION_RECORD = defineFamilyApplication<
 });
 
 /**
+ * The config shape every decision-digest cursor family shares: the common
+ * infrastructure, the admitted decision digest, and a reference-script bundle
+ * whose `removal` member is the state-queue removal set the family spends by
+ * reference after its proof token is minted. Each family's own config type
+ * narrows the step tuple and the witness roster; the record builder lays the
+ * roster in at this shape and asserts the family's exact type, which the
+ * derived roster's step count and role set make sound.
+ */
+type DecisionDigestCursorFamilyConfig = Readonly<{
+  manifest: unknown;
+  blueprintJson: string;
+  deploymentInfo: unknown;
+  headerHash: string;
+  lucid: LucidEvolution;
+  signer: ResolvedProverSigner;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  decisionDigest: string;
+  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
+  referenceScripts: Readonly<{
+    steps: readonly UTxO[];
+    witnesses: Readonly<Record<string, UTxO>>;
+    fieldPreimageCertificateMint?: UTxO;
+    removal: Readonly<Record<string, UTxO>>;
+  }>;
+}>;
+
+/**
+ * Derives the record of a cursor family that binds the admitted decision
+ * digest and follows its proof token with a state-queue removal. The roster
+ * is the definition's: chain steps, witness roles, the certificate when the
+ * definition binds it, and the removal set the definition declares as its
+ * auxiliary reference scripts. `bindConfig` lays those same roles into the
+ * family's config, so a script cannot be in the roster and absent from the
+ * config or the reverse.
+ */
+const decisionDigestCursorFamilyApplicationRecord = <
+  Category extends FamilyCategory,
+  Config extends DecisionDigestCursorFamilyConfig,
+  Workflow extends FamilyApplicationWorkflowIdentity<Category>,
+>(
+  definition: FamilyRosterDefinition & Readonly<{ category: Category }>,
+  family: Readonly<{
+    constructWorkflow: (config: Config) => Promise<Workflow>;
+    execute: (input: {
+      readonly workflow: Workflow;
+      readonly sources: readonly RetainedDaPayloadSource[];
+      readonly journal: FraudProofWorkflowJournalStore;
+    }) => Promise<unknown>;
+  }>,
+): FamilyApplicationRecord<Category, Config, Workflow> => {
+  const { category } = definition;
+  const removalRoles = definition.auxiliaryReferenceScripts;
+  if (removalRoles === undefined || Object.keys(removalRoles).length === 0) {
+    throw new Error(
+      `${category} follows its proof token with a state-queue removal but declares no auxiliary reference scripts`,
+    );
+  }
+  const roster = familyDefinitionRoster(definition);
+  assertFamilyDefinitionRoster(definition, roster);
+  const stepRoles = familyStepContractNames(definition).map((_, index) =>
+    familyStepRole(index + 1),
+  );
+  return defineFamilyApplication<Category, Config, Workflow>({
+    category,
+    roster,
+    requires: [],
+    bindConfig: ({ infrastructure, references }): Config => {
+      if (infrastructure.decisionDigest === undefined) {
+        throw new Error(
+          `${category} binds the admitted decision digest, which this invocation does not carry`,
+        );
+      }
+      const bound: DecisionDigestCursorFamilyConfig = Object.freeze({
+        manifest: infrastructure.manifest,
+        blueprintJson: infrastructure.blueprintJson,
+        deploymentInfo: infrastructure.deploymentInfo,
+        headerHash: infrastructure.headerHash,
+        lucid: infrastructure.lucid,
+        signer: infrastructure.signer,
+        source: infrastructure.source,
+        decisionDigest: infrastructure.decisionDigest,
+        stateQueueMutationLeaseCoordinator:
+          infrastructure.stateQueueMutationLeaseCoordinator,
+        referenceScripts: Object.freeze({
+          steps: Object.freeze(
+            stepRoles.map((role) => requiredReference(references, role)),
+          ),
+          witnesses: Object.freeze(
+            Object.fromEntries(
+              definition.witnessRoles.map((role) => [
+                role,
+                requiredReference(references, role),
+              ]),
+            ),
+          ),
+          ...(definition.fieldPreimageCertificate
+            ? {
+                fieldPreimageCertificateMint: requiredReference(
+                  references,
+                  "fieldPreimageCertificateMint",
+                ),
+              }
+            : {}),
+          removal: Object.freeze(
+            Object.fromEntries(
+              Object.keys(removalRoles).map((role) => [
+                role,
+                requiredReference(references, role),
+              ]),
+            ),
+          ),
+        }),
+      });
+      // The step list has the definition's step count and every role resolved
+      // or threw above, so this is the family's exact config shape.
+      return bound as Config;
+    },
+    constructWorkflow: family.constructWorkflow,
+    execute: async ({ workflow, sources, journal }) =>
+      await family.execute({ workflow, sources, journal }),
+    bindsDecisionDigest: true,
+  });
+};
+
+/**
+ * The twelve decision-digest families on the state-queue-removal witness set.
+ * Each row names its exact config and workflow types so the record's
+ * `bindConfig` result is what its `constructWorkflow` consumes.
+ */
+export const DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_APPLICATION_RECORD =
+  decisionDigestCursorFamilyApplicationRecord<
+    "distinctAssetAccumulationLimit",
+    ManifestBoundDistinctAssetAccumulationWorkflowConfig,
+    ManifestBoundDistinctAssetAccumulationWorkflow
+  >(DISTINCT_ASSET_ACCUMULATION_FAMILY_DEFINITION, {
+    constructWorkflow: createManifestBoundDistinctAssetAccumulationWorkflow,
+    execute: executeManifestBoundDistinctAssetAccumulationWorkflow,
+  });
+
+export const EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD =
+  decisionDigestCursorFamilyApplicationRecord<
+    "executionSourceScriptDecoding",
+    ManifestBoundExecutionSourceScriptDecodingWorkflowConfig,
+    ManifestBoundExecutionSourceScriptDecodingWorkflow
+  >(EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION, {
+    constructWorkflow: createManifestBoundExecutionSourceScriptDecodingWorkflow,
+    execute: executeManifestBoundExecutionSourceScriptDecodingWorkflow,
+  });
+
+export const MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD =
+  decisionDigestCursorFamilyApplicationRecord<
+    "missingScriptSource",
+    ManifestBoundMissingScriptSourceWorkflowConfig,
+    ManifestBoundMissingScriptSourceWorkflow
+  >(MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION, {
+    constructWorkflow: createManifestBoundMissingScriptSourceWorkflow,
+    execute: executeManifestBoundMissingScriptSourceWorkflow,
+  });
+
+export const RECEIVE_PURPOSE_LANGUAGE_FAMILY_APPLICATION_RECORD =
+  decisionDigestCursorFamilyApplicationRecord<
+    "receivePurposeLanguage",
+    ManifestBoundReceivePurposeLanguageWorkflowConfig,
+    ManifestBoundReceivePurposeLanguageWorkflow
+  >(RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION, {
+    constructWorkflow: createManifestBoundReceivePurposeLanguageWorkflow,
+    execute: executeManifestBoundReceivePurposeLanguageWorkflow,
+  });
+
+export const SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_APPLICATION_RECORD =
+  decisionDigestCursorFamilyApplicationRecord<
+    "scriptIntegrityHashMismatch",
+    ManifestBoundScriptIntegrityHashMismatchWorkflowConfig,
+    ManifestBoundScriptIntegrityHashMismatchWorkflow
+  >(SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION, {
+    constructWorkflow: createManifestBoundScriptIntegrityHashMismatchWorkflow,
+    execute: executeManifestBoundScriptIntegrityHashMismatchWorkflow,
+  });
+
+export const UNUSED_REDEEMER_FAMILY_APPLICATION_RECORD =
+  decisionDigestCursorFamilyApplicationRecord<
+    "unusedRedeemer",
+    ManifestBoundUnusedRedeemerWorkflowConfig,
+    ManifestBoundUnusedRedeemerWorkflow
+  >(UNUSED_REDEEMER_FAMILY_DEFINITION, {
+    constructWorkflow: createManifestBoundUnusedRedeemerWorkflow,
+    execute: executeManifestBoundUnusedRedeemerWorkflow,
+  });
+
+export const MINT_DECLARED_ASSET_LIMIT_FAMILY_APPLICATION_RECORD =
+  decisionDigestCursorFamilyApplicationRecord<
+    "mintDeclaredAssetLimit",
+    ManifestBoundMintDeclaredAssetLimitWorkflowConfig,
+    ManifestBoundMintDeclaredAssetLimitWorkflow
+  >(MINT_DECLARED_ASSET_LIMIT_FAMILY_DEFINITION, {
+    constructWorkflow: createManifestBoundMintDeclaredAssetLimitWorkflow,
+    execute: executeManifestBoundMintDeclaredAssetLimitWorkflow,
+  });
+
+export const MISSING_REDEEMER_FAMILY_APPLICATION_RECORD =
+  decisionDigestCursorFamilyApplicationRecord<
+    "missingRedeemer",
+    ManifestBoundMissingRedeemerWorkflowConfig,
+    ManifestBoundMissingRedeemerWorkflow
+  >(MISSING_REDEEMER_FAMILY_DEFINITION, {
+    constructWorkflow: createManifestBoundMissingRedeemerWorkflow,
+    execute: executeManifestBoundMissingRedeemerWorkflow,
+  });
+
+export const OBSERVER_ORDER_INVALID_FAMILY_APPLICATION_RECORD =
+  decisionDigestCursorFamilyApplicationRecord<
+    "observerOrderInvalid",
+    ManifestBoundObserverOrderInvalidWorkflowConfig,
+    ManifestBoundObserverOrderInvalidWorkflow
+  >(OBSERVER_ORDER_INVALID_FAMILY_DEFINITION, {
+    constructWorkflow: createManifestBoundObserverOrderInvalidWorkflow,
+    execute: executeManifestBoundObserverOrderInvalidWorkflow,
+  });
+
+export const OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FAMILY_APPLICATION_RECORD =
+  decisionDigestCursorFamilyApplicationRecord<
+    "observersForbiddenOnUntaggedNetwork",
+    ManifestBoundObserversForbiddenWorkflowConfig,
+    ManifestBoundObserversForbiddenWorkflow
+  >(OBSERVERS_FORBIDDEN_FAMILY_DEFINITION, {
+    constructWorkflow: createManifestBoundObserversForbiddenWorkflow,
+    execute: executeManifestBoundObserversForbiddenWorkflow,
+  });
+
+export const REDEEMER_CANONICITY_FAMILY_APPLICATION_RECORD =
+  decisionDigestCursorFamilyApplicationRecord<
+    "redeemerCanonicity",
+    ManifestBoundRedeemerCanonicityWorkflowConfig,
+    ManifestBoundRedeemerCanonicityWorkflow
+  >(REDEEMER_CANONICITY_FAMILY_DEFINITION, {
+    constructWorkflow: createManifestBoundRedeemerCanonicityWorkflow,
+    execute: executeManifestBoundRedeemerCanonicityWorkflow,
+  });
+
+export const SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_APPLICATION_RECORD =
+  decisionDigestCursorFamilyApplicationRecord<
+    "scriptIntegrityHashMissing",
+    ManifestBoundScriptIntegrityHashMissingWorkflowConfig,
+    ManifestBoundScriptIntegrityHashMissingWorkflow
+  >(SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION, {
+    constructWorkflow: createManifestBoundScriptIntegrityHashMissingWorkflow,
+    execute: executeManifestBoundScriptIntegrityHashMissingWorkflow,
+  });
+
+/**
  * Catalogue categories that have no application record yet. Every entry is
  * removed as its family's record lands; the list reaching empty is what makes
  * the registry the complete installed set.
@@ -335,25 +680,13 @@ export const NOT_YET_REGISTERED_FAMILY_CATEGORIES = Object.freeze([
   "fieldPreimageLengthMismatch",
   "fieldItemWidthIllegal",
   "witnessScriptDecoding",
-  "scriptIntegrityHashMissing",
   "transactionOutputNonCanonical",
   "resolvedOutputNonCanonical",
-  "mintDeclaredAssetLimit",
   "spendInputSignerMissing",
   "protectedOutputSignerMissing",
-  "observersForbiddenOnUntaggedNetwork",
-  "observerOrderInvalid",
-  "redeemerCanonicity",
   "outputReferenceScriptDecoding",
-  "executionSourceScriptDecoding",
-  "receivePurposeLanguage",
   "unusedScriptWitness",
-  "missingScriptSource",
-  "missingRedeemer",
-  "unusedRedeemer",
   "executionNativeScriptInvalid",
-  "scriptIntegrityHashMismatch",
-  "distinctAssetAccumulationLimit",
   "mintItemNonCanonical",
 ] as const satisfies readonly FraudProofCatalogueCategoryName[]);
 
@@ -369,6 +702,23 @@ export type RegisteredFamilyCategory = Exclude<
 export const FAMILY_APPLICATION_REGISTRY = Object.freeze({
   ...LINEAR_FAMILY_APPLICATION_RECORDS,
   doubleSpend: DOUBLE_SPEND_FAMILY_APPLICATION_RECORD,
+  distinctAssetAccumulationLimit:
+    DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_APPLICATION_RECORD,
+  executionSourceScriptDecoding:
+    EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
+  missingScriptSource: MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD,
+  receivePurposeLanguage: RECEIVE_PURPOSE_LANGUAGE_FAMILY_APPLICATION_RECORD,
+  scriptIntegrityHashMismatch:
+    SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_APPLICATION_RECORD,
+  unusedRedeemer: UNUSED_REDEEMER_FAMILY_APPLICATION_RECORD,
+  mintDeclaredAssetLimit: MINT_DECLARED_ASSET_LIMIT_FAMILY_APPLICATION_RECORD,
+  missingRedeemer: MISSING_REDEEMER_FAMILY_APPLICATION_RECORD,
+  observerOrderInvalid: OBSERVER_ORDER_INVALID_FAMILY_APPLICATION_RECORD,
+  observersForbiddenOnUntaggedNetwork:
+    OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FAMILY_APPLICATION_RECORD,
+  redeemerCanonicity: REDEEMER_CANONICITY_FAMILY_APPLICATION_RECORD,
+  scriptIntegrityHashMissing:
+    SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_APPLICATION_RECORD,
 } satisfies {
   // Completeness only: every remaining catalogue category has exactly one
   // row, keyed by the record's own category. A record's config and workflow

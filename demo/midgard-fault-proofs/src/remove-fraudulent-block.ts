@@ -302,7 +302,12 @@ const assertExactFraudSlashLovelaceConservation = ({
   }
 };
 
-const REFERENCE_SCRIPT_NAMES = [
+/**
+ * The published reference scripts a state-queue removal spends by reference.
+ * Exported so the cursor families that follow a proof token with a removal
+ * declare this same set as their auxiliary reference scripts.
+ */
+export const REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES = [
   "correctionLockSpend",
   "stateQueueSpend",
   "stateQueueMint",
@@ -325,7 +330,9 @@ const STATE_QUEUE_REMOVE_REFERENCE_SCRIPT_NAMES = [
   "schedulerSpend",
 ] as const;
 
-type ReferenceScriptName = (typeof REFERENCE_SCRIPT_NAMES)[number];
+export type RemoveFraudulentBlockReferenceScriptName =
+  (typeof REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES)[number];
+type ReferenceScriptName = RemoveFraudulentBlockReferenceScriptName;
 
 type DeploymentScriptName = ReferenceScriptName | "registeredOperatorsSpend";
 
@@ -1151,7 +1158,7 @@ const referenceScriptOutRefs = (
     | undefined,
 ): Readonly<Record<ReferenceScriptName, string | null>> =>
   Object.fromEntries(
-    REFERENCE_SCRIPT_NAMES.map((name) => {
+    REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES.map((name) => {
       const utxo = referenceScripts?.[name];
       return [name, utxo === undefined ? null : outRefLabel(utxo)] as const;
     }),

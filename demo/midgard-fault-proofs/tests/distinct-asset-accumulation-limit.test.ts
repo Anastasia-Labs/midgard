@@ -9,7 +9,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   classifyDistinctAssetAccumulationFinding,
-  createDistinctAssetAccumulationWorkflowRunnerSurface,
   type DistinctAssetAccumulationEvidence,
   distinctAssetAccumulationEvidenceCloses,
   type DistinctAssetAccumulationFinding,
@@ -17,6 +16,7 @@ import {
   nextDistinctAssetAccumulationStage,
   prepareDistinctAssetAccumulationEvidence,
 } from "../src/distinct-asset-accumulation-limit/index.js";
+import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
 
 const h = (byte: string) => byte.repeat(64);
 const accepted = (): VerdictSubject => ({
@@ -156,12 +156,12 @@ describe("distinctAssetAccumulationLimit V1", () => {
     ).toThrow(/identity/u);
   });
 
-  it("exposes the strict shared-adapter runOrResume surface", () => {
-    const runner = createDistinctAssetAccumulationWorkflowRunnerSurface({
-      loadRuntimeConfig: async () => {
+  it("derives the strict shared-adapter runOrResume runner from its record", () => {
+    const runner = WORKFLOW_RUNNER_FACTORIES.distinctAssetAccumulationLimit(
+      async () => {
         throw new Error("loader should only run after adapter admission");
       },
-    });
+    );
     expect(runner.runnerVersion).toBe(
       "midgard-production-fraud-proof-workflow-runner-v1",
     );

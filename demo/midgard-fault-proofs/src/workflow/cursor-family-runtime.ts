@@ -2,6 +2,8 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, Network } from "@lucid-evolution/lucid";
 
 import {
+  REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES,
+  type RemoveFraudulentBlockReferenceScriptName,
   type StateQueueMutationLease,
   type StateQueueMutationLeaseCoordinator,
   submitRemoveFraudulentBlock,
@@ -15,6 +17,21 @@ import {
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
+
+/**
+ * The auxiliary reference-script roles of a cursor family whose proof token
+ * is followed by a state-queue removal: one role per removal reference
+ * script, each naming the manifest contract of the same name. Declared on the
+ * family definition so the assembly resolves and verifies the removal set
+ * with the rest of the roster.
+ */
+export const STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS: {
+  readonly [Name in RemoveFraudulentBlockReferenceScriptName]: Name;
+} = Object.freeze(
+  Object.fromEntries(
+    REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES.map((name) => [name, name]),
+  ) as { [Name in RemoveFraudulentBlockReferenceScriptName]: Name },
+);
 
 export type CursorFamilyActionInput = Readonly<Record<string, unknown>> &
   Readonly<{ stage: string }>;

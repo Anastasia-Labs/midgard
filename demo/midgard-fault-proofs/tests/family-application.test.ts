@@ -8,9 +8,11 @@ import { describe, expect, it, vi } from "vitest";
 import { WORKFLOW_ACTUATION_PERMIT } from "../src/workflow/actuation-permit.js";
 import {
   applyFamilyApplicationRecord,
+  assertFamilyDefinitionRoster,
   defineFamilyApplication,
   type FamilyApplicationInvocation,
   type FamilyCommonInfrastructure,
+  familyDefinitionRoster,
   resolveFamilyApplicationReferences,
 } from "../src/workflow/family-application.js";
 import { isAdmittedWorkflowRunner } from "../src/workflow/runner-admission.js";
@@ -302,5 +304,61 @@ describe("record-derived runner", () => {
         }),
       }),
     ).toBe(false);
+  });
+});
+
+describe("definition-derived roster", () => {
+  const definition = Object.freeze({
+    category: "unusedRedeemer" as const,
+    witnessRoles: ["computationThreadMint", "fraudProofMint"] as const,
+    fieldPreimageCertificate: false,
+    auxiliaryReferenceScripts: Object.freeze({
+      stateQueueSpend: "stateQueueSpend",
+      schedulerSpend: "schedulerSpend",
+    }),
+    adapter: Object.freeze({
+      kind: "cursor" as const,
+      stepContractNames: [
+        "fraudProofUnusedRedeemer",
+        "fraudProofUnusedRedeemerStep02",
+      ] as const,
+    }),
+  });
+
+  it("carries the definition's auxiliary reference scripts as roles", () => {
+    expect(familyDefinitionRoster(definition)).toEqual({
+      step01: "fraudProofUnusedRedeemer",
+      step02: "fraudProofUnusedRedeemerStep02",
+      computationThreadMint: "computationThreadMint",
+      fraudProofMint: "fraudProofMint",
+      stateQueueSpend: "stateQueueSpend",
+      schedulerSpend: "schedulerSpend",
+    });
+    expect(() =>
+      assertFamilyDefinitionRoster(
+        definition,
+        familyDefinitionRoster(definition),
+      ),
+    ).not.toThrow();
+  });
+
+  it("refuses a roster that drifts from the declared auxiliary set in either direction", () => {
+    const { schedulerSpend: _omitted, ...withoutScheduler } =
+      familyDefinitionRoster(definition);
+    expect(() =>
+      assertFamilyDefinitionRoster(definition, withoutScheduler),
+    ).toThrow("unusedRedeemer derived roster omits schedulerSpend");
+    expect(() =>
+      assertFamilyDefinitionRoster(definition, {
+        ...familyDefinitionRoster(definition),
+        correctionLockSpend: "correctionLockSpend",
+      }),
+    ).toThrow("unusedRedeemer derived roster carries correctionLockSpend");
+    expect(() =>
+      assertFamilyDefinitionRoster(
+        { ...definition, auxiliaryReferenceScripts: undefined },
+        familyDefinitionRoster(definition),
+      ),
+    ).toThrow("unusedRedeemer derived roster carries stateQueueSpend");
   });
 });

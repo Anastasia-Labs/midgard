@@ -6,10 +6,7 @@ import {
   admitRedeemerWorkflowArtifact,
   prepareRedeemerCanonicityWorkflowArtifact,
 } from "../src/redeemer-canonicity/runtime.js";
-import {
-  createRedeemerCanonicityWorkflowRunnerSurface,
-  type LoadedRedeemerCanonicityWorkflow,
-} from "../src/redeemer-canonicity/runtime.js";
+import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -30,42 +27,15 @@ const invocation = (category: string) =>
     fundingReservationPermit: {},
   }) as never;
 
-describe("redeemerCanonicity production runner surface", () => {
+describe("redeemerCanonicity production runner", () => {
   it("refuses another category before loading runtime state", async () => {
     const loadRuntimeConfig = vi.fn();
-    const runner = createRedeemerCanonicityWorkflowRunnerSurface({
-      loadRuntimeConfig,
-    });
+    const runner =
+      WORKFLOW_RUNNER_FACTORIES.redeemerCanonicity(loadRuntimeConfig);
     await expect(
       runner.runOrResume(invocation("observerOrderInvalid")),
     ).rejects.toThrow(/category mismatch/u);
     expect(loadRuntimeConfig).not.toHaveBeenCalled();
-  });
-
-  it("requires retained public DA and always closes its runtime", async () => {
-    const close = vi.fn(async () => undefined);
-    const loaded = {
-      schemaVersion: "midgard-production-fraud-proof-runtime-config-v1",
-      workflow: {
-        binding: {
-          deploymentFingerprint: "11".repeat(32),
-          definition: {
-            category: "redeemerCanonicity",
-            headerHash: "22".repeat(28),
-          },
-        },
-        decisionDigest: "33".repeat(32),
-      },
-      retainedDaSources: [],
-      close,
-    } as unknown as LoadedRedeemerCanonicityWorkflow;
-    const runner = createRedeemerCanonicityWorkflowRunnerSurface({
-      loadRuntimeConfig: async () => loaded,
-    });
-    await expect(
-      runner.runOrResume(invocation("redeemerCanonicity")),
-    ).rejects.toThrow(/no public retained-DA source/u);
-    expect(close).toHaveBeenCalledOnce();
   });
 });
 

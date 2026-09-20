@@ -46,7 +46,6 @@ import {
   createManifestBoundExecutionSourceScriptDecodingWorkflow,
   EXECUTION_SOURCE_SCRIPT_DECODING_CONFIG_KEYS,
   EXECUTION_SOURCE_SCRIPT_DECODING_STEP_DATUM_SCHEMAS,
-  runOrResumeManifestBoundExecutionSourceScriptDecodingWorkflow,
 } from "../src/execution-source-script-decoding/v1.js";
 import {
   cancelExecutionSourceScriptDecodingWorkflow,
@@ -175,16 +174,6 @@ describe("executionSourceScriptDecoding V1", () => {
     expect(Object.keys(actuator)).toEqual(["capture"]);
   });
 
-  it("rejects caller-authored evidence at the production runner boundary", async () => {
-    await expect(
-      runOrResumeManifestBoundExecutionSourceScriptDecodingWorkflow({
-        workflow: {} as never,
-        sources: [],
-        journal: {} as never,
-        evidence: evidence(malformedItem),
-      } as never),
-    ).rejects.toThrow(/caller-authored evidence/u);
-  });
   it("binds the frozen ID reason arms and exact execution coordinate", () => {
     expect(
       [0, 1, 2].map((value) =>

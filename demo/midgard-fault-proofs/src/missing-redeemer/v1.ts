@@ -7,17 +7,8 @@ import {
 } from "../linear-fault-family.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import {
-  DaLibp2pRetainedDaSource,
-  type RetainedDaPayloadSource,
-} from "../transition-trace/fetch.js";
+import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import { bindWorkflowActuationJournal } from "../workflow/actuation-permit.js";
-import {
-  WORKFLOW_ADAPTER_RUNNER,
-  type WorkflowAdapterReadinessInput,
-  type WorkflowAdapterRunner,
-} from "../workflow/adapters.js";
 import {
   encodeWorkflowArtifact,
   requireWorkflowArtifactMatches,
@@ -30,6 +21,7 @@ import {
 import {
   cursorFamilyActionInput,
   cursorStringField,
+  STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
 } from "../workflow/cursor-family-runtime.js";
 import type { CursorFamilySpec } from "../workflow/cursor-family-state.js";
 import {
@@ -38,17 +30,12 @@ import {
   type ManifestBoundFamilyWorkflow,
 } from "../workflow/family-definition.js";
 import { type FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
-import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
-import {
-  DirectoryFraudProofWorkflowJournalStore,
-  type FraudProofWorkflowJournalStore,
-} from "../workflow/journal.js";
+import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import { executeManifestBoundFamilyRecovery } from "../workflow/manifest-bound-family-recovery.js";
 import type { FraudProofWorkflowAction } from "../workflow/orchestrator.js";
 import { type FraudProofWorkflowRunResult } from "../workflow/orchestrator.js";
-import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import {
   createMissingRedeemerActuator,
   type MissingRedeemerActuatorAction,
@@ -173,17 +160,7 @@ const manifestContracts = Object.freeze({
     chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
     pexcludesWithdraw: "pexcludesWithdraw",
   },
-  removal: {
-    correctionLockSpend: "correctionLockSpend",
-    stateQueueSpend: "stateQueueSpend",
-    stateQueueMint: "stateQueueMint",
-    stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
-    activeOperatorsSpend: "activeOperatorsSpend",
-    activeOperatorsMint: "activeOperatorsMint",
-    retiredOperatorsSpend: "retiredOperatorsSpend",
-    retiredOperatorsMint: "retiredOperatorsMint",
-    schedulerSpend: "schedulerSpend",
-  },
+  removal: STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
 } as const);
 
 const WITNESS_ROLES = [
@@ -463,18 +440,6 @@ export const createManifestBoundMissingRedeemerWorkflow = async (
   });
 };
 
-export type LoadedMissingRedeemerWorkflow = Readonly<{
-  schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundMissingRedeemerWorkflowConfig;
-  retainedDaSources: readonly DaLibp2pRetainedDaSource[];
-  close: () => Promise<void>;
-}>;
-
-export type LoadMissingRedeemerWorkflow = (input: {
-  runtimeConfigPath: string;
-  invocation: WorkflowAdapterReadinessInput;
-}) => Promise<LoadedMissingRedeemerWorkflow>;
-
 export const executeManifestBoundMissingRedeemerWorkflow = async ({
   workflow,
   sources,
@@ -489,78 +454,4 @@ export const executeManifestBoundMissingRedeemerWorkflow = async ({
     sources,
     journal,
     replayer: MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
-  });
-
-export const runOrResumeManifestBoundMissingRedeemerWorkflow = async (input: {
-  workflow: ManifestBoundMissingRedeemerWorkflow;
-  sources: readonly RetainedDaPayloadSource[];
-  journal: FraudProofWorkflowJournalStore;
-}) => {
-  if (Object.keys(input).sort().join(",") !== "journal,sources,workflow")
-    throw new Error("missingRedeemer runner rejects caller-authored evidence");
-  return await executeManifestBoundMissingRedeemerWorkflow(input);
-};
-
-/** Loader-compatible surface; central admission remains fixed-category only. */
-export const createMissingRedeemerWorkflowRunnerSurface = ({
-  loadRuntimeConfig,
-}: {
-  loadRuntimeConfig: LoadMissingRedeemerWorkflow;
-}): WorkflowAdapterRunner =>
-  Object.freeze({
-    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
-    runOrResume: async (invocation) => {
-      if (invocation.category !== MISSING_REDEEMER_CATEGORY)
-        throw new Error("missingRedeemer runner category changed");
-      const loaded = await loadRuntimeConfig({
-        runtimeConfigPath: invocation.runtimeConfigPath,
-        invocation,
-      });
-      try {
-        if (
-          loaded.retainedDaSources.length === 0 ||
-          loaded.retainedDaSources.some(
-            (source) => !(source instanceof DaLibp2pRetainedDaSource),
-          )
-        )
-          throw new Error(
-            "missingRedeemer requires concrete public retained DA",
-          );
-        const workflow = await createManifestBoundMissingRedeemerWorkflow(
-          loaded.config,
-        );
-        if (
-          workflow.binding.deploymentFingerprint !==
-            invocation.deploymentFingerprint ||
-          workflow.binding.definition.headerHash !== invocation.headerHash ||
-          workflow.decisionDigest !== invocation.decisionDigest
-        )
-          throw new Error("missingRedeemer runtime binding changed invocation");
-        const journal = bindWorkflowFundingReservationJournal({
-          permit: invocation.fundingReservationPermit,
-          journal: bindWorkflowActuationJournal({
-            journal: new DirectoryFraudProofWorkflowJournalStore(
-              invocation.journalDirectory,
-            ),
-            permit: invocation.actuationPermit,
-            decisionDigest: invocation.decisionDigest,
-            deploymentFingerprint: invocation.deploymentFingerprint,
-            category: MISSING_REDEEMER_CATEGORY,
-            headerHash: invocation.headerHash,
-          }),
-        });
-        return await continuePendingWorkflow({
-          invocation,
-          journal: journal,
-          execute: () =>
-            executeManifestBoundMissingRedeemerWorkflow({
-              workflow,
-              sources: loaded.retainedDaSources,
-              journal,
-            }),
-        });
-      } finally {
-        await loaded.close();
-      }
-    },
   });

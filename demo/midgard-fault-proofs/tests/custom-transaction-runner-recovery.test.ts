@@ -74,6 +74,7 @@ const executors = {
   observersForbiddenOnUntaggedNetwork:
     executeManifestBoundObserversForbiddenWorkflow,
   observerOrderInvalid: executeManifestBoundObserverOrderInvalidWorkflow,
+  redeemerCanonicity: executeManifestBoundRedeemerCanonicityWorkflow,
   distinctAssetAccumulationLimit:
     executeManifestBoundDistinctAssetAccumulationWorkflow,
 };
@@ -85,24 +86,17 @@ const execute = (
     sources: readonly [];
   },
 ) =>
-  category === "redeemerCanonicity"
-    ? executeManifestBoundRedeemerCanonicityWorkflow({
-        workflow: input.workflow,
-        sources: input.sources,
-        runtime: { journal: input.journal },
-      } as Parameters<typeof executeManifestBoundRedeemerCanonicityWorkflow>[0])
-    : executors[category](
-        input as Parameters<
-          typeof executeManifestBoundMintDeclaredAssetLimitWorkflow
-        >[0] &
-          Parameters<typeof executeManifestBoundObserversForbiddenWorkflow>[0] &
-          Parameters<
-            typeof executeManifestBoundObserverOrderInvalidWorkflow
-          >[0] &
-          Parameters<
-            typeof executeManifestBoundDistinctAssetAccumulationWorkflow
-          >[0],
-      );
+  executors[category](
+    input as Parameters<
+      typeof executeManifestBoundMintDeclaredAssetLimitWorkflow
+    >[0] &
+      Parameters<typeof executeManifestBoundObserversForbiddenWorkflow>[0] &
+      Parameters<typeof executeManifestBoundObserverOrderInvalidWorkflow>[0] &
+      Parameters<typeof executeManifestBoundRedeemerCanonicityWorkflow>[0] &
+      Parameters<
+        typeof executeManifestBoundDistinctAssetAccumulationWorkflow
+      >[0],
+  );
 const headerHash = "11".repeat(28);
 const deploymentFingerprint = hash("22");
 const key = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x33));

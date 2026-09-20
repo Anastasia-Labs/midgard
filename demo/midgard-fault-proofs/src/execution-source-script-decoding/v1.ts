@@ -3,19 +3,7 @@ import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import {
-  DaLibp2pRetainedDaSource,
-  type RetainedDaPayloadSource,
-} from "../transition-trace/fetch.js";
-import {
-  assertWorkflowJournalActuation,
-  bindWorkflowActuationJournal,
-} from "../workflow/actuation-permit.js";
-import {
-  WORKFLOW_ADAPTER_RUNNER,
-  type WorkflowAdapterReadinessInput,
-  type WorkflowAdapterRunner,
-} from "../workflow/adapters.js";
+import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
@@ -24,6 +12,7 @@ import {
 import {
   cursorFamilyActionInput,
   cursorStringField,
+  STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
 } from "../workflow/cursor-family-runtime.js";
 import type { CursorFamilySpec } from "../workflow/cursor-family-state.js";
 import {
@@ -31,11 +20,7 @@ import {
   type FamilyAssemblyContext,
   type ManifestBoundFamilyWorkflow,
 } from "../workflow/family-definition.js";
-import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
-import {
-  DirectoryFraudProofWorkflowJournalStore,
-  type FraudProofWorkflowJournalStore,
-} from "../workflow/journal.js";
+import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
@@ -43,7 +28,6 @@ import {
   executeManifestBoundFamilyRecovery,
 } from "../workflow/manifest-bound-family-recovery.js";
 import { type FraudProofWorkflowRunResult } from "../workflow/orchestrator.js";
-import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import {
   createExecutionSourceScriptDecodingActuator,
   type ExecutionSourceScriptDecodingWorkflowReferences,
@@ -278,6 +262,7 @@ export const EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
   stepDatumSchemas: EXECUTION_SOURCE_SCRIPT_DECODING_STEP_DATUM_SCHEMAS,
   witnessRoles: WITNESS_ROLES,
   fieldPreimageCertificate: false,
+  auxiliaryReferenceScripts: STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
   replayer: () => EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   adapter: {
     kind: "cursor",
@@ -314,7 +299,10 @@ export const createManifestBoundExecutionSourceScriptDecodingWorkflow = async (
   const { decisionDigest, ...assemblyConfig } = config;
   const workflow = await assembleManifestBoundFamilyWorkflow(
     EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION,
-    assemblyConfig,
+    {
+      ...assemblyConfig,
+      auxiliaryReferenceScripts: config.referenceScripts.removal,
+    },
   );
   return Object.freeze({
     ...(workflow as typeof workflow & WorkflowExtension),
@@ -340,105 +328,3 @@ export const executeManifestBoundExecutionSourceScriptDecodingWorkflow =
       replayer: EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
     });
   };
-
-export const runOrResumeManifestBoundExecutionSourceScriptDecodingWorkflow =
-  async (input: {
-    workflow: ManifestBoundExecutionSourceScriptDecodingWorkflow;
-    sources: readonly RetainedDaPayloadSource[];
-    journal: FraudProofWorkflowJournalStore;
-  }) => {
-    if (Object.keys(input).sort().join(",") !== "journal,sources,workflow")
-      throw new Error(
-        "executionSourceScriptDecoding runner rejects caller-authored evidence",
-      );
-    return await executeManifestBoundExecutionSourceScriptDecodingWorkflow(
-      input,
-    );
-  };
-
-export type LoadedExecutionSourceScriptDecodingWorkflow = Readonly<{
-  schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundExecutionSourceScriptDecodingWorkflowConfig;
-  retainedDaSources: readonly DaLibp2pRetainedDaSource[];
-  close: () => Promise<void>;
-}>;
-
-export type LoadExecutionSourceScriptDecodingWorkflow = (input: {
-  runtimeConfigPath: string;
-  invocation: WorkflowAdapterReadinessInput;
-}) => Promise<LoadedExecutionSourceScriptDecodingWorkflow>;
-
-export const createExecutionSourceScriptDecodingWorkflowRunnerSurface = ({
-  loadRuntimeConfig,
-}: {
-  loadRuntimeConfig: LoadExecutionSourceScriptDecodingWorkflow;
-}): WorkflowAdapterRunner =>
-  Object.freeze({
-    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
-    runOrResume: async (invocation) => {
-      if (String(invocation.category) !== "executionSourceScriptDecoding")
-        throw new Error(
-          "executionSourceScriptDecoding runner category changed",
-        );
-      const journal = bindWorkflowFundingReservationJournal({
-        permit: invocation.fundingReservationPermit,
-        journal: bindWorkflowActuationJournal({
-          journal: new DirectoryFraudProofWorkflowJournalStore(
-            invocation.journalDirectory,
-          ),
-          permit: invocation.actuationPermit,
-          decisionDigest: invocation.decisionDigest,
-          deploymentFingerprint: invocation.deploymentFingerprint,
-          category: "executionSourceScriptDecoding" as never,
-          headerHash: invocation.headerHash,
-        }),
-      });
-      assertWorkflowJournalActuation({
-        journal,
-        deploymentFingerprint: invocation.deploymentFingerprint,
-        category: "executionSourceScriptDecoding" as never,
-        headerHash: invocation.headerHash,
-        checkpoint: "runner_start",
-      });
-      const loaded = await loadRuntimeConfig({
-        runtimeConfigPath: invocation.runtimeConfigPath,
-        invocation,
-      });
-      try {
-        if (
-          loaded.retainedDaSources.length === 0 ||
-          loaded.retainedDaSources.some(
-            (source) => !(source instanceof DaLibp2pRetainedDaSource),
-          )
-        )
-          throw new Error(
-            "executionSourceScriptDecoding requires concrete public retained DA",
-          );
-        const workflow =
-          await createManifestBoundExecutionSourceScriptDecodingWorkflow(
-            loaded.config,
-          );
-        if (
-          workflow.binding.deploymentFingerprint !==
-            invocation.deploymentFingerprint ||
-          workflow.binding.definition.headerHash !== invocation.headerHash ||
-          workflow.decisionDigest !== invocation.decisionDigest
-        )
-          throw new Error(
-            "executionSourceScriptDecoding runtime binding changed invocation",
-          );
-        return (await continuePendingWorkflow({
-          invocation,
-          journal: journal,
-          execute: () =>
-            runOrResumeManifestBoundExecutionSourceScriptDecodingWorkflow({
-              workflow,
-              sources: loaded.retainedDaSources,
-              journal,
-            }),
-        })) as never;
-      } finally {
-        await loaded.close();
-      }
-    },
-  });

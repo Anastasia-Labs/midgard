@@ -2,26 +2,17 @@ import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import {
-  DaLibp2pRetainedDaSource,
-  type RetainedDaPayloadSource,
-} from "../transition-trace/fetch.js";
-import {
-  assertWorkflowJournalActuation,
-  bindWorkflowActuationJournal,
   workflowActuationAuthorizingDecisionDigest,
   workflowJournalIsReconciliationOnly,
 } from "../workflow/actuation-permit.js";
-import {
-  WORKFLOW_ADAPTER_RUNNER,
-  type WorkflowAdapterReadinessInput,
-  type WorkflowAdapterRunner,
-} from "../workflow/adapters.js";
 import { OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
+import { STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS } from "../workflow/cursor-family-runtime.js";
 import {
   defineFamily,
   type FamilyAssemblyContext,
@@ -29,9 +20,7 @@ import {
 } from "../workflow/family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { type FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
-import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
-  DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowJournalStore,
   journalJsonDigest,
 } from "../workflow/journal.js";
@@ -43,7 +32,6 @@ import {
   resumeRecordedFraudProofWorkflow,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
-import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import type { FraudProofRawL1FamilyStage } from "../workflow/raw-l1-family-derivation.js";
 import {
   createObserversForbiddenActuator,
@@ -234,6 +222,7 @@ export const OBSERVERS_FORBIDDEN_FAMILY_DEFINITION = defineFamily<
   ],
   witnessRoles: WITNESS_ROLES,
   fieldPreimageCertificate: true,
+  auxiliaryReferenceScripts: STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
   replayer: () =>
     OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY,
   adapter: {
@@ -300,7 +289,10 @@ export const createManifestBoundObserversForbiddenWorkflow = async (
   const { decisionDigest, ...assemblyConfig } = config;
   const workflow = await assembleManifestBoundFamilyWorkflow(
     OBSERVERS_FORBIDDEN_FAMILY_DEFINITION,
-    assemblyConfig,
+    {
+      ...assemblyConfig,
+      auxiliaryReferenceScripts: config.referenceScripts.removal,
+    },
   );
   return Object.freeze({
     ...(workflow as typeof workflow & WorkflowExtension),
@@ -399,90 +391,3 @@ export const executeManifestBoundObserversForbiddenWorkflow = async ({
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
   });
 };
-
-export type LoadedObserversForbiddenWorkflow = Readonly<{
-  schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundObserversForbiddenWorkflowConfig;
-  retainedDaSources: readonly DaLibp2pRetainedDaSource[];
-  close: () => Promise<void>;
-}>;
-
-export type LoadObserversForbiddenWorkflow = (input: {
-  readonly runtimeConfigPath: string;
-  readonly invocation: WorkflowAdapterReadinessInput;
-}) => Promise<LoadedObserversForbiddenWorkflow>;
-
-/** Standard runtime loader surface; no evidence, stage, submit, or journal callbacks. */
-export const createObserversForbiddenWorkflowRunnerSurface = ({
-  loadRuntimeConfig,
-}: {
-  readonly loadRuntimeConfig: LoadObserversForbiddenWorkflow;
-}): WorkflowAdapterRunner =>
-  Object.freeze({
-    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
-    runOrResume: async (invocation) => {
-      if (String(invocation.category) !== CATEGORY)
-        throw new Error("observersForbidden runner category changed");
-      const journal = bindWorkflowFundingReservationJournal({
-        permit: invocation.fundingReservationPermit,
-        journal: bindWorkflowActuationJournal({
-          journal: new DirectoryFraudProofWorkflowJournalStore(
-            invocation.journalDirectory,
-          ),
-          permit: invocation.actuationPermit,
-          decisionDigest: invocation.decisionDigest,
-          deploymentFingerprint: invocation.deploymentFingerprint,
-          category: CATEGORY as never,
-          headerHash: invocation.headerHash,
-        }),
-      });
-      assertWorkflowJournalActuation({
-        journal,
-        deploymentFingerprint: invocation.deploymentFingerprint,
-        category: CATEGORY as never,
-        headerHash: invocation.headerHash,
-        checkpoint: "runner_start",
-      });
-      const loaded = await loadRuntimeConfig({
-        runtimeConfigPath: invocation.runtimeConfigPath,
-        invocation,
-      });
-      try {
-        if (
-          loaded.schemaVersion !==
-            "midgard-production-fraud-proof-runtime-config-v1" ||
-          loaded.retainedDaSources.length === 0 ||
-          loaded.retainedDaSources.some(
-            (source) => !(source instanceof DaLibp2pRetainedDaSource),
-          )
-        )
-          throw new Error(
-            "observersForbidden runtime requires concrete public retained DA",
-          );
-        const workflow = await createManifestBoundObserversForbiddenWorkflow(
-          loaded.config,
-        );
-        if (
-          workflow.binding.deploymentFingerprint !==
-            invocation.deploymentFingerprint ||
-          workflow.binding.definition.headerHash !== invocation.headerHash ||
-          workflow.decisionDigest !== invocation.decisionDigest
-        )
-          throw new Error(
-            "observersForbidden runtime binding changed invocation",
-          );
-        return (await continuePendingWorkflow({
-          invocation,
-          journal: journal,
-          execute: () =>
-            executeManifestBoundObserversForbiddenWorkflow({
-              workflow,
-              sources: loaded.retainedDaSources,
-              journal,
-            }),
-        })) as never;
-      } finally {
-        await loaded.close();
-      }
-    },
-  });

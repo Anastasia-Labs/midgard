@@ -137,9 +137,6 @@ export const SCRIPT_INTEGRITY_HASH_MISMATCH_TERMINAL_STAGES = Object.freeze([
 
 export {
   createManifestBoundScriptIntegrityHashMismatchWorkflow,
-  createScriptIntegrityHashMismatchWorkflowRunnerSurface,
-  type LoadedScriptIntegrityHashMismatchWorkflow,
-  type LoadScriptIntegrityHashMismatchWorkflow,
   type ManifestBoundScriptIntegrityHashMismatchWorkflow,
   type ManifestBoundScriptIntegrityHashMismatchWorkflowConfig,
   SCRIPT_INTEGRITY_HASH_MISMATCH_CONFIG_KEYS,

@@ -3,17 +3,8 @@ import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import {
-  DaLibp2pRetainedDaSource,
-  type RetainedDaPayloadSource,
-} from "../transition-trace/fetch.js";
+import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import { bindWorkflowActuationJournal } from "../workflow/actuation-permit.js";
-import {
-  WORKFLOW_ADAPTER_RUNNER,
-  type WorkflowAdapterReadinessInput,
-  type WorkflowAdapterRunner,
-} from "../workflow/adapters.js";
 import { UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
@@ -22,6 +13,7 @@ import {
 import {
   cursorFamilyActionInput,
   cursorStringField,
+  STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
 } from "../workflow/cursor-family-runtime.js";
 import type { CursorFamilySpec } from "../workflow/cursor-family-state.js";
 import {
@@ -29,11 +21,7 @@ import {
   type FamilyAssemblyContext,
   type ManifestBoundFamilyWorkflow,
 } from "../workflow/family-definition.js";
-import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
-import {
-  DirectoryFraudProofWorkflowJournalStore,
-  type FraudProofWorkflowJournalStore,
-} from "../workflow/journal.js";
+import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
@@ -41,7 +29,6 @@ import {
   executeManifestBoundFamilyRecovery,
 } from "../workflow/manifest-bound-family-recovery.js";
 import { type FraudProofWorkflowRunResult } from "../workflow/orchestrator.js";
-import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import { createUnusedRedeemerActuator } from "./actuator.js";
 import {
   UNUSED_REDEEMER_BLUEPRINT_TITLES,
@@ -161,17 +148,7 @@ const contracts = Object.freeze({
     chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
     pexcludesWithdraw: "pexcludesWithdraw",
   },
-  removal: {
-    correctionLockSpend: "correctionLockSpend",
-    stateQueueSpend: "stateQueueSpend",
-    stateQueueMint: "stateQueueMint",
-    stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
-    activeOperatorsSpend: "activeOperatorsSpend",
-    activeOperatorsMint: "activeOperatorsMint",
-    retiredOperatorsSpend: "retiredOperatorsSpend",
-    retiredOperatorsMint: "retiredOperatorsMint",
-    schedulerSpend: "schedulerSpend",
-  },
+  removal: STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
 } as const);
 
 const WITNESS_ROLES = [
@@ -359,18 +336,6 @@ export const createManifestBoundUnusedRedeemerWorkflow = async (
   });
 };
 
-export type LoadedUnusedRedeemerWorkflow = Readonly<{
-  schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundUnusedRedeemerWorkflowConfig;
-  retainedDaSources: readonly DaLibp2pRetainedDaSource[];
-  close: () => Promise<void>;
-}>;
-
-export type LoadUnusedRedeemerWorkflow = (input: {
-  runtimeConfigPath: string;
-  invocation: WorkflowAdapterReadinessInput;
-}) => Promise<LoadedUnusedRedeemerWorkflow>;
-
 export const executeManifestBoundUnusedRedeemerWorkflow = async ({
   workflow,
   sources,
@@ -387,66 +352,3 @@ export const executeManifestBoundUnusedRedeemerWorkflow = async ({
     replayer: UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
   });
 };
-
-export const createUnusedRedeemerWorkflowRunnerSurface = ({
-  loadRuntimeConfig,
-}: {
-  loadRuntimeConfig: LoadUnusedRedeemerWorkflow;
-}): WorkflowAdapterRunner =>
-  Object.freeze({
-    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
-    runOrResume: async (invocation) => {
-      if (String(invocation.category) !== "unusedRedeemer")
-        throw new Error("unusedRedeemer runner category changed");
-      const loaded = await loadRuntimeConfig({
-        runtimeConfigPath: invocation.runtimeConfigPath,
-        invocation,
-      });
-      try {
-        if (
-          loaded.retainedDaSources.length === 0 ||
-          loaded.retainedDaSources.some(
-            (source) => !(source instanceof DaLibp2pRetainedDaSource),
-          )
-        )
-          throw new Error(
-            "unusedRedeemer requires concrete public retained DA",
-          );
-        const workflow = await createManifestBoundUnusedRedeemerWorkflow(
-          loaded.config,
-        );
-        if (
-          workflow.binding.deploymentFingerprint !==
-            invocation.deploymentFingerprint ||
-          workflow.binding.definition.headerHash !== invocation.headerHash ||
-          workflow.decisionDigest !== invocation.decisionDigest
-        )
-          throw new Error("unusedRedeemer runtime binding changed invocation");
-        const journal = bindWorkflowFundingReservationJournal({
-          permit: invocation.fundingReservationPermit,
-          journal: bindWorkflowActuationJournal({
-            journal: new DirectoryFraudProofWorkflowJournalStore(
-              invocation.journalDirectory,
-            ),
-            permit: invocation.actuationPermit,
-            decisionDigest: invocation.decisionDigest,
-            deploymentFingerprint: invocation.deploymentFingerprint,
-            category: "unusedRedeemer",
-            headerHash: invocation.headerHash,
-          }),
-        });
-        return await continuePendingWorkflow({
-          invocation,
-          journal: journal,
-          execute: () =>
-            executeManifestBoundUnusedRedeemerWorkflow({
-              workflow,
-              sources: loaded.retainedDaSources,
-              journal,
-            }),
-        });
-      } finally {
-        await loaded.close();
-      }
-    },
-  });

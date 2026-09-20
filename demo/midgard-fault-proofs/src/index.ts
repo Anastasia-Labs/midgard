@@ -53,7 +53,6 @@ export * from "./missing-redeemer/index.js";
 export * as missingScriptSourceV1 from "./missing-script-source/index.js";
 export {
   createManifestBoundMissingScriptSourceWorkflow,
-  type LoadMissingScriptSourceWorkflow,
   type ManifestBoundMissingScriptSourceWorkflow,
   type ManifestBoundMissingScriptSourceWorkflowConfig,
 } from "./missing-script-source/v1.js";

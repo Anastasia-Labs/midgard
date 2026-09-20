@@ -17,7 +17,6 @@ import {
 import { scriptIntegrityHashMismatchDetectionFromEvidence } from "../src/script-integrity-hash-mismatch/replay.js";
 import {
   createManifestBoundScriptIntegrityHashMismatchWorkflow,
-  createScriptIntegrityHashMismatchWorkflowRunnerSurface,
   SCRIPT_INTEGRITY_HASH_MISMATCH_CONFIG_KEYS,
 } from "../src/script-integrity-hash-mismatch/v1.js";
 import {
@@ -27,6 +26,7 @@ import {
   type ScriptIntegrityHashMismatchJournalEntry,
 } from "../src/script-integrity-hash-mismatch/workflow.js";
 import { WORKFLOW_ADAPTER_RUNNER } from "../src/workflow/adapters.js";
+import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
 
 const txId = "00".repeat(32);
 /**
@@ -240,9 +240,8 @@ describe("scriptIntegrityHashMismatch V1", () => {
       } as never),
     ).rejects.toThrow(/callback authority/u);
     const loadRuntimeConfig = vi.fn();
-    const runner = createScriptIntegrityHashMismatchWorkflowRunnerSurface({
-      loadRuntimeConfig,
-    });
+    const runner =
+      WORKFLOW_RUNNER_FACTORIES.scriptIntegrityHashMismatch(loadRuntimeConfig);
     expect(runner.runnerVersion).toBe(WORKFLOW_ADAPTER_RUNNER);
     await expect(
       runner.runOrResume({ category: "unusedRedeemer" } as never),

@@ -3,19 +3,7 @@ import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import {
-  DaLibp2pRetainedDaSource,
-  type RetainedDaPayloadSource,
-} from "../transition-trace/fetch.js";
-import {
-  assertWorkflowJournalActuation,
-  bindWorkflowActuationJournal,
-} from "../workflow/actuation-permit.js";
-import {
-  WORKFLOW_ADAPTER_RUNNER,
-  type WorkflowAdapterReadinessInput,
-  type WorkflowAdapterRunner,
-} from "../workflow/adapters.js";
+import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
@@ -24,6 +12,7 @@ import {
 import {
   cursorFamilyActionInput,
   cursorStringField,
+  STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
 } from "../workflow/cursor-family-runtime.js";
 import type { CursorFamilySpec } from "../workflow/cursor-family-state.js";
 import {
@@ -32,11 +21,7 @@ import {
   type ManifestBoundFamilyWorkflow,
   type ManifestBoundFamilyWorkflowConfig,
 } from "../workflow/family-definition.js";
-import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
-import {
-  DirectoryFraudProofWorkflowJournalStore,
-  type FraudProofWorkflowJournalStore,
-} from "../workflow/journal.js";
+import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
@@ -44,7 +29,6 @@ import {
   executeManifestBoundFamilyRecovery,
 } from "../workflow/manifest-bound-family-recovery.js";
 import { type FraudProofWorkflowRunResult } from "../workflow/orchestrator.js";
-import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import {
   createReceivePurposeLanguageActuator,
   type ReceivePurposeLanguageWorkflowReferences,
@@ -259,6 +243,7 @@ export const RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION = defineFamily({
   stepDatumSchemas: RECEIVE_PURPOSE_LANGUAGE_STEP_DATUM_SCHEMAS,
   witnessRoles: WITNESS_ROLES,
   fieldPreimageCertificate: false,
+  auxiliaryReferenceScripts: STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
   replayer: () => RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
   adapter: {
     kind: "cursor",
@@ -294,7 +279,10 @@ export const createManifestBoundReceivePurposeLanguageWorkflow = async (
   const { decisionDigest, ...assemblyConfig } = config;
   const workflow = await assembleManifestBoundFamilyWorkflow(
     RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION,
-    assemblyConfig satisfies ManifestBoundFamilyWorkflowConfig<
+    {
+      ...assemblyConfig,
+      auxiliaryReferenceScripts: config.referenceScripts.removal,
+    } satisfies ManifestBoundFamilyWorkflowConfig<
       "receivePurposeLanguage",
       (typeof WITNESS_ROLES)[number],
       false,
@@ -322,98 +310,3 @@ export const executeManifestBoundReceivePurposeLanguageWorkflow = async ({
     replayer: RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
   });
 };
-
-export const runOrResumeManifestBoundReceivePurposeLanguageWorkflow =
-  async (input: {
-    workflow: ManifestBoundReceivePurposeLanguageWorkflow;
-    sources: readonly RetainedDaPayloadSource[];
-    journal: FraudProofWorkflowJournalStore;
-  }) => {
-    if (Object.keys(input).sort().join(",") !== "journal,sources,workflow")
-      throw new Error(
-        "receivePurposeLanguage runner rejects caller-authored evidence",
-      );
-    return await executeManifestBoundReceivePurposeLanguageWorkflow(input);
-  };
-export type LoadedReceivePurposeLanguageWorkflow = Readonly<{
-  schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundReceivePurposeLanguageWorkflowConfig;
-  retainedDaSources: readonly DaLibp2pRetainedDaSource[];
-  close: () => Promise<void>;
-}>;
-export type LoadReceivePurposeLanguageWorkflow = (input: {
-  runtimeConfigPath: string;
-  invocation: WorkflowAdapterReadinessInput;
-}) => Promise<LoadedReceivePurposeLanguageWorkflow>;
-export const createReceivePurposeLanguageWorkflowRunnerSurface = ({
-  loadRuntimeConfig,
-}: {
-  loadRuntimeConfig: LoadReceivePurposeLanguageWorkflow;
-}): WorkflowAdapterRunner =>
-  Object.freeze({
-    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
-    runOrResume: async (invocation) => {
-      if (String(invocation.category) !== "receivePurposeLanguage")
-        throw new Error("receivePurposeLanguage runner category changed");
-      const journal = bindWorkflowFundingReservationJournal({
-        permit: invocation.fundingReservationPermit,
-        journal: bindWorkflowActuationJournal({
-          journal: new DirectoryFraudProofWorkflowJournalStore(
-            invocation.journalDirectory,
-          ),
-          permit: invocation.actuationPermit,
-          decisionDigest: invocation.decisionDigest,
-          deploymentFingerprint: invocation.deploymentFingerprint,
-          category: "receivePurposeLanguage" as never,
-          headerHash: invocation.headerHash,
-        }),
-      });
-      assertWorkflowJournalActuation({
-        journal,
-        deploymentFingerprint: invocation.deploymentFingerprint,
-        category: "receivePurposeLanguage" as never,
-        headerHash: invocation.headerHash,
-        checkpoint: "runner_start",
-      });
-      const loaded = await loadRuntimeConfig({
-        runtimeConfigPath: invocation.runtimeConfigPath,
-        invocation,
-      });
-      try {
-        if (
-          loaded.retainedDaSources.length === 0 ||
-          loaded.retainedDaSources.some(
-            (source) => !(source instanceof DaLibp2pRetainedDaSource),
-          )
-        )
-          throw new Error(
-            "receivePurposeLanguage requires concrete public retained DA",
-          );
-        const workflow =
-          await createManifestBoundReceivePurposeLanguageWorkflow(
-            loaded.config,
-          );
-        if (
-          workflow.binding.deploymentFingerprint !==
-            invocation.deploymentFingerprint ||
-          workflow.binding.definition.headerHash !== invocation.headerHash ||
-          workflow.decisionDigest !== invocation.decisionDigest
-        )
-          throw new Error(
-            "receivePurposeLanguage runtime binding changed invocation",
-          );
-        return await continuePendingWorkflow({
-          invocation,
-          journal: journal,
-          execute: () =>
-            runOrResumeManifestBoundReceivePurposeLanguageWorkflow({
-              workflow,
-              sources: loaded.retainedDaSources,
-              journal,
-            }),
-        });
-      } finally {
-        await loaded.close();
-      }
-    },
-  });

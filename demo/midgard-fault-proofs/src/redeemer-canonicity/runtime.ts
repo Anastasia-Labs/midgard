@@ -27,23 +27,13 @@ import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
-import {
-  DaLibp2pRetainedDaSource,
-  type RetainedDaPayloadSource,
-} from "../transition-trace/fetch.js";
+import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
-  assertWorkflowJournalActuation,
-  bindWorkflowActuationJournal,
   workflowActuationAuthorizingDecisionDigest,
   workflowJournalIsReconciliationOnly,
 } from "../workflow/actuation-permit.js";
-import {
-  WORKFLOW_ADAPTER_RUNNER,
-  type WorkflowAdapterReadinessInput,
-  type WorkflowAdapterRunner,
-} from "../workflow/adapters.js";
 import { REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
@@ -53,6 +43,7 @@ import {
 import {
   captureCursorRemoval,
   cursorStringField,
+  STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
 } from "../workflow/cursor-family-runtime.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import {
@@ -61,9 +52,7 @@ import {
 } from "../workflow/family-definition.js";
 import type { FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
-  DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowJournalStore,
   journalJsonDigest,
   type JournalJsonObject,
@@ -79,7 +68,6 @@ import {
   resumeRecordedFraudProofWorkflow,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
-import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
@@ -174,17 +162,6 @@ const STEP_CONTRACT_NAMES = [
   "fraudProofRedeemerCanonicityStep02",
   "fraudProofRedeemerCanonicityStep03",
 ] as const;
-const REMOVAL_CONTRACTS = {
-  correctionLockSpend: "correctionLockSpend",
-  stateQueueSpend: "stateQueueSpend",
-  stateQueueMint: "stateQueueMint",
-  stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
-  activeOperatorsSpend: "activeOperatorsSpend",
-  activeOperatorsMint: "activeOperatorsMint",
-  retiredOperatorsSpend: "retiredOperatorsSpend",
-  retiredOperatorsMint: "retiredOperatorsMint",
-  schedulerSpend: "schedulerSpend",
-} as const;
 type BoundContext = FamilyAssemblyContext<
   "redeemerCanonicity",
   (typeof WITNESS_ROLES)[number],
@@ -258,7 +235,7 @@ export const REDEEMER_CANONICITY_FAMILY_DEFINITION = defineFamily<
   ],
   witnessRoles: WITNESS_ROLES,
   fieldPreimageCertificate: true,
-  auxiliaryReferenceScripts: REMOVAL_CONTRACTS,
+  auxiliaryReferenceScripts: STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
   replayer: () => REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY,
   adapter: {
     kind: "cursor",
@@ -698,19 +675,15 @@ const createRedeemerCanonicityTransactionPort = (
     await captureRedeemerAction(workflow, action, artifact),
 });
 
-export type RedeemerCanonicityRuntimeDependencies = Readonly<{
-  journal: FraudProofWorkflowJournalStore;
-}>;
 export const executeManifestBoundRedeemerCanonicityWorkflow = async ({
   workflow,
   sources,
-  runtime,
+  journal,
 }: {
   readonly workflow: ManifestBoundRedeemerCanonicityWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly runtime: RedeemerCanonicityRuntimeDependencies;
+  readonly journal: FraudProofWorkflowJournalStore;
 }): Promise<FraudProofWorkflowRunResult> => {
-  const journal = runtime.journal;
   if (
     workflowActuationAuthorizingDecisionDigest(journal) !==
     workflow.decisionDigest
@@ -743,102 +716,3 @@ export const executeManifestBoundRedeemerCanonicityWorkflow = async ({
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
   });
 };
-export const runOrResumeManifestBoundRedeemerCanonicityWorkflow =
-  executeManifestBoundRedeemerCanonicityWorkflow;
-export const createManifestBoundRedeemerCanonicityRuntime = (
-  input: Parameters<typeof executeManifestBoundRedeemerCanonicityWorkflow>[0],
-) =>
-  Object.freeze({
-    runOrResume: async () =>
-      await executeManifestBoundRedeemerCanonicityWorkflow(input),
-  });
-
-export type LoadedRedeemerCanonicityWorkflow = Readonly<{
-  schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundRedeemerCanonicityWorkflowConfig;
-  retainedDaSources: readonly DaLibp2pRetainedDaSource[];
-  close: () => Promise<void>;
-}>;
-export type LoadRedeemerCanonicityWorkflow = (input: {
-  readonly runtimeConfigPath: string;
-  readonly invocation: WorkflowAdapterReadinessInput;
-}) => Promise<LoadedRedeemerCanonicityWorkflow>;
-
-export const createRedeemerCanonicityWorkflowRunnerSurface = ({
-  loadRuntimeConfig,
-}: {
-  readonly loadRuntimeConfig: LoadRedeemerCanonicityWorkflow;
-}): WorkflowAdapterRunner =>
-  Object.freeze({
-    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
-    runOrResume: async (invocation) => {
-      if (String(invocation.category) !== "redeemerCanonicity")
-        throw new Error(
-          "redeemerCanonicity production runner category mismatch",
-        );
-      const loaded = await loadRuntimeConfig({
-        runtimeConfigPath: invocation.runtimeConfigPath,
-        invocation,
-      });
-      try {
-        if (
-          loaded.retainedDaSources.length === 0 ||
-          loaded.retainedDaSources.some(
-            (source) => !(source instanceof DaLibp2pRetainedDaSource),
-          )
-        )
-          throw new Error(
-            "redeemerCanonicity has no public retained-DA source",
-          );
-        const durable = bindWorkflowFundingReservationJournal({
-          permit: invocation.fundingReservationPermit,
-          journal: bindWorkflowActuationJournal({
-            journal: new DirectoryFraudProofWorkflowJournalStore(
-              invocation.journalDirectory,
-            ),
-            permit: invocation.actuationPermit,
-            decisionDigest: invocation.decisionDigest,
-            deploymentFingerprint: invocation.deploymentFingerprint,
-            category: "redeemerCanonicity",
-            headerHash: invocation.headerHash,
-          }),
-        });
-        assertWorkflowJournalActuation({
-          journal: durable,
-          deploymentFingerprint: invocation.deploymentFingerprint,
-          category: "redeemerCanonicity",
-          headerHash: invocation.headerHash,
-          checkpoint: "runner_start",
-        });
-        const workflow = await createManifestBoundRedeemerCanonicityWorkflow(
-          loaded.config,
-        );
-        if (
-          workflow.binding.deploymentFingerprint !==
-            invocation.deploymentFingerprint ||
-          workflow.binding.definition.headerHash !== invocation.headerHash ||
-          workflow.decisionDigest !== invocation.decisionDigest
-        )
-          throw new Error(
-            "redeemerCanonicity runtime identity differs from invocation",
-          );
-        return await continuePendingWorkflow({
-          invocation,
-          journal: durable,
-          execute: () =>
-            executeManifestBoundRedeemerCanonicityWorkflow({
-              workflow,
-              sources: loaded.retainedDaSources,
-              runtime: {
-                journal: durable,
-              },
-            }),
-        });
-      } finally {
-        await loaded.close();
-      }
-    },
-  });
-
-export const createRedeemerCanonicityWorkflowRunnerFactory =
-  createRedeemerCanonicityWorkflowRunnerSurface;
