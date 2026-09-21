@@ -122,13 +122,11 @@ a decision already implemented or superseded.
 ## Keeping documentation current
 
 - Keep exact inventories in one maintained reference and link to it elsewhere.
-  The catalogue inventory is `docs/fault-proofs/catalogue-status.md`; its IDs,
-  installation rows, and counts are checked against SDK/watcher source by
-  `pnpm --dir docs-site run check:facts`. That gate also checks the SDK language
-  advertisement and selected public CLI/workspace facts.
-- When adding a source-derived documentation check, include its source paths in
-  the docs CI triggers. Run `check:facts` and `check:links` after changes;
-  link validity alone does not establish semantic correctness.
+  The catalogue inventory is `docs/fault-proofs/catalogue-status.md`. Prose
+  counts and inventories are not machine-checked against source; verify them
+  by reading the source when you edit them.
+- Run `pnpm --dir docs-site run check:links` after changes; link validity alone
+  does not establish semantic correctness.
 - Record deployment hashes and measurements together with their source revision,
   compiler, build flags, parameters, and producing command in acceptance artifacts.
   Avoid copying generated blueprint hashes into multiple current-state pages.

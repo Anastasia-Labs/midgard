@@ -336,6 +336,12 @@ jobs:
         run: pnpm --dir demo/midgard-node run typecheck
       - name: Build Midgard node and migrate isolated CI database
         run: pnpm --dir demo/midgard-node run db:migrate
+      # Workspace-wide eslint (type-aware, so it runs after the package builds
+      # above) and prettier. The pre-commit hook applies the same two tools to
+      # staged files; this step is the enforcement the hook cannot provide for
+      # contributors who never installed it.
+      - name: Lint and format-check the demo workspace
+        run: pnpm --dir demo run lint && pnpm --dir demo run format-check
       - name: Test Midgard node
         run: pnpm --dir demo/midgard-node test
       - name: Typecheck, lint, build, and test Midgard node tools

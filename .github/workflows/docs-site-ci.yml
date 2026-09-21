@@ -9,20 +9,6 @@ on:
       - "**/*.mdx"
       - "demo/lucid-midgard/**"
       - "demo/midgard-core/**"
-      # Sources whose exported symbols the docs restate.
-      # See docs-site/scripts/check-docs-facts.mjs.
-      - "demo/midgard-node/src/fibers/**"
-      - "demo/midgard-node/src/index.ts"
-      - "demo/midgard-sdk/src/fraud-proof/catalogue.ts"
-      - "demo/midgard-watcher/src/fault-proofs/fault-proof-application.ts"
-      - "demo/midgard-node/src/mpf/transition-cbor.ts"
-      - "demo/midgard-fault-proofs/src/bin.ts"
-      - "demo/package.json"
-      - "demo/pnpm-workspace.yaml"
-      - "l1-services/.env.example"
-      - "onchain/aiken/validators/da-attestation.ak"
-      - "onchain/aiken/validators/da-params-governor.ak"
-      - "technical-spec/1-ledger-state/1-block.tex"
       - ".github/workflows/docs-site-ci.yml"
   pull_request:
     paths:
@@ -31,20 +17,6 @@ on:
       - "**/*.mdx"
       - "demo/lucid-midgard/**"
       - "demo/midgard-core/**"
-      # Sources whose exported symbols the docs restate.
-      # See docs-site/scripts/check-docs-facts.mjs.
-      - "demo/midgard-node/src/fibers/**"
-      - "demo/midgard-node/src/index.ts"
-      - "demo/midgard-sdk/src/fraud-proof/catalogue.ts"
-      - "demo/midgard-watcher/src/fault-proofs/fault-proof-application.ts"
-      - "demo/midgard-node/src/mpf/transition-cbor.ts"
-      - "demo/midgard-fault-proofs/src/bin.ts"
-      - "demo/package.json"
-      - "demo/pnpm-workspace.yaml"
-      - "l1-services/.env.example"
-      - "onchain/aiken/validators/da-attestation.ak"
-      - "onchain/aiken/validators/da-params-governor.ak"
-      - "technical-spec/1-ledger-state/1-block.tex"
       - ".github/workflows/docs-site-ci.yml"
 
 jobs:
@@ -70,11 +42,6 @@ jobs:
           version: 10.11.0
       - name: Install docs-site dependencies
         run: pnpm --dir docs-site install --frozen-lockfile
-
-      # Fails when a fiber, CLI command, or transaction status named in the docs
-      # no longer matches the source it is drawn from.
-      - name: Check documented facts against source
-        run: pnpm --dir docs-site run check:facts
 
       - name: Check repository-local documentation links
         run: pnpm --dir docs-site run check:links

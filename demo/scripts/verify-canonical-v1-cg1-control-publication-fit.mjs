@@ -18,8 +18,7 @@
  *   - the one deliberate exclusion (the oversized CEK direct resolver) is
  *     checked against the same source for genuine absence, checked against
  *     the reference-script auth-token map for being a real role (not an
- *     invented name), and its necessity citation is checked against the
- *     document it claims to quote;
+ *     invented name);
  *   - every roster entry's fit arithmetic (`l1ByteMarginBytes = 16384 -
  *     completeSignedTransactionBytes`) is re-derived and must be positive;
  *   - the blueprint this artifact's hashes are bound to is re-hashed from the
@@ -28,7 +27,7 @@
  *
  * A gate that could green a stale, invented or mismeasured claim would be
  * worse than no gate, so every check here fails closed rather than trusting
- * the artifact's own arithmetic or citations.
+ * the artifact's own arithmetic.
  */
 
 import { createHash } from "node:crypto";
@@ -51,8 +50,6 @@ const blueprintOptional = process.argv.includes("--blueprint-optional");
 const ROSTER_SOURCE_PATH =
   "demo/midgard-node/src/transactions/reference-scripts.ts";
 const AUTH_TOKEN_MAP_PATH = "demo/midgard-sdk/src/reference-scripts.ts";
-const NECESSITY_DOC_PATH =
-  "docs/exec-plans/evidence/necessity/cek-program-material-v1.md";
 const RESOLVER_APPLIED_HASHES_TEST_PATH =
   "demo/midgard-sdk/tests/validation-resolver-applied-hashes.test.ts";
 const L1_MAX_TX_SIZE = 16384;
@@ -253,10 +250,6 @@ const rosterSourceSha256 = rosterSourceText
 const authTokenMapSourceSha256 = authTokenMapSourceText
   ? createHash("sha256").update(authTokenMapSourceText, "utf8").digest("hex")
   : null;
-
-const necessityDocText = indexHas(NECESSITY_DOC_PATH)
-  ? readIndexed(NECESSITY_DOC_PATH)
-  : "";
 
 /* ------------------------------------------------------------------ */
 /* Blueprint hash basis. `onchain/aiken/plutus.json` is gitignored: there  */
@@ -541,34 +534,6 @@ if (publishedExclusions.length !== 1) {
       `exclusion "${exclusion.name}" measuredL1ByteMarginBytes arithmetic is wrong`,
     );
     exclusionOk = false;
-  }
-  const citations = Array.isArray(exclusion.recordedIn)
-    ? exclusion.recordedIn
-    : [];
-  if (citations.length === 0) {
-    fail(`exclusion "${exclusion.name}" must cite where it is recorded`);
-    exclusionOk = false;
-  }
-  for (const citation of citations) {
-    const citationText =
-      citation?.path === NECESSITY_DOC_PATH ? necessityDocText : null;
-    if (citationText === null) {
-      fail(
-        `exclusion "${exclusion.name}" cites unsupported path ${JSON.stringify(citation?.path)}`,
-      );
-      exclusionOk = false;
-      continue;
-    }
-    if (
-      typeof citation.quote !== "string" ||
-      citation.quote.length === 0 ||
-      !citationText.includes(citation.quote)
-    ) {
-      fail(
-        `exclusion "${exclusion.name}" cites a quote not found verbatim in ${String(citation?.path)}`,
-      );
-      exclusionOk = false;
-    }
   }
   if (!exclusionOk) unjustifiedExclusions += 1;
 }

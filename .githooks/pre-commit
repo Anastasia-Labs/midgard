@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# Formats and lints what you are about to commit, in place, so the enforced
-# gates (`static-demo-format`, `static-demo-lint`, `watcher-lint`,
-# `watcher-format`, and the CI "normalized Aiken auto-formatter check") cannot
-# go red on formatting alone.
+# Formats and lints what you are about to commit, in place, so the CI gates
+# (`pnpm --dir demo run lint` and `format-check` in midgard-node-ci.yml, the
+# watcher's own lint/format-check step, and the aiken-ci.yml "normalized Aiken
+# auto-formatter check") cannot go red on formatting alone.
 #
 # Scope is deliberately the same as those gates and no wider:
 #   - demo/**/*.{ts,tsx,md}  -> prettier --write, then eslint --fix

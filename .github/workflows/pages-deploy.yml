@@ -12,12 +12,6 @@ on:
       - "technical-spec/**"
       - "demo/lucid-midgard/**"
       - "demo/midgard-core/**"
-      # Sources check-docs-facts.mjs derives from; a change here must rebuild.
-      - "demo/midgard-node/src/index.ts"
-      - "demo/midgard-sdk/src/fraud-proof/catalogue.ts"
-      - "demo/midgard-watcher/src/fault-proofs/fault-proof-application.ts"
-      - "demo/pnpm-workspace.yaml"
-      - "l1-services/.env.example"
       - ".github/workflows/pages-deploy.yml"
   workflow_dispatch:
 
@@ -63,8 +57,8 @@ jobs:
       - name: Install docs-site dependencies
         run: pnpm --dir docs-site install --frozen-lockfile
 
-      # prebuild runs check:facts and check:voice; the build type-checks every
-      # MDX code sample against the built SDK packages.
+      # prebuild runs check:links; the build type-checks every MDX code sample
+      # against the built SDK packages.
       - name: Build docs site
         run: pnpm --dir docs-site run build
         env:

@@ -25,8 +25,8 @@ pnpm build
 pnpm types:check
 ```
 
-`prebuild` builds the linked SDKs and runs `check:facts`, `check:links`, and
-`check:voice`, then Next.js exports the site to `out/`. The configured static
+`prebuild` builds the linked SDKs and runs `check:links`, then Next.js
+exports the site to `out/`. The configured static
 export is not served by `next start`; use `pnpm dev` for local development or
 serve `out/` with a static file server. `types:check` also builds the SDKs,
 then runs `fumadocs-mdx`, `next typegen`, and `tsc --noEmit`.
@@ -64,18 +64,15 @@ network behavior. The homepage's string sample has a separate fixture in
 `app/(home)/homepage-sample.check.ts`; keep its calls aligned with the rendered
 sample. The site currently uses `rust` fences for Aiken highlighting.
 
-Run the documentation checks from this directory:
+Run the documentation link check from this directory:
 
 ```sh
-pnpm check:facts
 pnpm check:links
-pnpm check:voice
 ```
 
-Facts checks compare selected inventories, counts, statuses, and protocol facts
-with source. Link checks validate repository-local targets. Voice checks reject
-known wording and audience problems. None establishes semantic correctness:
-read the relevant implementation and tests before changing a behavioral claim.
+Link checks validate repository-local targets. They do not establish semantic
+correctness: read the relevant implementation and tests before changing a
+behavioral claim.
 
 ## Writing and maintenance
 

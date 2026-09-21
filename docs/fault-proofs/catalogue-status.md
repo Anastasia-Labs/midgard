@@ -18,7 +18,8 @@ from array position. Installation comes from the
 its keys are the installed set, and the
 [watcher application](../../demo/midgard-watcher/src/fault-proofs/fault-proof-application.ts)
 derives `WATCHER_INSTALLED_WORKFLOW_CATEGORIES` from them in catalogue order.
-The documentation facts check compares this table to both sources.
+This table is not machine-checked against those sources; verify it by reading
+them when you edit it.
 
 | ID         | Category                              | Watcher installed |
 | ---------- | ------------------------------------- | ----------------- |
@@ -76,7 +77,7 @@ The documentation facts check compares this table to both sources.
 | `00000032` | `executionNativeScriptInvalid`        | Yes               |
 | `00000033` | `scriptIntegrityHashMismatch`         | Yes               |
 | `00000035` | `distinctAssetAccumulationLimit`      | Yes               |
-| `00000036` | `mintItemNonCanonical`                | Yes                |
+| `00000036` | `mintItemNonCanonical`                | Yes               |
 
 Shared verifier directories, including `mpf-chunked-proof`, are not additional
 catalogue categories. Count categories from the SDK map, not directories or

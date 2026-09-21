@@ -70,7 +70,6 @@ pnpm --dir demo run lint
 pnpm --dir demo run format-check
 pnpm --dir demo run test:tx-prep:local
 pnpm --dir demo run fixtures:transaction-root-v1:check
-pnpm --dir docs-site run check:facts
 pnpm --dir docs-site run check:links
 git diff --check
 ```
