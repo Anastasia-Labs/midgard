@@ -214,7 +214,7 @@ const workflowAdapterRegistrationRows = [
     status: "missing",
     reason: "constrained_adapter_is_not_launch_scope_complete",
     existingSurface: [
-      "validation-trace-dispute production runner surface is being centrally installed",
+      "workflow/family-application-registry.ts#VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD",
     ],
     requiredClosure:
       "install the manifest-bound interactive-dispute runner in the compiled watcher application with authenticated retained DA",
@@ -328,7 +328,7 @@ const workflowAdapterRegistrationRows = [
       "workflow/missing-signature-state.ts",
       "workflow/missing-signature-adapter.ts",
       "workflow/missing-signature.ts",
-      "workflow/runtime.ts#createMissingSignatureProductionWorkflowRunnerV1",
+      "workflow/family-application-registry.ts#MISSING_SIGNATURE_FAMILY_APPLICATION_RECORD",
       "missing-signature/submit-missing-signature-init.ts",
       "missing-signature/submit-missing-signature-step-01.ts..step-04.ts",
       "remove-fraudulent-block.ts",
@@ -490,7 +490,7 @@ const workflowAdapterRegistrationRows = [
     reason: "constrained_adapter_is_not_launch_scope_complete",
     existingSurface: [
       "value-not-preserved/workflow.ts",
-      "workflow/runtime.ts#createValueConservationWorkflowRunner",
+      "workflow/family-application-registry.ts#VALUE_NOT_PRESERVED_FAMILY_APPLICATION_RECORD",
       "value-not-preserved/artifact.ts",
       "value-not-preserved/field-prerequisite.ts",
       "value-not-preserved/submit-union.ts",
@@ -542,7 +542,7 @@ const workflowAdapterRegistrationRows = [
       "network-id/wrongful-rejection.ts",
       "workflow/local-kupmios-http-ogmios-source.ts",
       "workflow/raw-l1-family-derivation.ts",
-      "workflow/runtime.ts#createNetworkIdProductionWorkflowRunnerV1",
+      "workflow/family-application-registry.ts#NETWORK_ID_FAMILY_APPLICATION_RECORD",
     ],
     requiredClosure:
       "install the manifest-bound runner in a compiled application with a concrete public retained-DA libp2p transport/runtime-config loader; the fault-proofs package has no libp2p runtime dependency and cannot honestly self-register it",

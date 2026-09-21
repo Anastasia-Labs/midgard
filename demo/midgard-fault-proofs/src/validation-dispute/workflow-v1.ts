@@ -4,16 +4,7 @@ import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import { DaLibp2pRetainedDaSource } from "../transition-trace/fetch.js";
-import {
-  assertWorkflowJournalActuation,
-  bindWorkflowActuationJournal,
-} from "../workflow/actuation-permit.js";
-import {
-  WORKFLOW_ADAPTER_RUNNER,
-  type WorkflowAdapterReadinessInput,
-  type WorkflowAdapterRunner,
-} from "../workflow/adapters.js";
+import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import {
   requireValidationTraceChallenge,
   type ValidationTraceChallenge,
@@ -28,10 +19,8 @@ import {
   type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import {
   computeFraudProofWorkflowId,
-  DirectoryFraudProofWorkflowJournalStore,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
@@ -40,7 +29,6 @@ import {
   journalJsonDigest,
 } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
-import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import { fraudProofRawL1SnapshotRequestForFamily } from "../workflow/raw-l1-family-derivation.js";
 import { admitFraudProofRawL1Snapshot } from "../workflow/raw-l1-snapshot.js";
 import { submitCapturedTransaction } from "../workflow/transaction-boundary.js";
@@ -538,122 +526,54 @@ export const executeManifestBoundValidationTraceDisputeWorkflow = async ({
   return { kind: "pending" as const, workflowId, txHash: submitted };
 };
 
+/**
+ * The admitted challenge is root-bound to the freshly authenticated canonical
+ * block for this header: re-fetch the retained payload and require exact
+ * payload identity before actuating. A challenge-free construction reaches
+ * execution, which fail-closes with the precise requirement.
+ */
+export const assertValidationTraceDisputeChallengeCurrent = async ({
+  workflow,
+  sources,
+}: {
+  workflow: ManifestBoundValidationTraceDisputeWorkflow;
+  sources: readonly RetainedDaPayloadSource[];
+}): Promise<void> => {
+  if (workflow.challenge === undefined) return;
+  const block = await fetchCanonicalBlockEvidence({
+    observation: await observeFraudProofWorkflowHeader(workflow.l1, {
+      headerHash: workflow.binding.definition.headerHash,
+    }),
+    sources,
+  });
+  if (
+    workflow.challenge.coordinate.payloadEnvelopeSha256 !==
+      block.payloadEnvelopeSha256 ||
+    workflow.challenge.coordinate.payloadSha256 !== block.payloadSha256
+  )
+    throw new Error(
+      "validationTraceDispute challenge diverged from the authenticated canonical block",
+    );
+};
+
+/**
+ * The launch route the generic runner drives: the uniform
+ * `{workflow, sources, journal}` input every family takes, asserting the
+ * challenge against the retained canonical block before the one move.
+ */
 export const runOrResumeManifestBoundValidationTraceDisputeWorkflow =
   async (input: {
     workflow: ManifestBoundValidationTraceDisputeWorkflow;
+    sources: readonly RetainedDaPayloadSource[];
     journal: FraudProofWorkflowJournalStore;
   }) => {
-    if (Object.keys(input).sort().join(",") !== "journal,workflow")
+    if (Object.keys(input).sort().join(",") !== "journal,sources,workflow")
       throw new Error(
         "validationTraceDispute runner rejects caller-authored evidence",
       );
-    return await executeManifestBoundValidationTraceDisputeWorkflow(input);
+    await assertValidationTraceDisputeChallengeCurrent(input);
+    return await executeManifestBoundValidationTraceDisputeWorkflow({
+      workflow: input.workflow,
+      journal: input.journal,
+    });
   };
-
-export type LoadedValidationTraceDisputeWorkflow = Readonly<{
-  schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundValidationTraceDisputeWorkflowConfig;
-  retainedDaSources: readonly DaLibp2pRetainedDaSource[];
-  close: () => Promise<void>;
-}>;
-
-export type LoadValidationTraceDisputeWorkflow = (input: {
-  runtimeConfigPath: string;
-  invocation: WorkflowAdapterReadinessInput;
-}) => Promise<LoadedValidationTraceDisputeWorkflow>;
-
-/** Standard strict loader-based surface consumed by ProductionWorkflowAdapter. */
-export const createValidationTraceDisputeWorkflowRunnerSurface = ({
-  loadRuntimeConfig,
-}: {
-  loadRuntimeConfig: LoadValidationTraceDisputeWorkflow;
-}): WorkflowAdapterRunner =>
-  Object.freeze({
-    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
-    runOrResume: async (invocation) => {
-      if (invocation.category !== VALIDATION_TRACE_DISPUTE_CATEGORY)
-        throw new Error("validationTraceDispute runner category changed");
-      const journal = bindWorkflowFundingReservationJournal({
-        permit: invocation.fundingReservationPermit,
-        journal: bindWorkflowActuationJournal({
-          journal: new DirectoryFraudProofWorkflowJournalStore(
-            invocation.journalDirectory,
-          ),
-          permit: invocation.actuationPermit,
-          decisionDigest: invocation.decisionDigest,
-          deploymentFingerprint: invocation.deploymentFingerprint,
-          category: VALIDATION_TRACE_DISPUTE_CATEGORY,
-          headerHash: invocation.headerHash,
-        }),
-      });
-      assertWorkflowJournalActuation({
-        journal,
-        deploymentFingerprint: invocation.deploymentFingerprint,
-        category: VALIDATION_TRACE_DISPUTE_CATEGORY,
-        headerHash: invocation.headerHash,
-        checkpoint: "runner_start",
-      });
-      const loaded = await loadRuntimeConfig({
-        runtimeConfigPath: invocation.runtimeConfigPath,
-        invocation,
-      });
-      try {
-        if (
-          loaded.schemaVersion !==
-            "midgard-production-fraud-proof-runtime-config-v1" ||
-          loaded.retainedDaSources.length === 0 ||
-          loaded.retainedDaSources.some(
-            (source) => !(source instanceof DaLibp2pRetainedDaSource),
-          )
-        )
-          throw new Error(
-            "validationTraceDispute requires concrete public retained DA",
-          );
-        const workflow =
-          await createManifestBoundValidationTraceDisputeWorkflow(
-            loaded.config,
-          );
-        if (
-          workflow.binding.deploymentFingerprint !==
-            invocation.deploymentFingerprint ||
-          workflow.binding.definition.headerHash !== invocation.headerHash ||
-          workflow.decisionDigest !== invocation.decisionDigest
-        )
-          throw new Error(
-            "validationTraceDispute runtime binding changed invocation",
-          );
-        // The admitted challenge is root-bound to the freshly authenticated
-        // canonical block for this header: re-fetch the retained payload and
-        // require exact payload identity before actuating. A challenge-free
-        // construction reaches execution below, which fail-closes with the
-        // precise requirement.
-        if (workflow.challenge !== undefined) {
-          const block = await fetchCanonicalBlockEvidence({
-            observation: await observeFraudProofWorkflowHeader(workflow.l1, {
-              headerHash: invocation.headerHash,
-            }),
-            sources: loaded.retainedDaSources,
-          });
-          if (
-            workflow.challenge.coordinate.payloadEnvelopeSha256 !==
-              block.payloadEnvelopeSha256 ||
-            workflow.challenge.coordinate.payloadSha256 !== block.payloadSha256
-          )
-            throw new Error(
-              "validationTraceDispute challenge diverged from the authenticated canonical block",
-            );
-        }
-        return await continuePendingWorkflow({
-          invocation,
-          journal: journal,
-          execute: () =>
-            runOrResumeManifestBoundValidationTraceDisputeWorkflow({
-              workflow,
-              journal,
-            }),
-        });
-      } finally {
-        await loaded.close();
-      }
-    },
-  });

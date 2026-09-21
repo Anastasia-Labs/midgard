@@ -5,7 +5,6 @@ import {
   createManifestBoundTransitionTraceWorkflow,
   createManifestBoundValueConservationWorkflow,
   createTransitionTraceEventAuthority,
-  createValueConservationWorkflowRunner,
   type ManifestBoundTransitionTraceWorkflowConfig,
   type ManifestBoundValueConservationWorkflowConfig,
   TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
@@ -79,9 +78,6 @@ import {
   createManifestBoundWithdrawnReferenceInputWorkflow,
   createManifestBoundWitnessScriptDecodingWorkflow,
   createManifestBoundZeroInputWorkflow,
-  createMissingSignatureWorkflowRunner,
-  createNetworkIdWorkflowRunner,
-  createValidationTraceDisputeWorkflowRunner,
   executionNativeScriptInvalid as executionNativeScriptInvalidV1,
   type FraudProofCompletedVerification,
   type FraudProofWorkflowJournalEntry,
@@ -5407,7 +5403,7 @@ const createApplication = ({
       doubleWithdrawLoader,
       fundingProfile("doubleWithdraw"),
     ),
-    missingSignature: createMissingSignatureWorkflowRunner(
+    missingSignature: WORKFLOW_RUNNER_FACTORIES.missingSignature(
       missingSignatureLoader,
       fundingProfile("missingSignature"),
     ),
@@ -5427,7 +5423,7 @@ const createApplication = ({
       inputSetUniquenessLoader,
       fundingProfile("inputSetUniqueness"),
     ),
-    networkId: createNetworkIdWorkflowRunner(
+    networkId: WORKFLOW_RUNNER_FACTORIES.networkId(
       networkIdLoader,
       fundingProfile("networkId"),
     ),
@@ -5464,7 +5460,7 @@ const createApplication = ({
       transitionTraceLoader,
       fundingProfile("transitionTrace"),
     ),
-    valueNotPreserved: createValueConservationWorkflowRunner(
+    valueNotPreserved: WORKFLOW_RUNNER_FACTORIES.valueNotPreserved(
       valueNotPreservedLoader,
       fundingProfile("valueNotPreserved"),
     ),
@@ -5571,7 +5567,7 @@ const createApplication = ({
         distinctAssetAccumulationLimitLoader,
         fundingProfile("distinctAssetAccumulationLimit"),
       ),
-    validationTraceDispute: createValidationTraceDisputeWorkflowRunner(
+    validationTraceDispute: WORKFLOW_RUNNER_FACTORIES.validationTraceDispute(
       validationTraceDisputeLoader,
       fundingProfile("validationTraceDispute"),
     ),

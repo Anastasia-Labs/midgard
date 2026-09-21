@@ -12,9 +12,7 @@
  *
  * The registry table holds the records; the runtime's runner table derives
  * one factory per registered record, and the watcher's fault-proof application
- * launches those families through that table. The families still on the
- * allow-list keep their own per-family branches until the later slices of the
- * parent spec register them.
+ * launches those families through that table.
  */
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
@@ -136,11 +134,15 @@ export type FamilyApplicationRecord<
    */
   roster: Readonly<Record<string, string>>;
   requires: readonly FamilyApplicationRequirement[];
-  /** Lays the resolved roster into the family's own manifest-bound config. */
+  /**
+   * Lays the resolved roster into the family's own manifest-bound config.
+   * Asynchronous only where a required part is reached through a port: the
+   * validation-trace dispute obtains its challenge from the host's port here.
+   */
   bindConfig: (input: {
     readonly infrastructure: FamilyCommonInfrastructure;
     readonly references: FamilyResolvedReferenceScripts;
-  }) => Config;
+  }) => Config | Promise<Config>;
   constructWorkflow: (config: Config) => Promise<Workflow>;
   execute: (input: {
     readonly workflow: Workflow;
@@ -468,7 +470,7 @@ export const applyFamilyApplicationRecord = async <
       record,
       resolveReferenceScript,
     });
-  const config = record.bindConfig({ infrastructure, references });
+  const config = await record.bindConfig({ infrastructure, references });
   const workflow = await record.constructWorkflow(config);
   assertManifestBoundWorkflowIdentity({
     workflow,

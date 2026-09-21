@@ -59,8 +59,8 @@ import {
 } from "../src/index.js";
 import {
   createManifestBoundValidationTraceDisputeWorkflow,
+  executeManifestBoundValidationTraceDisputeWorkflow,
   type ManifestBoundValidationTraceDisputeWorkflowConfig,
-  runOrResumeManifestBoundValidationTraceDisputeWorkflow,
 } from "../src/validation-dispute/workflow-v1.js";
 import {
   admitValidationTraceChallenge,
@@ -165,8 +165,10 @@ describe("installed lifecycle stage deadline", () => {
  * (`dispute-scenario.ts`), but from staging onwards every watcher move is
  * driven exclusively through the production
  * `createManifestBoundValidationTraceDisputeWorkflow` /
- * `runOrResumeManifestBoundValidationTraceDisputeWorkflow` pair — no direct
- * submit-helper call plays the watcher side.
+ * `executeManifestBoundValidationTraceDisputeWorkflow` pair — no direct
+ * submit-helper call plays the watcher side. The retained-DA currency check
+ * the record-derived runner adds in front of execution is out of scope here:
+ * the staged challenge carries a fixed payload coordinate.
  */
 const stageInstalledValidationTraceDisputeJourney = async (
   terminalCounterMismatch = false,
@@ -499,7 +501,7 @@ const stageInstalledValidationTraceDisputeJourney = async (
       await createManifestBoundValidationTraceDisputeWorkflow(config);
     return {
       workflow,
-      result: await runOrResumeManifestBoundValidationTraceDisputeWorkflow({
+      result: await executeManifestBoundValidationTraceDisputeWorkflow({
         workflow,
         journal: new DirectoryFraudProofWorkflowJournalStore(
           join(directory, "journal"),

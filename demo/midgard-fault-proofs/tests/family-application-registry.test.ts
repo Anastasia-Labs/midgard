@@ -10,7 +10,6 @@ import {
 } from "../src/workflow/family-application.js";
 import {
   FAMILY_APPLICATION_REGISTRY,
-  NOT_YET_REGISTERED_FAMILY_CATEGORIES,
   REGISTERED_FAMILY_CATEGORIES,
 } from "../src/workflow/family-application-registry.js";
 import { familyStepContractNames } from "../src/workflow/family-definition.js";
@@ -18,19 +17,49 @@ import { FAMILY_DEFINITIONS } from "../src/workflow/family-definitions.js";
 import { LINEAR_FAMILY_CATEGORIES } from "../src/workflow/linear-family-spec.js";
 
 /**
- * The three reference-script shapes a bound config carries: the bundle shape
+ * The reference-script shapes a bound config carries: the bundle shape
  * (`steps` tuple, `witnesses`, optional certificate and an auxiliary set under
  * the family's own key), the authenticated certificate shape, which keys each
- * step at the top level beside the certificate and the witnesses, and the
- * contract-name-keyed map transition-trace reads.
+ * step at the top level beside the certificate and the witnesses, the
+ * contract-name-keyed map transition-trace reads, and network-id's top-level
+ * layout, which names its step tuple and witness map with a `ReferenceScripts`
+ * suffix beside the rest of its config.
  */
 type BoundReferenceScripts = Readonly<{
   steps?: readonly unknown[];
+  stepReferenceScripts?: readonly unknown[];
   witnesses?: Readonly<Record<string, unknown>>;
+  witnessReferenceScripts?: Readonly<Record<string, unknown>>;
   fieldPreimageCertificateMint?: unknown;
   removal?: Readonly<Record<string, unknown>>;
 }> &
   Readonly<Record<string, unknown>>;
+
+type BoundConfig = Readonly<{
+  decisionDigest?: string;
+  challenge?: unknown;
+  referenceScripts?: BoundReferenceScripts;
+}> &
+  Readonly<Record<string, unknown>>;
+
+/** Where a bound config lays its reference scripts. */
+const boundReferenceScripts = (config: BoundConfig): BoundReferenceScripts =>
+  config.referenceScripts ?? config;
+
+const stepsOf = (referenceScripts: BoundReferenceScripts) =>
+  referenceScripts.steps ?? referenceScripts.stepReferenceScripts;
+
+const witnessesOf = (referenceScripts: BoundReferenceScripts) =>
+  referenceScripts.witnesses ?? referenceScripts.witnessReferenceScripts;
+
+/** The witness roles the shared `FaultProofWitnessReferenceScripts` declares. */
+const WITNESS_ROLES = new Set([
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+  "pexcludesWithdraw",
+]);
 
 const FLAT_SHAPE_NON_STEP_ROLES = new Set([
   "fieldPreimageCertificateMint",
@@ -61,17 +90,21 @@ const referenceKey = (utxo: UTxO) => `${utxo.txHash}#${utxo.outputIndex}`;
 
 /**
  * The step references a bound config carries, in step order: the `steps`
- * tuple of the bundle shape; on the flat certificate shape every key
- * beginning `step`, which must be exactly the keys the shape has no other
- * name for; on the contract-name-keyed shape the entry each step role's
- * contract names. Each step must be a resolved reference, never absent.
+ * tuple of the bundle and network-id shapes; on the flat certificate shape
+ * every key beginning `step`, which must be exactly the keys the shape has no
+ * other name for; on the contract-name-keyed shape the entry each step role's
+ * contract names. Each step must be a resolved reference, never absent. A
+ * roster without step roles (the interactive dispute) binds no steps.
  */
 const boundSteps = (
   referenceScripts: BoundReferenceScripts,
   roster: Readonly<Record<string, string>>,
+  stepRoles: readonly string[],
 ): readonly unknown[] => {
-  if (referenceScripts.steps !== undefined) return referenceScripts.steps;
-  if (referenceScripts.witnesses === undefined) {
+  if (stepRoles.length === 0) return [];
+  const steps = stepsOf(referenceScripts);
+  if (steps !== undefined) return steps;
+  if (witnessesOf(referenceScripts) === undefined) {
     return Object.keys(roster)
       .filter((role) => /^step[0-9]{2}$/u.test(role))
       .map((role) => referenceScripts[roster[role]!]);
@@ -101,14 +134,21 @@ const registry: Readonly<
       bindConfig: (input: {
         readonly infrastructure: FamilyCommonInfrastructure;
         readonly references: Readonly<Record<string, UTxO>>;
-      }) => Readonly<{
-        decisionDigest?: string;
-        referenceScripts: BoundReferenceScripts;
-      }> &
-        Readonly<Record<string, unknown>>;
+      }) => unknown;
     }>
   >
 > = FAMILY_APPLICATION_REGISTRY;
+
+type Record_ = (typeof registry)[string];
+
+/**
+ * Binds through a record uniformly, whether its `bindConfig` is async, and
+ * views the family's own config through the shapes asserted here.
+ */
+const bind = async (
+  record: Record_,
+  input: Parameters<Record_["bindConfig"]>[0],
+): Promise<BoundConfig> => (await record.bindConfig(input)) as BoundConfig;
 
 /** Definitions of the registered families that are assembled from one. */
 const definitions: Readonly<
@@ -162,6 +202,13 @@ const HISTORICAL_AUTHORITY = Object.freeze({
   historySource: Object.freeze({ sentinel: "historySource" }),
   l1SourceRoster: Object.freeze({ sentinel: "l1SourceRoster" }),
 });
+/** A challenge port whose challenge records the coordinates it was asked for. */
+const VALIDATION_CHALLENGE_PORT = Object.freeze({
+  currentChallenge: async (input: {
+    headerHash: string;
+    decisionDigest: string;
+  }) => Object.freeze({ sentinel: "validationChallenge", ...input }),
+});
 
 const infrastructure = {
   manifest: {},
@@ -175,6 +222,7 @@ const infrastructure = {
   decisionDigest: DECISION_DIGEST,
   replayContext: REPLAY_CONTEXT as never,
   historicalNativeScriptAuthority: HISTORICAL_AUTHORITY as never,
+  validationChallenge: VALIDATION_CHALLENGE_PORT as never,
 } satisfies FamilyCommonInfrastructure;
 
 const { decisionDigest: _undecided, ...undecidedInfrastructure } =
@@ -183,6 +231,7 @@ const { decisionDigest: _undecided, ...undecidedInfrastructure } =
 const {
   replayContext: _replay,
   historicalNativeScriptAuthority: _authority,
+  validationChallenge: _challenge,
   ...plainInfrastructure
 } = infrastructure;
 
@@ -199,10 +248,10 @@ const boundSentinels = (value: unknown, found = new Set<string>()) => {
 };
 
 /**
- * The cursor families whose config carries no decision-digest field, so their
- * records do not bind it; every other registered cursor family does.
+ * The non-linear families whose config carries no decision-digest field, so
+ * their records do not bind it; every other registered non-linear family does.
  */
-const NO_DIGEST_CURSOR_FAMILIES = [
+const NO_DIGEST_FAMILIES = [
   "nativeScriptInvalid",
   "nativeScriptDecoding",
   "mintAuthorization",
@@ -213,6 +262,9 @@ const NO_DIGEST_CURSOR_FAMILIES = [
   "transitionTrace",
   "crossBlockDuplicateEvent",
   "executionNativeScriptInvalid",
+  "missingSignature",
+  "networkId",
+  "valueNotPreserved",
 ];
 
 const REPLAY_CONTEXT_FAMILIES = [
@@ -221,6 +273,19 @@ const REPLAY_CONTEXT_FAMILIES = [
   "nativeScriptDecoding",
   "mintAuthorization",
   "withdrawalMistag",
+  "valueNotPreserved",
+];
+
+/** The sole interactive family, and the only record reading the challenge port. */
+const VALIDATION_CHALLENGE_FAMILIES = ["validationTraceDispute"];
+
+/**
+ * Hand-written records (no definition to declare it) that follow their proof
+ * token with the state-queue removal set.
+ */
+const HAND_WRITTEN_REMOVAL_FAMILIES = [
+  "valueNotPreserved",
+  "validationTraceDispute",
 ];
 
 const HISTORICAL_AUTHORITY_FAMILIES = [
@@ -242,25 +307,16 @@ describe("family application registry table", () => {
     },
   );
 
-  it("covers the catalogue order exactly once, together with the allow-list", () => {
-    const registered = new Set<string>(REGISTERED_FAMILY_CATEGORIES);
-    const allowed = new Set<string>(NOT_YET_REGISTERED_FAMILY_CATEGORIES);
-    expect(registered.size).toBe(REGISTERED_FAMILY_CATEGORIES.length);
-    expect(allowed.size).toBe(NOT_YET_REGISTERED_FAMILY_CATEGORIES.length);
+  it("covers the whole catalogue order exactly once", () => {
+    expect(REGISTERED_FAMILY_CATEGORIES).toEqual(
+      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+    );
     expect([...REGISTERED_FAMILY_CATEGORIES].sort()).toEqual(
       Object.keys(registry).sort(),
     );
-    expect(REGISTERED_FAMILY_CATEGORIES).toEqual(
-      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.filter((category) =>
-        registered.has(category),
-      ),
+    expect(new Set(REGISTERED_FAMILY_CATEGORIES).size).toBe(
+      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
     );
-    expect([...registered, ...allowed].sort()).toEqual(
-      [...FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER].sort(),
-    );
-    for (const category of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
-      expect(registered.has(category) !== allowed.has(category)).toBe(true);
-    }
   });
 });
 
@@ -287,26 +343,15 @@ describe("family application rosters name deployed contracts", () => {
 
   it.each(Object.keys(registry))(
     "binds every %s roster role, and only roster roles, into its config",
-    (key) => {
+    async (key) => {
       const roster = registry[key]!.roster;
       const roles = Object.keys(roster);
       const references = referenceRoles(roster);
-      const config = registry[key]!.bindConfig({
-        infrastructure,
-        references,
-      });
-      const { referenceScripts } = config;
+      const config = await bind(registry[key]!, { infrastructure, references });
+      const referenceScripts = boundReferenceScripts(config);
       const stepRoles = roles.filter((role) => /^step[0-9]{2}$/u.test(role));
-      const auxiliaryRoles = Object.keys(
-        definitions[key]?.auxiliaryReferenceScripts ?? {},
-      );
-      const witnessRoles = roles.filter(
-        (role) =>
-          !stepRoles.includes(role) &&
-          !auxiliaryRoles.includes(role) &&
-          role !== "fieldPreimageCertificateMint",
-      );
-      expect(boundSteps(referenceScripts, roster)).toEqual(
+      const witnessRoles = roles.filter((role) => WITNESS_ROLES.has(role));
+      expect(boundSteps(referenceScripts, roster, stepRoles)).toEqual(
         stepRoles.map((role) => references[role]),
       );
       // Every resolved roster reference lands in the config exactly once,
@@ -314,10 +359,9 @@ describe("family application rosters name deployed contracts", () => {
       expect(boundReferenceLeaves(config).map(referenceKey).sort()).toEqual(
         roles.map((role) => referenceKey(references[role]!)).sort(),
       );
-      if (referenceScripts.witnesses !== undefined) {
-        expect(Object.keys(referenceScripts.witnesses).sort()).toEqual(
-          [...witnessRoles].sort(),
-        );
+      const witnesses = witnessesOf(referenceScripts);
+      if (witnesses !== undefined) {
+        expect(Object.keys(witnesses).sort()).toEqual([...witnessRoles].sort());
         // Double-spend alone carries the certificate as a bare reference
         // script beside its bundle; every definition-assembled family binds
         // it inside.
@@ -372,32 +416,31 @@ describe("family application rosters name deployed contracts", () => {
 describe("family application records bind the admitted decision digest", () => {
   it.each(Object.keys(registry))(
     "lays the digest into %s exactly when its record binds it",
-    (key) => {
+    async (key) => {
       const record = registry[key]!;
       const references = referenceRoles(record.roster);
-      const config = record.bindConfig({ infrastructure, references });
+      const config = await bind(record, { infrastructure, references });
       expect(config.decisionDigest).toBe(
         record.bindsDecisionDigest ? DECISION_DIGEST : undefined,
       );
       if (record.bindsDecisionDigest) {
-        expect(() =>
-          record.bindConfig({
-            infrastructure: undecidedInfrastructure,
-            references,
-          }),
-        ).toThrow(`${key} binds the admitted decision digest`);
+        await expect(
+          bind(record, { infrastructure: undecidedInfrastructure, references }),
+        ).rejects.toThrow(`${key} binds the admitted decision digest`);
       } else {
         expect(
-          record.bindConfig({
-            infrastructure: undecidedInfrastructure,
-            references,
-          }).decisionDigest,
+          (
+            await bind(record, {
+              infrastructure: undecidedInfrastructure,
+              references,
+            })
+          ).decisionDigest,
         ).toBeUndefined();
       }
     },
   );
 
-  it("binds the digest on every registered cursor family except the ones whose config has no digest field", () => {
+  it("binds the digest on every registered non-linear family except the ones whose config has no digest field", () => {
     const bound = Object.values(registry)
       .filter((record) => record.bindsDecisionDigest)
       .map((record) => record.category)
@@ -405,7 +448,7 @@ describe("family application records bind the admitted decision digest", () => {
     const unbound = new Set<string>([
       ...LINEAR_FAMILY_CATEGORIES,
       "doubleSpend",
-      ...NO_DIGEST_CURSOR_FAMILIES,
+      ...NO_DIGEST_FAMILIES,
     ]);
     expect(bound).toEqual(
       Object.keys(registry)
@@ -414,12 +457,12 @@ describe("family application records bind the admitted decision digest", () => {
     );
   });
 
-  it("carries the state-queue removal set exactly on the families whose definition declares it", () => {
+  it("carries the state-queue removal set exactly on the families that declare it", () => {
     const removalNames = [...REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES];
     for (const [category, record] of Object.entries(registry)) {
-      const declared = Object.keys(
-        definitions[category]?.auxiliaryReferenceScripts ?? {},
-      );
+      const declared = HAND_WRITTEN_REMOVAL_FAMILIES.includes(category)
+        ? removalNames
+        : Object.keys(definitions[category]?.auxiliaryReferenceScripts ?? {});
       const roster = Object.keys(record.roster);
       const declaresRemoval = removalNames.every((name) =>
         declared.includes(name),
@@ -441,16 +484,27 @@ describe("family application records bind the admitted decision digest", () => {
 describe("family application records declare the infrastructure they read", () => {
   it.each(Object.keys(registry))(
     "binds into %s exactly the optional infrastructure its record requires",
-    (key) => {
+    async (key) => {
       const record = registry[key]!;
       const references = referenceRoles(record.roster);
-      const config = record.bindConfig({ infrastructure, references });
+      const config = await bind(record, { infrastructure, references });
       const sentinels = boundSentinels(config);
       const requiresReplay = record.requires.includes("replayContext");
       const requiresAuthority = record.requires.includes(
         "historicalNativeScriptAuthority",
       );
+      const requiresChallenge = record.requires.includes("validationChallenge");
       expect(sentinels.has("replayContext")).toBe(requiresReplay);
+      expect(sentinels.has("validationChallenge")).toBe(requiresChallenge);
+      if (requiresChallenge) {
+        // The challenge is the port's answer for this header and the admitted
+        // decision, laid under the family's own `challenge` key.
+        expect(config.challenge).toEqual({
+          sentinel: "validationChallenge",
+          headerHash: infrastructure.headerHash,
+          decisionDigest: DECISION_DIGEST,
+        });
+      }
       expect(
         sentinels.has("historySource") && sentinels.has("checkpointStore"),
       ).toBe(requiresAuthority);
@@ -459,26 +513,32 @@ describe("family application records declare the infrastructure they read", () =
         expect(sentinels.has("providerRoster")).toBe(false);
       }
       // The same record binds without the optional parts when it requires
-      // none of them; a record requiring the authority refuses without it.
+      // none of them; a record requiring the authority refuses without it. A
+      // record requiring the challenge port binds challenge-free without one:
+      // the shared loop refuses the missing port before binding, and the
+      // family's own execution fail-closes on a challenge-free workflow.
       if (requiresAuthority) {
-        expect(() =>
-          record.bindConfig({
-            infrastructure: plainInfrastructure,
-            references,
-          }),
-        ).toThrow(`${key} reconstructs historical native scripts`);
+        await expect(
+          bind(record, { infrastructure: plainInfrastructure, references }),
+        ).rejects.toThrow(`${key} reconstructs historical native scripts`);
       } else {
-        expect(
-          boundSentinels(
-            record.bindConfig({
-              infrastructure: plainInfrastructure,
-              references,
-            }),
-          ).size,
-        ).toBe(0);
+        const plain = await bind(record, {
+          infrastructure: plainInfrastructure,
+          references,
+        });
+        expect(boundSentinels(plain).size).toBe(0);
+        expect(plain.challenge).toBeUndefined();
       }
     },
   );
+
+  it("requires the validation challenge on exactly the interactive family", () => {
+    expect(
+      Object.values(registry)
+        .filter((record) => record.requires.includes("validationChallenge"))
+        .map((record) => record.category),
+    ).toEqual(VALIDATION_CHALLENGE_FAMILIES);
+  });
 
   it("requires the replay context on exactly the families that replay the predecessor", () => {
     expect(
@@ -500,10 +560,10 @@ describe("family application records declare the infrastructure they read", () =
     ).toEqual([...HISTORICAL_AUTHORITY_FAMILIES].sort());
   });
 
-  it("lays the authority's history source and checkpoint store into every historical family", () => {
+  it("lays the authority's history source and checkpoint store into every historical family", async () => {
     for (const category of HISTORICAL_AUTHORITY_FAMILIES) {
       const record = registry[category]!;
-      const config = record.bindConfig({
+      const config = await bind(record, {
         infrastructure,
         references: referenceRoles(record.roster),
       });

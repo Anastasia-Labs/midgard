@@ -1,25 +1,9 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 import {
-  createManifestBoundNetworkIdWorkflow,
-  type ManifestBoundNetworkIdWorkflow,
-  type ManifestBoundNetworkIdWorkflowConfig,
-  runOrResumeManifestBoundNetworkIdWorkflow,
-} from "../network-id/workflow-adapter.js";
-import {
   DaLibp2pRetainedDaSource,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
-import {
-  createValidationTraceDisputeWorkflowRunnerSurface,
-  type LoadValidationTraceDisputeWorkflow,
-} from "../validation-dispute/workflow-v1.js";
-import {
-  createManifestBoundValueConservationWorkflow,
-  type ManifestBoundValueConservationWorkflow,
-  type ManifestBoundValueConservationWorkflowConfig,
-  runOrResumeManifestBoundValueConservationWorkflow,
-} from "../value-not-preserved/workflow.js";
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
@@ -60,8 +44,10 @@ import {
   MISSING_NATIVE_SCRIPT_UTXO_FAMILY_APPLICATION_RECORD,
   MISSING_REDEEMER_FAMILY_APPLICATION_RECORD,
   MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD,
+  MISSING_SIGNATURE_FAMILY_APPLICATION_RECORD,
   NATIVE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
   NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD,
+  NETWORK_ID_FAMILY_APPLICATION_RECORD,
   OBSERVER_ORDER_INVALID_FAMILY_APPLICATION_RECORD,
   OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FAMILY_APPLICATION_RECORD,
   OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
@@ -76,6 +62,8 @@ import {
   TRANSITION_TRACE_FAMILY_APPLICATION_RECORD,
   UNUSED_REDEEMER_FAMILY_APPLICATION_RECORD,
   UNUSED_SCRIPT_WITNESS_FAMILY_APPLICATION_RECORD,
+  VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD,
+  VALUE_NOT_PRESERVED_FAMILY_APPLICATION_RECORD,
   WITHDRAWAL_MISTAG_FAMILY_APPLICATION_RECORD,
   WITNESS_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
 } from "./family-application-registry.js";
@@ -98,12 +86,6 @@ import {
   assembleManifestBoundFamilyWorkflow,
   runOrResumeManifestBoundFamilyWorkflow,
 } from "./manifest-bound-family-assembly.js";
-import {
-  createManifestBoundMissingSignatureWorkflow,
-  type ManifestBoundMissingSignatureWorkflow,
-  type ManifestBoundMissingSignatureWorkflowConfig,
-  runOrResumeManifestBoundMissingSignatureWorkflow,
-} from "./missing-signature.js";
 import {
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowRunResult,
@@ -478,89 +460,10 @@ export const createDoubleSpendWorkflowRunner = (
   });
 
 /**
- * Production runner for the sole interactive family. The surface re-derives
- * the dispute cursor from live chain state on every invocation (ruling R6),
- * so the watcher always owns a move, a deadline, or completion.
- */
-export const createValidationTraceDisputeWorkflowRunner = (
-  loadRuntimeConfig: LoadValidationTraceDisputeWorkflow,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner => {
-  const surface = createValidationTraceDisputeWorkflowRunnerSurface({
-    loadRuntimeConfig,
-  });
-  return createAdmittedWorkflowRunner({
-    category: "validationTraceDispute",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: surface.runOrResume,
-  });
-};
-
-export const createNetworkIdWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundNetworkIdWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "networkId",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "networkId",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundNetworkIdWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundNetworkIdWorkflow({
-          workflow: workflow as ManifestBoundNetworkIdWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createValueConservationWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundValueConservationWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "valueNotPreserved",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "valueNotPreserved",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundValueConservationWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundValueConservationWorkflow({
-          workflow: workflow as ManifestBoundValueConservationWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createMissingSignatureWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundMissingSignatureWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "missingSignature",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "missingSignature",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundMissingSignatureWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundMissingSignatureWorkflow({
-          workflow: workflow as ManifestBoundMissingSignatureWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-/**
  * Factories for the current families whose complete shared workflow drivers
  * exist: every linear family's row is derived from its definition, every
- * registered family's row from its application record, the rest are the
- * explicit rows below. This is deliberately separate from launch
+ * registered family's row from its application record; no explicit rows
+ * remain. This is deliberately separate from launch
  * readiness: a factory is not ready until a compiled application supplies its
  * concrete public-libp2p runtime loader and installs the resulting executable
  * runner.
@@ -568,11 +471,15 @@ export const createMissingSignatureWorkflowRunner = (
 export const WORKFLOW_RUNNER_FACTORIES = Object.freeze({
   ...LINEAR_FAMILY_WORKFLOW_RUNNER_FACTORIES,
   doubleSpend: createDoubleSpendWorkflowRunner,
-  missingSignature: createMissingSignatureWorkflowRunner,
+  missingSignature: familyApplicationWorkflowRunnerFactory(
+    MISSING_SIGNATURE_FAMILY_APPLICATION_RECORD,
+  ),
   missingNativeScriptTx: familyApplicationWorkflowRunnerFactory(
     MISSING_NATIVE_SCRIPT_TX_FAMILY_APPLICATION_RECORD,
   ),
-  networkId: createNetworkIdWorkflowRunner,
+  networkId: familyApplicationWorkflowRunnerFactory(
+    NETWORK_ID_FAMILY_APPLICATION_RECORD,
+  ),
   missingNativeScriptUtxo: familyApplicationWorkflowRunnerFactory(
     MISSING_NATIVE_SCRIPT_UTXO_FAMILY_APPLICATION_RECORD,
   ),
@@ -597,7 +504,9 @@ export const WORKFLOW_RUNNER_FACTORIES = Object.freeze({
   transitionTrace: familyApplicationWorkflowRunnerFactory(
     TRANSITION_TRACE_FAMILY_APPLICATION_RECORD,
   ),
-  valueNotPreserved: createValueConservationWorkflowRunner,
+  valueNotPreserved: familyApplicationWorkflowRunnerFactory(
+    VALUE_NOT_PRESERVED_FAMILY_APPLICATION_RECORD,
+  ),
   fieldPreimageLengthMismatch: familyApplicationWorkflowRunnerFactory(
     FIELD_PREIMAGE_LENGTH_MISMATCH_FAMILY_APPLICATION_RECORD,
   ),
@@ -667,5 +576,7 @@ export const WORKFLOW_RUNNER_FACTORIES = Object.freeze({
   distinctAssetAccumulationLimit: familyApplicationWorkflowRunnerFactory(
     DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_APPLICATION_RECORD,
   ),
-  validationTraceDispute: createValidationTraceDisputeWorkflowRunner,
+  validationTraceDispute: familyApplicationWorkflowRunnerFactory(
+    VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD,
+  ),
 });

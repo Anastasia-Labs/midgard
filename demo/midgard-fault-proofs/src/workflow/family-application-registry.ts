@@ -16,14 +16,13 @@
  * optional infrastructure it requires — the predecessor replay context or the
  * historical native-script authority — and the config fields it reads from
  * it. A family whose config shape is its own writes a short record by hand:
- * `doubleSpend`, `transitionTrace`, and `mintItemNonCanonical`, which has no
- * definition.
+ * `doubleSpend`, `transitionTrace`, `mintItemNonCanonical`, `missingSignature`,
+ * `networkId`, `valueNotPreserved` and `validationTraceDispute`, the last of
+ * which is the one family that requires the host's validation-challenge port.
  *
- * `NOT_YET_REGISTERED_FAMILY_CATEGORIES` is a shrinking allow-list of
- * catalogue categories that have no record yet, following the pattern the
- * linear definitions table used during its own migration. The `satisfies`
- * guard requires exactly one record per remaining category, with the record's
- * own category as its key, so an omitted or misnamed family fails typecheck.
+ * The `satisfies` guard requires exactly one record per catalogue category,
+ * with the record's own category as its key, so an omitted or misnamed family
+ * fails typecheck.
  */
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -146,6 +145,12 @@ import {
   runOrResumeManifestBoundNativeScriptInvalidWorkflow,
 } from "../native-script-invalid/workflow.js";
 import {
+  createManifestBoundNetworkIdWorkflow,
+  type ManifestBoundNetworkIdWorkflow,
+  type ManifestBoundNetworkIdWorkflowConfig,
+  runOrResumeManifestBoundNetworkIdWorkflow,
+} from "../network-id/workflow-adapter.js";
+import {
   createManifestBoundObserverOrderInvalidWorkflow,
   executeManifestBoundObserverOrderInvalidWorkflow,
   type ManifestBoundObserverOrderInvalidWorkflow,
@@ -189,7 +194,10 @@ import {
   type ManifestBoundRedeemerCanonicityWorkflowConfig,
   REDEEMER_CANONICITY_FAMILY_DEFINITION,
 } from "../redeemer-canonicity/runtime.js";
-import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
+import {
+  REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES,
+  type StateQueueMutationLeaseCoordinator,
+} from "../remove-fraudulent-block.js";
 import {
   createManifestBoundResolvedOutputNonCanonicalWorkflow,
   executeManifestBoundResolvedOutputNonCanonicalWorkflow,
@@ -198,7 +206,10 @@ import {
   RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION,
   RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS,
 } from "../resolved-output-non-canonical/authenticated-workflow.js";
-import type { ResolvedProverSigner } from "../runtime.js";
+import {
+  NETWORK_ID_FORCED_SCAN_DEPLOYMENT_ENTRY,
+  type ResolvedProverSigner,
+} from "../runtime.js";
 import {
   createManifestBoundScriptIntegrityHashMismatchWorkflow,
   executeManifestBoundScriptIntegrityHashMismatchWorkflow,
@@ -252,6 +263,27 @@ import {
   UNUSED_SCRIPT_WITNESS_FAMILY_DEFINITION,
 } from "../unused-script-witness/v1.js";
 import {
+  VALIDATION_TRACE_DISPUTE_CONTROL_CONTRACT_NAMES,
+  VALIDATION_TRACE_DISPUTE_REMOVAL_CONTRACT_NAMES,
+  VALIDATION_TRACE_DISPUTE_WITNESS_CONTRACT_NAMES,
+} from "../validation-dispute/workflow-family.js";
+import {
+  createManifestBoundValidationTraceDisputeWorkflow,
+  type ManifestBoundValidationTraceDisputeWorkflow,
+  type ManifestBoundValidationTraceDisputeWorkflowConfig,
+  runOrResumeManifestBoundValidationTraceDisputeWorkflow,
+} from "../validation-dispute/workflow-v1.js";
+import {
+  CONSERVATION_POSITIONS,
+  conservationManifestName,
+} from "../value-not-preserved/contracts.js";
+import {
+  createManifestBoundValueConservationWorkflow,
+  type ManifestBoundValueConservationWorkflow,
+  type ManifestBoundValueConservationWorkflowConfig,
+  runOrResumeManifestBoundValueConservationWorkflow,
+} from "../value-not-preserved/workflow.js";
+import {
   createManifestBoundWithdrawalMistagWorkflow,
   type ManifestBoundWithdrawalMistagWorkflow,
   type ManifestBoundWithdrawalMistagWorkflowConfig,
@@ -266,7 +298,9 @@ import {
   WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION,
   WITNESS_SCRIPT_DECODING_MANIFEST_CONTRACTS,
 } from "../witness-script-decoding/workflow.js";
+import type { ValidationTraceChallenge } from "./challenge-authority.js";
 import type { CompleteCanonicalReplayContext } from "./complete-replay.js";
+import { STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS } from "./cursor-family-runtime.js";
 import {
   type ManifestBoundDaHashPreimageWorkflow,
   runOrResumeManifestBoundDaHashPreimageWorkflow,
@@ -313,6 +347,12 @@ import {
   assembleManifestBoundFamilyWorkflow,
   runOrResumeManifestBoundFamilyWorkflow,
 } from "./manifest-bound-family-assembly.js";
+import {
+  createManifestBoundMissingSignatureWorkflow,
+  type ManifestBoundMissingSignatureWorkflow,
+  type ManifestBoundMissingSignatureWorkflowConfig,
+  runOrResumeManifestBoundMissingSignatureWorkflow,
+} from "./missing-signature.js";
 
 const requiredReference = (
   references: FamilyResolvedReferenceScripts,
@@ -324,6 +364,65 @@ const requiredReference = (
   }
   return reference;
 };
+
+/**
+ * The given roster roles resolved into a record keyed by those roles, for a
+ * hand-written record whose config groups a fixed set of roles under one key.
+ */
+const resolvedRoles = <Role extends string>(
+  references: FamilyResolvedReferenceScripts,
+  roles: readonly Role[],
+): Readonly<Record<Role, UTxO>> =>
+  Object.freeze(
+    Object.fromEntries(
+      roles.map((role) => [role, requiredReference(references, role)]),
+    ) as Record<Role, UTxO>,
+  );
+
+/** The role names of a contract-name table, typed as its keys. */
+const rolesOf = <Table extends Readonly<Record<string, string>>>(
+  table: Table,
+): readonly (keyof Table & string)[] =>
+  Object.keys(table) as (keyof Table & string)[];
+
+/**
+ * A hand-written record's step roster: `step01`… in the order of the family's
+ * own step contract-name list.
+ */
+const stepRoster = (
+  contractNames: readonly string[],
+): Readonly<Record<string, string>> =>
+  Object.freeze(
+    Object.fromEntries(
+      contractNames.map((contractName, index) => [
+        familyStepRole(index + 1),
+        contractName,
+      ]),
+    ),
+  );
+
+/**
+ * The resolved step references of a hand-written record, as the tuple its
+ * family's config declares (a two- or four-step chain).
+ */
+function resolvedSteps(
+  references: FamilyResolvedReferenceScripts,
+  count: 2,
+): readonly [UTxO, UTxO];
+function resolvedSteps(
+  references: FamilyResolvedReferenceScripts,
+  count: 4,
+): readonly [UTxO, UTxO, UTxO, UTxO];
+function resolvedSteps(
+  references: FamilyResolvedReferenceScripts,
+  count: 2 | 4,
+): readonly UTxO[] {
+  return Object.freeze(
+    Array.from({ length: count }, (_, index) =>
+      requiredReference(references, familyStepRole(index + 1)),
+    ),
+  );
+}
 
 /**
  * The predecessor replay context, laid into a family's config only when its
@@ -668,12 +767,7 @@ export const DOUBLE_SPEND_FAMILY_APPLICATION_RECORD = defineFamilyApplication<
 >({
   category: "doubleSpend",
   roster: Object.freeze({
-    ...Object.fromEntries(
-      DOUBLE_SPEND_STEP_CONTRACT_NAMES.map((contractName, index) => [
-        familyStepRole(index + 1),
-        contractName,
-      ]),
-    ),
+    ...stepRoster(DOUBLE_SPEND_STEP_CONTRACT_NAMES),
     computationThreadMint: "computationThreadMint",
     fraudProofMint: "fraudProofMint",
     phasMembershipWithdraw: "phasMembershipWithdraw",
@@ -685,12 +779,7 @@ export const DOUBLE_SPEND_FAMILY_APPLICATION_RECORD = defineFamilyApplication<
     Object.freeze({
       ...commonBoundConfigFields(infrastructure),
       referenceScripts: Object.freeze({
-        steps: Object.freeze([
-          requiredReference(references, familyStepRole(1)),
-          requiredReference(references, familyStepRole(2)),
-          requiredReference(references, familyStepRole(3)),
-          requiredReference(references, familyStepRole(4)),
-        ] as const),
+        steps: resolvedSteps(references, 4),
         witnesses: Object.freeze({
           computationThreadMint: requiredReference(
             references,
@@ -1618,27 +1707,309 @@ export const MINT_ITEM_NON_CANONICAL_FAMILY_APPLICATION_RECORD =
   });
 
 /**
- * Catalogue categories that have no application record yet. Every entry is
- * removed as its family's record lands; the list reaching empty is what makes
- * the registry the complete installed set.
+ * The witness roles the four hand-written records below spell out, in the
+ * order the shared `FaultProofWitnessReferenceScripts` type declares them.
  */
-export const NOT_YET_REGISTERED_FAMILY_CATEGORIES = Object.freeze([
-  "validationTraceDispute",
-  "missingSignature",
-  "valueNotPreserved",
+const CORE_WITNESS_ROLES = Object.freeze([
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+] as const);
+const MEMBERSHIP_WITNESS_ROLES = Object.freeze([
+  ...CORE_WITNESS_ROLES,
+  "chunkedVerifyWithdraw",
+  "pexcludesWithdraw",
+] as const);
+
+const MISSING_SIGNATURE_STEP_CONTRACT_NAMES = Object.freeze([
+  "fraudProofMissingSignature",
+  "fraudProofMissingSignatureStep02",
+  "fraudProofMissingSignatureStep03",
+  "fraudProofMissingSignatureStep04",
+] as const);
+
+/**
+ * Missing-signature has no `FamilyDefinition`: its four-step accepted chain
+ * is joined by the forced (wrongful-rejection) door, signer and witness
+ * scripts, which its config makes optional so a deployment without the
+ * forced direction still binds. The roster resolves all three always — a
+ * role is never optional here — so the forced direction is installed
+ * whenever the family is.
+ */
+export const MISSING_SIGNATURE_FAMILY_APPLICATION_RECORD =
+  defineFamilyApplication<
+    "missingSignature",
+    ManifestBoundMissingSignatureWorkflowConfig,
+    ManifestBoundMissingSignatureWorkflow
+  >({
+    category: "missingSignature",
+    roster: Object.freeze({
+      ...stepRoster(MISSING_SIGNATURE_STEP_CONTRACT_NAMES),
+      forcedStep: "fraudProofMissingSignatureForcedStep",
+      forcedSigner: "fraudProofMissingSignatureForcedSigner",
+      forcedWitness: "fraudProofMissingSignatureForcedWitness",
+      ...Object.fromEntries(CORE_WITNESS_ROLES.map((role) => [role, role])),
+      fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+    }),
+    requires: [],
+    bindConfig: ({ infrastructure, references }) =>
+      Object.freeze({
+        ...commonBoundConfigFields(infrastructure),
+        referenceScripts: Object.freeze({
+          steps: resolvedSteps(references, 4),
+          forced: Object.freeze({
+            bind: requiredReference(references, "forcedStep"),
+            signer: requiredReference(references, "forcedSigner"),
+            witness: requiredReference(references, "forcedWitness"),
+          }),
+          witnesses: resolvedRoles(references, CORE_WITNESS_ROLES),
+          fieldPreimageCertificateMint: requiredReference(
+            references,
+            "fieldPreimageCertificateMint",
+          ),
+        }),
+      }),
+    constructWorkflow: createManifestBoundMissingSignatureWorkflow,
+    execute: async ({ workflow, sources, journal }) =>
+      await runOrResumeManifestBoundMissingSignatureWorkflow({
+        workflow,
+        sources,
+        journal,
+      }),
+    bindsDecisionDigest: false,
+  });
+
+/**
+ * Network-id has no `FamilyDefinition` and lays its reference scripts at the
+ * top of its config rather than in a bundle: the two-step accepted chain, the
+ * forced door and the resumable forced outputs scan (optional in the config,
+ * always resolved here), the certificate, and the five membership witnesses.
+ * Its state-queue removal spends the removal set through the deployment
+ * binding, so the roster carries no removal roles; the lease coordinator is
+ * the one removal setting the config takes.
+ */
+export const NETWORK_ID_FAMILY_APPLICATION_RECORD = defineFamilyApplication<
   "networkId",
-] as const satisfies readonly FraudProofCatalogueCategoryName[]);
+  ManifestBoundNetworkIdWorkflowConfig,
+  ManifestBoundNetworkIdWorkflow
+>({
+  category: "networkId",
+  roster: Object.freeze({
+    step01: "fraudProofNetworkId",
+    step02: "fraudProofNetworkIdStep02",
+    forcedStep: "fraudProofNetworkIdForcedStep",
+    forcedScan: NETWORK_ID_FORCED_SCAN_DEPLOYMENT_ENTRY,
+    ...Object.fromEntries(MEMBERSHIP_WITNESS_ROLES.map((role) => [role, role])),
+    fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+  }),
+  requires: [],
+  bindConfig: ({ infrastructure, references }) => {
+    const { stateQueueMutationLeaseCoordinator, ...common } =
+      commonBoundConfigFields(infrastructure);
+    return Object.freeze({
+      ...common,
+      stepReferenceScripts: resolvedSteps(references, 2),
+      forcedStepReferenceScript: requiredReference(references, "forcedStep"),
+      forcedScanReferenceScript: requiredReference(references, "forcedScan"),
+      fieldPreimageCertificateReferenceScript: requiredReference(
+        references,
+        "fieldPreimageCertificateMint",
+      ),
+      witnessReferenceScripts: resolvedRoles(
+        references,
+        MEMBERSHIP_WITNESS_ROLES,
+      ),
+      removal: Object.freeze({ stateQueueMutationLeaseCoordinator }),
+    });
+  },
+  constructWorkflow: createManifestBoundNetworkIdWorkflow,
+  execute: async ({ workflow, sources, journal }) =>
+    await runOrResumeManifestBoundNetworkIdWorkflow({
+      workflow,
+      sources,
+      journal,
+    }),
+  bindsDecisionDigest: false,
+});
 
-export type NotYetRegisteredFamilyCategory =
-  (typeof NOT_YET_REGISTERED_FAMILY_CATEGORIES)[number];
+const VALUE_NOT_PRESERVED_STEP_CONTRACT_NAMES = Object.freeze([
+  "fraudProofValueNotPreserved",
+  "fraudProofValueNotPreservedStep02",
+  "fraudProofValueNotPreservedStep03",
+  "fraudProofValueNotPreservedStep04",
+] as const);
 
-/** A catalogue category the registry carries a record for. */
-export type RegisteredFamilyCategory = Exclude<
-  FraudProofCatalogueCategoryName,
-  NotYetRegisteredFamilyCategory
->;
+const VALUE_NOT_PRESERVED_REQUIREMENTS = Object.freeze([
+  "replayContext",
+] as const satisfies readonly FamilyApplicationRequirement[]);
 
-export const FAMILY_APPLICATION_REGISTRY = Object.freeze({
+/**
+ * Value-conservation has no `FamilyDefinition`: beside its four-step legacy
+ * chain it publishes one union contract per conservation position, read from
+ * the family's own position table so the roster cannot drift from the
+ * contracts the union plan walks. It replays the predecessor, so it requires
+ * the replay context, and follows its proof token with the state-queue
+ * removal set.
+ */
+export const VALUE_NOT_PRESERVED_FAMILY_APPLICATION_RECORD =
+  defineFamilyApplication<
+    "valueNotPreserved",
+    ManifestBoundValueConservationWorkflowConfig,
+    ManifestBoundValueConservationWorkflow
+  >({
+    category: "valueNotPreserved",
+    roster: Object.freeze({
+      ...stepRoster(VALUE_NOT_PRESERVED_STEP_CONTRACT_NAMES),
+      ...Object.fromEntries(
+        CONSERVATION_POSITIONS.map((position) => [
+          position,
+          conservationManifestName(position),
+        ]),
+      ),
+      ...Object.fromEntries(
+        MEMBERSHIP_WITNESS_ROLES.map((role) => [role, role]),
+      ),
+      fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+      ...STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
+    }),
+    requires: VALUE_NOT_PRESERVED_REQUIREMENTS,
+    bindConfig: ({ infrastructure, references }) =>
+      Object.freeze({
+        ...commonBoundConfigFields(infrastructure),
+        ...optionalReplayContext(
+          VALUE_NOT_PRESERVED_REQUIREMENTS,
+          infrastructure,
+        ),
+        referenceScripts: Object.freeze({
+          steps: resolvedSteps(references, 4),
+          union: resolvedRoles(references, CONSERVATION_POSITIONS),
+          witnesses: resolvedRoles(references, MEMBERSHIP_WITNESS_ROLES),
+          fieldPreimageCertificateMint: requiredReference(
+            references,
+            "fieldPreimageCertificateMint",
+          ),
+          removal: resolvedRoles(
+            references,
+            REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES,
+          ),
+        }),
+      }),
+    constructWorkflow: createManifestBoundValueConservationWorkflow,
+    execute: async ({ workflow, sources, journal }) =>
+      await runOrResumeManifestBoundValueConservationWorkflow({
+        workflow,
+        sources,
+        journal,
+      }),
+    bindsDecisionDigest: false,
+  });
+
+/**
+ * The freshly admitted validation-trace challenge for this decision, obtained
+ * from the host's port, or nothing when the invocation carries no port. The
+ * shared loop refuses a missing port before `bindConfig` runs unless the
+ * invocation is reconciliation-only, which never reaches a dispute move; the
+ * family's own execution fail-closes challenge-free.
+ */
+const optionalValidationChallenge = async (
+  category: FamilyCategory,
+  infrastructure: FamilyCommonInfrastructure,
+): Promise<Readonly<{ challenge?: ValidationTraceChallenge }>> => {
+  if (infrastructure.validationChallenge === undefined) return {};
+  return {
+    challenge: await infrastructure.validationChallenge.currentChallenge({
+      headerHash: infrastructure.headerHash,
+      decisionDigest: requiredDecisionDigest(category, infrastructure),
+    }),
+  };
+};
+
+/**
+ * The sole interactive family, and the one record that requires the host's
+ * validation-challenge port. Its roster is the family's own three contract
+ * tables: the six dispute control scripts, the three witnesses the dispute
+ * submitters attach by reference, and the state-queue removal set.
+ */
+export const VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD =
+  defineFamilyApplication<
+    "validationTraceDispute",
+    ManifestBoundValidationTraceDisputeWorkflowConfig,
+    ManifestBoundValidationTraceDisputeWorkflow
+  >({
+    category: "validationTraceDispute",
+    roster: Object.freeze({
+      ...VALIDATION_TRACE_DISPUTE_CONTROL_CONTRACT_NAMES,
+      ...VALIDATION_TRACE_DISPUTE_WITNESS_CONTRACT_NAMES,
+      ...VALIDATION_TRACE_DISPUTE_REMOVAL_CONTRACT_NAMES,
+    }),
+    requires: ["validationChallenge"],
+    bindConfig: async ({ infrastructure, references }) =>
+      Object.freeze({
+        ...commonBoundConfigFields(infrastructure),
+        decisionDigest: requiredDecisionDigest(
+          "validationTraceDispute",
+          infrastructure,
+        ),
+        ...(await optionalValidationChallenge(
+          "validationTraceDispute",
+          infrastructure,
+        )),
+        referenceScripts: Object.freeze({
+          control: resolvedRoles(
+            references,
+            rolesOf(VALIDATION_TRACE_DISPUTE_CONTROL_CONTRACT_NAMES),
+          ),
+          witnesses: resolvedRoles(
+            references,
+            rolesOf(VALIDATION_TRACE_DISPUTE_WITNESS_CONTRACT_NAMES),
+          ),
+          removal: resolvedRoles(
+            references,
+            rolesOf(VALIDATION_TRACE_DISPUTE_REMOVAL_CONTRACT_NAMES),
+          ),
+        }),
+      }),
+    constructWorkflow: createManifestBoundValidationTraceDisputeWorkflow,
+    execute: async ({ workflow, sources, journal }) =>
+      await runOrResumeManifestBoundValidationTraceDisputeWorkflow({
+        workflow,
+        sources,
+        journal,
+      }),
+    bindsDecisionDigest: true,
+  });
+
+/**
+ * A record as the registry states it for every family at once. A family's own
+ * config and workflow types are tied together at its definition site, where
+ * `bindConfig`'s result is what `constructWorkflow` consumes; the registry
+ * erases them so that one mapped type describes all fifty-five rows. A
+ * consumer that runs a record imports it by name and keeps its full type.
+ */
+export type FamilyApplicationRegistryEntry<
+  Category extends FraudProofCatalogueCategoryName,
+> = Omit<
+  FamilyApplicationRecord<
+    Category,
+    unknown,
+    FamilyApplicationWorkflowIdentity<Category>
+  >,
+  "constructWorkflow" | "execute"
+> &
+  Readonly<{
+    constructWorkflow: (
+      config: never,
+    ) => Promise<FamilyApplicationWorkflowIdentity<Category>>;
+    execute: (input: never) => Promise<unknown>;
+  }>;
+
+/**
+ * Every catalogue category's record, keyed by the record's own category: an
+ * omitted or misnamed family fails typecheck here.
+ */
+export const FAMILY_APPLICATION_REGISTRY: {
+  readonly [Category in FraudProofCatalogueCategoryName]: FamilyApplicationRegistryEntry<Category>;
+} = Object.freeze({
   ...LINEAR_FAMILY_APPLICATION_RECORDS,
   doubleSpend: DOUBLE_SPEND_FAMILY_APPLICATION_RECORD,
   distinctAssetAccumulationLimit:
@@ -1685,20 +2056,15 @@ export const FAMILY_APPLICATION_REGISTRY = Object.freeze({
   spendInputSignerMissing: SPEND_INPUT_SIGNER_MISSING_FAMILY_APPLICATION_RECORD,
   executionNativeScriptInvalid:
     EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD,
-} satisfies {
-  // Completeness only: every remaining catalogue category has exactly one
-  // row, keyed by the record's own category. A record's config and workflow
-  // types are tied together at its own definition site, where `bindConfig`'s
-  // result is what `constructWorkflow` consumes.
-  readonly [Category in RegisteredFamilyCategory]: Readonly<{
-    category: Category;
-  }>;
+  missingSignature: MISSING_SIGNATURE_FAMILY_APPLICATION_RECORD,
+  networkId: NETWORK_ID_FAMILY_APPLICATION_RECORD,
+  valueNotPreserved: VALUE_NOT_PRESERVED_FAMILY_APPLICATION_RECORD,
+  validationTraceDispute: VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD,
 });
 
+/** A catalogue category the registry carries a record for: every one. */
+export type RegisteredFamilyCategory = FraudProofCatalogueCategoryName;
+
 /** Registered categories in catalogue order. */
-export const REGISTERED_FAMILY_CATEGORIES = Object.freeze(
-  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.filter(
-    (category): category is RegisteredFamilyCategory =>
-      category in FAMILY_APPLICATION_REGISTRY,
-  ),
-);
+export const REGISTERED_FAMILY_CATEGORIES: readonly RegisteredFamilyCategory[] =
+  Object.freeze([...FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER]);
