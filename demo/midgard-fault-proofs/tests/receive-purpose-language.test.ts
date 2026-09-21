@@ -39,7 +39,6 @@ import {
   type ReceivePurposeLanguageJournalEntry,
   runReceivePurposeLanguageWorkflow,
 } from "../src/receive-purpose-language/workflow.js";
-import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
 
 const txId = "00".repeat(32);
 const txIdGolden =
@@ -144,21 +143,12 @@ describe("receivePurposeLanguage V1", () => {
       Object.keys(createReceivePurposeLanguageActuator({} as never)),
     ).toEqual(["capture"]);
   });
-  it("rejects callback/evidence authority at manifest and runner boundaries", async () => {
+  it("rejects callback/evidence authority at the manifest boundary", async () => {
     await expect(
       createManifestBoundReceivePurposeLanguageWorkflow({
         submit: async () => "00".repeat(32),
       } as never),
     ).rejects.toThrow(/callback authority/u);
-    const runner = WORKFLOW_RUNNER_FACTORIES.receivePurposeLanguage(
-      async () => ({}) as never,
-    );
-    expect(runner.runnerVersion).toBe(
-      "midgard-production-fraud-proof-workflow-runner-v1",
-    );
-    await expect(
-      runner.runOrResume({ category: "doubleSpend" } as never),
-    ).rejects.toThrow(/category mismatch/u);
   });
   it("round-trips the canonical authenticated state wire encoding", () => {
     const value = {

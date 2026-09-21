@@ -5,7 +5,7 @@ import {
   forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { Constr } from "@lucid-evolution/lucid";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { applyScriptIntegrityHashMismatchScripts } from "../src/script-integrity-hash-mismatch/contracts.js";
 import {
@@ -25,8 +25,6 @@ import {
   type ScriptIntegrityHashMismatchCursor,
   type ScriptIntegrityHashMismatchJournalEntry,
 } from "../src/script-integrity-hash-mismatch/workflow.js";
-import { WORKFLOW_ADAPTER_RUNNER } from "../src/workflow/adapters.js";
-import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
 
 const txId = "00".repeat(32);
 /**
@@ -216,7 +214,7 @@ describe("scriptIntegrityHashMismatch V1", () => {
       ).resolves.toBe("cancelled");
     }
   });
-  it("exposes a strict shared-runtime loader and refuses category substitution", async () => {
+  it("exposes a strict shared-runtime loader", async () => {
     // Each forbidden key on its own: `not.arrayContaining` over the four is
     // satisfied by omitting any single one of them, so it does not state the
     // claim that none of them may appear.
@@ -239,14 +237,6 @@ describe("scriptIntegrityHashMismatch V1", () => {
         evidence: evidence(3),
       } as never),
     ).rejects.toThrow(/callback authority/u);
-    const loadRuntimeConfig = vi.fn();
-    const runner =
-      WORKFLOW_RUNNER_FACTORIES.scriptIntegrityHashMismatch(loadRuntimeConfig);
-    expect(runner.runnerVersion).toBe(WORKFLOW_ADAPTER_RUNNER);
-    await expect(
-      runner.runOrResume({ category: "unusedRedeemer" } as never),
-    ).rejects.toThrow(/category mismatch/u);
-    expect(loadRuntimeConfig).not.toHaveBeenCalled();
   });
   it("keeps every fully applied testnet validator below the publication target", async () => {
     const blueprint = JSON.parse(

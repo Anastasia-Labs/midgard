@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import {
   CML,
   credentialToAddress,
@@ -40,7 +41,7 @@ import {
   applyFamilyApplicationRecord,
   defineFamilyApplication,
 } from "../src/workflow/family-application.js";
-import { REGISTERED_FAMILY_CATEGORIES } from "../src/workflow/family-application-registry.js";
+import { FAMILY_APPLICATION_REGISTRY } from "../src/workflow/family-application-registry.js";
 import {
   assertWorkflowFundingReservationReadyToSubmit,
   beginWorkflowFundingReservationAction,
@@ -72,8 +73,6 @@ import {
   journalJsonDigest,
   MemoryFraudProofWorkflowJournalStore,
 } from "../src/workflow/journal.js";
-import { LINEAR_FAMILY_DEFINITIONS } from "../src/workflow/linear-family-definitions.js";
-import { LINEAR_FAMILY_CATEGORIES } from "../src/workflow/linear-family-spec.js";
 import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
 import { continuePendingWorkflow } from "../src/workflow/pending-continuation.js";
 import {
@@ -84,6 +83,7 @@ import {
 import {
   createFamilyApplicationWorkflowRunner,
   createManifestBoundWorkflowRunner,
+  type LoadedWorkflowRuntime,
   WORKFLOW_RUNNER_FACTORIES,
   WORKFLOW_RUNTIME_CONFIG,
 } from "../src/workflow/runtime.js";
@@ -1418,34 +1418,56 @@ describe("compiled manifest-bound production runtime V1", () => {
     }
   });
 
-  it("derives one factory per linear definition and per registered record, and exports no per-family constructor for them", () => {
-    expect(Object.keys(LINEAR_FAMILY_DEFINITIONS).sort()).toEqual(
-      [...LINEAR_FAMILY_CATEGORIES].sort(),
+  it("derives one factory per registry record and exports no per-family constructor", () => {
+    expect(Object.keys(WORKFLOW_RUNNER_FACTORIES).sort()).toEqual(
+      Object.keys(FAMILY_APPLICATION_REGISTRY).sort(),
     );
-    const exportedConstructors = Object.entries(runtime)
-      .filter(
-        ([name, value]) =>
-          /^create\w+WorkflowRunner$/.test(name) &&
-          name !== "createManifestBoundWorkflowRunner" &&
-          typeof value === "function",
-      )
-      .map(([, value]) => value);
-    const derived = new Set<string>([
-      ...LINEAR_FAMILY_CATEGORIES,
-      ...REGISTERED_FAMILY_CATEGORIES,
+    for (const factory of Object.values(WORKFLOW_RUNNER_FACTORIES)) {
+      expect(typeof factory).toBe("function");
+    }
+    // The only runner constructors the module exports are the two generic
+    // ones: the public non-admissible body and the record-typed admitted
+    // one. A family is added to the table by registering its record.
+    expect(
+      Object.keys(runtime)
+        .filter((name) => /^create\w+WorkflowRunner$/.test(name))
+        .sort(),
+    ).toEqual([
+      "createFamilyApplicationWorkflowRunner",
+      "createManifestBoundWorkflowRunner",
     ]);
-    // doubleSpend is registered but its runner-table row is still explicit
-    // until the runtime's remaining explicit rows move onto the registry.
-    derived.delete("doubleSpend");
+  });
+
+  it("gives every derived runner exactly the shared drive surface", () => {
     for (const [category, factory] of Object.entries(
       WORKFLOW_RUNNER_FACTORIES,
     )) {
-      expect(typeof factory).toBe("function");
-      if (derived.has(category)) {
-        expect(exportedConstructors).not.toContain(factory);
-      } else {
-        expect(exportedConstructors).toContain(factory);
-      }
+      const runner = factory(async () => {
+        throw new Error(`${category} loader is not invoked during admission`);
+      });
+      expect(runner.runnerVersion).toBe(WORKFLOW_ADAPTER_RUNNER);
+      expect(Object.keys(runner).sort()).toEqual([
+        "runOrResume",
+        "runnerVersion",
+      ]);
+    }
+  });
+
+  it("wires every row to the record of its own category", async () => {
+    // The table is keyed by the registry, and each row's body refuses a
+    // foreign category naming its own: together these pin row X to record X.
+    for (const [category, factory] of Object.entries(
+      WORKFLOW_RUNNER_FACTORIES,
+    )) {
+      const loadRuntimeConfig = vi.fn();
+      const runner = factory(loadRuntimeConfig);
+      const foreign = category === "doubleSpend" ? "zeroInput" : "doubleSpend";
+      await expect(
+        runner.runOrResume({ category: foreign } as never),
+      ).rejects.toThrow(
+        `production workflow runner category mismatch: expected=${category} actual=${foreign}`,
+      );
+      expect(loadRuntimeConfig).not.toHaveBeenCalled();
     }
   });
 
@@ -2237,142 +2259,209 @@ describe("compiled manifest-bound production runtime V1", () => {
     });
   });
 
-  it("checks the constructed decision digest only when the record binds it", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "midgard-runtime-digest-"));
-    const execute = vi.fn(async () => ({ kind: "executed" }));
-    const run = async (bindsDecisionDigest: boolean, index: number) => {
-      const actuation = await admittedActuation();
-      const runner = createFamilyApplicationWorkflowRunner(
-        defineFamilyApplication({
+  /**
+   * One refusal test per check of the generic run-or-resume body. Every row of
+   * the runner table is this body applied to a registry record, so each check
+   * is tested here once instead of once per family. The workflow under test is
+   * built through the public generic constructor, whose body is the same
+   * function the admitted rows run.
+   */
+  describe("generic run-or-resume refusals", () => {
+    type Actuation = Awaited<ReturnType<typeof admittedActuation>>;
+    type Loaded = LoadedWorkflowRuntime<undefined>;
+    const identityOf = (
+      actuation: Actuation,
+      deploymentFingerprint: string = DEPLOYMENT,
+    ) => ({
+      binding: {
+        deploymentFingerprint,
+        definition: {
           category: "doubleSpend" as const,
-          roster: {},
-          requires: [],
-          bindConfig: () => undefined,
-          constructWorkflow: async () => ({
-            binding: {
-              deploymentFingerprint: DEPLOYMENT,
-              definition: {
-                category: "doubleSpend" as const,
-                headerHash: actuation.headerHash,
-              },
-            },
-            decisionDigest: "ab".repeat(32),
-          }),
-          execute,
-          bindsDecisionDigest,
-        }),
-        async () => ({
-          schemaVersion: WORKFLOW_RUNTIME_CONFIG,
-          config: undefined,
-          retainedDaSources: [retainedDaSource()],
-          close: async () => undefined,
-        }),
+          headerHash: actuation.headerHash,
+        },
+      },
+    });
+    const invocationOf = (actuation: Actuation, journalDirectory: string) => ({
+      mode: "run" as const,
+      category: "doubleSpend" as const,
+      deploymentFingerprint: DEPLOYMENT,
+      headerHash: actuation.headerHash,
+      decisionDigest: actuation.decisionDigest,
+      actuationPermit: actuation.actuationPermit,
+      fundingReservationPermit: actuation.fundingReservationPermit,
+      journalDirectory,
+      runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
+    });
+    const driveGenericRunOrResume = async ({
+      loaded,
+      deploymentFingerprint,
+      category,
+    }: {
+      readonly loaded: (close: () => Promise<void>) => Loaded;
+      readonly deploymentFingerprint?: string;
+      readonly category?: FraudProofCatalogueCategoryName;
+    }) => {
+      const actuation = await admittedActuation();
+      const directory = await mkdtemp(
+        join(tmpdir(), "midgard-runtime-refusal-"),
       );
-      return await runner.runOrResume({
-        mode: "run",
+      const execute = vi.fn(async () => ({ kind: "unexpected" }));
+      const close = vi.fn(async () => undefined);
+      const loadRuntimeConfig = vi.fn(async () => loaded(close));
+      const runner = createManifestBoundWorkflowRunner({
         category: "doubleSpend",
-        deploymentFingerprint: DEPLOYMENT,
-        headerHash: actuation.headerHash,
-        decisionDigest: actuation.decisionDigest,
-        actuationPermit: actuation.actuationPermit,
-        fundingReservationPermit: actuation.fundingReservationPermit,
-        journalDirectory: join(directory, `journal-${index}`),
-        runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
+        loadRuntimeConfig,
+        constructWorkflow: async () =>
+          identityOf(actuation, deploymentFingerprint),
+        execute,
       });
+      const invocation = invocationOf(actuation, directory);
+      const outcome = runner.runOrResume(
+        category === undefined ? invocation : { ...invocation, category },
+      );
+      await outcome.catch(() => undefined);
+      await rm(directory, { recursive: true, force: true });
+      return { outcome, execute, close, loadRuntimeConfig };
     };
-    await expect(run(true, 0)).rejects.toThrow(
-      "doubleSpend manifest-bound workflow decision digest differs from invocation",
-    );
-    expect(execute).not.toHaveBeenCalled();
-    await run(false, 1);
-    expect(execute).toHaveBeenCalledOnce();
-    await rm(directory, { recursive: true, force: true });
-  });
-
-  it("rejects substituted manifest identity and non-libp2p DA sources before execution", async () => {
-    const actuation = await admittedActuation();
-    const execute = vi.fn(async () => ({ kind: "unexpected" }));
-    const identityClose = vi.fn(async () => undefined);
-    const runner = createManifestBoundWorkflowRunner({
-      category: "doubleSpend",
-      loadRuntimeConfig: async () => ({
+    const publicLoaded =
+      (overrides: Partial<Loaded> = {}) =>
+      (close: () => Promise<void>): Loaded => ({
         schemaVersion: WORKFLOW_RUNTIME_CONFIG,
         config: undefined,
         retainedDaSources: [retainedDaSource()],
-        close: identityClose,
-      }),
-      constructWorkflow: async () => ({
-        binding: {
-          deploymentFingerprint: "ff".repeat(32),
-          definition: {
-            category: "doubleSpend" as const,
-            headerHash: actuation.headerHash,
-          },
-        },
-      }),
-      execute,
-    });
-    await expect(
-      runner.runOrResume({
-        mode: "run",
-        category: "doubleSpend",
-        deploymentFingerprint: DEPLOYMENT,
-        headerHash: actuation.headerHash,
-        decisionDigest: actuation.decisionDigest,
-        actuationPermit: actuation.actuationPermit,
-        fundingReservationPermit: actuation.fundingReservationPermit,
-        journalDirectory: "/tmp/midgard-runtime-rejected",
-        runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
-      }),
-    ).rejects.toThrow("identity differs from the compiled CLI invocation");
-    expect(identityClose).toHaveBeenCalledOnce();
-    expect(execute).not.toHaveBeenCalled();
+        close,
+        ...overrides,
+      });
 
-    const sourceActuation = await admittedActuation();
-    const sourceClose = vi.fn(async () => undefined);
-    const forgedSourceRunner = createManifestBoundWorkflowRunner({
-      category: "doubleSpend",
-      loadRuntimeConfig: async () => ({
-        schemaVersion: WORKFLOW_RUNTIME_CONFIG,
-        config: undefined,
-        retainedDaSources: [
-          {
-            sourceId: "operator-private-file",
-            fetchPayloadByHeaderHash: async () => ({
-              ok: false as const,
-              sourceId: "operator-private-file",
-              attempts: [],
-            }),
-          } as unknown as DaLibp2pRetainedDaSource,
-        ],
-        close: sourceClose,
-      }),
-      constructWorkflow: async () => ({
-        binding: {
-          deploymentFingerprint: DEPLOYMENT,
-          definition: {
-            category: "doubleSpend" as const,
-            headerHash: sourceActuation.headerHash,
-          },
-        },
-      }),
-      execute,
+    it("refuses another category before loading any runtime configuration", async () => {
+      const { outcome, loadRuntimeConfig, execute } =
+        await driveGenericRunOrResume({
+          loaded: publicLoaded(),
+          category: "zeroInput",
+        });
+      await expect(outcome).rejects.toThrow(
+        "production workflow runner category mismatch: expected=doubleSpend actual=zeroInput",
+      );
+      expect(loadRuntimeConfig).not.toHaveBeenCalled();
+      expect(execute).not.toHaveBeenCalled();
     });
-    await expect(
-      forgedSourceRunner.runOrResume({
-        mode: "run",
-        category: "doubleSpend",
-        deploymentFingerprint: DEPLOYMENT,
-        headerHash: sourceActuation.headerHash,
-        decisionDigest: sourceActuation.decisionDigest,
-        actuationPermit: sourceActuation.actuationPermit,
-        fundingReservationPermit: sourceActuation.fundingReservationPermit,
-        journalDirectory: "/tmp/midgard-runtime-rejected",
-        runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
-      }),
-    ).rejects.toThrow("concrete public retained-DA libp2p sources");
-    expect(sourceClose).toHaveBeenCalledOnce();
-    expect(execute).not.toHaveBeenCalled();
+
+    it("refuses a loaded runtime that omits its transport disposer", async () => {
+      const { outcome, execute } = await driveGenericRunOrResume({
+        loaded: () => {
+          const { close: _close, ...withoutDisposer } = publicLoaded()(
+            async () => undefined,
+          );
+          return withoutDisposer as never;
+        },
+      });
+      await expect(outcome).rejects.toThrow(
+        "production workflow runtime config omitted its transport disposer",
+      );
+      expect(execute).not.toHaveBeenCalled();
+    });
+
+    it("refuses an unsupported runtime config schema and still disposes the transport", async () => {
+      const { outcome, close, execute } = await driveGenericRunOrResume({
+        loaded: publicLoaded({
+          schemaVersion:
+            "midgard-production-fraud-proof-runtime-config-v0" as never,
+        }),
+      });
+      await expect(outcome).rejects.toThrow(
+        "production workflow runtime config has an unsupported schema",
+      );
+      expect(close).toHaveBeenCalledOnce();
+      expect(execute).not.toHaveBeenCalled();
+    });
+
+    it("refuses a retained-DA source that is not a public libp2p transport", async () => {
+      const { outcome, close, execute } = await driveGenericRunOrResume({
+        loaded: publicLoaded({
+          retainedDaSources: [
+            {
+              sourceId: "operator-private-file",
+              fetchPayloadByHeaderHash: async () => ({
+                ok: false as const,
+                sourceId: "operator-private-file",
+                attempts: [],
+              }),
+            } as unknown as DaLibp2pRetainedDaSource,
+          ],
+        }),
+      });
+      await expect(outcome).rejects.toThrow(
+        "production workflow runtime requires concrete public retained-DA libp2p sources",
+      );
+      expect(close).toHaveBeenCalledOnce();
+      expect(execute).not.toHaveBeenCalled();
+    });
+
+    it("refuses a constructed workflow whose manifest identity differs from the invocation", async () => {
+      const { outcome, close, execute } = await driveGenericRunOrResume({
+        loaded: publicLoaded(),
+        deploymentFingerprint: "ff".repeat(32),
+      });
+      await expect(outcome).rejects.toThrow(
+        "manifest-bound workflow identity differs from the compiled CLI invocation",
+      );
+      expect(close).toHaveBeenCalledOnce();
+      expect(execute).not.toHaveBeenCalled();
+    });
+
+    it("checks the constructed decision digest against the invocation only when the record binds it", async () => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "midgard-runtime-digest-"),
+      );
+      const execute = vi.fn(async () => ({ kind: "executed" }));
+      const run = async (bindsDecisionDigest: boolean, index: number) => {
+        const actuation = await admittedActuation();
+        const runner = createFamilyApplicationWorkflowRunner(
+          defineFamilyApplication({
+            category: "doubleSpend" as const,
+            roster: {},
+            requires: [],
+            bindConfig: () => undefined,
+            constructWorkflow: async () => ({
+              binding: {
+                deploymentFingerprint: DEPLOYMENT,
+                definition: {
+                  category: "doubleSpend" as const,
+                  headerHash: actuation.headerHash,
+                },
+              },
+              decisionDigest: "ab".repeat(32),
+            }),
+            execute,
+            bindsDecisionDigest,
+          }),
+          async () => ({
+            schemaVersion: WORKFLOW_RUNTIME_CONFIG,
+            config: undefined,
+            retainedDaSources: [retainedDaSource()],
+            close: async () => undefined,
+          }),
+        );
+        return await runner.runOrResume({
+          mode: "run",
+          category: "doubleSpend",
+          deploymentFingerprint: DEPLOYMENT,
+          headerHash: actuation.headerHash,
+          decisionDigest: actuation.decisionDigest,
+          actuationPermit: actuation.actuationPermit,
+          fundingReservationPermit: actuation.fundingReservationPermit,
+          journalDirectory: join(directory, `journal-${index}`),
+          runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
+        });
+      };
+      await expect(run(true, 0)).rejects.toThrow(
+        "doubleSpend manifest-bound workflow decision digest differs from invocation",
+      );
+      expect(execute).not.toHaveBeenCalled();
+      await run(false, 1);
+      expect(execute).toHaveBeenCalledOnce();
+      await rm(directory, { recursive: true, force: true });
+    });
   });
 });
 

@@ -41,7 +41,6 @@ import {
   type UnusedScriptWitnessCursor,
   type UnusedScriptWitnessJournalEntry,
 } from "../src/unused-script-witness/workflow.js";
-import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
 import { buildUnusedScriptWitnessFixture } from "./support/unused-script-witness-emulator.js";
 
 const txId = "11".repeat(32);
@@ -147,7 +146,7 @@ const prepareUnusedScriptWitnessEvidence = ({
   });
 
 describe("unusedScriptWitness V1", () => {
-  it("exposes only infrastructure keys and rejects another runner category", async () => {
+  it("exposes only infrastructure keys", () => {
     expect(UNUSED_SCRIPT_WITNESS_CONFIG_KEYS).toEqual([
       "manifest",
       "blueprintJson",
@@ -160,15 +159,6 @@ describe("unusedScriptWitness V1", () => {
       "stateQueueMutationLeaseCoordinator",
       "referenceScripts",
     ]);
-    let loaded = false;
-    const runner = WORKFLOW_RUNNER_FACTORIES.unusedScriptWitness(async () => {
-      loaded = true;
-      throw new Error("must not load");
-    });
-    await expect(
-      runner.runOrResume({ category: "missingRedeemer" } as never),
-    ).rejects.toThrow(/category mismatch/u);
-    expect(loaded).toBe(false);
   });
 
   it("detects the first unused accepted field-6 coordinate from the machine's retained stage-11 audit", async () => {

@@ -41,7 +41,6 @@ import {
   transactionSourceTrieItem,
 } from "../src/prepare-double-spend.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../src/workflow/deployment-manifest-binding.js";
-import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
 import { committedFieldShapeScenarioMaterial } from "./support/committed-field-shape-emulator.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 
@@ -110,16 +109,6 @@ const evidence = (() => {
 })();
 
 describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
-  it("exposes the standard manifest/public-DA runner surface", () => {
-    const runner = WORKFLOW_RUNNER_FACTORIES.fieldItemWidthIllegal(async () => {
-      throw new Error("not reached");
-    });
-    expect(Object.keys(runner).sort()).toEqual([
-      "runOrResume",
-      "runnerVersion",
-    ]);
-  });
-
   it("names and binds every family/shared reference role", () => {
     expect(Object.values(FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS)).toEqual([
       "fraudProofFieldItemWidthIllegal",

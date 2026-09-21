@@ -24,10 +24,7 @@
  * with the record's own category as its key, so an omitted or misnamed family
  * fails typecheck.
  */
-import {
-  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
-  type FraudProofCatalogueCategoryName,
-} from "@al-ft/midgard-sdk";
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
@@ -2061,10 +2058,3 @@ export const FAMILY_APPLICATION_REGISTRY: {
   valueNotPreserved: VALUE_NOT_PRESERVED_FAMILY_APPLICATION_RECORD,
   validationTraceDispute: VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD,
 });
-
-/** A catalogue category the registry carries a record for: every one. */
-export type RegisteredFamilyCategory = FraudProofCatalogueCategoryName;
-
-/** Registered categories in catalogue order. */
-export const REGISTERED_FAMILY_CATEGORIES: readonly RegisteredFamilyCategory[] =
-  Object.freeze([...FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER]);

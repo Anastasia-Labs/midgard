@@ -9,7 +9,7 @@ import {
   computeFraudProofReleaseEconomicsPolicyDigest,
   FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
 } from "../../src/workflow/release-economics-policy.js";
-import { createDoubleSpendWorkflowRunner } from "../../src/workflow/runtime.js";
+import { WORKFLOW_RUNNER_FACTORIES } from "../../src/workflow/runtime.js";
 import {
   createWorkflowRuntimeFundingPolicy,
   type WorkflowRuntimeFundingContract,
@@ -47,7 +47,7 @@ export const runtimeFundingPolicyFixture = (input: {
 }) => {
   const runner =
     input.runner ??
-    createDoubleSpendWorkflowRunner(async () => {
+    WORKFLOW_RUNNER_FACTORIES.doubleSpend(async () => {
       throw new Error("funding fixture runner is never executed");
     });
   const release =

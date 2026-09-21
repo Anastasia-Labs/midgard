@@ -22,7 +22,6 @@ import {
 } from "../src/mint-item-non-canonical/index.js";
 import { FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY } from "../src/runtime.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../src/workflow/deployment-manifest-binding.js";
-import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
 import { committedFieldShapeScenarioMaterial } from "./support/committed-field-shape-emulator.js";
 
 const script = (byte: string): Script => ({
@@ -99,38 +98,6 @@ const manifestBinding = (
   }) as unknown as FraudProofWorkflowDeploymentBinding<never>;
 
 describe("mintItemNonCanonical production workflow", () => {
-  it("runs only its own catalogue category, and refuses a foreign one before loading any runtime configuration", async () => {
-    let runtimeConfigLoads = 0;
-    const runner = WORKFLOW_RUNNER_FACTORIES.mintItemNonCanonical(async () => {
-      runtimeConfigLoads += 1;
-      throw new Error("runtime configuration was loaded");
-    });
-    const invocation = (category: string) =>
-      ({
-        category,
-        journalDirectory: "/nonexistent/mint-item-non-canonical",
-        headerHash: "aa".repeat(28),
-      }) as never;
-
-    await expect(
-      runner.runOrResume(invocation("unusedRedeemer")),
-    ).rejects.toThrow(
-      /category mismatch: expected=mintItemNonCanonical actual=unusedRedeemer/u,
-    );
-    // The refusal must be the category gate itself, not a downstream failure.
-    expect(runtimeConfigLoads).toBe(0);
-
-    // Accept side: its own category passes the gate, so an always-refusing
-    // runner cannot satisfy the rule above.
-    const ownCategory: unknown = await runner
-      .runOrResume(invocation("mintItemNonCanonical"))
-      .then(
-        (value: unknown) => value,
-        (cause: unknown) => cause,
-      );
-    expect(String(ownCategory)).not.toMatch(/category mismatch/u);
-  });
-
   it("names the deployment registry's step contracts in step order", () => {
     // The registry that binds the published deployment is declared
     // independently of the workflow's manifest map; the two must agree, or the

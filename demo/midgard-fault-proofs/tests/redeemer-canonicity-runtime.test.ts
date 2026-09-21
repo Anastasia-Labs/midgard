@@ -1,43 +1,17 @@
 import { encodeMidgardRedeemerWitnessItem } from "@al-ft/midgard-core";
-import { describe, expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import {
   admitRedeemerWorkflowArtifact,
   prepareRedeemerCanonicityWorkflowArtifact,
 } from "../src/redeemer-canonicity/runtime.js";
-import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
-
-const invocation = (category: string) =>
-  ({
-    mode: "run",
-    category,
-    deploymentFingerprint: "11".repeat(32),
-    headerHash: "22".repeat(28),
-    journalDirectory: "/tmp/redeemer-canonicity-test-journal",
-    runtimeConfigPath: "/tmp/redeemer-canonicity-runtime.json",
-    decisionDigest: "33".repeat(32),
-    actuationPermit: {},
-    fundingReservationPermit: {},
-  }) as never;
-
-describe("redeemerCanonicity production runner", () => {
-  it("refuses another category before loading runtime state", async () => {
-    const loadRuntimeConfig = vi.fn();
-    const runner =
-      WORKFLOW_RUNNER_FACTORIES.redeemerCanonicity(loadRuntimeConfig);
-    await expect(
-      runner.runOrResume(invocation("observerOrderInvalid")),
-    ).rejects.toThrow(/category mismatch/u);
-    expect(loadRuntimeConfig).not.toHaveBeenCalled();
-  });
-});
 
 it("prepares and admits restart material from an actual accepted noncanonical redeemer", async () => {
   const item = encodeMidgardRedeemerWitnessItem({

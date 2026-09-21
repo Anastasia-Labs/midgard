@@ -99,7 +99,7 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   type FraudProofReleaseFinalityAuthority,
 } from "../src/workflow/release-finality-policy.js";
-import { createDoubleSpendWorkflowRunner } from "../src/workflow/runtime.js";
+import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -2135,9 +2135,11 @@ describe("compiled production workflow boundary", () => {
       ),
     ).toThrow("no compiled executable runner admitted for its exact category");
 
-    const admittedDoubleSpend = createDoubleSpendWorkflowRunner(async () => {
-      throw new Error("runner loader is not invoked during admission");
-    });
+    const admittedDoubleSpend = WORKFLOW_RUNNER_FACTORIES.doubleSpend(
+      async () => {
+        throw new Error("runner loader is not invoked during admission");
+      },
+    );
     expect(() =>
       validateWorkflowAdapterCoverage(
         WORKFLOW_ADAPTER_REGISTRATIONS.map((registration) =>

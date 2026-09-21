@@ -134,7 +134,7 @@ const workflowAdapterRegistrationRows = [
       "remove-fraudulent-block.ts",
       "workflow/local-kupmios-http-ogmios-source.ts",
       "workflow/raw-l1-family-derivation.ts",
-      "workflow/runtime.ts#createDoubleSpendProductionWorkflowRunnerV1",
+      "workflow/runtime.ts#WORKFLOW_RUNNER_FACTORIES.doubleSpend",
     ],
     requiredClosure:
       "install the manifest-bound runner in a compiled application with a concrete public retained-DA libp2p transport/runtime-config loader; the fault-proofs package has no libp2p runtime dependency and cannot honestly self-register it",

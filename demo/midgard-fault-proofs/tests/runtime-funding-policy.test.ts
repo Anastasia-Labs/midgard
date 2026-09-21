@@ -1,7 +1,7 @@
 import { CML, credentialToAddress } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { createDoubleSpendWorkflowRunner } from "../src/workflow/runtime.js";
+import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
 import {
   assertWorkflowRuntimeFundingPolicyRunner,
   createWorkflowRuntimeFundingPolicy,
@@ -40,7 +40,7 @@ describe("runtime-owned workflow funding policy", () => {
     expect(() => readWorkflowRuntimeFundingPolicy({ ...policy })).toThrow(
       "not admitted",
     );
-    const another = createDoubleSpendWorkflowRunner(async () => {
+    const another = WORKFLOW_RUNNER_FACTORIES.doubleSpend(async () => {
       throw new Error("not executed");
     });
     expect(() =>

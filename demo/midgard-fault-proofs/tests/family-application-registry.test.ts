@@ -8,10 +8,7 @@ import {
   type FamilyCommonInfrastructure,
   familyStepRole,
 } from "../src/workflow/family-application.js";
-import {
-  FAMILY_APPLICATION_REGISTRY,
-  REGISTERED_FAMILY_CATEGORIES,
-} from "../src/workflow/family-application-registry.js";
+import { FAMILY_APPLICATION_REGISTRY } from "../src/workflow/family-application-registry.js";
 import { familyStepContractNames } from "../src/workflow/family-definition.js";
 import { FAMILY_DEFINITIONS } from "../src/workflow/family-definitions.js";
 import { LINEAR_FAMILY_CATEGORIES } from "../src/workflow/linear-family-spec.js";
@@ -307,15 +304,9 @@ describe("family application registry table", () => {
     },
   );
 
-  it("covers the whole catalogue order exactly once", () => {
-    expect(REGISTERED_FAMILY_CATEGORIES).toEqual(
-      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
-    );
-    expect([...REGISTERED_FAMILY_CATEGORIES].sort()).toEqual(
-      Object.keys(registry).sort(),
-    );
-    expect(new Set(REGISTERED_FAMILY_CATEGORIES).size).toBe(
-      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
+  it("covers the whole catalogue exactly once", () => {
+    expect(Object.keys(registry).sort()).toEqual(
+      [...FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER].sort(),
     );
   });
 });

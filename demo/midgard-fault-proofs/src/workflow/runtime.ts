@@ -15,80 +15,19 @@ import {
   type WorkflowAdapterRunnerInput,
 } from "./adapters.js";
 import {
-  type ManifestBoundDaHashPreimageWorkflow,
-  runOrResumeManifestBoundDaHashPreimageWorkflow,
-} from "./da-hash-preimage.js";
-import {
-  createManifestBoundDoubleSpendWorkflow,
-  type ManifestBoundDoubleSpendWorkflow,
-  type ManifestBoundDoubleSpendWorkflowConfig,
-  runOrResumeManifestBoundDoubleSpendWorkflow,
-} from "./double-spend-adapter.js";
-import {
   assertManifestBoundWorkflowIdentity,
   type FamilyApplicationRecord,
   type FamilyApplicationWorkflowIdentity,
 } from "./family-application.js";
 import {
-  CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_APPLICATION_RECORD,
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_APPLICATION_RECORD,
-  EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD,
-  EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
-  FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_APPLICATION_RECORD,
-  FIELD_PREIMAGE_LENGTH_MISMATCH_FAMILY_APPLICATION_RECORD,
-  MIN_ADA_FAMILY_APPLICATION_RECORD,
-  MINT_AUTHORIZATION_FAMILY_APPLICATION_RECORD,
-  MINT_DECLARED_ASSET_LIMIT_FAMILY_APPLICATION_RECORD,
-  MINT_ITEM_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
-  MISSING_NATIVE_SCRIPT_TX_FAMILY_APPLICATION_RECORD,
-  MISSING_NATIVE_SCRIPT_UTXO_FAMILY_APPLICATION_RECORD,
-  MISSING_REDEEMER_FAMILY_APPLICATION_RECORD,
-  MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD,
-  MISSING_SIGNATURE_FAMILY_APPLICATION_RECORD,
-  NATIVE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
-  NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD,
-  NETWORK_ID_FAMILY_APPLICATION_RECORD,
-  OBSERVER_ORDER_INVALID_FAMILY_APPLICATION_RECORD,
-  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FAMILY_APPLICATION_RECORD,
-  OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
-  PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_APPLICATION_RECORD,
-  RECEIVE_PURPOSE_LANGUAGE_FAMILY_APPLICATION_RECORD,
-  REDEEMER_CANONICITY_FAMILY_APPLICATION_RECORD,
-  RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
-  SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_APPLICATION_RECORD,
-  SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_APPLICATION_RECORD,
-  SPEND_INPUT_SIGNER_MISSING_FAMILY_APPLICATION_RECORD,
-  TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
-  TRANSITION_TRACE_FAMILY_APPLICATION_RECORD,
-  UNUSED_REDEEMER_FAMILY_APPLICATION_RECORD,
-  UNUSED_SCRIPT_WITNESS_FAMILY_APPLICATION_RECORD,
-  VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD,
-  VALUE_NOT_PRESERVED_FAMILY_APPLICATION_RECORD,
-  WITHDRAWAL_MISTAG_FAMILY_APPLICATION_RECORD,
-  WITNESS_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
+  FAMILY_APPLICATION_REGISTRY,
+  type FamilyApplicationRegistryEntry,
 } from "./family-application-registry.js";
-import type {
-  FamilyDefinition,
-  FaultProofWitnessRole,
-  ManifestBoundFamilyWorkflow,
-  ManifestBoundFamilyWorkflowConfig,
-} from "./family-definition.js";
 import type { WorkflowFundingRequirements } from "./funding-requirements.js";
 import { bindWorkflowFundingReservationJournal } from "./funding-reservation-permit.js";
-import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import { DirectoryFraudProofWorkflowJournalStore } from "./journal.js";
 import {
-  type AnyLinearFamilyDefinition,
-  LINEAR_FAMILY_DEFINITIONS,
-} from "./linear-family-definitions.js";
-import type { LinearFamilyCategory } from "./linear-family-spec.js";
-import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "./manifest-bound-family-assembly.js";
-import {
   type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowRunResult,
   type FraudProofWorkflowTerminalVerifier,
   resumeRecordedFraudProofWorkflow,
 } from "./orchestrator.js";
@@ -257,7 +196,7 @@ const createManifestBoundWorkflowRunOrResume =
 /**
  * Builds the shared manifest-bound runtime behavior for tests and downstream
  * composition. The result is intentionally not admitted for production
- * registry readiness: only the fixed-category family factories below can mint
+ * registry readiness: only the registry-derived factory table below can mint
  * that module-private identity.
  */
 export const createManifestBoundWorkflowRunner = <
@@ -312,271 +251,66 @@ export const createFamilyApplicationWorkflowRunner = <
   });
 
 /**
- * The runner-table row of a family application record: the record supplies
- * the construction, the launch route and the digest binding, so the row is
- * the record applied to a compiled host's loader.
+ * The factory a compiled host applies to install one family: its runtime
+ * loader and, when measured, its funding profile. The loader is taken at
+ * `unknown` because the registry states every record at one erased shape, so
+ * the table cannot relate a host's loaded config to the family's own config
+ * type; that pairing is checked at runtime, where the record's
+ * `constructWorkflow` receives the loaded config. A host that binds its
+ * config through the record's own `bindConfig` regains the check by
+ * construction.
  */
-const familyApplicationWorkflowRunnerFactory =
-  <
-    Category extends FraudProofCatalogueCategoryName,
-    Config,
-    Workflow extends ManifestBoundWorkflowIdentity<Category>,
-  >(
-    record: FamilyApplicationRecord<Category, Config, Workflow>,
-  ) =>
-  (
-    loadRuntimeConfig: WorkflowRuntimeConfigLoader<Config>,
-    fundingRequirements?: WorkflowFundingRequirements,
-  ): WorkflowAdapterRunner =>
+export type FamilyWorkflowRunnerFactory = (
+  loadRuntimeConfig: WorkflowRuntimeConfigLoader<unknown>,
+  fundingRequirements?: WorkflowFundingRequirements,
+) => WorkflowAdapterRunner;
+
+/**
+ * The runner-table row of a registry entry: the record supplies the
+ * construction, the launch route and the digest binding, so the row is the
+ * record applied to a compiled host's loader. The entry's `constructWorkflow`
+ * is stated at `never` by the registry's erasure; the row widens it to the
+ * loader's `unknown`, which is the same erasure seen from the other side.
+ */
+const familyApplicationWorkflowRunnerFactory = <
+  Category extends FraudProofCatalogueCategoryName,
+>(
+  entry: FamilyApplicationRegistryEntry<Category>,
+): FamilyWorkflowRunnerFactory => {
+  const record = entry as FamilyApplicationRecord<
+    Category,
+    unknown,
+    FamilyApplicationWorkflowIdentity<Category>
+  >;
+  return (loadRuntimeConfig, fundingRequirements) =>
     createFamilyApplicationWorkflowRunner(
       record,
       loadRuntimeConfig,
       fundingRequirements,
     );
-
-type AssembledLinearFamilyWorkflow = ManifestBoundFamilyWorkflow<
-  LinearFamilyCategory,
-  boolean
->;
-
-type LinearFamilyLaunch = (input: {
-  readonly workflow: AssembledLinearFamilyWorkflow;
-  readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
-}) => Promise<FraudProofWorkflowRunResult>;
-
-/**
- * Q44 is the one linear family that does not launch through the generic
- * retained-DA runner: it fetches its raw source leaf through the dedicated
- * orchestrator entry, so no canonical replayer is consulted.
- */
-const launchDaHashPreimage: LinearFamilyLaunch = async ({
-  workflow,
-  sources,
-  journal,
-}) =>
-  await runOrResumeManifestBoundDaHashPreimageWorkflow({
-    workflow: workflow as ManifestBoundDaHashPreimageWorkflow,
-    sources,
-    journal,
-  });
-
-export type LinearFamilyWorkflowRunnerFactory<
-  Category extends LinearFamilyCategory,
-  Witness extends FaultProofWitnessRole,
-  Certificate extends boolean,
-> = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<
-    ManifestBoundFamilyWorkflowConfig<Category, Witness, Certificate>
-  >,
-  fundingRequirements?: WorkflowFundingRequirements,
-) => WorkflowAdapterRunner;
-
-/**
- * One admitted factory row per linear family definition. The row is minted
- * through the module-private admission exactly like the fixed-category rows
- * below; the definition supplies the assembly and selects the launch route.
- * The definition is widened once here because a union member's polarity
- * cannot be correlated with its own callbacks at the type level; the exact
- * row types are restored by `LinearFamilyWorkflowRunnerFactories`.
- */
-const linearFamilyWorkflowRunnerFactory =
-  (definition: AnyLinearFamilyDefinition) =>
-  (
-    loadRuntimeConfig: WorkflowRuntimeConfigLoader<
-      ManifestBoundFamilyWorkflowConfig<
-        LinearFamilyCategory,
-        FaultProofWitnessRole,
-        boolean
-      >
-    >,
-    fundingRequirements?: WorkflowFundingRequirements,
-  ): WorkflowAdapterRunner => {
-    const { category } = definition;
-    const launch: LinearFamilyLaunch =
-      category === "daHashPreimage"
-        ? launchDaHashPreimage
-        : runOrResumeManifestBoundFamilyWorkflow;
-    return createAdmittedWorkflowRunner({
-      category,
-      ...runnerFunding(fundingRequirements),
-      runOrResume: createManifestBoundWorkflowRunOrResume({
-        category,
-        loadRuntimeConfig,
-        constructWorkflow: (config): Promise<AssembledLinearFamilyWorkflow> =>
-          assembleManifestBoundFamilyWorkflow(
-            definition as FamilyDefinition<
-              LinearFamilyCategory,
-              FaultProofWitnessRole,
-              boolean
-            >,
-            config,
-          ),
-        execute: async ({ workflow, sources, journal }) =>
-          await launch({ workflow, sources, journal }),
-      }),
-    });
-  };
-
-type LinearFamilyWorkflowRunnerFactories = {
-  readonly [Category in LinearFamilyCategory]: (typeof LINEAR_FAMILY_DEFINITIONS)[Category] extends FamilyDefinition<
-    Category,
-    infer Witness,
-    infer Certificate
-  >
-    ? LinearFamilyWorkflowRunnerFactory<Category, Witness, Certificate>
-    : never;
 };
 
-const LINEAR_FAMILY_WORKFLOW_RUNNER_FACTORIES = Object.freeze(
-  Object.fromEntries(
-    Object.values(LINEAR_FAMILY_DEFINITIONS).map(
-      (definition): readonly [LinearFamilyCategory, unknown] => [
-        definition.category,
-        linearFamilyWorkflowRunnerFactory(definition),
-      ],
-    ),
-  ),
-) as LinearFamilyWorkflowRunnerFactories;
-
-export const createDoubleSpendWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundDoubleSpendWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "doubleSpend",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "doubleSpend",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundDoubleSpendWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundDoubleSpendWorkflow({
-          workflow: workflow as ManifestBoundDoubleSpendWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
+type WorkflowRunnerFactories = {
+  readonly [Category in FraudProofCatalogueCategoryName]: FamilyWorkflowRunnerFactory;
+};
 
 /**
- * Factories for the current families whose complete shared workflow drivers
- * exist: every linear family's row is derived from its definition, every
- * registered family's row from its application record; no explicit rows
- * remain. This is deliberately separate from launch
- * readiness: a factory is not ready until a compiled application supplies its
- * concrete public-libp2p runtime loader and installs the resulting executable
- * runner.
+ * One admitted factory per catalogue family, derived from the registry: the
+ * table is the registry mapped through the module-private admission, so
+ * registering a family's record is what adds its row here. This is
+ * deliberately separate from launch readiness: a factory is not ready until a
+ * compiled application supplies its concrete public-libp2p runtime loader and
+ * installs the resulting executable runner.
  */
-export const WORKFLOW_RUNNER_FACTORIES = Object.freeze({
-  ...LINEAR_FAMILY_WORKFLOW_RUNNER_FACTORIES,
-  doubleSpend: createDoubleSpendWorkflowRunner,
-  missingSignature: familyApplicationWorkflowRunnerFactory(
-    MISSING_SIGNATURE_FAMILY_APPLICATION_RECORD,
+export const WORKFLOW_RUNNER_FACTORIES: WorkflowRunnerFactories = Object.freeze(
+  Object.fromEntries(
+    Object.values(FAMILY_APPLICATION_REGISTRY).map(
+      (
+        entry,
+      ): readonly [
+        FraudProofCatalogueCategoryName,
+        FamilyWorkflowRunnerFactory,
+      ] => [entry.category, familyApplicationWorkflowRunnerFactory(entry)],
+    ),
   ),
-  missingNativeScriptTx: familyApplicationWorkflowRunnerFactory(
-    MISSING_NATIVE_SCRIPT_TX_FAMILY_APPLICATION_RECORD,
-  ),
-  networkId: familyApplicationWorkflowRunnerFactory(
-    NETWORK_ID_FAMILY_APPLICATION_RECORD,
-  ),
-  missingNativeScriptUtxo: familyApplicationWorkflowRunnerFactory(
-    MISSING_NATIVE_SCRIPT_UTXO_FAMILY_APPLICATION_RECORD,
-  ),
-  mintAuthorization: familyApplicationWorkflowRunnerFactory(
-    MINT_AUTHORIZATION_FAMILY_APPLICATION_RECORD,
-  ),
-  nativeScriptInvalid: familyApplicationWorkflowRunnerFactory(
-    NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD,
-  ),
-  nativeScriptDecoding: familyApplicationWorkflowRunnerFactory(
-    NATIVE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
-  ),
-  crossBlockDuplicateEvent: familyApplicationWorkflowRunnerFactory(
-    CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_APPLICATION_RECORD,
-  ),
-  withdrawalMistag: familyApplicationWorkflowRunnerFactory(
-    WITHDRAWAL_MISTAG_FAMILY_APPLICATION_RECORD,
-  ),
-  minAda: familyApplicationWorkflowRunnerFactory(
-    MIN_ADA_FAMILY_APPLICATION_RECORD,
-  ),
-  transitionTrace: familyApplicationWorkflowRunnerFactory(
-    TRANSITION_TRACE_FAMILY_APPLICATION_RECORD,
-  ),
-  valueNotPreserved: familyApplicationWorkflowRunnerFactory(
-    VALUE_NOT_PRESERVED_FAMILY_APPLICATION_RECORD,
-  ),
-  fieldPreimageLengthMismatch: familyApplicationWorkflowRunnerFactory(
-    FIELD_PREIMAGE_LENGTH_MISMATCH_FAMILY_APPLICATION_RECORD,
-  ),
-  fieldItemWidthIllegal: familyApplicationWorkflowRunnerFactory(
-    FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_APPLICATION_RECORD,
-  ),
-  witnessScriptDecoding: familyApplicationWorkflowRunnerFactory(
-    WITNESS_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
-  ),
-  scriptIntegrityHashMissing: familyApplicationWorkflowRunnerFactory(
-    SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_APPLICATION_RECORD,
-  ),
-  transactionOutputNonCanonical: familyApplicationWorkflowRunnerFactory(
-    TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
-  ),
-  mintItemNonCanonical: familyApplicationWorkflowRunnerFactory(
-    MINT_ITEM_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
-  ),
-  resolvedOutputNonCanonical: familyApplicationWorkflowRunnerFactory(
-    RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
-  ),
-  mintDeclaredAssetLimit: familyApplicationWorkflowRunnerFactory(
-    MINT_DECLARED_ASSET_LIMIT_FAMILY_APPLICATION_RECORD,
-  ),
-  spendInputSignerMissing: familyApplicationWorkflowRunnerFactory(
-    SPEND_INPUT_SIGNER_MISSING_FAMILY_APPLICATION_RECORD,
-  ),
-  protectedOutputSignerMissing: familyApplicationWorkflowRunnerFactory(
-    PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_APPLICATION_RECORD,
-  ),
-  observersForbiddenOnUntaggedNetwork: familyApplicationWorkflowRunnerFactory(
-    OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FAMILY_APPLICATION_RECORD,
-  ),
-  observerOrderInvalid: familyApplicationWorkflowRunnerFactory(
-    OBSERVER_ORDER_INVALID_FAMILY_APPLICATION_RECORD,
-  ),
-  redeemerCanonicity: familyApplicationWorkflowRunnerFactory(
-    REDEEMER_CANONICITY_FAMILY_APPLICATION_RECORD,
-  ),
-  outputReferenceScriptDecoding: familyApplicationWorkflowRunnerFactory(
-    OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
-  ),
-  executionSourceScriptDecoding: familyApplicationWorkflowRunnerFactory(
-    EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
-  ),
-  receivePurposeLanguage: familyApplicationWorkflowRunnerFactory(
-    RECEIVE_PURPOSE_LANGUAGE_FAMILY_APPLICATION_RECORD,
-  ),
-  unusedScriptWitness: familyApplicationWorkflowRunnerFactory(
-    UNUSED_SCRIPT_WITNESS_FAMILY_APPLICATION_RECORD,
-  ),
-  missingScriptSource: familyApplicationWorkflowRunnerFactory(
-    MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD,
-  ),
-  missingRedeemer: familyApplicationWorkflowRunnerFactory(
-    MISSING_REDEEMER_FAMILY_APPLICATION_RECORD,
-  ),
-  unusedRedeemer: familyApplicationWorkflowRunnerFactory(
-    UNUSED_REDEEMER_FAMILY_APPLICATION_RECORD,
-  ),
-  executionNativeScriptInvalid: familyApplicationWorkflowRunnerFactory(
-    EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD,
-  ),
-  scriptIntegrityHashMismatch: familyApplicationWorkflowRunnerFactory(
-    SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_APPLICATION_RECORD,
-  ),
-  distinctAssetAccumulationLimit: familyApplicationWorkflowRunnerFactory(
-    DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_APPLICATION_RECORD,
-  ),
-  validationTraceDispute: familyApplicationWorkflowRunnerFactory(
-    VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD,
-  ),
-});
+) as WorkflowRunnerFactories;

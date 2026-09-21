@@ -18,7 +18,6 @@ import {
   type CompleteCanonicalReplayContext,
   createCatalogueCompleteCanonicalReplay,
   createCrossBlockSettlementAuthority,
-  createDoubleSpendWorkflowRunner,
   createExternalHistoricalNativeScriptSourceRoster,
   createHeaderClassifier,
   createHistoricalNativeScriptHistorySource,
@@ -5339,7 +5338,7 @@ const createApplication = ({
   };
 
   const runners = Object.freeze({
-    doubleSpend: createDoubleSpendWorkflowRunner(
+    doubleSpend: WORKFLOW_RUNNER_FACTORIES.doubleSpend(
       doubleSpendLoader,
       fundingProfile("doubleSpend"),
     ),

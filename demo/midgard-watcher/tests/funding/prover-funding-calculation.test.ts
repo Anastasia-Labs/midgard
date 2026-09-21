@@ -1,9 +1,9 @@
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
-  createDoubleSpendWorkflowRunner,
   createWorkflowFundingRequirements,
   createWorkflowRuntimeFundingPolicy,
   unsafeCreateMeasuredWorkflowRunnerForTest,
+  WORKFLOW_RUNNER_FACTORIES,
   workflowFundingRequirementsForRunner,
 } from "@al-ft/midgard-fault-proofs";
 import { CML, credentialToAddress } from "@lucid-evolution/lucid";
@@ -859,7 +859,7 @@ describe("production prover funding calculation V1", () => {
     });
     const policy = createWorkflowRuntimeFundingPolicy({
       category: "doubleSpend",
-      runner: createDoubleSpendWorkflowRunner(async () => {
+      runner: WORKFLOW_RUNNER_FACTORIES.doubleSpend(async () => {
         throw new Error("planner must not execute a workflow");
       }),
       deploymentFingerprint: deploymentIdentity.manifestId,

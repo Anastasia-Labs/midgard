@@ -35,7 +35,6 @@ import {
   type WitnessScriptDecodingSubmission,
   witnessScriptDecodingViolationId,
 } from "../src/witness-script-decoding/index.js";
-import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
 
 const txId = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 const witnessSetHash = "11".repeat(32);
@@ -336,18 +335,6 @@ describe("witnessScriptDecoding V1 evidence", () => {
 });
 
 describe("witnessScriptDecoding V1 durable workflow", () => {
-  it("exports a strict production runner that refuses another category before loading config", async () => {
-    let loaded = false;
-    const runner = WORKFLOW_RUNNER_FACTORIES.witnessScriptDecoding(async () => {
-      loaded = true;
-      throw new Error("unexpected loader call");
-    });
-    await expect(
-      runner.runOrResume({ category: "missingSignature" } as never),
-    ).rejects.toThrow(/category mismatch/u);
-    expect(loaded).toBe(false);
-  });
-
   it("refuses caller-authored evidence at the manifest-bound production boundary", async () => {
     await expect(
       runOrResumeManifestBoundWitnessScriptDecodingWorkflow({

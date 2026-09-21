@@ -9,7 +9,6 @@ import {
   bindWorkflowFundingReservationJournal,
   canonicalBlockEvidenceFromVerifiedPayload,
   classifyHeader,
-  createDoubleSpendWorkflowRunner,
   createFraudProofWorkflowRegistry,
   createHeaderClassifier,
   createWorkflowActuationPermitController,
@@ -26,6 +25,7 @@ import {
   type FraudProofWorkflowTerminalVerifier,
   type HeaderFaultDecision,
   runFraudProofWorkflow,
+  WORKFLOW_RUNNER_FACTORIES,
   type WorkflowFundingSubmissionHandoff,
 } from "@al-ft/midgard-fault-proofs";
 import {
@@ -208,7 +208,7 @@ export const setupFundingRecoveryFixture = async (
         );
       },
     });
-  const runner = createDoubleSpendWorkflowRunner(async () => {
+  const runner = WORKFLOW_RUNNER_FACTORIES.doubleSpend(async () => {
     throw new Error("adapter runner must not build in reconciliation test");
   });
   const walletUtxos: UTxO[] = [0, 1, 2, 3].map((outputIndex) => ({
