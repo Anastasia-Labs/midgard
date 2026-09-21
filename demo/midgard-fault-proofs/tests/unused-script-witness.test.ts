@@ -34,16 +34,14 @@ import {
   UnusedScriptDecisionSchema,
   UnusedScriptReverseScanSchema,
 } from "../src/unused-script-witness/schemas.js";
-import {
-  createUnusedScriptWitnessWorkflowRunnerSurface,
-  UNUSED_SCRIPT_WITNESS_CONFIG_KEYS,
-} from "../src/unused-script-witness/v1.js";
+import { UNUSED_SCRIPT_WITNESS_CONFIG_KEYS } from "../src/unused-script-witness/v1.js";
 import {
   cancelUnusedScriptWitnessWorkflow,
   runUnusedScriptWitnessWorkflow,
   type UnusedScriptWitnessCursor,
   type UnusedScriptWitnessJournalEntry,
 } from "../src/unused-script-witness/workflow.js";
+import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
 import { buildUnusedScriptWitnessFixture } from "./support/unused-script-witness-emulator.js";
 
 const txId = "11".repeat(32);
@@ -163,15 +161,13 @@ describe("unusedScriptWitness V1", () => {
       "referenceScripts",
     ]);
     let loaded = false;
-    const runner = createUnusedScriptWitnessWorkflowRunnerSurface({
-      loadRuntimeConfig: async () => {
-        loaded = true;
-        throw new Error("must not load");
-      },
+    const runner = WORKFLOW_RUNNER_FACTORIES.unusedScriptWitness(async () => {
+      loaded = true;
+      throw new Error("must not load");
     });
     await expect(
       runner.runOrResume({ category: "missingRedeemer" } as never),
-    ).rejects.toThrow(/category changed/u);
+    ).rejects.toThrow(/category mismatch/u);
     expect(loaded).toBe(false);
   });
 

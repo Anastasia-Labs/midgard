@@ -40,21 +40,9 @@ import {
   parseSubmitStep01TxInclusion,
   type SubmitStep01TxInclusion,
 } from "../submit-step-01.js";
-import {
-  DaLibp2pRetainedDaSource,
-  type RetainedDaPayloadSource,
-} from "../transition-trace/fetch.js";
+import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import {
-  assertWorkflowJournalActuation,
-  bindWorkflowActuationJournal,
-} from "../workflow/actuation-permit.js";
-import {
-  WORKFLOW_ADAPTER_RUNNER,
-  type WorkflowAdapterReadinessInput,
-  type WorkflowAdapterRunner,
-} from "../workflow/adapters.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
 import { TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
@@ -81,11 +69,7 @@ import {
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
-import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
-import {
-  DirectoryFraudProofWorkflowJournalStore,
-  type FraudProofWorkflowJournalStore,
-} from "../workflow/journal.js";
+import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
@@ -95,7 +79,6 @@ import {
   createCanonicalFamilyArtifactPort,
   executeManifestBoundFamilyRecovery,
 } from "../workflow/manifest-bound-family-recovery.js";
-import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   captureLocallyEvaluatedTransaction,
@@ -1571,115 +1554,3 @@ export const executeManifestBoundTransactionOutputNonCanonicalWorkflow =
       journal,
       ...createTransactionOutputNonCanonicalRecoveryAdapter(workflow),
     });
-
-export type LoadedTransactionOutputNonCanonicalWorkflow = Readonly<{
-  schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundTransactionOutputNonCanonicalWorkflowConfig;
-  retainedDaSources: readonly DaLibp2pRetainedDaSource[];
-  close: () => Promise<void>;
-}>;
-
-export type LoadTransactionOutputNonCanonicalWorkflow = (input: {
-  readonly runtimeConfigPath: string;
-  readonly invocation: WorkflowAdapterReadinessInput;
-}) => Promise<LoadedTransactionOutputNonCanonicalWorkflow>;
-
-/**
- * Family-local runner surface for central admission. It consumes only a
- * manifest/runtime path and concrete public-DA transports; neither evidence
- * nor a watcher-owned journal implementation can enter this boundary.
- */
-export const createTransactionOutputNonCanonicalWorkflowRunnerSurface = ({
-  loadRuntimeConfig,
-}: {
-  readonly loadRuntimeConfig: LoadTransactionOutputNonCanonicalWorkflow;
-}): WorkflowAdapterRunner =>
-  Object.freeze({
-    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
-    runOrResume: async (invocation) => {
-      if (String(invocation.category) !== "transactionOutputNonCanonical") {
-        throw new Error(
-          `transactionOutputNonCanonical production runner category mismatch: ${invocation.category}`,
-        );
-      }
-      const journal = bindWorkflowFundingReservationJournal({
-        permit: invocation.fundingReservationPermit,
-        journal: bindWorkflowActuationJournal({
-          journal: new DirectoryFraudProofWorkflowJournalStore(
-            invocation.journalDirectory,
-          ),
-          permit: invocation.actuationPermit,
-          decisionDigest: invocation.decisionDigest,
-          deploymentFingerprint: invocation.deploymentFingerprint,
-          category:
-            "transactionOutputNonCanonical" as FraudProofCatalogueCategoryName,
-          headerHash: invocation.headerHash,
-        }),
-      });
-      assertWorkflowJournalActuation({
-        journal,
-        deploymentFingerprint: invocation.deploymentFingerprint,
-        category:
-          "transactionOutputNonCanonical" as FraudProofCatalogueCategoryName,
-        headerHash: invocation.headerHash,
-        checkpoint: "runner_start",
-      });
-      const loaded = await loadRuntimeConfig({
-        runtimeConfigPath: invocation.runtimeConfigPath,
-        invocation,
-      });
-      if (typeof loaded.close !== "function") {
-        throw new Error(
-          "transactionOutputNonCanonical runtime omitted its transport disposer",
-        );
-      }
-      try {
-        if (
-          loaded.schemaVersion !==
-          "midgard-production-fraud-proof-runtime-config-v1"
-        ) {
-          throw new Error(
-            "transactionOutputNonCanonical runtime config has an unsupported schema",
-          );
-        }
-        if (
-          loaded.retainedDaSources.length === 0 ||
-          loaded.retainedDaSources.some(
-            (source) => !(source instanceof DaLibp2pRetainedDaSource),
-          )
-        ) {
-          throw new Error(
-            "transactionOutputNonCanonical production runner requires concrete public retained-DA sources",
-          );
-        }
-        const workflow =
-          await createManifestBoundTransactionOutputNonCanonicalWorkflow(
-            loaded.config,
-          );
-        if (
-          workflow.binding.deploymentFingerprint !==
-            invocation.deploymentFingerprint ||
-          String(workflow.binding.definition.category) !==
-            "transactionOutputNonCanonical" ||
-          workflow.binding.definition.headerHash !== invocation.headerHash ||
-          workflow.decisionDigest !== invocation.decisionDigest
-        ) {
-          throw new Error(
-            "transactionOutputNonCanonical manifest-bound workflow identity differs from invocation",
-          );
-        }
-        return await continuePendingWorkflow({
-          invocation,
-          journal: journal,
-          execute: () =>
-            executeManifestBoundTransactionOutputNonCanonicalWorkflow({
-              workflow,
-              sources: loaded.retainedDaSources,
-              journal,
-            }),
-        });
-      } finally {
-        await loaded.close();
-      }
-    },
-  });

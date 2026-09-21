@@ -9,8 +9,11 @@
  * field-preimage certificate flag from the definition itself, so nothing is
  * restated. A decision-digest cursor family's record is derived the same way,
  * with the state-queue removal set read from the definition's auxiliary
- * reference scripts. A family whose config shape is its own writes a short
- * record by hand; `doubleSpend` is the first.
+ * reference scripts; a decision-digest family on the authenticated certificate
+ * shape derives its record the same way, laying each step into the config key
+ * that names that step's contract. A family whose config shape is its own
+ * writes a short record by hand: `doubleSpend`, and `mintItemNonCanonical`,
+ * which has no definition.
  *
  * `NOT_YET_REGISTERED_FAMILY_CATEGORIES` is a shrinking allow-list of
  * catalogue categories that have no record yet, following the pattern the
@@ -39,12 +42,35 @@ import {
   type ManifestBoundExecutionSourceScriptDecodingWorkflowConfig,
 } from "../execution-source-script-decoding/v1.js";
 import {
+  createManifestBoundFieldItemWidthIllegalWorkflow,
+  executeManifestBoundFieldItemWidthIllegalWorkflow,
+  FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION,
+  FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS,
+  type ManifestBoundFieldItemWidthIllegalWorkflow,
+  type ManifestBoundFieldItemWidthIllegalWorkflowConfig,
+} from "../field-item-width-illegal/workflow.js";
+import {
+  createManifestBoundFieldPreimageLengthWorkflow,
+  executeManifestBoundFieldPreimageLengthWorkflow,
+  FIELD_PREIMAGE_LENGTH_FAMILY_DEFINITION,
+  type ManifestBoundFieldPreimageLengthWorkflow,
+  type ManifestBoundFieldPreimageLengthWorkflowConfig,
+} from "../field-preimage-length-mismatch/authenticated-workflow.js";
+import { FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS } from "../field-preimage-length-mismatch/config.js";
+import {
   createManifestBoundMintDeclaredAssetLimitWorkflow,
   executeManifestBoundMintDeclaredAssetLimitWorkflow,
   type ManifestBoundMintDeclaredAssetLimitWorkflow,
   type ManifestBoundMintDeclaredAssetLimitWorkflowConfig,
   MINT_DECLARED_ASSET_LIMIT_FAMILY_DEFINITION,
 } from "../mint-declared-asset-limit/v1.js";
+import {
+  createManifestBoundMintItemNonCanonicalWorkflow,
+  executeManifestBoundMintItemNonCanonicalWorkflow,
+  type ManifestBoundMintItemNonCanonicalWorkflow,
+  type ManifestBoundMintItemNonCanonicalWorkflowConfig,
+  MINT_ITEM_NON_CANONICAL_MANIFEST_CONTRACTS,
+} from "../mint-item-non-canonical/workflow.js";
 import {
   createManifestBoundMissingRedeemerWorkflow,
   executeManifestBoundMissingRedeemerWorkflow,
@@ -73,6 +99,22 @@ import {
   type ManifestBoundObserversForbiddenWorkflowConfig,
   OBSERVERS_FORBIDDEN_FAMILY_DEFINITION,
 } from "../observers-forbidden-on-untagged-network/v1.js";
+import {
+  createManifestBoundOutputReferenceScriptDecodingWorkflow,
+  executeManifestBoundOutputReferenceScriptDecodingWorkflow,
+  type ManifestBoundOutputReferenceScriptDecodingWorkflow,
+  type ManifestBoundOutputReferenceScriptDecodingWorkflowConfig,
+  OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION,
+  OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS,
+} from "../output-reference-script-decoding/authenticated-workflow.js";
+import {
+  createManifestBoundProtectedOutputSignerMissingWorkflow,
+  executeManifestBoundProtectedOutputSignerMissingWorkflow,
+  type ManifestBoundProtectedOutputSignerMissingWorkflow,
+  type ManifestBoundProtectedOutputSignerMissingWorkflowConfig,
+  PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION,
+  PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS,
+} from "../protected-output-signer-missing/authenticated-workflow.js";
 import {
   createManifestBoundReceivePurposeLanguageWorkflow,
   executeManifestBoundReceivePurposeLanguageWorkflow,
@@ -103,6 +145,14 @@ import {
   type ManifestBoundScriptIntegrityHashMissingWorkflowConfig,
   SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION,
 } from "../script-integrity-hash-missing/v1.js";
+import {
+  createManifestBoundTransactionOutputNonCanonicalWorkflow,
+  executeManifestBoundTransactionOutputNonCanonicalWorkflow,
+  type ManifestBoundTransactionOutputNonCanonicalWorkflow,
+  type ManifestBoundTransactionOutputNonCanonicalWorkflowConfig,
+  TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION,
+  TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS,
+} from "../transaction-output-non-canonical/workflow.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import {
   createManifestBoundUnusedRedeemerWorkflow,
@@ -111,6 +161,21 @@ import {
   type ManifestBoundUnusedRedeemerWorkflowConfig,
   UNUSED_REDEEMER_FAMILY_DEFINITION,
 } from "../unused-redeemer/v1.js";
+import {
+  createManifestBoundUnusedScriptWitnessWorkflow,
+  executeManifestBoundUnusedScriptWitnessWorkflow,
+  type ManifestBoundUnusedScriptWitnessWorkflow,
+  type ManifestBoundUnusedScriptWitnessWorkflowConfig,
+  UNUSED_SCRIPT_WITNESS_FAMILY_DEFINITION,
+} from "../unused-script-witness/v1.js";
+import {
+  createManifestBoundWitnessScriptDecodingWorkflow,
+  executeManifestBoundWitnessScriptDecodingWorkflow,
+  type ManifestBoundWitnessScriptDecodingWorkflow,
+  type ManifestBoundWitnessScriptDecodingWorkflowConfig,
+  WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION,
+  WITNESS_SCRIPT_DECODING_MANIFEST_CONTRACTS,
+} from "../witness-script-decoding/workflow.js";
 import {
   type ManifestBoundDaHashPreimageWorkflow,
   runOrResumeManifestBoundDaHashPreimageWorkflow,
@@ -127,6 +192,7 @@ import {
   type FamilyApplicationRecord,
   type FamilyApplicationRequirement,
   type FamilyApplicationWorkflowIdentity,
+  type FamilyCommonInfrastructure,
   familyDefinitionRoster,
   type FamilyResolvedReferenceScripts,
   type FamilyRosterDefinition,
@@ -251,15 +317,7 @@ const linearFamilyApplicationRecord = (
     requires,
     bindConfig: ({ infrastructure, references }): WidenedLinearConfig =>
       Object.freeze({
-        manifest: infrastructure.manifest,
-        blueprintJson: infrastructure.blueprintJson,
-        deploymentInfo: infrastructure.deploymentInfo,
-        headerHash: infrastructure.headerHash,
-        lucid: infrastructure.lucid,
-        signer: infrastructure.signer,
-        source: infrastructure.source,
-        stateQueueMutationLeaseCoordinator:
-          infrastructure.stateQueueMutationLeaseCoordinator,
+        ...commonBoundConfigFields(infrastructure),
         ...(bindsReplayContext && infrastructure.replayContext !== undefined
           ? { replayContext: infrastructure.replayContext }
           : {}),
@@ -361,15 +419,7 @@ export const DOUBLE_SPEND_FAMILY_APPLICATION_RECORD = defineFamilyApplication<
   requires: [],
   bindConfig: ({ infrastructure, references }) =>
     Object.freeze({
-      manifest: infrastructure.manifest,
-      blueprintJson: infrastructure.blueprintJson,
-      deploymentInfo: infrastructure.deploymentInfo,
-      headerHash: infrastructure.headerHash,
-      lucid: infrastructure.lucid,
-      signer: infrastructure.signer,
-      source: infrastructure.source,
-      stateQueueMutationLeaseCoordinator:
-        infrastructure.stateQueueMutationLeaseCoordinator,
+      ...commonBoundConfigFields(infrastructure),
       referenceScripts: Object.freeze({
         steps: Object.freeze([
           requiredReference(references, familyStepRole(1)),
@@ -476,22 +526,9 @@ const decisionDigestCursorFamilyApplicationRecord = <
     roster,
     requires: [],
     bindConfig: ({ infrastructure, references }): Config => {
-      if (infrastructure.decisionDigest === undefined) {
-        throw new Error(
-          `${category} binds the admitted decision digest, which this invocation does not carry`,
-        );
-      }
       const bound: DecisionDigestCursorFamilyConfig = Object.freeze({
-        manifest: infrastructure.manifest,
-        blueprintJson: infrastructure.blueprintJson,
-        deploymentInfo: infrastructure.deploymentInfo,
-        headerHash: infrastructure.headerHash,
-        lucid: infrastructure.lucid,
-        signer: infrastructure.signer,
-        source: infrastructure.source,
-        decisionDigest: infrastructure.decisionDigest,
-        stateQueueMutationLeaseCoordinator:
-          infrastructure.stateQueueMutationLeaseCoordinator,
+        ...commonBoundConfigFields(infrastructure),
+        decisionDigest: requiredDecisionDigest(category, infrastructure),
         referenceScripts: Object.freeze({
           steps: Object.freeze(
             stepRoles.map((role) => requiredReference(references, role)),
@@ -658,6 +695,348 @@ export const SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_APPLICATION_RECORD =
     execute: executeManifestBoundScriptIntegrityHashMissingWorkflow,
   });
 
+export const UNUSED_SCRIPT_WITNESS_FAMILY_APPLICATION_RECORD =
+  decisionDigestCursorFamilyApplicationRecord<
+    "unusedScriptWitness",
+    ManifestBoundUnusedScriptWitnessWorkflowConfig,
+    ManifestBoundUnusedScriptWitnessWorkflow
+  >(UNUSED_SCRIPT_WITNESS_FAMILY_DEFINITION, {
+    constructWorkflow: createManifestBoundUnusedScriptWitnessWorkflow,
+    execute: executeManifestBoundUnusedScriptWitnessWorkflow,
+  });
+
+/**
+ * The config shape the decision-digest families on the authenticated
+ * certificate shape share: the common infrastructure, the admitted decision
+ * digest, and a reference-script bundle that keys every chain step at the top
+ * level beside the field-preimage certificate minting policy and the witness
+ * roster. Each family's own config type narrows the step keys and the witness
+ * roster; the builders below lay the roster in at this shape and assert the
+ * family's exact type, which the definition's step count and role set make
+ * sound.
+ */
+type AuthenticatedCertificateFamilyConfig = Readonly<{
+  manifest: unknown;
+  blueprintJson: string;
+  deploymentInfo: unknown;
+  headerHash: string;
+  lucid: LucidEvolution;
+  signer: ResolvedProverSigner;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  decisionDigest: string;
+  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
+  referenceScripts: Readonly<{
+    fieldPreimageCertificateMint: UTxO;
+    witnesses: Readonly<Record<string, UTxO>>;
+  }> &
+    Readonly<Record<string, unknown>>;
+}>;
+
+/**
+ * The common infrastructure every family's manifest-bound config carries
+ * verbatim: the parts that are not a reference script or the decision digest.
+ */
+const commonBoundConfigFields = (infrastructure: FamilyCommonInfrastructure) =>
+  ({
+    manifest: infrastructure.manifest,
+    blueprintJson: infrastructure.blueprintJson,
+    deploymentInfo: infrastructure.deploymentInfo,
+    headerHash: infrastructure.headerHash,
+    lucid: infrastructure.lucid,
+    signer: infrastructure.signer,
+    source: infrastructure.source,
+    stateQueueMutationLeaseCoordinator:
+      infrastructure.stateQueueMutationLeaseCoordinator,
+  }) as const;
+
+/** The admitted decision digest, or a refusal naming the family without one. */
+const requiredDecisionDigest = (
+  category: FamilyCategory,
+  infrastructure: FamilyCommonInfrastructure,
+): string => {
+  if (infrastructure.decisionDigest === undefined) {
+    throw new Error(
+      `${category} binds the admitted decision digest, which this invocation does not carry`,
+    );
+  }
+  return infrastructure.decisionDigest;
+};
+
+/**
+ * Lays a resolved roster into the authenticated certificate shape: step `i`
+ * under its family's config key, the certificate under its own role, and
+ * every witness role inside `witnesses`.
+ */
+const bindAuthenticatedCertificateFamilyConfig = ({
+  category,
+  infrastructure,
+  references,
+  stepConfigKeys,
+  witnessRoles,
+}: {
+  readonly category: FamilyCategory;
+  readonly infrastructure: FamilyCommonInfrastructure;
+  readonly references: FamilyResolvedReferenceScripts;
+  /** The family's config key for each step, in step order. */
+  readonly stepConfigKeys: readonly string[];
+  readonly witnessRoles: readonly string[];
+}): AuthenticatedCertificateFamilyConfig =>
+  Object.freeze({
+    ...commonBoundConfigFields(infrastructure),
+    decisionDigest: requiredDecisionDigest(category, infrastructure),
+    referenceScripts: Object.freeze({
+      ...Object.fromEntries(
+        stepConfigKeys.map((key, index) => [
+          key,
+          requiredReference(references, familyStepRole(index + 1)),
+        ]),
+      ),
+      fieldPreimageCertificateMint: requiredReference(
+        references,
+        "fieldPreimageCertificateMint",
+      ),
+      witnesses: Object.freeze(
+        Object.fromEntries(
+          witnessRoles.map((role) => [
+            role,
+            requiredReference(references, role),
+          ]),
+        ),
+      ),
+    }),
+  });
+
+/**
+ * The config key a family on the authenticated certificate shape reads each
+ * step from: the one entry of the family's manifest-contracts map that names
+ * that step's contract. Most families spell the keys `step01`…; the
+ * field-preimage-length family names its two second steps by direction, so
+ * the key is looked up rather than assumed. The map must name exactly the
+ * roster's contracts, or the family's config and its roster have drifted.
+ */
+const authenticatedCertificateStepConfigKeys = (
+  category: FamilyCategory,
+  roster: Readonly<Record<string, string>>,
+  stepContractNames: readonly string[],
+  contracts: Readonly<Record<string, string>>,
+): readonly string[] => {
+  const rosterContracts = new Set(Object.values(roster));
+  const configContracts = new Set(Object.values(contracts));
+  for (const contractName of rosterContracts) {
+    if (!configContracts.has(contractName)) {
+      throw new Error(
+        `${category} manifest contracts omit ${contractName}, which its roster resolves`,
+      );
+    }
+  }
+  for (const contractName of configContracts) {
+    if (!rosterContracts.has(contractName)) {
+      throw new Error(
+        `${category} manifest contracts name ${contractName}, which its roster does not resolve`,
+      );
+    }
+  }
+  return stepContractNames.map((contractName) => {
+    const keys = Object.keys(contracts).filter(
+      (key) => contracts[key] === contractName,
+    );
+    if (keys.length !== 1) {
+      throw new Error(
+        `${category} manifest contracts must name ${contractName} under exactly one key`,
+      );
+    }
+    return keys[0]!;
+  });
+};
+
+/**
+ * Derives the record of a decision-digest cursor family on the authenticated
+ * certificate shape. The roster is the definition's: chain steps, witness
+ * roles and the certificate the definition binds. `bindConfig` lays those
+ * same roles into the family's config under the keys its manifest-contracts
+ * map declares, so a script cannot be in the roster and absent from the
+ * config or the reverse.
+ */
+const authenticatedCertificateFamilyApplicationRecord = <
+  Category extends FamilyCategory,
+  Config extends AuthenticatedCertificateFamilyConfig,
+  Workflow extends FamilyApplicationWorkflowIdentity<Category>,
+>(
+  definition: FamilyRosterDefinition & Readonly<{ category: Category }>,
+  family: Readonly<{
+    contracts: Readonly<Record<string, string>>;
+    constructWorkflow: (config: Config) => Promise<Workflow>;
+    execute: (input: {
+      readonly workflow: Workflow;
+      readonly sources: readonly RetainedDaPayloadSource[];
+      readonly journal: FraudProofWorkflowJournalStore;
+    }) => Promise<unknown>;
+  }>,
+): FamilyApplicationRecord<Category, Config, Workflow> => {
+  const { category } = definition;
+  if (!definition.fieldPreimageCertificate) {
+    throw new Error(
+      `${category} is on the authenticated certificate shape but its definition does not bind the certificate`,
+    );
+  }
+  if (definition.auxiliaryReferenceScripts !== undefined) {
+    throw new Error(
+      `${category} declares auxiliary reference scripts, which the authenticated certificate shape has no place for`,
+    );
+  }
+  const roster = familyDefinitionRoster(definition);
+  assertFamilyDefinitionRoster(definition, roster);
+  const stepConfigKeys = authenticatedCertificateStepConfigKeys(
+    category,
+    roster,
+    familyStepContractNames(definition),
+    family.contracts,
+  );
+  return defineFamilyApplication<Category, Config, Workflow>({
+    category,
+    roster,
+    requires: [],
+    bindConfig: ({ infrastructure, references }): Config =>
+      // Every step key was found above and every role resolves or throws, so
+      // this is the family's exact config shape.
+      bindAuthenticatedCertificateFamilyConfig({
+        category,
+        infrastructure,
+        references,
+        stepConfigKeys,
+        witnessRoles: definition.witnessRoles,
+      }) as Config,
+    constructWorkflow: family.constructWorkflow,
+    execute: async ({ workflow, sources, journal }) =>
+      await family.execute({ workflow, sources, journal }),
+    bindsDecisionDigest: true,
+  });
+};
+
+/**
+ * The six decision-digest families on the authenticated certificate shape
+ * that derive from a definition. Each row names its exact config and workflow
+ * types so the record's `bindConfig` result is what its `constructWorkflow`
+ * consumes.
+ */
+export const FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_APPLICATION_RECORD =
+  authenticatedCertificateFamilyApplicationRecord<
+    "fieldItemWidthIllegal",
+    ManifestBoundFieldItemWidthIllegalWorkflowConfig,
+    ManifestBoundFieldItemWidthIllegalWorkflow
+  >(FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION, {
+    contracts: FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS,
+    constructWorkflow: createManifestBoundFieldItemWidthIllegalWorkflow,
+    execute: executeManifestBoundFieldItemWidthIllegalWorkflow,
+  });
+
+export const FIELD_PREIMAGE_LENGTH_MISMATCH_FAMILY_APPLICATION_RECORD =
+  authenticatedCertificateFamilyApplicationRecord<
+    "fieldPreimageLengthMismatch",
+    ManifestBoundFieldPreimageLengthWorkflowConfig,
+    ManifestBoundFieldPreimageLengthWorkflow
+  >(FIELD_PREIMAGE_LENGTH_FAMILY_DEFINITION, {
+    contracts: FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS,
+    constructWorkflow: createManifestBoundFieldPreimageLengthWorkflow,
+    execute: executeManifestBoundFieldPreimageLengthWorkflow,
+  });
+
+export const OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD =
+  authenticatedCertificateFamilyApplicationRecord<
+    "outputReferenceScriptDecoding",
+    ManifestBoundOutputReferenceScriptDecodingWorkflowConfig,
+    ManifestBoundOutputReferenceScriptDecodingWorkflow
+  >(OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION, {
+    contracts: OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS,
+    constructWorkflow: createManifestBoundOutputReferenceScriptDecodingWorkflow,
+    execute: executeManifestBoundOutputReferenceScriptDecodingWorkflow,
+  });
+
+export const PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_APPLICATION_RECORD =
+  authenticatedCertificateFamilyApplicationRecord<
+    "protectedOutputSignerMissing",
+    ManifestBoundProtectedOutputSignerMissingWorkflowConfig,
+    ManifestBoundProtectedOutputSignerMissingWorkflow
+  >(PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION, {
+    contracts: PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS,
+    constructWorkflow: createManifestBoundProtectedOutputSignerMissingWorkflow,
+    execute: executeManifestBoundProtectedOutputSignerMissingWorkflow,
+  });
+
+export const TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_APPLICATION_RECORD =
+  authenticatedCertificateFamilyApplicationRecord<
+    "transactionOutputNonCanonical",
+    ManifestBoundTransactionOutputNonCanonicalWorkflowConfig,
+    ManifestBoundTransactionOutputNonCanonicalWorkflow
+  >(TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION, {
+    contracts: TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS,
+    constructWorkflow: createManifestBoundTransactionOutputNonCanonicalWorkflow,
+    execute: executeManifestBoundTransactionOutputNonCanonicalWorkflow,
+  });
+
+export const WITNESS_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD =
+  authenticatedCertificateFamilyApplicationRecord<
+    "witnessScriptDecoding",
+    ManifestBoundWitnessScriptDecodingWorkflowConfig,
+    ManifestBoundWitnessScriptDecodingWorkflow
+  >(WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION, {
+    contracts: WITNESS_SCRIPT_DECODING_MANIFEST_CONTRACTS,
+    constructWorkflow: createManifestBoundWitnessScriptDecodingWorkflow,
+    execute: executeManifestBoundWitnessScriptDecodingWorkflow,
+  });
+
+/**
+ * The second hand-written record. Mint-item-non-canonical has no
+ * `FamilyDefinition`: it binds its four-step chain through its own loader.
+ * Its manifest-contracts map is already role to contract, so it is the roster
+ * as declared, and its config is the authenticated certificate shape.
+ */
+/**
+ * mintItemNonCanonical has no family definition, so its roster is its
+ * manifest-contracts map and its config keys are read from the same map:
+ * the `stepNN` keys in step order, and every other key but the certificate
+ * as a witness role. Nothing about the family is restated here.
+ */
+const MINT_ITEM_NON_CANONICAL_STEP_CONFIG_KEYS = Object.freeze(
+  Object.keys(MINT_ITEM_NON_CANONICAL_MANIFEST_CONTRACTS)
+    .filter((key) => /^step\d{2}$/u.test(key))
+    .sort(),
+);
+const MINT_ITEM_NON_CANONICAL_WITNESS_ROLES = Object.freeze(
+  Object.keys(MINT_ITEM_NON_CANONICAL_MANIFEST_CONTRACTS).filter(
+    (key) =>
+      !MINT_ITEM_NON_CANONICAL_STEP_CONFIG_KEYS.includes(key) &&
+      key !== "fieldPreimageCertificateMint",
+  ),
+);
+
+export const MINT_ITEM_NON_CANONICAL_FAMILY_APPLICATION_RECORD =
+  defineFamilyApplication<
+    "mintItemNonCanonical",
+    ManifestBoundMintItemNonCanonicalWorkflowConfig,
+    ManifestBoundMintItemNonCanonicalWorkflow
+  >({
+    category: "mintItemNonCanonical",
+    roster: MINT_ITEM_NON_CANONICAL_MANIFEST_CONTRACTS,
+    requires: [],
+    bindConfig: ({ infrastructure, references }) =>
+      bindAuthenticatedCertificateFamilyConfig({
+        category: "mintItemNonCanonical",
+        infrastructure,
+        references,
+        stepConfigKeys: MINT_ITEM_NON_CANONICAL_STEP_CONFIG_KEYS,
+        witnessRoles: MINT_ITEM_NON_CANONICAL_WITNESS_ROLES,
+      }) as ManifestBoundMintItemNonCanonicalWorkflowConfig,
+    constructWorkflow: createManifestBoundMintItemNonCanonicalWorkflow,
+    execute: async ({ workflow, sources, journal }) =>
+      await executeManifestBoundMintItemNonCanonicalWorkflow({
+        workflow,
+        sources,
+        journal,
+      }),
+    bindsDecisionDigest: true,
+  });
+
 /**
  * Catalogue categories that have no application record yet. Every entry is
  * removed as its family's record lands; the list reaching empty is what makes
@@ -677,17 +1056,9 @@ export const NOT_YET_REGISTERED_FAMILY_CATEGORIES = Object.freeze([
   "missingNativeScriptUtxo",
   "nativeScriptInvalid",
   "minAda",
-  "fieldPreimageLengthMismatch",
-  "fieldItemWidthIllegal",
-  "witnessScriptDecoding",
-  "transactionOutputNonCanonical",
   "resolvedOutputNonCanonical",
   "spendInputSignerMissing",
-  "protectedOutputSignerMissing",
-  "outputReferenceScriptDecoding",
-  "unusedScriptWitness",
   "executionNativeScriptInvalid",
-  "mintItemNonCanonical",
 ] as const satisfies readonly FraudProofCatalogueCategoryName[]);
 
 export type NotYetRegisteredFamilyCategory =
@@ -719,6 +1090,18 @@ export const FAMILY_APPLICATION_REGISTRY = Object.freeze({
   redeemerCanonicity: REDEEMER_CANONICITY_FAMILY_APPLICATION_RECORD,
   scriptIntegrityHashMissing:
     SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_APPLICATION_RECORD,
+  unusedScriptWitness: UNUSED_SCRIPT_WITNESS_FAMILY_APPLICATION_RECORD,
+  fieldItemWidthIllegal: FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_APPLICATION_RECORD,
+  fieldPreimageLengthMismatch:
+    FIELD_PREIMAGE_LENGTH_MISMATCH_FAMILY_APPLICATION_RECORD,
+  outputReferenceScriptDecoding:
+    OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
+  protectedOutputSignerMissing:
+    PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_APPLICATION_RECORD,
+  transactionOutputNonCanonical:
+    TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
+  witnessScriptDecoding: WITNESS_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
+  mintItemNonCanonical: MINT_ITEM_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
 } satisfies {
   // Completeness only: every remaining catalogue category has exactly one
   // row, keyed by the record's own category. A record's config and workflow

@@ -15,7 +15,6 @@ import { FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY } from "../src/runtime.js";
 import {
   bindTransactionOutputNonCanonicalReferenceScripts,
   createTransactionOutputNonCanonicalRawL1StageResolver,
-  createTransactionOutputNonCanonicalWorkflowRunnerSurface,
   deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlock,
   detectTransactionOutputNonCanonicalCompleteReplay,
   TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS,
@@ -23,6 +22,7 @@ import {
   type TransactionOutputNonCanonicalReferenceScripts,
 } from "../src/transaction-output-non-canonical/index.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../src/workflow/deployment-manifest-binding.js";
+import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
 import { committedFieldShapeScenarioMaterial } from "./support/committed-field-shape-emulator.js";
 
 const script = (byte: string): Script => ({
@@ -113,12 +113,12 @@ const manifestBinding = (
 describe("transactionOutputNonCanonical production workflow", () => {
   it("runs only its own catalogue category, and refuses a foreign one before loading any runtime configuration", async () => {
     let runtimeConfigLoads = 0;
-    const runner = createTransactionOutputNonCanonicalWorkflowRunnerSurface({
-      loadRuntimeConfig: async () => {
+    const runner = WORKFLOW_RUNNER_FACTORIES.transactionOutputNonCanonical(
+      async () => {
         runtimeConfigLoads += 1;
         throw new Error("runtime configuration was loaded");
       },
-    });
+    );
     const invocation = (category: string) =>
       ({
         category,
@@ -129,7 +129,7 @@ describe("transactionOutputNonCanonical production workflow", () => {
     await expect(
       runner.runOrResume(invocation("unusedRedeemer")),
     ).rejects.toThrow(
-      /transactionOutputNonCanonical production runner category mismatch: unusedRedeemer/u,
+      /category mismatch: expected=transactionOutputNonCanonical actual=unusedRedeemer/u,
     );
     // The refusal must be the category gate itself, not a downstream failure.
     expect(runtimeConfigLoads).toBe(0);

@@ -18,7 +18,6 @@ import {
 } from "../src/native-script-decoding/scan-plan.js";
 import {
   bindOutputReferenceScriptDecodingReferenceScripts,
-  createOutputReferenceScriptDecodingWorkflowRunnerSurface,
   OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS,
   OutputReferenceOutputControlSchema,
   outputReferenceScriptControlData,
@@ -31,6 +30,7 @@ import {
   prepareOutputReferenceScriptDecodingEvidence,
   runOrResumeManifestBoundOutputReferenceScriptDecodingWorkflow,
 } from "../src/output-reference-script-decoding/index.js";
+import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
 import { makeNativeTx } from "./support/submit-init-emulator-shared.js";
 
 const script = (byte: string): Script => ({
@@ -61,11 +61,11 @@ const references = (): OutputReferenceScriptDecodingReferenceScripts => ({
 
 describe("outputReferenceScriptDecoding production workflow", () => {
   it("exposes the standard callback-free runner and complete manifest roles", () => {
-    const runner = createOutputReferenceScriptDecodingWorkflowRunnerSurface({
-      loadRuntimeConfig: async () => {
+    const runner = WORKFLOW_RUNNER_FACTORIES.outputReferenceScriptDecoding(
+      async () => {
         throw new Error("not reached");
       },
-    });
+    );
     expect(Object.keys(runner).sort()).toEqual([
       "runOrResume",
       "runnerVersion",

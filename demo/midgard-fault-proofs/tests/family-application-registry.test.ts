@@ -15,13 +15,51 @@ import {
 } from "../src/workflow/family-application-registry.js";
 import { familyStepContractNames } from "../src/workflow/family-definition.js";
 import { FAMILY_DEFINITIONS } from "../src/workflow/family-definitions.js";
+import { LINEAR_FAMILY_CATEGORIES } from "../src/workflow/linear-family-spec.js";
 
+/**
+ * The two reference-script shapes a bound config carries: the bundle shape
+ * (`steps` tuple, `witnesses`, optional certificate and removal set) and the
+ * authenticated certificate shape, which keys each step at the top level
+ * beside the certificate and the witnesses.
+ */
 type BoundReferenceScripts = Readonly<{
-  steps: readonly unknown[];
+  steps?: readonly unknown[];
   witnesses: Readonly<Record<string, unknown>>;
   fieldPreimageCertificateMint?: unknown;
   removal?: Readonly<Record<string, unknown>>;
-}>;
+}> &
+  Readonly<Record<string, unknown>>;
+
+const FLAT_SHAPE_NON_STEP_ROLES = new Set([
+  "fieldPreimageCertificateMint",
+  "witnesses",
+  "removal",
+]);
+
+/**
+ * The step references a bound config carries, in step order: the `steps`
+ * tuple of the bundle shape, or on the flat certificate shape every key
+ * beginning `step`, which must be exactly the keys the shape has no other
+ * name for. Each step must be a resolved reference, never absent.
+ */
+const boundSteps = (
+  referenceScripts: BoundReferenceScripts,
+): readonly unknown[] => {
+  if (referenceScripts.steps !== undefined) return referenceScripts.steps;
+  const stepEntries = Object.entries(referenceScripts).filter(([role]) =>
+    role.startsWith("step"),
+  );
+  const otherRoles = Object.keys(referenceScripts).filter(
+    (role) => !role.startsWith("step") && !FLAT_SHAPE_NON_STEP_ROLES.has(role),
+  );
+  expect(otherRoles).toEqual([]);
+  for (const [role, value] of stepEntries) {
+    expect(value, role).toBeTypeOf("object");
+    expect(value, role).not.toBeNull();
+  }
+  return stepEntries.map(([, value]) => value);
+};
 
 const registry: Readonly<
   Record<
@@ -167,7 +205,7 @@ describe("family application rosters name deployed contracts", () => {
           !removalRoles.includes(role) &&
           role !== "fieldPreimageCertificateMint",
       );
-      expect(referenceScripts.steps).toEqual(
+      expect(boundSteps(referenceScripts)).toEqual(
         stepRoles.map((role) => references[role]),
       );
       expect(Object.keys(referenceScripts.witnesses).sort()).toEqual(
@@ -253,33 +291,41 @@ describe("family application records bind the admitted decision digest", () => {
     },
   );
 
-  it("registers the twelve state-queue-removal families as digest-bound", () => {
+  it("binds the digest on every registered cursor family and on no linear family", () => {
     const bound = Object.values(registry)
       .filter((record) => record.bindsDecisionDigest)
       .map((record) => record.category)
       .sort();
+    const linear = new Set<string>(LINEAR_FAMILY_CATEGORIES);
     expect(bound).toEqual(
-      [
-        "distinctAssetAccumulationLimit",
-        "executionSourceScriptDecoding",
-        "missingScriptSource",
-        "receivePurposeLanguage",
-        "scriptIntegrityHashMismatch",
-        "unusedRedeemer",
-        "mintDeclaredAssetLimit",
-        "missingRedeemer",
-        "observerOrderInvalid",
-        "observersForbiddenOnUntaggedNetwork",
-        "redeemerCanonicity",
-        "scriptIntegrityHashMissing",
-      ].sort(),
+      Object.keys(registry)
+        .filter(
+          (category) => !linear.has(category) && category !== "doubleSpend",
+        )
+        .sort(),
     );
-    for (const category of bound) {
-      expect(Object.keys(registry[category]!.roster)).toEqual(
-        expect.arrayContaining([
-          ...REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES,
-        ]),
+  });
+
+  it("carries the state-queue removal set exactly on the families whose definition declares it", () => {
+    for (const [category, record] of Object.entries(registry)) {
+      const declared = Object.keys(
+        definitions[category]?.auxiliaryReferenceScripts ?? {},
       );
+      const roster = Object.keys(record.roster);
+      if (declared.length === 0) {
+        for (const name of REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES) {
+          expect(roster).not.toContain(name);
+        }
+      } else {
+        expect(declared.sort()).toEqual(
+          [...REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES].sort(),
+        );
+        expect(roster).toEqual(
+          expect.arrayContaining([
+            ...REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES,
+          ]),
+        );
+      }
     }
   });
 });

@@ -24,8 +24,6 @@ import {
   createDoubleSpendWorkflowRunner,
   createExecutionNativeScriptInvalidWorkflowRunner,
   createExternalHistoricalNativeScriptSourceRoster,
-  createFieldItemWidthIllegalWorkflowRunner,
-  createFieldPreimageLengthWorkflowRunner,
   createHeaderClassifier,
   createHistoricalNativeScriptHistorySource,
   createHistoricalNativeScriptProviderRoster,
@@ -86,22 +84,16 @@ import {
   createManifestBoundZeroInputWorkflow,
   createMinAdaWorkflowRunner,
   createMintAuthorizationWorkflowRunner,
-  createMintItemNonCanonicalWorkflowRunner,
   createMissingNativeScriptTxWorkflowRunner,
   createMissingNativeScriptUtxoWorkflowRunner,
   createMissingSignatureWorkflowRunner,
   createNativeScriptDecodingWorkflowRunner,
   createNativeScriptInvalidWorkflowRunner,
   createNetworkIdWorkflowRunner,
-  createOutputReferenceScriptDecodingWorkflowRunner,
-  createProtectedOutputSignerMissingWorkflowRunner,
   createResolvedOutputNonCanonicalWorkflowRunner,
   createSpendInputSignerMissingWorkflowRunner,
-  createTransactionOutputNonCanonicalWorkflowRunner,
-  createUnusedScriptWitnessWorkflowRunner,
   createValidationTraceDisputeWorkflowRunner,
   createWithdrawalMistagWorkflowRunner,
-  createWitnessScriptDecodingWorkflowRunner,
   executionNativeScriptInvalid as executionNativeScriptInvalidV1,
   type FraudProofCompletedVerification,
   type FraudProofWorkflowJournalEntry,
@@ -5484,11 +5476,12 @@ const createApplication = ({
       valueNotPreservedLoader,
       fundingProfile("valueNotPreserved"),
     ),
-    fieldPreimageLengthMismatch: createFieldPreimageLengthWorkflowRunner(
-      fieldPreimageLengthMismatchLoader,
-      fundingProfile("fieldPreimageLengthMismatch"),
-    ),
-    fieldItemWidthIllegal: createFieldItemWidthIllegalWorkflowRunner(
+    fieldPreimageLengthMismatch:
+      WORKFLOW_RUNNER_FACTORIES.fieldPreimageLengthMismatch(
+        fieldPreimageLengthMismatchLoader,
+        fundingProfile("fieldPreimageLengthMismatch"),
+      ),
+    fieldItemWidthIllegal: WORKFLOW_RUNNER_FACTORIES.fieldItemWidthIllegal(
       fieldItemWidthIllegalLoader,
       fundingProfile("fieldItemWidthIllegal"),
     ),
@@ -5498,11 +5491,11 @@ const createApplication = ({
         fundingProfile("scriptIntegrityHashMissing"),
       ),
     transactionOutputNonCanonical:
-      createTransactionOutputNonCanonicalWorkflowRunner(
+      WORKFLOW_RUNNER_FACTORIES.transactionOutputNonCanonical(
         transactionOutputNonCanonicalLoader,
         fundingProfile("transactionOutputNonCanonical"),
       ),
-    mintItemNonCanonical: createMintItemNonCanonicalWorkflowRunner(
+    mintItemNonCanonical: WORKFLOW_RUNNER_FACTORIES.mintItemNonCanonical(
       mintItemNonCanonicalLoader,
       fundingProfile("mintItemNonCanonical"),
     ),
@@ -5519,7 +5512,7 @@ const createApplication = ({
       fundingProfile("spendInputSignerMissing"),
     ),
     protectedOutputSignerMissing:
-      createProtectedOutputSignerMissingWorkflowRunner(
+      WORKFLOW_RUNNER_FACTORIES.protectedOutputSignerMissing(
         protectedOutputSignerMissingLoader,
         fundingProfile("protectedOutputSignerMissing"),
       ),
@@ -5528,12 +5521,12 @@ const createApplication = ({
         observersForbiddenOnUntaggedNetworkLoader,
         fundingProfile("observersForbiddenOnUntaggedNetwork"),
       ),
-    witnessScriptDecoding: createWitnessScriptDecodingWorkflowRunner(
+    witnessScriptDecoding: WORKFLOW_RUNNER_FACTORIES.witnessScriptDecoding(
       witnessScriptDecodingLoader,
       fundingProfile("witnessScriptDecoding"),
     ),
     outputReferenceScriptDecoding:
-      createOutputReferenceScriptDecodingWorkflowRunner(
+      WORKFLOW_RUNNER_FACTORIES.outputReferenceScriptDecoding(
         outputReferenceScriptDecodingLoader,
         fundingProfile("outputReferenceScriptDecoding"),
       ),
@@ -5559,7 +5552,7 @@ const createApplication = ({
       receivePurposeLanguageLoader,
       fundingProfile("receivePurposeLanguage"),
     ),
-    unusedScriptWitness: createUnusedScriptWitnessWorkflowRunner(
+    unusedScriptWitness: WORKFLOW_RUNNER_FACTORIES.unusedScriptWitness(
       unusedScriptWitnessLoader,
       fundingProfile("unusedScriptWitness"),
     ),

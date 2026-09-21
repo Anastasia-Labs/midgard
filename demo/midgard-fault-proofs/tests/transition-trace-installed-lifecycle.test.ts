@@ -62,8 +62,8 @@ import {
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import {
   captureTransitionTraceL1Events,
-  createTransitionTraceEventAuthority,
   requireTransitionTraceL1Events,
+  unsafeCreateTransitionTraceEventAuthorityFromRawForTest,
 } from "../src/transition-trace/l1-events.js";
 import { TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES } from "../src/transition-trace/submit.js";
 import {
@@ -566,10 +566,15 @@ describe("transition trace installed retained-history workflow", () => {
             checkpointStore: config.historicalNativeScriptCheckpointStore,
             historySource: historicalNativeScriptHistorySource,
           },
-          transitionTraceEventAuthority: createTransitionTraceEventAuthority({
-            binding: workflow.binding,
-            source: config.source,
-          }),
+          // The recorder's raw authority is injected directly rather than
+          // through the module mock above: whether a module that imports the
+          // mocked module during the mock factory's own load receives the
+          // mock depends on evaluation order, which this test must not rely on.
+          transitionTraceEventAuthority:
+            unsafeCreateTransitionTraceEventAuthorityFromRawForTest({
+              binding: workflow.binding,
+              authority: recorder.authority,
+            }),
         });
         const observation = await workflow.l1.observeHeader({
           headerHash: fixture.current.headerHash,
