@@ -8,12 +8,12 @@ import { describe, expect, it } from "vitest";
 import {
   bindSpendInputSignerMissingReferenceScripts,
   createSpendInputSignerMissingRawL1StageResolver,
-  createSpendInputSignerMissingWorkflowRunnerSurface,
   SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS,
   type SpendInputSignerMissingDeploymentBinding,
   type SpendInputSignerMissingReferenceScripts,
 } from "../src/spend-input-signer-missing/index.js";
 import { WORKFLOW_ADAPTER_RUNNER } from "../src/workflow/adapters.js";
+import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
 
 const script = (byte: string): Script => ({
   type: "PlutusV3",
@@ -83,16 +83,16 @@ describe("spendInputSignerMissing production workflow", () => {
   /**
    * Central admission drives this family through one method and hands it no
    * hooks: no verdict callback, no evidence callback, no journal callback. The
-   * claim is stated as a property of the surface — `runOrResume` is its only
-   * callable member — rather than as a copy of the member list, so adding any
-   * callback fails here without a rename being able to.
+   * claim is stated as a property of the record-derived runner — `runOrResume`
+   * is its only callable member — rather than as a copy of the member list, so
+   * adding any callback fails here without a rename being able to.
    */
   it("exposes no callable member besides the single drive method", () => {
-    const runner = createSpendInputSignerMissingWorkflowRunnerSurface({
-      loadRuntimeConfig: async () => {
+    const runner = WORKFLOW_RUNNER_FACTORIES.spendInputSignerMissing(
+      async () => {
         throw new Error("not reached");
       },
-    });
+    );
 
     expect(runner.runnerVersion).toBe(WORKFLOW_ADAPTER_RUNNER);
     expect(
@@ -104,16 +104,18 @@ describe("spendInputSignerMissing production workflow", () => {
 
   it("refuses a foreign category before it reaches the runtime loader", async () => {
     let loads = 0;
-    const runner = createSpendInputSignerMissingWorkflowRunnerSurface({
-      loadRuntimeConfig: async () => {
+    const runner = WORKFLOW_RUNNER_FACTORIES.spendInputSignerMissing(
+      async () => {
         loads += 1;
         throw new Error("not reached");
       },
-    });
+    );
 
     await expect(
       runner.runOrResume({ category: "unusedRedeemer" } as never),
-    ).rejects.toThrow(/category mismatch: unusedRedeemer/u);
+    ).rejects.toThrow(
+      /category mismatch: expected=spendInputSignerMissing actual=unusedRedeemer/u,
+    );
     // The refusal contract also prohibits the side effect: a mismatched
     // category must not cause a manifest/runtime load.
     expect(loads).toBe(0);

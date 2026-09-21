@@ -1,75 +1,15 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 import {
-  createManifestBoundCrossBlockDuplicateEventWorkflow,
-  type ManifestBoundCrossBlockDuplicateEventWorkflow,
-  type ManifestBoundCrossBlockDuplicateEventWorkflowConfig,
-  runOrResumeManifestBoundCrossBlockDuplicateEventWorkflow,
-} from "../cross-block-duplicate-event/workflow.js";
-import {
-  createExecutionNativeScriptInvalidWorkflowRunnerSurface,
-  type LoadExecutionNativeScriptInvalidWorkflow,
-} from "../execution-native-script-invalid/v1.js";
-import {
-  createManifestBoundMinAdaWorkflow,
-  type ManifestBoundMinAdaWorkflow,
-  type ManifestBoundMinAdaWorkflowConfig,
-  runOrResumeManifestBoundMinAdaWorkflow,
-} from "../min-ada/workflow.js";
-import {
-  createManifestBoundMintAuthorizationWorkflow,
-  type ManifestBoundMintAuthorizationWorkflow,
-  type ManifestBoundMintAuthorizationWorkflowConfig,
-  runOrResumeManifestBoundMintAuthorizationWorkflow,
-} from "../mint-authorization/workflow.js";
-import {
-  createManifestBoundMissingNativeScriptTxWorkflow,
-  type ManifestBoundMissingNativeScriptTxWorkflow,
-  type ManifestBoundMissingNativeScriptTxWorkflowConfig,
-  runOrResumeManifestBoundMissingNativeScriptTxWorkflow,
-} from "../missing-native-script-tx/workflow.js";
-import {
-  createManifestBoundMissingNativeScriptUtxoWorkflow,
-  type ManifestBoundMissingNativeScriptUtxoWorkflow,
-  type ManifestBoundMissingNativeScriptUtxoWorkflowConfig,
-  runOrResumeManifestBoundMissingNativeScriptUtxoWorkflow,
-} from "../missing-native-script-utxo/workflow.js";
-import {
-  createManifestBoundNativeScriptDecodingWorkflow,
-  type ManifestBoundNativeScriptDecodingWorkflow,
-  type ManifestBoundNativeScriptDecodingWorkflowConfig,
-  runOrResumeManifestBoundNativeScriptDecodingWorkflow,
-} from "../native-script-decoding/workflow.js";
-import {
-  createManifestBoundNativeScriptInvalidWorkflow,
-  type ManifestBoundNativeScriptInvalidWorkflow,
-  type ManifestBoundNativeScriptInvalidWorkflowConfig,
-  runOrResumeManifestBoundNativeScriptInvalidWorkflow,
-} from "../native-script-invalid/workflow.js";
-import {
   createManifestBoundNetworkIdWorkflow,
   type ManifestBoundNetworkIdWorkflow,
   type ManifestBoundNetworkIdWorkflowConfig,
   runOrResumeManifestBoundNetworkIdWorkflow,
 } from "../network-id/workflow-adapter.js";
 import {
-  createResolvedOutputNonCanonicalWorkflowRunnerSurface,
-  type LoadResolvedOutputNonCanonicalWorkflow,
-} from "../resolved-output-non-canonical/authenticated-workflow.js";
-import {
-  createSpendInputSignerMissingWorkflowRunnerSurface,
-  type LoadSpendInputSignerMissingWorkflow,
-} from "../spend-input-signer-missing/authenticated-workflow.js";
-import {
   DaLibp2pRetainedDaSource,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
-import {
-  createManifestBoundTransitionTraceWorkflow,
-  type ManifestBoundTransitionTraceWorkflow,
-  type ManifestBoundTransitionTraceWorkflowConfig,
-  runOrResumeManifestBoundTransitionTraceWorkflow,
-} from "../transition-trace/workflow.js";
 import {
   createValidationTraceDisputeWorkflowRunnerSurface,
   type LoadValidationTraceDisputeWorkflow,
@@ -80,12 +20,6 @@ import {
   type ManifestBoundValueConservationWorkflowConfig,
   runOrResumeManifestBoundValueConservationWorkflow,
 } from "../value-not-preserved/workflow.js";
-import {
-  createManifestBoundWithdrawalMistagWorkflow,
-  type ManifestBoundWithdrawalMistagWorkflow,
-  type ManifestBoundWithdrawalMistagWorkflowConfig,
-  runOrResumeManifestBoundWithdrawalMistagWorkflow,
-} from "../withdrawal-mistag/workflow.js";
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
@@ -112,25 +46,37 @@ import {
   type FamilyApplicationWorkflowIdentity,
 } from "./family-application.js";
 import {
+  CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_APPLICATION_RECORD,
   DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_APPLICATION_RECORD,
+  EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD,
   EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
   FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_APPLICATION_RECORD,
   FIELD_PREIMAGE_LENGTH_MISMATCH_FAMILY_APPLICATION_RECORD,
+  MIN_ADA_FAMILY_APPLICATION_RECORD,
+  MINT_AUTHORIZATION_FAMILY_APPLICATION_RECORD,
   MINT_DECLARED_ASSET_LIMIT_FAMILY_APPLICATION_RECORD,
   MINT_ITEM_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
+  MISSING_NATIVE_SCRIPT_TX_FAMILY_APPLICATION_RECORD,
+  MISSING_NATIVE_SCRIPT_UTXO_FAMILY_APPLICATION_RECORD,
   MISSING_REDEEMER_FAMILY_APPLICATION_RECORD,
   MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD,
+  NATIVE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
+  NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD,
   OBSERVER_ORDER_INVALID_FAMILY_APPLICATION_RECORD,
   OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FAMILY_APPLICATION_RECORD,
   OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
   PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_APPLICATION_RECORD,
   RECEIVE_PURPOSE_LANGUAGE_FAMILY_APPLICATION_RECORD,
   REDEEMER_CANONICITY_FAMILY_APPLICATION_RECORD,
+  RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
   SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_APPLICATION_RECORD,
   SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_APPLICATION_RECORD,
+  SPEND_INPUT_SIGNER_MISSING_FAMILY_APPLICATION_RECORD,
   TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
+  TRANSITION_TRACE_FAMILY_APPLICATION_RECORD,
   UNUSED_REDEEMER_FAMILY_APPLICATION_RECORD,
   UNUSED_SCRIPT_WITNESS_FAMILY_APPLICATION_RECORD,
+  WITHDRAWAL_MISTAG_FAMILY_APPLICATION_RECORD,
   WITNESS_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
 } from "./family-application-registry.js";
 import type {
@@ -531,48 +477,6 @@ export const createDoubleSpendWorkflowRunner = (
     }),
   });
 
-export const createResolvedOutputNonCanonicalWorkflowRunner = (
-  loadRuntimeConfig: LoadResolvedOutputNonCanonicalWorkflow,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner => {
-  const surface = createResolvedOutputNonCanonicalWorkflowRunnerSurface({
-    loadRuntimeConfig,
-  });
-  return createAdmittedWorkflowRunner({
-    category: "resolvedOutputNonCanonical",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: surface.runOrResume,
-  });
-};
-
-export const createSpendInputSignerMissingWorkflowRunner = (
-  loadRuntimeConfig: LoadSpendInputSignerMissingWorkflow,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner => {
-  const surface = createSpendInputSignerMissingWorkflowRunnerSurface({
-    loadRuntimeConfig,
-  });
-  return createAdmittedWorkflowRunner({
-    category: "spendInputSignerMissing",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: surface.runOrResume,
-  });
-};
-
-export const createExecutionNativeScriptInvalidWorkflowRunner = (
-  loadRuntimeConfig: LoadExecutionNativeScriptInvalidWorkflow,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner => {
-  const surface = createExecutionNativeScriptInvalidWorkflowRunnerSurface({
-    loadRuntimeConfig,
-  });
-  return createAdmittedWorkflowRunner({
-    category: "executionNativeScriptInvalid",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: surface.runOrResume,
-  });
-};
-
 /**
  * Production runner for the sole interactive family. The surface re-derives
  * the dispute cursor from live chain state on every invocation (ruling R6),
@@ -612,46 +516,6 @@ export const createNetworkIdWorkflowRunner = (
     }),
   });
 
-export const createMinAdaWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundMinAdaWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "minAda",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "minAda",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundMinAdaWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundMinAdaWorkflow({
-          workflow: workflow as ManifestBoundMinAdaWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createTransitionTraceWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundTransitionTraceWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "transitionTrace",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "transitionTrace",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundTransitionTraceWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundTransitionTraceWorkflow({
-          workflow: workflow as ManifestBoundTransitionTraceWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
 export const createValueConservationWorkflowRunner = (
   loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundValueConservationWorkflowConfig>,
   fundingRequirements?: WorkflowFundingRequirements,
@@ -666,126 +530,6 @@ export const createValueConservationWorkflowRunner = (
       execute: async ({ workflow, sources, journal }) =>
         await runOrResumeManifestBoundValueConservationWorkflow({
           workflow: workflow as ManifestBoundValueConservationWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createMintAuthorizationWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundMintAuthorizationWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "mintAuthorization",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "mintAuthorization",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundMintAuthorizationWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundMintAuthorizationWorkflow({
-          workflow: workflow as ManifestBoundMintAuthorizationWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createNativeScriptInvalidWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundNativeScriptInvalidWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "nativeScriptInvalid",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "nativeScriptInvalid",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundNativeScriptInvalidWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundNativeScriptInvalidWorkflow({
-          workflow: workflow as ManifestBoundNativeScriptInvalidWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createNativeScriptDecodingWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundNativeScriptDecodingWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "nativeScriptDecoding",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "nativeScriptDecoding",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundNativeScriptDecodingWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundNativeScriptDecodingWorkflow({
-          workflow: workflow as ManifestBoundNativeScriptDecodingWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createCrossBlockDuplicateEventWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundCrossBlockDuplicateEventWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "crossBlockDuplicateEvent",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "crossBlockDuplicateEvent",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundCrossBlockDuplicateEventWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundCrossBlockDuplicateEventWorkflow({
-          workflow: workflow as ManifestBoundCrossBlockDuplicateEventWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createWithdrawalMistagWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundWithdrawalMistagWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "withdrawalMistag",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "withdrawalMistag",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundWithdrawalMistagWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundWithdrawalMistagWorkflow({
-          workflow: workflow as ManifestBoundWithdrawalMistagWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
-export const createMissingNativeScriptUtxoWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundMissingNativeScriptUtxoWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "missingNativeScriptUtxo",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "missingNativeScriptUtxo",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundMissingNativeScriptUtxoWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundMissingNativeScriptUtxoWorkflow({
-          workflow: workflow as ManifestBoundMissingNativeScriptUtxoWorkflow,
           sources,
           journal,
         }),
@@ -812,31 +556,11 @@ export const createMissingSignatureWorkflowRunner = (
     }),
   });
 
-export const createMissingNativeScriptTxWorkflowRunner = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<ManifestBoundMissingNativeScriptTxWorkflowConfig>,
-  fundingRequirements?: WorkflowFundingRequirements,
-): WorkflowAdapterRunner =>
-  createAdmittedWorkflowRunner({
-    category: "missingNativeScriptTx",
-    ...runnerFunding(fundingRequirements),
-    runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: "missingNativeScriptTx",
-      loadRuntimeConfig,
-      constructWorkflow: createManifestBoundMissingNativeScriptTxWorkflow,
-      execute: async ({ workflow, sources, journal }) =>
-        await runOrResumeManifestBoundMissingNativeScriptTxWorkflow({
-          workflow: workflow as ManifestBoundMissingNativeScriptTxWorkflow,
-          sources,
-          journal,
-        }),
-    }),
-  });
-
 /**
  * Factories for the current families whose complete shared workflow drivers
  * exist: every linear family's row is derived from its definition, every
- * registered decision-digest family's row from its application record, the
- * rest are the explicit rows below. This is deliberately separate from launch
+ * registered family's row from its application record, the rest are the
+ * explicit rows below. This is deliberately separate from launch
  * readiness: a factory is not ready until a compiled application supplies its
  * concrete public-libp2p runtime loader and installs the resulting executable
  * runner.
@@ -845,16 +569,34 @@ export const WORKFLOW_RUNNER_FACTORIES = Object.freeze({
   ...LINEAR_FAMILY_WORKFLOW_RUNNER_FACTORIES,
   doubleSpend: createDoubleSpendWorkflowRunner,
   missingSignature: createMissingSignatureWorkflowRunner,
-  missingNativeScriptTx: createMissingNativeScriptTxWorkflowRunner,
+  missingNativeScriptTx: familyApplicationWorkflowRunnerFactory(
+    MISSING_NATIVE_SCRIPT_TX_FAMILY_APPLICATION_RECORD,
+  ),
   networkId: createNetworkIdWorkflowRunner,
-  missingNativeScriptUtxo: createMissingNativeScriptUtxoWorkflowRunner,
-  mintAuthorization: createMintAuthorizationWorkflowRunner,
-  nativeScriptInvalid: createNativeScriptInvalidWorkflowRunner,
-  nativeScriptDecoding: createNativeScriptDecodingWorkflowRunner,
-  crossBlockDuplicateEvent: createCrossBlockDuplicateEventWorkflowRunner,
-  withdrawalMistag: createWithdrawalMistagWorkflowRunner,
-  minAda: createMinAdaWorkflowRunner,
-  transitionTrace: createTransitionTraceWorkflowRunner,
+  missingNativeScriptUtxo: familyApplicationWorkflowRunnerFactory(
+    MISSING_NATIVE_SCRIPT_UTXO_FAMILY_APPLICATION_RECORD,
+  ),
+  mintAuthorization: familyApplicationWorkflowRunnerFactory(
+    MINT_AUTHORIZATION_FAMILY_APPLICATION_RECORD,
+  ),
+  nativeScriptInvalid: familyApplicationWorkflowRunnerFactory(
+    NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD,
+  ),
+  nativeScriptDecoding: familyApplicationWorkflowRunnerFactory(
+    NATIVE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
+  ),
+  crossBlockDuplicateEvent: familyApplicationWorkflowRunnerFactory(
+    CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_APPLICATION_RECORD,
+  ),
+  withdrawalMistag: familyApplicationWorkflowRunnerFactory(
+    WITHDRAWAL_MISTAG_FAMILY_APPLICATION_RECORD,
+  ),
+  minAda: familyApplicationWorkflowRunnerFactory(
+    MIN_ADA_FAMILY_APPLICATION_RECORD,
+  ),
+  transitionTrace: familyApplicationWorkflowRunnerFactory(
+    TRANSITION_TRACE_FAMILY_APPLICATION_RECORD,
+  ),
   valueNotPreserved: createValueConservationWorkflowRunner,
   fieldPreimageLengthMismatch: familyApplicationWorkflowRunnerFactory(
     FIELD_PREIMAGE_LENGTH_MISMATCH_FAMILY_APPLICATION_RECORD,
@@ -874,11 +616,15 @@ export const WORKFLOW_RUNNER_FACTORIES = Object.freeze({
   mintItemNonCanonical: familyApplicationWorkflowRunnerFactory(
     MINT_ITEM_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
   ),
-  resolvedOutputNonCanonical: createResolvedOutputNonCanonicalWorkflowRunner,
+  resolvedOutputNonCanonical: familyApplicationWorkflowRunnerFactory(
+    RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
+  ),
   mintDeclaredAssetLimit: familyApplicationWorkflowRunnerFactory(
     MINT_DECLARED_ASSET_LIMIT_FAMILY_APPLICATION_RECORD,
   ),
-  spendInputSignerMissing: createSpendInputSignerMissingWorkflowRunner,
+  spendInputSignerMissing: familyApplicationWorkflowRunnerFactory(
+    SPEND_INPUT_SIGNER_MISSING_FAMILY_APPLICATION_RECORD,
+  ),
   protectedOutputSignerMissing: familyApplicationWorkflowRunnerFactory(
     PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_APPLICATION_RECORD,
   ),
@@ -912,8 +658,9 @@ export const WORKFLOW_RUNNER_FACTORIES = Object.freeze({
   unusedRedeemer: familyApplicationWorkflowRunnerFactory(
     UNUSED_REDEEMER_FAMILY_APPLICATION_RECORD,
   ),
-  executionNativeScriptInvalid:
-    createExecutionNativeScriptInvalidWorkflowRunner,
+  executionNativeScriptInvalid: familyApplicationWorkflowRunnerFactory(
+    EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD,
+  ),
   scriptIntegrityHashMismatch: familyApplicationWorkflowRunnerFactory(
     SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_APPLICATION_RECORD,
   ),

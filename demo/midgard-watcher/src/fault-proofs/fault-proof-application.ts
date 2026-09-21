@@ -5,7 +5,6 @@ import {
   createManifestBoundTransitionTraceWorkflow,
   createManifestBoundValueConservationWorkflow,
   createTransitionTraceEventAuthority,
-  createTransitionTraceWorkflowRunner,
   createValueConservationWorkflowRunner,
   type ManifestBoundTransitionTraceWorkflowConfig,
   type ManifestBoundValueConservationWorkflowConfig,
@@ -19,10 +18,8 @@ import {
   classifyHeader as classifyProductionHeaderV1,
   type CompleteCanonicalReplayContext,
   createCatalogueCompleteCanonicalReplay,
-  createCrossBlockDuplicateEventWorkflowRunner,
   createCrossBlockSettlementAuthority,
   createDoubleSpendWorkflowRunner,
-  createExecutionNativeScriptInvalidWorkflowRunner,
   createExternalHistoricalNativeScriptSourceRoster,
   createHeaderClassifier,
   createHistoricalNativeScriptHistorySource,
@@ -82,18 +79,9 @@ import {
   createManifestBoundWithdrawnReferenceInputWorkflow,
   createManifestBoundWitnessScriptDecodingWorkflow,
   createManifestBoundZeroInputWorkflow,
-  createMinAdaWorkflowRunner,
-  createMintAuthorizationWorkflowRunner,
-  createMissingNativeScriptTxWorkflowRunner,
-  createMissingNativeScriptUtxoWorkflowRunner,
   createMissingSignatureWorkflowRunner,
-  createNativeScriptDecodingWorkflowRunner,
-  createNativeScriptInvalidWorkflowRunner,
   createNetworkIdWorkflowRunner,
-  createResolvedOutputNonCanonicalWorkflowRunner,
-  createSpendInputSignerMissingWorkflowRunner,
   createValidationTraceDisputeWorkflowRunner,
-  createWithdrawalMistagWorkflowRunner,
   executionNativeScriptInvalid as executionNativeScriptInvalidV1,
   type FraudProofCompletedVerification,
   type FraudProofWorkflowJournalEntry,
@@ -5423,7 +5411,7 @@ const createApplication = ({
       missingSignatureLoader,
       fundingProfile("missingSignature"),
     ),
-    missingNativeScriptTx: createMissingNativeScriptTxWorkflowRunner(
+    missingNativeScriptTx: WORKFLOW_RUNNER_FACTORIES.missingNativeScriptTx(
       missingNativeScriptTxLoader,
       fundingProfile("missingNativeScriptTx"),
     ),
@@ -5443,32 +5431,36 @@ const createApplication = ({
       networkIdLoader,
       fundingProfile("networkId"),
     ),
-    missingNativeScriptUtxo: createMissingNativeScriptUtxoWorkflowRunner(
+    missingNativeScriptUtxo: WORKFLOW_RUNNER_FACTORIES.missingNativeScriptUtxo(
       missingNativeScriptUtxoLoader,
       fundingProfile("missingNativeScriptUtxo"),
     ),
-    mintAuthorization: createMintAuthorizationWorkflowRunner(
+    mintAuthorization: WORKFLOW_RUNNER_FACTORIES.mintAuthorization(
       mintAuthorizationLoader,
       fundingProfile("mintAuthorization"),
     ),
-    nativeScriptInvalid: createNativeScriptInvalidWorkflowRunner(
+    nativeScriptInvalid: WORKFLOW_RUNNER_FACTORIES.nativeScriptInvalid(
       nativeScriptInvalidLoader,
       fundingProfile("nativeScriptInvalid"),
     ),
-    nativeScriptDecoding: createNativeScriptDecodingWorkflowRunner(
+    nativeScriptDecoding: WORKFLOW_RUNNER_FACTORIES.nativeScriptDecoding(
       nativeScriptDecodingLoader,
       fundingProfile("nativeScriptDecoding"),
     ),
-    withdrawalMistag: createWithdrawalMistagWorkflowRunner(
+    withdrawalMistag: WORKFLOW_RUNNER_FACTORIES.withdrawalMistag(
       withdrawalMistagLoader,
       fundingProfile("withdrawalMistag"),
     ),
-    crossBlockDuplicateEvent: createCrossBlockDuplicateEventWorkflowRunner(
-      crossBlockDuplicateEventLoader,
-      fundingProfile("crossBlockDuplicateEvent"),
+    crossBlockDuplicateEvent:
+      WORKFLOW_RUNNER_FACTORIES.crossBlockDuplicateEvent(
+        crossBlockDuplicateEventLoader,
+        fundingProfile("crossBlockDuplicateEvent"),
+      ),
+    minAda: WORKFLOW_RUNNER_FACTORIES.minAda(
+      minAdaLoader,
+      fundingProfile("minAda"),
     ),
-    minAda: createMinAdaWorkflowRunner(minAdaLoader, fundingProfile("minAda")),
-    transitionTrace: createTransitionTraceWorkflowRunner(
+    transitionTrace: WORKFLOW_RUNNER_FACTORIES.transitionTrace(
       transitionTraceLoader,
       fundingProfile("transitionTrace"),
     ),
@@ -5499,15 +5491,16 @@ const createApplication = ({
       mintItemNonCanonicalLoader,
       fundingProfile("mintItemNonCanonical"),
     ),
-    resolvedOutputNonCanonical: createResolvedOutputNonCanonicalWorkflowRunner(
-      resolvedOutputNonCanonicalLoader,
-      fundingProfile("resolvedOutputNonCanonical"),
-    ),
+    resolvedOutputNonCanonical:
+      WORKFLOW_RUNNER_FACTORIES.resolvedOutputNonCanonical(
+        resolvedOutputNonCanonicalLoader,
+        fundingProfile("resolvedOutputNonCanonical"),
+      ),
     mintDeclaredAssetLimit: WORKFLOW_RUNNER_FACTORIES.mintDeclaredAssetLimit(
       mintDeclaredAssetLimitLoader,
       fundingProfile("mintDeclaredAssetLimit"),
     ),
-    spendInputSignerMissing: createSpendInputSignerMissingWorkflowRunner(
+    spendInputSignerMissing: WORKFLOW_RUNNER_FACTORIES.spendInputSignerMissing(
       spendInputSignerMissingLoader,
       fundingProfile("spendInputSignerMissing"),
     ),
@@ -5536,7 +5529,7 @@ const createApplication = ({
         fundingProfile("executionSourceScriptDecoding"),
       ),
     executionNativeScriptInvalid:
-      createExecutionNativeScriptInvalidWorkflowRunner(
+      WORKFLOW_RUNNER_FACTORIES.executionNativeScriptInvalid(
         executionNativeScriptInvalidLoader,
         fundingProfile("executionNativeScriptInvalid"),
       ),

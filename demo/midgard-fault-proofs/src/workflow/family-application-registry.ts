@@ -11,9 +11,13 @@
  * with the state-queue removal set read from the definition's auxiliary
  * reference scripts; a decision-digest family on the authenticated certificate
  * shape derives its record the same way, laying each step into the config key
- * that names that step's contract. A family whose config shape is its own
- * writes a short record by hand: `doubleSpend`, and `mintItemNonCanonical`,
- * which has no definition.
+ * that names that step's contract. A cursor family without a decision digest
+ * derives its record from its definition too, declaring beside its roster the
+ * optional infrastructure it requires — the predecessor replay context or the
+ * historical native-script authority — and the config fields it reads from
+ * it. A family whose config shape is its own writes a short record by hand:
+ * `doubleSpend`, `transitionTrace`, and `mintItemNonCanonical`, which has no
+ * definition.
  *
  * `NOT_YET_REGISTERED_FAMILY_CATEGORIES` is a shrinking allow-list of
  * catalogue categories that have no record yet, following the pattern the
@@ -28,12 +32,26 @@ import {
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
+  createManifestBoundCrossBlockDuplicateEventWorkflow,
+  CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_DEFINITION,
+  type ManifestBoundCrossBlockDuplicateEventWorkflow,
+  type ManifestBoundCrossBlockDuplicateEventWorkflowConfig,
+  runOrResumeManifestBoundCrossBlockDuplicateEventWorkflow,
+} from "../cross-block-duplicate-event/workflow.js";
+import {
   createManifestBoundDistinctAssetAccumulationWorkflow,
   DISTINCT_ASSET_ACCUMULATION_FAMILY_DEFINITION,
   executeManifestBoundDistinctAssetAccumulationWorkflow,
   type ManifestBoundDistinctAssetAccumulationWorkflow,
   type ManifestBoundDistinctAssetAccumulationWorkflowConfig,
 } from "../distinct-asset-accumulation-limit/v1.js";
+import {
+  createManifestBoundExecutionNativeScriptInvalidWorkflow,
+  EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION,
+  type ManifestBoundExecutionNativeScriptInvalidWorkflow,
+  type ManifestBoundExecutionNativeScriptInvalidWorkflowConfig,
+  runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow,
+} from "../execution-native-script-invalid/v1.js";
 import {
   createManifestBoundExecutionSourceScriptDecodingWorkflow,
   executeManifestBoundExecutionSourceScriptDecodingWorkflow,
@@ -58,6 +76,20 @@ import {
 } from "../field-preimage-length-mismatch/authenticated-workflow.js";
 import { FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS } from "../field-preimage-length-mismatch/config.js";
 import {
+  createManifestBoundMinAdaWorkflow,
+  type ManifestBoundMinAdaWorkflow,
+  type ManifestBoundMinAdaWorkflowConfig,
+  MIN_ADA_FAMILY_DEFINITION,
+  runOrResumeManifestBoundMinAdaWorkflow,
+} from "../min-ada/workflow.js";
+import {
+  createManifestBoundMintAuthorizationWorkflow,
+  type ManifestBoundMintAuthorizationWorkflow,
+  type ManifestBoundMintAuthorizationWorkflowConfig,
+  MINT_AUTHORIZATION_FAMILY_DEFINITION,
+  runOrResumeManifestBoundMintAuthorizationWorkflow,
+} from "../mint-authorization/workflow.js";
+import {
   createManifestBoundMintDeclaredAssetLimitWorkflow,
   executeManifestBoundMintDeclaredAssetLimitWorkflow,
   type ManifestBoundMintDeclaredAssetLimitWorkflow,
@@ -72,6 +104,20 @@ import {
   MINT_ITEM_NON_CANONICAL_MANIFEST_CONTRACTS,
 } from "../mint-item-non-canonical/workflow.js";
 import {
+  createManifestBoundMissingNativeScriptTxWorkflow,
+  type ManifestBoundMissingNativeScriptTxWorkflow,
+  type ManifestBoundMissingNativeScriptTxWorkflowConfig,
+  MISSING_NATIVE_SCRIPT_TX_FAMILY_DEFINITION,
+  runOrResumeManifestBoundMissingNativeScriptTxWorkflow,
+} from "../missing-native-script-tx/workflow.js";
+import {
+  createManifestBoundMissingNativeScriptUtxoWorkflow,
+  type ManifestBoundMissingNativeScriptUtxoWorkflow,
+  type ManifestBoundMissingNativeScriptUtxoWorkflowConfig,
+  MISSING_NATIVE_SCRIPT_UTXO_FAMILY_DEFINITION,
+  runOrResumeManifestBoundMissingNativeScriptUtxoWorkflow,
+} from "../missing-native-script-utxo/workflow.js";
+import {
   createManifestBoundMissingRedeemerWorkflow,
   executeManifestBoundMissingRedeemerWorkflow,
   type ManifestBoundMissingRedeemerWorkflow,
@@ -85,6 +131,20 @@ import {
   type ManifestBoundMissingScriptSourceWorkflowConfig,
   MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION,
 } from "../missing-script-source/v1.js";
+import {
+  createManifestBoundNativeScriptDecodingWorkflow,
+  type ManifestBoundNativeScriptDecodingWorkflow,
+  type ManifestBoundNativeScriptDecodingWorkflowConfig,
+  NATIVE_SCRIPT_DECODING_FAMILY_DEFINITION,
+  runOrResumeManifestBoundNativeScriptDecodingWorkflow,
+} from "../native-script-decoding/workflow.js";
+import {
+  createManifestBoundNativeScriptInvalidWorkflow,
+  type ManifestBoundNativeScriptInvalidWorkflow,
+  type ManifestBoundNativeScriptInvalidWorkflowConfig,
+  NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION,
+  runOrResumeManifestBoundNativeScriptInvalidWorkflow,
+} from "../native-script-invalid/workflow.js";
 import {
   createManifestBoundObserverOrderInvalidWorkflow,
   executeManifestBoundObserverOrderInvalidWorkflow,
@@ -130,6 +190,14 @@ import {
   REDEEMER_CANONICITY_FAMILY_DEFINITION,
 } from "../redeemer-canonicity/runtime.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
+import {
+  createManifestBoundResolvedOutputNonCanonicalWorkflow,
+  executeManifestBoundResolvedOutputNonCanonicalWorkflow,
+  type ManifestBoundResolvedOutputNonCanonicalWorkflow,
+  type ManifestBoundResolvedOutputNonCanonicalWorkflowConfig,
+  RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION,
+  RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS,
+} from "../resolved-output-non-canonical/authenticated-workflow.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   createManifestBoundScriptIntegrityHashMismatchWorkflow,
@@ -146,6 +214,14 @@ import {
   SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION,
 } from "../script-integrity-hash-missing/v1.js";
 import {
+  createManifestBoundSpendInputSignerMissingWorkflow,
+  executeManifestBoundSpendInputSignerMissingWorkflow,
+  type ManifestBoundSpendInputSignerMissingWorkflow,
+  type ManifestBoundSpendInputSignerMissingWorkflowConfig,
+  SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION,
+  SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS,
+} from "../spend-input-signer-missing/authenticated-workflow.js";
+import {
   createManifestBoundTransactionOutputNonCanonicalWorkflow,
   executeManifestBoundTransactionOutputNonCanonicalWorkflow,
   type ManifestBoundTransactionOutputNonCanonicalWorkflow,
@@ -154,6 +230,13 @@ import {
   TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS,
 } from "../transaction-output-non-canonical/workflow.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
+import {
+  createManifestBoundTransitionTraceWorkflow,
+  type ManifestBoundTransitionTraceWorkflow,
+  type ManifestBoundTransitionTraceWorkflowConfig,
+  runOrResumeManifestBoundTransitionTraceWorkflow,
+  TRANSITION_TRACE_FAMILY_DEFINITION,
+} from "../transition-trace/workflow.js";
 import {
   createManifestBoundUnusedRedeemerWorkflow,
   executeManifestBoundUnusedRedeemerWorkflow,
@@ -169,6 +252,13 @@ import {
   UNUSED_SCRIPT_WITNESS_FAMILY_DEFINITION,
 } from "../unused-script-witness/v1.js";
 import {
+  createManifestBoundWithdrawalMistagWorkflow,
+  type ManifestBoundWithdrawalMistagWorkflow,
+  type ManifestBoundWithdrawalMistagWorkflowConfig,
+  runOrResumeManifestBoundWithdrawalMistagWorkflow,
+  WITHDRAWAL_MISTAG_FAMILY_DEFINITION,
+} from "../withdrawal-mistag/workflow.js";
+import {
   createManifestBoundWitnessScriptDecodingWorkflow,
   executeManifestBoundWitnessScriptDecodingWorkflow,
   type ManifestBoundWitnessScriptDecodingWorkflow,
@@ -176,6 +266,7 @@ import {
   WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION,
   WITNESS_SCRIPT_DECODING_MANIFEST_CONTRACTS,
 } from "../witness-script-decoding/workflow.js";
+import type { CompleteCanonicalReplayContext } from "./complete-replay.js";
 import {
   type ManifestBoundDaHashPreimageWorkflow,
   runOrResumeManifestBoundDaHashPreimageWorkflow,
@@ -194,6 +285,7 @@ import {
   type FamilyApplicationWorkflowIdentity,
   type FamilyCommonInfrastructure,
   familyDefinitionRoster,
+  type FamilyHistoricalNativeScriptAuthority,
   type FamilyResolvedReferenceScripts,
   type FamilyRosterDefinition,
   familyStepRole,
@@ -232,6 +324,181 @@ const requiredReference = (
   }
   return reference;
 };
+
+/**
+ * The predecessor replay context, laid into a family's config only when its
+ * record requires it and the host supplied one. The shared loop refuses a
+ * required context that is absent before `bindConfig` runs; here the field
+ * stays optional so a reconciliation-only invocation, which is exempt from
+ * the requirement, still binds.
+ */
+const optionalReplayContext = (
+  requires: readonly FamilyApplicationRequirement[],
+  infrastructure: FamilyCommonInfrastructure,
+): Readonly<{ replayContext?: CompleteCanonicalReplayContext }> =>
+  requires.includes("replayContext") &&
+  infrastructure.replayContext !== undefined
+    ? { replayContext: infrastructure.replayContext }
+    : {};
+
+/**
+ * The historical native-script authority, or a refusal naming the family
+ * without one. The shared loop refuses first; this is the guard `bindConfig`
+ * keeps for a caller that reaches it another way.
+ */
+const requiredHistoricalNativeScriptAuthority = (
+  category: FamilyCategory,
+  infrastructure: FamilyCommonInfrastructure,
+): FamilyHistoricalNativeScriptAuthority => {
+  if (infrastructure.historicalNativeScriptAuthority === undefined) {
+    throw new Error(
+      `${category} reconstructs historical native scripts, which this invocation carries no authority for`,
+    );
+  }
+  return infrastructure.historicalNativeScriptAuthority;
+};
+
+/**
+ * The historical authority under the `historicalNativeScript*` spelling the
+ * min-ADA, missing-native-script and transition-trace families read.
+ */
+const historicalNativeScriptPrefixedFields = (
+  authority: FamilyHistoricalNativeScriptAuthority,
+) =>
+  ({
+    historicalNativeScriptCheckpointStore: authority.checkpointStore,
+    historicalNativeScriptHistorySource: authority.historySource,
+  }) as const;
+
+/**
+ * The historical authority under the `historical*` spelling the
+ * certificate-shape signer and output families and the execution
+ * native-script family read.
+ */
+const historicalPrefixedFields = (
+  authority: FamilyHistoricalNativeScriptAuthority,
+) =>
+  ({
+    historicalCheckpointStore: authority.checkpointStore,
+    historicalSource: authority.historySource,
+  }) as const;
+
+/**
+ * How a cursor family reads the optional infrastructure it requires. The
+ * replay context has one spelling in every config, so it is laid in
+ * generically; the historical authority's two parts are spelled differently
+ * across the families, so each record names the fields it reads.
+ */
+type CursorFamilyRequirements = Readonly<{
+  requires: readonly FamilyApplicationRequirement[];
+  /**
+   * The config fields the family reads from the historical native-script
+   * authority. Present exactly when `requires` names the authority.
+   */
+  historicalNativeScriptAuthority?: (
+    authority: FamilyHistoricalNativeScriptAuthority,
+  ) => Readonly<Record<string, unknown>>;
+}>;
+
+/**
+ * The config fields a cursor family reads from the infrastructure its record
+ * requires. Refuses at import a layout without its flag or a flag without its
+ * layout, so a family cannot require the authority and never read it, or read
+ * it without the shared loop having checked that the host supplied it.
+ */
+const requiredInfrastructureFields = (
+  category: FamilyCategory,
+  family: CursorFamilyRequirements,
+): ((
+  infrastructure: FamilyCommonInfrastructure,
+) => Readonly<Record<string, unknown>>) => {
+  const requiresAuthority = family.requires.includes(
+    "historicalNativeScriptAuthority",
+  );
+  if (
+    requiresAuthority !==
+    (family.historicalNativeScriptAuthority !== undefined)
+  ) {
+    throw new Error(
+      `${category} must lay the historical native-script authority into its config exactly when it requires it`,
+    );
+  }
+  return (infrastructure) =>
+    Object.freeze({
+      ...optionalReplayContext(family.requires, infrastructure),
+      ...(family.historicalNativeScriptAuthority === undefined
+        ? {}
+        : family.historicalNativeScriptAuthority(
+            requiredHistoricalNativeScriptAuthority(category, infrastructure),
+          )),
+    });
+};
+
+/**
+ * A definition's roster resolved into the parts a config lays out: the chain
+ * steps in step order, the witness roles, the certificate when the definition
+ * binds it, and the declared auxiliary reference scripts.
+ */
+type ResolvedRosterParts = Readonly<{
+  steps: readonly UTxO[];
+  witnesses: Readonly<Record<string, UTxO>>;
+  fieldPreimageCertificateMint?: UTxO;
+  auxiliary: Readonly<Record<string, UTxO>>;
+}>;
+
+const resolveRosterParts = (
+  definition: FamilyRosterDefinition,
+  references: FamilyResolvedReferenceScripts,
+): ResolvedRosterParts =>
+  Object.freeze({
+    steps: Object.freeze(
+      familyStepContractNames(definition).map((_, index) =>
+        requiredReference(references, familyStepRole(index + 1)),
+      ),
+    ),
+    witnesses: Object.freeze(
+      Object.fromEntries(
+        definition.witnessRoles.map((role) => [
+          role,
+          requiredReference(references, role),
+        ]),
+      ),
+    ),
+    ...(definition.fieldPreimageCertificate
+      ? {
+          fieldPreimageCertificateMint: requiredReference(
+            references,
+            "fieldPreimageCertificateMint",
+          ),
+        }
+      : {}),
+    auxiliary: Object.freeze(
+      Object.fromEntries(
+        Object.keys(definition.auxiliaryReferenceScripts ?? {}).map((role) => [
+          role,
+          requiredReference(references, role),
+        ]),
+      ),
+    ),
+  });
+
+/**
+ * The `{steps, witnesses, certificate}` bundle most cursor families read
+ * their reference scripts from; a family with auxiliary scripts adds them
+ * under its own key.
+ */
+const referenceScriptBundle = ({
+  steps,
+  witnesses,
+  fieldPreimageCertificateMint,
+}: ResolvedRosterParts) =>
+  Object.freeze({
+    steps,
+    witnesses,
+    ...(fieldPreimageCertificateMint === undefined
+      ? {}
+      : { fieldPreimageCertificateMint }),
+  });
 
 /**
  * The linear families that may only execute against a classifier-admitted
@@ -310,7 +577,6 @@ const linearFamilyApplicationRecord = (
     familyStepRole(step.ordinal),
   );
   const requires = LINEAR_FAMILY_REQUIREMENTS[category] ?? [];
-  const bindsReplayContext = requires.includes("replayContext");
   return defineFamilyApplication({
     category,
     roster,
@@ -318,9 +584,7 @@ const linearFamilyApplicationRecord = (
     bindConfig: ({ infrastructure, references }): WidenedLinearConfig =>
       Object.freeze({
         ...commonBoundConfigFields(infrastructure),
-        ...(bindsReplayContext && infrastructure.replayContext !== undefined
-          ? { replayContext: infrastructure.replayContext }
-          : {}),
+        ...optionalReplayContext(requires, infrastructure),
         referenceScripts: Object.freeze({
           steps: Object.freeze(
             stepRoles.map((role) => requiredReference(references, role)),
@@ -518,45 +782,18 @@ const decisionDigestCursorFamilyApplicationRecord = <
   }
   const roster = familyDefinitionRoster(definition);
   assertFamilyDefinitionRoster(definition, roster);
-  const stepRoles = familyStepContractNames(definition).map((_, index) =>
-    familyStepRole(index + 1),
-  );
   return defineFamilyApplication<Category, Config, Workflow>({
     category,
     roster,
     requires: [],
     bindConfig: ({ infrastructure, references }): Config => {
+      const parts = resolveRosterParts(definition, references);
       const bound: DecisionDigestCursorFamilyConfig = Object.freeze({
         ...commonBoundConfigFields(infrastructure),
         decisionDigest: requiredDecisionDigest(category, infrastructure),
         referenceScripts: Object.freeze({
-          steps: Object.freeze(
-            stepRoles.map((role) => requiredReference(references, role)),
-          ),
-          witnesses: Object.freeze(
-            Object.fromEntries(
-              definition.witnessRoles.map((role) => [
-                role,
-                requiredReference(references, role),
-              ]),
-            ),
-          ),
-          ...(definition.fieldPreimageCertificate
-            ? {
-                fieldPreimageCertificateMint: requiredReference(
-                  references,
-                  "fieldPreimageCertificateMint",
-                ),
-              }
-            : {}),
-          removal: Object.freeze(
-            Object.fromEntries(
-              Object.keys(removalRoles).map((role) => [
-                role,
-                requiredReference(references, role),
-              ]),
-            ),
-          ),
+          ...referenceScriptBundle(parts),
+          removal: parts.auxiliary,
         }),
       });
       // The step list has the definition's step count and every role resolved
@@ -863,17 +1100,23 @@ const authenticatedCertificateFamilyApplicationRecord = <
   Workflow extends FamilyApplicationWorkflowIdentity<Category>,
 >(
   definition: FamilyRosterDefinition & Readonly<{ category: Category }>,
-  family: Readonly<{
-    contracts: Readonly<Record<string, string>>;
-    constructWorkflow: (config: Config) => Promise<Workflow>;
-    execute: (input: {
-      readonly workflow: Workflow;
-      readonly sources: readonly RetainedDaPayloadSource[];
-      readonly journal: FraudProofWorkflowJournalStore;
-    }) => Promise<unknown>;
-  }>,
+  family: Partial<CursorFamilyRequirements> &
+    Readonly<{
+      contracts: Readonly<Record<string, string>>;
+      constructWorkflow: (config: Config) => Promise<Workflow>;
+      execute: (input: {
+        readonly workflow: Workflow;
+        readonly sources: readonly RetainedDaPayloadSource[];
+        readonly journal: FraudProofWorkflowJournalStore;
+      }) => Promise<unknown>;
+    }>,
 ): FamilyApplicationRecord<Category, Config, Workflow> => {
   const { category } = definition;
+  const requires = family.requires ?? [];
+  const infrastructureFields = requiredInfrastructureFields(category, {
+    ...family,
+    requires,
+  });
   if (!definition.fieldPreimageCertificate) {
     throw new Error(
       `${category} is on the authenticated certificate shape but its definition does not bind the certificate`,
@@ -895,16 +1138,19 @@ const authenticatedCertificateFamilyApplicationRecord = <
   return defineFamilyApplication<Category, Config, Workflow>({
     category,
     roster,
-    requires: [],
+    requires,
     bindConfig: ({ infrastructure, references }): Config =>
       // Every step key was found above and every role resolves or throws, so
       // this is the family's exact config shape.
-      bindAuthenticatedCertificateFamilyConfig({
-        category,
-        infrastructure,
-        references,
-        stepConfigKeys,
-        witnessRoles: definition.witnessRoles,
+      Object.freeze({
+        ...bindAuthenticatedCertificateFamilyConfig({
+          category,
+          infrastructure,
+          references,
+          stepConfigKeys,
+          witnessRoles: definition.witnessRoles,
+        }),
+        ...infrastructureFields(infrastructure),
       }) as Config,
     constructWorkflow: family.constructWorkflow,
     execute: async ({ workflow, sources, journal }) =>
@@ -986,6 +1232,340 @@ export const WITNESS_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD =
   });
 
 /**
+ * Derives the record of a cursor family whose config lays the roster out in
+ * its own shape. The roster is the definition's; `bindConfig` receives it
+ * resolved into its parts, beside the common fields and the fields read from
+ * the infrastructure the record requires, and lays them into the family's
+ * config, so a script cannot be in the roster and absent from the config or
+ * the reverse.
+ */
+const cursorFamilyApplicationRecord = <
+  Category extends FamilyCategory,
+  Config,
+  Workflow extends FamilyApplicationWorkflowIdentity<Category>,
+>(
+  definition: FamilyRosterDefinition & Readonly<{ category: Category }>,
+  family: CursorFamilyRequirements &
+    Readonly<{
+      bindsDecisionDigest: boolean;
+      bindConfig: (input: {
+        /** The common fields and the fields read from required infrastructure. */
+        readonly common: ReturnType<typeof commonBoundConfigFields> &
+          Readonly<Record<string, unknown>>;
+        readonly roster: Readonly<Record<string, string>>;
+        readonly references: FamilyResolvedReferenceScripts;
+        readonly parts: ResolvedRosterParts;
+      }) => Config;
+      constructWorkflow: (config: Config) => Promise<Workflow>;
+      execute: (input: {
+        readonly workflow: Workflow;
+        readonly sources: readonly RetainedDaPayloadSource[];
+        readonly journal: FraudProofWorkflowJournalStore;
+      }) => Promise<unknown>;
+    }>,
+): FamilyApplicationRecord<Category, Config, Workflow> => {
+  const { category } = definition;
+  const roster = familyDefinitionRoster(definition);
+  assertFamilyDefinitionRoster(definition, roster);
+  const infrastructureFields = requiredInfrastructureFields(category, family);
+  return defineFamilyApplication<Category, Config, Workflow>({
+    category,
+    roster,
+    requires: family.requires,
+    bindConfig: ({ infrastructure, references }): Config =>
+      family.bindConfig({
+        common: Object.freeze({
+          ...commonBoundConfigFields(infrastructure),
+          ...infrastructureFields(infrastructure),
+        }),
+        roster,
+        references,
+        parts: resolveRosterParts(definition, references),
+      }),
+    constructWorkflow: family.constructWorkflow,
+    execute: family.execute,
+    bindsDecisionDigest: family.bindsDecisionDigest,
+  });
+};
+
+/**
+ * The config shape the cursor families without a decision digest share: the
+ * common infrastructure, the replay context when required, the fields read
+ * from the historical authority when required, and a reference-script bundle
+ * of the chain steps, the witness roster, the certificate when the definition
+ * binds it, and the definition's auxiliary scripts under the family's own key.
+ * Each family's own config type narrows the step tuple, the witness roster and
+ * the extra fields; the builder lays the roster in at this shape and asserts
+ * the family's exact type, which the definition's step count and role set make
+ * sound.
+ */
+type BundleCursorFamilyConfig = Readonly<{
+  manifest: unknown;
+  blueprintJson: string;
+  deploymentInfo: unknown;
+  headerHash: string;
+  lucid: LucidEvolution;
+  signer: ResolvedProverSigner;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
+  replayContext?: CompleteCanonicalReplayContext;
+  referenceScripts: Readonly<{
+    steps: readonly UTxO[];
+    witnesses: Readonly<Record<string, UTxO>>;
+    fieldPreimageCertificateMint?: UTxO;
+  }> &
+    Readonly<Record<string, unknown>>;
+}> &
+  Readonly<Record<string, unknown>>;
+
+/**
+ * Derives the record of a cursor family without a decision digest whose
+ * config reads its reference scripts from the shared bundle. The roster is
+ * the definition's; the record declares the infrastructure it requires and
+ * the fields it reads from it.
+ */
+const bundleCursorFamilyApplicationRecord = <
+  Category extends FamilyCategory,
+  Config extends BundleCursorFamilyConfig,
+  Workflow extends FamilyApplicationWorkflowIdentity<Category>,
+>(
+  definition: FamilyRosterDefinition & Readonly<{ category: Category }>,
+  family: CursorFamilyRequirements &
+    Readonly<{
+      /**
+       * The bundle key the definition's auxiliary reference scripts are laid
+       * under. Present exactly when the definition declares any.
+       */
+      auxiliaryReferenceScriptsKey?: string;
+      constructWorkflow: (config: Config) => Promise<Workflow>;
+      execute: (input: {
+        readonly workflow: Workflow;
+        readonly sources: readonly RetainedDaPayloadSource[];
+        readonly journal: FraudProofWorkflowJournalStore;
+      }) => Promise<unknown>;
+    }>,
+): FamilyApplicationRecord<Category, Config, Workflow> => {
+  const { category } = definition;
+  const declaresAuxiliary =
+    Object.keys(definition.auxiliaryReferenceScripts ?? {}).length > 0;
+  if (
+    declaresAuxiliary !==
+    (family.auxiliaryReferenceScriptsKey !== undefined)
+  ) {
+    throw new Error(
+      `${category} must lay its auxiliary reference scripts into the bundle exactly when its definition declares them`,
+    );
+  }
+  const { auxiliaryReferenceScriptsKey } = family;
+  return cursorFamilyApplicationRecord<Category, Config, Workflow>(definition, {
+    requires: family.requires,
+    ...(family.historicalNativeScriptAuthority === undefined
+      ? {}
+      : {
+          historicalNativeScriptAuthority:
+            family.historicalNativeScriptAuthority,
+        }),
+    bindsDecisionDigest: false,
+    bindConfig: ({ common, parts }): Config => {
+      const bound: BundleCursorFamilyConfig = Object.freeze({
+        ...common,
+        referenceScripts: Object.freeze({
+          ...referenceScriptBundle(parts),
+          ...(auxiliaryReferenceScriptsKey === undefined
+            ? {}
+            : { [auxiliaryReferenceScriptsKey]: parts.auxiliary }),
+        }),
+      });
+      // The step list has the definition's step count and every role resolved
+      // or threw above, so this is the family's exact config shape.
+      return bound as Config;
+    },
+    constructWorkflow: family.constructWorkflow,
+    execute: family.execute,
+  });
+};
+
+/**
+ * The four cursor families without a decision digest on the plain and
+ * replay-context shapes. Each row names its exact config and workflow types
+ * so the record's `bindConfig` result is what its `constructWorkflow`
+ * consumes.
+ */
+export const NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "nativeScriptInvalid",
+    ManifestBoundNativeScriptInvalidWorkflowConfig,
+    ManifestBoundNativeScriptInvalidWorkflow
+  >(NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION, {
+    requires: [],
+    constructWorkflow: createManifestBoundNativeScriptInvalidWorkflow,
+    execute: runOrResumeManifestBoundNativeScriptInvalidWorkflow,
+  });
+
+export const NATIVE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "nativeScriptDecoding",
+    ManifestBoundNativeScriptDecodingWorkflowConfig,
+    ManifestBoundNativeScriptDecodingWorkflow
+  >(NATIVE_SCRIPT_DECODING_FAMILY_DEFINITION, {
+    requires: ["replayContext"],
+    constructWorkflow: createManifestBoundNativeScriptDecodingWorkflow,
+    execute: runOrResumeManifestBoundNativeScriptDecodingWorkflow,
+  });
+
+export const MINT_AUTHORIZATION_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "mintAuthorization",
+    ManifestBoundMintAuthorizationWorkflowConfig,
+    ManifestBoundMintAuthorizationWorkflow
+  >(MINT_AUTHORIZATION_FAMILY_DEFINITION, {
+    requires: ["replayContext"],
+    constructWorkflow: createManifestBoundMintAuthorizationWorkflow,
+    execute: runOrResumeManifestBoundMintAuthorizationWorkflow,
+  });
+
+export const WITHDRAWAL_MISTAG_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "withdrawalMistag",
+    ManifestBoundWithdrawalMistagWorkflowConfig,
+    ManifestBoundWithdrawalMistagWorkflow
+  >(WITHDRAWAL_MISTAG_FAMILY_DEFINITION, {
+    requires: ["replayContext"],
+    constructWorkflow: createManifestBoundWithdrawalMistagWorkflow,
+    execute: runOrResumeManifestBoundWithdrawalMistagWorkflow,
+  });
+
+/**
+ * The eight families that reconstruct pre-genesis native scripts through the
+ * historical authority. Each record names the fields its config reads the
+ * authority's history source and checkpoint store from; the requirement flag
+ * and that layout are checked against each other at import.
+ */
+export const MIN_ADA_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "minAda",
+    ManifestBoundMinAdaWorkflowConfig,
+    ManifestBoundMinAdaWorkflow
+  >(MIN_ADA_FAMILY_DEFINITION, {
+    requires: ["historicalNativeScriptAuthority"],
+    historicalNativeScriptAuthority: historicalNativeScriptPrefixedFields,
+    auxiliaryReferenceScriptsKey: "yields",
+    constructWorkflow: createManifestBoundMinAdaWorkflow,
+    execute: runOrResumeManifestBoundMinAdaWorkflow,
+  });
+
+export const MISSING_NATIVE_SCRIPT_TX_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "missingNativeScriptTx",
+    ManifestBoundMissingNativeScriptTxWorkflowConfig,
+    ManifestBoundMissingNativeScriptTxWorkflow
+  >(MISSING_NATIVE_SCRIPT_TX_FAMILY_DEFINITION, {
+    requires: ["historicalNativeScriptAuthority"],
+    historicalNativeScriptAuthority: (authority) => ({
+      ...historicalNativeScriptPrefixedFields(authority),
+      historicalNativeScriptL1Roster: authority.l1SourceRoster,
+    }),
+    constructWorkflow: createManifestBoundMissingNativeScriptTxWorkflow,
+    execute: runOrResumeManifestBoundMissingNativeScriptTxWorkflow,
+  });
+
+export const MISSING_NATIVE_SCRIPT_UTXO_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "missingNativeScriptUtxo",
+    ManifestBoundMissingNativeScriptUtxoWorkflowConfig,
+    ManifestBoundMissingNativeScriptUtxoWorkflow
+  >(MISSING_NATIVE_SCRIPT_UTXO_FAMILY_DEFINITION, {
+    requires: ["historicalNativeScriptAuthority"],
+    historicalNativeScriptAuthority: historicalNativeScriptPrefixedFields,
+    constructWorkflow: createManifestBoundMissingNativeScriptUtxoWorkflow,
+    execute: runOrResumeManifestBoundMissingNativeScriptUtxoWorkflow,
+  });
+
+export const CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "crossBlockDuplicateEvent",
+    ManifestBoundCrossBlockDuplicateEventWorkflowConfig,
+    ManifestBoundCrossBlockDuplicateEventWorkflow
+  >(CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_DEFINITION, {
+    requires: ["historicalNativeScriptAuthority"],
+    historicalNativeScriptAuthority: (authority) => ({
+      historySource: authority.historySource,
+      checkpointStore: authority.checkpointStore,
+    }),
+    constructWorkflow: createManifestBoundCrossBlockDuplicateEventWorkflow,
+    execute: runOrResumeManifestBoundCrossBlockDuplicateEventWorkflow,
+  });
+
+export const EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD =
+  bundleCursorFamilyApplicationRecord<
+    "executionNativeScriptInvalid",
+    ManifestBoundExecutionNativeScriptInvalidWorkflowConfig,
+    ManifestBoundExecutionNativeScriptInvalidWorkflow
+  >(EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION, {
+    requires: ["historicalNativeScriptAuthority"],
+    historicalNativeScriptAuthority: historicalPrefixedFields,
+    auxiliaryReferenceScriptsKey: "removal",
+    constructWorkflow: createManifestBoundExecutionNativeScriptInvalidWorkflow,
+    execute: runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow,
+  });
+
+/**
+ * Transition-trace reads every reference script from one map keyed by
+ * contract name — its chain steps, its witnesses and its yield entries alike —
+ * so its record lays the derived roster out by the contract each role names.
+ */
+export const TRANSITION_TRACE_FAMILY_APPLICATION_RECORD =
+  cursorFamilyApplicationRecord<
+    "transitionTrace",
+    ManifestBoundTransitionTraceWorkflowConfig,
+    ManifestBoundTransitionTraceWorkflow
+  >(TRANSITION_TRACE_FAMILY_DEFINITION, {
+    requires: ["historicalNativeScriptAuthority"],
+    historicalNativeScriptAuthority: historicalNativeScriptPrefixedFields,
+    bindsDecisionDigest: false,
+    bindConfig: ({ common, roster, references }) =>
+      Object.freeze({
+        ...common,
+        referenceScripts: Object.freeze(
+          Object.fromEntries(
+            Object.entries(roster).map(([role, contractName]) => [
+              contractName,
+              requiredReference(references, role),
+            ]),
+          ),
+        ),
+      }) as ManifestBoundTransitionTraceWorkflowConfig,
+    constructWorkflow: createManifestBoundTransitionTraceWorkflow,
+    execute: runOrResumeManifestBoundTransitionTraceWorkflow,
+  });
+
+export const RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_APPLICATION_RECORD =
+  authenticatedCertificateFamilyApplicationRecord<
+    "resolvedOutputNonCanonical",
+    ManifestBoundResolvedOutputNonCanonicalWorkflowConfig,
+    ManifestBoundResolvedOutputNonCanonicalWorkflow
+  >(RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION, {
+    contracts: RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS,
+    requires: ["historicalNativeScriptAuthority"],
+    historicalNativeScriptAuthority: historicalPrefixedFields,
+    constructWorkflow: createManifestBoundResolvedOutputNonCanonicalWorkflow,
+    execute: executeManifestBoundResolvedOutputNonCanonicalWorkflow,
+  });
+
+export const SPEND_INPUT_SIGNER_MISSING_FAMILY_APPLICATION_RECORD =
+  authenticatedCertificateFamilyApplicationRecord<
+    "spendInputSignerMissing",
+    ManifestBoundSpendInputSignerMissingWorkflowConfig,
+    ManifestBoundSpendInputSignerMissingWorkflow
+  >(SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION, {
+    contracts: SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS,
+    requires: ["historicalNativeScriptAuthority"],
+    historicalNativeScriptAuthority: historicalPrefixedFields,
+    constructWorkflow: createManifestBoundSpendInputSignerMissingWorkflow,
+    execute: executeManifestBoundSpendInputSignerMissingWorkflow,
+  });
+
+/**
  * The second hand-written record. Mint-item-non-canonical has no
  * `FamilyDefinition`: it binds its four-step chain through its own loader.
  * Its manifest-contracts map is already role to contract, so it is the roster
@@ -1043,22 +1623,10 @@ export const MINT_ITEM_NON_CANONICAL_FAMILY_APPLICATION_RECORD =
  * the registry the complete installed set.
  */
 export const NOT_YET_REGISTERED_FAMILY_CATEGORIES = Object.freeze([
-  "transitionTrace",
   "validationTraceDispute",
-  "nativeScriptDecoding",
   "missingSignature",
-  "missingNativeScriptTx",
-  "withdrawalMistag",
-  "crossBlockDuplicateEvent",
   "valueNotPreserved",
-  "mintAuthorization",
   "networkId",
-  "missingNativeScriptUtxo",
-  "nativeScriptInvalid",
-  "minAda",
-  "resolvedOutputNonCanonical",
-  "spendInputSignerMissing",
-  "executionNativeScriptInvalid",
 ] as const satisfies readonly FraudProofCatalogueCategoryName[]);
 
 export type NotYetRegisteredFamilyCategory =
@@ -1102,6 +1670,21 @@ export const FAMILY_APPLICATION_REGISTRY = Object.freeze({
     TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
   witnessScriptDecoding: WITNESS_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
   mintItemNonCanonical: MINT_ITEM_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
+  nativeScriptInvalid: NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD,
+  nativeScriptDecoding: NATIVE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD,
+  mintAuthorization: MINT_AUTHORIZATION_FAMILY_APPLICATION_RECORD,
+  withdrawalMistag: WITHDRAWAL_MISTAG_FAMILY_APPLICATION_RECORD,
+  minAda: MIN_ADA_FAMILY_APPLICATION_RECORD,
+  missingNativeScriptTx: MISSING_NATIVE_SCRIPT_TX_FAMILY_APPLICATION_RECORD,
+  missingNativeScriptUtxo: MISSING_NATIVE_SCRIPT_UTXO_FAMILY_APPLICATION_RECORD,
+  transitionTrace: TRANSITION_TRACE_FAMILY_APPLICATION_RECORD,
+  crossBlockDuplicateEvent:
+    CROSS_BLOCK_DUPLICATE_EVENT_FAMILY_APPLICATION_RECORD,
+  resolvedOutputNonCanonical:
+    RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_APPLICATION_RECORD,
+  spendInputSignerMissing: SPEND_INPUT_SIGNER_MISSING_FAMILY_APPLICATION_RECORD,
+  executionNativeScriptInvalid:
+    EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD,
 } satisfies {
   // Completeness only: every remaining catalogue category has exactly one
   // row, keyed by the record's own category. A record's config and workflow

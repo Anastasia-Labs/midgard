@@ -34,22 +34,10 @@ import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
-import {
-  DaLibp2pRetainedDaSource,
-  type RetainedDaPayloadSource,
-} from "../transition-trace/fetch.js";
+import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import {
-  assertWorkflowJournalActuation,
-  bindWorkflowActuationJournal,
-  workflowActuationAuthorizingDecisionDigest,
-} from "../workflow/actuation-permit.js";
-import {
-  WORKFLOW_ADAPTER_RUNNER,
-  type WorkflowAdapterReadinessInput,
-  type WorkflowAdapterRunner,
-} from "../workflow/adapters.js";
+import { workflowActuationAuthorizingDecisionDigest } from "../workflow/actuation-permit.js";
 import {
   encodeWorkflowArtifact,
   requireWorkflowArtifactMatches,
@@ -75,7 +63,6 @@ import {
 } from "../workflow/family-definition.js";
 import type { FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import { bindWorkflowFundingReservationJournal } from "../workflow/funding-reservation-permit.js";
 import type {
   HistoricalNativeScriptCheckpointStore,
   HistoricalNativeScriptHistorySource,
@@ -84,10 +71,7 @@ import {
   requireHistoricalNativeScriptCorpus,
   resolveHistoricalNativeScriptCorpus,
 } from "../workflow/historical-native-script-corpus.js";
-import {
-  DirectoryFraudProofWorkflowJournalStore,
-  type FraudProofWorkflowJournalStore,
-} from "../workflow/journal.js";
+import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
@@ -98,7 +82,6 @@ import {
   type FraudProofWorkflowAction,
   type FraudProofWorkflowRunResult,
 } from "../workflow/orchestrator.js";
-import { continuePendingWorkflow } from "../workflow/pending-continuation.js";
 import {
   captureLocallyEvaluatedTransaction,
   type FraudProofPreSubmitBoundary,
@@ -1006,15 +989,16 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow =
     workflow,
     sources,
     journal,
-    decisionDigest,
   }: {
     workflow: ManifestBoundExecutionNativeScriptInvalidWorkflow;
     sources: readonly RetainedDaPayloadSource[];
     journal: FraudProofWorkflowJournalStore;
-    decisionDigest: string;
   }): Promise<FraudProofWorkflowRunResult> => {
-    if (workflowActuationAuthorizingDecisionDigest(journal) !== decisionDigest)
-      throw new Error("executionNativeScriptInvalid journal decision changed");
+    const decisionDigest = workflowActuationAuthorizingDecisionDigest(journal);
+    if (decisionDigest === undefined)
+      throw new Error(
+        "executionNativeScriptInvalid journal carries no admitted decision digest",
+      );
     const assembled = assembleBoundManifestBoundFamilyWorkflow(
       EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION,
       workflow.deployment,
@@ -1031,93 +1015,3 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow =
       ).resolveReplayContext,
     });
   };
-
-export type LoadedExecutionNativeScriptInvalidWorkflow = Readonly<{
-  schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundExecutionNativeScriptInvalidWorkflowConfig;
-  retainedDaSources: readonly DaLibp2pRetainedDaSource[];
-  close: () => Promise<void>;
-}>;
-
-export type LoadExecutionNativeScriptInvalidWorkflow = (input: {
-  runtimeConfigPath: string;
-  invocation: WorkflowAdapterReadinessInput;
-}) => Promise<LoadedExecutionNativeScriptInvalidWorkflow>;
-
-export const createExecutionNativeScriptInvalidWorkflowRunnerSurface = ({
-  loadRuntimeConfig,
-}: {
-  loadRuntimeConfig: LoadExecutionNativeScriptInvalidWorkflow;
-}): WorkflowAdapterRunner =>
-  Object.freeze({
-    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
-    runOrResume: async (invocation) => {
-      if (invocation.category !== "executionNativeScriptInvalid")
-        throw new Error("executionNativeScriptInvalid runner category changed");
-      const journal = bindWorkflowFundingReservationJournal({
-        permit: invocation.fundingReservationPermit,
-        journal: bindWorkflowActuationJournal({
-          journal: new DirectoryFraudProofWorkflowJournalStore(
-            invocation.journalDirectory,
-          ),
-          permit: invocation.actuationPermit,
-          decisionDigest: invocation.decisionDigest,
-          deploymentFingerprint: invocation.deploymentFingerprint,
-          category: "executionNativeScriptInvalid",
-          headerHash: invocation.headerHash,
-        }),
-      });
-      assertWorkflowJournalActuation({
-        journal,
-        deploymentFingerprint: invocation.deploymentFingerprint,
-        category: "executionNativeScriptInvalid",
-        headerHash: invocation.headerHash,
-        checkpoint: "runner_start",
-      });
-      const loaded = await loadRuntimeConfig({
-        runtimeConfigPath: invocation.runtimeConfigPath,
-        invocation,
-      });
-      try {
-        if (
-          loaded.schemaVersion !==
-            "midgard-production-fraud-proof-runtime-config-v1" ||
-          loaded.retainedDaSources.length === 0 ||
-          loaded.retainedDaSources.some(
-            (source) => !(source instanceof DaLibp2pRetainedDaSource),
-          )
-        )
-          throw new Error(
-            "executionNativeScriptInvalid requires concrete public retained DA",
-          );
-        const workflow =
-          await createManifestBoundExecutionNativeScriptInvalidWorkflow(
-            loaded.config,
-          );
-        if (
-          workflow.binding.deploymentFingerprint !==
-            invocation.deploymentFingerprint ||
-          workflow.binding.definition.headerHash !== invocation.headerHash
-        )
-          throw new Error(
-            "executionNativeScriptInvalid runtime binding changed invocation",
-          );
-        return await continuePendingWorkflow({
-          invocation,
-          journal: journal,
-          execute: () =>
-            runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow({
-              workflow,
-              sources: loaded.retainedDaSources,
-              journal,
-              decisionDigest: invocation.decisionDigest,
-            }),
-        });
-      } finally {
-        await loaded.close();
-      }
-    },
-  });
-
-export const createExecutionNativeScriptInvalidWorkflowRunnerFactory =
-  createExecutionNativeScriptInvalidWorkflowRunnerSurface;

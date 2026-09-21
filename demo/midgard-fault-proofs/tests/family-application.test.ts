@@ -159,6 +159,46 @@ describe("shared family application loop", () => {
     expect(f.resolveReferenceScript).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["replayContext", { replayContext: { sentinel: "replay" } }],
+    [
+      "historicalNativeScriptAuthority",
+      { historicalNativeScriptAuthority: { sentinel: "authority" } },
+    ],
+  ] as const)(
+    "refuses a record requiring %s when the host omits it and binds it when supplied",
+    async (requirement, supplied) => {
+      const f = fixture({
+        requires: [requirement],
+        bindConfig: ({ infrastructure }) =>
+          ({ roles: [], bound: infrastructure[requirement] }) as never,
+      });
+      await expect(
+        applyFamilyApplicationRecord({
+          record: f.record,
+          infrastructure: f.infrastructure,
+          resolveReferenceScript: f.resolveReferenceScript,
+          invocation: f.invocation,
+        }),
+      ).rejects.toThrow(
+        `minFee application requires ${requirement}, which the host did not supply`,
+      );
+      expect(f.resolveReferenceScript).not.toHaveBeenCalled();
+      const applied = await applyFamilyApplicationRecord({
+        record: f.record,
+        infrastructure: {
+          ...f.infrastructure,
+          ...(supplied as Partial<FamilyCommonInfrastructure>),
+        },
+        resolveReferenceScript: f.resolveReferenceScript,
+        invocation: f.invocation,
+      });
+      expect((applied.config as { bound?: unknown }).bound).toBe(
+        Object.values(supplied)[0],
+      );
+    },
+  );
+
   it("refuses a reconciliation exemption that cannot prove itself", async () => {
     const f = fixture({ requires: ["validationChallenge"] });
     await expect(

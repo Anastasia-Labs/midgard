@@ -318,7 +318,7 @@ const workflowAdapterRegistrationRows = [
     "native-script-decoding/replay.ts",
     "native-script-decoding/artifact.ts",
     "native-script-decoding/workflow.ts",
-    "workflow/runtime.ts#createNativeScriptDecodingWorkflowRunner",
+    "workflow/family-application-registry.ts#NATIVE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD",
   ]),
   {
     category: "missingSignature",

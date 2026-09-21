@@ -117,7 +117,7 @@ non-membership. Step 05 mints permanent evidence for registered-chain removal.
 
 Source artifacts preserve submitted full transaction bytes and authenticate the
 invalid adjudication committed by a forced leaf. Installed complete replay and
-`createMinAdaWorkflowRunner` support both directions and resume step-02/03
+the record-derived `minAda` runner support both directions and resume step-02/03
 selfloops from authenticated L1 checkpoints. Direct submit helpers complete their
 bounded continuations when confirmation is enabled; without confirmation they
 return the submitted continuation's `nextStepIndex` for later observation.
