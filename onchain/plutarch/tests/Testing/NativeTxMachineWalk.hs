@@ -107,6 +107,7 @@ import Midgard.NativeTxMachineWalk (
   pwalkFold,
   pwalkIsComplete,
   pwalkNext,
+  pwalkNextExtent,
   pwalkNextItemIndex,
   pwalkRemaining,
   pwalkSkip,
@@ -831,7 +832,18 @@ finishedWalk = walkBytes hash28Field 3
 
 stepGuardTests :: [TestTree]
 stepGuardTests =
-  [ -- §7.2: arithmetic locates an item, it does not excuse reading its wrapper.
+  [ testCase "extent-only advance returns the authenticated fixed-stride payload window" $
+      passertEval $
+        pmatch aikenAuthenticateSource $ \(PPair verified witnessSet) ->
+          pmatch (aikenAuthenticateOpenFrom verified witnessSet) $ \(PPair view start) ->
+            pmatch (pwalkNextExtent # view # start) $ \(PPair extent advanced) ->
+              pmatch extent $ \(PPair offset len) ->
+                (offset #== 4) #&& (len #== 38) #&& (pwalkRemaining # advanced #== 63)
+  , testCase "extent-only advance retains exact final exhaustion" $
+      pfails $
+        pmatch (resume shortFinalField shortFinalForged) $ \(PPair view checkpoint) ->
+          pmatch (pwalkNextExtent # view # checkpoint) $ \(PPair extent _) -> extent
+  , -- §7.2: arithmetic locates an item, it does not excuse reading its wrapper.
     -- This preimage's first slot fills the whole 30-byte stride but spells its
     -- wrapper with a length the stride does not admit. The view constructs —
     -- §7.4's count check is arithmetic over the total length, which this

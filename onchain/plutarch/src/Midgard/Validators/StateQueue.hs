@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 {- |
 Module      : Midgard.Validators.StateQueue
 Description : Plutarch port of @validators/state-queue.ak@.
@@ -34,6 +36,11 @@ only the payload conditions live here.
 module Midgard.Validators.StateQueue (
     stateQueueSpendValidator,
     stateQueueMintValidator,
+    stateQueueMergeYieldValidator,
+    stateQueueRemoveUnavailableYieldValidator,
+    stateQueueRemoveUnattestedYieldValidator,
+    stateQueueRemoveFraudulentYieldValidator,
+    stateQueueCommitYieldValidator,
     pcommitBlockHeaderOutputIsValidV1,
     pcommitBlockHeaderOperatorIsLegitimateV1,
     pcommitBlockHeaderCarriesPreviousBlockV1,
@@ -63,7 +70,7 @@ import Plutarch.Builtin.Crypto (pblake2b_224)
 import Plutarch.Core.Utils (pand'List)
 import Plutarch.LedgerApi.Interval (PInterval)
 import Plutarch.LedgerApi.Utils (PMaybeData (..))
-import Plutarch.LedgerApi.V3 (PAddress (..), PCredential (..), PCurrencySymbol, PMintValue, POutputDatum (..), PPosixTime, PPubKeyHash, PRedeemer, PScriptContext (..), PScriptHash, PScriptInfo (..), PScriptPurpose (..), PTxInInfo (..), PTxInfo (..), PTxOut (..), PTxOutRef)
+import Plutarch.LedgerApi.V3 (PAddress (..), PCredential (..), PCurrencySymbol, PMintValue, POutputDatum (..), PPosixTime, PPubKeyHash, PRedeemer, PScriptContext (..), PScriptHash, PScriptInfo (..), PScriptPurpose (..), PTokenName (..), PTxInInfo (..), PTxInfo (..), PTxOut (..), PTxOutRef)
 import Plutarch.LedgerApi.Value qualified as Value
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
@@ -77,6 +84,7 @@ import LinkedList (
     premove,
     pspendForAddingOrRemovingAnElement,
  )
+import Midgard.StateQueueYield qualified as Yield
 import Midgard.AvailabilityChallenge qualified as Availability
 import Midgard.Common.Utils (
     pgetInclusiveBoundsOfAShortValidityRange,
@@ -1030,16 +1038,16 @@ pavailabilityStatusUpdateIsAuthorizedV1 redeemers availabilityPolicyId redeemerI
                     plet (pmatch encoded $ \(PBuiltinPair _ pairSecond) -> pairSecond) $ \fields ->
                         pif
                             (tag #== 0 #|| tag #== 1)
-                            ( pfromData (punsafeCoerce @(PAsData PInteger) $ pelemAt # 4 # fields)
+                            ( pfromData (punsafeCoerce @(PAsData PInteger) $ pelemAt # 5 # fields)
                                 #== inputIndex
-                                #&& pfromData (punsafeCoerce @(PAsData PInteger) $ pelemAt # 5 # fields)
+                                #&& pfromData (punsafeCoerce @(PAsData PInteger) $ pelemAt # 6 # fields)
                                 #== outputIndex
                             )
                             ( pif
                                 (tag #== 3)
-                                ( pfromData (punsafeCoerce @(PAsData PInteger) $ pelemAt # 3 # fields)
+                                ( pfromData (punsafeCoerce @(PAsData PInteger) $ pelemAt # 4 # fields)
                                     #== inputIndex
-                                    #&& pfromData (punsafeCoerce @(PAsData PInteger) $ pelemAt # 4 # fields)
+                                    #&& pfromData (punsafeCoerce @(PAsData PInteger) $ pelemAt # 5 # fields)
                                     #== outputIndex
                                 )
                                 (pconstant False)
@@ -1064,6 +1072,7 @@ stateQueueMintValidator ::
             :--> PAsData PCurrencySymbol -- settlement script hash
             :--> PAsData PCurrencySymbol -- DA attestation policy id
             :--> PAsData PCurrencySymbol -- availability policy id
+            :--> PAsData PCurrencySymbol -- reference-script authentication policy
             :--> PScriptContext
             :--> PUnit
         )
@@ -1071,14 +1080,15 @@ stateQueueMintValidator =
     plam $
         \hubOracleScriptHash
          correctionLockScriptHash
-         activeOperatorsScriptHash
-         activeOperatorsAddr
-         retiredOperatorsScriptHash
-         schedulerScriptHash
-         fraudProofScriptHash
-         settlementScriptHash
-         daAttestationPolicyId
-         availabilityPolicyId
+         _activeOperatorsScriptHash
+         _activeOperatorsAddr
+         _retiredOperatorsScriptHash
+         _schedulerScriptHash
+         _fraudProofScriptHash
+         _settlementScriptHash
+         _daAttestationPolicyId
+         _availabilityPolicyId
+         referenceScriptAuthPolicyId
          ctx -> P.do
                 PScriptContext{pscriptContext'txInfo, pscriptContext'redeemer, pscriptContext'scriptInfo} <-
                     pmatch ctx
@@ -1089,18 +1099,13 @@ stateQueueMintValidator =
                 PTxInfo
                     { ptxInfo'inputs
                     , ptxInfo'outputs
-                    , ptxInfo'referenceInputs
                     , ptxInfo'mint
-                    , ptxInfo'signatories
-                    , ptxInfo'redeemers
                     , ptxInfo'validRange
                     } <-
                     pmatch pscriptContext'txInfo
                 inputs <- plet $ pfromData ptxInfo'inputs
                 outputs <- plet $ pfromData ptxInfo'outputs
-                referenceInputs <- plet $ pfromData ptxInfo'referenceInputs
                 mint <- plet $ pfromData ptxInfo'mint
-                redeemers <- plet $ pto (pto (pfromData ptxInfo'redeemers))
                 redeemer <-
                     plet $ pfromData (punsafeCoerceOwnRedeemer @PMintRedeemer pscriptContext'redeemer)
                 correctionLockAddress <- plet $ pscriptAddress correctionLockScriptHash
@@ -1137,195 +1142,355 @@ stateQueueMintValidator =
                                             , pvalidateDeinit ownPolicyId hubOracleScriptHash inputs mint
                                             ]
                                 )
-                        ------------------------------------------------------------------
-                        PCommitBlockHeader
-                            { psqCommit'newBlockOutputIndex
-                            , psqCommit'continuedLatestBlockOutputIndex
-                            , psqCommit'operator
-                            , psqCommit'schedulerRefInputIndex
-                            , psqCommit'activeOperatorsInputIndex
-                            , psqCommit'activeOperatorsRedeemerIndex
-                            , psqCommit'mConfirmedStateRefInputIndex
-                            , psqCommit'mHeadStateQueueNodeRefInputIndex
-                            } ->
-                                Correction.preferencesIdle
-                                    # referenceInputs
-                                    # hubOracleScriptHash
-                                    # correctionLockAddress
-                                    #&& pvalidateCommitBlockHeader
-                                        ownPolicyId
-                                        daAttestationPolicyId
-                                        activeOperatorsAddr
-                                        schedulerScriptHash
-                                        inputs
-                                        outputs
-                                        referenceInputs
-                                        mint
-                                        redeemers
-                                        (pfromData ptxInfo'signatories)
-                                        ptxInfo'validRange
-                                        (pfromData psqCommit'newBlockOutputIndex)
-                                        (pfromData psqCommit'continuedLatestBlockOutputIndex)
-                                        psqCommit'operator
-                                        (pfromData psqCommit'schedulerRefInputIndex)
-                                        (pfromData psqCommit'activeOperatorsInputIndex)
-                                        (pfromData psqCommit'activeOperatorsRedeemerIndex)
-                                        (pfromData psqCommit'mConfirmedStateRefInputIndex)
-                                        (pfromData psqCommit'mHeadStateQueueNodeRefInputIndex)
-                        ------------------------------------------------------------------
-                        PRemoveFraudulentBlockHeader
-                            { psqRemove'fraudulentOperator
-                            , psqRemove'fraudulentBlocksHeaderHash
-                            , psqRemove'slashingApproach
-                            , psqRemove'fraudProofRefInputIndex
-                            , psqRemove'blockRemovalApproach
-                            } ->
-                                plet
-                                    (Correction.puniqueInput # inputs # hubOracleScriptHash # correctionLockAddress)
-                                    ( \_ ->
-                                        pvalidateRemoveFraudulentBlockHeader
+                        PCommitBlockHeader{psqCommit'yieldToRefInputIndex} ->
+                            plet (Yield.prequireAuthenticatedZeroYield
+                                # pscriptContext'txInfo
+                                # pfromData referenceScriptAuthPolicyId
+                                # pcon (PTokenName $ pconstant "StateQueueCommitYield")
+                                # pfromData psqCommit'yieldToRefInputIndex) $ \_ -> pconstant True
+                        PRemoveFraudulentBlockHeader{psqRemove'yieldToRefInputIndex} ->
+                            plet (Yield.prequireAuthenticatedZeroYield
+                                # pscriptContext'txInfo
+                                # pfromData referenceScriptAuthPolicyId
+                                # pcon (PTokenName $ pconstant "StateQueueFraudRemovalYield")
+                                # pfromData psqRemove'yieldToRefInputIndex) $ \_ -> pconstant True
+                        PRemoveUnattestedBlockAfterTimeout{psqRemoveUnattested'yieldToRefInputIndex} ->
+                            plet (Yield.prequireAuthenticatedZeroYield
+                                # pscriptContext'txInfo
+                                # pfromData referenceScriptAuthPolicyId
+                                # pcon (PTokenName $ pconstant "StateQueueUnattestedYield")
+                                # pfromData psqRemoveUnattested'yieldToRefInputIndex) $ \_ -> pconstant True
+                        PRemoveUnavailableBlockAfterTimeout{psqRemoveUnavailable'yieldToRefInputIndex} ->
+                            plet (Yield.prequireAuthenticatedZeroYield
+                                # pscriptContext'txInfo
+                                # pfromData referenceScriptAuthPolicyId
+                                # pcon (PTokenName $ pconstant "StateQueueUnavailableYield")
+                                # pfromData psqRemoveUnavailable'yieldToRefInputIndex) $ \_ -> pconstant True
+                        PMergeToConfirmedStateV1{psqMerge'yieldToRefInputIndex} ->
+                            plet (Yield.prequireAuthenticatedZeroYield
+                                # pscriptContext'txInfo
+                                # pfromData referenceScriptAuthPolicyId
+                                # pcon (PTokenName $ pconstant "StateQueueMergeYield")
+                                # pfromData psqMerge'yieldToRefInputIndex) $ \_ -> pconstant True
+                    )
+                    (pconstant ())
+                    perror
+
+-- | Aiken @state_queue_yields.commit.withdraw@: bind the exact mint arm.
+stateQueueCommitYieldValidator :: forall s. Term s (PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PAsData PAddress :--> PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
+stateQueueCommitYieldValidator = plam $ \ownPolicyId hubOracleScriptHash correctionLockScriptHash _activeOperatorsScriptHash activeOperatorsAddr schedulerScriptHash daAttestationPolicyId ctx -> P.do
+    PScriptContext{pscriptContext'txInfo} <- pmatch ctx
+    PTxInfo
+        { ptxInfo'inputs
+        , ptxInfo'outputs
+        , ptxInfo'referenceInputs
+        , ptxInfo'mint
+        , ptxInfo'signatories
+        , ptxInfo'redeemers
+        , ptxInfo'validRange
+        } <-
+        pmatch pscriptContext'txInfo
+    inputs <- plet $ pfromData ptxInfo'inputs
+    outputs <- plet $ pfromData ptxInfo'outputs
+    referenceInputs <- plet $ pfromData ptxInfo'referenceInputs
+    mint <- plet $ pfromData ptxInfo'mint
+    redeemers <- plet $ pto (pto (pfromData ptxInfo'redeemers))
+    redeemer <-
+        plet $ pfromData (punsafeCoerceRedeemer @PMintRedeemer $ Yield.pgetYieldedMintRedeemer # ctx # pfromData ownPolicyId)
+    correctionLockAddress <- plet $ pscriptAddress correctionLockScriptHash
+
+    pif
+        (pmatch redeemer $ \case
+            PCommitBlockHeader
+                { psqCommit'newBlockOutputIndex
+                , psqCommit'continuedLatestBlockOutputIndex
+                , psqCommit'operator
+                , psqCommit'schedulerRefInputIndex
+                , psqCommit'activeOperatorsInputIndex
+                , psqCommit'activeOperatorsRedeemerIndex
+                , psqCommit'mConfirmedStateRefInputIndex
+                , psqCommit'mHeadStateQueueNodeRefInputIndex
+                } ->
+                    Correction.preferencesIdle
+                        # referenceInputs
+                        # hubOracleScriptHash
+                        # correctionLockAddress
+                        #&& pvalidateCommitBlockHeader
+                            ownPolicyId
+                            daAttestationPolicyId
+                            activeOperatorsAddr
+                            schedulerScriptHash
+                            inputs
+                            outputs
+                            referenceInputs
+                            mint
+                            redeemers
+                            (pfromData ptxInfo'signatories)
+                            ptxInfo'validRange
+                            (pfromData psqCommit'newBlockOutputIndex)
+                            (pfromData psqCommit'continuedLatestBlockOutputIndex)
+                            psqCommit'operator
+                            (pfromData psqCommit'schedulerRefInputIndex)
+                            (pfromData psqCommit'activeOperatorsInputIndex)
+                            (pfromData psqCommit'activeOperatorsRedeemerIndex)
+                            (pfromData psqCommit'mConfirmedStateRefInputIndex)
+                            (pfromData psqCommit'mHeadStateQueueNodeRefInputIndex)
+            _ -> perror)
+        (pconstant ())
+        perror
+
+-- | Aiken @state_queue_yields.remove_fraudulent.withdraw@: bind the exact mint arm.
+stateQueueRemoveFraudulentYieldValidator :: forall s. Term s (PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
+stateQueueRemoveFraudulentYieldValidator = plam $ \ownPolicyId hubOracleScriptHash correctionLockScriptHash activeOperatorsScriptHash retiredOperatorsScriptHash fraudProofScriptHash ctx -> P.do
+    PScriptContext{pscriptContext'txInfo} <- pmatch ctx
+    PTxInfo
+        { ptxInfo'inputs
+        , ptxInfo'outputs
+        , ptxInfo'referenceInputs
+        , ptxInfo'mint
+        , ptxInfo'redeemers
+        } <-
+        pmatch pscriptContext'txInfo
+    inputs <- plet $ pfromData ptxInfo'inputs
+    outputs <- plet $ pfromData ptxInfo'outputs
+    referenceInputs <- plet $ pfromData ptxInfo'referenceInputs
+    mint <- plet $ pfromData ptxInfo'mint
+    redeemers <- plet $ pto (pto (pfromData ptxInfo'redeemers))
+    redeemer <-
+        plet $ pfromData (punsafeCoerceRedeemer @PMintRedeemer $ Yield.pgetYieldedMintRedeemer # ctx # pfromData ownPolicyId)
+    correctionLockAddress <- plet $ pscriptAddress correctionLockScriptHash
+
+    pif
+        (pmatch redeemer $ \case
+            PRemoveFraudulentBlockHeader
+                { psqRemove'fraudulentOperator
+                , psqRemove'fraudulentBlocksHeaderHash
+                , psqRemove'slashingApproach
+                , psqRemove'fraudProofRefInputIndex
+                , psqRemove'blockRemovalApproach
+                } ->
+                    plet
+                        (Correction.puniqueInput # inputs # hubOracleScriptHash # correctionLockAddress)
+                        ( \_ ->
+                            pvalidateRemoveFraudulentBlockHeader
+                                ownPolicyId
+                                activeOperatorsScriptHash
+                                retiredOperatorsScriptHash
+                                fraudProofScriptHash
+                                inputs
+                                outputs
+                                referenceInputs
+                                mint
+                                redeemers
+                                psqRemove'fraudulentOperator
+                                (pfromData psqRemove'fraudulentBlocksHeaderHash)
+                                (pfromData psqRemove'slashingApproach)
+                                (pfromData psqRemove'fraudProofRefInputIndex)
+                                (pfromData psqRemove'blockRemovalApproach)
+                        )
+            _ -> perror)
+        (pconstant ())
+        perror
+
+-- | Aiken @state_queue_yields.remove_unattested.withdraw@: bind the exact mint arm.
+stateQueueRemoveUnattestedYieldValidator :: forall s. Term s (PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PAsData PScriptHash :--> PScriptContext :--> PUnit)
+stateQueueRemoveUnattestedYieldValidator = plam $ \ownPolicyId hubOracleScriptHash correctionLockScriptHash ctx -> P.do
+    PScriptContext{pscriptContext'txInfo} <- pmatch ctx
+    PTxInfo
+        { ptxInfo'inputs
+        , ptxInfo'outputs
+        , ptxInfo'referenceInputs
+        , ptxInfo'mint
+        , ptxInfo'validRange
+        } <-
+        pmatch pscriptContext'txInfo
+    inputs <- plet $ pfromData ptxInfo'inputs
+    outputs <- plet $ pfromData ptxInfo'outputs
+    referenceInputs <- plet $ pfromData ptxInfo'referenceInputs
+    mint <- plet $ pfromData ptxInfo'mint
+    redeemer <-
+        plet $ pfromData (punsafeCoerceRedeemer @PMintRedeemer $ Yield.pgetYieldedMintRedeemer # ctx # pfromData ownPolicyId)
+    correctionLockAddress <- plet $ pscriptAddress correctionLockScriptHash
+
+    pif
+        (pmatch redeemer $ \case
+            PRemoveUnattestedBlockAfterTimeout
+                { psqRemoveUnattested'timedOutHeaderHash
+                , psqRemoveUnattested'removalApproach
+                } ->
+                    plet
+                        (Correction.puniqueInput # inputs # hubOracleScriptHash # correctionLockAddress)
+                        ( \_ ->
+                            pmatch (pfromData psqRemoveUnattested'removalApproach) $ \case
+                                PPruneTimedOutBlockDescendant
+                                    { ppruneTimedOut'confirmedStateRefInputIndex
+                                    , ppruneTimedOut'timedOutNodeInputOutref
+                                    , ppruneTimedOut'timedOutNodeOutputIndex
+                                    } ->
+                                        ppruneTimedOutBlockDescendantV1
                                             ownPolicyId
-                                            activeOperatorsScriptHash
-                                            retiredOperatorsScriptHash
-                                            fraudProofScriptHash
                                             inputs
                                             outputs
                                             referenceInputs
                                             mint
-                                            redeemers
-                                            psqRemove'fraudulentOperator
-                                            (pfromData psqRemove'fraudulentBlocksHeaderHash)
-                                            (pfromData psqRemove'slashingApproach)
-                                            (pfromData psqRemove'fraudProofRefInputIndex)
-                                            (pfromData psqRemove'blockRemovalApproach)
-                                    )
-                        ------------------------------------------------------------------
-                        PRemoveUnattestedBlockAfterTimeout
-                            { psqRemoveUnattested'timedOutHeaderHash
-                            , psqRemoveUnattested'removalApproach
-                            } ->
+                                            ptxInfo'validRange
+                                            (pfromData psqRemoveUnattested'timedOutHeaderHash)
+                                            (pfromData ppruneTimedOut'confirmedStateRefInputIndex)
+                                            (pfromData ppruneTimedOut'timedOutNodeInputOutref)
+                                            (pfromData ppruneTimedOut'timedOutNodeOutputIndex)
+                                PRemoveTimedOutHead
+                                    { premoveTimedOutHead'confirmedStateInputOutref
+                                    , premoveTimedOutHead'confirmedStateOutputIndex
+                                    } ->
+                                        premoveUnattestedHeadAfterTimeoutV1
+                                            ownPolicyId
+                                            inputs
+                                            outputs
+                                            mint
+                                            ptxInfo'validRange
+                                            (pfromData psqRemoveUnattested'timedOutHeaderHash)
+                                            (pfromData premoveTimedOutHead'confirmedStateInputOutref)
+                                            (pfromData premoveTimedOutHead'confirmedStateOutputIndex)
+                        )
+            _ -> perror)
+        (pconstant ())
+        perror
+
+-- | Aiken @state_queue_yields.remove_unavailable.withdraw@: bind the exact mint arm.
+stateQueueRemoveUnavailableYieldValidator :: forall s. Term s (PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
+stateQueueRemoveUnavailableYieldValidator = plam $ \ownPolicyId hubOracleScriptHash correctionLockScriptHash availabilityPolicyId ctx -> P.do
+    PScriptContext{pscriptContext'txInfo} <- pmatch ctx
+    PTxInfo
+        { ptxInfo'inputs
+        , ptxInfo'outputs
+        , ptxInfo'referenceInputs
+        , ptxInfo'mint
+        } <-
+        pmatch pscriptContext'txInfo
+    inputs <- plet $ pfromData ptxInfo'inputs
+    outputs <- plet $ pfromData ptxInfo'outputs
+    referenceInputs <- plet $ pfromData ptxInfo'referenceInputs
+    mint <- plet $ pfromData ptxInfo'mint
+    redeemer <-
+        plet $ pfromData (punsafeCoerceRedeemer @PMintRedeemer $ Yield.pgetYieldedMintRedeemer # ctx # pfromData ownPolicyId)
+    correctionLockAddress <- plet $ pscriptAddress correctionLockScriptHash
+
+    pif
+        (pmatch redeemer $ \case
+            PRemoveUnavailableBlockAfterTimeout
+                { psqRemoveUnavailable'unavailableHeaderHash
+                , psqRemoveUnavailable'challengeAssetName
+                , psqRemoveUnavailable'removalApproach
+                } ->
+                    plet
+                        (Correction.puniqueInput # inputs # hubOracleScriptHash # correctionLockAddress)
+                        ( \lockInput ->
+                            pmatch lockInput $ \PTxInInfo{ptxInInfo'resolved = lockOutput} ->
                                 plet
-                                    (Correction.puniqueInput # inputs # hubOracleScriptHash # correctionLockAddress)
-                                    ( \_ ->
-                                        pmatch (pfromData psqRemoveUnattested'removalApproach) $ \case
-                                            PPruneTimedOutBlockDescendant
-                                                { ppruneTimedOut'confirmedStateRefInputIndex
-                                                , ppruneTimedOut'timedOutNodeInputOutref
-                                                , ppruneTimedOut'timedOutNodeOutputIndex
-                                                } ->
-                                                    ppruneTimedOutBlockDescendantV1
-                                                        ownPolicyId
-                                                        inputs
-                                                        outputs
-                                                        referenceInputs
-                                                        mint
-                                                        ptxInfo'validRange
-                                                        (pfromData psqRemoveUnattested'timedOutHeaderHash)
-                                                        (pfromData ppruneTimedOut'confirmedStateRefInputIndex)
-                                                        (pfromData ppruneTimedOut'timedOutNodeInputOutref)
-                                                        (pfromData ppruneTimedOut'timedOutNodeOutputIndex)
-                                            PRemoveTimedOutHead
-                                                { premoveTimedOutHead'confirmedStateInputOutref
-                                                , premoveTimedOutHead'confirmedStateOutputIndex
-                                                } ->
-                                                    premoveUnattestedHeadAfterTimeoutV1
-                                                        ownPolicyId
-                                                        inputs
-                                                        outputs
-                                                        mint
-                                                        ptxInfo'validRange
-                                                        (pfromData psqRemoveUnattested'timedOutHeaderHash)
-                                                        (pfromData premoveTimedOutHead'confirmedStateInputOutref)
-                                                        (pfromData premoveTimedOutHead'confirmedStateOutputIndex)
+                                    ( pcon $
+                                        Correction.PLocked
+                                            psqRemoveUnavailable'unavailableHeaderHash
+                                            (pdata $ pcon $ Correction.PAvailabilityChallenge psqRemoveUnavailable'challengeAssetName)
                                     )
-                        ------------------------------------------------------------------
-                        PRemoveUnavailableBlockAfterTimeout
-                            { psqRemoveUnavailable'unavailableHeaderHash
-                            , psqRemoveUnavailable'challengeAssetName
-                            , psqRemoveUnavailable'removalApproach
-                            } ->
-                                plet
-                                    (Correction.puniqueInput # inputs # hubOracleScriptHash # correctionLockAddress)
-                                    ( \lockInput ->
-                                        pmatch lockInput $ \PTxInInfo{ptxInInfo'resolved = lockOutput} ->
-                                            plet
-                                                ( pcon $
-                                                    Correction.PLocked
-                                                        psqRemoveUnavailable'unavailableHeaderHash
-                                                        (pdata $ pcon $ Correction.PAvailabilityChallenge psqRemoveUnavailable'challengeAssetName)
-                                                )
-                                                ( \expectedLock ->
-                                                    let lockAuthorized =
-                                                            pmatch (Correction.pdecodeDatum # lockOutput) $ \case
-                                                                Correction.PIdle ->
-                                                                    pquantityOfMint
-                                                                        # mint
-                                                                        # availabilityPolicyId
-                                                                        # psqRemoveUnavailable'challengeAssetName
-                                                                        #== (-1)
-                                                                current ->
-                                                                    pcon current
-                                                                        #== expectedLock
-                                                                        #&& pquantityOfMint
-                                                                        # mint
-                                                                        # availabilityPolicyId
-                                                                        # psqRemoveUnavailable'challengeAssetName
-                                                                        #== 0
-                                                     in lockAuthorized
-                                                            #&& pmatch
-                                                                (pfromData psqRemoveUnavailable'removalApproach)
-                                                                ( \case
-                                                                    PPruneTimedOutBlockDescendant
-                                                                        { ppruneTimedOut'confirmedStateRefInputIndex
-                                                                        , ppruneTimedOut'timedOutNodeInputOutref
-                                                                        , ppruneTimedOut'timedOutNodeOutputIndex
-                                                                        } ->
-                                                                            ppruneUnavailableBlockDescendantV1
-                                                                                ownPolicyId
-                                                                                inputs
-                                                                                outputs
-                                                                                referenceInputs
-                                                                                mint
-                                                                                (pfromData psqRemoveUnavailable'unavailableHeaderHash)
-                                                                                (pto $ pfromData psqRemoveUnavailable'challengeAssetName)
-                                                                                (pfromData ppruneTimedOut'confirmedStateRefInputIndex)
-                                                                                (pfromData ppruneTimedOut'timedOutNodeInputOutref)
-                                                                                (pfromData ppruneTimedOut'timedOutNodeOutputIndex)
-                                                                    PRemoveTimedOutHead
-                                                                        { premoveTimedOutHead'confirmedStateInputOutref
-                                                                        , premoveTimedOutHead'confirmedStateOutputIndex
-                                                                        } ->
-                                                                            premoveUnavailableHeadV1
-                                                                                ownPolicyId
-                                                                                inputs
-                                                                                outputs
-                                                                                mint
-                                                                                (pfromData psqRemoveUnavailable'unavailableHeaderHash)
-                                                                                (pto $ pfromData psqRemoveUnavailable'challengeAssetName)
-                                                                                (pfromData premoveTimedOutHead'confirmedStateInputOutref)
-                                                                                (pfromData premoveTimedOutHead'confirmedStateOutputIndex)
-                                                                )
-                                                )
+                                    ( \expectedLock ->
+                                        let lockAuthorized =
+                                                pmatch (Correction.pdecodeDatum # lockOutput) $ \case
+                                                    Correction.PIdle ->
+                                                        pquantityOfMint
+                                                            # mint
+                                                            # availabilityPolicyId
+                                                            # psqRemoveUnavailable'challengeAssetName
+                                                            #== (-1)
+                                                    current ->
+                                                        pcon current
+                                                            #== expectedLock
+                                                            #&& pquantityOfMint
+                                                            # mint
+                                                            # availabilityPolicyId
+                                                            # psqRemoveUnavailable'challengeAssetName
+                                                            #== 0
+                                         in lockAuthorized
+                                                #&& pmatch
+                                                    (pfromData psqRemoveUnavailable'removalApproach)
+                                                    ( \case
+                                                        PPruneTimedOutBlockDescendant
+                                                            { ppruneTimedOut'confirmedStateRefInputIndex
+                                                            , ppruneTimedOut'timedOutNodeInputOutref
+                                                            , ppruneTimedOut'timedOutNodeOutputIndex
+                                                            } ->
+                                                                ppruneUnavailableBlockDescendantV1
+                                                                    ownPolicyId
+                                                                    inputs
+                                                                    outputs
+                                                                    referenceInputs
+                                                                    mint
+                                                                    (pfromData psqRemoveUnavailable'unavailableHeaderHash)
+                                                                    (pto $ pfromData psqRemoveUnavailable'challengeAssetName)
+                                                                    (pfromData ppruneTimedOut'confirmedStateRefInputIndex)
+                                                                    (pfromData ppruneTimedOut'timedOutNodeInputOutref)
+                                                                    (pfromData ppruneTimedOut'timedOutNodeOutputIndex)
+                                                        PRemoveTimedOutHead
+                                                            { premoveTimedOutHead'confirmedStateInputOutref
+                                                            , premoveTimedOutHead'confirmedStateOutputIndex
+                                                            } ->
+                                                                premoveUnavailableHeadV1
+                                                                    ownPolicyId
+                                                                    inputs
+                                                                    outputs
+                                                                    mint
+                                                                    (pfromData psqRemoveUnavailable'unavailableHeaderHash)
+                                                                    (pto $ pfromData psqRemoveUnavailable'challengeAssetName)
+                                                                    (pfromData premoveTimedOutHead'confirmedStateInputOutref)
+                                                                    (pfromData premoveTimedOutHead'confirmedStateOutputIndex)
+                                                    )
                                     )
-                        ------------------------------------------------------------------
-                        PMergeToConfirmedStateV1{} ->
-                            Correction.preferencesIdle
-                                # referenceInputs
-                                # hubOracleScriptHash
-                                # correctionLockAddress
-                                #&& pvalidateMergeToConfirmedState
-                                    ownPolicyId
-                                    daAttestationPolicyId
-                                    settlementScriptHash
-                                    inputs
-                                    outputs
-                                    mint
-                                    redeemers
-                                    ptxInfo'validRange
-                                    redeemer
-                    )
-                    (pconstant ())
-                    perror
+                        )
+            _ -> perror)
+        (pconstant ())
+        perror
+
+-- | Aiken @state_queue_yields.merge.withdraw@: bind the exact mint arm.
+stateQueueMergeYieldValidator :: forall s. Term s (PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
+stateQueueMergeYieldValidator = plam $ \ownPolicyId hubOracleScriptHash correctionLockScriptHash settlementScriptHash daAttestationPolicyId ctx -> P.do
+    PScriptContext{pscriptContext'txInfo} <- pmatch ctx
+    PTxInfo
+        { ptxInfo'inputs
+        , ptxInfo'outputs
+        , ptxInfo'referenceInputs
+        , ptxInfo'mint
+        , ptxInfo'redeemers
+        , ptxInfo'validRange
+        } <-
+        pmatch pscriptContext'txInfo
+    inputs <- plet $ pfromData ptxInfo'inputs
+    outputs <- plet $ pfromData ptxInfo'outputs
+    referenceInputs <- plet $ pfromData ptxInfo'referenceInputs
+    mint <- plet $ pfromData ptxInfo'mint
+    redeemers <- plet $ pto (pto (pfromData ptxInfo'redeemers))
+    redeemer <-
+        plet $ pfromData (punsafeCoerceRedeemer @PMintRedeemer $ Yield.pgetYieldedMintRedeemer # ctx # pfromData ownPolicyId)
+    correctionLockAddress <- plet $ pscriptAddress correctionLockScriptHash
+
+    pif
+        (pmatch redeemer $ \case
+            PMergeToConfirmedStateV1{} ->
+                Correction.preferencesIdle
+                    # referenceInputs
+                    # hubOracleScriptHash
+                    # correctionLockAddress
+                    #&& pvalidateMergeToConfirmedState
+                        ownPolicyId
+                        daAttestationPolicyId
+                        settlementScriptHash
+                        inputs
+                        outputs
+                        mint
+                        redeemers
+                        ptxInfo'validRange
+                        redeemer
+            _ -> perror)
+        (pconstant ())
+        perror
 
 --------------------------------------------------------------------------------
 -- InitV1 / Deinit

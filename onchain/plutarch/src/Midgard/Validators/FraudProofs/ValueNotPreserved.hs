@@ -5,6 +5,7 @@ module Midgard.Validators.FraudProofs.ValueNotPreserved (
     valueNotPreservedStep04Validator,
 ) where
 
+import Midgard.FraudProofs.ValueUnion (PConservationClaim (..))
 import Plutarch.LedgerApi.Utils (PMaybeData (..))
 import Plutarch.LedgerApi.V3 (
     PAddress,
@@ -15,6 +16,7 @@ import Plutarch.LedgerApi.V3 (
  )
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
+import Plutarch.Unsafe (punsafeCoerce)
 
 import Midgard.FraudProofs.Common (pcontinue, pfinalize, ppassNativeTxToNextStep)
 import Midgard.FraudProofs.FieldOpening (
@@ -57,48 +59,62 @@ import Midgard.Validators.FraudProofs.Step (
     pexpectDatum,
     pexpectStateAs,
     pexpecting,
+    pstateIsAbsent,
     pstep,
  )
 
 valueNotPreservedStep01Validator ::
     forall s.
-    Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PAsData PScriptHash :--> PScriptContext :--> PUnit)
-valueNotPreservedStep01Validator = plam $ \step02ScriptHash computationThreadPolicy hubOracle ctx ->
+    Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PAsData PScriptHash :--> PAsData PScriptHash :--> PAsData PScriptHash :--> PScriptContext :--> PUnit)
+valueNotPreservedStep01Validator = plam $ \step02ScriptHash computationThreadPolicy hubOracle acceptedSourceHash forcedSourceHash ctx ->
     pstep ctx $ \datum redeemer ownOutRef txInfo ->
-        pdispatch @_ @PStep01Args computationThreadPolicy datum redeemer ownOutRef txInfo $ \args -> P.do
-            PStep01Args{pstep01Args'txInclusion, pstep01Args'claimedAsset, pstep01Args'claimedDirection} <- pmatch args
-            PTxInfo{ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <- pmatch txInfo
-            claimedAsset <- plet $ pfromData pstep01Args'claimedAsset
-            ppassNativeTxToNextStep
-                computationThreadPolicy
-                hubOracle
-                datum
-                (pfromData pstep01Args'txInclusion)
-                ownOutRef
-                (pfromData ptxInfo'inputs)
-                (pfromData ptxInfo'referenceInputs)
-                (pfromData ptxInfo'outputs)
-                (pto $ pto $ pfromData ptxInfo'redeemers)
-                $ \_ownScriptHash _threadName _prover _inputState outputScriptHash outputStateData header badTxId badTxView -> P.do
-                    PHeaderV1{pheader'prevUtxosRoot} <- pmatch $ pfromData header
-                    PVerifiedMidgardNativeTxCompact{pverified'txCompact} <- pmatch badTxView
-                    PNativeTxCompact{pcompact'body, pcompact'validityCode} <- pmatch pverified'txCompact
-                    PNativeTxBodyCompact{pbodyCompact'fee} <- pmatch pcompact'body
-                    expected <-
-                        plet $
-                            pcon $
-                                PStep02State
-                                    (pdata badTxId)
-                                    pstep01Args'claimedAsset
-                                    pstep01Args'claimedDirection
-                                    (pdata pbodyCompact'fee)
-                                    pheader'prevUtxosRoot
-                                    (pdata 0)
-                                    (pdata 0)
-                    pexpecting (pcompact'validityCode #== 0) $
-                        pexpecting (pclaimedAssetIsWellFormedV1 # claimedAsset) $
-                            pexpecting (outputScriptHash #== step02ScriptHash) $
-                                pexpecting (outputStateData #== pforgetData (pdata expected)) (pconstant True)
+        pdispatch @_ @PStep01Args computationThreadPolicy datum redeemer ownOutRef txInfo $ \args ->
+            pmatch args $ \case
+                PLaunchUnion inputIndex outputIndex claim -> P.do
+                    PTxInfo{ptxInfo'inputs, ptxInfo'outputs} <- pmatch txInfo
+                    pcontinue computationThreadPolicy (pexpectDatum datum) (pfromData inputIndex) (pfromData outputIndex) ownOutRef (pfromData ptxInfo'inputs) (pfromData ptxInfo'outputs) $ \_ _ _ prior outputHash outputState ->
+                        pstateIsAbsent prior
+                            #&& outputState
+                            #== claim
+                            #&& pmatch
+                                (punsafeCoerce @PConservationClaim claim)
+                                ( \case
+                                    PAcceptedImbalance asset _ -> pclaimedAssetIsWellFormedV1 # pfromData asset #&& outputHash #== acceptedSourceHash
+                                    PForcedConservation -> outputHash #== forcedSourceHash
+                                )
+                PStep01Args{pstep01Args'txInclusion, pstep01Args'claimedAsset, pstep01Args'claimedDirection} -> P.do
+                    PTxInfo{ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <- pmatch txInfo
+                    claimedAsset <- plet $ pfromData pstep01Args'claimedAsset
+                    ppassNativeTxToNextStep
+                        computationThreadPolicy
+                        hubOracle
+                        datum
+                        (pfromData pstep01Args'txInclusion)
+                        ownOutRef
+                        (pfromData ptxInfo'inputs)
+                        (pfromData ptxInfo'referenceInputs)
+                        (pfromData ptxInfo'outputs)
+                        (pto $ pto $ pfromData ptxInfo'redeemers)
+                        $ \_ownScriptHash _threadName _prover _inputState outputScriptHash outputStateData header badTxId badTxView -> P.do
+                            PHeaderV1{pheader'prevUtxosRoot} <- pmatch $ pfromData header
+                            PVerifiedMidgardNativeTxCompact{pverified'txCompact} <- pmatch badTxView
+                            PNativeTxCompact{pcompact'body, pcompact'validityCode} <- pmatch pverified'txCompact
+                            PNativeTxBodyCompact{pbodyCompact'fee} <- pmatch pcompact'body
+                            expected <-
+                                plet $
+                                    pcon $
+                                        PStep02State
+                                            (pdata badTxId)
+                                            pstep01Args'claimedAsset
+                                            pstep01Args'claimedDirection
+                                            (pdata pbodyCompact'fee)
+                                            pheader'prevUtxosRoot
+                                            (pdata 0)
+                                            (pdata 0)
+                            pexpecting (pcompact'validityCode #== 0) $
+                                pexpecting (pclaimedAssetIsWellFormedV1 # claimedAsset) $
+                                    pexpecting (outputScriptHash #== step02ScriptHash) $
+                                        pexpecting (outputStateData #== pforgetData (pdata expected)) (pconstant True)
 
 valueNotPreservedStep02Validator ::
     forall s.

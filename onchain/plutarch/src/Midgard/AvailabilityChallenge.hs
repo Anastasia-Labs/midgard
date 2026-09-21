@@ -22,6 +22,7 @@ module Midgard.AvailabilityChallenge (
   PCommitmentV1 (..),
   PStateQueueStatusV1 (..),
   PMintRedeemerV1 (..),
+  PYieldRedeemer (..),
   PSpendRedeemerV1 (..),
   PBondDatumV1 (..),
   PTrancheDatumV1 (..),
@@ -58,7 +59,7 @@ module Midgard.AvailabilityChallenge (
 import Data.Kind (Type)
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
-import Plutarch.Builtin.ByteString (pintegerToByteString, pmostSignificantFirst)
+import Plutarch.Builtin.ByteString (pintegerToByteString, pmostSignificantLast)
 import Plutarch.Builtin.Crypto (pblake2b_224, pblake2b_256)
 import Plutarch.Core.Utils (pand'List)
 import Plutarch.LedgerApi.Utils (PMaybeData (..))
@@ -148,6 +149,7 @@ data PStateQueueStatusV1 (s :: S)
 
 data PMintRedeemerV1 (s :: S)
   = PMintBondFromAttestation
+      (Term s (PAsData PInteger)) -- authenticated yield reference input
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
@@ -155,6 +157,7 @@ data PMintRedeemerV1 (s :: S)
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
   | POpenChallenge
+      (Term s (PAsData PInteger)) -- authenticated yield reference input
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
@@ -165,12 +168,14 @@ data PMintRedeemerV1 (s :: S)
       (Term s (PAsData PInteger))
       (Term s (PAsData PPubKeyHash))
   | PSettleTranche
+      (Term s (PAsData PInteger)) -- authenticated yield reference input
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
       (Term s (PAsData (PMaybeData PInteger)))
   | PCloseChallenge
+      (Term s (PAsData PInteger)) -- authenticated yield reference input
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
@@ -179,6 +184,7 @@ data PMintRedeemerV1 (s :: S)
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
   | PTimeoutChallenge
+      (Term s (PAsData PInteger)) -- authenticated yield reference input
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
@@ -188,6 +194,11 @@ data PMintRedeemerV1 (s :: S)
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PMintRedeemerV1)
+
+data PYieldRedeemer (s :: S) = PYield
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PYieldRedeemer)
 
 data PSpendRedeemerV1 (s :: S)
   = PAdvanceTranche
@@ -382,7 +393,7 @@ ptrancheAssetNameV1 challengeAssetName trancheIndex =
           PTokenName $
             pto (pfromData ptrancheAssetNamePrefixV1)
               <> (psliceBS # 4 # 28 # challengeNameBytes)
-              <> (pintegerToByteString # pmostSignificantFirst # 2 # trancheIndex)
+              <> (pintegerToByteString # pmostSignificantLast # 2 # trancheIndex)
       )
       perror
 

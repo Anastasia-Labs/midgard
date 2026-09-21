@@ -65,38 +65,47 @@ tests =
     [ testGroup
         "deposit"
         [ testCase "proves a deposit the settlement's tree contains" $
-            passertEval $ runDeposit depositEventInfo
+            passertEval $
+              runDeposit depositEventInfo
         , testCase "rejects a deposit whose info differs from the tree's" $
-            passertEval $ pnot #$ runDeposit otherDepositInfo
+            passertEval $
+              pnot #$ runDeposit otherDepositInfo
         ]
     , testGroup
         "withdrawal"
         [ testCase "proves a withdrawal under the claimed verdict" $
-            passertEval $ runWithdrawal verdictOwner verdictOwner
+            passertEval $
+              runWithdrawal verdictOwner verdictOwner
         , -- The verdict is substituted into the info before the proof, so a
           -- verdict the operator never committed cannot corroborate.
           testCase "rejects a verdict the committed root does not carry" $
-            passertEval $ pnot #$ runWithdrawal verdictValue verdictOwner
+            passertEval $
+              pnot #$ runWithdrawal verdictValue verdictOwner
         , testCase "proves a withdrawal the operator judged valid" $
-            passertEval $ runWithdrawal verdictValid verdictValid
+            passertEval $
+              runWithdrawal verdictValid verdictValid
         ]
     , testGroup
         "transaction order"
         [ testCase "proves an order under the claimed verdict" $
-            passertEval $ runTxOrder txValid txValid
+            passertEval $
+              runTxOrder txValid txValid
         , -- The stored value is rebuilt around the verdict, so this is the same
           -- substitution property one level deeper.
           testCase "rejects a verdict the committed root does not carry" $
-            passertEval $ pnot #$ runTxOrder txFailedScript txValid
+            passertEval $
+              pnot #$ runTxOrder txFailedScript txValid
         , testCase "proves an order judged to have a failed script" $
-            passertEval $ runTxOrder txFailedScript txFailedScript
+            passertEval $
+              runTxOrder txFailedScript txFailedScript
         ]
     , testGroup
         "proof wrappers"
         [ -- The wrapper is what stops a proof for one tree being handed to
           -- another arm.
           testCase "rejects a deposit proof supplied to the withdrawal arm" $
-            pfails $ runMismatched
+            pfails $
+              runMismatched
         ]
     ]
 
@@ -111,8 +120,8 @@ txOrderPolicy = repeatedByte 0x23
 
 repeatedByte :: Int -> CurrencySymbol
 repeatedByte b = currencySymbolFromHex (concatMap hex (replicate 28 b))
-  where
-    hex n = let xs = "0123456789abcdef" in [xs !! (n `div` 16), xs !! (n `mod` 16)]
+ where
+  hex n = let xs = "0123456789abcdef" in [xs !! (n `div` 16), xs !! (n `mod` 16)]
 
 eventName :: TokenName
 eventName = TokenName "evt"
@@ -122,7 +131,7 @@ outRefN = TxOutRef (TxId "010101010101010101010101010101010101010101010101010101
 
 phasValidatorHash :: BS.ByteString
 phasValidatorHash =
-  either (error "bad hex") id (Base16.decode (BS8.pack "1fc59ff54da02f2535d64b40b647a8826c8b3d914d7ba5257f5b2721"))
+  either (error "bad hex") id (Base16.decode (BS8.pack "819adf9eaaed4aa11f717414e99c80b45d416481824321c3474bcb5e"))
 
 phasRoot :: BS.ByteString
 phasRoot = BS.replicate 32 0xaa

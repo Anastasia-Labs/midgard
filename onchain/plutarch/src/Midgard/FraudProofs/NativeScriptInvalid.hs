@@ -1,4 +1,5 @@
 module Midgard.FraudProofs.NativeScriptInvalid (
+  PStep01Source (..),
   PStep01Args (..),
   PStep02State (..),
   PStep02Args (..),
@@ -12,48 +13,94 @@ module Midgard.FraudProofs.NativeScriptInvalid (
   PStep05Args (..),
   pdirectSignerLimit,
   pdirectScriptBytesLimit,
-  pstagedSignerBatchLimit,
+  pstagedSignerStartBatchLimit,
+  pstagedSignerResumeBatchLimit,
+  pstagedSignerFinalizeBatchLimit,
+  pbindScriptIndex,
+  pauthenticatedSigner,
   pstagedNodeBatchLimit,
 ) where
 
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
+import Plutarch.Builtin.Crypto (pblake2b_224, pverifyEd25519Signature)
+import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
 
 import Midgard.FraudProofs.Common (PNativeTxInclusionCarriage)
 import Midgard.FraudProofs.FieldOpening (PFieldOpeningV1)
+import Midgard.FraudProofs.NativeTx.Components (pdecodeMidgardAddressWitnessCbor, pencodeMidgardAddressWitness)
+import Midgard.FraudProofs.NativeTx.Types (PMidgardAddressWitness (..))
+import Midgard.FraudProofs.ProofThreadSubstrate (PVerdictSubject (..))
+import Midgard.FraudProofs.ProofThreadSubstrate qualified as Subject
+import Midgard.LedgerState (PHeaderV1)
 import Midgard.NativeTxScriptPushdown (PNativeScriptFrameV1)
+import Midgard.RejectionReason (PRejectionReasonV1 (..))
+import Midgard.TransitionTrace (PRootMembershipProof)
 import Midgard.ValidationMachine (PSignerSetProofV1)
 import Midgard.ValidationMerkle (PFrontierPeak)
+import Midgard.Validators.FraudProofs.Step (pexpecting)
+
+data PStep01Source s
+  = PAcceptedSource (Term s (PAsData PNativeTxInclusionCarriage))
+  | PForcedSource
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PHeaderV1))
+      (Term s (PAsData PRootMembershipProof))
+      (Term s (PAsData PInteger))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PStep01Source)
 
 newtype PStep01Args s = PStep01Args
-  {pstep01Args'carriage :: Term s (PAsData PNativeTxInclusionCarriage)}
+  {pstep01Args'source :: Term s (PAsData PStep01Source)}
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PStep01Args)
 
 data PStep02State s = PStep02State
-  { pstep02State'badTxId :: Term s (PAsData PByteString)
+  { pstep02State'subject :: Term s (PAsData PVerdictSubject)
+  , pstep02State'badTxId :: Term s (PAsData PByteString)
   , pstep02State'badTxWitnessSetHash :: Term s (PAsData PByteString)
   , pstep02State'validityIntervalStart :: Term s (PAsData PInteger)
   , pstep02State'validityIntervalEnd :: Term s (PAsData PInteger)
+  , pstep02State'grammarCheckpointHash :: Term s (PAsData PByteString)
+  , pstep02State'grammarComplete :: Term s (PAsData PBool)
+  , pstep02State'scriptCheckpointHash :: Term s (PAsData PByteString)
   }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PStep02State)
 
-data PStep02Args s = PStep02Args
-  { pstep02Args'inputIndex :: Term s (PAsData PInteger)
-  , pstep02Args'outputIndex :: Term s (PAsData PInteger)
-  , pstep02Args'scriptIndex :: Term s (PAsData PInteger)
-  , pstep02Args'scriptTxWitsOpening :: Term s (PAsData PFieldOpeningV1)
-  }
+data PStep02Args s
+  = PStep02Args
+      { pstep02Args'inputIndex :: Term s (PAsData PInteger)
+      , pstep02Args'outputIndex :: Term s (PAsData PInteger)
+      , pstep02Args'scriptIndex :: Term s (PAsData PInteger)
+      , pstep02Args'scriptTxWitsOpening :: Term s (PAsData PFieldOpeningV1)
+      }
+  | PCertifyScriptField
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PFieldOpeningV1))
+      (Term s (PAsData PByteString))
+      (Term s (PAsData PInteger))
+  | PSelectCertifiedScript
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PFieldOpeningV1))
+      (Term s (PAsData PByteString))
+      (Term s (PAsData PByteString))
+      (Term s (PAsData PInteger))
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PStep02Args)
 
 data PStep03State s = PStep03State
-  { pstep03State'badTxId :: Term s (PAsData PByteString)
+  { pstep03State'subject :: Term s (PAsData PVerdictSubject)
+  , pstep03State'badTxId :: Term s (PAsData PByteString)
   , pstep03State'badTxWitnessSetHash :: Term s (PAsData PByteString)
   , pstep03State'scriptItemHash :: Term s (PAsData PByteString)
   , pstep03State'validityIntervalStart :: Term s (PAsData PInteger)
@@ -83,7 +130,8 @@ data PStep03Args s
   deriving (PlutusType) via (DeriveAsDataStruct PStep03Args)
 
 data PStep04State s = PStep04State
-  { pstep04State'badTxId :: Term s (PAsData PByteString)
+  { pstep04State'subject :: Term s (PAsData PVerdictSubject)
+  , pstep04State'badTxId :: Term s (PAsData PByteString)
   , pstep04State'badTxWitnessSetHash :: Term s (PAsData PByteString)
   , pstep04State'scriptItemHash :: Term s (PAsData PByteString)
   , pstep04State'validityIntervalStart :: Term s (PAsData PInteger)
@@ -124,7 +172,8 @@ data PStep05PhaseV1 s
   deriving (PlutusType) via (DeriveAsDataStruct PStep05PhaseV1)
 
 data PStep05State s = PStep05State
-  { pstep05State'badTxId :: Term s (PAsData PByteString)
+  { pstep05State'subject :: Term s (PAsData PVerdictSubject)
+  , pstep05State'badTxId :: Term s (PAsData PByteString)
   , pstep05State'scriptItemHash :: Term s (PAsData PByteString)
   , pstep05State'validityIntervalStart :: Term s (PAsData PInteger)
   , pstep05State'validityIntervalEnd :: Term s (PAsData PInteger)
@@ -179,8 +228,43 @@ data PStep05Args s
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PStep05Args)
 
-pdirectSignerLimit, pdirectScriptBytesLimit, pstagedSignerBatchLimit, pstagedNodeBatchLimit :: forall s. Term s PInteger
-pdirectSignerLimit = 32
+pdirectSignerLimit, pdirectScriptBytesLimit, pstagedSignerStartBatchLimit, pstagedSignerResumeBatchLimit, pstagedSignerFinalizeBatchLimit, pstagedNodeBatchLimit :: forall s. Term s PInteger
+pdirectSignerLimit = 28
 pdirectScriptBytesLimit = 1024
-pstagedSignerBatchLimit = 32
-pstagedNodeBatchLimit = 32
+pstagedSignerStartBatchLimit = 16
+pstagedSignerResumeBatchLimit = 16
+pstagedSignerFinalizeBatchLimit = 16
+pstagedNodeBatchLimit = 16
+
+pbindScriptIndex :: forall s. Term s (PVerdictSubject :--> PInteger :--> PBool)
+pbindScriptIndex = phoistAcyclic $ plam $ \subject index ->
+  pexpecting (Subject.psubjectIsCanonical # subject) $
+    pexpecting (index #>= 0) $
+      pmatch subject $ \PVerdictSubject {psubject'direction} ->
+        pif
+          (pfromData psubject'direction #== 1)
+          ( pmatch (Subject.prejectionReasonOf # subject) $ \case
+              PWitnessNativeScriptFalse committed -> index #== pfromData committed
+              _ -> perror
+          )
+          (pconstant True)
+
+pauthenticatedSigner :: forall s. Term s (PVerdictSubject :--> PByteString :--> PMaybe PByteString)
+pauthenticatedSigner = phoistAcyclic $ plam $ \subject item -> P.do
+  witness <- plet $ pdecodeMidgardAddressWitnessCbor # item
+  PMidgardAddressWitness {paddressWitness'verificationKey, paddressWitness'signature} <- pmatch witness
+  PVerdictSubject {psubject'direction, psubject'transactionId} <- pmatch subject
+  pexpecting (pencodeMidgardAddressWitness # witness #== item) $
+    pif
+      ( pfromData psubject'direction
+          #== 1
+          #&& ( pnot
+                  # ( pverifyEd25519Signature
+                        # pfromData paddressWitness'verificationKey
+                        # pfromData psubject'transactionId
+                        # pfromData paddressWitness'signature
+                    )
+              )
+      )
+      (pcon PNothing)
+      (pcon $ PJust $ pblake2b_224 # pfromData paddressWitness'verificationKey)

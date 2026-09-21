@@ -52,6 +52,7 @@ module Midgard.CekBlobFrontier (
   -- * Checking and encoding
   pfrontierIsWellFormedV1,
   pencodeFrontierV1,
+  pfrontierData,
 ) where
 
 import GHC.Generics (Generic)
@@ -424,6 +425,26 @@ pencodeFrontierV1 = phoistAcyclic $
         <> pcborInt (pfrontierCount # frontier)
         <> pcborInt (pfrontierByteLength # frontier)
         <> (pencodePeaks #$ pfrontierPeaks # frontier)
+
+-- | Aiken @frontier_data_v1@: a versioned bare list with bare-list peaks.
+-- This direct constructor preserves fields; validation belongs to its caller.
+pfrontierData :: forall (s :: S). Term s (PCekBlobFrontierV1 :--> PData)
+pfrontierData = phoistAcyclic $ plam $ \frontier ->
+  plet
+    (pmap # plam (\peakData -> pmatch (pfromData peakData) $ \peak ->
+      pforgetData $ pdata $
+        foldr (\item rest -> pcons @PBuiltinList # item # rest) pnil
+          [ pforgetData (pdata (pfromData (ppeak'height peak)))
+          , pforgetData (pdata (pfromData (ppeak'root peak)))
+          , pforgetData (pdata (pfromData (ppeak'byteLength peak)))
+          ]) # (pfrontierPeaks # frontier)) $ \peaks ->
+    pforgetData $ pdata $
+      foldr (\item rest -> pcons @PBuiltinList # item # rest) pnil
+        [ pforgetData (pdata pcekBlobFrontierVersion)
+        , pforgetData (pdata (pfrontierCount # frontier))
+        , pforgetData (pdata (pfrontierByteLength # frontier))
+        , pforgetData (pdata peaks)
+        ]
 
 --------------------------------------------------------------------------------
 -- Whole-blob convenience

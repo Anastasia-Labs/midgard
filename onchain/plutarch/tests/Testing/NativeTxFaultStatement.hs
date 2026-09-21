@@ -369,16 +369,16 @@ pfinishedMint txId policy name = pmatch (popenInline txId 5 mintPreimage) $ \(PP
 tier2FixturesBound, tier2FixedOneOpen, tier2FixedTwoOpens,
   tier2VariableOneOpen, tier2VariableTwoOpens :: forall s. Term s PBool
 tier2FixturesBound =
-  (pconstant (fromIntegral (BS.length tier2FixedPreimage) :: Integer) :: Term s PInteger) #== 15883
-    #&& (pconstant (fromIntegral (BS.length tier2VariablePreimage) :: Integer) :: Term s PInteger) #== 15865
-    #&& 15883 #<= pchunkBytesK
-    #&& 15865 #<= pchunkBytesK
+  (pconstant (fromIntegral (BS.length tier2FixedPreimage) :: Integer) :: Term s PInteger) #== 15123
+    #&& (pconstant (fromIntegral (BS.length tier2VariablePreimage) :: Integer) :: Term s PInteger) #== 15095
+    #&& 15123 #<= pchunkBytesK
+    #&& 15095 #<= pchunkBytesK
 tier2FixedOneOpen = pmatch (popenRaw sampleTxId 1 tier2FixedPreimage) $ \(PPair view _) ->
-  pfieldTotalLength # view #== 15883
+  pfieldTotalLength # view #== 15123
 tier2FixedTwoOpens =
   pmatch (popenRaw sampleTxId 1 tier2FixedPreimage) $ \(PPair first _) ->
   pmatch (popenRaw sampleTxId 1 tier2FixedPreimage) $ \(PPair second _) ->
-    pfieldTotalLength # first #== 15883 #&& pfieldTotalLength # second #== 15883
+    pfieldTotalLength # first #== 15123 #&& pfieldTotalLength # second #== 15123
 tier2VariableOneOpen = pmatch (popenRaw sampleTxId 6 tier2VariablePreimage) $ \(PPair view _) ->
   pfieldTotalLength # view #== pconstant (fromIntegral (BS.length tier2VariablePreimage) :: Integer)
 tier2VariableTwoOpens =
@@ -603,8 +603,8 @@ certificatePolicy :: CurrencySymbol
 certificatePolicy = CurrencySymbol $ toBuiltin $ BS.replicate 28 0x22
 
 tier2FixedPreimage, tier2VariablePreimage :: BS.ByteString
-tier2FixedPreimage = fieldPreimage [tier2InputItem index | index <- [0 .. 396]]
-tier2VariablePreimage = fieldPreimage [tier2ScriptItem index | index <- [0 .. 1441]]
+tier2FixedPreimage = fieldPreimage [tier2InputItem index | index <- [0 .. 377]]
+tier2VariablePreimage = fieldPreimage [tier2ScriptItem index | index <- [0 .. 1371]]
 
 tier2InputItem :: Int -> BS.ByteString
 tier2InputItem index = BS.pack [0x82, 0x58, 0x20] <> txIdA

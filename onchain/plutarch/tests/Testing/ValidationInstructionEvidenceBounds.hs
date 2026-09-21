@@ -54,7 +54,11 @@ maximumGeneralFieldBoundedChunkInstructionEvidenceIsBounded =
         (phashWorkWitness # pcon PCanonicalDecode # 1 # nextWorkCbor) hA
     )
     $ \post ->
-  plet (preplicateBS # NativeField.pmaxTier1RedeemerPreimageBytes # (pintegerToByte # 0)) $ \maximumPreimage ->
+  plet
+    ( (preplicateBS # 8192 # (pintegerToByte # 0))
+        <> (preplicateBS # (NativeField.pmaxTier1RedeemerPreimageBytes - 8192) # (pintegerToByte # 0))
+    )
+    $ \maximumPreimage ->
   plet
     ( pcons # pdata 1 #$ pcons # pdata 2 #$ pcons # pdata 3 # pnil
     )

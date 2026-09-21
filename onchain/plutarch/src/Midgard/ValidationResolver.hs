@@ -6,6 +6,8 @@ module Midgard.ValidationResolver (
   pcekReferenceIndicesUniqueNonnegativeV1,
   pverifyCekMaterialRouteForSelectedEnvelopeV1,
   pverifyCekRouteV1,
+  pcekSelectionEnvelopeCborV1,
+  pmaterialEntriesForRoute,
   pselectSemanticResolver,
 ) where
 
@@ -306,9 +308,7 @@ pselectSemanticResolver ::
   Term s (PBuiltinList (PAsData PScriptHash) :--> PInteger :--> PInteger :--> PMaybe PScriptHash)
 pselectSemanticResolver = phoistAcyclic $ plam $ \scriptHashes expectedCount selectedIndex ->
   pif
-    ( expectedCount #> 0
-        #&& plength # scriptHashes #== expectedCount
-        #&& selectedIndex #>= 0
+    ( selectedIndex #>= 0
         #&& selectedIndex #< expectedCount
     )
     (pindex # scriptHashes # selectedIndex)
@@ -320,3 +320,23 @@ pselectSemanticResolver = phoistAcyclic $ plam $ \scriptHashes expectedCount sel
         (\x rest -> pif (index #== 0) (pcon $ PJust $ pfromData x) (self # rest # (index - 1)))
         (pcon PNothing)
         xs
+
+-- | Material opening for the separately authenticated program/Data partitions.
+pmaterialEntriesForRoute :: forall s. Term s (PCekMaterialRouteV1 :--> PBuiltinList (PAsData PTxInInfo) :--> PAsData PScriptHash :--> PMaybe (PBuiltinList (PAsData PCekProgramMaterialDatumV1)))
+pmaterialEntriesForRoute = phoistAcyclic $ plam $ \route references materialHash -> pmatch route $ \case
+  PDirectCekMaterial _ sidecar -> CekProof.pinspectCompleteProgramMaterialSidecarV1 # pfromData sidecar
+  PSinglePublicationCekMaterial envelope index ->
+    pmatch (pmaterialReferenceInputAt # references # pfromData index # materialHash) $ \case
+      PNothing -> perror
+      PJust raw -> pmatch (pasConstr # raw) $ \(PBuiltinPair tag fields) ->
+        pif (tag #== 0 #&& plength # fields #== 3)
+          (plet (pasInt # (pelemAt # 0 # fields)) $ \version ->
+           plet (pasByteStr # (pelemAt # 1 # fields)) $ \hash ->
+           plet (pasByteStr # (pelemAt # 2 # fields)) $ \sidecar ->
+           pmatch (pcekEnvelopeHashV1 # pfromData envelope) $ \case
+             PNothing -> perror
+             PJust expected -> pif (version #== 1 #&& hash #== expected) (CekProof.pinspectCompleteProgramMaterialSidecarV1 # sidecar) perror) perror
+  PMinimumMultiOutputCekMaterial _ indices ->
+    pif (plength # pfromData indices #> 0 #&& pcekReferenceIndicesUniqueNonnegativeV1 # (pmap # plam pfromData # pfromData indices))
+      (pmaterialEntriesFromReferencesV1 # references # pfromData indices # materialHash) perror
+  _ -> pcon PNothing

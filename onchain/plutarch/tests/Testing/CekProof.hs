@@ -51,6 +51,7 @@ import Test.Tasty.HUnit
 import Plutarch.Core.Utils (pand'List)
 import Plutarch.Prelude
 
+import Midgard.CekProof qualified as Partition
 import Midgard.CekProof (
   PProgramEnvelopeV1 (..),
   PProgramTermMaterialV1 (..),
@@ -107,7 +108,7 @@ import Midgard.CekProof (
  )
 import Midgard.LedgerState (PCekProgramMaterialDatumV1 (..))
 import Testing.BoundedItem (blake2b256, definiteBytes)
-import Testing.Eval (passertEval, pfails)
+import Testing.Eval (passertEval, pfails, passertEvalNoTraceWithoutHoistChecks, pfailsNoTraceWithoutHoistChecks)
 
 --------------------------------------------------------------------------------
 -- The suite
@@ -131,6 +132,7 @@ tests =
     , blobInspectionTests
     , sidecarTests
     , completenessTests
+    , partitionTests
     ]
 
 --------------------------------------------------------------------------------
@@ -271,7 +273,7 @@ canonicalProgramEnvelopeAtExactBounds =
                   # h01
                   # pmaxProgramNodeCount
                   # pmaxProgramMaterialByteLength
-                  #== phexByteStr "5d6e5b270acedb1791dcb8a1cd7552efc37be56f8b2370e76f75729700cd9e17"
+                  #== phexByteStr "bb37134727abbc3462385a48497eca4d0090b8cda1d291f028cc864716ba0a15"
               ]
 
 -- | The exact one-node completeness fixture from @cek-proof-v1.test.ak@.
@@ -812,7 +814,7 @@ envelopeTests =
     , testCase "and fits the 50-byte cap it declares" $
         assertBool "envelope within cap" (BS.length goodEnvelope <= 50)
     , testCase "the largest legal envelope is exactly the 50 bytes it claims" $
-        BS.length (encodeEnvelope 1 1 0 hA 1597819 67108418) @?= 50
+        BS.length (encodeEnvelope 1 1 0 hA 1597819 67108417) @?= 50
     , testCase "…and it is the uint32 node count and DA bound that make it exact" $
         assertBool
           "a uint64 material length would overflow the cap"
@@ -1107,6 +1109,9 @@ sidecarTests =
         passertEval $ sidecarParses (encodeSidecar [])
     , testCase "the program's own sidecar parses" $
         passertEval $ sidecarParses programSidecar
+    , testCase "an obsolete bare-list material value declines" $
+        passertEval $ declinesSidecar
+          ("\x82\x01\x81\x82" <> definiteBytes hashError <> "\x83\x01\x00" <> definiteBytes errorPreimage)
     , testCase "an unsorted sidecar declines" $
         passertEval $ declinesSidecar (encodeSidecar (reverse programEntries))
     , testCase "a sidecar with a duplicate root declines" $
@@ -1339,7 +1344,7 @@ encodeEntry (Entry kind root preimage) =
   BS.concat
     [ "\x82"
     , definiteBytes root
-    , BS.concat ["\x83", cborI 1, cborI kind, definiteBytes preimage]
+    , definiteBytes (BS.concat ["\x83", cborI 1, cborI kind, definiteBytes preimage])
     ]
 
 encodeSidecar :: [Entry] -> BS.ByteString
@@ -1673,3 +1678,55 @@ integerMemorySize v = unsignedByteSize (if v < 0 then (negate v - 1) * 2 else v 
 a #/= b = pnot # (a #== b)
 
 infix 4 #/=
+
+
+partitionTests :: TestTree
+partitionTests = testGroup "material partitions"
+  [ testCase "both partitions agree with the complete graph" $ passertEvalNoTraceWithoutHoistChecks $
+      pverifyCompleteProgramMaterialEntriesV1 # pconstant programEnvelope # partitionEntries programEntries
+        #&& partitionsAccept (partitionEntries programEntries) partitionFacts
+  , testCase "program partition requires the Data-derived blob frontier" $ passertEvalNoTraceWithoutHoistChecks $
+      pmatch partitionFacts $ \f -> pnot # (partitionsAccept (partitionEntries programEntries) $ pcon f{Partition.ppartition'dataBlobRoots = pdata pnil})
+  , testCase "Data partition requires the program-derived Data frontier" $ passertEvalNoTraceWithoutHoistChecks $
+      pmatch partitionFacts $ \f -> pnot # (partitionsAccept (partitionEntries programEntries) $ pcon f{Partition.ppartition'dataRoots = pdata pnil})
+  , testCase "forged program byte total refuses" $ passertEvalNoTraceWithoutHoistChecks $
+      pmatch partitionFacts $ \f -> pnot # (partitionsAccept (partitionEntries programEntries) $ pcon f{Partition.ppartition'programByteLength = pdata $ pfromData (Partition.ppartition'programByteLength f) + 1})
+  , testCase "forged Data node count refuses" $ passertEvalNoTraceWithoutHoistChecks $
+      pmatch partitionFacts $ \f -> pnot # (partitionsAccept (partitionEntries programEntries) $ pcon f{Partition.ppartition'dataNodeCount = pdata 2})
+  , testCase "forged blob preimages refuse" $ passertEvalNoTraceWithoutHoistChecks $
+      pnot # (partitionsAccept (partitionEntries [if entryKind e == 3 then e{entryPreimage = "\x41\x02"} else e | e <- programEntries]) partitionFacts)
+  , testCase "a missing Data node refuses" $ passertEvalNoTraceWithoutHoistChecks $
+      pnot # (partitionsAccept (partitionEntries [e | e <- programEntries, entryKind e /= 5]) partitionFacts)
+  , testCase "a missing blob refuses" $ passertEvalNoTraceWithoutHoistChecks $
+      pnot # (partitionsAccept (partitionEntries [e | e <- programEntries, entryRoot e /= blobRoot constantCbor]) partitionFacts)
+  , testCase "unreachable material refuses" $ passertEvalNoTraceWithoutHoistChecks $
+      pnot # (partitionsAccept (partitionEntries $ sortEntries $ Entry 0 (hashTerm $ variablePreimage 99) (variablePreimage 99):programEntries) partitionFacts)
+  , testCase "duplicate frontier roots refuse" $ passertEvalNoTraceWithoutHoistChecks $
+      pmatch partitionFacts $ \f -> pnot # (partitionsAccept (partitionEntries programEntries) $ pcon f{Partition.ppartition'dataRoots = pdata $ partitionRoots [semanticRoot,semanticRoot]})
+  , testCase "unsorted entries fail closed" $ pfailsNoTraceWithoutHoistChecks $
+      partitionsAccept (partitionEntries $ reverse programEntries) partitionFacts
+  , testCase "duplicate entries fail closed" $ pfailsNoTraceWithoutHoistChecks $
+      partitionsAccept (partitionEntries $ head programEntries:programEntries) partitionFacts
+  ]
+
+partitionEntries :: forall s. [Entry] -> Term s (PBuiltinList (PAsData PCekProgramMaterialDatumV1))
+partitionEntries = foldr (\e rest -> pcons # pdata (pcon $ PCekProgramMaterialDatumV1 (pdata $ pconstant $ entryKind e) (pdata $ pconstant $ entryRoot e) (pdata $ pconstant $ entryPreimage e)) # rest) pnil
+
+partitionFacts :: forall s. Term s Partition.PCekMaterialPartitionFacts
+partitionFacts = pcon $ Partition.PCekMaterialPartitionFacts
+  (pdata $ pconstant $ fromIntegral $ length program)
+  (pdata $ pconstant $ sum $ map (fromIntegral . BS.length . entryPreimage) program)
+  (pdata $ pconstant $ fromIntegral $ length dat)
+  (pdata $ pconstant $ sum $ map (fromIntegral . BS.length . entryPreimage) dat)
+  (pdata $ partitionRoots [semanticRoot])
+  (pdata $ partitionRoots [blobRoot constantCbor])
+  where
+    program = filter ((<=4) . entryKind) programEntries
+    dat = filter ((>=5) . entryKind) programEntries
+
+partitionsAccept :: forall s. Term s (PBuiltinList (PAsData PCekProgramMaterialDatumV1)) -> Term s Partition.PCekMaterialPartitionFacts -> Term s PBool
+partitionsAccept entries facts = Partition.pverifyProgramMaterialPartition # pconstant programTermRoot # entries # facts
+  #&& Partition.pverifyDataMaterialPartition # entries # facts # pconstant programNodeCount # pconstant programByteLength
+
+partitionRoots :: forall s. [BS.ByteString] -> Term s (PBuiltinList (PAsData PByteString))
+partitionRoots = foldr (\root rest -> pcons # pdata (pconstant root) # rest) pnil

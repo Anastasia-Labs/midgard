@@ -61,6 +61,7 @@ module Midgard.Blake2b256Trace (
 
   -- * Encoding
   pencodeControlV1,
+  pcontrolData,
   pcontrolFromDataV1,
   pdecodeControlV1,
 ) where
@@ -583,6 +584,23 @@ pencodeControlV1 = phoistAcyclic $
           <> pcborInt (pfromData (pctl'activeBlockLength c))
           <> (pserialiseData #$ pforgetData (pctl'workingValue c))
           <> pcborInt (pfromData (pctl'round c))
+
+-- | Aiken @control_data_v1@. Build the bare-list wire representation directly;
+-- the consuming state machine remains responsible for validating the control.
+pcontrolData :: forall (s :: S). Term s (PBlake2b256TraceControlV1 :--> PData)
+pcontrolData = phoistAcyclic $ plam $ \control -> pmatch control $ \c ->
+  pforgetData $ pdata $
+    foldr (\item rest -> pcons @PBuiltinList # item # rest) pnil
+      [ pforgetData (pdata pblake2b256TraceVersion)
+      , pforgetData (pdata (pfromData (pctl'stage c)))
+      , pforgetData (pdata (pfromData (pctl'cursor c)))
+      , pforgetData (pdata (pfromData (pctl'totalLength c)))
+      , pforgetData (pdata (pfromData (pctl'chainingValue c)))
+      , pforgetData (pdata (pfromData (pctl'activeBlock c)))
+      , pforgetData (pdata (pfromData (pctl'activeBlockLength c)))
+      , pforgetData (pdata (pfromData (pctl'workingValue c)))
+      , pforgetData (pdata (pfromData (pctl'round c)))
+      ]
 
 -- | Aiken @control_from_data_v1@ — a nine-item array, checked as it is read.
 pcontrolFromDataV1 ::

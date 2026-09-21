@@ -51,81 +51,83 @@ import Plutarch.LedgerApi.V3 (PCurrencySymbol, PTokenName)
 import Plutarch.Prelude
 import Plutarch.Unsafe (punsafeCoerce)
 
-import Midgard.FraudProofs.TransitionTrace.Proof (
-  PAuthenticatedDepositReference (..),
-  pcardanoAssetPairsToMidgard,
-  pcardanoCredentialToMidgard,
-  pcardanoStakeCredentialToMidgard,
-  pdepositAddressToMidgard,
-  pdepositDatumCbor,
-  pgetAuthenticatedDepositReference,
-  pprojectedDepositOutputCbor,
-  pprojectedDepositValue,
-  pforcedTxIsDue,
-  ptimedL1EventIsDue,
-  pvalidateDepositOneStepBinding,
-  pvalidateAcceptedTransactionFaultProof,
-  pvalidateControlFaultProof,
-  pvalidateDepositFaultProof,
-  pvalidateDuplicateFaultProof,
-  pvalidateForcedFaultProof,
-  pvalidateInvalidOneStepTransition,
-  pvalidateL1EventFaultProof,
-  pvalidateOmittedDueL1Event,
-  pvalidateSourceFaultProof,
-  pvalidateTransitionFaultProof,
-  pvalidateTransitionFaultProofEnvelope,
-  pvalidateWithdrawalFaultProof,
-  pvalidateOutOfWindowSourceEvent,
-  pvalidateValidDepositTransition,
-  PSourceMembershipProof,
-  PSourceNonMembershipProof,
-  PTraceBoundarySide,
-  peventKeyFromSourceMembership,
-  peventKeyPhase,
-  pheaderCountsAreNonNegative,
-  pphaseForStepIndex,
-  psourceCountSum,
-  psourceMembershipPhase,
-  psourceNonMembershipEventKey,
-  ptraceHasBadPhase,
-  papplyDeleteWitness,
-  papplyInsertWitness,
-  pdeleteRoot,
-  pinsertRoot,
-  pledgerOutrefKey,
-  pvalidateCountFault,
-  pvalidateDuplicateTraceEvent,
-  papplyL2Outputs,
-  papplyL2Spends,
-  pdoorBodyFieldItems,
-  pvalidateL2OneStepBinding,
-  pvalidateL2TransactionTransition,
-  pverifyL2SourceMembership,
-  pvalidateInvalidForcedTransactionNoOpTransition,
-  pvalidateInvalidWithdrawalNoOpTransition,
-  pvalidateValidWithdrawalTransition,
-  pvalidateWithdrawalOneStepBinding,
-  pverifyLedgerMembership,
-  pverifyLedgerNonMembership,
-  pvalidateEventToStepMismatch,
-  pvalidateSourceMembershipMismatch,
-  pvalidateTraceBoundary,
-  pvalidateTraceLink,
-  pverifySourceMembership,
-  pverifySourceNonMembership,
-  pverifyTraceBindingToEventToStep,
- )
 import Midgard.FraudProofs.FieldOpening (
   PAnchoredNativeTxV1,
   PNativeTxAnchorV1 (..),
   PNativeTxOpeningV1 (..),
   panchoredNativeTx,
  )
+import Midgard.FraudProofs.TransitionTrace.Proof (
+  PAuthenticatedDepositReference (..),
+  PSourceMembershipProof,
+  PSourceNonMembershipProof,
+  PTraceBoundarySide,
+  papplyDeleteWitness,
+  papplyInsertWitness,
+  papplyL2Outputs,
+  papplyL2Spends,
+  pcardanoAssetPairsToMidgard,
+  pcardanoCredentialToMidgard,
+  pcardanoStakeCredentialToMidgard,
+  pdeleteRoot,
+  pdepositAddressToMidgard,
+  pdepositDatumCbor,
+  pdoorBodyFieldItems,
+  peventKeyFromSourceMembership,
+  peventKeyPhase,
+  pforcedTxIsDue,
+  pgetAuthenticatedDepositReference,
+  pheaderCountsAreNonNegative,
+  pinsertRoot,
+  pledgerOutrefKey,
+  pphaseForStepIndex,
+  pprojectedDepositOutputCbor,
+  pprojectedDepositValue,
+  psourceCountSum,
+  psourceMembershipPhase,
+  psourceNonMembershipEventKey,
+  ptimedL1EventIsDue,
+  ptraceHasBadPhase,
+  pvalidateAcceptedTransactionFaultProof,
+  pvalidateControlFaultProof,
+  pvalidateCountFault,
+  pvalidateDepositFaultProof,
+  pvalidateDepositOneStepBinding,
+  pvalidateDuplicateFaultProof,
+  pvalidateDuplicateTraceEvent,
+  pvalidateEventToStepMismatch,
+  pvalidateForcedFaultProof,
+  pvalidateInvalidForcedTransactionNoOpTransition,
+  pvalidateInvalidOneStepTransition,
+  pvalidateInvalidWithdrawalNoOpTransition,
+  pvalidateL1EventFaultProof,
+  pvalidateL2OneStepBinding,
+  pvalidateL2TransactionTransition,
+  pdecodeL2TransactionSource,
+  pvalidateOmittedDueL1Event,
+  pvalidateOutOfWindowSourceEvent,
+  pvalidateSourceFaultProof,
+  pvalidateSourceMembershipMismatch,
+  pvalidateTraceBoundary,
+  pvalidateTraceLink,
+  pvalidateTransitionFaultProof,
+  pvalidateTransitionFaultProofEnvelope,
+  pvalidateValidDepositTransition,
+  pvalidateValidWithdrawalTransition,
+  pvalidateWithdrawalFaultProof,
+  pvalidateWithdrawalOneStepBinding,
+  pverifyL2SourceMembership,
+  pverifyLedgerMembership,
+  pverifyLedgerNonMembership,
+  pverifySourceMembership,
+  pverifySourceNonMembership,
+  pverifyTraceBindingToEventToStep,
+ )
 import Midgard.LedgerState (PHeaderV1, PTransitionPhase)
 
 import Testing.Eval (passertEval, pfails)
 import Testing.FraudProofsFixture (
+  Tx (..),
   arrayHeader,
   blake2b224,
   blake2b256,
@@ -140,7 +142,6 @@ import Testing.FraudProofsFixture (
   serialise,
   sharedInputRef,
   spendInputsPreimage,
-  Tx (..),
   tx1,
   txIdOf,
   witnessSetCborOf,
@@ -252,10 +253,10 @@ traceProofOf s0 s1 index =
     , if index == 0 then s0 else s1
     , twoLeafProof (entryOf index self) (entryOf (1 - index) other)
     ]
-  where
-    raw = traceRawRootOf s0 s1
-    self = if index == 0 then s0 else s1
-    other = if index == 0 then s1 else s0
+ where
+  raw = traceRawRootOf s0 s1
+  self = if index == 0 then s0 else s1
+  other = if index == 0 then s1 else s0
 
 adjacentOf :: PD.Data -> PD.Data -> PD.Data
 adjacentOf s0 s1 = PD.Constr 0 [traceProofOf s0 s1 0, traceProofOf s0 s1 1]
@@ -280,8 +281,8 @@ singleMembership domain count keyBytes valueBytes key value =
     , value
     , PD.List []
     ]
-  where
-    raw = singleEntryRoot keyBytes valueBytes
+ where
+  raw = singleEntryRoot keyBytes valueBytes
 
 singleRoot :: Integer -> Integer -> BS.ByteString -> BS.ByteString -> BS.ByteString
 singleRoot domain count keyBytes valueBytes =
@@ -440,17 +441,17 @@ countTests =
       passertEval (pheaderCountsAreNonNegative (headerT defaultBlock))
   , testCase "a negative withdrawal count is not" $
       prefuses $
-        pheaderCountsAreNonNegative (headerT defaultBlock {bWithdrawalCount = -1})
+        pheaderCountsAreNonNegative (headerT defaultBlock{bWithdrawalCount = -1})
   , testCase "a negative total is not" $
       prefuses $
-        pheaderCountsAreNonNegative (headerT defaultBlock {bTotalEventCount = -1})
+        pheaderCountsAreNonNegative (headerT defaultBlock{bTotalEventCount = -1})
   , testCase "a negative step count is not" $
-      prefuses (pheaderCountsAreNonNegative (headerT defaultBlock {bStepCount = -1}))
+      prefuses (pheaderCountsAreNonNegative (headerT defaultBlock{bStepCount = -1}))
   , testCase "the four sources sum to the block's event total" $
       passertEval (psourceCountSum (headerT defaultBlock) #== 5)
   , testCase "…and the sum does not include the trace's own steps" $
       passertEval $
-        psourceCountSum (headerT defaultBlock {bStepCount = 99}) #== 5
+        psourceCountSum (headerT defaultBlock{bStepCount = 99}) #== 5
   ]
 
 --------------------------------------------------------------------------------
@@ -466,14 +467,14 @@ phaseTests =
   , testCase "aborts on a negative index" (pfails (phaseAt (-1)))
   , testCase "aborts on a header with a negative count" $
       pfails $
-        pphaseForStepIndex (headerT defaultBlock {bDepositCount = -1}) 0
+        pphaseForStepIndex (headerT defaultBlock{bDepositCount = -1}) 0
   , testCase "a phase with no events is skipped over" $
       passertEval $
-        pphaseForStepIndex (headerT defaultBlock {bWithdrawalCount = 0, bTotalEventCount = 3}) 0
+        pphaseForStepIndex (headerT defaultBlock{bWithdrawalCount = 0, bTotalEventCount = 3}) 0
           #== phase 1
   , testCase "aborts when the total outruns the four sources" $
       pfails $
-        pphaseForStepIndex (headerT defaultBlock {bTotalEventCount = 6}) 5
+        pphaseForStepIndex (headerT defaultBlock{bTotalEventCount = 6}) 5
   , testCase "each event key names its own phase" $
       passertEval $
         foldr
@@ -483,10 +484,10 @@ phaseTests =
           | (t, k) <- [(0, withdrawalKey), (2, l2Key), (3, depositKey)]
           ]
   ]
-  where
-    phaseAt = pphaseForStepIndex (headerT defaultBlock)
-    phase :: forall s. Integer -> Term s (PAsData PTransitionPhase)
-    phase t = asDataTerm (PD.Constr t [])
+ where
+  phaseAt = pphaseForStepIndex (headerT defaultBlock)
+  phase :: forall s. Integer -> Term s (PAsData PTransitionPhase)
+  phase t = asDataTerm (PD.Constr t [])
 
 --------------------------------------------------------------------------------
 
@@ -523,7 +524,7 @@ sourceMembershipTests =
   , testCase "…and not in a block that commits another deposit root" $
       prefuses $
         pverifySourceMembership
-          (headerT defaultBlock {bDepositsRoot = BS.replicate 32 0x0d})
+          (headerT defaultBlock{bDepositsRoot = BS.replicate 32 0x0d})
           depositSource
   , testCase "a deposit proof presented as a withdrawal one is refused" $
       prefuses $
@@ -536,14 +537,14 @@ sourceMembershipTests =
   , testCase "…and serialising that key addresses another slot" $
       prefuses $
         pverifySourceMembership
-          (headerT l2Block {bTransactionsRoot = l2RootCbor})
+          (headerT l2Block{bTransactionsRoot = l2RootCbor})
           l2Source
   , testCase "an absent withdrawal is absent from the empty withdrawal tree" $
       passertEval (pverifySourceNonMembership (headerT noWithdrawalsBlock) withdrawalAbsent)
   , testCase "…but not from a tree the header does not commit" $
       prefuses $
         pverifySourceNonMembership
-          (headerT noWithdrawalsBlock {bWithdrawalsRoot = BS.replicate 32 0x0e})
+          (headerT noWithdrawalsBlock{bWithdrawalsRoot = BS.replicate 32 0x0e})
           withdrawalAbsent
   , testCase "a non-membership proof under the wrong domain is refused" $
       prefuses $
@@ -561,7 +562,7 @@ boundaryTests =
   , testCase "a trace that starts elsewhere is" $
       passertEval $
         boundary
-          defaultBlock {bPrevUtxosRoot = ledgerRoot 0xb0}
+          defaultBlock{bPrevUtxosRoot = ledgerRoot 0xb0}
           traceStart
           (traceProofOf step0 step1 0)
   , testCase "a trace that ends where the block says is no fault" $
@@ -569,40 +570,40 @@ boundaryTests =
   , testCase "a trace that ends elsewhere is" $
       passertEval $
         boundary
-          defaultBlock {bUtxosRoot = ledgerRoot 0xb2}
+          defaultBlock{bUtxosRoot = ledgerRoot 0xb2}
           traceEnd
           (traceProofOf step0 step1 1)
   , testCase "the start fault must be stated about the first step" $
       prefuses $
         boundary
-          defaultBlock {bPrevUtxosRoot = ledgerRoot 0xb0}
+          defaultBlock{bPrevUtxosRoot = ledgerRoot 0xb0}
           traceStart
           (traceProofOf step0 step1 1)
   , testCase "the end fault must be stated about the last step" $
       prefuses $
         boundary
-          defaultBlock {bUtxosRoot = ledgerRoot 0xb2}
+          defaultBlock{bUtxosRoot = ledgerRoot 0xb2}
           traceEnd
           (traceProofOf step0 step1 0)
   , testCase "aborts against a block whose trace root is another tree's" $
       pfails $
         boundary
-          defaultBlock {bTraceRoot = emptyRoot}
+          defaultBlock{bTraceRoot = emptyRoot}
           traceStart
           (traceProofOf step0 step1 0)
   , testCase "aborts on a block with no steps at all" $
       pfails $
         boundary
-          defaultBlock {bStepCount = 0, bTraceRoot = emptyRoot}
+          defaultBlock{bStepCount = 0, bTraceRoot = emptyRoot}
           traceStart
           (traceProofOf step0 step1 0)
   ]
-  where
-    boundary block side proof =
-      pvalidateTraceBoundary (headerT block) side (fromData proof)
-    traceStart, traceEnd :: forall s. Term s (PAsData PTraceBoundarySide)
-    traceStart = asDataTerm (PD.Constr 0 [])
-    traceEnd = asDataTerm (PD.Constr 1 [])
+ where
+  boundary block side proof =
+    pvalidateTraceBoundary (headerT block) side (fromData proof)
+  traceStart, traceEnd :: forall s. Term s (PAsData PTraceBoundarySide)
+  traceStart = asDataTerm (PD.Constr 0 [])
+  traceEnd = asDataTerm (PD.Constr 1 [])
 
 --------------------------------------------------------------------------------
 
@@ -615,13 +616,13 @@ linkTests =
   , testCase "refuses a pair that is not the tree the header commits" $
       prefuses (link defaultBlock (adjacentOf step0 brokenStep1))
   ]
-  where
-    link block adjacent = pvalidateTraceLink (headerT block) (fromData adjacent)
-    brokenStep1 = stepWith 1 withdrawalKey 0 (ledgerRoot 0xb1) (ledgerRoot 0xa2)
-    brokenBlock =
-      defaultBlock
-        { bTraceRoot = commitCountedRoot traceDomain (traceRawRootOf step0 brokenStep1) 2
-        }
+ where
+  link block adjacent = pvalidateTraceLink (headerT block) (fromData adjacent)
+  brokenStep1 = stepWith 1 withdrawalKey 0 (ledgerRoot 0xb1) (ledgerRoot 0xa2)
+  brokenBlock =
+    defaultBlock
+      { bTraceRoot = commitCountedRoot traceDomain (traceRawRootOf step0 brokenStep1) 2
+      }
 
 --------------------------------------------------------------------------------
 
@@ -636,20 +637,20 @@ badPhaseTests =
   , testCase "aborts on a step index the block does not have" $
       pfails (badPhase farStepBlock (traceProofOf farStep step1 0))
   ]
-  where
-    badPhase block proof = ptraceHasBadPhase (headerT block) (fromData proof)
-    -- Index 0 is a withdrawal slot; this step claims to be a deposit.
-    depositPhaseStep = stepWith 0 depositKey 3 (ledgerRoot 0xa0) midRoot
-    depositPhaseBlock = withTrace depositPhaseStep step1
-    -- Index 0's phase is right, but the event key is a deposit's.
-    keyMismatchStep = stepWith 0 depositKey 0 (ledgerRoot 0xa0) midRoot
-    keyMismatchBlock = withTrace keyMismatchStep step1
-    farStep = stepWith 9 withdrawalKey 0 (ledgerRoot 0xa0) midRoot
-    farStepBlock = withTrace farStep step1
+ where
+  badPhase block proof = ptraceHasBadPhase (headerT block) (fromData proof)
+  -- Index 0 is a withdrawal slot; this step claims to be a deposit.
+  depositPhaseStep = stepWith 0 depositKey 3 (ledgerRoot 0xa0) midRoot
+  depositPhaseBlock = withTrace depositPhaseStep step1
+  -- Index 0's phase is right, but the event key is a deposit's.
+  keyMismatchStep = stepWith 0 depositKey 0 (ledgerRoot 0xa0) midRoot
+  keyMismatchBlock = withTrace keyMismatchStep step1
+  farStep = stepWith 9 withdrawalKey 0 (ledgerRoot 0xa0) midRoot
+  farStepBlock = withTrace farStep step1
 
 withTrace :: PD.Data -> PD.Data -> Block
 withTrace s0 s1 =
-  defaultBlock {bTraceRoot = commitCountedRoot traceDomain (traceRawRootOf s0 s1) 2}
+  defaultBlock{bTraceRoot = commitCountedRoot traceDomain (traceRawRootOf s0 s1) 2}
 
 --------------------------------------------------------------------------------
 
@@ -686,18 +687,18 @@ bindingTests =
   , testCase "refuses a binding the header's map root does not commit" $
       prefuses $
         binding
-          defaultBlock {bEventToStepRoot = emptyRoot}
+          defaultBlock{bEventToStepRoot = emptyRoot}
           (traceProofOf step0 step1 0)
           eventToStepMembership
   ]
-  where
-    binding block proof eventToStep =
-      pverifyTraceBindingToEventToStep (headerT block) (fromData proof) (fromData eventToStep)
-    otherKeyBlock =
-      defaultBlock
-        { bEventToStepRoot =
-            singleRoot eventToStepDomain 5 (serialise depositKey) (serialise eventToStep0)
-        }
+ where
+  binding block proof eventToStep =
+    pverifyTraceBindingToEventToStep (headerT block) (fromData proof) (fromData eventToStep)
+  otherKeyBlock =
+    defaultBlock
+      { bEventToStepRoot =
+          singleRoot eventToStepDomain 5 (serialise depositKey) (serialise eventToStep0)
+      }
 
 --------------------------------------------------------------------------------
 
@@ -745,19 +746,19 @@ mismatchTests =
   , testCase "aborts when the trace proof is not the one the header commits" $
       pfails $
         mismatch
-          defaultBlock {bTraceRoot = emptyRoot}
+          defaultBlock{bTraceRoot = emptyRoot}
           (traceProofOf step0 step1 0)
           (membershipArm eventToStepMembership)
   ]
-  where
-    mismatch block proof eventToStep =
-      pvalidateEventToStepMismatch (headerT block) (fromData proof) (fromData eventToStep)
-    otherIndex = PD.Constr 0 [PD.I 1, PD.Constr 0 []]
-    otherPhase = PD.Constr 0 [PD.I 0, PD.Constr 3 []]
-    -- Index 0 is a withdrawal slot; this step files itself as a deposit while
-    -- the map still agrees with it entry for entry.
-    badPhaseStep = stepWith 0 withdrawalKey 3 (ledgerRoot 0xa0) midRoot
-    badPhaseBlock = withTrace badPhaseStep step1
+ where
+  mismatch block proof eventToStep =
+    pvalidateEventToStepMismatch (headerT block) (fromData proof) (fromData eventToStep)
+  otherIndex = PD.Constr 0 [PD.I 1, PD.Constr 0 []]
+  otherPhase = PD.Constr 0 [PD.I 0, PD.Constr 3 []]
+  -- Index 0 is a withdrawal slot; this step files itself as a deposit while
+  -- the map still agrees with it entry for entry.
+  badPhaseStep = stepWith 0 withdrawalKey 3 (ledgerRoot 0xa0) midRoot
+  badPhaseBlock = withTrace badPhaseStep step1
 
 membershipArm, nonMembershipArm :: PD.Data -> PD.Data
 membershipArm proof = PD.Constr 0 [proof]
@@ -825,14 +826,14 @@ sourceMismatchTests =
           defaultBlock
           (PD.Constr 2 [traceProofOf step0 step1 0, depositMembershipArm])
   ]
-  where
-    sourceMismatch block witness =
-      pvalidateSourceMembershipMismatch (headerT block) (asDataTerm witness)
-    -- A deposit event filed in the trace under the withdrawal phase.
-    phaseMismatchStep = stepWith 0 depositKey 0 (ledgerRoot 0xa0) midRoot
-    phaseMismatchBlock = withTrace phaseMismatchStep step1
-    agreeingStep = stepWith 0 depositKey 3 (ledgerRoot 0xa0) midRoot
-    agreeingBlock = withTrace agreeingStep step1
+ where
+  sourceMismatch block witness =
+    pvalidateSourceMembershipMismatch (headerT block) (asDataTerm witness)
+  -- A deposit event filed in the trace under the withdrawal phase.
+  phaseMismatchStep = stepWith 0 depositKey 0 (ledgerRoot 0xa0) midRoot
+  phaseMismatchBlock = withTrace phaseMismatchStep step1
+  agreeingStep = stepWith 0 depositKey 3 (ledgerRoot 0xa0) midRoot
+  agreeingBlock = withTrace agreeingStep step1
 
 --------------------------------------------------------------------------------
 -- Shared proofs
@@ -925,7 +926,7 @@ event total: the fault being stated is precisely that a source holds an event th
 map does not.
 -}
 emptyMapBlock :: Block
-emptyMapBlock = defaultBlock {bTotalEventCount = 0, bEventToStepRoot = emptyRoot}
+emptyMapBlock = defaultBlock{bTotalEventCount = 0, bEventToStepRoot = emptyRoot}
 
 --------------------------------------------------------------------------------
 -- The L2 tree, which keys itself in raw bytes
@@ -954,8 +955,8 @@ l2Source =
             ]
         ]
     )
-  where
-    l2Raw = singleEntryRoot l2IdBytes l2ValueBytes
+ where
+  l2Raw = singleEntryRoot l2IdBytes l2ValueBytes
 
 l2Block :: Block
 l2Block =
@@ -1032,7 +1033,8 @@ ledgerTests =
         pledgerOutrefKey
           (pconstant (PD.Constr 0 [PD.B (BS.replicate 31 0x01), PD.I 0]))
   , testCase "rejects the retired wrapped transaction-id encoding" $
-      pfails $ pledgerOutrefKey (pconstant (PD.Constr 0 [PD.Constr 0 [PD.B (BS.replicate 32 0x01)], PD.I 0]))
+      pfails $
+        pledgerOutrefKey (pconstant (PD.Constr 0 [PD.Constr 0 [PD.B (BS.replicate 32 0x01)], PD.I 0]))
   , testCase "a one-entry trie holds its entry" $
       passertEval $
         pverifyLedgerMembership
@@ -1207,7 +1209,8 @@ forcedMembership value =
 blockWithStep :: PD.Data -> Block
 blockWithStep s0 =
   transitionBlock
-    {bTraceRoot = commitCountedRoot traceDomain (traceRawRootOf s0 step1) 2}
+    { bTraceRoot = commitCountedRoot traceDomain (traceRawRootOf s0 step1) 2
+    }
 
 {- | The same, for a block whose withdrawal tree holds the /invalid/ withdrawal.
 
@@ -1253,34 +1256,34 @@ oneStepBindingTests =
   , testCase "refuses a withdrawal whose tree the header does not commit" $
       prefuses $
         binding
-          transitionBlock {bWithdrawalsRoot = BS.replicate 32 0x0f}
+          transitionBlock{bWithdrawalsRoot = BS.replicate 32 0x0f}
           (traceProofOf honestStep step1 0)
           mapMembership4
           (withdrawalMembership validWithdrawal)
   ]
-  where
-    binding block proof eventToStep source =
-      pvalidateWithdrawalOneStepBinding
-        (headerT block)
-        (fromData proof)
-        (fromData eventToStep)
-        (fromData source)
-    -- The step still says event 0x71 while the source tree holds 0x99.
-    otherId = outRef 0x99
-    otherIdMembership =
-      singleMembership
-        withdrawalsDomain
-        1
-        (serialise otherId)
-        (serialise validWithdrawal)
-        otherId
-        validWithdrawal
-    otherIdBlock =
-      transitionBlock
-        { bWithdrawalsRoot =
-            singleRoot withdrawalsDomain 1 (serialise otherId) (serialise validWithdrawal)
-        }
-    depositPhaseStep = stepWith 0 withdrawalKey 3 ledgerBefore ledgerAfter
+ where
+  binding block proof eventToStep source =
+    pvalidateWithdrawalOneStepBinding
+      (headerT block)
+      (fromData proof)
+      (fromData eventToStep)
+      (fromData source)
+  -- The step still says event 0x71 while the source tree holds 0x99.
+  otherId = outRef 0x99
+  otherIdMembership =
+    singleMembership
+      withdrawalsDomain
+      1
+      (serialise otherId)
+      (serialise validWithdrawal)
+      otherId
+      validWithdrawal
+  otherIdBlock =
+    transitionBlock
+      { bWithdrawalsRoot =
+          singleRoot withdrawalsDomain 1 (serialise otherId) (serialise validWithdrawal)
+      }
+  depositPhaseStep = stepWith 0 withdrawalKey 3 ledgerBefore ledgerAfter
 
 --------------------------------------------------------------------------------
 
@@ -1322,21 +1325,21 @@ withdrawalTransitionTests =
       pfails $
         noOp (blockWithStep honestStep) honestStep (withdrawalMembership validWithdrawal)
   ]
-  where
-    spend = deleteWitness utxoKey utxoValue
-    valid block s0 source witness =
-      pvalidateValidWithdrawalTransition
-        (headerT block)
-        (fromData (traceProofOf s0 step1 0))
-        (fromData mapMembership4)
-        (fromData source)
-        (fromData witness)
-    noOp block s0 source =
-      pvalidateInvalidWithdrawalNoOpTransition
-        (headerT block)
-        (fromData (traceProofOf s0 step1 0))
-        (fromData mapMembership4)
-        (fromData source)
+ where
+  spend = deleteWitness utxoKey utxoValue
+  valid block s0 source witness =
+    pvalidateValidWithdrawalTransition
+      (headerT block)
+      (fromData (traceProofOf s0 step1 0))
+      (fromData mapMembership4)
+      (fromData source)
+      (fromData witness)
+  noOp block s0 source =
+    pvalidateInvalidWithdrawalNoOpTransition
+      (headerT block)
+      (fromData (traceProofOf s0 step1 0))
+      (fromData mapMembership4)
+      (fromData source)
 
 --------------------------------------------------------------------------------
 
@@ -1355,32 +1358,32 @@ forcedTransitionTests =
       prefuses $
         noOp (blockWithForced withdrawalPhaseStep) withdrawalPhaseStep rejectedForced
   ]
-  where
-    forcedEventKey = PD.Constr 1 [forcedOrderId]
-    forcedNoOpStep = stepWith 0 forcedEventKey 1 ledgerBefore ledgerBefore
-    forcedMovingStep = stepWith 0 forcedEventKey 1 ledgerBefore ledgerAfter
-    withdrawalPhaseStep = stepWith 0 forcedEventKey 0 ledgerBefore ledgerAfter
-    forcedMap = PD.Constr 0 [PD.I 0, PD.Constr 1 []]
-    forcedMapMembership =
-      singleMembership
-        eventToStepDomain
-        4
-        (serialise forcedEventKey)
-        (serialise forcedMap)
-        forcedEventKey
-        forcedMap
-    blockWithForced s0 =
-      transitionBlock
-        { bTraceRoot = commitCountedRoot traceDomain (traceRawRootOf s0 step1) 2
-        , bEventToStepRoot =
-            singleRoot eventToStepDomain 4 (serialise forcedEventKey) (serialise forcedMap)
-        }
-    noOp block s0 source =
-      pvalidateInvalidForcedTransactionNoOpTransition
-        (headerT block)
-        (fromData (traceProofOf s0 step1 0))
-        (fromData forcedMapMembership)
-        (fromData (forcedMembership source))
+ where
+  forcedEventKey = PD.Constr 1 [forcedOrderId]
+  forcedNoOpStep = stepWith 0 forcedEventKey 1 ledgerBefore ledgerBefore
+  forcedMovingStep = stepWith 0 forcedEventKey 1 ledgerBefore ledgerAfter
+  withdrawalPhaseStep = stepWith 0 forcedEventKey 0 ledgerBefore ledgerAfter
+  forcedMap = PD.Constr 0 [PD.I 0, PD.Constr 1 []]
+  forcedMapMembership =
+    singleMembership
+      eventToStepDomain
+      4
+      (serialise forcedEventKey)
+      (serialise forcedMap)
+      forcedEventKey
+      forcedMap
+  blockWithForced s0 =
+    transitionBlock
+      { bTraceRoot = commitCountedRoot traceDomain (traceRawRootOf s0 step1) 2
+      , bEventToStepRoot =
+          singleRoot eventToStepDomain 4 (serialise forcedEventKey) (serialise forcedMap)
+      }
+  noOp block s0 source =
+    pvalidateInvalidForcedTransactionNoOpTransition
+      (headerT block)
+      (fromData (traceProofOf s0 step1 0))
+      (fromData forcedMapMembership)
+      (fromData (forcedMembership source))
 
 --------------------------------------------------------------------------------
 
@@ -1403,18 +1406,18 @@ countFaultTests =
   [ testCase "a block whose event total is its four sources' sum is no fault" $
       prefuses (fault coherentBlock (PD.Constr 0 []))
   , testCase "a block whose event total is not that sum is" $
-      passertEval (fault coherentBlock {bTotalEventCount = 9} (PD.Constr 0 []))
+      passertEval (fault coherentBlock{bTotalEventCount = 9} (PD.Constr 0 []))
   , testCase "a block with one step per event is no fault" $
       prefuses (fault coherentBlock (PD.Constr 1 []))
   , testCase "a block with fewer steps than events is" $
-      passertEval (fault coherentBlock {bStepCount = 3} (PD.Constr 1 []))
+      passertEval (fault coherentBlock{bStepCount = 3} (PD.Constr 1 []))
   , testCase "a withdrawal root committing the published count is no fault" $
       prefuses $
         fault coherentBlock (PD.Constr 2 [countProof withdrawalsDomain withdrawalPhas 1])
   , testCase "a withdrawal root committing another count is" $
       passertEval $
         fault
-          coherentBlock {bWithdrawalsRoot = commitCountedRoot withdrawalsDomain withdrawalPhas 7}
+          coherentBlock{bWithdrawalsRoot = commitCountedRoot withdrawalsDomain withdrawalPhas 7}
           (PD.Constr 2 [countProof withdrawalsDomain withdrawalPhas 7])
   , testCase "refuses a source count fault stated under a non-source domain" $
       prefuses $
@@ -1428,7 +1431,7 @@ countFaultTests =
   , testCase "an event-to-step root committing another count is" $
       passertEval $
         fault
-          coherentBlock {bEventToStepRoot = commitCountedRoot eventToStepDomain mapPhas 6}
+          coherentBlock{bEventToStepRoot = commitCountedRoot eventToStepDomain mapPhas 6}
           (PD.Constr 3 [countProof eventToStepDomain mapPhas 6])
   , testCase "a trace root committing the step count is no fault" $
       prefuses $
@@ -1436,25 +1439,25 @@ countFaultTests =
   , testCase "a trace root committing another count is" $
       passertEval $
         fault
-          coherentBlock {bTraceRoot = commitCountedRoot traceDomain tracePhas 8}
+          coherentBlock{bTraceRoot = commitCountedRoot traceDomain tracePhas 8}
           (PD.Constr 4 [countProof traceDomain tracePhas 8])
   , testCase "aborts on a sixth kind of count fault" $
       pfails (fault coherentBlock (PD.Constr 5 []))
   ]
-  where
-    fault block witness = pvalidateCountFault (headerT block) (asDataTerm witness)
-    withdrawalPhas = singleEntryRoot (serialise withdrawalId) (serialise validWithdrawal)
-    mapPhas = singleEntryRoot (serialise withdrawalKey) (serialise eventToStep0)
-    tracePhas = traceRawRootOf honestStep step1
-    -- One event of each class, one step apiece, and every root committing the
-    -- count published beside it.
-    coherentBlock =
-      transitionBlock
-        { bStepCount = 4
-        , bWithdrawalsRoot = commitCountedRoot withdrawalsDomain withdrawalPhas 1
-        , bEventToStepRoot = commitCountedRoot eventToStepDomain mapPhas 4
-        , bTraceRoot = commitCountedRoot traceDomain tracePhas 4
-        }
+ where
+  fault block witness = pvalidateCountFault (headerT block) (asDataTerm witness)
+  withdrawalPhas = singleEntryRoot (serialise withdrawalId) (serialise validWithdrawal)
+  mapPhas = singleEntryRoot (serialise withdrawalKey) (serialise eventToStep0)
+  tracePhas = traceRawRootOf honestStep step1
+  -- One event of each class, one step apiece, and every root committing the
+  -- count published beside it.
+  coherentBlock =
+    transitionBlock
+      { bStepCount = 4
+      , bWithdrawalsRoot = commitCountedRoot withdrawalsDomain withdrawalPhas 1
+      , bEventToStepRoot = commitCountedRoot eventToStepDomain mapPhas 4
+      , bTraceRoot = commitCountedRoot traceDomain tracePhas 4
+      }
 
 --------------------------------------------------------------------------------
 
@@ -1486,11 +1489,11 @@ duplicateTests =
           (traceProofOf step0 step1 0)
           (traceProofOf step0 distinctStep 1)
   ]
-  where
-    duplicate block left right =
-      pvalidateDuplicateTraceEvent (headerT block) (fromData left) (fromData right)
-    distinctStep = stepWith 1 (PD.Constr 0 [outRef 0x9a]) 0 midRoot (ledgerRoot 0xa2)
-    distinctBlock = withTrace step0 distinctStep
+ where
+  duplicate block left right =
+    pvalidateDuplicateTraceEvent (headerT block) (fromData left) (fromData right)
+  distinctStep = stepWith 1 (PD.Constr 0 [outRef 0x9a]) 0 midRoot (ledgerRoot 0xa2)
+  distinctBlock = withTrace step0 distinctStep
 
 --------------------------------------------------------------------------------
 -- The L2 transaction transition
@@ -1512,11 +1515,12 @@ l2Lengths = BS.concat ("\x89" : replicate 9 "\x00")
 compactWithL2Outputs :: Integer -> BS.ByteString
 compactWithL2Outputs validity =
   BS.take 73 base <> blake2b256 l2OutputsPreimage <> BS.drop 105 base
-  where
-    base = compactWithValidity tx1 (blake2b256 l2WitnessSet) validity
+ where
+  base = compactWithValidity tx1 (blake2b256 l2WitnessSet) validity
 
--- | This arm needs materialisable output data; the shared fixture deliberately
--- carries arbitrary datum bytes in slot 1 for field-walk tests.
+{- | This arm needs materialisable output data; the shared fixture deliberately
+carries arbitrary datum bytes in slot 1 for field-walk tests.
+-}
 l2OutputItem :: Int -> BS.ByteString
 l2OutputItem 0 = outputItem 0
 l2OutputItem 1 =
@@ -1627,8 +1631,8 @@ l2MapMembershipFor txId =
     (serialise l2Map)
     eventKey
     l2Map
-  where
-    eventKey = l2EventKeyFor txId
+ where
+  eventKey = l2EventKeyFor txId
 
 {- | The transactions tree keys by the raw id and stores raw bytes, so neither
 side is serialised on the way in.
@@ -1648,8 +1652,8 @@ l2SourceMembershipFor txId leaf =
     , PD.B leaf
     , PD.List []
     ]
-  where
-    raw = singleEntryRoot txId leaf
+ where
+  raw = singleEntryRoot txId leaf
 
 l2FaultBlock :: PD.Data -> BS.ByteString -> Block
 l2FaultBlock = l2FaultBlockFor l2TxId
@@ -1665,12 +1669,23 @@ l2FaultBlockFor txId s0 leaf =
         singleRoot eventToStepDomain 4 (serialise eventKey) (serialise l2Map)
     , bTraceRoot = commitCountedRoot traceDomain (traceRawRootOf s0 step1) 2
     }
-  where
-    eventKey = l2EventKeyFor txId
+ where
+  eventKey = l2EventKeyFor txId
 
 l2Tests :: [TestTree]
 l2Tests =
-  [ testGroup
+  [ testGroup "committed L2 source wire"
+      (testCase "decodes the canonical source without a redeemer copy" (passertEval $
+        pserialiseData # pforgetData (pdata $ pdecodeL2TransactionSource # pconstant l2Leaf) #== pconstant l2Leaf)
+      : [testCase label $ pfails $ pserialiseData # pforgetData (pdata $ pdecodeL2TransactionSource # pconstant (serialise dat))
+        | (label, dat) <-
+          [("rejects surplus outer fields",PD.Constr 0 [PD.B l2TxId,l2Triple,PD.I 0]),
+           ("rejects wrong source constructor",PD.Constr 1 [PD.B l2TxId,l2Triple]),
+           ("rejects non-byte transaction id",PD.Constr 0 [PD.I 0,l2Triple]),
+           ("rejects surplus source fields",PD.Constr 0 [PD.B l2TxId,PD.Constr 0 [PD.B l2Compact,PD.B l2WitnessSet,PD.B l2Lengths,PD.I 0]]),
+           ("rejects non-byte witness metadata",PD.Constr 0 [PD.B l2TxId,PD.Constr 0 [PD.B l2Compact,PD.I 0,PD.B l2Lengths]]),
+           ("rejects missing source metadata",PD.Constr 0 [PD.B l2TxId,PD.Constr 0 [PD.B l2Compact,PD.B l2WitnessSet]])]])
+  , testGroup
       "transition-trace/proof Aiken L2 preimage parity"
       [ testCase "rejects_l2_transaction_with_a_substituted_spend_inputs_preimage" $
           pfails $
@@ -1692,7 +1707,6 @@ l2Tests =
           pfails $
             acceptedL2FaultWithSource
               wrongAuthenticatedTxId
-              l2Triple
               wrongAuthenticatedLeaf
               wrongAuthenticatedStep
               (spendInputsPreimage tx1)
@@ -1711,7 +1725,6 @@ l2Tests =
           pfails $
             acceptedL2FaultWithSource
               miscountedTxId
-              miscountedTriple
               miscountedLeaf
               miscountedStep
               miscountedSpendInputsPreimage
@@ -1796,8 +1809,8 @@ l2Tests =
       passertEval (transition (l2Step (ledgerRoot 0xcd)) l2Leaf)
   , testCase "…including one that left the ledger untouched" $
       passertEval (transition (l2Step l2PreRoot) l2Leaf)
-  , testCase "refuses a leaf the supplied triple does not rebuild" $
-      prefuses $
+  , testCase "aborts on a malformed committed source leaf" $
+      pfails $
         transition (l2Step l2PostRoot) (serialise (PD.Constr 0 [PD.B l2TxId, PD.B "other"]))
   , testCase "refuses a leaf filed under another transaction id" $
       prefuses $
@@ -1811,7 +1824,6 @@ l2Tests =
           (fromData (traceProofOf (l2Step l2PostRoot) step1 0))
           (fromData l2MapMembership)
           (fromData (l2SourceMembership invalidLeaf))
-          (asDataTerm invalidTriple)
           (pconstant (spendInputsPreimage tx1))
           (pconstant l2OutputsPreimage)
           (witnessList l2SpendWitnesses)
@@ -1836,27 +1848,26 @@ l2Tests =
           (fromData l2MapMembership)
           (fromData (l2SourceMembership l2Leaf))
   ]
-  where
-    anchoredT :: forall s. Term s PAnchoredNativeTxV1
-    anchoredT =
-      panchoredNativeTx
-        # pcon (PBodyTxOpening (pconstant l2Compact))
-        # pcon (PBodyAnchor (pdata (pconstant l2TxId)))
-    transition s0 leaf =
-      pvalidateL2TransactionTransition
-        (headerT (l2FaultBlock s0 leaf))
-        (fromData (traceProofOf s0 step1 0))
-        (fromData l2MapMembership)
-        (fromData (l2SourceMembership leaf))
-        (asDataTerm l2Triple)
-        (pconstant (spendInputsPreimage tx1))
-        (pconstant l2OutputsPreimage)
-        (witnessList l2SpendWitnesses)
-        (witnessList l2OutputWitnesses)
-    invalidTriple = PD.Constr 0 [PD.B invalidCompact, PD.B l2WitnessSet, PD.B l2Lengths]
-    invalidCompact = compactWithL2Outputs 1
-    invalidLeaf = serialise (PD.Constr 0 [PD.B l2TxId, invalidTriple])
-    wrongClassStep = stepWith 0 (PD.Constr 0 [outRef 0x8e]) 2 l2PreRoot l2PostRoot
+ where
+  anchoredT :: forall s. Term s PAnchoredNativeTxV1
+  anchoredT =
+    panchoredNativeTx
+      # pcon (PBodyTxOpening (pconstant l2Compact))
+      # pcon (PBodyAnchor (pdata (pconstant l2TxId)))
+  transition s0 leaf =
+    pvalidateL2TransactionTransition
+      (headerT (l2FaultBlock s0 leaf))
+      (fromData (traceProofOf s0 step1 0))
+      (fromData l2MapMembership)
+      (fromData (l2SourceMembership leaf))
+      (pconstant (spendInputsPreimage tx1))
+      (pconstant l2OutputsPreimage)
+      (witnessList l2SpendWitnesses)
+      (witnessList l2OutputWitnesses)
+  invalidTriple = PD.Constr 0 [PD.B invalidCompact, PD.B l2WitnessSet, PD.B l2Lengths]
+  invalidCompact = compactWithL2Outputs 1
+  invalidLeaf = serialise (PD.Constr 0 [PD.B l2TxId, invalidTriple])
+  wrongClassStep = stepWith 0 (PD.Constr 0 [outRef 0x8e]) 2 l2PreRoot l2PostRoot
 
 {- | The two Aiken mutation selectors keep every ledger witness consistent with
 the preimages supplied by the prover. The source leaf still commits the
@@ -1874,7 +1885,6 @@ acceptedL2Fault ::
 acceptedL2Fault openedStep suppliedSpendInputs suppliedOutputs spendWitnesses outputWitnesses =
   acceptedL2FaultWithSource
     l2TxId
-    l2Triple
     l2Leaf
     openedStep
     suppliedSpendInputs
@@ -1885,7 +1895,6 @@ acceptedL2Fault openedStep suppliedSpendInputs suppliedOutputs spendWitnesses ou
 acceptedL2FaultWithSource ::
   forall s.
   BS.ByteString ->
-  PD.Data ->
   BS.ByteString ->
   PD.Data ->
   BS.ByteString ->
@@ -1893,7 +1902,7 @@ acceptedL2FaultWithSource ::
   [PD.Data] ->
   [PD.Data] ->
   Term s PBool
-acceptedL2FaultWithSource txId sourceTriple sourceLeaf openedStep suppliedSpendInputs suppliedOutputs spendWitnesses outputWitnesses =
+acceptedL2FaultWithSource txId sourceLeaf openedStep suppliedSpendInputs suppliedOutputs spendWitnesses outputWitnesses =
   pvalidateAcceptedTransactionFaultProof
     ( fromData $
         faultProof
@@ -1908,13 +1917,12 @@ acceptedL2FaultWithSource txId sourceTriple sourceLeaf openedStep suppliedSpendI
                 , PD.B suppliedOutputs
                 , PD.List spendWitnesses
                 , PD.List outputWitnesses
-                , sourceTriple
                 ]
           )
     )
     (asDataTerm (PD.B (threadNameFor block)))
-  where
-    block = l2FaultBlockFor txId openedStep sourceLeaf
+ where
+  block = l2FaultBlockFor txId openedStep sourceLeaf
 
 substitutedSpendInputsPreimage :: BS.ByteString
 substitutedSpendInputsPreimage =
@@ -1956,9 +1964,9 @@ substitutedOutputWitnesses =
       , twoLeafProof secondEntry firstEntry
       ]
   ]
-  where
-    firstEntry@(firstKey, firstValue) = head substitutedOutputEntries
-    secondEntry@(secondKey, secondValue) = substitutedOutputEntries !! 1
+ where
+  firstEntry@(firstKey, firstValue) = head substitutedOutputEntries
+  secondEntry@(secondKey, secondValue) = substitutedOutputEntries !! 1
 
 substitutedOutputStep :: PD.Data
 substitutedOutputStep =
@@ -2223,12 +2231,12 @@ the shape matters because the field is read positionally.
 -}
 dpHubDatum :: PD.Data
 dpHubDatum = PD.Constr 0 (policies <> addresses <> [PD.B (BS.replicate 28 0xee)])
-  where
-    policies =
-      [ PD.B (if i == 7 then dpPolicy else BS.replicate 28 (fromIntegral i))
-      | i <- [0 .. 11 :: Integer]
-      ]
-    addresses = replicate 13 dpL1Address
+ where
+  policies =
+    [ PD.B (if i == 7 then dpPolicy else BS.replicate 28 (fromIntegral i))
+    | i <- [0 .. 11 :: Integer]
+    ]
+  addresses = replicate 13 dpL1Address
 
 --------------------------------------------------------------------------------
 
@@ -2464,28 +2472,28 @@ depositTests =
           (fromData dpMapMembership)
           (fromData (dpMembership dpInfo))
   ]
-  where
-    dpWitness = insertWitness dpLedgerKey dpOutputLedgerValue
-    dpReference :: forall s. PD.Data -> Term s PAuthenticatedDepositReference
-    dpReference refInput =
-      pgetAuthenticatedDepositReference
-        # witnessList [refInput]
-        # dpPolicyT
-        # dpAssetNameT
-        # 0
-    dpTransition s0 refInput witness = dpTransitionWith s0 dpInfo refInput witness
-    dpTransitionWith :: forall s. PD.Data -> PD.Data -> PD.Data -> PD.Data -> Term s PBool
-    dpTransitionWith s0 info refInput witness =
-      pvalidateValidDepositTransition
-        (headerT (dpBlock s0 info))
-        (fromData dpHubDatum)
-        (witnessList [refInput])
-        (fromData (traceProofOf s0 step1 0))
-        (fromData dpMapMembership)
-        (fromData (dpMembership info))
-        0
-        dpAssetNameT
-        (fromData witness)
+ where
+  dpWitness = insertWitness dpLedgerKey dpOutputLedgerValue
+  dpReference :: forall s. PD.Data -> Term s PAuthenticatedDepositReference
+  dpReference refInput =
+    pgetAuthenticatedDepositReference
+      # witnessList [refInput]
+      # dpPolicyT
+      # dpAssetNameT
+      # 0
+  dpTransition s0 refInput witness = dpTransitionWith s0 dpInfo refInput witness
+  dpTransitionWith :: forall s. PD.Data -> PD.Data -> PD.Data -> PD.Data -> Term s PBool
+  dpTransitionWith s0 info refInput witness =
+    pvalidateValidDepositTransition
+      (headerT (dpBlock s0 info))
+      (fromData dpHubDatum)
+      (witnessList [refInput])
+      (fromData (traceProofOf s0 step1 0))
+      (fromData dpMapMembership)
+      (fromData (dpMembership info))
+      0
+      dpAssetNameT
+      (fromData witness)
 
 dpPolicyT :: forall s. Term s (PAsData PCurrencySymbol)
 dpPolicyT = asDataTerm (PD.B dpPolicy)
@@ -2564,10 +2572,13 @@ they cannot be a placeholder: the validity interval this family reads comes out
 of them and nowhere else.
 -}
 toSourceOf :: Tx -> PD.Data
-toSourceOf tx =
+toSourceOf tx = toSourceWithValidity tx 0
+
+toSourceWithValidity :: Tx -> Integer -> PD.Data
+toSourceWithValidity tx validity =
   PD.Constr
     0
-    [ PD.B (compactWithValidity tx (blake2b256 (witnessSetCborOf tx)) 0)
+    [ PD.B (compactWithValidity tx (blake2b256 (witnessSetCborOf tx)) validity)
     , PD.B (witnessSetCborOf tx)
     , PD.B (BS.concat ("\x89" : replicate 9 "\x00"))
     ]
@@ -2588,15 +2599,15 @@ toRefInput tx inclusionTime =
 -- | @ledger_state.ForcedInclusionTxV1@ over the same order, under a verdict.
 toSourceValue :: Tx -> Integer -> PD.Data
 toSourceValue tx validity =
-  PD.Constr 0 [PD.B (txIdOf tx), toSourceOf tx, PD.Constr validity []]
+  PD.Constr 0 [PD.B (txIdOf tx), toSourceWithValidity tx (if validity == 0 then 0 else 1), PD.Constr validity []]
 
 -- | A transaction whose validity interval closes before the block opens.
 staleTx :: Tx
-staleTx = tx1 {tValidityStart = 10, tValidityEnd = 50}
+staleTx = tx1{tValidityStart = 10, tValidityEnd = 50}
 
 -- | The Aiken boundary vectors use an authenticated transaction with no own window.
 forcedTimingTx :: Tx
-forcedTimingTx = tx1 {tValidityStart = -1, tValidityEnd = -1}
+forcedTimingTx = tx1{tValidityStart = -1, tValidityEnd = -1}
 
 {- | A block with all four source trees empty, so an absence can be proven
 against any of them.
@@ -2619,13 +2630,13 @@ omittedBlock =
 sourceBlock :: Integer -> PD.Data -> PD.Data -> Block
 sourceBlock domain key value
   | domain == withdrawalsDomain =
-      defaultBlock {bWithdrawalsRoot = root, bWithdrawalCount = 1, bTotalEventCount = 4}
+      defaultBlock{bWithdrawalsRoot = root, bWithdrawalCount = 1, bTotalEventCount = 4}
   | domain == forcedDomain =
-      defaultBlock {bForcedRoot = root, bForcedCount = 1, bTotalEventCount = 5}
+      defaultBlock{bForcedRoot = root, bForcedCount = 1, bTotalEventCount = 5}
   | otherwise =
-      defaultBlock {bDepositsRoot = root, bDepositCount = 1}
-  where
-    root = singleRoot domain 1 (serialise key) (serialise value)
+      defaultBlock{bDepositsRoot = root, bDepositCount = 1}
+ where
+  root = singleRoot domain 1 (serialise key) (serialise value)
 
 omittedWitness :: Integer -> BS.ByteString -> PD.Data -> PD.Data
 omittedWitness tag assetName nonMembership
@@ -2826,6 +2837,18 @@ l1EventTests =
           (sourceBlock forcedDomain toEventId (toSourceValue staleTx 0))
           (toRefInput staleTx dueTime)
           (outOfWindowWitness 2 toAssetName (Just 0) (forcedLeaf staleTx 0))
+  , testCase "adjudicates only the validity byte for a rejected forced source" $
+      passertEval $
+        outOfWindow
+          (sourceBlock forcedDomain toEventId (toSourceValue staleTx 1))
+          (toRefInput staleTx dueTime)
+          (outOfWindowWitness 2 toAssetName (Just 1) (forcedLeaf staleTx 1))
+  , testCase "refuses an override inconsistent with the committed validity byte" $
+      prefuses $
+        outOfWindow
+          (sourceBlock forcedDomain toEventId (toSourceValue staleTx 0))
+          (toRefInput staleTx dueTime)
+          (outOfWindowWitness 2 toAssetName (Just 1) (forcedLeaf staleTx 0))
   , testCase "…and one still inside both windows is not" $
       prefuses $
         outOfWindow
@@ -2833,37 +2856,37 @@ l1EventTests =
           (toRefInput tx1 dueTime)
           (outOfWindowWitness 2 toAssetName (Just 0) (forcedLeaf tx1 0))
   ]
-  where
-    forcedDue start end = pforcedTxIsDue (headerT defaultBlock) (pconstant start) (pconstant end)
-    omitted block refInput witness =
-      pvalidateOmittedDueL1Event
-        (headerT block)
-        (fromData dpHubDatum)
-        (witnessList [refInput])
-        (asDataTerm witness)
-    outOfWindow block refInput witness =
-      pvalidateOutOfWindowSourceEvent
-        (headerT block)
-        (fromData dpHubDatum)
-        (witnessList [refInput])
-        (asDataTerm witness)
-    otherInfo = dpInfoWith dpL2Address 0 nothingD
-    withdrawalLeaf info =
-      singleMembership
-        withdrawalsDomain
-        1
-        (serialise wdEventId)
-        (serialise info)
-        wdEventId
-        info
-    forcedLeaf tx validity =
-      singleMembership
-        forcedDomain
-        1
-        (serialise toEventId)
-        (serialise (toSourceValue tx validity))
-        toEventId
-        (toSourceValue tx validity)
+ where
+  forcedDue start end = pforcedTxIsDue (headerT defaultBlock) (pconstant start) (pconstant end)
+  omitted block refInput witness =
+    pvalidateOmittedDueL1Event
+      (headerT block)
+      (fromData dpHubDatum)
+      (witnessList [refInput])
+      (asDataTerm witness)
+  outOfWindow block refInput witness =
+    pvalidateOutOfWindowSourceEvent
+      (headerT block)
+      (fromData dpHubDatum)
+      (witnessList [refInput])
+      (asDataTerm witness)
+  otherInfo = dpInfoWith dpL2Address 0 nothingD
+  withdrawalLeaf info =
+    singleMembership
+      withdrawalsDomain
+      1
+      (serialise wdEventId)
+      (serialise info)
+      wdEventId
+      info
+  forcedLeaf tx validity =
+    singleMembership
+      forcedDomain
+      1
+      (serialise toEventId)
+      (serialise (toSourceValue tx validity))
+      toEventId
+      (toSourceValue tx validity)
 
 --------------------------------------------------------------------------------
 -- The one-step dispatcher
@@ -2960,53 +2983,52 @@ oneStepDispatchTests =
       prefuses $
         dispatch (l2FaultBlock (l2Step l2PostRoot) l2Leaf) (l2Arm (l2Step l2PostRoot))
   ]
-  where
-    dispatch block witness =
-      pvalidateInvalidOneStepTransition
-        (headerT block)
-        (fromData dpHubDatum)
-        (witnessList [dpHonestRefInput])
-        (asDataTerm witness)
-    depositArm s0 =
-      PD.Constr
-        3
-        [ traceProofOf s0 step1 0
-        , dpMapMembership
-        , dpMembership dpInfo
-        , PD.I 0
-        , PD.B dpAssetName
-        , insertWitness dpLedgerKey dpOutputLedgerValue
-        ]
-    l2Arm s0 =
-      PD.Constr
-        4
-        [ traceProofOf s0 step1 0
-        , l2MapMembership
-        , l2SourceMembership l2Leaf
-        , PD.B (spendInputsPreimage tx1)
-        , PD.B l2OutputsPreimage
-        , PD.List l2SpendWitnesses
-        , PD.List l2OutputWitnesses
-        , l2Triple
-        ]
-    forcedEventKey = PD.Constr 1 [forcedOrderId]
-    forcedNoOpStep = stepWith 0 forcedEventKey 1 ledgerBefore ledgerBefore
-    forcedMovingStep = stepWith 0 forcedEventKey 1 ledgerBefore ledgerAfter
-    forcedMap = PD.Constr 0 [PD.I 0, PD.Constr 1 []]
-    forcedMapMembership =
-      singleMembership
-        eventToStepDomain
-        4
-        (serialise forcedEventKey)
-        (serialise forcedMap)
-        forcedEventKey
-        forcedMap
-    forcedBlock s0 =
-      transitionBlock
-        { bTraceRoot = commitCountedRoot traceDomain (traceRawRootOf s0 step1) 2
-        , bEventToStepRoot =
-            singleRoot eventToStepDomain 4 (serialise forcedEventKey) (serialise forcedMap)
-        }
+ where
+  dispatch block witness =
+    pvalidateInvalidOneStepTransition
+      (headerT block)
+      (fromData dpHubDatum)
+      (witnessList [dpHonestRefInput])
+      (asDataTerm witness)
+  depositArm s0 =
+    PD.Constr
+      3
+      [ traceProofOf s0 step1 0
+      , dpMapMembership
+      , dpMembership dpInfo
+      , PD.I 0
+      , PD.B dpAssetName
+      , insertWitness dpLedgerKey dpOutputLedgerValue
+      ]
+  l2Arm s0 =
+    PD.Constr
+      4
+      [ traceProofOf s0 step1 0
+      , l2MapMembership
+      , l2SourceMembership l2Leaf
+      , PD.B (spendInputsPreimage tx1)
+      , PD.B l2OutputsPreimage
+      , PD.List l2SpendWitnesses
+      , PD.List l2OutputWitnesses
+      ]
+  forcedEventKey = PD.Constr 1 [forcedOrderId]
+  forcedNoOpStep = stepWith 0 forcedEventKey 1 ledgerBefore ledgerBefore
+  forcedMovingStep = stepWith 0 forcedEventKey 1 ledgerBefore ledgerAfter
+  forcedMap = PD.Constr 0 [PD.I 0, PD.Constr 1 []]
+  forcedMapMembership =
+    singleMembership
+      eventToStepDomain
+      4
+      (serialise forcedEventKey)
+      (serialise forcedMap)
+      forcedEventKey
+      forcedMap
+  forcedBlock s0 =
+    transitionBlock
+      { bTraceRoot = commitCountedRoot traceDomain (traceRawRootOf s0 step1) 2
+      , bEventToStepRoot =
+          singleRoot eventToStepDomain 4 (serialise forcedEventKey) (serialise forcedMap)
+      }
 
 --------------------------------------------------------------------------------
 -- The fault proof and its nine entry points
@@ -3028,7 +3050,7 @@ faultProof block fault = PD.Constr 0 [PD.B (headerHashOf block), headerData bloc
 
 -- | A block whose trace does not start where its own prior ledger root says.
 boundaryFaultBlock :: Block
-boundaryFaultBlock = defaultBlock {bPrevUtxosRoot = ledgerRoot 0xb0}
+boundaryFaultBlock = defaultBlock{bPrevUtxosRoot = ledgerRoot 0xb0}
 
 boundaryFault :: PD.Data
 boundaryFault = PD.Constr 0 [PD.Constr 0 [], traceProofOf step0 step1 0]
@@ -3055,7 +3077,8 @@ linkFaultStep1 = stepWith 1 withdrawalKey 0 (ledgerRoot 0xb1) (ledgerRoot 0xa2)
 linkFaultBlock :: Block
 linkFaultBlock =
   defaultBlock
-    {bTraceRoot = commitCountedRoot traceDomain (traceRawRootOf step0 linkFaultStep1) 2}
+    { bTraceRoot = commitCountedRoot traceDomain (traceRawRootOf step0 linkFaultStep1) 2
+    }
 
 linkFault :: PD.Data
 linkFault = PD.Constr 1 [adjacentOf step0 linkFaultStep1]
@@ -3093,7 +3116,7 @@ data ConvictingProof = ConvictingProof
 
 convictionOf :: Block -> PD.Data -> ConvictingProof
 convictionOf block fault =
-  ConvictingProof {cpThreadName = threadNameFor block, cpProof = faultProof block fault}
+  ConvictingProof{cpThreadName = threadNameFor block, cpProof = faultProof block fault}
 
 -- | A trace that does not start where the block's own prior ledger root says.
 controlConviction :: ConvictingProof
@@ -3179,7 +3202,6 @@ l2Arm s0 =
     , PD.B l2OutputsPreimage
     , PD.List l2SpendWitnesses
     , PD.List l2OutputWitnesses
-    , l2Triple
     ]
 
 -- | A deposit the block should have projected into the ledger and did not.
@@ -3280,7 +3302,7 @@ faultProofTests =
   , testCase "…an event-to-step mismatch" $
       passertEval (control (blockMapping otherIndexMapping) eventToStepMismatchFault)
   , testCase "…and a count fault" $
-      passertEval (control defaultBlock {bTotalEventCount = 9} (PD.Constr 8 [PD.Constr 0 []]))
+      passertEval (control defaultBlock{bTotalEventCount = 9} (PD.Constr 8 [PD.Constr 0 []]))
   , testCase "the source entry point answers a source-membership mismatch" $
       passertEval (entry pvalidateSourceFaultProof noWithdrawalsBlock sourceMismatchFault)
   , testCase "…and refuses a boundary fault" $
@@ -3291,17 +3313,23 @@ faultProofTests =
       passertEval $
         entry pvalidateDuplicateFaultProof defaultBlock duplicateFault
   , testCase "the withdrawal entry point answers the valid-withdrawal arm" $
-      passertEval $ entryFor pvalidateWithdrawalFaultProof withdrawalConviction
+      passertEval $
+        entryFor pvalidateWithdrawalFaultProof withdrawalConviction
   , testCase "…and refuses the deposit arm, which is another validator's" $
-      prefuses $ entryFor pvalidateWithdrawalFaultProof depositConviction
+      prefuses $
+        entryFor pvalidateWithdrawalFaultProof depositConviction
   , testCase "the forced entry point answers the forced no-op arm" $
-      passertEval $ entryFor pvalidateForcedFaultProof forcedConviction
+      passertEval $
+        entryFor pvalidateForcedFaultProof forcedConviction
   , testCase "the deposit entry point answers the deposit arm" $
-      passertEval $ depositEntryFor depositConviction
+      passertEval $
+        depositEntryFor depositConviction
   , testCase "…and refuses the L2 arm" $
-      prefuses $ depositEntryFor acceptedTransactionConviction
+      prefuses $
+        depositEntryFor acceptedTransactionConviction
   , testCase "the accepted-transaction entry point answers the L2 arm" $
-      passertEval $ entryFor pvalidateAcceptedTransactionFaultProof acceptedTransactionConviction
+      passertEval $
+        entryFor pvalidateAcceptedTransactionFaultProof acceptedTransactionConviction
   , testCase "…and aborts on a malformed accepted-mismatch witness" $
       pfails $
         entry pvalidateAcceptedTransactionFaultProof defaultBlock acceptedMismatchFault
@@ -3314,7 +3342,8 @@ faultProofTests =
               [omittedWitness 0 dpAssetName (emptyNonMembership depositsDomain dpId)]
           )
   , testCase "…and an out-of-window fault, off the same reference input" $
-      passertEval $ l1EntryFor l1EventConviction
+      passertEval $
+        l1EntryFor l1EventConviction
   , testCase "…and refuses a boundary fault" $
       prefuses (l1Entry boundaryFaultBlock boundaryFault)
   , testCase "the catch-all entry point answers a boundary fault" $
@@ -3322,39 +3351,39 @@ faultProofTests =
   , testCase "…and aborts on a malformed accepted-mismatch witness" $
       pfails (catchAll defaultBlock acceptedMismatchFault)
   ]
-  where
-    control block fault =
-      pvalidateControlFaultProof
-        (fromData (faultProof block fault))
-        (asDataTerm (PD.B (threadNameFor block)))
-    entry f block fault =
-      f (fromData (faultProof block fault)) (asDataTerm (PD.B (threadNameFor block)))
-    entryFor f c = f (fromData (cpProof c)) (asDataTerm (PD.B (cpThreadName c)))
-    -- The deposit and L1-event entry points take the hub datum and the
-    -- reference inputs on top of the proof, and the two convictions below are
-    -- served by the same reference input — which is what lets the dispatch
-    -- validators drive both off one exported fixture.
-    hubEntryFor f c =
-      f
-        (fromData (cpProof c))
-        (asDataTerm (PD.B (cpThreadName c)))
-        (fromData depositHubOracleDatum)
-        (witnessList [depositReferenceInput])
-    depositEntryFor = hubEntryFor pvalidateDepositFaultProof
-    l1EntryFor = hubEntryFor pvalidateL1EventFaultProof
-    l1Entry = l1EntryAt dueTime
-    l1EntryAt inclusionTime block fault =
-      pvalidateL1EventFaultProof
-        (fromData (faultProof block fault))
-        (asDataTerm (PD.B (threadNameFor block)))
-        (fromData dpHubDatum)
-        (witnessList [dpRefInput dpValue (dpDatumAt inclusionTime dpId dpInfo)])
-    catchAll block fault =
-      pvalidateTransitionFaultProof
-        (fromData (faultProof block fault))
-        (asDataTerm (PD.B (threadNameFor block)))
-        (fromData dpHubDatum)
-        (witnessList [dpHonestRefInput])
-    otherIndexMapping = PD.Constr 0 [PD.I 1, PD.Constr 0 []]
-    eventToStepMismatchFault =
-      PD.Constr 2 [traceProofOf step0 step1 0, membershipArm (mapMembership otherIndexMapping)]
+ where
+  control block fault =
+    pvalidateControlFaultProof
+      (fromData (faultProof block fault))
+      (asDataTerm (PD.B (threadNameFor block)))
+  entry f block fault =
+    f (fromData (faultProof block fault)) (asDataTerm (PD.B (threadNameFor block)))
+  entryFor f c = f (fromData (cpProof c)) (asDataTerm (PD.B (cpThreadName c)))
+  -- The deposit and L1-event entry points take the hub datum and the
+  -- reference inputs on top of the proof, and the two convictions below are
+  -- served by the same reference input — which is what lets the dispatch
+  -- validators drive both off one exported fixture.
+  hubEntryFor f c =
+    f
+      (fromData (cpProof c))
+      (asDataTerm (PD.B (cpThreadName c)))
+      (fromData depositHubOracleDatum)
+      (witnessList [depositReferenceInput])
+  depositEntryFor = hubEntryFor pvalidateDepositFaultProof
+  l1EntryFor = hubEntryFor pvalidateL1EventFaultProof
+  l1Entry = l1EntryAt dueTime
+  l1EntryAt inclusionTime block fault =
+    pvalidateL1EventFaultProof
+      (fromData (faultProof block fault))
+      (asDataTerm (PD.B (threadNameFor block)))
+      (fromData dpHubDatum)
+      (witnessList [dpRefInput dpValue (dpDatumAt inclusionTime dpId dpInfo)])
+  catchAll block fault =
+    pvalidateTransitionFaultProof
+      (fromData (faultProof block fault))
+      (asDataTerm (PD.B (threadNameFor block)))
+      (fromData dpHubDatum)
+      (witnessList [dpHonestRefInput])
+  otherIndexMapping = PD.Constr 0 [PD.I 1, PD.Constr 0 []]
+  eventToStepMismatchFault =
+    PD.Constr 2 [traceProofOf step0 step1 0, membershipArm (mapMembership otherIndexMapping)]

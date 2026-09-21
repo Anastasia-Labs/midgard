@@ -227,9 +227,9 @@ availabilityRoute redeemer policy inputIndex outputIndex =
 
 mintBondAvailabilityRedeemer, timeoutAvailabilityRedeemer :: Redeemer
 mintBondAvailabilityRedeemer =
-  Redeemer $ dataToBuiltinData $ PD.Constr 0 $ map PD.I [0, 1, 0, 1, 2, 3]
+  Redeemer $ dataToBuiltinData $ PD.Constr 0 $ map PD.I [0, 0, 1, 0, 1, 2, 3]
 timeoutAvailabilityRedeemer =
-  Redeemer $ dataToBuiltinData $ PD.Constr 4 $ map PD.I [0, 1, 2, 0, 0, 1]
+  Redeemer $ dataToBuiltinData $ PD.Constr 4 $ map PD.I [0, 0, 1, 2, 0, 0, 1]
 
 availabilityPolicy, otherAvailabilityPolicy :: CurrencySymbol
 availabilityPolicy = CurrencySymbol $ toBuiltin $ BS.replicate 28 0xab
@@ -240,10 +240,10 @@ availabilityMintBondFieldsAreExact =
   pmatch
     ( pfromData $
         punsafeCoerce @(PAsData Availability.PMintRedeemerV1) $
-          pconstant @PData $ PD.Constr 0 $ map PD.I [0, 1, 0, 1, 2, 3]
+          pconstant @PData $ PD.Constr 0 $ map PD.I [0, 0, 1, 0, 1, 2, 3]
     )
     $ \case
-      Availability.PMintBondFromAttestation _ _ _ _ boundInput boundOutput ->
+      Availability.PMintBondFromAttestation _ _ _ _ _ boundInput boundOutput ->
         pfromData boundInput #== 2 #&& pfromData boundOutput #== 3
       _ -> pconstant False
 
@@ -256,7 +256,7 @@ availabilityRedeemerLookupIsExact =
           # pdata (pcon (PMinting $ pdata $ pconstant availabilityPolicy))
           # 0
     )
-    #== pconstant (PD.Constr 0 $ map PD.I [0, 1, 0, 1, 2, 3])
+    #== pconstant (PD.Constr 0 $ map PD.I [0, 0, 1, 0, 1, 2, 3])
 
 availabilityLookupFieldsAreExact :: forall s. Term s PBool
 availabilityLookupFieldsAreExact =
@@ -271,7 +271,7 @@ availabilityLookupFieldsAreExact =
                 # 0
     )
     $ \case
-      Availability.PMintBondFromAttestation _ _ _ _ boundInput boundOutput ->
+      Availability.PMintBondFromAttestation _ _ _ _ _ boundInput boundOutput ->
         pfromData boundInput #== 2 #&& pfromData boundOutput #== 3
       _ -> pconstant False
 
@@ -898,7 +898,8 @@ mergeRedeemerTerm h = pfromData (punsafeCoerce (pconstant @PData dat))
     dat =
       PD.Constr
         6
-        ( [ PD.B headerHashA -- header_node_key
+        ( [ PD.I 0 -- yield_to_ref_input_index
+          , PD.B headerHashA -- header_node_key
           , PD.Constr 0 [PD.Constr 0 [PD.B (BS.replicate 32 0x01)], PD.I 0]
           , PD.I 0 -- confirmed_state_output_index
           , PD.Constr 1 [] -- m_settlement_redeemer_index: None

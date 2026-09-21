@@ -1,719 +1,318 @@
-{- |
-Module      : Midgard.Validators.FraudProofs.ValidationTrace.ScriptSourcesRedeemerNormalization
-Description : Validators for the ScriptSources redeemer-normalization pipeline.
--}
-module Midgard.Validators.FraudProofs.ValidationTrace.ScriptSourcesRedeemerNormalization (
-  PScriptSourcesRedeemerEnvelopeActionV1 (..),
-  PScriptSourcesRedeemerTraversalNormalizerActionV1 (..),
-  PScriptSourcesRedeemerOuterNormalizerActionV1 (..),
-  PScriptSourcesRedeemerFoldMapExecutorActionV1 (..),
-  PScriptSourcesRedeemerFinalizeFrameExecutorActionV1 (..),
-  PScriptSourcesRedeemerExecutionSettlementActionV1 (..),
-  scriptSourcesRedeemerEnvelopeV1Validator,
-  scriptSourcesRedeemerTraversalNormalizerV1Validator,
-  scriptSourcesRedeemerOuterNormalizerV1Validator,
-  scriptSourcesRedeemerFoldMapExecutorV1Validator,
-  scriptSourcesRedeemerFinalizeFrameExecutorV1Validator,
-  scriptSourcesRedeemerExecutionSettlementV1Validator,
-) where
+-- | The shared ScriptSources and CEK item proof pipeline at the fixed Aiken target.
+module Midgard.Validators.FraudProofs.ValidationTrace.ScriptSourcesRedeemerNormalization where
 
-import GHC.Generics (Generic)
-import Generics.SOP qualified as SOP
-
+import Midgard.CekContextItem qualified as Carrier
+import Midgard.CekContextItemWire qualified as ItemWire
+import Midgard.RedeemerItemProof qualified as Item
+import Midgard.ScriptSourcesItemData qualified as Wire
+import Midgard.ScriptSourcesItemWire qualified as ActionWire
+import Midgard.ScriptSourcesItemNormalization qualified as Normalized
+import Midgard.ScriptSourcesItemSemantics qualified as Semantics
+import Midgard.ScriptSourcesRedeemerNormalization qualified as Envelope
+import Midgard.FraudProofs.Common qualified as Common
+import Midgard.ValidationMachine qualified as VM
+import Midgard.ValidationResolution qualified as Resolution
+import Midgard.ValidationResolutionData (recordFields, decodePrepared, decodeTransition)
+import Midgard.ValidationTrace qualified as Trace
+import Midgard.Validators.FraudProofs.Step (pdispatch, pexpectDatum, pexpectState, pstep)
 import Plutarch.Core.Utils (pand'List)
 import Plutarch.LedgerApi.Utils (PMaybeData (..))
-import Plutarch.LedgerApi.V3 (
-  PCurrencySymbol,
-  PScriptContext,
-  PScriptHash,
-  PTxInfo (..),
- )
+import Plutarch.LedgerApi.V3
 import Plutarch.Prelude
 
-import Midgard.CekDataTraverse (
-  PDataTraverseActionV1 (..),
-  PDataTraverseControlV1 (..),
-  PFinalizeFrameTransitionV1 (..),
-  pcontrolIsWellFormed,
-  pencodeControlV1,
-  pencodeOptionalSummaryV1,
-  pprevalidatedFinalizeFrameTransitionV1,
-  pprevalidatedFoldMapNextFrameRootV1,
-  pstageFold,
- )
-import Midgard.FraudProofs.Common (pcontinue)
-import Midgard.FraudProofs.NativeTx.Codec (pcborInt, pencodeDefiniteBytes)
-import Midgard.RedeemerItemProof (phashStageDataFromAuthenticatedPrefixV1)
-import Midgard.RedeemerItemProof qualified as Redeemer
-import Midgard.ScriptSourcesRedeemerNormalization (
-  PFamilyTraversalSerializationTemplateV1 (..),
-  POuterNormalizedScriptSourcesRedeemerActionV1 (..),
-  PPreparedScriptSourcesRedeemerEnvelopeV1 (..),
-  PScriptSourcesRedeemerEnvelopeFactsV1 (..),
-  PScriptSourcesRedeemerExecutionAttestedStateV1 (..),
-  PTraversalNormalizedScriptSourcesRedeemerActionV1 (..),
-  PUnvalidatedRedeemerItemOuterFieldsV1 (..),
-  pbaseProvenanceIdentityV1,
-  pcanonicalActionHashV1,
-  pcanonicalAuxiliaryHashV1,
-  penvelopeCommitmentV1,
-  penvelopeDomain,
-  penvelopeStateIsBoundV1,
-  pexecutionAttestationSettlementIsExactV1,
-  pexecutionAttestedStateV1,
-  pfinalizeFrameFamily,
-  pfoldMapFamily,
-  pnarrowActionIsBoundV1,
-  pouterNormalizedDomain,
-  pouterNormalizerRouteIsExactV1,
-  pouterNormalizedStateIsBoundV1,
-  presolutionIdentityV1,
-  psemanticExecutorRouteIsExactV1,
-  ptraversalActionIdentityV1,
-  ptraversalActionIdentityIsBoundV1,
-  ptraversalNormalizedDomain,
-  ptraversalNormalizedStateIsBoundV1,
-  ptraversalNormalizerRouteIsExactV1,
-  ptraversalSerializationTemplateV1,
-  pverifyRawEnvelopeV1,
-  pversion,
- )
-import Midgard.ValidationMachine (
-  PValidationOneStepWitnessV1,
-  pstructuralTransitionIsValid,
- )
-import Midgard.ValidationResolution (
-  PPreparedValidationResolutionStateV1 (..),
-  PValidationResolutionStateV1 (..),
-  phashOneStepEvidence,
-  ppreparedResolutionIsWellFormed,
- )
-import Midgard.ValidationTrace (
-  PValidationMachineStateV1 (..),
-  PValidationPhase (PScriptSources),
- )
-import Midgard.Validators.FraudProofs.Step (
-  pdispatch,
-  pexpectDatum,
-  pexpectStateAs,
-  pstep,
- )
+type Stage s = Term s (PAsData PByteString :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
+type EnvelopeStage s = Term s (PAsData PByteString :--> PAsData PScriptHash :--> PAsData PScriptHash :--> PAsData (PBuiltinList (PAsData PScriptHash)) :--> PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
 
-data PScriptSourcesRedeemerEnvelopeActionV1 (s :: S)
-  = PBindEnvelope
-      (Term s (PAsData PInteger))
-      (Term s (PAsData PInteger))
-      (Term s (PAsData PValidationOneStepWitnessV1))
-      (Term s PData)
-      (Term s (PAsData PByteString))
-      (Term s (PAsData PInteger))
-  deriving stock (Generic)
-  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
-  deriving (PlutusType) via (DeriveAsDataStruct PScriptSourcesRedeemerEnvelopeActionV1)
+run :: forall s. Term s (PAsData PCurrencySymbol) -> Term s PScriptContext -> (Term s PData -> Term s (PBuiltinList PData)) -> (Term s (PBuiltinList PData) -> Term s PByteString -> Term s PData -> Term s PByteString -> Term s PData -> Term s PBool) -> Term s PUnit
+run policy ctx open evaluate = pstep ctx $ \datum redeemer ownRef tx ->
+  pdispatch @_ @PData policy datum redeemer ownRef tx $ \raw -> plet (open raw) $ \f -> pmatch tx $ \t ->
+    Common.pcontinue policy (pexpectDatum datum) (pasInt # (pelemAt # 0 # f)) (pasInt # (pelemAt # 1 # f)) ownRef
+      (pfromData $ ptxInfo'inputs t) (pfromData $ ptxInfo'outputs t)
+      (\inputHash _ _ state outputHash outputState -> evaluate f (pto $ pfromData inputHash) (pexpectState state) (pto $ pfromData outputHash) outputState)
 
-data PScriptSourcesRedeemerTraversalNormalizerActionV1 (s :: S)
-  = PNormalizeTraversal
-      (Term s (PAsData PInteger))
-      (Term s (PAsData PInteger))
-      (Term s PData)
-      (Term s (PAsData Redeemer.PRedeemerItemProofControlV1))
-      (Term s (PAsData PDataTraverseActionV1))
-  deriving stock (Generic)
-  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
-  deriving (PlutusType) via (DeriveAsDataStruct PScriptSourcesRedeemerTraversalNormalizerActionV1)
+scriptSourcesRedeemerTraversalNormalizerV1Validator :: forall s. Stage s
+scriptSourcesRedeemerTraversalNormalizerV1Validator = plam $ \deployment policy ctx ->
+  run policy ctx (\raw -> pmatch (pasConstr # raw) $ \(PBuiltinPair tag f) ->
+    pif (tag #== 0 #&& plength # f #== 4 #|| tag #== 1 #&& plength # f #== 2) f perror) $ \f inputHash raw outputHash outputState ->
+    plet (pif (plength # f #== 4)
+      (plet (Wire.pdecodeEnvelope # raw) $ \state -> pmatch state $ \s ->
+        plet (pelemAt # 2 # f) $ \auxiliary -> plet (pelemAt # 3 # f) $ \claimedNext ->
+        pmatch (Normalized.pauxiliaryItemFields # auxiliary) $ \(PPair currentRaw witnessRaw) ->
+        plet (ItemWire.pdecodeRedeemerItemProofControl # currentRaw) $ \current ->
+        pif (pand'List
+          [ Envelope.penvelopeStateIsBoundV1 # state # pfromData deployment # pfromData (Envelope.penvelope'envelopeBinderScriptHash s)
+          , inputHash #== pfromData (Envelope.penvelope'traversalNormalizerScriptHash s)
+          , Envelope.pcanonicalAuxiliaryHashV1 # auxiliary #== pfromData (Envelope.penvelope'canonicalAuxiliaryHash s)
+          , Envelope.pcanonicalActionHashV1 # auxiliary # pfromData (Envelope.penvelope'actionFamily s) #== pfromData (Envelope.penvelope'canonicalActionHash s)
+          , pfromData (Envelope.penvelope'carrier s) #== Envelope.pscriptSourcesCarrier #|| Normalized.prawDataHash # claimedNext #== pfromData (Envelope.penvelope'expectedNextControlDataHash s)
+          ])
+          (pcon $ Normalized.PTraversalChecked (pdata $ pconstant False) (pdata state) (pdata current) claimedNext
+            (pdata $ Normalized.prawDataHash # witnessRaw) (pdata $ Normalized.pcheckedOptionalTraversalCbor # current)) perror)
+      (pmatch (Wire.pdecodeCurrentChecked # raw) $ \s -> pmatch (pfromData $ Normalized.pcurrent'envelope s) $ \env ->
+        plet (ItemWire.pdecodeRedeemerItemProofControl # Normalized.pcurrent'claimedNext s) $ \next ->
+        pif (Envelope.penvelope'deploymentId env #== deployment #&& inputHash #== pfromData (Envelope.penvelope'traversalNormalizerScriptHash env))
+          (pcon $ Normalized.PTraversalChecked (pdata $ pconstant True) (Normalized.pcurrent'envelope s) (Normalized.pcurrent'control s)
+            (Normalized.pcurrent'claimedNext s) (Normalized.pcurrent'witnessHash s) (pdata $ Normalized.pcheckedOptionalTraversalCbor # next)) perror)) $ \checked ->
+      pmatch checked $ \c -> pmatch (pfromData $ Normalized.ptraversal'envelope c) $ \env ->
+        outputHash #== pfromData (Envelope.penvelope'outerNormalizerScriptHash env) #&& outputState #== pforgetData (pdata checked)
 
-data PScriptSourcesRedeemerOuterNormalizerActionV1 (s :: S)
-  = PNormalizeOuter
-      (Term s (PAsData PInteger))
-      (Term s (PAsData PInteger))
-  deriving stock (Generic)
-  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
-  deriving (PlutusType) via (DeriveAsDataStruct PScriptSourcesRedeemerOuterNormalizerActionV1)
+scriptSourcesRedeemerOuterNormalizerV1Validator :: forall s. Term s (PAsData PByteString :--> PAsData PCurrencySymbol :--> PAsData PScriptHash :--> PScriptContext :--> PUnit)
+scriptSourcesRedeemerOuterNormalizerV1Validator = plam $ \deployment policy sourceHash ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState -> pmatch (Wire.pdecodeTraversalChecked # raw) $ \s ->
+    pmatch (pfromData $ Normalized.ptraversal'envelope s) $ \env -> pmatch (pfromData $ Normalized.ptraversal'currentControl s) $ \current ->
+      pif (Envelope.penvelope'deploymentId env #== deployment #&& inputHash #== pfromData (Envelope.penvelope'outerNormalizerScriptHash env))
+        (pif (pfromData $ Normalized.ptraversal'checkingNext s)
+          (plet (ItemWire.pdecodeRedeemerItemProofControl # Normalized.ptraversal'claimedNext s) $ \next ->
+            Item.phashOuterWithCheckedOptionalTraversal # next # pfromData (Normalized.ptraversal'checkedOptionalTraversalCbor s) #== pfromData (Envelope.penvelope'expectedNextItemControlHash env)
+              #&& outputHash #== pto (pfromData sourceHash)
+              #&& outputState #== pforgetData (pdata $ pcon $ Normalized.PControlsChecked (Normalized.ptraversal'envelope s) (Normalized.ptraversal'currentControl s) (pdata next) (Normalized.ptraversal'witnessHash s)))
+          (pand'List
+            [ pif (pfromData (Envelope.penvelope'carrier env) #== Envelope.pscriptSourcesCarrier)
+                (pfromData (Item.predeemerControl'mode current) #== Item.pmodeData)
+                (pfromData (Envelope.penvelope'carrier env) #== Envelope.pcekContextCarrier #&& (pfromData (Item.predeemerControl'mode current) #== Item.pmodeDescriptor #|| pfromData (Item.predeemerControl'mode current) #== Item.pmodeData))
+            , Item.predeemerControl'itemIndex current #== Envelope.penvelope'redeemerCount env
+            , Item.predeemerControl'itemCount current #== Envelope.penvelope'redeemerTotalCount env
+            , Item.phashOuterWithCheckedOptionalTraversal # pcon current # pfromData (Normalized.ptraversal'checkedOptionalTraversalCbor s) #== pfromData (Envelope.penvelope'currentPendingItemControlHash env)
+            , pif (pfromData (Envelope.penvelope'actionFamily env) #== Envelope.pinvalidFamily)
+                (pfromData (Envelope.penvelope'carrier env) #== Envelope.pscriptSourcesCarrier
+                  #&& Normalized.ptraversal'claimedNext s #== pforgetData (pconstrBuiltin # 1 # pnil)
+                  #&& outputHash #== pto (pfromData sourceHash)
+                  #&& outputState #== pforgetData (pdata $ pcon $ Normalized.PControlsChecked (Normalized.ptraversal'envelope s) (Normalized.ptraversal'currentControl s) (Normalized.ptraversal'currentControl s) (Normalized.ptraversal'witnessHash s)))
+                (outputHash #== pfromData (Envelope.penvelope'traversalNormalizerScriptHash env)
+                  #&& outputState #== pforgetData (pdata $ pcon $ Normalized.PCurrentChecked (Normalized.ptraversal'envelope s) (Normalized.ptraversal'currentControl s) (Normalized.ptraversal'claimedNext s) (Normalized.ptraversal'witnessHash s)))
+            ])) perror
 
-data PScriptSourcesRedeemerFoldMapExecutorActionV1 (s :: S)
-  = PExecuteFoldMap
-      (Term s (PAsData PInteger))
-      (Term s (PAsData PInteger))
-      (Term s (PAsData PDataTraverseActionV1))
-  deriving stock (Generic)
-  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
-  deriving (PlutusType) via (DeriveAsDataStruct PScriptSourcesRedeemerFoldMapExecutorActionV1)
+scriptSourcesRedeemerSourceAuthenticatorValidator :: forall s. Stage s
+scriptSourcesRedeemerSourceAuthenticatorValidator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 3) $ \f _ raw outputHash outputState -> pmatch (Wire.pdecodeControlsChecked # raw) $ \s ->
+    pmatch (pfromData $ Normalized.pcontrols'envelope s) $ \env ->
+    plet (ActionWire.pdecodeWitness # (pelemAt # 2 # f)) $ \witness -> pmatch witness $ \w ->
+      pif (Envelope.penvelope'deploymentId env #== deployment #&& outputHash #== pfromData (Envelope.penvelope'semanticExecutorScriptHash env)
+        #&& Normalized.prawDataHash # pforgetData (pdata witness) #== pfromData (Normalized.pcontrols'witnessHash s))
+        (pmatch (Item.pauthenticateSourceWindow # pfromData (Normalized.pcontrols'current s) # (Item.pprevalidatedNextSourceSpan # pfromData (Normalized.pcontrols'current s)) # witness) $ \case
+          PNothing -> perror
+          PJust source -> plet (pmatch source $ \case PNothing -> pcon PDNothing; PJust bytes -> pcon $ PDJust $ pdata bytes) $ \sourceData ->
+            plet (Normalized.pexecutionOutput # pcon env # pfromData (Normalized.pcontrols'witnessHash s)) $ \output ->
+            pmatch (pfromData $ Item.predeemerWitness'action w) $ \case
+              Item.PRedeemerItemTraverseData action -> pmatch (pfromData $ Normalized.pcontrols'current s) $ \current -> pmatch (pfromData $ Normalized.pcontrols'next s) $ \next ->
+                pmatch (pfromData $ Item.predeemerControl'traversal current) $ \case
+                  PDNothing -> perror
+                  PDJust inner -> pmatch (pfromData $ Item.predeemerControl'traversal next) $ \case
+                    PDNothing -> perror
+                    PDJust nextInner -> pfromData (Normalized.pcontrols'next s) #== pcon current { Item.predeemerControl'traversal = Item.predeemerControl'traversal next }
+                      #&& outputState #== pforgetData (pdata $ pcon $ Normalized.PTraversalExecution (pdata output) inner nextInner action (pdata sourceData))
+              action -> outputState #== pforgetData (pdata $ pcon $ Normalized.POuterExecution (pdata output) (Normalized.pcontrols'current s) (Normalized.pcontrols'next s) (pdata $ pcon action) (pdata sourceData))) perror
 
-data PScriptSourcesRedeemerFinalizeFrameExecutorActionV1 (s :: S)
-  = PExecuteFinalizeFrame
-      (Term s (PAsData PInteger))
-      (Term s (PAsData PInteger))
-      (Term s (PAsData PDataTraverseActionV1))
-  deriving stock (Generic)
-  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
-  deriving (PlutusType) via (DeriveAsDataStruct PScriptSourcesRedeemerFinalizeFrameExecutorActionV1)
+makeEnvelope :: forall s. Term s (PAsData PByteString) -> Term s PInteger -> Term s PData -> Term s PByteString -> Term s PInteger -> Term s PByteString -> Term s PByteString -> Term s PByteString -> Term s PByteString -> Term s (PAsData PInteger) -> Term s (PAsData PInteger) -> Term s PByteString -> Term s (PAsData PScriptHash) -> Term s (PAsData PScriptHash) -> Term s (PAsData PScriptHash) -> Term s (PAsData PScriptHash) -> Term s Envelope.PPreparedScriptSourcesRedeemerEnvelopeV1
+makeEnvelope deployment carrier base nextDataHash family auxiliaryHash actionHash currentHash nextHash count total binder traversal outer executor settlement =
+  plet (Envelope.pcarrierIdentity # base) $ \identity ->
+  plet (Envelope.penvelopeCommitmentV1 # pfromData deployment # carrier # identity # family # auxiliaryHash # actionHash # currentHash # nextHash
+    # pfromData count # pfromData total # binder # pto (pfromData traversal) # pto (pfromData outer) # pto (pfromData executor) # pto (pfromData settlement) # nextDataHash) $ \commitment ->
+    pcon $ Envelope.PPreparedScriptSourcesRedeemerEnvelopeV1
+      (pdata Envelope.pversion) (pdata Envelope.penvelopeDomain) deployment (pdata carrier) base (pdata identity) (pdata nextDataHash) (pdata family)
+      (pdata auxiliaryHash) (pdata actionHash) (pdata currentHash) (pdata nextHash) count total (pdata binder)
+      (pdata $ pto $ pfromData traversal) (pdata $ pto $ pfromData outer) (pdata $ pto $ pfromData executor) (pdata $ pto $ pfromData settlement) (pdata commitment)
 
-data PScriptSourcesRedeemerExecutionSettlementActionV1 (s :: S)
-  = PSettleExecution
-      (Term s (PAsData PInteger))
-      (Term s (PAsData PInteger))
-      (Term s (PAsData PPreparedScriptSourcesRedeemerEnvelopeV1))
-  deriving stock (Generic)
-  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
-  deriving (PlutusType) via (DeriveAsDataStruct PScriptSourcesRedeemerExecutionSettlementActionV1)
+scriptSourcesRedeemerEnvelopeV1Validator :: forall s. EnvelopeStage s
+scriptSourcesRedeemerEnvelopeV1Validator = plam $ \deployment traversal outer executors settlement policy ctx ->
+  run policy ctx (recordFields 6) $ \f inputHash raw outputHash outputState ->
+    plet (decodePrepared raw) $ \base -> pmatch base $ \b -> pmatch (pfromData $ Resolution.pprepared'resolution b) $ \resolution ->
+    plet (pfromData $ Resolution.presolution'preState resolution) $ \pre -> pmatch pre $ \before ->
+    plet (decodeTransition $ pelemAt # 2 # f) $ \transition -> plet (pelemAt # 3 # f) $ \auxiliary ->
+    plet (pasByteStr # (pelemAt # 4 # f)) $ \nextHash -> plet (pasInt # (pelemAt # 5 # f)) $ \family ->
+    pmatch (Normalized.pauxiliaryItemFields # auxiliary) $ \(PPair current witness) ->
+    plet (pelemAt # (Normalized.pexecutorIndex # current # witness # family) # pfromData executors) $ \executor ->
+    pmatch (Envelope.pverifyRawEnvelopeV1 # pre # transition # auxiliary # nextHash # family) $ \case
+      PNothing -> pconstant False
+      PJust facts -> pmatch facts $ \fact ->
+        plet (makeEnvelope deployment Envelope.pscriptSourcesCarrier (pforgetData $ pdata base) (pconstant "") family
+          (pfromData $ Envelope.penvelopeFacts'canonicalAuxiliaryHash fact) (pfromData $ Envelope.penvelopeFacts'canonicalActionHash fact)
+          (pfromData $ Envelope.penvelopeFacts'currentPendingItemControlHash fact) nextHash
+          (Envelope.penvelopeFacts'redeemerCount fact) (Envelope.penvelopeFacts'redeemerTotalCount fact) inputHash traversal outer executor settlement) $ \expected ->
+        pand'List
+          [ Resolution.ppreparedResolutionIsWellFormed # base
+          , pfromData (Trace.pmachineState'phase before) #== pcon Trace.PScriptSources
+          , Resolution.phashOneStepEvidence # pforgetData (pdata transition) # auxiliary #== pfromData (Resolution.pprepared'evidenceHash b)
+          , VM.pstructuralTransitionIsValid # pre # transition
+          , plengthBS # inputHash #== 28
+          , outputHash #== pto (pfromData traversal)
+          , outputState #== pforgetData (pdata expected)
+          ]
 
-scriptSourcesRedeemerEnvelopeV1Validator :: forall s.
-  Term s
-    ( PAsData PByteString
-        :--> PAsData PScriptHash
-        :--> PAsData PScriptHash
-        :--> PAsData PScriptHash
-        :--> PAsData PScriptHash
-        :--> PAsData PScriptHash
-        :--> PAsData PCurrencySymbol
-        :--> PScriptContext
-        :--> PUnit
-    )
-scriptSourcesRedeemerEnvelopeV1Validator = plam $
-  \deploymentIdD
-   traversalNormalizerD
-   outerNormalizerD
-   foldMapExecutorD
-   finalizeFrameExecutorD
-   settlementD
-   policyId
-   ctx ->
-    pstep ctx $ \datum redeemer ownOutRef txInfo ->
-    pdispatch @_ @PScriptSourcesRedeemerEnvelopeActionV1 policyId datum redeemer ownOutRef txInfo $
-      \action -> pmatch action $ \(PBindEnvelope inputIndex outputIndex transitionD auxiliary expectedNextHashD actionFamilyD) ->
-        pmatch txInfo $ \PTxInfo {ptxInfo'inputs, ptxInfo'outputs} ->
-        pcontinue
-          policyId
-          (pexpectDatum datum)
-          (pfromData inputIndex)
-          (pfromData outputIndex)
-          ownOutRef
-          (pfromData ptxInfo'inputs)
-          (pfromData ptxInfo'outputs)
-          $ \inputScriptHash _threadTokenAssetName _fraudProver inputState outputScriptHash outputState ->
-            plet (pexpectStateAs @PPreparedValidationResolutionStateV1 inputState) $ \base ->
-            pmatch base $ \baseFields ->
-            plet (pfromData $ pprepared'resolution baseFields) $ \resolution ->
-            pmatch resolution $ \resolutionFields ->
-            plet (pfromData $ presolution'preState resolutionFields) $ \pre ->
-            pmatch pre $ \preFields ->
-            plet (pfromData transitionD) $ \transition ->
-            plet (pfromData expectedNextHashD) $ \expectedNextHash ->
-            plet (pfromData actionFamilyD) $ \actionFamily ->
-            plet (pfromData deploymentIdD) $ \deploymentId ->
-            plet (pto $ pfromData inputScriptHash) $ \inputScript ->
-            plet (pto $ pfromData outputScriptHash) $ \outputScript ->
-            plet (pto $ pfromData traversalNormalizerD) $ \traversalNormalizer ->
-            plet (pto $ pfromData outerNormalizerD) $ \outerNormalizer ->
-            plet (pto $ pfromData foldMapExecutorD) $ \foldMapExecutor ->
-            plet (pto $ pfromData finalizeFrameExecutorD) $ \finalizeFrameExecutor ->
-            plet (pto $ pfromData settlementD) $ \settlement ->
-            plet
-              ( pif
-                  (actionFamily #== pfoldMapFamily)
-                  foldMapExecutor
-                  finalizeFrameExecutor
-              )
-              $ \semanticExecutor ->
-              pmatch
-                ( pverifyRawEnvelopeV1
-                    # pre # transition # auxiliary # expectedNextHash # actionFamily
-                )
-                $ \case
-                  PNothing -> pconstant False
-                  PJust facts ->
-                    pmatch facts $ \factFields ->
-                    plet (presolutionIdentityV1 # base) $ \resolutionIdentity ->
-                    plet
-                      ( penvelopeCommitmentV1
-                          # deploymentId
-                          # pfromData (pprepared'evidenceHash baseFields)
-                          # resolutionIdentity
-                          # actionFamily
-                          # pfromData (penvelopeFacts'canonicalAuxiliaryHash factFields)
-                          # pfromData (penvelopeFacts'canonicalActionHash factFields)
-                          # pfromData (penvelopeFacts'currentPendingItemControlHash factFields)
-                          # expectedNextHash
-                          # pfromData (penvelopeFacts'redeemerCount factFields)
-                          # pfromData (penvelopeFacts'redeemerTotalCount factFields)
-                          # inputScript
-                          # traversalNormalizer
-                          # outerNormalizer
-                          # semanticExecutor
-                          # settlement
-                          # pfromData (pmachineState'transactionCommitment preFields)
-                          # pfromData (pmachineState'validationContextHash preFields)
-                      )
-                      $ \envelopeCommitment ->
-                      plet
-                        ( pcon $ PPreparedScriptSourcesRedeemerEnvelopeV1
-                            { penvelope'version = pdata pversion
-                            , penvelope'domain = pdata penvelopeDomain
-                            , penvelope'deploymentId = deploymentIdD
-                            , penvelope'base = pdata base
-                            , penvelope'resolutionIdentity = pdata resolutionIdentity
-                            , penvelope'actionFamily = actionFamilyD
-                            , penvelope'canonicalAuxiliaryHash = penvelopeFacts'canonicalAuxiliaryHash factFields
-                            , penvelope'canonicalActionHash = penvelopeFacts'canonicalActionHash factFields
-                            , penvelope'currentPendingItemControlHash = penvelopeFacts'currentPendingItemControlHash factFields
-                            , penvelope'expectedNextItemControlHash = expectedNextHashD
-                            , penvelope'redeemerCount = penvelopeFacts'redeemerCount factFields
-                            , penvelope'redeemerTotalCount = penvelopeFacts'redeemerTotalCount factFields
-                            , penvelope'envelopeBinderScriptHash = pdata inputScript
-                            , penvelope'traversalNormalizerScriptHash = pdata traversalNormalizer
-                            , penvelope'outerNormalizerScriptHash = pdata outerNormalizer
-                            , penvelope'semanticExecutorScriptHash = pdata semanticExecutor
-                            , penvelope'settlementScriptHash = pdata settlement
-                            , penvelope'envelopeCommitment = pdata envelopeCommitment
-                            }
-                        )
-                        $ \expectedOutputState ->
-                          pand'List
-                            [ ppreparedResolutionIsWellFormed # base
-                            , pfromData (pmachineState'phase preFields) #== pcon PScriptSources
-                            , phashOneStepEvidence
-                                # pforgetData transitionD # auxiliary
-                                #== pfromData (pprepared'evidenceHash baseFields)
-                            , pstructuralTransitionIsValid # pre # transition
-                            , plengthBS # deploymentId #== 32
-                            , plengthBS # inputScript #== 28
-                            , plengthBS # traversalNormalizer #== 28
-                            , plengthBS # outerNormalizer #== 28
-                            , plengthBS # foldMapExecutor #== 28
-                            , plengthBS # finalizeFrameExecutor #== 28
-                            , plengthBS # settlement #== 28
-                            , outputScript #== traversalNormalizer
-                            , outputState #== pforgetData (pdata expectedOutputState)
-                            ]
+scriptSourcesRedeemerCekEnvelopeValidator :: forall s. EnvelopeStage s
+scriptSourcesRedeemerCekEnvelopeValidator = plam $ \deployment traversal outer executors settlement policy ctx ->
+  run policy ctx (recordFields 6) $ \f inputHash raw outputHash outputState ->
+    plet (Carrier.pdecodePending # raw) $ \pending -> pmatch pending $ \p -> pmatch (pfromData $ Carrier.ppending'control p) $ \current ->
+    plet (ActionWire.pdecodeWitness # (pelemAt # 2 # f)) $ \witness -> plet (pforgetData $ pdata witness) $ \witnessData ->
+    plet (pforgetData $ Carrier.ppending'control p) $ \currentData ->
+    plet (pasByteStr # (pelemAt # 3 # f)) $ \currentHash -> plet (pasByteStr # (pelemAt # 4 # f)) $ \nextHash ->
+    plet (pasInt # (pelemAt # 5 # f)) $ \family ->
+    pif (family #>= Envelope.pfoldMapFamily #&& family #<= Envelope.pfinishDataFamily
+      #&& Normalized.prawDataHash # witnessData #== pfromData (Carrier.ppending'witnessHash p))
+      (plet (pforgetData $ pconstrBuiltin # 18 # (pcons # (pforgetData $ pconstrBuiltin # 1 # pnil) # (pcons # currentData # (pcons # witnessData # pnil)))) $ \auxiliary ->
+        plet (pelemAt # (Normalized.pexecutorIndex # currentData # witnessData # family) # pfromData executors) $ \executor ->
+        plet (makeEnvelope deployment Envelope.pcekContextCarrier (pforgetData $ pdata pending)
+          (Normalized.prawDataHash # pforgetData (Carrier.ppending'claimedNext p)) family
+          (Envelope.pcanonicalAuxiliaryHashV1 # auxiliary) (Envelope.pcanonicalItemActionHash # currentData # witnessData # family)
+          currentHash nextHash (Item.predeemerControl'itemIndex current) (Item.predeemerControl'itemCount current) inputHash traversal outer executor settlement) $ \expected ->
+          outputHash #== pto (pfromData traversal) #&& outputState #== pforgetData (pdata expected)) perror
 
-scriptSourcesRedeemerTraversalNormalizerV1Validator :: forall s.
-  Term s
-    ( PAsData PByteString
-        :--> PAsData PCurrencySymbol
-        :--> PScriptContext
-        :--> PUnit
-    )
-scriptSourcesRedeemerTraversalNormalizerV1Validator = plam $ \deploymentIdD policyId ctx ->
-  pstep ctx $ \datum redeemer ownOutRef txInfo ->
-  pdispatch @_ @PScriptSourcesRedeemerTraversalNormalizerActionV1 policyId datum redeemer ownOutRef txInfo $
-    \action -> pmatch action $ \(PNormalizeTraversal inputIndex outputIndex auxiliary currentItemControlD traversalActionD) ->
-      pmatch txInfo $ \PTxInfo {ptxInfo'inputs, ptxInfo'outputs} ->
-      pcontinue
-        policyId
-        (pexpectDatum datum)
-        (pfromData inputIndex)
-        (pfromData outputIndex)
-        ownOutRef
-        (pfromData ptxInfo'inputs)
-        (pfromData ptxInfo'outputs)
-        $ \inputScriptHash _threadTokenAssetName _fraudProver inputState outputScriptHash outputState ->
-          plet (pexpectStateAs @PPreparedScriptSourcesRedeemerEnvelopeV1 inputState) $ \state ->
-          pmatch state $ \stateFields ->
-          plet (pfromData currentItemControlD) $ \currentItemControl ->
-          pmatch currentItemControl $ \currentFields ->
-          pmatch (pfromData $ Redeemer.predeemerControl'traversal currentFields) $ \case
-            PDNothing -> perror
-            PDJust traversalD ->
-              plet (pfromData traversalD) $ \traversal ->
-              pmatch traversal $ \traversalFields ->
-              plet (pfromData traversalActionD) $ \traversalAction ->
-              plet (pencodeControlV1 # traversal) $ \checkedTraversalControlCbor ->
-              plet
-                ( pcon $ PUnvalidatedRedeemerItemOuterFieldsV1
-                    { pouterFields'version = Redeemer.predeemerControl'version currentFields
-                    , pouterFields'mode = Redeemer.predeemerControl'mode currentFields
-                    , pouterFields'stage = Redeemer.predeemerControl'stage currentFields
-                    , pouterFields'itemIndex = Redeemer.predeemerControl'itemIndex currentFields
-                    , pouterFields'itemCount = Redeemer.predeemerControl'itemCount currentFields
-                    , pouterFields'totalLength = Redeemer.predeemerControl'totalLength currentFields
-                    , pouterFields'itemCommitment = Redeemer.predeemerControl'itemCommitment currentFields
-                    , pouterFields'expectedPurposeTag = Redeemer.predeemerControl'expectedPurposeTag currentFields
-                    , pouterFields'expectedPointerIndex = Redeemer.predeemerControl'expectedPointerIndex currentFields
-                    , pouterFields'purposeTag = Redeemer.predeemerControl'purposeTag currentFields
-                    , pouterFields'pointerIndex = Redeemer.predeemerControl'pointerIndex currentFields
-                    , pouterFields'dataOffset = Redeemer.predeemerControl'dataOffset currentFields
-                    , pouterFields'dataLength = Redeemer.predeemerControl'dataLength currentFields
-                    , pouterFields'executionMemory = Redeemer.predeemerControl'executionMemory currentFields
-                    , pouterFields'executionSteps = Redeemer.predeemerControl'executionSteps currentFields
-                    }
-                )
-                $ \outerFields ->
-                plet
-                  ( pcon $ PTraversalNormalizedScriptSourcesRedeemerActionV1
-                      { ptraversalNormalized'version = pdata pversion
-                      , ptraversalNormalized'domain = pdata ptraversalNormalizedDomain
-                      , ptraversalNormalized'deploymentId = deploymentIdD
-                      , ptraversalNormalized'baseProvenanceIdentity = pdata $ pbaseProvenanceIdentityV1 # state
-                      , ptraversalNormalized'envelopeBinderScriptHash = penvelope'envelopeBinderScriptHash stateFields
-                      , ptraversalNormalized'traversalNormalizerScriptHash = penvelope'traversalNormalizerScriptHash stateFields
-                      , ptraversalNormalized'outerNormalizerScriptHash = penvelope'outerNormalizerScriptHash stateFields
-                      , ptraversalNormalized'semanticExecutorScriptHash = penvelope'semanticExecutorScriptHash stateFields
-                      , ptraversalNormalized'settlementScriptHash = penvelope'settlementScriptHash stateFields
-                      , ptraversalNormalized'actionFamily = penvelope'actionFamily stateFields
-                      , ptraversalNormalized'canonicalActionHash = penvelope'canonicalActionHash stateFields
-                      , ptraversalNormalized'authenticatedTraversalActionIdentity = pdata $ ptraversalActionIdentityV1 # traversalAction
-                      , ptraversalNormalized'currentPendingItemControlHash = penvelope'currentPendingItemControlHash stateFields
-                      , ptraversalNormalized'expectedNextItemControlHash = penvelope'expectedNextItemControlHash stateFields
-                      , ptraversalNormalized'redeemerCount = penvelope'redeemerCount stateFields
-                      , ptraversalNormalized'redeemerTotalCount = penvelope'redeemerTotalCount stateFields
-                      , ptraversalNormalized'unvalidatedOuterFields = pdata outerFields
-                      , ptraversalNormalized'validatedTraversalControl = traversalD
-                      , ptraversalNormalized'checkedTraversalControlCbor = pdata checkedTraversalControlCbor
-                      }
-                  )
-                  $ \expectedOutputState ->
-                  plet (pfromData deploymentIdD) $ \deploymentId ->
-                  plet (pto $ pfromData inputScriptHash) $ \inputScript ->
-                  plet (pto $ pfromData outputScriptHash) $ \outputScript ->
-                    pand'List
-                      [ penvelopeStateIsBoundV1
-                          # state # deploymentId
-                          # pfromData (penvelope'envelopeBinderScriptHash stateFields)
-                      , plengthBS # deploymentId #== 32
-                      , ptraversalNormalizerRouteIsExactV1
-                          # state # inputScript # outputScript
-                      , pcanonicalAuxiliaryHashV1 # auxiliary
-                          #== pfromData (penvelope'canonicalAuxiliaryHash stateFields)
-                      , pcanonicalActionHashV1 # auxiliary # pfromData (penvelope'actionFamily stateFields)
-                          #== pfromData (penvelope'canonicalActionHash stateFields)
-                      , pnarrowActionIsBoundV1
-                          # pforgetData currentItemControlD # traversalAction
-                          # pfromData (penvelope'actionFamily stateFields)
-                          # pfromData (penvelope'canonicalActionHash stateFields)
-                      , pcontrolIsWellFormed # traversal
-                      , pfromData (ptraverse'stage traversalFields) #== pstageFold
-                      , outputState #== pforgetData (pdata expectedOutputState)
-                      ]
+executorRoster :: forall s. Term s (PAsData (PBuiltinList (PAsData PScriptHash))) -> Term s (PBuiltinList (PAsData PByteString))
+executorRoster hashes = pmap # plam (\hash -> pdata $ pto $ pfromData hash) # pfromData hashes
 
-scriptSourcesRedeemerOuterNormalizerV1Validator :: forall s.
-  Term s
-    ( PAsData PByteString
-        :--> PAsData PCurrencySymbol
-        :--> PScriptContext
-        :--> PUnit
-    )
-scriptSourcesRedeemerOuterNormalizerV1Validator = plam $ \deploymentIdD policyId ctx ->
-  pstep ctx $ \datum redeemer ownOutRef txInfo ->
-  pdispatch @_ @PScriptSourcesRedeemerOuterNormalizerActionV1 policyId datum redeemer ownOutRef txInfo $
-    \action -> pmatch action $ \(PNormalizeOuter inputIndex outputIndex) ->
-      pmatch txInfo $ \PTxInfo {ptxInfo'inputs, ptxInfo'outputs} ->
-      pcontinue
-        policyId
-        (pexpectDatum datum)
-        (pfromData inputIndex)
-        (pfromData outputIndex)
-        ownOutRef
-        (pfromData ptxInfo'inputs)
-        (pfromData ptxInfo'outputs)
-        $ \inputScriptHash _threadTokenAssetName _fraudProver inputState outputScriptHash outputState ->
-          plet (pexpectStateAs @PTraversalNormalizedScriptSourcesRedeemerActionV1 inputState) $ \state ->
-          pmatch state $ \stateFields ->
-          plet (pfromData $ ptraversalNormalized'unvalidatedOuterFields stateFields) $ \outer ->
-          pmatch outer $ \outerFields ->
-          plet (pfromData $ ptraversalNormalized'validatedTraversalControl stateFields) $ \traversal ->
-          plet
-            ( pcon $ Redeemer.PRedeemerItemProofControlV1
-                { Redeemer.predeemerControl'version = pouterFields'version outerFields
-                , Redeemer.predeemerControl'mode = pouterFields'mode outerFields
-                , Redeemer.predeemerControl'stage = pouterFields'stage outerFields
-                , Redeemer.predeemerControl'itemIndex = pouterFields'itemIndex outerFields
-                , Redeemer.predeemerControl'itemCount = pouterFields'itemCount outerFields
-                , Redeemer.predeemerControl'totalLength = pouterFields'totalLength outerFields
-                , Redeemer.predeemerControl'itemCommitment = pouterFields'itemCommitment outerFields
-                , Redeemer.predeemerControl'expectedPurposeTag = pouterFields'expectedPurposeTag outerFields
-                , Redeemer.predeemerControl'expectedPointerIndex = pouterFields'expectedPointerIndex outerFields
-                , Redeemer.predeemerControl'purposeTag = pouterFields'purposeTag outerFields
-                , Redeemer.predeemerControl'pointerIndex = pouterFields'pointerIndex outerFields
-                , Redeemer.predeemerControl'dataOffset = pouterFields'dataOffset outerFields
-                , Redeemer.predeemerControl'dataLength = pouterFields'dataLength outerFields
-                , Redeemer.predeemerControl'executionMemory = pouterFields'executionMemory outerFields
-                , Redeemer.predeemerControl'executionSteps = pouterFields'executionSteps outerFields
-                , Redeemer.predeemerControl'traversal = pdata $ pcon $ PDJust $ pdata traversal
-                }
-            )
-            $ \currentItemControl ->
-            pmatch currentItemControl $ \currentFields ->
-            plet (Redeemer.pstageDataSomeTraversalHashPrefixV1 # currentItemControl) $ \nextHashPrefix ->
-            plet
-              ( ptraversalSerializationTemplateV1
-                  # traversal # pfromData (ptraversalNormalized'actionFamily stateFields)
-              )
-              $ \serializationTemplate ->
-              plet
-                ( pcon $ POuterNormalizedScriptSourcesRedeemerActionV1
-                    { pouterNormalized'version = pdata pversion
-                    , pouterNormalized'domain = pdata pouterNormalizedDomain
-                    , pouterNormalized'deploymentId = deploymentIdD
-                    , pouterNormalized'baseProvenanceIdentity = ptraversalNormalized'baseProvenanceIdentity stateFields
-                    , pouterNormalized'envelopeBinderScriptHash = ptraversalNormalized'envelopeBinderScriptHash stateFields
-                    , pouterNormalized'traversalNormalizerScriptHash = ptraversalNormalized'traversalNormalizerScriptHash stateFields
-                    , pouterNormalized'outerNormalizerScriptHash = ptraversalNormalized'outerNormalizerScriptHash stateFields
-                    , pouterNormalized'semanticExecutorScriptHash = ptraversalNormalized'semanticExecutorScriptHash stateFields
-                    , pouterNormalized'settlementScriptHash = ptraversalNormalized'settlementScriptHash stateFields
-                    , pouterNormalized'actionFamily = ptraversalNormalized'actionFamily stateFields
-                    , pouterNormalized'canonicalActionHash = ptraversalNormalized'canonicalActionHash stateFields
-                    , pouterNormalized'authenticatedTraversalActionIdentity = ptraversalNormalized'authenticatedTraversalActionIdentity stateFields
-                    , pouterNormalized'currentPendingItemControlHash = ptraversalNormalized'currentPendingItemControlHash stateFields
-                    , pouterNormalized'expectedNextItemControlHash = ptraversalNormalized'expectedNextItemControlHash stateFields
-                    , pouterNormalized'redeemerCount = ptraversalNormalized'redeemerCount stateFields
-                    , pouterNormalized'redeemerTotalCount = ptraversalNormalized'redeemerTotalCount stateFields
-                    , pouterNormalized'nextItemControlHashPrefixCbor = pdata nextHashPrefix
-                    , pouterNormalized'validatedTraversalControl = ptraversalNormalized'validatedTraversalControl stateFields
-                    , pouterNormalized'traversalSerializationTemplate = pdata serializationTemplate
-                    }
-                )
-                $ \expectedOutputState ->
-                plet (pfromData deploymentIdD) $ \deploymentId ->
-                plet (pto $ pfromData inputScriptHash) $ \inputScript ->
-                plet (pto $ pfromData outputScriptHash) $ \outputScript ->
-                  pand'List
-                    [ ptraversalNormalizedStateIsBoundV1
-                        # state # deploymentId
-                        # pfromData (ptraversalNormalized'envelopeBinderScriptHash stateFields)
-                        # pfromData (ptraversalNormalized'traversalNormalizerScriptHash stateFields)
-                    , plengthBS # deploymentId #== 32
-                    , pouterNormalizerRouteIsExactV1 # state # inputScript # outputScript
-                    , Redeemer.pstageDataOuterFieldsAreWellFormedV1 # currentItemControl
-                    , pfromData (Redeemer.predeemerControl'itemIndex currentFields)
-                        #== pfromData (ptraversalNormalized'redeemerCount stateFields)
-                    , pfromData (Redeemer.predeemerControl'itemCount currentFields)
-                        #== pfromData (ptraversalNormalized'redeemerTotalCount stateFields)
-                    , Redeemer.phashStageDataOuterWithCheckedTraversalV1
-                        # currentItemControl
-                        # pfromData (ptraversalNormalized'checkedTraversalControlCbor stateFields)
-                        #== pfromData (ptraversalNormalized'currentPendingItemControlHash stateFields)
-                    , outputState #== pforgetData (pdata expectedOutputState)
-                    ]
+scriptSourcesRedeemerExecutionSettlementV1Validator :: forall s. EnvelopeStage s
+scriptSourcesRedeemerExecutionSettlementV1Validator = plam $ \deployment traversal outer executors award policy ctx ->
+  run policy ctx (recordFields 3) $ \f inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeAttestation # raw) $ \state -> pmatch state $ \s ->
+      Envelope.pexecutionAttestationSettlementIsExactV1 # state # (Wire.pdecodeEnvelope # (pelemAt # 2 # f)) # pfromData deployment
+        # pfromData (Envelope.pattested'envelopeBinderScriptHash s) # pto (pfromData traversal) # pto (pfromData outer)
+        # executorRoster executors # inputHash # pto (pfromData award) # outputHash # outputState
 
-scriptSourcesRedeemerFoldMapExecutorV1Validator :: forall s.
-  Term s
-    ( PAsData PByteString
-        :--> PAsData PCurrencySymbol
-        :--> PScriptContext
-        :--> PUnit
-    )
-scriptSourcesRedeemerFoldMapExecutorV1Validator = plam $ \deploymentIdD policyId ctx ->
-  pstep ctx $ \datum redeemer ownOutRef txInfo ->
-  pdispatch @_ @PScriptSourcesRedeemerFoldMapExecutorActionV1 policyId datum redeemer ownOutRef txInfo $
-    \action -> pmatch action $ \(PExecuteFoldMap inputIndex outputIndex traversalActionD) ->
-      plet (pfromData traversalActionD) $ \traversalAction ->
-      pmatch traversalAction $ \case
-        PFoldMap frameD pairIndexD keyD valueD keySiblingsD valueSiblingsD ->
-          pmatch txInfo $ \PTxInfo {ptxInfo'inputs, ptxInfo'outputs} ->
-          pcontinue
-            policyId
-            (pexpectDatum datum)
-            (pfromData inputIndex)
-            (pfromData outputIndex)
-            ownOutRef
-            (pfromData ptxInfo'inputs)
-            (pfromData ptxInfo'outputs)
-            $ \inputScriptHash _threadTokenAssetName _fraudProver inputState outputScriptHash outputState ->
-              plet (pexpectStateAs @POuterNormalizedScriptSourcesRedeemerActionV1 inputState) $ \state ->
-              pmatch state $ \stateFields ->
-              plet (pfromData $ pouterNormalized'validatedTraversalControl stateFields) $ \control ->
-              pmatch control $ \controlFields ->
-              pmatch
-                ( pprevalidatedFoldMapNextFrameRootV1
-                    # pfromData (ptraverse'frameRoot controlFields)
-                    # pfromData frameD
-                    # pfromData pairIndexD
-                    # pfromData keyD
-                    # pfromData valueD
-                    # pfromData keySiblingsD
-                    # pfromData valueSiblingsD
-                )
-                $ \case
-                  PNothing -> pconstant False
-                  PJust nextFrameRoot ->
-                    pmatch (pfromData $ pouterNormalized'traversalSerializationTemplate stateFields) $ \case
-                      PFoldMapFrameRootTemplate prefixD suffixD ->
-                        plet
-                          ( pfromData prefixD
-                              <> (pencodeDefiniteBytes # nextFrameRoot)
-                              <> pfromData suffixD
-                          )
-                          $ \checkedNextControlCbor ->
-                          plet
-                            ( phashStageDataFromAuthenticatedPrefixV1
-                                # pfromData (pouterNormalized'nextItemControlHashPrefixCbor stateFields)
-                                # checkedNextControlCbor
-                            )
-                            $ \actualNextItemControlHash ->
-                            plet (pfromData deploymentIdD) $ \deploymentId ->
-                            plet (pto $ pfromData inputScriptHash) $ \inputScript ->
-                            plet (pto $ pfromData outputScriptHash) $ \outputScript ->
-                              pand'List
-                                [ plengthBS # deploymentId #== 32
-                                , pouterNormalizedStateIsBoundV1
-                                    # state # pfoldMapFamily # deploymentId
-                                    # pfromData (pouterNormalized'envelopeBinderScriptHash stateFields)
-                                    # pfromData (pouterNormalized'traversalNormalizerScriptHash stateFields)
-                                    # pfromData (pouterNormalized'outerNormalizerScriptHash stateFields)
-                                    # inputScript
-                                    # pfromData (pouterNormalized'settlementScriptHash stateFields)
-                                , psemanticExecutorRouteIsExactV1
-                                    # state # pfoldMapFamily # inputScript # outputScript
-                                    # pfromData (pouterNormalized'settlementScriptHash stateFields)
-                                , ptraversalActionIdentityIsBoundV1
-                                    # traversalAction # pfoldMapFamily
-                                    # pfromData (pouterNormalized'authenticatedTraversalActionIdentity stateFields)
-                                , pfromData (ptraverse'stage controlFields) #== pstageFold
-                                , actualNextItemControlHash
-                                    #== pfromData (pouterNormalized'expectedNextItemControlHash stateFields)
-                                , outputState
-                                    #== pforgetData
-                                      (pdata $ pexecutionAttestedStateV1 # state # actualNextItemControlHash)
-                                ]
-                      _ -> perror
-        _ -> perror
+scriptSourcesRedeemerCekSettlementValidator :: forall s. EnvelopeStage s
+scriptSourcesRedeemerCekSettlementValidator = plam $ \deployment traversal outer executors returnHash policy ctx ->
+  run policy ctx (recordFields 3) $ \f inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeAttestation # raw) $ \state -> pmatch state $ \s ->
+    plet (Wire.pdecodeEnvelope # (pelemAt # 2 # f)) $ \envelope -> pmatch envelope $ \env ->
+    pmatch (Carrier.pdecodePending # Envelope.penvelope'base env) $ \pending ->
+      pand'List
+        [ pfromData (Envelope.penvelope'carrier env) #== Envelope.pcekContextCarrier
+        , pfromData (Envelope.penvelope'actionFamily env) #<= Envelope.pfinishDataFamily
+        , Normalized.prawDataHash # pforgetData (Carrier.ppending'claimedNext pending) #== pfromData (Envelope.penvelope'expectedNextControlDataHash env)
+        , Envelope.pexecutionAttestationIsBoundToEnvelopeV1 # state # envelope # pfromData deployment
+            # pfromData (Envelope.pattested'envelopeBinderScriptHash s) # pto (pfromData traversal) # pto (pfromData outer) # executorRoster executors # inputHash
+        , outputHash #== pto (pfromData returnHash)
+        , outputState #== pforgetData (pdata $ pcon $ Carrier.PVerified (Carrier.ppending'staged pending) (Carrier.ppending'claimedNext pending))
+        ]
 
-scriptSourcesRedeemerFinalizeFrameExecutorV1Validator :: forall s.
-  Term s
-    ( PAsData PByteString
-        :--> PAsData PCurrencySymbol
-        :--> PScriptContext
-        :--> PUnit
-    )
-scriptSourcesRedeemerFinalizeFrameExecutorV1Validator = plam $ \deploymentIdD policyId ctx ->
-  pstep ctx $ \datum redeemer ownOutRef txInfo ->
-  pdispatch @_ @PScriptSourcesRedeemerFinalizeFrameExecutorActionV1 policyId datum redeemer ownOutRef txInfo $
-    \action -> pmatch action $ \(PExecuteFinalizeFrame inputIndex outputIndex traversalActionD) ->
-      plet (pfromData traversalActionD) $ \traversalAction ->
-      pmatch traversalAction $ \case
-        PFinalizeFrame frameD parentD ->
-          pmatch txInfo $ \PTxInfo {ptxInfo'inputs, ptxInfo'outputs} ->
-          pcontinue
-            policyId
-            (pexpectDatum datum)
-            (pfromData inputIndex)
-            (pfromData outputIndex)
-            ownOutRef
-            (pfromData ptxInfo'inputs)
-            (pfromData ptxInfo'outputs)
-            $ \inputScriptHash _threadTokenAssetName _fraudProver inputState outputScriptHash outputState ->
-              plet (pexpectStateAs @POuterNormalizedScriptSourcesRedeemerActionV1 inputState) $ \state ->
-              pmatch state $ \stateFields ->
-              plet (pfromData $ pouterNormalized'validatedTraversalControl stateFields) $ \control ->
-              pmatch control $ \controlFields ->
-              pmatch
-                ( pprevalidatedFinalizeFrameTransitionV1
-                    # pfromData (ptraverse'frameRoot controlFields)
-                    # pfromData (ptraverse'offset controlFields)
-                    # pfromData (ptraverse'sourceLength controlFields)
-                    # pfromData frameD
-                    # pfromData parentD
-                )
-                $ \case
-                  PNothing -> pconstant False
-                  PJust transition ->
-                    pmatch (pfromData $ pouterNormalized'traversalSerializationTemplate stateFields) $ \case
-                      PFinalizeFrameTemplate prefixD sourceFieldsD suffixD ->
-                        pmatch transition $ \transitionFields ->
-                        plet
-                          ( pfromData prefixD
-                              <> (pcborInt $ ptransition'nextStage transitionFields)
-                              <> pfromData sourceFieldsD
-                              <> (pencodeDefiniteBytes # ptransition'nextFrameRoot transitionFields)
-                              <> pfromData suffixD
-                              <> (pencodeOptionalSummaryV1 # ptransition'nextResult transitionFields)
-                          )
-                          $ \checkedNextControlCbor ->
-                          plet
-                            ( phashStageDataFromAuthenticatedPrefixV1
-                                # pfromData (pouterNormalized'nextItemControlHashPrefixCbor stateFields)
-                                # checkedNextControlCbor
-                            )
-                            $ \actualNextItemControlHash ->
-                            plet (pfromData deploymentIdD) $ \deploymentId ->
-                            plet (pto $ pfromData inputScriptHash) $ \inputScript ->
-                            plet (pto $ pfromData outputScriptHash) $ \outputScript ->
-                              pand'List
-                                [ plengthBS # deploymentId #== 32
-                                , pouterNormalizedStateIsBoundV1
-                                    # state # pfinalizeFrameFamily # deploymentId
-                                    # pfromData (pouterNormalized'envelopeBinderScriptHash stateFields)
-                                    # pfromData (pouterNormalized'traversalNormalizerScriptHash stateFields)
-                                    # pfromData (pouterNormalized'outerNormalizerScriptHash stateFields)
-                                    # inputScript
-                                    # pfromData (pouterNormalized'settlementScriptHash stateFields)
-                                , psemanticExecutorRouteIsExactV1
-                                    # state # pfinalizeFrameFamily # inputScript # outputScript
-                                    # pfromData (pouterNormalized'settlementScriptHash stateFields)
-                                , ptraversalActionIdentityIsBoundV1
-                                    # traversalAction # pfinalizeFrameFamily
-                                    # pfromData (pouterNormalized'authenticatedTraversalActionIdentity stateFields)
-                                , pfromData (ptraverse'stage controlFields) #== pstageFold
-                                , actualNextItemControlHash
-                                    #== pfromData (pouterNormalized'expectedNextItemControlHash stateFields)
-                                , outputState
-                                    #== pforgetData
-                                      (pdata $ pexecutionAttestedStateV1 # state # actualNextItemControlHash)
-                                ]
-                      _ -> perror
-        _ -> perror
+scriptSourcesRedeemerFoldMapExecutorV1Validator :: forall s. Stage s
+scriptSourcesRedeemerFoldMapExecutorV1Validator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeTraversalExecution # raw) $ \state -> pmatch state $ \s ->
+      Normalized.pexecutionOutputIsExact # pfromData (Normalized.pexecution'output s) # pfromData deployment # 0 # inputHash # outputHash # outputState
+        #&& Semantics.pfoldMap # state
 
-scriptSourcesRedeemerExecutionSettlementV1Validator :: forall s.
-  Term s
-    ( PAsData PByteString
-        :--> PAsData PScriptHash
-        :--> PAsData PScriptHash
-        :--> PAsData PScriptHash
-        :--> PAsData PScriptHash
-        :--> PAsData PScriptHash
-        :--> PAsData PCurrencySymbol
-        :--> PScriptContext
-        :--> PUnit
-    )
-scriptSourcesRedeemerExecutionSettlementV1Validator = plam $
-  \deploymentIdD
-   expectedTraversalNormalizerD
-   expectedOuterNormalizerD
-   expectedFoldMapExecutorD
-   expectedFinalizeFrameExecutorD
-   expectedAwardD
-   policyId
-   ctx ->
-    pstep ctx $ \datum redeemer ownOutRef txInfo ->
-    pdispatch @_ @PScriptSourcesRedeemerExecutionSettlementActionV1 policyId datum redeemer ownOutRef txInfo $
-      \action -> pmatch action $ \(PSettleExecution inputIndex outputIndex envelopeD) ->
-        pmatch txInfo $ \PTxInfo {ptxInfo'inputs, ptxInfo'outputs} ->
-        pcontinue
-          policyId
-          (pexpectDatum datum)
-          (pfromData inputIndex)
-          (pfromData outputIndex)
-          ownOutRef
-          (pfromData ptxInfo'inputs)
-          (pfromData ptxInfo'outputs)
-          $ \inputScriptHash _threadTokenAssetName _fraudProver inputState outputScriptHash outputState ->
-            plet (pexpectStateAs @PScriptSourcesRedeemerExecutionAttestedStateV1 inputState) $ \state ->
-            plet (pfromData envelopeD) $ \envelope ->
-            plet (pfromData deploymentIdD) $ \deploymentId ->
-            plet (pto $ pfromData expectedTraversalNormalizerD) $ \expectedTraversalNormalizer ->
-            plet (pto $ pfromData expectedOuterNormalizerD) $ \expectedOuterNormalizer ->
-            plet (pto $ pfromData expectedFoldMapExecutorD) $ \expectedFoldMapExecutor ->
-            plet (pto $ pfromData expectedFinalizeFrameExecutorD) $ \expectedFinalizeFrameExecutor ->
-            plet (pto $ pfromData expectedAwardD) $ \expectedAward ->
-            pmatch state $ \stateFields ->
-              pand'List
-                [ plengthBS # deploymentId #== 32
-                , plengthBS # expectedTraversalNormalizer #== 28
-                , plengthBS # expectedOuterNormalizer #== 28
-                , plengthBS # expectedFoldMapExecutor #== 28
-                , plengthBS # expectedFinalizeFrameExecutor #== 28
-                , plengthBS # expectedAward #== 28
-                , pexecutionAttestationSettlementIsExactV1
-                    # state
-                    # envelope
-                    # deploymentId
-                    # pfromData (pattested'envelopeBinderScriptHash stateFields)
-                    # expectedTraversalNormalizer
-                    # expectedOuterNormalizer
-                    # expectedFoldMapExecutor
-                    # expectedFinalizeFrameExecutor
-                    # (pto $ pfromData inputScriptHash)
-                    # expectedAward
-                    # (pto $ pfromData outputScriptHash)
-                    # outputState
-                ]
+scriptSourcesRedeemerFinalizeFrameExecutorV1Validator :: forall s. Stage s
+scriptSourcesRedeemerFinalizeFrameExecutorV1Validator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeTraversalExecution # raw) $ \state -> pmatch state $ \s ->
+      Normalized.pexecutionOutputIsExact # pfromData (Normalized.pexecution'output s) # pfromData deployment # 1 # inputHash # outputHash # outputState
+        #&& Semantics.pfinalizeFrame # state
+
+scriptSourcesRedeemerOpenHeaderExecutorValidator :: forall s. Stage s
+scriptSourcesRedeemerOpenHeaderExecutorValidator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeOuterExecution # raw) $ \state -> pmatch state $ \s ->
+      Normalized.pexecutionOutputIsExact # pfromData (Normalized.pouter'output s) # pfromData deployment # 2 # inputHash # outputHash # outputState
+        #&& Semantics.popenHeader # state
+
+scriptSourcesRedeemerOpenTailExecutorValidator :: forall s. Stage s
+scriptSourcesRedeemerOpenTailExecutorValidator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeOuterExecution # raw) $ \state -> pmatch state $ \s ->
+      Normalized.pexecutionOutputIsExact # pfromData (Normalized.pouter'output s) # pfromData deployment # 3 # inputHash # outputHash # outputState
+        #&& Semantics.popenTail # state
+
+scriptSourcesRedeemerHeadScalarExecutorValidator :: forall s. Stage s
+scriptSourcesRedeemerHeadScalarExecutorValidator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeTraversalExecution # raw) $ \state -> pmatch state $ \s ->
+      Normalized.pexecutionOutputIsExact # pfromData (Normalized.pexecution'output s) # pfromData deployment # 4 # inputHash # outputHash # outputState
+        #&& Semantics.pheadScalar # state
+
+scriptSourcesRedeemerHeadSequenceExecutorValidator :: forall s. Stage s
+scriptSourcesRedeemerHeadSequenceExecutorValidator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeTraversalExecution # raw) $ \state -> pmatch state $ \s ->
+      Normalized.pexecutionOutputIsExact # pfromData (Normalized.pexecution'output s) # pfromData deployment # 4 # inputHash # outputHash # outputState
+        #&& Semantics.pheadSequence # state
+
+scriptSourcesRedeemerHeadMapExecutorValidator :: forall s. Stage s
+scriptSourcesRedeemerHeadMapExecutorValidator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeTraversalExecution # raw) $ \state -> pmatch state $ \s ->
+      Normalized.pexecutionOutputIsExact # pfromData (Normalized.pexecution'output s) # pfromData deployment # 4 # inputHash # outputHash # outputState
+        #&& Semantics.pheadMap # state
+
+scriptSourcesRedeemerHeadLargeConstructorExecutorValidator :: forall s. Stage s
+scriptSourcesRedeemerHeadLargeConstructorExecutorValidator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeTraversalExecution # raw) $ \state -> pmatch state $ \s ->
+      Normalized.pexecutionOutputIsExact # pfromData (Normalized.pexecution'output s) # pfromData deployment # 4 # inputHash # outputHash # outputState
+        #&& Semantics.pheadLargeConstructor # state
+
+scriptSourcesRedeemerAttachIntegerExecutorValidator :: forall s. Stage s
+scriptSourcesRedeemerAttachIntegerExecutorValidator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeTraversalExecution # raw) $ \state -> pmatch state $ \s ->
+      Normalized.pexecutionOutputIsExact # pfromData (Normalized.pexecution'output s) # pfromData deployment # 5 # inputHash # outputHash # outputState
+        #&& Semantics.pattachInteger # state
+
+scriptSourcesRedeemerAttachBytesExecutorValidator :: forall s. Stage s
+scriptSourcesRedeemerAttachBytesExecutorValidator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeTraversalExecution # raw) $ \state -> pmatch state $ \s ->
+      Normalized.pexecutionOutputIsExact # pfromData (Normalized.pexecution'output s) # pfromData deployment # 5 # inputHash # outputHash # outputState
+        #&& Semantics.pattachBytes # state
+
+scriptSourcesRedeemerFoldListExecutorValidator :: forall s. Stage s
+scriptSourcesRedeemerFoldListExecutorValidator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeTraversalExecution # raw) $ \state -> pmatch state $ \s ->
+      Normalized.pexecutionOutputIsExact # pfromData (Normalized.pexecution'output s) # pfromData deployment # 6 # inputHash # outputHash # outputState
+        #&& Semantics.pfoldList # state
+
+scriptSourcesRedeemerAdvanceIntegerExecutorValidator :: forall s. Stage s
+scriptSourcesRedeemerAdvanceIntegerExecutorValidator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeTraversalExecution # raw) $ \state -> pmatch state $ \s ->
+      Normalized.pexecutionOutputIsExact # pfromData (Normalized.pexecution'output s) # pfromData deployment # 7 # inputHash # outputHash # outputState
+        #&& Semantics.padvanceInteger # state
+
+scriptSourcesRedeemerAdvanceBytesExecutorValidator :: forall s. Stage s
+scriptSourcesRedeemerAdvanceBytesExecutorValidator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeTraversalExecution # raw) $ \state -> pmatch state $ \s ->
+      Normalized.pexecutionOutputIsExact # pfromData (Normalized.pexecution'output s) # pfromData deployment # 7 # inputHash # outputHash # outputState
+        #&& Semantics.padvanceBytes # state
+
+scriptSourcesRedeemerAdvanceLargeConstructorExecutorValidator :: forall s. Stage s
+scriptSourcesRedeemerAdvanceLargeConstructorExecutorValidator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeTraversalExecution # raw) $ \state -> pmatch state $ \s ->
+      Normalized.pexecutionOutputIsExact # pfromData (Normalized.pexecution'output s) # pfromData deployment # 7 # inputHash # outputHash # outputState
+        #&& Semantics.padvanceLargeConstructor # state
+
+scriptSourcesRedeemerAdvanceLargeFieldsExecutorValidator :: forall s. Stage s
+scriptSourcesRedeemerAdvanceLargeFieldsExecutorValidator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeTraversalExecution # raw) $ \state -> pmatch state $ \s ->
+      Normalized.pexecutionOutputIsExact # pfromData (Normalized.pexecution'output s) # pfromData deployment # 7 # inputHash # outputHash # outputState
+        #&& Semantics.padvanceLargeFields # state
+
+scriptSourcesRedeemerCloseExecutorValidator :: forall s. Stage s
+scriptSourcesRedeemerCloseExecutorValidator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeTraversalExecution # raw) $ \state -> pmatch state $ \s ->
+      Normalized.pexecutionOutputIsExact # pfromData (Normalized.pexecution'output s) # pfromData deployment # 7 # inputHash # outputHash # outputState
+        #&& Semantics.pclose # state
+
+scriptSourcesRedeemerFinishDataExecutorValidator :: forall s. Stage s
+scriptSourcesRedeemerFinishDataExecutorValidator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeOuterExecution # raw) $ \state -> pmatch state $ \s ->
+      Normalized.pexecutionOutputIsExact # pfromData (Normalized.pouter'output s) # pfromData deployment # 8 # inputHash # outputHash # outputState
+        #&& Semantics.pfinishData # state
+
+scriptSourcesRedeemerInvalidHeaderExecutorValidator :: forall s. Stage s
+scriptSourcesRedeemerInvalidHeaderExecutorValidator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeOuterExecution # raw) $ \state -> pmatch state $ \s ->
+      Normalized.pexecutionOutputIsExact # pfromData (Normalized.pouter'output s) # pfromData deployment # 9 # inputHash # outputHash # outputState
+        #&& Semantics.pinvalidHeader # state
+
+scriptSourcesRedeemerInvalidTailExecutorValidator :: forall s. Stage s
+scriptSourcesRedeemerInvalidTailExecutorValidator = plam $ \deployment policy ctx ->
+  run policy ctx (recordFields 2) $ \_ inputHash raw outputHash outputState ->
+    plet (Wire.pdecodeOuterExecution # raw) $ \state -> pmatch state $ \s ->
+      Normalized.pexecutionOutputIsExact # pfromData (Normalized.pouter'output s) # pfromData deployment # 9 # inputHash # outputHash # outputState
+        #&& Semantics.pinvalidTail # state

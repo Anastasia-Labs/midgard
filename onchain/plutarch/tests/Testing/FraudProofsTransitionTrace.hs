@@ -37,15 +37,18 @@ import PlutusLedgerApi.V1.Address (scriptHashAddress)
 import PlutusLedgerApi.V1.Value (TokenName (..), singleton)
 import PlutusLedgerApi.V3 (
   Address,
+  Credential (..),
   Datum (..),
   OutputDatum (..),
-  Redeemer,
-  ScriptContext,
+  Redeemer (..),
+  ScriptContext (..),
   ScriptHash (..),
-  ScriptPurpose,
+  ScriptPurpose (..),
   TxInInfo (..),
+  TxInfo (..),
   TxOut (..),
  )
+import PlutusTx.AssocMap qualified as Map
 import PlutusTx.Builtins (dataToBuiltinData, toBuiltin)
 import PlutusTx.IsData qualified as PlutusTx
 import Test.Tasty
@@ -68,7 +71,7 @@ import Midgard.Validators.FraudProofs.TransitionTrace (
   transitionTraceSourceV1Validator,
   transitionTraceWithdrawalV1Validator,
  )
-import Testing.Eval (passertEval, pfails, psucceeds)
+import Testing.Eval (passertEval, pfails, pfailsNoTraceWithoutHoistChecks, psucceeds, psucceedsNoTraceWithoutHoistChecks)
 import Testing.FraudProofsFixture
 import Testing.TransitionTraceProof (
   ConvictingProof (..),
@@ -96,6 +99,7 @@ tests =
     [ testGroup "the routing table" routingTableTests
     , testGroup "route-v1" routeTests
     , testGroup "the eight final validators" finalTests
+    , testGroup "staged dispatch" stagedTests
     ]
 
 --------------------------------------------------------------------------------
@@ -146,24 +150,26 @@ oneStepFaultOf witnessTag = PD.Constr 4 [PD.Constr witnessTag []]
 routingTableTests :: [TestTree]
 routingTableTests =
   [ testCase ("fault " <> show tag <> " routes to " <> show (routeIndexFor tag)) $
-    passertEval $
-      ptransitionFaultRouteIndex (asFault (leafFault tag)) #== pconstant (routeIndexFor tag)
+      passertEval $
+        ptransitionFaultRouteIndex (asFault (leafFault tag)) #== pconstant (routeIndexFor tag)
   | tag <- [0, 1, 2, 3, 5, 6, 7, 8, 9]
   ]
     <> [ testCase
-        ("one-step arm " <> show tag <> " routes to " <> show (oneStepRouteIndexFor tag))
-        $ passertEval
-        $ ptransitionFaultRouteIndex (asFault (oneStepFaultOf tag))
-          #== pconstant (oneStepRouteIndexFor tag)
+           ("one-step arm " <> show tag <> " routes to " <> show (oneStepRouteIndexFor tag))
+           $ passertEval
+           $ ptransitionFaultRouteIndex (asFault (oneStepFaultOf tag))
+             #== pconstant (oneStepRouteIndexFor tag)
        | tag <- [0 .. 4]
        ]
     <> [ -- Aiken's @when@ is total over the ten constructors and cannot meet an
          -- eleventh, because its redeemer is structurally decoded first. The port
          -- reads positionally, so the same impossibility has to be written down.
          testCase "a constructor no fault has aborts" $
-          pfails $ ptransitionFaultRouteIndex (asFault (leafFault 10))
+           pfails $
+             ptransitionFaultRouteIndex (asFault (leafFault 10))
        , testCase "…as does a one-step witness constructor no arm has" $
-          pfails $ ptransitionFaultRouteIndex (asFault (oneStepFaultOf 5))
+           pfails $
+             ptransitionFaultRouteIndex (asFault (oneStepFaultOf 5))
        ]
 
 asFault :: forall (s :: S). PD.Data -> Term s (PAsData PTransitionFault)
@@ -176,37 +182,66 @@ asFault d = punsafeCoerce (pconstant @PData d)
 routeTests :: [TestTree]
 routeTests =
   [ testCase "sends a control fault to the first final validator" $
-      psucceeds $ route (routing (leafFault 0) (finalScript 0))
+      psucceeds $
+        route (routing (leafFault 0) (finalScript 0))
   , testCase "…a source-membership mismatch to the second" $
-      psucceeds $ route (routing (leafFault 3) (finalScript 1))
-  , testCase "…a deposit one-step arm to the sixth" $
-      psucceeds $ route (routing (oneStepFaultOf 3) (finalScript 5))
+      psucceeds $
+        route (routing (leafFault 3) (finalScript 1))
+  , testCase "refuses inline deposit proofs, which require committed carriage" $
+      pfails $
+        route (routing (oneStepFaultOf 3) (finalScript 5))
   , testCase "…and a duplicate-event fault to the eighth" $
-      psucceeds $ route (routing (leafFault 6) (finalScript 7))
+      psucceeds $
+        route (routing (leafFault 6) (finalScript 7))
   , {- The check the whole layer exists for. A deposit arm sent to the
        accepted-transaction validator would be adjudicated by a rule that does
        not cover it, so the router has to refuse the output rather than leave it
        to the destination. -}
     testCase "refuses a fault sent to a final validator that is not its own" $
-      pfails $ route (routing (oneStepFaultOf 3) (finalScript 4))
+      pfails $
+        route (routing (oneStepFaultOf 3) (finalScript 4))
   , testCase "refuses a thread whose output state is not the routed proof" $
       pfails $
         route
-          (routing (leafFault 0) (finalScript 0)) {rOutputState = Just (leafFault 1)}
+          (routing (leafFault 0) (finalScript 0)){rOutputState = Just (leafFault 1)}
   , -- Routing is a thread's first step, so it must not accept one already carrying
     -- state — that would be a second routing of an adjudication in progress.
     testCase "refuses a thread that already carries state" $
       pfails $
-        route (routing (leafFault 0) (finalScript 0)) {rInputState = Just (leafFault 0)}
-  , testCase "refuses a script-hash list that does not name all eight validators" $
-      pfails $
+        route (routing (leafFault 0) (finalScript 0)){rInputState = Just (leafFault 0)}
+  , testCase "uses the selected deployed hash without rechecking parameter cardinality" $
+      psucceeds $
         route
           (routing (leafFault 0) (finalScript 0))
-            {rScriptHashes = [finalScript i | i <- [0 .. 6]]}
+            { rScriptHashes = [finalScript i | i <- [0 .. 6]]
+            }
+  , testCase "refuses inline accepted-transaction proofs" $
+      pfails $
+        route (routing (oneStepFaultOf 4) (finalScript 4))
+  , testCase "refuses inline accepted validation claims" $
+      pfails $
+        route (routing (leafFault 9) (finalScript 4))
+  , testCase "routes a committed deposit proof with the exact initial state" $
+      psucceeds $
+        carriedRoute depositConviction 1 5 False False
+  , testCase "routes a committed L2 proof with the exact initial state" $
+      psucceeds $
+        carriedRoute acceptedTransactionConviction 0 4 False False
+  , testCase "refuses a committed proof bound to another thread" $
+      pfails $
+        carriedRoute depositConviction 1 5 True False
+  , testCase "refuses a substituted transport commitment in the successor" $
+      pfails $
+        carriedRoute depositConviction 1 5 False True
+  , testCase "refuses a committed deposit sent to the L2 dispatcher" $
+      pfails $
+        carriedRoute depositConviction 1 4 False False
   , testCase "cancels a routing thread that burns its own token" $
-      psucceeds $ routeWith ttThreadName cancelRedeemer [] [cancelMintEntry ttThreadName]
+      psucceeds $
+        routeWith ttThreadName cancelRedeemer [] [cancelMintEntry ttThreadName]
   , testCase "…and not one that burns another's" $
-      pfails $ routeWith ttThreadName cancelRedeemer [] [cancelMintEntry otherThreadName]
+      pfails $
+        routeWith ttThreadName cancelRedeemer [] [cancelMintEntry otherThreadName]
   ]
 
 -- | The eight final validators, at hashes distinct from every other script here.
@@ -231,10 +266,10 @@ routing fault destination =
     , rInputState = Nothing
     , rScriptHashes = [finalScript i | i <- [0 .. 7]]
     }
-  where
-    -- The router never opens the proof, so a hash and a header it would refuse
-    -- are enough; only the fault it wraps is read.
-    proof = PD.Constr 0 [PD.B (BS.replicate 28 0x00), PD.Constr 0 [], fault]
+ where
+  -- The router never opens the proof, so a hash and a header it would refuse
+  -- are enough; only the fault it wraps is read.
+  proof = PD.Constr 0 [PD.B (BS.replicate 28 0x00), PD.Constr 0 [], fault]
 
 route :: forall (s :: S). Routing -> Term s PUnit
 route r =
@@ -244,13 +279,72 @@ route r =
     # pconstant
       ( spendContext
           (stepDatum (rInputState r))
-          (PD.Constr 1 [PD.Constr 0 [PD.I 0, PD.I 0, rProof r]])
+          (PD.Constr 1 [PD.Constr 0 [PD.I 0, PD.I 0, PD.Constr 0 [rProof r], PD.List []]])
           [ttThreadInput ttThreadName]
           [ttStepOutput (rOutputScript r) ttThreadName (rOutputState r)]
           []
           []
           mempty
       )
+
+-- Reference carriage freezes the exact transport; the header is independently
+-- bound to the thread before any narrow yield may consume the witness.
+carriedRoute :: forall s. ConvictingProof -> Integer -> Int -> Bool -> Bool -> Term s PUnit
+carriedRoute cv kind destination wrongThread wrongCommitment =
+  transitionTraceRouteV1Validator
+    # hashList [finalScript i | i <- [0 .. 7]]
+    # pdata (pconstant ctPolicy)
+    # pconstant
+      ( spendContext
+          (stepDatum Nothing)
+          (PD.Constr 1 [PD.Constr 0 [PD.I 0, PD.I 0, PD.Constr 1 [], PD.List [PD.I i | i <- [0 .. fromIntegral (length chunks) - 1]]]])
+          [ttThreadInput name]
+          [ttStepOutput (finalScript destination) name (Just initial)]
+          references
+          []
+          mempty
+      )
+ where
+  bytes = serialise $ cpProof cv
+  chunks = split bytes
+  split bs
+    | BS.null bs = []
+    | otherwise = BS.take 4096 bs : split (BS.drop 4096 bs)
+  name = if wrongThread then ttThreadName else cpThreadName cv
+  commitment = if wrongCommitment then BS.replicate 32 0xff else blake2b256 bytes
+  initial =
+    PD.Constr
+      0
+      [ PD.I kind
+      , PD.I (if kind == 2 then 0 else 6)
+      , PD.Constr 0 [PD.B commitment]
+      , PD.Constr 0 [PD.List [], PD.List []]
+      , PD.I 0
+      , PD.I 0
+      , PD.B ""
+      , PD.Constr 0 [PD.List []]
+      , PD.B ""
+      , PD.B ""
+      , PD.I 0
+      , PD.I 0
+      , PD.Constr 1 []
+      , PD.B ""
+      , PD.I 0
+      , PD.B ""
+      , PD.I 0
+      ]
+  references =
+    zipWith
+      ( \i chunk ->
+          TxInInfo (outRefN (i + 20)) $
+            TxOut
+              (scriptHashAddress hubOracleHash)
+              (adaValue 2_000_000)
+              (OutputDatum $ Datum $ dataToBuiltinData $ PD.B chunk)
+              Nothing
+      )
+      [0 ..]
+      chunks
 
 -- | The router driven with a redeemer of the caller's choosing, for the cancel arm.
 routeWith ::
@@ -286,39 +380,56 @@ hashList hs = punsafeCoerce (pconstant @PData (PD.List [PD.B h | h <- hs]))
 finalTests :: [TestTree]
 finalTests =
   [ testCase "control-v1 convicts on a trace-boundary fault" $
-      psucceeds $ final control controlConviction
+      psucceeds $
+        final control controlConviction
   , testCase "…and not on a duplicate-event fault, which is another's" $
-      pfails $ final control duplicateConviction
+      pfails $
+        final control duplicateConviction
   , testCase "source-v1 convicts on a source-membership mismatch" $
-      psucceeds $ final source sourceConviction
+      psucceeds $
+        final source sourceConviction
   , testCase "…and not on a trace-boundary fault" $
-      pfails $ final source controlConviction
+      pfails $
+        final source controlConviction
   , testCase "withdrawal-v1 convicts on the valid-withdrawal arm" $
-      psucceeds $ final withdrawal withdrawalConviction
+      psucceeds $
+        final withdrawal withdrawalConviction
   , testCase "…and not on the deposit arm" $
-      pfails $ final withdrawal depositConviction
+      pfails $
+        final withdrawal depositConviction
   , testCase "forced-v1 convicts on the forced no-op arm" $
-      psucceeds $ final forced forcedConviction
+      psucceeds $
+        final forced forcedConviction
   , testCase "…and not on the withdrawal arm" $
-      pfails $ final forced withdrawalConviction
-  , testCase "accepted-transaction-v1 convicts on the L2 arm" $
-      psucceeds $ final acceptedTransaction acceptedTransactionConviction
-  , testCase "…and convicts an accepted transaction with the wrong post root" $
-      psucceeds $ final acceptedTransaction acceptedMismatchConviction
+      pfails $
+        final forced withdrawalConviction
+  , testCase "accepted dispatcher refuses the replaced inline L2 state" $
+      pfails $
+        final acceptedTransaction acceptedTransactionConviction
+  , testCase "accepted dispatcher refuses the replaced inline claim state" $
+      pfails $
+        final acceptedTransaction acceptedMismatchConviction
   , testCase "…and not on the deposit arm" $
-      pfails $ final acceptedTransaction depositConviction
-  , testCase "deposit-v1 convicts on the deposit arm" $
-      psucceeds $ final deposit depositConviction
+      pfails $
+        final acceptedTransaction depositConviction
+  , testCase "deposit dispatcher refuses the replaced inline deposit state" $
+      pfails $
+        final deposit depositConviction
   , testCase "…and not on the L2 arm" $
-      pfails $ final deposit acceptedTransactionConviction
+      pfails $
+        final deposit acceptedTransactionConviction
   , testCase "l1-event-v1 convicts on an out-of-window source event" $
-      psucceeds $ final l1Event l1EventConviction
+      psucceeds $
+        final l1Event l1EventConviction
   , testCase "…and not on a trace-boundary fault" $
-      pfails $ final l1Event controlConviction
+      pfails $
+        final l1Event controlConviction
   , testCase "duplicate-v1 convicts on a duplicate-event fault" $
-      psucceeds $ final duplicate duplicateConviction
+      psucceeds $
+        final duplicate duplicateConviction
   , testCase "…and not on a trace-boundary fault" $
-      pfails $ final duplicate controlConviction
+      pfails $
+        final duplicate controlConviction
   , {- The conviction is a permanent record, so it has to be parked at the
        always-fails address and named for the thread it ends. Both are
        'finalize' checks rather than this family's, and one validator standing
@@ -326,14 +437,16 @@ finalTests =
     testCase "a conviction parked anywhere but the fraud-proof address is refused" $
       pfails $
         control
-          (conviction controlConviction) {cvFraudProofAddress = otherAddress}
+          (conviction controlConviction){cvFraudProofAddress = otherAddress}
   , testCase "…as is one minted under a name that is not the thread's" $
       pfails $
-        control (conviction controlConviction) {cvFraudProofName = otherThreadName}
+        control (conviction controlConviction){cvFraudProofName = otherThreadName}
   , testCase "cancels a final thread that burns its own token" $
-      psucceeds $ control (cancelling (cpThreadName controlConviction))
+      psucceeds $
+        control (cancelling (cpThreadName controlConviction))
   , testCase "…and not one that burns another's" $
-      pfails $ control (cancelling otherThreadName)
+      pfails $
+        control (cancelling otherThreadName)
   ]
 
 acceptedMismatchConviction :: ConvictingProof
@@ -407,11 +520,11 @@ withdrawal = plainFinal transitionTraceWithdrawalV1Validator
 forced = plainFinal transitionTraceForcedV1Validator
 
 acceptedTransaction, duplicate :: forall (s :: S). Conviction -> Term s PUnit
-acceptedTransaction = plainFinal transitionTraceAcceptedTransactionV1Validator
+acceptedTransaction = stagedRun False . convictionContext
 duplicate = plainFinal transitionTraceDuplicateV1Validator
 
 deposit, l1Event :: forall (s :: S). Conviction -> Term s PUnit
-deposit = hubFinal transitionTraceDepositV1Validator
+deposit = stagedRun True . convictionContext
 l1Event = hubFinal transitionTraceL1EventV1Validator
 
 plainFinal ::
@@ -515,3 +628,153 @@ transitionTraceHubInput =
         (OutputDatum (Datum (dataToBuiltinData depositHubOracleDatum)))
         Nothing
     )
+
+-- Staged dispatch contexts independently encode the target wire state and args.
+-- The ledger executes each authenticated withdrawal separately; these tests pin
+-- the spending side's role selection, custody and finalization.
+stagedState :: ConvictingProof -> Integer -> Integer -> PD.Data
+stagedState proof kind phase =
+  PD.Constr
+    0
+    [ PD.I kind
+    , PD.I phase
+    , PD.Constr 0 [PD.B $ blake2b256 $ serialise $ cpProof proof]
+    , PD.Constr 0 [PD.List [], PD.List []]
+    , PD.I 0
+    , PD.I 0
+    , PD.B ""
+    , PD.Constr 0 [PD.List []]
+    , PD.B ""
+    , PD.B ""
+    , PD.I 0
+    , PD.I 0
+    , PD.Constr 1 []
+    , PD.B ""
+    , PD.I 0
+    , PD.B ""
+    , PD.I 0
+    ]
+
+proofReferences :: ConvictingProof -> [TxInInfo]
+proofReferences proof = zipWith reference [20 ..] $ split $ serialise $ cpProof proof
+ where
+  split bytes
+    | BS.null bytes = []
+    | otherwise = BS.take 4096 bytes : split (BS.drop 4096 bytes)
+  reference index bytes =
+    TxInInfo (outRefN index) $
+      TxOut
+        otherAddress
+        (adaValue 2_000_000)
+        (OutputDatum $ Datum $ dataToBuiltinData $ PD.B bytes)
+        Nothing
+
+yieldHash :: ScriptHash
+yieldHash = ScriptHash $ toBuiltin $ BS.replicate 28 0xd3
+
+yieldRoleReference :: BS.ByteString -> TxInInfo
+yieldRoleReference role =
+  TxInInfo (outRefN 19) $
+    TxOut
+      otherAddress
+      (adaValue 2_000_000 <> singleton hubPolicy (TokenName $ toBuiltin role) 1)
+      NoOutputDatum
+      (Just yieldHash)
+
+stagedContext :: ConvictingProof -> Integer -> Integer -> BS.ByteString -> ScriptContext
+stagedContext proof kind phase role = ctx{scriptContextTxInfo = tx{txInfoWdrl = Map.unsafeFromList withdrawals}}
+ where
+  terminal = if kind == 2 then phase == 3 else phase == 5
+  usesYield = phase /= 6 && not (kind == 2 && terminal)
+  references = yieldRoleReference role : proofReferences proof
+  redeemer =
+    PD.Constr
+      1
+      [ PD.Constr
+          0
+          [ PD.I 0
+          , PD.I 0
+          , PD.I 0
+          , PD.I 0
+          , PD.List [PD.I 0 | usesYield]
+          , PD.List [PD.I i | i <- [1 .. fromIntegral (length references) - 1]]
+          , PD.List []
+          , PD.I 0
+          ]
+      ]
+  state = stagedState proof kind phase
+  next = stagedState proof kind (if phase == 6 then 0 else phase)
+  outputs =
+    if terminal
+      then [convictionOutput fraudProofAddress $ cpThreadName proof]
+      else [ttStepOutput stepScript (cpThreadName proof) $ Just next]
+  withdrawal = (Rewarding $ ScriptCredential yieldHash, Redeemer $ dataToBuiltinData $ PD.Constr 0 [])
+  redeemers = [fraudProofMintEntry $ cpThreadName proof | terminal] ++ [withdrawal | usesYield]
+  withdrawals = [(ScriptCredential yieldHash, 0) | usesYield]
+  ctx =
+    spendContext
+      (stepDatum $ Just state)
+      redeemer
+      [ttThreadInput $ cpThreadName proof]
+      outputs
+      references
+      redeemers
+      (if terminal then singleton fpPolicy (TokenName $ toBuiltin $ cpThreadName proof) 1 else mempty)
+  tx = scriptContextTxInfo ctx
+
+stagedRun :: forall s. Bool -> ScriptContext -> Term s PUnit
+stagedRun depositMode ctx =
+  (if depositMode then transitionTraceDepositV1Validator else transitionTraceAcceptedTransactionV1Validator)
+    # pdata (pconstant ctPolicy)
+    # pdata (pconstant fpPolicy)
+    # pdata (pconstant fraudProofAddress)
+    # pdata (pconstant hubPolicy)
+    # pconstant ctx
+
+stagedTests :: [TestTree]
+stagedTests =
+  [ testGroup
+      (show kind <> "/" <> show phase)
+      [ testCase "authenticates the exact phase role" $ psucceedsNoTraceWithoutHoistChecks $ stagedRun (kind == 1) context
+      , testCase "rejects another role" $ pfailsNoTraceWithoutHoistChecks $ stagedRun (kind == 1) $ stagedContext proof kind phase "wrong-role"
+      , testCase "rejects nonzero withdrawal" $
+          pfailsNoTraceWithoutHoistChecks $
+            stagedRun (kind == 1) $
+              context{scriptContextTxInfo = (scriptContextTxInfo context){txInfoWdrl = Map.unsafeFromList [(ScriptCredential yieldHash, 1)]}}
+      , testCase "rejects missing withdrawal redeemer" $
+          pfailsNoTraceWithoutHoistChecks $
+            stagedRun (kind == 1) $
+              context{scriptContextTxInfo = (scriptContextTxInfo context){txInfoRedeemers = Map.unsafeFromList [fraudProofMintEntry $ cpThreadName proof | phase == 5]}}
+      ]
+  | (kind, phase, role) <-
+      [ (0, 0, "V1FpTtF4L2OpenYield")
+      , (0, 1, "V1FpTtF4L2ReplayYield")
+      , (0, 2, "V1FpTtF4ScanYield")
+      , (0, 7, "V1FpTtF4ValueYield")
+      , (0, 8, "V1FpTtF4L2SummariesYield")
+      , (0, 3, "V1FpTtF4L2AssemblyYield")
+      , (0, 9, "V1FpTtF4L2ReplayYield")
+      , (0, 4, "V1FpTtF4L2ReplayYield")
+      , (0, 5, "V1FpTtF4L2ReplayYield")
+      , (1, 0, "V1FpTtF5ProjectionYield")
+      , (1, 10, "V1FpTtF5ProjectionYield")
+      , (1, 2, "V1FpTtF5ScanYield")
+      , (1, 7, "V1FpTtF5ValueYield")
+      , (1, 8, "V1FpTtF5SummariesYield")
+      , (1, 3, "V1FpTtF5AssemblyYield")
+      , (1, 9, "V1FpTtF5ReplayYield")
+      , (1, 4, "V1FpTtF5ReplayYield")
+      , (1, 5, "V1FpTtF5ReplayYield")
+      , (2, 0, "V1FpTtF4ClaimStructYield")
+      , (2, 1, "V1FpTtF4ClaimSourceYield")
+      , (2, 2, "V1FpTtF4ClaimEndsYield")
+      ]
+  , let proof = if kind == 1 then depositConviction else if kind == 2 then acceptedMismatchConviction else acceptedTransactionConviction
+        context = stagedContext proof kind phase role
+  ]
+    ++ [ testCase "binds an L2 carried proof before opening" $ psucceedsNoTraceWithoutHoistChecks $ stagedRun False $ stagedContext acceptedTransactionConviction 0 6 ""
+       , testCase "binds a deposit carried proof before projection" $ psucceedsNoTraceWithoutHoistChecks $ stagedRun True $ stagedContext depositConviction 1 6 ""
+       , testCase "convicts a staged accepted claim with a mismatched terminal root" $ psucceedsNoTraceWithoutHoistChecks $ stagedRun False $ stagedContext acceptedMismatchConviction 2 3 ""
+       , testCase "refuses a deposit state at the accepted dispatcher" $ pfailsNoTraceWithoutHoistChecks $ stagedRun False $ stagedContext depositConviction 1 5 "V1FpTtF5ReplayYield"
+       , testCase "refuses an L2 state at the deposit dispatcher" $ pfailsNoTraceWithoutHoistChecks $ stagedRun True $ stagedContext acceptedTransactionConviction 0 5 "V1FpTtF4L2ReplayYield"
+       ]

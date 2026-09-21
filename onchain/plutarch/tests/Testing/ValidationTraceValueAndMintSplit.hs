@@ -11,11 +11,11 @@ import PlutusTx.Builtins (toBuiltin)
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import Midgard.ValidationMachine (PValidationOneStepWitnessV1, PValueAssetMutationWitnessV1)
-import Midgard.ValidationMerkle (PFrontierPeak)
+import Midgard.ValidationMachine (PValidationOneStepWitnessV1)
 import Midgard.ValidationResolver (pselectSemanticResolver)
 import Midgard.Validators.FraudProofs.ValidationTrace.ValueAndMint (valueAndMintV1Validator)
 import Midgard.Validators.FraudProofs.ValidationTrace.ValueAndMintSemantics
+import Midgard.ValueAssetFold qualified as Fold
 import Testing.Eval (passertEvalNoTrace, psucceedsNoTraceWithoutHoistChecks)
 import Testing.FraudProofsFixture
 
@@ -38,16 +38,16 @@ tests =
           cancelledSemanticWith valueAndMintReplayInputSemanticV1Validator threadName
     , testCase "replay-asset semantic validator cancels its own computation thread" $
         psucceedsNoTraceWithoutHoistChecks $
-          cancelledSemanticWith valueAndMintReplayAssetSemanticV1Validator threadName
+          cancelledYieldingSemanticWith valueAndMintReplayAssetSemanticV1Validator threadName
     , testCase "output-descriptor semantic validator cancels its own computation thread" $
         psucceedsNoTraceWithoutHoistChecks $
           cancelledSemanticWith valueAndMintOutputDescriptorSemanticV1Validator threadName
     , testCase "output-asset semantic validator cancels its own computation thread" $
         psucceedsNoTraceWithoutHoistChecks $
-          cancelledSemanticWith valueAndMintOutputAssetSemanticV1Validator threadName
+          cancelledYieldingSemanticWith valueAndMintOutputAssetSemanticV1Validator threadName
     , testCase "mint-asset semantic validator cancels its own computation thread" $
         psucceedsNoTraceWithoutHoistChecks $
-          cancelledSemanticWith valueAndMintMintAssetSemanticV1Validator threadName
+          cancelledYieldingSemanticWith valueAndMintMintAssetSemanticV1Validator threadName
     , testCase "finalize semantic validator cancels its own computation thread" $
         psucceedsNoTraceWithoutHoistChecks $
           cancelledSemanticWith valueAndMintFinalizeSemanticV1Validator threadName
@@ -61,12 +61,10 @@ splitActionWireLayouts =
       intD = pdata 4
       bytesD :: Term s (PAsData PByteString)
       bytesD = pdata (pconstant "x")
-      peaksD :: Term s (PAsData (PBuiltinList (PAsData PFrontierPeak)))
-      peaksD = punsafeCoerce (pdata (pconstant 5 :: Term s PInteger))
       siblingsD :: Term s (PAsData (PBuiltinList (PAsData PByteString)))
       siblingsD = punsafeCoerce (pdata (pconstant 6 :: Term s PInteger))
-      mutationD :: Term s (PAsData PValueAssetMutationWitnessV1)
-      mutationD = punsafeCoerce (pdata (pconstant 7 :: Term s PInteger))
+      claimD :: Term s (PAsData Fold.PClaim)
+      claimD = punsafeCoerce (pdata (pconstant 8 :: Term s PInteger))
    in pand'List
         [ pforgetData (pdata $ pcon $ PVerifyValueAndMintSimple (pdata 1) (pdata 2) transition)
             #== pconstant (PD.Constr 0 [PD.I 1, PD.I 2, PD.I 3])
@@ -74,17 +72,17 @@ splitActionWireLayouts =
             (pdata $ pcon $ PVerifyValueAndMintReplayInput (pdata 1) (pdata 2) transition intD bytesD bytesD bytesD)
             #== pconstant (PD.Constr 0 [PD.I 1, PD.I 2, PD.I 3, PD.I 4, PD.B "x", PD.B "x", PD.B "x"])
         , pforgetData
-            (pdata $ pcon $ PVerifyValueAndMintReplayAsset (pdata 1) (pdata 2) transition intD bytesD bytesD bytesD intD bytesD bytesD intD peaksD siblingsD mutationD)
-            #== pconstant (PD.Constr 0 [PD.I 1, PD.I 2, PD.I 3, PD.I 4, PD.B "x", PD.B "x", PD.B "x", PD.I 4, PD.B "x", PD.B "x", PD.I 4, PD.I 5, PD.I 6, PD.I 7])
+            (pdata $ pcon $ PVerifyValueAndMintReplayAsset claimD (pdata 1) (pdata 2) transition intD bytesD bytesD intD)
+            #== pconstant (PD.Constr 0 [PD.I 8, PD.I 1, PD.I 2, PD.I 3, PD.I 4, PD.B "x", PD.B "x", PD.I 4])
         , pforgetData
             (pdata $ pcon $ PVerifyValueAndMintOutputDescriptor (pdata 1) (pdata 2) transition intD bytesD siblingsD)
             #== pconstant (PD.Constr 0 [PD.I 1, PD.I 2, PD.I 3, PD.I 4, PD.B "x", PD.I 6])
         , pforgetData
-            (pdata $ pcon $ PVerifyValueAndMintOutputAsset (pdata 1) (pdata 2) transition intD bytesD intD bytesD bytesD intD peaksD siblingsD mutationD)
-            #== pconstant (PD.Constr 0 [PD.I 1, PD.I 2, PD.I 3, PD.I 4, PD.B "x", PD.I 4, PD.B "x", PD.B "x", PD.I 4, PD.I 5, PD.I 6, PD.I 7])
+            (pdata $ pcon $ PVerifyValueAndMintOutputAsset claimD (pdata 1) (pdata 2) transition intD intD)
+            #== pconstant (PD.Constr 0 [PD.I 8, PD.I 1, PD.I 2, PD.I 3, PD.I 4, PD.I 4])
         , pforgetData
-            (pdata $ pcon $ PVerifyValueAndMintMintAsset (pdata 1) (pdata 2) transition intD bytesD bytesD intD siblingsD mutationD)
-            #== pconstant (PD.Constr 0 [PD.I 1, PD.I 2, PD.I 3, PD.I 4, PD.B "x", PD.B "x", PD.I 4, PD.I 6, PD.I 7])
+            (pdata $ pcon $ PVerifyValueAndMintMintAsset claimD (pdata 1) (pdata 2) transition intD siblingsD intD)
+            #== pconstant (PD.Constr 0 [PD.I 8, PD.I 1, PD.I 2, PD.I 3, PD.I 4, PD.I 6, PD.I 4])
         ]
 
 cancelledPrepareWith :: forall s. BS.ByteString -> Term s PUnit
@@ -105,6 +103,18 @@ cancelledSemanticWith validator cancellationName =
     # pdata (pconstant ctPolicy)
     # pconstant (cancelContext cancellationName)
 
+cancelledYieldingSemanticWith ::
+  forall s.
+  Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit) ->
+  BS.ByteString ->
+  Term s PUnit
+cancelledYieldingSemanticWith validator cancellationName =
+  validator
+    # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
+    # pdata (pconstant ctPolicy)
+    # pdata (pconstant ctPolicy)
+    # pconstant (cancelContext cancellationName)
+
 cancelContext :: BS.ByteString -> ScriptContext
 cancelContext cancellationName =
   spendContext
@@ -121,14 +131,14 @@ resolverHashes = pdata resolverHashList
 
 resolverHashList :: forall s. Term s (PBuiltinList (PAsData PScriptHash))
 resolverHashList = go 0
-  where
-    go :: Integer -> Term s (PBuiltinList (PAsData PScriptHash))
-    go index
-      | index == 11 = pnil
-      | otherwise =
-          pcons
-            # pdata (pconstant $ ScriptHash $ toBuiltin $ resolverScriptAt index)
-            # go (index + 1)
+ where
+  go :: Integer -> Term s (PBuiltinList (PAsData PScriptHash))
+  go index
+    | index == 11 = pnil
+    | otherwise =
+        pcons
+          # pdata (pconstant $ ScriptHash $ toBuiltin $ resolverScriptAt index)
+          # go (index + 1)
 
 resolverScriptAt :: Integer -> BS.ByteString
 resolverScriptAt 0 = nextScript
@@ -142,21 +152,22 @@ resolverSelectionMatrix =
     ( [ selectedResolverIs index
       | index <- [0 .. 10]
       ]
-        <> [ resolverSelectionFails resolverHashList 1 0
+        <> [ pnot # resolverSelectionFails resolverHashList 1 0
            , resolverSelectionFails resolverHashList 11 (-1)
            , resolverSelectionFails resolverHashList 11 11
-           , resolverSelectionFails
-              (pcons # pdata (pconstant $ ScriptHash $ toBuiltin $ BS.replicate 28 0x8a) # resolverHashList)
-              11
-              0
+           , pnot
+               # resolverSelectionFails
+                 (pcons # pdata (pconstant $ ScriptHash $ toBuiltin $ BS.replicate 28 0x8a) # resolverHashList)
+                 11
+                 0
            ]
     )
-  where
-    selectedResolverIs :: Integer -> Term s PBool
-    selectedResolverIs index =
-      pmatch (pselectSemanticResolver # resolverHashList # 11 # pconstant index) $ \case
-        PJust scriptHash -> scriptHash #== pconstant (ScriptHash $ toBuiltin $ resolverScriptAt index)
-        PNothing -> pconstant False
+ where
+  selectedResolverIs :: Integer -> Term s PBool
+  selectedResolverIs index =
+    pmatch (pselectSemanticResolver # resolverHashList # 11 # pconstant index) $ \case
+      PJust scriptHash -> scriptHash #== pconstant (ScriptHash $ toBuiltin $ resolverScriptAt index)
+      PNothing -> pconstant False
 
 resolverSelectionFails ::
   forall s.

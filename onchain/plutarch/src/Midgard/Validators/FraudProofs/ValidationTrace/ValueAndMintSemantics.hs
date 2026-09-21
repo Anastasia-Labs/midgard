@@ -25,21 +25,22 @@ module Midgard.Validators.FraudProofs.ValidationTrace.ValueAndMintSemantics (
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
 
-import Plutarch.LedgerApi.Utils (PMaybeData)
+import Plutarch.LedgerApi.Utils (PMaybeData (..))
 import Plutarch.LedgerApi.V3 (PCurrencySymbol, PScriptContext, PScriptHash, PTxInfo, PTxOutRef)
 import Plutarch.Prelude
 
 import Midgard.ComputationThread (PStepDatum)
+import Midgard.StateQueueYield qualified as Yield
 import Midgard.ValidationMachine (
   PValidationAuxiliaryWitnessV1 (..),
   PValidationOneStepWitnessV1,
-  PValueAssetMutationWitnessV1,
  )
 import Midgard.ValidationMachine.ValueAndMintSemantics
-import Midgard.ValidationMerkle (PFrontierPeak)
 import Midgard.ValidationSemantic (pcontinueWinning, pvalidationSemanticPreState)
 import Midgard.ValidationTrace (PValidationMachineStateV1, PValidationPhase (PValueAndMint))
 import Midgard.Validators.FraudProofs.Step (pdispatch, pstep)
+import Midgard.ValueAssetFold qualified as Fold
+import Midgard.ValueAssetFoldYield qualified as FoldYield
 
 data PValueAndMintSimpleActionV1 (s :: S)
   = PVerifyValueAndMintSimple
@@ -65,20 +66,14 @@ data PValueAndMintReplayInputActionV1 (s :: S)
 
 data PValueAndMintReplayAssetActionV1 (s :: S)
   = PVerifyValueAndMintReplayAsset
+      (Term s (PAsData Fold.PClaim))
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
       (Term s (PAsData PValidationOneStepWitnessV1))
       (Term s (PAsData PInteger))
       (Term s (PAsData PByteString))
       (Term s (PAsData PByteString))
-      (Term s (PAsData PByteString))
       (Term s (PAsData PInteger))
-      (Term s (PAsData PByteString))
-      (Term s (PAsData PByteString))
-      (Term s (PAsData PInteger))
-      (Term s (PAsData (PBuiltinList (PAsData PFrontierPeak))))
-      (Term s (PAsData (PBuiltinList (PAsData PByteString))))
-      (Term s (PAsData PValueAssetMutationWitnessV1))
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PValueAndMintReplayAssetActionV1)
@@ -97,33 +92,25 @@ data PValueAndMintOutputDescriptorActionV1 (s :: S)
 
 data PValueAndMintOutputAssetActionV1 (s :: S)
   = PVerifyValueAndMintOutputAsset
+      (Term s (PAsData Fold.PClaim))
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
       (Term s (PAsData PValidationOneStepWitnessV1))
       (Term s (PAsData PInteger))
-      (Term s (PAsData PByteString))
       (Term s (PAsData PInteger))
-      (Term s (PAsData PByteString))
-      (Term s (PAsData PByteString))
-      (Term s (PAsData PInteger))
-      (Term s (PAsData (PBuiltinList (PAsData PFrontierPeak))))
-      (Term s (PAsData (PBuiltinList (PAsData PByteString))))
-      (Term s (PAsData PValueAssetMutationWitnessV1))
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PValueAndMintOutputAssetActionV1)
 
 data PValueAndMintMintAssetActionV1 (s :: S)
   = PVerifyValueAndMintMintAsset
+      (Term s (PAsData Fold.PClaim))
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
       (Term s (PAsData PValidationOneStepWitnessV1))
       (Term s (PAsData PInteger))
-      (Term s (PAsData PByteString))
-      (Term s (PAsData PByteString))
-      (Term s (PAsData PInteger))
       (Term s (PAsData (PBuiltinList (PAsData PByteString))))
-      (Term s (PAsData PValueAssetMutationWitnessV1))
+      (Term s (PAsData PInteger))
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PValueAndMintMintAssetActionV1)
@@ -179,12 +166,9 @@ psimpleValueAndMintValidator verify = plam $ \awardScriptHash policyId ctx ->
 valueAndMintBeginSemanticV1Validator
   , valueAndMintReplayBeginSemanticV1Validator
   , valueAndMintReplayInputSemanticV1Validator
-  , valueAndMintReplayAssetSemanticV1Validator
   , valueAndMintReplayFinishSemanticV1Validator
   , valueAndMintOutputDescriptorSemanticV1Validator
-  , valueAndMintOutputAssetSemanticV1Validator
   , valueAndMintOutputFinishSemanticV1Validator
-  , valueAndMintMintAssetSemanticV1Validator
   , valueAndMintMintFinishSemanticV1Validator
   , valueAndMintFinalizeSemanticV1Validator ::
     forall s.
@@ -219,37 +203,64 @@ valueAndMintReplayInputSemanticV1Validator = plam $ \awardScriptHash policyId ct
               )
               ownOutRef
               txInfo
-valueAndMintReplayAssetSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
+valueAndMintReplayAssetSemanticV1Validator ::
+  forall s.
+  Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
+valueAndMintReplayAssetSemanticV1Validator = plam $ \awardScriptHash policyId authPolicy ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
     pdispatch @_ @PValueAndMintReplayAssetActionV1 policyId datum redeemer ownOutRef txInfo $
-      \action -> pmatch action $ \(PVerifyValueAndMintReplayAsset inputIndex outputIndex transitionD sourceKindD keyD nextScheduleHashD descriptorCborD assetIndexD policyIdD assetNameD quantityD assetPeaksD assetSiblingsD mutationD) ->
+      \action -> pmatch action $ \(PVerifyValueAndMintReplayAsset claimD inputIndex outputIndex transitionD sourceKindD keyD nextScheduleHashD yieldIndexD) ->
         plet (pfromData transitionD) $ \transition ->
-          plet (pcon $ PValueInputAssetWitness sourceKindD keyD nextScheduleHashD descriptorCborD assetIndexD policyIdD assetNameD quantityD assetPeaksD assetSiblingsD mutationD) $ \auxiliary ->
-            pcontinueValueAndMint
-              awardScriptHash
-              policyId
-              datum
-              inputIndex
-              outputIndex
-              transition
-              (pforgetData $ pdata auxiliary)
-              ( pverifyValueAndMintReplayAssetSemanticsV1
-                  # pvalidationSemanticPreState datum
-                  # transition
-                  # pfromData sourceKindD
-                  # pfromData keyD
-                  # pfromData nextScheduleHashD
-                  # pfromData descriptorCborD
-                  # pfromData assetIndexD
-                  # pfromData policyIdD
-                  # pfromData assetNameD
-                  # pfromData quantityD
-                  # pfromData assetPeaksD
-                  # pfromData assetSiblingsD
-                  # pfromData mutationD
-              )
-              ownOutRef
-              txInfo
+          plet (pfromData claimD) $ \claim ->
+            pmatch claim $ \c ->
+              pmatch (pfromData $ Fold.pclaim'descriptor c) $ \case
+                PDNothing -> perror
+                PDJust descriptorD -> pmatch (pfromData descriptorD) $ \descriptor ->
+                  plet
+                    ( pcon $
+                        PValueInputAssetWitness
+                          sourceKindD
+                          keyD
+                          nextScheduleHashD
+                          (Fold.pdescriptor'cbor descriptor)
+                          (Fold.pdescriptor'assetIndex descriptor)
+                          (Fold.pclaim'policy c)
+                          (Fold.pclaim'asset c)
+                          (Fold.pclaim'quantity c)
+                          (Fold.pdescriptor'peaks descriptor)
+                          (Fold.pdescriptor'siblings descriptor)
+                          (Fold.pclaim'mutation c)
+                    )
+                    $ \auxiliary ->
+                      plet
+                        ( Yield.prequireAuthenticatedZeroYield
+                            # txInfo
+                            # pfromData authPolicy
+                            # FoldYield.prole
+                            # pfromData yieldIndexD
+                        )
+                        $ \yieldHash ->
+                          pcontinueValueAndMint
+                            awardScriptHash
+                            policyId
+                            datum
+                            inputIndex
+                            outputIndex
+                            transition
+                            (pforgetData $ pdata auxiliary)
+                            ( plengthBS
+                                # pto yieldHash
+                                #> 0
+                                #&& Fold.preplay
+                                # pvalidationSemanticPreState datum
+                                # transition
+                                # pfromData sourceKindD
+                                # pfromData keyD
+                                # pfromData nextScheduleHashD
+                                # claim
+                            )
+                            ownOutRef
+                            txInfo
 valueAndMintOutputDescriptorSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
     pdispatch @_ @PValueAndMintOutputDescriptorActionV1 policyId datum redeemer ownOutRef txInfo $
@@ -273,58 +284,106 @@ valueAndMintOutputDescriptorSemanticV1Validator = plam $ \awardScriptHash policy
               )
               ownOutRef
               txInfo
-valueAndMintOutputAssetSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
+valueAndMintOutputAssetSemanticV1Validator ::
+  forall s.
+  Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
+valueAndMintOutputAssetSemanticV1Validator = plam $ \awardScriptHash policyId authPolicy ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
     pdispatch @_ @PValueAndMintOutputAssetActionV1 policyId datum redeemer ownOutRef txInfo $
-      \action -> pmatch action $ \(PVerifyValueAndMintOutputAsset inputIndex outputIndex transitionD ledgerOutputIndexD descriptorCborD assetIndexD policyIdD assetNameD quantityD assetPeaksD assetSiblingsD mutationD) ->
+      \action -> pmatch action $ \(PVerifyValueAndMintOutputAsset claimD inputIndex outputIndex transitionD ledgerOutputIndexD yieldIndexD) ->
         plet (pfromData transitionD) $ \transition ->
-          plet (pcon $ PValueOutputAssetWitness ledgerOutputIndexD descriptorCborD assetIndexD policyIdD assetNameD quantityD assetPeaksD assetSiblingsD mutationD) $ \auxiliary ->
-            pcontinueValueAndMint
-              awardScriptHash
-              policyId
-              datum
-              inputIndex
-              outputIndex
-              transition
-              (pforgetData $ pdata auxiliary)
-              ( pverifyValueAndMintOutputAssetSemanticsV1
-                  # pvalidationSemanticPreState datum
-                  # transition
-                  # pfromData ledgerOutputIndexD
-                  # pfromData descriptorCborD
-                  # pfromData assetIndexD
-                  # pfromData policyIdD
-                  # pfromData assetNameD
-                  # pfromData quantityD
-                  # pfromData assetPeaksD
-                  # pfromData assetSiblingsD
-                  # pfromData mutationD
-              )
-              ownOutRef
-              txInfo
-valueAndMintMintAssetSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
+          plet (pfromData claimD) $ \claim ->
+            pmatch claim $ \c ->
+              pmatch (pfromData $ Fold.pclaim'descriptor c) $ \case
+                PDNothing -> perror
+                PDJust descriptorD -> pmatch (pfromData descriptorD) $ \descriptor ->
+                  plet
+                    ( pcon $
+                        PValueOutputAssetWitness
+                          ledgerOutputIndexD
+                          (Fold.pdescriptor'cbor descriptor)
+                          (Fold.pdescriptor'assetIndex descriptor)
+                          (Fold.pclaim'policy c)
+                          (Fold.pclaim'asset c)
+                          (Fold.pclaim'quantity c)
+                          (Fold.pdescriptor'peaks descriptor)
+                          (Fold.pdescriptor'siblings descriptor)
+                          (Fold.pclaim'mutation c)
+                    )
+                    $ \auxiliary ->
+                      plet
+                        ( Yield.prequireAuthenticatedZeroYield
+                            # txInfo
+                            # pfromData authPolicy
+                            # FoldYield.prole
+                            # pfromData yieldIndexD
+                        )
+                        $ \yieldHash ->
+                          pcontinueValueAndMint
+                            awardScriptHash
+                            policyId
+                            datum
+                            inputIndex
+                            outputIndex
+                            transition
+                            (pforgetData $ pdata auxiliary)
+                            ( plengthBS
+                                # pto yieldHash
+                                #> 0
+                                #&& Fold.poutput
+                                # pvalidationSemanticPreState datum
+                                # transition
+                                # pfromData ledgerOutputIndexD
+                                # claim
+                            )
+                            ownOutRef
+                            txInfo
+valueAndMintMintAssetSemanticV1Validator ::
+  forall s.
+  Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
+valueAndMintMintAssetSemanticV1Validator = plam $ \awardScriptHash policyId authPolicy ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
     pdispatch @_ @PValueAndMintMintAssetActionV1 policyId datum redeemer ownOutRef txInfo $
-      \action -> pmatch action $ \(PVerifyValueAndMintMintAsset inputIndex outputIndex transitionD mintIndexD policyIdD assetNameD quantityD siblingsD mutationD) ->
+      \action -> pmatch action $ \(PVerifyValueAndMintMintAsset claimD inputIndex outputIndex transitionD mintIndexD siblingsD yieldIndexD) ->
         plet (pfromData transitionD) $ \transition ->
-          plet (pcon $ PValueMintAssetWitness mintIndexD policyIdD assetNameD quantityD siblingsD mutationD) $ \auxiliary ->
-            pcontinueValueAndMint
-              awardScriptHash
-              policyId
-              datum
-              inputIndex
-              outputIndex
-              transition
-              (pforgetData $ pdata auxiliary)
-              ( pverifyValueAndMintMintAssetSemanticsV1
-                  # pvalidationSemanticPreState datum
-                  # transition
-                  # pfromData mintIndexD
-                  # pfromData policyIdD
-                  # pfromData assetNameD
-                  # pfromData quantityD
-                  # pfromData siblingsD
-                  # pfromData mutationD
-              )
-              ownOutRef
-              txInfo
+          plet (pfromData claimD) $ \claim ->
+            pmatch claim $ \c ->
+              plet
+                ( pcon $
+                    PValueMintAssetWitness
+                      mintIndexD
+                      (Fold.pclaim'policy c)
+                      (Fold.pclaim'asset c)
+                      (Fold.pclaim'quantity c)
+                      siblingsD
+                      (Fold.pclaim'mutation c)
+                )
+                $ \auxiliary ->
+                  plet
+                    ( Yield.prequireAuthenticatedZeroYield
+                        # txInfo
+                        # pfromData authPolicy
+                        # FoldYield.prole
+                        # pfromData yieldIndexD
+                    )
+                    $ \yieldHash ->
+                      pcontinueValueAndMint
+                        awardScriptHash
+                        policyId
+                        datum
+                        inputIndex
+                        outputIndex
+                        transition
+                        (pforgetData $ pdata auxiliary)
+                        ( plengthBS
+                            # pto yieldHash
+                            #> 0
+                            #&& Fold.pmint
+                            # pvalidationSemanticPreState datum
+                            # transition
+                            # pfromData mintIndexD
+                            # pfromData siblingsD
+                            # claim
+                        )
+                        ownOutRef
+                        txInfo

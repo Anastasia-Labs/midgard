@@ -123,6 +123,12 @@ module Midgard.NativeTxFieldAccess (
   pauthenticatedFieldViewWithCommitment,
   pauthenticatedResumableFieldViewWithCommitment,
   pauthenticatedWholeFieldView,
+  pauthenticatedWholeFieldViewByCommitment,
+  pfixedWholeView,
+  pauthenticatedWholeFixedFieldView,
+  pwholeViewReadRange,
+  pwholeViewItemCount,
+  pfieldFixedItemExtent,
   pauthenticatedCommittedPreimage,
   pexpectedChunkCount,
 
@@ -130,6 +136,7 @@ module Midgard.NativeTxFieldAccess (
   pfieldItemCount,
   pfieldTotalLength,
   pfieldItemAt,
+  pfixedStrideItemBatch,
   pfieldItemExtent,
   pfieldViewStride,
   pfieldHeaderLen,
@@ -985,12 +992,98 @@ pauthenticatedWholeFieldView = phoistAcyclic $
       )
       ( P.do
           expectedHash <- plet $ pfieldCommitmentAt # pcompact'body # witnessSet # fieldIndex
-          stride <- plet $ pfieldStride # fieldIndex
-          pmatch carriage $ \case
-            PInline {pinline'preimage} ->
-              pwholeView # pfromData pinline'preimage # expectedHash # stride
-            PRawUtxo {prawUtxo'refInputIndex} ->
+          pauthenticatedWholeFieldViewByCommitment
+            # pverified'txId
+            # fieldIndex
+            # expectedHash
+            # carriage
+            # referenceInputs
+            # certificatePolicyId
+      )
+      perror
+
+-- | Open a field commitment extracted from an authenticated proof source.
+pauthenticatedWholeFieldViewByCommitment ::
+  forall s.
+  Term
+    s
+    ( PByteString
+        :--> PInteger
+        :--> PByteString
+        :--> PFieldCarriageV1
+        :--> PBuiltinList (PAsData PTxInInfo)
+        :--> PAsData PCurrencySymbol
+        :--> PFieldViewV1
+    )
+pauthenticatedWholeFieldViewByCommitment = phoistAcyclic $
+  plam $ \txId fieldIndex expectedHash carriage referenceInputs certificatePolicyId ->
+    pexpecting (fieldIndex #>= 0 #&& fieldIndex #< pfieldCount) $ P.do
+      stride <- plet $ pfieldStride # fieldIndex
+      pmatch carriage $ \case
+        PInline {pinline'preimage} ->
+          pwholeView # pfromData pinline'preimage # expectedHash # stride
+        PRawUtxo {prawUtxo'refInputIndex} ->
+          pwholeView
+            # (prawCarriageBytes # referenceInputs # pfromData prawUtxo'refInputIndex)
+            # expectedHash
+            # stride
+        PCertified {pcertified'certRefInputIndex, pcertified'chunkRefInputIndices} ->
+          pmatch
+            ( pcertifiedChunks
+                # txId
+                # fieldIndex
+                # expectedHash
+                # referenceInputs
+                # pfromData pcertified'certRefInputIndex
+                # pfromData pcertified'chunkRefInputIndices
+                # certificatePolicyId
+            )
+            $ \PCertifiedChunksV1 {pcertifiedChunks'chunks} ->
               pwholeView
+                # ( pfoldl
+                      # plam (\joined chunk -> joined <> chunk)
+                      # pconstant ""
+                      # pcertifiedChunks'chunks
+                  )
+                # expectedHash
+                # stride
+
+-- | The fixed-stride door omits variable-width walkers and refuses their fields.
+pauthenticatedWholeFixedFieldView ::
+  forall (s :: S).
+  Term
+    s
+    ( PVerifiedMidgardNativeTxCompact
+        :--> PNativeTxWitnessSetCompact
+        :--> PInteger
+        :--> PFieldCarriageV1
+        :--> PBuiltinList (PAsData PTxInInfo)
+        :--> PAsData PCurrencySymbol
+        :--> PFieldViewV1
+    )
+pauthenticatedWholeFixedFieldView = phoistAcyclic $
+  plam $ \verified witnessSet fieldIndex carriage referenceInputs certificatePolicyId -> P.do
+    PVerifiedMidgardNativeTxCompact {pverified'txId, pverified'txCompact} <- pmatch verified
+    PNativeTxCompact {pcompact'body, pcompact'witnessSetHash} <- pmatch pverified'txCompact
+    pif
+      ( 0
+          #<= fieldIndex
+          #&& fieldIndex
+          #< pfieldCount
+          #&& ( fieldIndex
+                  #< 6
+                  #|| (pblake2b_256 #$ pencodeNativeTxWitnessSetCompact # witnessSet)
+                  #== pcompact'witnessSetHash
+              )
+      )
+      ( P.do
+          expectedHash <- plet $ pfieldCommitmentAt # pcompact'body # witnessSet # fieldIndex
+          stride <- plet $ pfieldStride # fieldIndex
+          pexpecting (stride #> pwalkDerivedStride) $ pmatch carriage $ \case
+            PInline {pinline'preimage} ->
+              pfixedWholeView # pfromData pinline'preimage # expectedHash # stride
+            PRawUtxo {prawUtxo'refInputIndex} ->
+              pfixedWholeView
                 # (prawCarriageBytes # referenceInputs # pfromData prawUtxo'refInputIndex)
                 # expectedHash
                 # stride
@@ -1006,7 +1099,7 @@ pauthenticatedWholeFieldView = phoistAcyclic $
                     # certificatePolicyId
                 )
                 $ \PCertifiedChunksV1 {pcertifiedChunks'chunks} ->
-                  pwholeView
+                  pfixedWholeView
                     # ( pfoldl
                           # plam (\joined chunk -> joined <> chunk)
                           # pconstant ""
@@ -1262,6 +1355,29 @@ pfieldItemAt = phoistAcyclic $
       PPair offset len <- pmatch (pfieldItemExtent # view # index)
       pfieldReadRange # view # offset # len
 
+{- | Read one contiguous range, authenticating each touched chunk once, then
+check every canonical wrapper before returning its payload.
+-}
+pfixedStrideItemBatch :: forall s. Term s (PFieldViewV1 :--> PInteger :--> PInteger :--> PBuiltinList PByteString)
+pfixedStrideItemBatch = phoistAcyclic $ plam $ \view startIndex count -> P.do
+  itemCount <- plet $ pdeclaredItemCount # view
+  stride <- plet $ pfieldViewStride # view
+  pexpecting (stride #> pwalkDerivedStride #&& startIndex #>= 0 #&& count #> 0 #&& startIndex + count #<= itemCount) $ P.do
+    encoded <- plet $ pfieldReadRange # view # ((pheaderLenForCount # itemCount) + stride * startIndex) # (stride * count)
+    whole <- plet $ pcon $ PWholeView encoded 0 pwalkDerivedStride
+    ( pfix $ \self -> plam $ \index ->
+        pif
+          (index #== count)
+          pnil
+          ( P.do
+              itemOffset <- plet $ stride * index
+              PPair payloadOffset len <- pmatch $ pitemHeaderAt # whole # itemOffset
+              pexpecting (payloadOffset #== itemOffset + pfixedItemWrapperBytes #&& len #== stride - pfixedItemWrapperBytes) $
+                pcons # (psliceExact # encoded # payloadOffset # len) # (self # (index + 1))
+          )
+      )
+      # 0
+
 {- | Aiken @native_tx_field_access_v1.field_item_extent@.
 
 The @(offset, length)@ of item @index@'s payload within the preimage. Exposed
@@ -1500,3 +1616,58 @@ punsafeCoerceData d = pfromData (punsafeCoerce @(PAsData a) d)
 pbigEndian ::
   forall (s :: S). Term s PInteger -> Term s PInteger -> Term s PByteString
 pbigEndian width n = pintegerToByteString # pmostSignificantFirst # width # n
+
+-- | Materialised fixed-stride field with the target's arithmetic count check.
+pfixedWholeView :: forall s. Term s (PByteString :--> PByteString :--> PInteger :--> PFieldViewV1)
+pfixedWholeView = phoistAcyclic $ plam $ \preimage expectedHash stride -> P.do
+  PPair headerLen count <- pmatch $ pdecodeFieldArrayHeader # preimage
+  pexpecting (pfieldCommitment # preimage #== expectedHash) $
+    pexpecting (plengthBS # preimage #<= pmaxTransactionAggregateFieldBytes) $
+      pexpecting (stride #> pwalkDerivedStride) $
+        pexpecting (headerLen + stride * count #== plengthBS # preimage) $
+          pcon $
+            PWholeView preimage count stride
+
+pwholeViewReadRange :: forall s. Term s (PFieldViewV1 :--> PInteger :--> PInteger :--> PByteString)
+pwholeViewReadRange = phoistAcyclic $ plam $ \view offset len -> pmatch view $ \case
+  PWholeView bytes _ _ -> psliceExact # bytes # offset # len
+  _ -> perror
+
+pwholeViewItemCount :: forall s. Term s (PFieldViewV1 :--> PInteger)
+pwholeViewItemCount = phoistAcyclic $ plam $ \view -> pmatch view $ \case
+  PWholeView _ count _ -> count
+  _ -> perror
+
+pfieldFixedItemExtent :: forall s. Term s (PFieldViewV1 :--> PInteger :--> PPair PInteger PInteger)
+pfieldFixedItemExtent = phoistAcyclic $ plam $ \view index -> P.do
+  count <- plet $ pwholeViewItemCount # view
+  stride <- plet $ pfieldViewStride # view
+  pexpecting (index #>= 0 #&& index #< count) $
+    pexpecting (stride #> pwalkDerivedStride) $ P.do
+      offset <- plet $ (pheaderLenForCount # count) + stride * index
+      PPair payloadOffset len <- pmatch $ pwholeItemHeaderAt # view # offset
+      pexpecting (payloadOffset #== offset + pfixedItemWrapperBytes) $
+        pexpecting (len #== stride - pfixedItemWrapperBytes) $
+          pcon $
+            PPair payloadOffset len
+
+pwholeItemHeaderAt ::
+  forall (s :: S).
+  Term s (PFieldViewV1 :--> PInteger :--> PPair PInteger PInteger)
+pwholeItemHeaderAt = phoistAcyclic $
+  plam $ \view offset ->
+    plet (pbyteAt # (pwholeViewReadRange # view # offset # 1) # 0) $ \tag ->
+      pif
+        (64 #<= tag #&& tag #<= 87)
+        (pcon (PPair (offset + 1) (tag - 64)))
+        ( pif
+            (tag #== 88)
+            ( plet (pbyteAt # (pwholeViewReadRange # view # (offset + 1) # 1) # 0) $ \len ->
+                pif (len #>= 24) (pcon (PPair (offset + 2) len)) perror
+            )
+            ( pexpecting (tag #== 89) $
+                plet (pwholeViewReadRange # view # (offset + 1) # 2) $ \head' ->
+                  plet ((pbyteAt # head' # 0) * 256 + (pbyteAt # head' # 1)) $ \len ->
+                    pif (len #> 0xff) (pcon (PPair (offset + 3) len)) perror
+            )
+        )

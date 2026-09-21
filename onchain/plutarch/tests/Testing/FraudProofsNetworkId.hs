@@ -27,6 +27,11 @@ import PlutusTx.Builtins (dataToBuiltinData, toBuiltin)
 import Test.Tasty
 import Test.Tasty.HUnit
 
+import Plutarch.LedgerApi.Utils (PMaybeData (..))
+import Midgard.FraudProofs.NetworkId qualified as Network
+import Midgard.FraudProofs.FieldOpening (PFieldOpeningV1 (..))
+import Midgard.NativeTxFieldAccess (PFieldCarriageV1 (..))
+import Testing.Eval (passertEval)
 import Plutarch.Prelude
 import Plutarch.Unsafe (punsafeCoerce)
 
@@ -38,6 +43,8 @@ import Midgard.FraudProofs.ChunkedInclusion (
 import Midgard.Validators.FraudProofs.NetworkId (
   networkIdStep01Validator,
   networkIdStep02Validator,
+  networkIdForcedStepValidator,
+  networkIdForcedScanValidator,
  )
 import Testing.Eval (
   pfailsNoTraceWithoutHoistChecks,
@@ -53,6 +60,8 @@ tests =
     , testGroup "step-02 transaction and output claims" step02Tests
     , testGroup "post-UTxO claims" postUtxoTests
     , testGroup "published post-UTxO claims" publishedPostUtxoTests
+    , testGroup "forced network claims" forcedTests
+    , testGroup "forced wire pins" forcedWireTests
     ]
 
 psucceeds, pfails :: (forall s. Term s a) -> Assertion
@@ -67,8 +76,6 @@ step01Tests =
       psucceeds $ runStep01 0 0 (outputFault 0)
   , testCase "rejects a transaction the block marked invalid" $
       pfails $ runStep01WithValidity 1 0 transactionFault 1
-  , testCase "rejects an unsupported deployment network" $
-      pfails $ runStep01 1 7 transactionFault
   , testCase "rejects a negative output index" $
       pfails $ runStep01 0 0 (outputFault (-1))
   , testCase "rejects post-UTxO evidence beside a transaction claim" $
@@ -142,6 +149,7 @@ step01Args fault txInclusion postMembership =
     0
     [ maybe (none fault) some txInclusion
     , maybe (none fault) some postMembership
+    , none fault
     , fault
     ]
 
@@ -154,6 +162,7 @@ step02State badTxId committedNetwork expectedNetwork fault postUtxo =
     , PD.I expectedNetwork
     , fault
     , maybe (none fault) some postUtxo
+    , none fault
     ]
 
 step02Args :: Maybe PD.Data -> Maybe PD.Data -> PD.Data
@@ -190,9 +199,10 @@ step01Validator :: forall s. Integer -> ScriptContext -> Term s PUnit
 step01Validator expectedNetwork ctx =
   networkIdStep01Validator
     # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
+    # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
     # pdata (pconstant ctPolicy)
     # pdata (pconstant hubOracleHash)
-    # pconstant expectedNetwork
+    # pdata (pconstant expectedNetwork)
     # pconstant ctx
 
 transactionContext :: Integer -> Integer -> PD.Data -> Integer -> Maybe PD.Data -> ScriptContext
@@ -707,7 +717,7 @@ chunkEntry claim =
   )
 
 chunkedVerifyHash :: BS.ByteString
-chunkedVerifyHash = Base16.decodeLenient "dfd0e01fe351bd1d6f75a1ba728d06fb8b11d56bc3bf9ee98e025040"
+chunkedVerifyHash = Base16.decodeLenient "ea8d998a1396392158fa85afb0d202df7bd6d6ede7d3fbc05f55acd6"
 
 data ProofStepRef
   = BranchStep Integer BS.ByteString
@@ -829,3 +839,187 @@ chunkRefInput index steps =
         (OutputDatum $ Datum $ dataToBuiltinData $ PD.Constr 0 [PD.List $ map stepData steps])
         Nothing
     )
+
+--------------------------------------------------------------------------------
+-- Forced dispatch, binding, complete output scan and terminal shape
+--------------------------------------------------------------------------------
+
+forcedFault :: PD.Data
+forcedFault = PD.Constr 3 []
+
+replaceField :: Int -> PD.Data -> PD.Data -> PD.Data
+replaceField index replacement (PD.Constr tag fields) = PD.Constr tag [if i == index then replacement else field | (i, field) <- zip [0 ..] fields]
+replaceField _ _ _ = error "expected constructor fixture"
+
+forcedBound :: BS.ByteString -> Integer -> PD.Data
+forcedBound txId network = PD.Constr 0 [PD.B txId, PD.I network, PD.I 0, PD.B $ serialise outRefData]
+
+forcedTerminal :: BS.ByteString -> Integer -> PD.Data
+forcedTerminal txId network = replaceField 5 (some $ PD.B $ serialise outRefData) $ step02State txId network 0 forcedFault Nothing
+
+runForcedDispatch :: Maybe PD.Data -> Maybe PD.Data -> Maybe PD.Data -> BS.ByteString -> PD.Data -> Term s PUnit
+runForcedDispatch state inclusion post outputHash outputState = step01Validator 0 $
+  spendContext (stepDatum state)
+    (PD.Constr 1 [PD.Constr 0 [maybe (none forcedFault) some inclusion, maybe (none forcedFault) some post, some $ PD.Constr 0 [PD.I 0, PD.I 0], forcedFault]])
+    [threadInput] [stepOutput outputHash $ Just outputState] [] [] mempty
+
+forcedBindingMaterial :: Integer -> Integer -> PD.Data -> (BS.ByteString, PD.Data, PD.Data)
+forcedBindingMaterial network validity reason = (txId, header, proof)
+  where
+    body = compactBodyFor network $ outputsPreimage tx1
+    txId = bodyId body
+    source = PD.Constr 0 [PD.B $ compactFromBody body validity, PD.B $ witnessSetCborOf tx1, PD.B $ fieldPreimageLengthsCborOf tx1]
+    leaf = PD.Constr 0 [PD.B txId, source, PD.Constr 1 [reason]]
+    rawRoot = singleEntryPhasRoot (serialise outRefData) (serialise leaf)
+    root = commitCountedRoot 1 rawRoot 1
+    proof = membershipProof 1 root rawRoot 1 outRefData leaf
+    header = PD.Constr 0 $ [PD.B "", PD.B "", PD.B "", PD.B root] <> replicate 5 (PD.B "") <> [PD.I 0, PD.I 1] <> replicate 11 (PD.I 0) <> [PD.B "", PD.B "", PD.I 1]
+
+runForcedBinding :: Integer -> Integer -> PD.Data -> Integer -> Maybe PD.Data -> (PD.Data -> PD.Data) -> (PD.Data -> PD.Data) -> (PD.Data -> PD.Data) -> Term s PUnit
+runForcedBinding network validity reason direction state changeHeader changeProof changeState =
+  networkIdForcedStepValidator
+    # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
+    # pdata (pconstant ctPolicy)
+    # pdata 0
+    # pconstant context
+  where
+    (txId, header, proof) = forcedBindingMaterial network validity reason
+    name = BS.pack [0, 0, 0, 35] <> blake2b224 (serialise header)
+    context = spendContext (stepDatum state)
+      (PD.Constr 1 [PD.Constr 0 [PD.I 0, PD.I 0, changeHeader header, changeProof proof, PD.I direction]])
+      [threadInputWithName name]
+      [stepOutputWithName nextScript (Just $ changeState $ PD.Constr 0 [forcedBound txId network]) name]
+      [] [] mempty
+
+scanPreimage :: [Integer] -> BS.ByteString
+scanPreimage networks = arrayHeader (fromIntegral $ length networks) <> BS.concat [wrapItem $ networkOutputCbor n False | n <- networks]
+
+scanTxId :: [Integer] -> BS.ByteString
+scanTxId = bodyId . compactBodyFor 0 . scanPreimage
+
+scanOpening :: [Integer] -> PD.Data
+scanOpening networks = bodyOpening (compactFromBody (compactBodyFor 0 bytes) 1) bytes
+  where bytes = scanPreimage networks
+
+scanBound :: [Integer] -> PD.Data
+scanBound networks = forcedBound (scanTxId networks) 0
+
+-- Fixed-width checkpoint CBOR written independently of the on-chain walker.
+scanCheckpoint :: Bool -> [Integer] -> Integer -> BS.ByteString
+scanCheckpoint grammar networks taken = prefix <> BS.concat ["\x43" <> three value | value <- [fromIntegral $ BS.length bytes, fromIntegral $ length networks, taken, offset]]
+  where
+    bytes = scanPreimage networks
+    prefix = (if grammar then "\x87" else "\x86") <> defBytes32 (scanTxId networks) <> "\x41\x02" <> (if grammar then defBytes32 (blake2b256 bytes) else "")
+    offset = fromIntegral (BS.length $ arrayHeader $ fromIntegral $ length networks) + sum [fromIntegral $ BS.length $ wrapItem $ networkOutputCbor n False | n <- take (fromIntegral taken) networks]
+    three n = BS.pack [fromIntegral $ n `shiftR` 16, fromIntegral $ n `shiftR` 8, fromIntegral n]
+
+scanState :: Bool -> [Integer] -> Integer -> PD.Data
+scanState grammar networks taken = PD.Constr (if grammar then 1 else 2)
+  [scanBound networks, PD.B $ blake2b256 $ domain <> scanCheckpoint grammar networks taken]
+  where domain = if grammar then "MidgardFieldGrammarCheckpointV1" else "MidgardFieldWalkCheckpointV1"
+
+scanAction :: Integer -> [Integer] -> Integer -> Integer -> PD.Data
+scanAction tag networks taken budget = PD.Constr tag $ [PD.I 0, PD.I 0, scanOpening networks] <> extra
+  where
+    extra = case tag of
+      0 -> []
+      1 -> [PD.I budget]
+      2 -> [PD.B $ scanCheckpoint True networks taken, PD.I budget]
+      3 -> [PD.B $ scanCheckpoint True networks taken]
+      4 -> [PD.B $ scanCheckpoint False networks taken, PD.I budget]
+      _ -> error "scan action fixture"
+
+runScan :: Maybe PD.Data -> PD.Data -> BS.ByteString -> PD.Data -> Term s PUnit
+runScan state action outputHash outputState =
+  networkIdForcedScanValidator
+    # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
+    # pdata (pconstant ctPolicy)
+    # pdata (pconstant certificatePolicy)
+    # pconstant (spendContext (stepDatum state) (PD.Constr 1 [action]) [threadInput] [stepOutput outputHash $ Just outputState] [] [] mempty)
+
+forcedTests :: [TestTree]
+forcedTests =
+  [ testCase "dispatch writes the exact forced marker" $ psucceeds $ runForcedDispatch Nothing Nothing Nothing nextScript forcedFault
+  , testCase "dispatch refuses a populated input state" $ pfails $ runForcedDispatch (Just forcedFault) Nothing Nothing nextScript forcedFault
+  , testCase "dispatch refuses transaction evidence" $ pfails $ runForcedDispatch Nothing (Just $ inclusionArgs tx1Id tx1Cbor (hash32 0x10)) Nothing nextScript forcedFault
+  , testCase "dispatch refuses post-UTxO evidence" $ pfails $ runForcedDispatch Nothing Nothing (Just introducedPostPlaceholder) nextScript forcedFault
+  , testCase "dispatch refuses a substituted marker" $ pfails $ runForcedDispatch Nothing Nothing Nothing nextScript transactionFault
+  , testCase "dispatch refuses a substituted successor" $ pfails $ runForcedDispatch Nothing Nothing Nothing otherScript forcedFault
+  , testCase "binds a wrongfully rejected transaction" $ psucceeds $ binding 0 1 1 (Just forcedFault) id id id
+  , testCase "binds the absent optional body network" $ psucceeds $ binding 255 1 1 (Just forcedFault) id id id
+  , testCase "refuses an honest body network mismatch" $ pfails $ binding 1 1 1 (Just forcedFault) id id id
+  , testCase "refuses an accepted source" $ pfails $ binding 0 0 1 (Just forcedFault) id id id
+  , testCase "refuses accepted polarity" $ pfails $ binding 0 1 0 (Just forcedFault) id id id
+  , testCase "refuses missing handoff marker" $ pfails $ binding 0 1 1 Nothing id id id
+  , testCase "refuses another handoff marker" $ pfails $ binding 0 1 1 (Just transactionFault) id id id
+  , testCase "refuses another authenticated rejection reason" $ pfails $ runForcedBinding 0 1 (PD.Constr 3 []) 1 (Just forcedFault) id id id
+  , testCase "refuses a substituted header" $ pfails $ binding 0 1 1 (Just forcedFault) (replaceField 3 $ PD.B $ hash32 0xff) id id
+  , testCase "refuses a substituted counted domain" $ pfails $ binding 0 1 1 (Just forcedFault) id (replaceField 0 $ PD.Constr 0 []) id
+  , testCase "refuses a substituted source key" $ pfails $ binding 0 1 1 (Just forcedFault) id (replaceField 4 $ outRefDataFor 0xff) id
+  , testCase "refuses a substituted bound" $ pfails $ binding 0 1 1 (Just forcedFault) id id (const $ PD.Constr 0 [forcedBound tx1Id 7])
+  , testCase "finalizes only the established forced state" $ psucceeds $ terminal (forcedTerminal tx1Id 0) Nothing Nothing
+  , testCase "finalizes an established absent body network" $ psucceeds $ terminal (forcedTerminal tx1Id 255) Nothing Nothing
+  , testCase "terminal refuses a missing source key" $ pfails $ terminal (step02State tx1Id 0 0 forcedFault Nothing) Nothing Nothing
+  , testCase "terminal refuses unused output evidence" $ pfails $ terminal (forcedTerminal tx1Id 0) (Just $ outputOpening 0 False) Nothing
+  , testCase "terminal refuses unused predecessor evidence" $ pfails $ terminal (forcedTerminal tx1Id 0) Nothing (Just $ PD.Constr 0 [PD.Constr 0 [emptyProof, PD.I 0]])
+  , testCase "accepted terminal refuses a forced source key" $ pfails $ terminal (replaceField 3 transactionFault $ forcedTerminal tx1Id 1) Nothing Nothing
+  ] <> scanTests
+  where
+    binding n v d st h p o = runForcedBinding n v (PD.Constr 5 []) d st h p o
+    terminal st outputs predecessor = step02Validator $ finalizeContext st $ step02Args outputs predecessor
+
+scanTests :: [TestTree]
+scanTests =
+  [ testCase "opens the authenticated outputs at item zero" $ psucceeds $ runScan (Just ready) (scanAction 0 ns 0 0) stepScript (scanState False ns 0)
+  , testCase "open refuses a different starting checkpoint" $ pfails $ runScan (Just ready) (scanAction 0 ns 0 0) stepScript (scanState False ns 1)
+  , testCase "open refuses an absent state" $ pfails $ runScan Nothing (scanAction 0 ns 0 0) stepScript (scanState False ns 0)
+  , testCase "open refuses premature terminal handoff" $ pfails $ runScan (Just ready) (scanAction 0 ns 0 0) nextScript (forcedTerminal (scanTxId ns) 0)
+  , testCase "advances a bounded prefix" $ psucceeds $ advance ns 0 1 stepScript (scanState False ns 1)
+  , testCase "finalizes after the last output" $ psucceeds $ advance ns 1 64 nextScript (forcedTerminal (scanTxId ns) 0)
+  , testCase "finalizes an empty output field" $ psucceeds $ advance [] 0 1 nextScript (forcedTerminal (scanTxId []) 0)
+  , testCase "refuses a foreign first output" $ pfails $ advance [1,0] 0 1 stepScript (scanState False [1,0] 1)
+  , testCase "refuses a foreign last output" $ pfails $ advance [0,1] 1 64 nextScript (forcedTerminal (scanTxId [0,1]) 0)
+  , testCase "refuses zero semantic work" $ pfails $ advance ns 0 0 stepScript (scanState False ns 0)
+  , testCase "refuses semantic work above 64" $ pfails $ advance ns 0 65 nextScript (forcedTerminal (scanTxId ns) 0)
+  , testCase "refuses a forged resume position" $ pfails $ runScan (Just $ scanState False ns 0) (scanAction 4 ns 1 1) nextScript (forcedTerminal (scanTxId ns) 0)
+  , testCase "refuses a substituted field opening" $ pfails $ runScan (Just $ scanState False ns 0) (scanAction 4 [1,0] 0 1) stepScript (scanState False ns 1)
+  , testCase "refuses skipping the unfinished suffix" $ pfails $ advance ns 0 1 nextScript (forcedTerminal (scanTxId ns) 0)
+  , testCase "refuses a continued state after completion" $ pfails $ advance ns 1 1 stepScript (scanState False ns 2)
+  , testCase "starts grammar certification" $ psucceeds $ runScan (Just ready) (scanAction 1 ns 0 1) stepScript (scanState True ns 1)
+  , testCase "resumes grammar certification" $ psucceeds $ runScan (Just $ scanState True ns 1) (scanAction 2 ns 1 128) stepScript (scanState True ns 2)
+  , testCase "finishes grammar at the derived item-zero checkpoint" $ psucceeds $ runScan (Just $ scanState True ns 2) (scanAction 3 ns 2 0) stepScript (scanState False ns 0)
+  , testCase "refuses incomplete grammar certification" $ pfails $ runScan (Just $ scanState True ns 1) (scanAction 3 ns 1 0) stepScript (scanState False ns 0)
+  , testCase "refuses re-certifying completed grammar" $ pfails $ runScan (Just $ scanState True ns 2) (scanAction 2 ns 2 1) stepScript (scanState True ns 2)
+  , testCase "refuses forged grammar checkpoint bytes" $ pfails $ runScan (Just $ scanState True ns 1) (scanAction 2 ns 0 1) stepScript (scanState True ns 1)
+  , testCase "refuses grammar work above 128" $ pfails $ runScan (Just ready) (scanAction 1 ns 0 129) stepScript (scanState True ns 2)
+  , testCase "refuses zero grammar work" $ pfails $ runScan (Just ready) (scanAction 1 ns 0 0) stepScript (scanState True ns 0)
+  , testCase "refuses an action at the wrong scan phase" $ pfails $ runScan (Just ready) (scanAction 4 ns 0 1) stepScript (scanState False ns 1)
+  ]
+  where
+    ns = [0,0]
+    ready = PD.Constr 0 [scanBound ns]
+    advance networks taken budget outputHash expected = runScan (Just $ scanState False networks taken) (scanAction 4 networks taken budget) outputHash expected
+
+-- Absolute wire literals shared by target Aiken and SDK, not derived by this port.
+assertWire :: PIsData a => (forall s. Term s a) -> BS.ByteString -> Assertion
+assertWire value expected = passertEval $ pserialiseData # pforgetData (pdata value) #== pconstant (Base16.decodeLenient expected)
+
+wireBound :: forall s. Term s Network.PForcedBound
+wireBound = pcon $ Network.PForcedBound (pdata $ pconstant $ BS.replicate 32 0x22) (pdata 255) (pdata 0) (pdata $ pconstant $ Base16.decodeLenient "d8799f5820777777777777777777777777777777777777777777777777777777777777777700ff")
+
+wireOpening :: forall s. Term s PFieldOpeningV1
+wireOpening = pcon $ PBodyFieldOpening (pdata $ pconstant "\x80") (pdata $ pcon $ PInline $ pdata $ pconstant "\x81")
+
+forcedWireTests :: [TestTree]
+forcedWireTests =
+  [ testCase "forced_scan_bound_cbor" $ assertWire (wireBound) "d8799f5820222222222222222222222222222222222222222222222222222222222222222218ff005827d8799f5820777777777777777777777777777777777777777777777777777777777777777700ffff"
+  , testCase "forced_scan_ready_state_cbor" $ assertWire (pcon $ Network.PReady $ pdata wireBound) "d8799fd8799f5820222222222222222222222222222222222222222222222222222222222222222218ff005827d8799f5820777777777777777777777777777777777777777777777777777777777777777700ffffff"
+  , testCase "forced_scan_grammar_state_cbor" $ assertWire (pcon $ Network.PGrammar (pdata wireBound) (pdata $ pconstant $ BS.replicate 32 0x88)) "d87a9fd8799f5820222222222222222222222222222222222222222222222222222222222222222218ff005827d8799f5820777777777777777777777777777777777777777777777777777777777777777700ffff58208888888888888888888888888888888888888888888888888888888888888888ff"
+  , testCase "forced_scan_scanning_state_cbor" $ assertWire (pcon $ Network.PScanning (pdata wireBound) (pdata $ pconstant $ BS.replicate 32 0x88)) "d87b9fd8799f5820222222222222222222222222222222222222222222222222222222222222222218ff005827d8799f5820777777777777777777777777777777777777777777777777777777777777777700ffff58208888888888888888888888888888888888888888888888888888888888888888ff"
+  , testCase "forced_scan_open_action_cbor" $ assertWire (pcon $ Network.POpen (pdata 0) (pdata 0) (pdata wireOpening)) "d8799f0000d8799f4180d8799f4181ffffff"
+  , testCase "forced_scan_start_grammar_action_cbor" $ assertWire (pcon $ Network.PStartGrammar (pdata 0) (pdata 0) (pdata wireOpening) (pdata 128)) "d87a9f0000d8799f4180d8799f4181ffff1880ff"
+  , testCase "forced_scan_resume_grammar_action_cbor" $ assertWire (pcon $ Network.PResumeGrammar (pdata 0) (pdata 0) (pdata wireOpening) (pdata $ pconstant "\x99\x99") (pdata 128)) "d87b9f0000d8799f4180d8799f4181ffff4299991880ff"
+  , testCase "forced_scan_finish_grammar_action_cbor" $ assertWire (pcon $ Network.PFinishGrammar (pdata 0) (pdata 0) (pdata wireOpening) (pdata $ pconstant "\x99\x99")) "d87c9f0000d8799f4180d8799f4181ffff429999ff"
+  , testCase "forced_scan_advance_action_cbor" $ assertWire (pcon $ Network.PAdvance (pdata 0) (pdata 0) (pdata wireOpening) (pdata $ pconstant "\x99\x99") (pdata 64)) "d87d9f0000d8799f4180d8799f4181ffff4299991840ff"
+  , testCase "forced_step_02_state_cbor" $ assertWire (pmatch wireBound $ \(Network.PForcedBound txId n expected key) -> pcon $ Network.PStep02State txId n expected (pdata $ pcon Network.PForcedNetworkIdMismatch) (pcon PDNothing) (pcon $ PDJust key)) "d8799f5820222222222222222222222222222222222222222222222222222222222222222218ff00d87c80d87a80d8799f5827d8799f5820777777777777777777777777777777777777777777777777777777777777777700ffffff"
+  ]

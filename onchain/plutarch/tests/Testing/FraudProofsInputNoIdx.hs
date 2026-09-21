@@ -134,9 +134,9 @@ spendFamily =
           # pconstant ctx
     , fStep04 = \ctx ->
         inputNoIdxStep04Validator
+          # pdata (pconstant ctPolicy)
           # pdata (pconstant fpPolicy)
           # pdata (pconstant fraudProofAddress)
-          # pdata (pconstant ctPolicy)
           # pdata (pconstant certificatePolicy)
           # pconstant ctx
     , fPreimage = spendInputsPreimage
@@ -166,9 +166,9 @@ referenceFamily =
           # pconstant ctx
     , fStep04 = \ctx ->
         referenceInputNoIdxStep04Validator
+          # pdata (pconstant ctPolicy)
           # pdata (pconstant fpPolicy)
           # pdata (pconstant fraudProofAddress)
-          # pdata (pconstant ctPolicy)
           # pdata (pconstant certificatePolicy)
           # pconstant ctx
     , fPreimage = referenceInputsPreimage
@@ -184,37 +184,49 @@ familyTests f =
   [ testGroup
       "step-01"
       [ testCase "binds the disputed transaction and forwards its id" $
-          psucceeds $ fStep01 f (context01 defaultStep01)
+          psucceeds $
+            fStep01 f (context01 defaultStep01)
       , testCase "rejects an output at a script that is not step-02's" $
-          pfails $ fStep01 f (context01 defaultStep01 {s1OutputScript = otherScript})
+          pfails $
+            fStep01 f (context01 defaultStep01{s1OutputScript = otherScript})
       , testCase "rejects a state carrying another transaction's id" $
           pfails $
-            fStep01 f (context01 defaultStep01 {s1OutputState = Just (state02 tx3Id)})
+            fStep01 f (context01 defaultStep01{s1OutputState = Just (state02 tx3Id)})
       , testCase "rejects a raw root the header does not commit" $
-          pfails $ fStep01 f (context01 defaultStep01 {s1PhasRoot = otherRoot})
+          pfails $
+            fStep01 f (context01 defaultStep01{s1PhasRoot = otherRoot})
       , testCase "rejects a disputed transaction marked invalid" $
-          pfails $ fStep01 f (context01 defaultStep01 {s1Cbor = sourceCborOf tx1})
+          pfails $
+            fStep01 f (context01 defaultStep01{s1Cbor = sourceCborOf tx1})
       , testCase "a cancel burning the thread token succeeds" $
-          psucceeds $ fStep01 f (cancelContext True)
+          psucceeds $
+            fStep01 f (cancelContext True)
       , testCase "a cancel that does not burn the thread token fails" $
-          pfails $ fStep01 f (cancelContext False)
+          pfails $
+            fStep01 f (cancelContext False)
       , testCase "a minting purpose fails" $
-          pfails $ fStep01 f (asMinting (context01 defaultStep01))
+          pfails $
+            fStep01 f (asMinting (context01 defaultStep01))
       ]
   , testGroup
       "step-02"
       [ testCase "reads the named item and splits it in two" $
-          psucceeds $ fStep02 f (context02 f defaultStep02)
+          psucceeds $
+            fStep02 f (context02 f defaultStep02)
       , testCase "rejects an opening of a transaction the thread did not anchor" $
-          pfails $ fStep02 f (context02 f defaultStep02 {s2OpeningCbor = tx3Cbor})
+          pfails $
+            fStep02 f (context02 f defaultStep02{s2OpeningCbor = tx3Cbor})
       , -- §7.3: an out-of-range read aborts rather than clamping.
         testCase "rejects an index past the end of the collection" $
-          pfails $ fStep02 f (context02 f defaultStep02 {s2BadIndex = 1})
+          pfails $
+            fStep02 f (context02 f defaultStep02{s2BadIndex = 1})
       , -- The empty collection: well formed, committed by no slot of tx1.
         testCase "rejects a preimage the transaction does not commit" $
-          pfails $ fStep02 f (context02 f defaultStep02 {s2Preimage = Just (fPreimage f txEmpty)})
+          pfails $
+            fStep02 f (context02 f defaultStep02{s2Preimage = Just (fPreimage f txEmpty)})
       , testCase "rejects an output at a script that is not step-03's" $
-          pfails $ fStep02 f (context02 f defaultStep02 {s2OutputScript = otherScript})
+          pfails $
+            fStep02 f (context02 f defaultStep02{s2OutputScript = otherScript})
       , -- The state is the input *split*, and the halves are in declaration
         -- order: the id first, because step-03 uses it, then the index, which
         -- step-04 does.
@@ -242,53 +254,64 @@ familyTests f =
           pfails $
             fStep02
               f
-              (context02 f defaultStep02 {s2OutputState = Just (state03 (fst sharedInputRef) 9)})
+              (context02 f defaultStep02{s2OutputState = Just (state03 (fst sharedInputRef) 9)})
       ]
   , testGroup
       "step-03"
       [ testCase "binds the producing transaction and forwards the index" $
-          psucceeds $ fStep03 f (context03 defaultStep03)
+          psucceeds $
+            fStep03 f (context03 defaultStep03)
       , -- Where a challenge against a valid block dies.
         testCase "rejects a substituted producing transaction" $
           pfails $
             fStep03
               f
-              (context03 defaultStep03 {s3BoundTxId = tx3Id, s3BoundCbor = tx3AcceptedSourceCbor})
+              (context03 defaultStep03{s3BoundTxId = tx3Id, s3BoundCbor = tx3AcceptedSourceCbor})
       , testCase "rejects an output at a script that is not step-04's" $
-          pfails $ fStep03 f (context03 defaultStep03 {s3OutputScript = otherScript})
+          pfails $
+            fStep03 f (context03 defaultStep03{s3OutputScript = otherScript})
       , testCase "rejects a state that alters the challenged output index" $
           pfails $
             fStep03
               f
-              (context03 defaultStep03 {s3OutputState = Just (state04 tx1Id 9)})
+              (context03 defaultStep03{s3OutputState = Just (state04 tx1Id 9)})
       , testCase "rejects a raw root the header does not commit" $
-          pfails $ fStep03 f (context03 defaultStep03 {s3PhasRoot = otherRoot})
+          pfails $
+            fStep03 f (context03 defaultStep03{s3PhasRoot = otherRoot})
       , testCase "rejects a producing transaction marked invalid" $
-          pfails $ fStep03 f (context03 defaultStep03 {s3BoundCbor = sourceCborOf tx1})
+          pfails $
+            fStep03 f (context03 defaultStep03{s3BoundCbor = sourceCborOf tx1})
       ]
   , testGroup
       "step-04"
       [ -- The producing transaction has two outputs, so index 2 is out of range.
         testCase "convicts when the index is at the output count" $
-          psucceeds $ fStep04 f (context04 defaultStep04)
+          psucceeds $
+            fStep04 f (context04 defaultStep04)
       , testCase "convicts when the index is past the output count" $
-          psucceeds $ fStep04 f (context04 defaultStep04 {s4BadIndex = 5})
+          psucceeds $
+            fStep04 f (context04 defaultStep04{s4BadIndex = 5})
       , -- ...and index 1 names a real output, so an honest transaction is safe.
         testCase "rejects an index the producing transaction really has" $
-          pfails $ fStep04 f (context04 defaultStep04 {s4BadIndex = 1})
+          pfails $
+            fStep04 f (context04 defaultStep04{s4BadIndex = 1})
       , testCase "rejects an index of zero against a transaction with outputs" $
-          pfails $ fStep04 f (context04 defaultStep04 {s4BadIndex = 0})
+          pfails $
+            fStep04 f (context04 defaultStep04{s4BadIndex = 0})
       , testCase "rejects an opening of a transaction the thread did not anchor" $
-          pfails $ fStep04 f (context04 defaultStep04 {s4OpeningCbor = tx3Cbor})
+          pfails $
+            fStep04 f (context04 defaultStep04{s4OpeningCbor = tx3Cbor})
       , -- The count has to be the committed one: a fabricated shorter outputs
         -- preimage would make any index out of range.
         testCase "rejects an outputs preimage the transaction does not commit" $
           pfails $
-            fStep04 f (context04 defaultStep04 {s4Preimage = Just (outputCollectionPreimage 1)})
+            fStep04 f (context04 defaultStep04{s4Preimage = Just (outputCollectionPreimage 1)})
       , testCase "rejects a conviction parked anywhere but the fraud-proof address" $
-          pfails $ fStep04 f (context04 defaultStep04 {s4FraudProofAddress = otherAddress})
+          pfails $
+            fStep04 f (context04 defaultStep04{s4FraudProofAddress = otherAddress})
       , testCase "rejects a conviction under a name that is not the thread's" $
-          pfails $ fStep04 f (context04 defaultStep04 {s4FraudProofName = otherThreadName})
+          pfails $
+            fStep04 f (context04 defaultStep04{s4FraudProofName = otherThreadName})
       ]
   ]
 
@@ -307,7 +330,8 @@ sibling's commitment, and all four cases below would flip.
 slotTests :: [TestTree]
 slotTests =
   [ testCase "input-no-idx refuses tx3's reference-inputs preimage" $
-      pfails $ fStep02 spendFamily (tx3Opening spendFamily (fOtherPreimage spendFamily tx3) (fst otherInputRef))
+      pfails $
+        fStep02 spendFamily (tx3Opening spendFamily (fOtherPreimage spendFamily tx3) (fst otherInputRef))
   , testCase "reference-input-no-idx refuses tx3's spend-inputs preimage" $
       pfails $
         fStep02 referenceFamily (tx3Opening referenceFamily (fOtherPreimage referenceFamily tx3) (fst sharedInputRef))
@@ -439,8 +463,8 @@ context02 f s =
     referenceInputs
     []
     mempty
-  where
-    preimage = maybe (fPreimage f (txFor (s2StateTxId s))) id (s2Preimage s)
+ where
+  preimage = maybe (fPreimage f (txFor (s2StateTxId s))) id (s2Preimage s)
 
 -- | The fixture transaction a given id belongs to.
 txFor :: BS.ByteString -> Tx
@@ -521,5 +545,5 @@ context04 s =
     referenceInputs
     [fraudProofMintEntry (s4FraudProofName s)]
     (singleton fpPolicy (TokenName (toBuiltin (s4FraudProofName s))) 1)
-  where
-    preimage = maybe (outputsPreimage tx1) id (s4Preimage s)
+ where
+  preimage = maybe (outputsPreimage tx1) id (s4Preimage s)

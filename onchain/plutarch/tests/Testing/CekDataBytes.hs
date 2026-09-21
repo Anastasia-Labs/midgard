@@ -9,9 +9,12 @@ import Plutarch.Prelude
 import Test.Tasty
 import Test.Tasty.HUnit
 
+import Aiken.Cbor (pdeserialise)
 import Midgard.CekData (PDataSummaryV1 (..))
 import Midgard.CekDataBytes (
   PCekDataBytesControlV1 (..),
+  pcontrolData,
+  pcontrolFromDataV1,
   pdecodeControlV1,
   pencodeControlV1,
   pfinalizeV1,
@@ -21,10 +24,12 @@ import Midgard.CekDataBytes (
   pstageBreak,
   pstageTerminal,
   pstepV1,
+  pprevalidatedNextSourceSpan,
+  pprevalidatedStep,
  )
 import Midgard.CekSourceBlob (PCekSourceBlobSpanV1 (..))
 import Midgard.FraudProofs.NativeTx.Codec (psliceLen)
-import Testing.Eval (passertEval)
+import Testing.Eval (passertEval, pfails)
 
 tests :: TestTree
 tests =
@@ -41,6 +46,12 @@ bytesV1ParityTests =
         passertEval provesChunkedBytes
     , testCase "decodes_the_typescript_terminal_control" $
         passertEval decodesTypescriptControl
+    , testCase "direct control Data matches syntax and terminal wire forms" $
+        passertEval $
+          directControlMatches (pinitialControlV1 # 17 # 70)
+            #&& directControlMatches (pdecodeControlV1 # typescriptTerminalControlCbor)
+    , testCase "a constructor-wrapped scalar control is rejected" $
+        pfails $ pcontrolFromDataV1 # pforgetData (pdata (pinitialControlV1 # 17 # 70))
     , testCase "canonical_cardano_framing_boundaries_derive_exact_content_lengths" $
         passertEval framingBoundaries
     , testCase "rejects_noncanonical_and_impossible_framing_lengths" $
@@ -181,26 +192,36 @@ pfinishUntil ::
         :--> PCekDataBytesControlV1
     )
 pfinishUntil target =
-  pfix $ \self -> plam $ \control wholeSource sourceStart ->
-    pmatch control $ \c ->
-      pif
-        (pfromData (pbytes'stage c) #== target)
-        control
-        $ pmatch (pnextSourceSpanV1 # control)
-        $ \case
-          PNothing ->
-            pmatch (pstepV1 # control # pcon PNothing) $ \case
-              PNothing -> perror
-              PJust next -> self # next # wholeSource # sourceStart
-          PJust span ->
-            pmatch span $ \(PCekSourceBlobSpanV1 absoluteStart spanLength) ->
-              plet
-                ( psliceLen
-                    # wholeSource
-                    # (pfromData absoluteStart - sourceStart)
-                    # pfromData spanLength
-                )
-                $ \sourceBytes ->
-                  pmatch (pstepV1 # control # pcon (PJust sourceBytes)) $ \case
-                    PNothing -> perror
-                    PJust next -> self # next # wholeSource # sourceStart
+  pfix $ \self -> plam $ \provided wholeSource sourceStart ->
+    plet (pcontrolFromDataV1 # (pcontrolData # provided)) $ \control ->
+      pif (pnot # (control #== provided)) perror $
+        pmatch control $ \c ->
+          pif
+            (pfromData (pbytes'stage c) #== target)
+            control
+            $ pmatch (pprevalidatedNextSourceSpan # control)
+            $ \case
+              PNothing ->
+                pmatch (pprevalidatedStep # control # pcon PNothing) $ \case
+                  PNothing -> perror
+                  PJust next -> self # next # wholeSource # sourceStart
+              PJust span ->
+                pmatch span $ \(PCekSourceBlobSpanV1 absoluteStart spanLength) ->
+                  plet
+                    ( psliceLen
+                        # wholeSource
+                        # (pfromData absoluteStart - sourceStart)
+                        # pfromData spanLength
+                    )
+                    $ \sourceBytes ->
+                      pmatch (pprevalidatedStep # control # pcon (PJust sourceBytes)) $ \case
+                        PNothing -> perror
+                        PJust next -> self # next # wholeSource # sourceStart
+
+directControlMatches :: forall (s :: S). Term s PCekDataBytesControlV1 -> Term s PBool
+directControlMatches control =
+  plet (pcontrolData # control) $ \wireData ->
+    (pcontrolFromDataV1 # wireData #== control)
+      #&& pmatch (pdeserialise # (pencodeControlV1 # control)) (\case
+        PNothing -> pconstant False
+        PJust decoded -> wireData #== decoded)

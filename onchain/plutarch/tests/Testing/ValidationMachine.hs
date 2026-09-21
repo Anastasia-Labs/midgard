@@ -61,6 +61,13 @@ import Midgard.RedeemerItemProof qualified as RedeemerItemProof
 import Midgard.ScriptContext qualified as ScriptContext
 import Midgard.ScriptLanguageViews qualified as ScriptLanguageViews
 import Midgard.ScriptProof qualified as ScriptProof
+import Midgard.ScriptSourcesDescriptor qualified as ScriptSourcesDescriptor
+import Midgard.ScriptSourcesLateRawSemantics qualified as LateRaw
+import Midgard.ScriptSourcesStageOneFinishSemantics qualified as StageOneFinish
+import Midgard.ScriptSourcesStageSevenSemantics qualified as StageSevenSplit
+import Midgard.ScriptSourcesStageZeroBeginSemantics qualified as StageZeroBegin
+import Midgard.ScriptSourcesStageZeroFinishSemantics qualified as StageZeroFinish
+import Midgard.ScriptSourcesStageZeroHashSemantics qualified as StageZeroHash
 import Midgard.ValidationMachine
 import Midgard.ValidationMachine.CekSemantics qualified as CekSemantics
 import Midgard.ValidationMachineFieldDoor qualified as FieldDoor
@@ -110,6 +117,10 @@ tests =
         passertEvalNoTrace ledgerDeltaControlOperationAndFrontierAbi
     , testCase "validation auxiliary witness constructor ABI matches Aiken" $
         passertEvalNoTrace validationAuxiliaryWitnessAbi
+    , testCase "CEK mint witness includes the authenticated previous head" $
+        passertEvalNoTrace cekMintWitnessAbi
+    , testCase "CEK mint witness rejects the retired five-field shape" $
+        pfails (pvalidationAuxiliaryWitnessFromData # pconstant @PData (PD.Constr 16 [PD.I 0, PD.B "", PD.B "", PD.I 1, PD.List []]))
     , testCase "validation_auxiliary_v1_rejects_adjacent_tag_40" $
         pfails malformedAuxiliaryAdjacentTag
     , testCase "validation_auxiliary_v1_rejects_wrong_constructor_arity" $
@@ -343,10 +354,8 @@ tests =
         passertEvalNoTrace scriptSourcesStageOneRedeemerBeginTransition
     , testCase "ScriptSourcesStageOneRedeemerStep advances the authenticated item control" $
         passertEvalNoTrace scriptSourcesStageOneRedeemerStepTransition
-    , testCase "ScriptSourcesStageOne enforces its redeemer auxiliary family" $
-        do
-          passertEvalNoTraceWithoutHoistChecks (scriptSourcesStageOneRedeemerFamilyGuard False)
-          passertEvalNoTraceWithoutHoistChecks (scriptSourcesStageOneRedeemerFamilyGuard True)
+    , testCase "ScriptSourcesStageOne finishes a completed redeemer scan" $
+        passertEvalNoTraceWithoutHoistChecks scriptSourcesStageOneCompletedScan
     , testCase "ScriptSourcesStageTwo initializes replay from the committed schedule" $
         passertEvalNoTrace scriptSourcesStageTwoReplayInitializationTransition
     , testCase "ScriptSourcesStageThreeFinish advances a completed replay exactly" $
@@ -389,7 +398,7 @@ tests =
         passertEvalNoTrace scriptSourcesStageSevenObserverFinishTransition
     , testCase "ScriptSourcesStageSeven finish binds canonical successor encoding" $
         passertEvalNoTraceWithoutHoistChecks scriptSourcesStageSevenFinishCanonicalEncoding
-    , testCase "ScriptSourcesStageSeven observer binds canonical successor encoding" $
+    , testCase "ScriptSourcesStageSeven observer split binds facts and canonical successor" $
         passertEvalNoTrace scriptSourcesStageSevenObserverCanonicalEncoding
     , testCase "ScriptSourcesStageSeven receive binds canonical successor encoding" $
         passertEvalNoTrace scriptSourcesStageSevenReceiveCanonicalEncoding
@@ -404,9 +413,9 @@ tests =
     , testCase "ScriptSourcesStageSeven advances an empty receive scan" $
         passertEvalNoTrace scriptSourcesStageSevenEmptyFinishTransition
     , testCase "script_sources_prepares_more_than_sixteen_purposes_for_discovery" $
-        passertEvalNoTrace scriptSourcesPreparesMoreThanSixteenPurposes
+        passertEvalNoTraceWithoutHoistChecks scriptSourcesPreparesMoreThanSixteenPurposes
     , testCase "script_sources_discovers_more_than_sixteen_purposes" $
-        passertEvalNoTrace scriptSourcesDiscoversMoreThanSixteenPurposes
+        passertEvalNoTraceWithoutHoistChecks scriptSourcesDiscoversMoreThanSixteenPurposes
     , testCase "stage_differential_eight_finish_routes_agree" $
         passertEvalNoTrace scriptSourcesStageEightFinishTransition
     , testCase "stage_differential_eight_purpose_routes_agree" $
@@ -424,20 +433,22 @@ tests =
     , testGroup
         "script_sources_stage_ten_redeemer_family_guards"
         [ testCase "scan begin is mismatch-family only" $
-            passertEvalNoTrace (scriptSourcesStageTenMatchTransition 0)
+            passertEvalNoTraceWithoutHoistChecks (scriptSourcesStageTenMatchTransition 0)
         , testCase "item header is mismatch-family only" $
-            passertEvalNoTrace (scriptSourcesStageTenMatchTransition 1)
+            passertEvalNoTraceWithoutHoistChecks (scriptSourcesStageTenMatchTransition 1)
         , testCase "terminal tail is match-family only" $
-            passertEvalNoTrace (scriptSourcesStageTenMatchTransition 2)
+            passertEvalNoTraceWithoutHoistChecks (scriptSourcesStageTenMatchTransition 2)
         ]
     , testCase "ScriptSourcesStageTen advances past a redeemer mismatch" $
-        passertEvalNoTrace (scriptSourcesStageTenMatchTransition 3)
+        passertEvalNoTraceWithoutHoistChecks (scriptSourcesStageTenMatchTransition 3)
     , testCase "stage_differential_eleven_finish_routes_agree" $
         passertEvalNoTrace scriptSourcesStageElevenAuditTransitions
     , testCase "ScriptSourcesStageEleven rejects an unused inline source exactly" $
         passertEvalNoTrace scriptSourcesStageElevenUnusedInlineTransition
     , testCase "ScriptSourcesStageTwelve opens an authenticated redeemer audit" $
         passertEvalNoTrace scriptSourcesStageTwelveBeginTransition
+    , testCase "ScriptSourcesStageTwelve authenticates and advances a used redeemer descriptor" $
+        passertEvalNoTrace scriptSourcesStageTwelveUsedDescriptorTransition
     , testCase "ScriptSourcesStageTwelve enforces its redeemer auxiliary family" $
         passertEvalNoTrace scriptSourcesStageTwelveFamilyGuard
     , testGroup
@@ -487,6 +498,8 @@ tests =
         passertEvalNoTrace resolveInputsLookupOpeningTransitions
     , testCase "ResolveInputsMembershipStep streams an authenticated output proof" $
         passertEvalNoTrace resolveInputsMembershipStepTransition
+    , testCase "ResolveInputsMembershipFinalize refuses skipping fact attachment" $
+        passertEvalNoTrace (resolveInputsMembershipFinalizeWithFacts False)
     , testCase "ResolveInputsMembershipFinalize authorizes and consumes an input" $
         passertEvalNoTrace resolveInputsMembershipFinalizeTransition
     , testCase "Ledger-Delta authenticates deletion and insertion operations" $
@@ -505,8 +518,12 @@ tests =
         passertEvalNoTrace cekResolvedContextTransitions
     , testCase "CEK stages 3 and 4 authenticate outputs and signers" $
         passertEvalNoTrace cekOutputAndSignerContextTransitions
-    , testCase "CEK stage 5 verifies and finalizes observer contexts" $
-        passertEvalNoTrace cekObserverContextTransitions
+    , testCase "CEK stage 5 verifies observer context items directly" $
+        passertEvalNoTrace (cekObserverContextItemTransition True)
+    , testCase "CEK stage 5 routes observer context items through the aggregate step" $
+        passertEvalNoTrace (cekObserverContextItemTransition False)
+    , testCase "CEK stage 5 finalizes observer contexts" $
+        passertEvalNoTrace cekObserverContextAdvanceTransitions
     , testCase "CEK stage 6 initializes empty and nonempty mint contexts" $
         passertEvalNoTrace cekMintContextInitTransitions
     , testCase "CEK stage 8 groups, rolls over, and finalizes mint policies" $
@@ -945,7 +962,7 @@ canonicalValidationControlsAbiVectors =
           , pserialiseData # corpusData #== corpusCbor
           , pblake2b_256
               # corpusCbor
-              #== phexByteStr "7d9559e37a2f4e5306a4f6d1ca9e9ef8489ef7b20746272f08b7a79e13cdf5fd"
+              #== phexByteStr "7ffa855c05c9c86f8e5eeb84728f2a7d63717f04260e2f17c377cc4435514583"
           , validationAuxiliaryWitnessAbi
           , resolveInputsWitnessEncoding
           , nativeScriptsControlCodecs
@@ -969,43 +986,43 @@ pvalidationAuxiliaryCorpusIsExact = phoistAcyclic $ pfix $ \self ->
 validationAuxiliaryCorpusBytes :: BS.ByteString
 validationAuxiliaryCorpusBytes =
   Base16.decodeLenient $
-    "9fd87980d87a9f0000d8799f4381411affffd87b9fd8799f4381411affd87980ffd87c9fd8799f010000010041128080ffd87a80"
-      <> "d87980ffd87d9fd8799f41020100000000ffffd87e9f00410358202020202020202020202020202020202020202020202020"
-      <> "202020202020202020410480d87980ffd87f9f01410558202121212121212121212121212121212121212121212121212121"
-      <> "21212121212180ffd905009f0041065820222222222222222222222222222222222222222222222222222222222222222241"
-      <> "07ffd905019f000058202323232323232323232323232323232323232323232323232323232323232323410980ffd905029f"
-      <> "0000410a00582024242424242424242424242424242424242424242424242424242424242424240158202525252525252525"
-      <> "25252525252525252525252525252525252525252525252580ffd905039f0001015820262626262626262626262626262626"
-      <> "262626262626262626262626262626262680ffd905049f000000005820272727272727272727272727272727272727272727"
-      <> "2727272727272727272727410b800000410c0158203030303030303030303030303030303030303030303030303030303030"
-      <> "303030805820282828282828282828282828282828282828282828282828282828282828282880d8799f0100000100411280"
-      <> "80ffffd905059fd8799fd8799f00005820141414141414141414141414141414141414141414141414141414141414141458"
-      <> "2015151515151515151515151515151515151515151515151515151515151515155820161616161616161616161616161616"
-      <> "1616161616161616161616161616161616000000ffd8799f0000582014141414141414141414141414141414141414141414"
-      <> "1414141414141414141458201515151515151515151515151515151515151515151515151515151515151515582016161616"
-      <> "16161616161616161616161616161616161616161616161616161616000000ffd87f80ffffd905069f0000410e410f80ffd9"
-      <> "05079f00411080ffd905089f80005820292929292929292929292929292929292929292929292929292929292929292980ff"
-      <> "d905099f00411141120180ffd9050a9fd8799f00d8799f5820bbcb3bff6f87a2005a336b6cb5fe5fbea09381571694527914"
-      <> "0f31aec8cbaba2000000ff4040d8799f400000ffd8799f400000ffff00010158202a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
-      <> "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a8000000058202b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b"
-      <> "2b2b2b411380ffd9050b9fd87a80d8799f010000000101582013131313131313131313131313131313131313131313131313"
-      <> "131313131313130000000000000000d87a80ffd8799fd87c80d87a80d87a80ffffd9050c9fd8799f00d8799f5820bbcb3bff"
-      <> "6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000ff4040d8799f400000ffd8799f400000ffffff"
-      <> "d9050d9fd8799f00d8799f5820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000ff40"
-      <> "40d8799f400000ffd8799f400000ffff004114411580ffd9050e9fd8799fd8799f40000000ffd8799f400000ffd8799f4000"
-      <> "00ffffffd9050f9fd8799fd8799f40000000ffd8799f400000ffd8799f400000ffffffd905109fd8799fd8799f400000ffd8"
-      <> "799f400000ffd8799f400000ffffffd905119f00411658202c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c"
-      <> "2c2c2c2c2c2c41170041184119018080d8799fd879800080ffffd905129f00411a00411b411c018080d8799fd879800080ff"
-      <> "ffd905139f00411d411e0180d8799fd879800080ffffd905149f01411f58202d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d"
-      <> "2d2d2d2d2d2d2d2d2d2d2d2d2d4120ffd905159f00412180ffd905169fd8799f4381411affffd905179fd8799f4381411aff"
-      <> "ffd905189f00015820"
-      <> "2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e"
-      <> "2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e80ffd905199fd87980ffd9051a9f4122d87980ffd9051b9fd8799f01000001d879"
-      <> "9f0040ffff80ffd9051c9f0041234124d8799fd8799f01000080ff00800080ffffd9051d9fd8799f010000010041128080ff"
-      <> "d87a80ffd9051e9f0000000058202f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f41258000"
-      <> "0041260158203030303030303030303030303030303030303030303030303030303030303030805820313131313131313131"
-      <> "313131313131313131313131313131313131313131313180d87a8080ffd9051f9f00412780ffd905209fd8799f0100000100"
-      <> "41128080ffd87a80ffff"
+    "9fd87980d87a9f0000d8799f4381411affffd87b9fd8799f4381411affd87980ffd87c9fd8799f010000010041128080"
+      <> "ffd87a80d87980ffd87d9fd8799f41020100000000ffffd87e9f00410358202020202020202020202020202020202020"
+      <> "202020202020202020202020202020410480d87980ffd87f9f0141055820212121212121212121212121212121212121"
+      <> "212121212121212121212121212180ffd905009f00410658202222222222222222222222222222222222222222222222"
+      <> "2222222222222222224107ffd905019f0000582023232323232323232323232323232323232323232323232323232323"
+      <> "23232323410980ffd905029f0000410a0058202424242424242424242424242424242424242424242424242424242424"
+      <> "242424015820252525252525252525252525252525252525252525252525252525252525252580ffd905039f00010158"
+      <> "20262626262626262626262626262626262626262626262626262626262626262680ffd905049f000000005820272727"
+      <> "2727272727272727272727272727272727272727272727272727272727410b800000410c015820303030303030303030"
+      <> "303030303030303030303030303030303030303030303080582028282828282828282828282828282828282828282828"
+      <> "2828282828282828282880d8799f010000010041128080ffffd905059fd8799fd8799f00005820141414141414141414"
+      <> "141414141414141414141414141414141414141414141458201515151515151515151515151515151515151515151515"
+      <> "15151515151515151558201616161616161616161616161616161616161616161616161616161616161616000000ffd8"
+      <> "799f00005820141414141414141414141414141414141414141414141414141414141414141458201515151515151515"
+      <> "151515151515151515151515151515151515151515151515582016161616161616161616161616161616161616161616"
+      <> "16161616161616161616000000ffd87f80ffffd905069f0000410e410f80ffd905079f00411080ffd905089f80005820"
+      <> "292929292929292929292929292929292929292929292929292929292929292980ffd905099f00411141120180d87a80"
+      <> "ffd9050a9fd8799f00d8799f5820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba20000"
+      <> "00ff4040d8799f400000ffd8799f400000ffff00010158202a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+      <> "2a2a2a2a2a2a2a2a8000000058202b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b4113"
+      <> "80ffd9050b9fd87a80d8799f010000000101582013131313131313131313131313131313131313131313131313131313"
+      <> "131313130000000000000000d87a80ffd8799fd87c80d87a80d87a80ffffd9050c9fd8799f00d8799f5820bbcb3bff6f"
+      <> "87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000ff4040d8799f400000ffd8799f400000ffff"
+      <> "ffd9050d9fd8799f00d8799f5820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba20000"
+      <> "00ff4040d8799f400000ffd8799f400000ffff004114411580ffd9050e9fd8799fd8799f40000000ffd8799f400000ff"
+      <> "d8799f400000ffffffd9050f9fd8799fd8799f40000000ffd8799f400000ffd8799f400000ffffffd905109fd8799fd8"
+      <> "799f400000ffd8799f400000ffd8799f400000ffffffd905119f00411658202c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c"
+      <> "2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c41170041184119018080d8799fd879800080ffffd905129f00411a00411b411c01"
+      <> "8080d8799fd879800080ffffd905139f00411d411e0180d8799fd879800080ffffd905149f01411f58202d2d2d2d2d2d"
+      <> "2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d4120ffd905159f00412180ffd905169fd8799f438141"
+      <> "1affffd905179fd8799f4381411affffd905189f000158202e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e"
+      <> "2e2e2e2e2e2e2e2e80ffd905199fd87980ffd9051a9f4122d87980ffd9051b9fd8799f01000001d8799f0040ffff80ff"
+      <> "d9051c9f0041234124d8799fd8799f01000080ff00800080ffffd9051d9fd8799f010000010041128080ffd87a80ffd9"
+      <> "051e9f0000000058202f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f41258000004126"
+      <> "015820303030303030303030303030303030303030303030303030303030303030303080582031313131313131313131"
+      <> "3131313131313131313131313131313131313131313180d87a8080ffd9051f9f00412780ffd905209fd8799f01000001"
+      <> "0041128080ffd87a80ffff"
 
 malformedAuxiliaryAdjacentTag :: forall s. Term s PUnit
 malformedAuxiliaryAdjacentTag = forceAuxiliaryData $ PD.Constr 40 []
@@ -2340,24 +2357,24 @@ valueAssetMutationSemantics =
                               # insertion
                         ]
           _ -> pconstant False
-  where
-    valueMutation :: Term s PBool -> Term s PInteger -> Term s PValueAssetMutationWitnessV1
-    valueMutation wasPresent oldDelta =
-      pcon $
-        PValueAssetMutationWitnessV1
-          (pdata wasPresent)
-          (pdata oldDelta)
-          (pdata pnil)
+ where
+  valueMutation :: Term s PBool -> Term s PInteger -> Term s PValueAssetMutationWitnessV1
+  valueMutation wasPresent oldDelta =
+    pcon $
+      PValueAssetMutationWitnessV1
+        (pdata wasPresent)
+        (pdata oldDelta)
+        (pdata pnil)
 
-    valueMutationIsInvalid :: Term s PValueAccumulatorUpdateV1 -> Term s PBool
-    valueMutationIsInvalid update = pmatch update $ \case
-      PValueAccumulatorMutationInvalid -> pconstant True
-      _ -> pconstant False
+  valueMutationIsInvalid :: Term s PValueAccumulatorUpdateV1 -> Term s PBool
+  valueMutationIsInvalid update = pmatch update $ \case
+    PValueAccumulatorMutationInvalid -> pconstant True
+    _ -> pconstant False
 
-    valueMutationHitLimit :: Term s PValueAccumulatorUpdateV1 -> Term s PBool
-    valueMutationHitLimit update = pmatch update $ \case
-      PValueAccumulatorAssetLimitExceeded -> pconstant True
-      _ -> pconstant False
+  valueMutationHitLimit :: Term s PValueAccumulatorUpdateV1 -> Term s PBool
+  valueMutationHitLimit update = pmatch update $ \case
+    PValueAccumulatorAssetLimitExceeded -> pconstant True
+    _ -> pconstant False
 
 cekObserverSummaryVectors :: forall s. Term s PBool
 cekObserverSummaryVectors =
@@ -6109,7 +6126,7 @@ phaseANativeSplitTimelockTransition =
                                                           # pcon PDNothing
                                                       , pverifyPhaseANativeAdvanceSemanticsV1 # resultPre # finalizeWitness
                                                       , pverifyPhaseANativeScriptsSemanticsV1 # headPre # headEvidence # inlineFieldDoor
-                                                      , pnot # (pverifyPhaseANativeScriptsOneStepV1 # headPre # headEvidence # inlineFieldDoor)
+                                                      , pverifyPhaseANativeScriptsOneStepV1 # headPre # headEvidence # inlineFieldDoor
                                                       ]
 
 phaseANativeContainerPayloadTransitions :: forall s. Term s PBool
@@ -6724,12 +6741,12 @@ phaseAScriptPreconditionsResolvePost pre control =
 
 phaseAScriptPreconditionsFinalizeTransitions :: forall s. Term s PBool
 phaseAScriptPreconditionsFinalizeTransitions =
-  plet (pconstant $ BS.replicate 32 0) $ \zeroHash ->
+  plet (ScriptLanguageViews.pemptyScriptIntegrityHash) $ \emptyIntegrityHash ->
     pmatch
       ( phaseAScriptPreconditionsControlFixture
           NativeField.pemptyFieldCommitment
           NativeField.pemptyFieldCommitment
-          zeroHash
+          emptyIntegrityHash
           0
       )
       $ \(PPair emptyControl emptyTransactionId) ->
@@ -6768,7 +6785,7 @@ phaseAScriptPreconditionsFinalizeTransitions =
                         ( phaseAScriptPreconditionsControlFixture
                             NativeField.pemptyFieldCommitment
                             (cekHash 0xb1)
-                            zeroHash
+                            emptyIntegrityHash
                             1
                         )
                         $ \(PPair invalidControl invalidTransactionId) ->
@@ -7351,13 +7368,13 @@ scriptSourcesStageZeroEmptyFinishTransition =
                                     [ psliceBS # 0 # 1 # inlineCbor #== phexByteStr "89"
                                     , pdecodeInlineSourceHashControlV1 # inlineCbor #== inlineControl
                                     , pstructuralTransitionIsValid # pre # witness
-                                    , pverifyScriptSourcesStageZeroFinishSemanticsV1 # pre # witness
+                                    , StageZeroFinish.pverify # pre # witness
                                     , pverifyScriptSourcesStageZeroSemanticsV1
                                         # pre
                                         # witness
                                         # pcon PNoAuxiliaryWitness
                                         # inlineFieldDoor
-                                    , pnot # (pverifyScriptSourcesStageZeroFinishSemanticsV1 # pre # wrongWitness)
+                                    , pnot # (StageZeroFinish.pverify # pre # wrongWitness)
                                     , pnot
                                         # ( pverifyScriptSourcesStageZeroSemanticsV1
                                               # pre
@@ -7854,11 +7871,11 @@ scriptSourcesStageOneRawFinishTransition =
                         pstructuralTransitionIsValid
                           # pre
                           # witness
-                          #&& pverifyScriptSourcesStageOneFinishRawSemanticsV1
+                          #&& StageOneFinish.pverify
                           # pre
                           # witness
                           #&& pnot
-                          # (pverifyScriptSourcesStageOneFinishRawSemanticsV1 # pre # wrongWitness)
+                          # (StageOneFinish.pverify # pre # wrongWitness)
 
 scriptSourcesStageOneRawFinishCanonicalEncoding :: forall s. Term s PBool
 scriptSourcesStageOneRawFinishCanonicalEncoding =
@@ -7918,14 +7935,14 @@ scriptSourcesStageOneRawFinishCanonicalEncoding =
                                                         $ \mutatedWitness ->
                                                           pand'List
                                                             [ plengthBS # pfromData (pphaseANative'compactCbor phaseFields) #> 64
-                                                            , pverifyScriptSourcesStageOneFinishRawSemanticsV1 # pre # witness
+                                                            , StageOneFinish.pverify # pre # witness
                                                             , pnot
-                                                                # ( pverifyScriptSourcesStageOneFinishRawSemanticsV1
+                                                                # ( StageOneFinish.pverify
                                                                       # pre
                                                                       # reencodedWitness
                                                                   )
                                                             , pnot
-                                                                # ( pverifyScriptSourcesStageOneFinishRawSemanticsV1
+                                                                # ( StageOneFinish.pverify
                                                                       # pre
                                                                       # mutatedWitness
                                                                   )
@@ -8082,8 +8099,8 @@ scriptSourcesStageOneRedeemerStepTransition =
                                                   # itemControl
                                                   # itemWitness
 
-scriptSourcesStageOneRedeemerFamilyGuard :: forall s. Bool -> Term s PBool
-scriptSourcesStageOneRedeemerFamilyGuard expectRedeemerRejection =
+scriptSourcesStageOneCompletedScan :: forall s. Term s PBool
+scriptSourcesStageOneCompletedScan =
   plet (phexByteStr "8400004100820a14") $ \redeemerCbor ->
     plet (inputSetsSingletonCommitment 8 redeemerCbor) $ \redeemerCommitment ->
       plet (Bounded.pfromBytes # 8 # 0 # redeemerCbor) $ \itemCommitment ->
@@ -8134,16 +8151,7 @@ scriptSourcesStageOneRedeemerFamilyGuard expectRedeemerRejection =
                           plet (scriptSourcesStateFromPhase transactionId phaseControl 71 nextWorkCbor) $ \post ->
                             plet (pcon $ PValidationOneStepWitnessV1 (pdata workCbor) (pdata post)) $ \witness ->
                               plet (pcon PNoAuxiliaryWitness) $ \noAuxiliary ->
-                                if expectRedeemerRejection
-                                  then
-                                    pnot
-                                      # ( pverifyScriptSourcesStageOneRedeemerSemanticsV1
-                                            # pre
-                                            # witness
-                                            # noAuxiliary
-                                            # inlineFieldDoor
-                                        )
-                                  else pverifyScriptSourcesStageOneSemanticsV1 # pre # witness # noAuxiliary # inlineFieldDoor
+                                pverifyScriptSourcesStageOneSemanticsV1 # pre # witness # noAuxiliary # inlineFieldDoor
 
 scriptSourcesStageTwoReplayInitializationTransition :: forall s. Term s PBool
 scriptSourcesStageTwoReplayInitializationTransition =
@@ -9701,7 +9709,7 @@ scriptSourcesStageSevenObserverFinishTransition =
                             plet (pcon $ PValidationOneStepWitnessV1 (pdata workCbor) (pdata post)) $ \witness ->
                               pand'List
                                 [ pstructuralTransitionIsValid # pre # witness
-                                , pverifyScriptSourcesStageSevenFinishSemanticsV1 # pre # witness
+                                , StageSevenSplit.pfinish # pre # witness
                                 , pverifyScriptSourcesStageSevenSemanticsV1
                                     # pre
                                     # witness
@@ -9785,16 +9793,16 @@ scriptSourcesStageSevenFinishCanonicalEncoding =
                                                   pand'List
                                                     [ psliceBS # 0 # 1 # nextWorkCbor #== phexByteStr "98"
                                                     , psliceBS # 0 # 1 # reencodedWorkCbor #== phexByteStr "9f"
-                                                    , pverifyScriptSourcesStageSevenFinishSemanticsV1 # pre # witness
+                                                    , StageSevenSplit.pfinish # pre # witness
                                                     , pverifyScriptSourcesOneStepV1 # pre # evidence # inlineFieldDoor
                                                     , pnot
-                                                        # ( pverifyScriptSourcesStageSevenFinishSemanticsV1
+                                                        # ( StageSevenSplit.pfinish
                                                               # pre
                                                               # reencodedWitness
                                                           )
                                                     , pnot # (pverifyScriptSourcesOneStepV1 # pre # reencodedEvidence # inlineFieldDoor)
                                                     , pnot
-                                                        # ( pverifyScriptSourcesStageSevenFinishSemanticsV1
+                                                        # ( StageSevenSplit.pfinish
                                                               # pre
                                                               # mutatedWitness
                                                           )
@@ -9863,6 +9871,34 @@ scriptSourcesStageSevenObserverCanonicalEncoding =
                                                               # 3
                                                               # 0
                                                               # carriage
+                                                          , pverifyScriptSourcesStageSevenObserverItemFactsV1
+                                                              # pre
+                                                              # witness
+                                                              # inlineFieldDoor
+                                                              # 3
+                                                              # 0
+                                                              # carriage
+                                                              # observerHash
+                                                              # 1
+                                                          , pverifyScriptSourcesStageSevenObserverBoundSemanticsV1
+                                                              # pre
+                                                              # witness
+                                                              # observerHash
+                                                              # 1
+                                                          , StageSevenSplit.pitemFacts
+                                                              # pre
+                                                              # witness
+                                                              # inlineFieldDoor
+                                                              # 3
+                                                              # 0
+                                                              # carriage
+                                                              # observerHash
+                                                              # 1
+                                                          , StageSevenSplit.pbound
+                                                              # pre
+                                                              # witness
+                                                              # observerHash
+                                                              # 1
                                                           , pnot
                                                               # ( pverifyScriptSourcesStageSevenObserverSemanticsV1
                                                                     # pre
@@ -9873,6 +9909,64 @@ scriptSourcesStageSevenObserverCanonicalEncoding =
                                                                     # carriage
                                                                 )
                                                           , pnot
+                                                              # ( pverifyScriptSourcesStageSevenObserverItemFactsV1
+                                                                    # pre
+                                                                    # witness
+                                                                    # inlineFieldDoor
+                                                                    # 3
+                                                                    # 0
+                                                                    # carriage
+                                                                    # (observerHash <> pconstant "\x00")
+                                                                    # 1
+                                                                )
+                                                          , pnot
+                                                              # ( StageSevenSplit.pitemFacts
+                                                                    # pre
+                                                                    # witness
+                                                                    # inlineFieldDoor
+                                                                    # 3
+                                                                    # 0
+                                                                    # carriage
+                                                                    # (observerHash <> pconstant "\x00")
+                                                                    # 1
+                                                                )
+                                                          , pnot
+                                                              # ( pverifyScriptSourcesStageSevenObserverItemFactsV1
+                                                                    # pre
+                                                                    # witness
+                                                                    # inlineFieldDoor
+                                                                    # 3
+                                                                    # 0
+                                                                    # carriage
+                                                                    # observerHash
+                                                                    # 2
+                                                                )
+                                                          , pnot
+                                                              # ( StageSevenSplit.pitemFacts
+                                                                    # pre
+                                                                    # witness
+                                                                    # inlineFieldDoor
+                                                                    # 3
+                                                                    # 0
+                                                                    # carriage
+                                                                    # observerHash
+                                                                    # 2
+                                                                )
+                                                          , pnot
+                                                              # ( pverifyScriptSourcesStageSevenObserverBoundSemanticsV1
+                                                                    # pre
+                                                                    # reencodedWitness
+                                                                    # observerHash
+                                                                    # 1
+                                                                )
+                                                          , pnot
+                                                              # ( StageSevenSplit.pbound
+                                                                    # pre
+                                                                    # reencodedWitness
+                                                                    # observerHash
+                                                                    # 1
+                                                                )
+                                                          , pnot
                                                               # ( pverifyScriptSourcesStageSevenObserverSemanticsV1
                                                                     # pre
                                                                     # mutatedWitness
@@ -9880,6 +9974,20 @@ scriptSourcesStageSevenObserverCanonicalEncoding =
                                                                     # 3
                                                                     # 0
                                                                     # carriage
+                                                                )
+                                                          , pnot
+                                                              # ( pverifyScriptSourcesStageSevenObserverBoundSemanticsV1
+                                                                    # pre
+                                                                    # mutatedWitness
+                                                                    # observerHash
+                                                                    # 1
+                                                                )
+                                                          , pnot
+                                                              # ( StageSevenSplit.pbound
+                                                                    # pre
+                                                                    # mutatedWitness
+                                                                    # observerHash
+                                                                    # 1
                                                                 )
                                                           ]
 
@@ -10002,7 +10110,7 @@ scriptSourcesStageSevenReceiveCanonicalEncoding =
                                                                                 (pcon $ PValidationOneStepWitnessV1 (pdata workCbor) (pdata mutatedPost))
                                                                                 $ \mutatedWitness ->
                                                                                   pand'List
-                                                                                    [ pverifyScriptSourcesStageSevenReceiveSemanticsV1
+                                                                                    [ StageSevenSplit.preceive
                                                                                         # pre
                                                                                         # witness
                                                                                         # 3
@@ -10011,7 +10119,7 @@ scriptSourcesStageSevenReceiveCanonicalEncoding =
                                                                                         # scriptHash
                                                                                         # pnil
                                                                                     , pnot
-                                                                                        # ( pverifyScriptSourcesStageSevenReceiveSemanticsV1
+                                                                                        # ( StageSevenSplit.preceive
                                                                                               # pre
                                                                                               # reencodedWitness
                                                                                               # 3
@@ -10021,7 +10129,7 @@ scriptSourcesStageSevenReceiveCanonicalEncoding =
                                                                                               # pnil
                                                                                           )
                                                                                     , pnot
-                                                                                        # ( pverifyScriptSourcesStageSevenReceiveSemanticsV1
+                                                                                        # ( StageSevenSplit.preceive
                                                                                               # pre
                                                                                               # mutatedWitness
                                                                                               # 3
@@ -10222,7 +10330,7 @@ scriptSourcesStageSevenReceiveTransition stepToVerify =
                                                                                                   pstructuralTransitionIsValid
                                                                                                     # initialState
                                                                                                     # selectWitness
-                                                                                                    #&& pverifyScriptSourcesStageSevenReceiveSemanticsV1
+                                                                                                    #&& StageSevenSplit.preceive
                                                                                                     # initialState
                                                                                                     # selectWitness
                                                                                                     # 3
@@ -10236,7 +10344,7 @@ scriptSourcesStageSevenReceiveTransition stepToVerify =
                                                                                                     # auxiliary
                                                                                                     # inlineFieldDoor
                                                                                                     #&& pnot
-                                                                                                    # ( pverifyScriptSourcesStageSevenReceiveSemanticsV1
+                                                                                                    # ( StageSevenSplit.preceive
                                                                                                           # initialState
                                                                                                           # wrongSelectWitness
                                                                                                           # 3
@@ -10258,7 +10366,7 @@ scriptSourcesStageSevenReceiveTransition stepToVerify =
                                                                                                       pstructuralTransitionIsValid
                                                                                                         # selectedState
                                                                                                         # appendWitness
-                                                                                                        #&& pverifyScriptSourcesStageSevenFinishSemanticsV1
+                                                                                                        #&& StageSevenSplit.pfinish
                                                                                                         # selectedState
                                                                                                         # appendWitness
                                                                                                         #&& pverifyScriptSourcesStageSevenSemanticsV1
@@ -10272,7 +10380,7 @@ scriptSourcesStageSevenReceiveTransition stepToVerify =
                                                                                                           pstructuralTransitionIsValid
                                                                                                             # appendedState
                                                                                                             # rescanWitness
-                                                                                                            #&& pverifyScriptSourcesStageSevenReceiveSemanticsV1
+                                                                                                            #&& StageSevenSplit.preceive
                                                                                                             # appendedState
                                                                                                             # rescanWitness
                                                                                                             # 3
@@ -10290,7 +10398,7 @@ scriptSourcesStageSevenReceiveTransition stepToVerify =
                                                                                                             #&& pstructuralTransitionIsValid
                                                                                                             # rescannedState
                                                                                                             # finishWitness
-                                                                                                            #&& pverifyScriptSourcesStageSevenFinishSemanticsV1
+                                                                                                            #&& StageSevenSplit.pfinish
                                                                                                             # rescannedState
                                                                                                             # finishWitness
                                                                                                             #&& pverifyScriptSourcesStageSevenSemanticsV1
@@ -10338,7 +10446,7 @@ scriptSourcesStageSevenEmptyFinishTransition =
                   plet (pcon $ PValidationOneStepWitnessV1 (pdata workCbor) (pdata post)) $ \witness ->
                     pand'List
                       [ pstructuralTransitionIsValid # pre # witness
-                      , pverifyScriptSourcesStageSevenFinishSemanticsV1 # pre # witness
+                      , StageSevenSplit.pfinish # pre # witness
                       , pverifyScriptSourcesStageSevenSemanticsV1
                           # pre
                           # witness
@@ -10355,8 +10463,8 @@ indexedSpendPurposeLeaves start count =
       # Codec.pcborInt (pconstant index)
   | index <- [toInteger start .. toInteger (start + count - 1)]
   ]
-  where
-    scriptHash = preplicateBS # 28 # (pintegerToByte # 0xaa)
+ where
+  scriptHash = preplicateBS # 28 # (pintegerToByte # 0xaa)
 
 byteStringDataList :: forall s. [Term s PByteString] -> Term s (PBuiltinList (PAsData PByteString))
 byteStringDataList = foldr (\item rest -> pcons # pdata item # rest) pnil
@@ -11383,6 +11491,32 @@ scriptSourcesStageTenItemWitness action =
       (pdata $ pcon $ PDJust $ pdata scriptSourcesStageTenChunkProof)
       (pdata $ pcon PDNothing)
 
+scriptSourcesDescriptorClaim ::
+  forall s.
+  Term s RedeemerItemProof.PRedeemerItemProofControlV1 ->
+  Bool ->
+  Term s ScriptSourcesDescriptor.PDescriptorStepClaim
+scriptSourcesDescriptorClaim control openTail =
+  pmatch
+    ( RedeemerItemProof.pdescriptorStepV1
+        # control
+        # pconstant openTail
+        # scriptSourcesStageTenChunkProof
+        # pcon PDNothing
+    )
+    $ \case
+      PNothing -> perror
+      PJust result -> pmatch result $ \case
+        RedeemerItemProof.PRedeemerItemProofInvalid -> perror
+        RedeemerItemProof.PRedeemerItemProofAdvanced nextD ->
+          pcon $
+            ScriptSourcesDescriptor.PDescriptorStepClaim
+              (pdata $ ScriptSourcesDescriptor.pnarrowControl # control)
+              (pdata $ pconstant openTail)
+              (pdata scriptSourcesStageTenChunkProof)
+              (pdata $ pcon PDNothing)
+              (pdata $ ScriptSourcesDescriptor.pnarrowControl # pfromData nextD)
+
 scriptSourcesStageTenTailControl ::
   forall s.
   Term s PByteString -> Term s RedeemerItemProof.PRedeemerItemProofControlV1
@@ -11693,6 +11827,15 @@ scriptSourcesStageTenBeginTransition =
                                                                 # beginPre
                                                                 # beginTransition
                                                                 # auxiliary
+                                                            , LateRaw.pverifyDescriptorBegin
+                                                                # 10
+                                                                # beginPre
+                                                                # beginTransition
+                                                                # 0
+                                                                # 1
+                                                                # (plengthBS # redeemer)
+                                                                # itemCommitment
+                                                                # pnil
                                                             , pnot
                                                                 # ( pverifyScriptSourcesStageTenMatchSemanticsV1
                                                                       # beginPre
@@ -11800,21 +11943,27 @@ scriptSourcesStageTenHeaderTransition =
                                                                 (pdata headerWitness)
                                                           )
                                                           $ \auxiliary ->
-                                                            pand'List
-                                                              [ pstructuralTransitionIsValid # pre # transition
-                                                              , pverifyPreparedScriptSourcesStageTenAdvanceTransitionV1
-                                                                  # pre
-                                                                  # transition
-                                                                  # itemControl
-                                                                  # headerWitness
-                                                              , pverifyScriptSourcesStageTenSemanticsV1 # pre # transition # auxiliary
-                                                              , pverifyScriptSourcesStageTenMismatchSemanticsV1
-                                                                  # pre
-                                                                  # transition
-                                                                  # auxiliary
-                                                              , pnot
-                                                                  # (pverifyScriptSourcesStageTenMatchSemanticsV1 # pre # transition # auxiliary)
-                                                              ]
+                                                            plet (scriptSourcesDescriptorClaim itemControl False) $ \claim ->
+                                                              pand'List
+                                                                [ pstructuralTransitionIsValid # pre # transition
+                                                                , pverifyPreparedScriptSourcesStageTenAdvanceTransitionV1
+                                                                    # pre
+                                                                    # transition
+                                                                    # itemControl
+                                                                    # headerWitness
+                                                                , pverifyScriptSourcesStageTenSemanticsV1 # pre # transition # auxiliary
+                                                                , pverifyScriptSourcesStageTenMismatchSemanticsV1
+                                                                    # pre
+                                                                    # transition
+                                                                    # auxiliary
+                                                                , pnot
+                                                                    # (pverifyScriptSourcesStageTenMatchSemanticsV1 # pre # transition # auxiliary)
+                                                                , pdescriptorClaimAuxiliary # claim #== auxiliary
+                                                                , pverifyDescriptorStepClaim # transition # claim
+                                                                , pverifyDescriptorMismatch # pre # transition # claim
+                                                                , LateRaw.pverifyDescriptorMismatch # pre # transition # claim
+                                                                , pnot # (pverifyDescriptorMatch # pre # transition # claim)
+                                                                ]
 
 scriptSourcesStageTenTerminalMatchTransition :: forall s. Term s PBool
 scriptSourcesStageTenTerminalMatchTransition =
@@ -11904,22 +12053,26 @@ scriptSourcesStageTenTerminalMatchTransition =
                                                               (pdata tailWitness)
                                                         )
                                                         $ \auxiliary ->
-                                                          pand'List
-                                                            [ pstructuralTransitionIsValid # pre # transition
-                                                            , pverifyPreparedScriptSourcesStageTenMatchTransitionV1
-                                                                # pre
-                                                                # transition
-                                                                # tailControl
-                                                                # tailWitness
-                                                            , pverifyScriptSourcesStageTenSemanticsV1 # pre # transition # auxiliary
-                                                            , pverifyScriptSourcesStageTenMatchSemanticsV1 # pre # transition # auxiliary
-                                                            , pnot
-                                                                # ( pverifyScriptSourcesStageTenMismatchSemanticsV1
-                                                                      # pre
-                                                                      # transition
-                                                                      # auxiliary
-                                                                  )
-                                                            ]
+                                                          plet (scriptSourcesDescriptorClaim tailControl True) $ \claim ->
+                                                            pand'List
+                                                              [ pstructuralTransitionIsValid # pre # transition
+                                                              , pverifyPreparedScriptSourcesStageTenMatchTransitionV1
+                                                                  # pre
+                                                                  # transition
+                                                                  # tailControl
+                                                                  # tailWitness
+                                                              , pverifyScriptSourcesStageTenSemanticsV1 # pre # transition # auxiliary
+                                                              , pverifyScriptSourcesStageTenMatchSemanticsV1 # pre # transition # auxiliary
+                                                              , pnot
+                                                                  # ( pverifyScriptSourcesStageTenMismatchSemanticsV1
+                                                                        # pre
+                                                                        # transition
+                                                                        # auxiliary
+                                                                    )
+                                                              , pverifyDescriptorStepClaim # transition # claim
+                                                              , pverifyDescriptorMatch # pre # transition # claim
+                                                              , pnot # (pverifyDescriptorMismatch # pre # transition # claim)
+                                                              ]
 
 scriptSourcesStageTenMismatchTransition :: forall s. Term s PBool
 scriptSourcesStageTenMismatchTransition =
@@ -12022,14 +12175,19 @@ scriptSourcesStageTenMismatchTransition =
                                                 plet (scriptSourcesStateFromPhase transactionId phaseControl 124 workCbor) $ \pre ->
                                                   plet (scriptSourcesStateFromPhase transactionId phaseControl 125 nextCbor) $ \post ->
                                                     plet (pcon $ PValidationOneStepWitnessV1 (pdata workCbor) (pdata post)) $ \transition ->
-                                                      pand'List
-                                                        [ pstructuralTransitionIsValid # pre # transition
-                                                        , pverifyPreparedScriptSourcesStageTenTerminalMismatchTransitionV1
-                                                            # pre
-                                                            # transition
-                                                            # tailControl
-                                                            # tailWitness
-                                                        ]
+                                                      plet (scriptSourcesDescriptorClaim tailControl True) $ \claim ->
+                                                        pand'List
+                                                          [ pstructuralTransitionIsValid # pre # transition
+                                                          , pverifyPreparedScriptSourcesStageTenTerminalMismatchTransitionV1
+                                                              # pre
+                                                              # transition
+                                                              # tailControl
+                                                              # tailWitness
+                                                          , pverifyDescriptorStepClaim # transition # claim
+                                                          , pverifyDescriptorMismatch # pre # transition # claim
+                                                          , LateRaw.pverifyDescriptorMismatch # pre # transition # claim
+                                                          , pnot # (pverifyDescriptorMatch # pre # transition # claim)
+                                                          ]
 
 scriptSourcesStageElevenAuditTransitions :: forall s. Term s PBool
 scriptSourcesStageElevenAuditTransitions =
@@ -12435,7 +12593,135 @@ scriptSourcesStageTwelveBeginTransition =
                                                     # (plengthBS # redeemer)
                                                     # itemCommitment
                                                     # pnil
+                                                , LateRaw.pverifyDescriptorBegin
+                                                    # 12
+                                                    # pre
+                                                    # witness
+                                                    # 0
+                                                    # 1
+                                                    # (plengthBS # redeemer)
+                                                    # itemCommitment
+                                                    # pnil
                                                 ]
+
+scriptSourcesStageTwelveUsedDescriptorTransition :: forall s. Term s PBool
+scriptSourcesStageTwelveUsedDescriptorTransition =
+  plet scriptSourcesStageTenRedeemer $ \redeemer ->
+    plet (Bounded.pfromBytes # 8 # 0 # redeemer) $ \itemCommitment ->
+      plet (scriptSourcesStageTenTailControl itemCommitment) $ \tailControl ->
+        plet (ScriptProof.predeemerItemLeafHash # 0 # itemCommitment) $ \redeemerLeaf ->
+          plet (cekSinglePeak redeemerLeaf) $ \redeemerPeaks ->
+            plet (cekHash 0x82) $ \purposeLeaf ->
+              plet (cekSinglePeak purposeLeaf) $ \purposePeaks ->
+                plet (cekSinglePeak redeemerLeaf) $ \executionPeaks ->
+                  plet
+                    ( pcon $
+                        PScriptDiscoveryControlV1
+                          (pdata 1)
+                          (pdata 0)
+                          (pdata 0)
+                          (pdata $ -1)
+                          (pdata $ -1)
+                          (pdata $ pconstant "")
+                          (pdata $ pconstant "")
+                          (pdata $ -1)
+                          (pdata $ -1)
+                          (pdata $ pconstant "")
+                          (pdata 0)
+                          (pdata 1)
+                          (pdata $ RedeemerItemProof.phashControlV1 # tailControl)
+                          (pdata 1)
+                          (pdata executionPeaks)
+                    )
+                    $ \discovery ->
+                      plet
+                        ( pcon $
+                            PScriptDiscoveryControlV1
+                              (pdata 1)
+                              (pdata 0)
+                              (pdata 1)
+                              (pdata $ -1)
+                              (pdata $ -1)
+                              (pdata $ pconstant "")
+                              (pdata $ pconstant "")
+                              (pdata $ -1)
+                              (pdata $ -1)
+                              (pdata $ pconstant "")
+                              (pdata 0)
+                              (pdata 1)
+                              (pdata $ pconstant "")
+                              (pdata 1)
+                              (pdata executionPeaks)
+                        )
+                        $ \advanced ->
+                          pmatch
+                            ( phaseANativeControlFixture
+                                NativeField.pemptyFieldCommitment
+                                (-1)
+                                (-1)
+                                0
+                                0
+                                0
+                                0
+                                0
+                                (pconstant "")
+                                0
+                                0
+                                (-1)
+                            )
+                            $ \(PPair phaseControl transactionId) ->
+                              plet
+                                ( scriptSourcesDiscoveryFullStateCbor
+                                    phaseControl
+                                    12
+                                    0
+                                    pnil
+                                    1
+                                    redeemerPeaks
+                                    1
+                                    purposePeaks
+                                    discovery
+                                )
+                                $ \workCbor ->
+                                  plet
+                                    ( scriptSourcesDiscoveryFullStateCbor
+                                        phaseControl
+                                        12
+                                        0
+                                        pnil
+                                        1
+                                        redeemerPeaks
+                                        1
+                                        purposePeaks
+                                        advanced
+                                    )
+                                    $ \nextCbor ->
+                                      plet (scriptSourcesStateFromPhase transactionId phaseControl 132 workCbor) $ \pre ->
+                                        plet (scriptSourcesStateFromPhase transactionId phaseControl 133 nextCbor) $ \post ->
+                                          plet (pcon $ PValidationOneStepWitnessV1 (pdata workCbor) (pdata post)) $ \transition ->
+                                            plet (pcon $ PValidationOneStepWitnessV1 (pdata workCbor) (pdata pre)) $ \wrongTransition ->
+                                              plet (scriptSourcesDescriptorClaim tailControl True) $ \claim ->
+                                                pmatch claim $ \claimFields ->
+                                                  plet
+                                                    ( pcon $
+                                                        ScriptSourcesDescriptor.PDescriptorStepClaim
+                                                          (ScriptSourcesDescriptor.pdescriptorClaim'control claimFields)
+                                                          (pdata $ pconstant False)
+                                                          (ScriptSourcesDescriptor.pdescriptorClaim'chunkProof claimFields)
+                                                          (ScriptSourcesDescriptor.pdescriptorClaim'nextChunkProof claimFields)
+                                                          (ScriptSourcesDescriptor.pdescriptorClaim'claimedNext claimFields)
+                                                    )
+                                                    $ \wrongClaim ->
+                                                      pand'List
+                                                        [ pstructuralTransitionIsValid # pre # transition
+                                                        , pverifyDescriptorStepClaim # transition # claim
+                                                        , LateRaw.pverifyDescriptorStepClaim # transition # claim
+                                                        , pnot # (LateRaw.pverifyDescriptorStepClaim # transition # wrongClaim)
+                                                        , pverifyDescriptorUsed # pre # transition # claim
+                                                        , LateRaw.pverifyDescriptorUsed # pre # transition # claim
+                                                        , pnot # (pverifyDescriptorUsed # pre # wrongTransition # claim)
+                                                        , pnot # (LateRaw.pverifyDescriptorUsed # pre # wrongTransition # claim)
+                                                        ]
 
 scriptSourcesStageTwelveFamilyGuard :: forall s. Term s PBool
 scriptSourcesStageTwelveFamilyGuard =
@@ -14618,103 +14904,119 @@ scriptSourcesOutputProofFinalizeMissingSignerTransition =
 
 scriptSourcesStageZeroBeginTransition :: forall s. Term s PBool
 scriptSourcesStageZeroBeginTransition =
-  plet (phexByteStr "820340") $ \itemCbor ->
-    plet (inlineFieldCarriage $ pcons # itemCbor # pnil) $ \carriage ->
-      plet (inputSetsSingletonCommitment 6 itemCbor) $ \scriptCommitment ->
-        pmatch
-          ( phaseANativeControlFixture
-              scriptCommitment
-              (-1)
-              (-1)
-              0
-              0
-              0
-              0
-              0
-              (pconstant "")
-              0
-              0
-              (-1)
-          )
-          $ \(PPair phaseControl transactionId) ->
-            plet (scriptSourcesStageZeroCborFromPhase phaseControl 0) $ \workCbor ->
-              plet (scriptSourcesStageZeroCborFromPhase phaseControl 1) $ \nextBaseCbor ->
-                pmatch (inputSetsSingletonProof 6 itemCbor) $ \(PPair collectionProof chunkProof) ->
-                  pmatch collectionProof $ \item ->
-                    pmatch chunkProof $ \chunk ->
-                      pmatch
-                        ( NativeScriptScan.pversionedScriptHeaderV1
-                            # pfromData (Bounded.pchunkProof'chunk chunk)
-                            # pfromData (BoundedCollection.pitemProof'itemLength item)
-                        )
-                        $ \case
-                          PNothing -> pconstant False
-                          PJust header -> pmatch header $ \h ->
-                            plet
-                              ( pcon $
-                                  PInlineSourceHashControlV1
-                                    (pdata 1)
-                                    (pdata 0)
-                                    (pdata 1)
-                                    (NativeScriptScan.pheader'languageTag h)
-                                    (NativeScriptScan.pheader'payloadOffset h)
-                                    (NativeScriptScan.pheader'payloadLength h)
-                                    (BoundedCollection.pitemProof'itemLength item)
-                                    (BoundedCollection.pitemProof'itemCommitment item)
-                                    ( pdata $
-                                        Blake2b224.pinitialControlV1
-                                          # (pfromData (NativeScriptScan.pheader'payloadLength h) + 1)
-                                    )
-                              )
-                              $ \pending ->
-                                plet (pencodeInlineSourceHashControlV1 # pending) $ \pendingCbor ->
-                                  plet (pscriptSourcesStageZeroControlFromWitness # nextBaseCbor) $ \nextBase ->
-                                    plet
-                                      (pencodeScriptSourcesPendingSourceWitness # nextBase # pendingCbor)
-                                      $ \nextWorkCbor ->
-                                        plet (scriptSourcesStateFromPhase transactionId phaseControl 56 workCbor) $ \pre ->
-                                          plet (scriptSourcesStateFromPhase transactionId phaseControl 57 nextWorkCbor) $ \post ->
-                                            plet (scriptSourcesStateFromPhase transactionId phaseControl 57 nextBaseCbor) $ \wrongPost ->
-                                              plet
-                                                (pcon $ PValidationOneStepWitnessV1 (pdata workCbor) (pdata post))
-                                                $ \witness ->
+  plet (CekProof.pencodeProgramEnvelopeV1 # 1 # 1 # 0 # cekHash 0xaa # 3 # 144) $ \payload ->
+    plet
+      ( pencodeMidgardVersionedScript
+          # pcon
+            ( PMidgardVersionedScript
+                (pdata $ pcon PPlutusV3Script)
+                (pdata payload)
+            )
+      )
+      $ \itemCbor ->
+        plet (inlineFieldCarriage $ pcons # itemCbor # pnil) $ \carriage ->
+          plet (inputSetsSingletonCommitment 6 itemCbor) $ \scriptCommitment ->
+            pmatch
+              ( phaseANativeControlFixture
+                  scriptCommitment
+                  (-1)
+                  (-1)
+                  0
+                  0
+                  0
+                  0
+                  0
+                  (pconstant "")
+                  0
+                  0
+                  (-1)
+              )
+              $ \(PPair phaseControl transactionId) ->
+                plet (scriptSourcesStageZeroCborFromPhase phaseControl 0) $ \workCbor ->
+                  plet (scriptSourcesStageZeroCborFromPhase phaseControl 1) $ \nextBaseCbor ->
+                    pmatch (inputSetsSingletonProof 6 itemCbor) $ \(PPair collectionProof chunkProof) ->
+                      pmatch collectionProof $ \item ->
+                        pmatch chunkProof $ \chunk ->
+                          pmatch
+                            ( NativeScriptScan.pversionedScriptHeaderV1
+                                # pfromData (Bounded.pchunkProof'chunk chunk)
+                                # pfromData (BoundedCollection.pitemProof'itemLength item)
+                            )
+                            $ \case
+                              PNothing -> pconstant False
+                              PJust header -> pmatch header $ \h ->
+                                plet
+                                  ( pcon $
+                                      PInlineSourceHashControlV1
+                                        (pdata 1)
+                                        (pdata 0)
+                                        (pdata 1)
+                                        (NativeScriptScan.pheader'languageTag h)
+                                        (NativeScriptScan.pheader'payloadOffset h)
+                                        (NativeScriptScan.pheader'payloadLength h)
+                                        (BoundedCollection.pitemProof'itemLength item)
+                                        (BoundedCollection.pitemProof'itemCommitment item)
+                                        ( pdata $
+                                            Blake2b224.pinitialControlV1
+                                              # (pfromData (NativeScriptScan.pheader'payloadLength h) + 1)
+                                        )
+                                  )
+                                  $ \pending ->
+                                    plet (pencodeInlineSourceHashControlV1 # pending) $ \pendingCbor ->
+                                      plet (pscriptSourcesStageZeroControlFromWitness # nextBaseCbor) $ \nextBase ->
+                                        plet
+                                          (pencodeScriptSourcesPendingSourceWitness # nextBase # pendingCbor)
+                                          $ \nextWorkCbor ->
+                                            plet (scriptSourcesStateFromPhase transactionId phaseControl 56 workCbor) $ \pre ->
+                                              plet (scriptSourcesStateFromPhase transactionId phaseControl 57 nextWorkCbor) $ \post ->
+                                                plet (scriptSourcesStateFromPhase transactionId phaseControl 57 nextBaseCbor) $ \wrongPost ->
                                                   plet
-                                                    (pcon $ PValidationOneStepWitnessV1 (pdata workCbor) (pdata wrongPost))
-                                                    $ \wrongWitness ->
+                                                    (pcon $ PValidationOneStepWitnessV1 (pdata workCbor) (pdata post))
+                                                    $ \witness ->
                                                       plet
-                                                        (pcon $ PTransactionFieldChunkWitness (pdata 6) (pdata 0) (pdata carriage))
-                                                        $ \auxiliary ->
-                                                          pand'List
-                                                            [ pstructuralTransitionIsValid # pre # witness
-                                                            , pverifyScriptSourcesStageZeroBeginSemanticsV1
-                                                                # pre
-                                                                # witness
-                                                                # inlineFieldDoor
-                                                                # 6
-                                                                # 0
-                                                                # carriage
-                                                            , pverifyScriptSourcesStageZeroSemanticsV1
-                                                                # pre
-                                                                # witness
-                                                                # auxiliary
-                                                                # inlineFieldDoor
-                                                            , pnot
-                                                                # ( pverifyScriptSourcesStageZeroBeginSemanticsV1
-                                                                      # pre
-                                                                      # wrongWitness
-                                                                      # inlineFieldDoor
-                                                                      # 6
-                                                                      # 0
-                                                                      # carriage
-                                                                  )
-                                                            , pnot
-                                                                # ( pverifyScriptSourcesStageZeroSemanticsV1
-                                                                      # pre
-                                                                      # wrongWitness
-                                                                      # auxiliary
-                                                                      # inlineFieldDoor
-                                                                  )
-                                                            ]
+                                                        (pcon $ PValidationOneStepWitnessV1 (pdata workCbor) (pdata wrongPost))
+                                                        $ \wrongWitness ->
+                                                          plet
+                                                            (pcon $ PTransactionFieldChunkWitness (pdata 6) (pdata 0) (pdata carriage))
+                                                            $ \auxiliary ->
+                                                              pand'List
+                                                                [ pstructuralTransitionIsValid # pre # witness
+                                                                , StageZeroBegin.pverify
+                                                                    # pre
+                                                                    # witness
+                                                                    # inlineFieldDoor
+                                                                    # 6
+                                                                    # 0
+                                                                    # carriage
+                                                                , pverifyScriptSourcesStageZeroBeginSemanticsV1
+                                                                    # pre
+                                                                    # witness
+                                                                    # inlineFieldDoor
+                                                                    # 6
+                                                                    # 0
+                                                                    # carriage
+                                                                , pverifyScriptSourcesStageZeroSemanticsV1
+                                                                    # pre
+                                                                    # witness
+                                                                    # auxiliary
+                                                                    # inlineFieldDoor
+                                                                , pnot
+                                                                    # ( pverifyScriptSourcesStageZeroBeginSemanticsV1
+                                                                          # pre
+                                                                          # wrongWitness
+                                                                          # inlineFieldDoor
+                                                                          # 6
+                                                                          # 0
+                                                                          # carriage
+                                                                      )
+                                                                , pnot
+                                                                    # ( pverifyScriptSourcesStageZeroSemanticsV1
+                                                                          # pre
+                                                                          # wrongWitness
+                                                                          # auxiliary
+                                                                          # inlineFieldDoor
+                                                                      )
+                                                                ]
 
 scriptSourcesInlinePending ::
   forall s.
@@ -14821,7 +15123,7 @@ scriptSourcesStageZeroHashTransitions =
                                                                             pand'List
                                                                               [ block #== phexByteStr "03aa"
                                                                               , pstructuralTransitionIsValid # blockPre # blockWitness
-                                                                              , pverifyScriptSourcesStageZeroHashBlockSemanticsV1
+                                                                              , StageZeroHash.pblock
                                                                                   # blockPre
                                                                                   # blockWitness
                                                                                   # chunkProof
@@ -14836,7 +15138,7 @@ scriptSourcesStageZeroHashTransitions =
                                                                                     )
                                                                                   # inlineFieldDoor
                                                                               , pstructuralTransitionIsValid # advancePre # advanceWitness
-                                                                              , pverifyScriptSourcesStageZeroHashAdvanceSemanticsV1
+                                                                              , StageZeroHash.padvance
                                                                                   # advancePre
                                                                                   # advanceWitness
                                                                               , pverifyScriptSourcesStageZeroSemanticsV1
@@ -14916,7 +15218,7 @@ scriptSourcesStageZeroTerminalTransition =
                                                     pstructuralTransitionIsValid
                                                       # pre
                                                       # witness
-                                                      #&& pverifyScriptSourcesStageZeroHashTerminalSemanticsV1
+                                                      #&& StageZeroHash.pterminal
                                                       # pre
                                                       # witness
                                                       #&& pverifyScriptSourcesStageZeroSemanticsV1
@@ -15252,6 +15554,17 @@ resolveInputsNoReferenceTerminalFor ::
   Term s PByteString ->
   Term s LedgerOutputProof.PLedgerOutputProofControlV1
 resolveInputsNoReferenceTerminalFor outputCbor address =
+  outputProofWithFacts (resolveInputsNoReferenceTerminalRaw outputCbor address) (resolveInputsNoReferenceDescriptorFor outputCbor address)
+
+outputProofWithFacts :: forall s. Term s LedgerOutputProof.PLedgerOutputProofControlV1 -> Term s PByteString -> Term s LedgerOutputProof.PLedgerOutputProofControlV1
+outputProofWithFacts control descriptor =
+  let attach current = pmatch (LedgerOutputProof.pfactAttachV1 # current # descriptor) $ \case
+        PNothing -> perror
+        PJust next -> next
+   in plet (attach control) $ \first -> plet (attach first) $ \second -> attach second
+
+resolveInputsNoReferenceTerminalRaw :: forall s. Term s PByteString -> Term s PByteString -> Term s LedgerOutputProof.PLedgerOutputProofControlV1
+resolveInputsNoReferenceTerminalRaw outputCbor address =
   plet
     ( pcon $
         LedgerOutputScan.PLedgerOutputScanControlV1
@@ -15311,6 +15624,11 @@ resolveInputsNoReferenceTerminalFor outputCbor address =
               (pdata pnil)
               (pdata $ pcon PDNothing)
               (pdata $ pcon PDNothing)
+              (pdata $ pcon PDNothing)
+              (pdata $ pcon PDNothing)
+              (pdata $ pcon PDNothing)
+              (pdata $ pcon PDNothing)
+              (pdata $ pcon PDNothing)
 
 resolveInputsAfterFinalizedProof ::
   forall s.
@@ -15340,7 +15658,10 @@ resolveInputsAfterFinalizedProof control key descriptorCbor = pmatch control $ \
       (presolveInputs'resolutionScheduleHash c)
 
 resolveInputsMembershipFinalizeTransition :: forall s. Term s PBool
-resolveInputsMembershipFinalizeTransition =
+resolveInputsMembershipFinalizeTransition = resolveInputsMembershipFinalizeWithFacts True
+
+resolveInputsMembershipFinalizeWithFacts :: forall s. Bool -> Term s PBool
+resolveInputsMembershipFinalizeWithFacts attached =
   plet
     ( pencodeMidgardTxInput
         # pcon (PMidgardTxInput (pdata $ cekHash 0xa1) (pdata 0))
@@ -15357,7 +15678,14 @@ resolveInputsMembershipFinalizeTransition =
                       (pdata key)
                       (pdata pemptyResolutionScheduleHash)
                       (pdata descriptorCbor)
-                      (pdata resolveInputsNoReferenceTerminal)
+                      ( pdata $
+                          if attached
+                            then resolveInputsNoReferenceTerminal
+                            else
+                              resolveInputsNoReferenceTerminalRaw
+                                resolveInputsNoReferenceOutput
+                                (phexByteStr "7811111111111111111111111111111111111111111111111111111111")
+                      )
                 )
                 $ \pending ->
                   plet (resolveInputsWithPendingProof control pending) $ \activeControl ->
@@ -15376,11 +15704,12 @@ resolveInputsMembershipFinalizeTransition =
                                     # resolveInputsNoReferenceTerminal
                                     # (OutputCommitment.pdecodeLedgerOutputCommitment # descriptorCbor)
                                 , pstructuralTransitionIsValid # pre # witness
-                                , pverifyResolveInputsMembershipFinalizeSemanticsV1
-                                    # pre
-                                    # witness
-                                    # descriptorCbor
-                                    # pcon PNoSignerSetProof
+                                , (if attached then id else (pnot #)) $
+                                    pverifyResolveInputsMembershipFinalizeSemanticsV1
+                                      # pre
+                                      # witness
+                                      # descriptorCbor
+                                      # pcon PNoSignerSetProof
                                 ]
 
 ledgerDeltaControlFixture ::
@@ -16355,10 +16684,6 @@ cekSinglePeak ::
 cekSinglePeak root =
   pcons # pdata (pcon $ Merkle.PFrontierPeak (pdata 0) (pdata root)) # pnil
 
-cekObserverContextTransitions :: forall s. Term s PBool
-cekObserverContextTransitions =
-  cekObserverContextItemTransition #&& cekObserverContextAdvanceTransitions
-
 maximumObserverCekCase :: Assertion
 maximumObserverCekCase = do
   decoded <-
@@ -16702,82 +17027,45 @@ cekObserverCompleteSummaryRelationIsExact =
                   # nativeControl
                   # successorControl
 
-cekObserverContextItemTransition :: forall s. Term s PBool
-cekObserverContextItemTransition =
+cekObserverContextItemTransition :: forall s. Bool -> Term s PBool
+cekObserverContextItemTransition direct =
   plet (preplicateBS # 28 # (pintegerToByte # 0x55)) $ \observerHash ->
     plet (inlineFieldCarriage $ pcons # observerHash # pnil) $ \carriage ->
-      plet (Bounded.pfromBytes # 3 # 0 # observerHash) $ \itemCommitment ->
-        plet (Bounded.phashChunk # 3 # 0 # 0 # observerHash) $ \chunkLeaf ->
-          plet (cekSinglePeak chunkLeaf) $ \chunkPeaks ->
-            plet
-              ( BoundedCollection.phashBoundedCollectionItem
-                  # 3
-                  # 0
-                  # 28
-                  # itemCommitment
-              )
-              $ \itemLeaf ->
-                plet (cekSinglePeak itemLeaf) $ \itemPeaks ->
-                  plet
-                    (BoundedCollection.pboundedCollectionCommitment # 3 # 1 # itemPeaks)
-                    $ \observerCommitment ->
-                      plet
-                        ( pcon $
-                            BoundedCollection.PItemProofV1
-                              (pdata BoundedCollection.pboundedCollectionVersion)
-                              (pdata 3)
-                              (pdata 1)
-                              (pdata 0)
-                              (pdata 28)
-                              (pdata itemCommitment)
-                              (pdata itemPeaks)
-                              (pdata pnil)
-                        )
-                        $ \_collectionProof ->
-                          plet
-                            ( pcon $
-                                Bounded.PChunkProofV1
-                                  (pdata Bounded.pversion)
-                                  (pdata 3)
-                                  (pdata 0)
-                                  (pdata 28)
-                                  (pdata 0)
-                                  (pdata observerHash)
-                                  (pdata chunkPeaks)
-                                  (pdata pnil)
-                            )
-                            $ \_chunkProof ->
-                              pmatch (cekObserverProofSource observerCommitment) $ \(PPair nativeControl txId) ->
-                                plet (cekContextStageFixture 5 3 True) $ \current ->
-                                  plet (pprependCekObserverItemV1 # observerHash # pconstant False # CekData.pemptyDataPairSummaryV1) $ \nextItems ->
-                                    plet (cekContextWithTestObservers 5 1 nextItems observerHash cekEmptySummary) $ \nextContext ->
-                                      plet (cekStateFixtureWithTransactionId txId (pcon PCek) 82 (cekHash 0xaa) 7 8) $ \pre ->
-                                        plet (cekContextTransitionWitness nativeControl nextContext 83 7 8) $ \witness ->
-                                          plet
-                                            (pcon $ PTransactionFieldChunkWitness (pdata 3) (pdata 0) (pdata carriage))
-                                            $ \auxiliary ->
-                                              pverifyCekObserverContextItem
-                                                # pre
-                                                # witness
-                                                # nativeControl
-                                                # current
-                                                # inlineFieldDoor
-                                                # 3
-                                                # 0
-                                                # carriage
-                                                # 0
-                                                # 3
-                                                # 4
-                                                #&& pverifyCekObserverContextStep
-                                                # pre
-                                                # witness
-                                                # auxiliary
-                                                # nativeControl
-                                                # current
-                                                # 0
-                                                # 3
-                                                # 4
-                                                # inlineFieldDoor
+      plet (NativeField.pfieldCommitmentFromItems #$ pcons # observerHash # pnil) $ \observerCommitment ->
+        pmatch (cekObserverProofSource observerCommitment) $ \(PPair nativeControl txId) ->
+          plet (cekContextStageFixture 5 3 True) $ \current ->
+            plet (pprependCekObserverItemV1 # observerHash # pconstant False # CekData.pemptyDataPairSummaryV1) $ \nextItems ->
+              plet (cekContextWithTestObservers 5 1 nextItems observerHash cekEmptySummary) $ \nextContext ->
+                plet (cekStateFixtureWithTransactionId txId (pcon PCek) 82 (cekHash 0xaa) 7 8) $ \pre ->
+                  plet (cekContextTransitionWitness nativeControl nextContext 83 7 8) $ \witness ->
+                    plet
+                      (pcon $ PTransactionFieldChunkWitness (pdata 3) (pdata 0) (pdata carriage))
+                      $ \auxiliary ->
+                        if direct
+                          then
+                            pverifyCekObserverContextItem
+                              # pre
+                              # witness
+                              # nativeControl
+                              # current
+                              # inlineFieldDoor
+                              # 3
+                              # 0
+                              # carriage
+                              # 0
+                              # 3
+                              # 4
+                          else
+                            pverifyCekObserverContextStep
+                              # pre
+                              # witness
+                              # auxiliary
+                              # nativeControl
+                              # current
+                              # 0
+                              # 3
+                              # 4
+                              # inlineFieldDoor
 
 cekObserverContextAdvanceTransitions :: forall s. Term s PBool
 cekObserverContextAdvanceTransitions =
@@ -17038,6 +17326,7 @@ cekContextMaximumMintAuthenticatesLastAssetMembership =
                         # lastAsset
                         # 1
                         # byteStringDataList maximumMintLastAssetSiblings
+                        # (pcon PDNothing)
                         # 0
                         # 0
                         # 0
@@ -17187,6 +17476,7 @@ cekMintFirstAndFinalizeTransition =
                                       # assetName
                                       # 5
                                       # pnil
+                                      # (pcon PDNothing)
                                       # 0
                                       # 3
                                       # 4
@@ -17209,6 +17499,7 @@ cekMintFirstAndFinalizeTransition =
                                             # assetName
                                             # 5
                                             # pnil
+                                            # (pcon PDNothing)
                                             # 0
                                             # 3
                                             # 4
@@ -17243,6 +17534,7 @@ cekMintExistingPolicyTransition =
                                   # nextAsset
                                   # 7
                                   # (pcons # pdata previousLeaf # pnil)
+                                  # (pcon $ PDJust $ pdata $ pcon $ PCekMintHead (pdata previousAsset) (pdata 5) (pdata CekData.pemptyDataPairSummaryV1))
                                   # 0
                                   # 3
                                   # 4
@@ -17285,6 +17577,7 @@ cekMintPolicyRolloverTransition =
                                       # nextAsset
                                       # 7
                                       # (pcons # pdata previousLeaf # pnil)
+                                      # (pcon PDNothing)
                                       # 0
                                       # 3
                                       # 4
@@ -18384,3 +18677,12 @@ pemptyProofDescriptor =
       , ProofFold.pproofDescriptor'terminalCursor = pdata 0
       , ProofFold.pproofDescriptor'peaks = pdata pnil
       }
+
+cekMintWitnessAbi :: forall s. Term s PBool
+cekMintWitnessAbi =
+  let encoded = pdata $ pcon $ PCekMintContextItemWitness (pdata 0) (pdata $ pconstant "") (pdata $ pconstant "") (pdata 1) (pdata pnil) (pdata $ pcon PDNothing)
+   in pforgetData encoded
+        #== pconstant (PD.Constr 16 [PD.I 0, PD.B "", PD.B "", PD.I 1, PD.List [], PD.Constr 1 []])
+        #&& pvalidationAuxiliaryWitnessFromData
+        # pforgetData encoded
+        #== pfromData encoded

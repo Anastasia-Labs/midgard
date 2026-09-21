@@ -127,9 +127,9 @@ puint32Max, puint64Max :: forall (s :: S). Term s PInteger
 puint32Max = 4294967295
 puint64Max = 18446744073709551615
 
-pmaxBlobChunkBytes, pmaxBoundedBlobBytes :: forall (s :: S). Term s PInteger
+pmaxBlobChunkBytes, pmaxLedgerDataBlobBytes :: forall (s :: S). Term s PInteger
 pmaxBlobChunkBytes = 4095
-pmaxBoundedBlobBytes = 9215
+pmaxLedgerDataBlobBytes = 16384
 
 --------------------------------------------------------------------------------
 -- The node types
@@ -290,45 +290,27 @@ phashBlobBranchV1 = phoistAcyclic $
             <> pcborInt (pexpectUint64 # byteLength)
          )
 
-{- | Aiken @bounded_blob_root_v1@.
+-- | Aiken @blob_range_root_v1@. Split at the largest power-of-two chunk
+-- count strictly below the range, preserving all one/two/three-chunk roots.
+pblobRangeRoot :: forall (s :: S). Term s (PByteString :--> PByteString)
+pblobRangeRoot = phoistAcyclic $
+  pfix $ \self -> plam $ \bytes ->
+    plet (plengthBS # bytes) $ \len ->
+      pif (len #<= pmaxBlobChunkBytes) (phashBlobChunkV1 # bytes) $
+        plet (pif (len #<= 8190) 4095 (pif (len #<= 16380) 8190 16380)) $ \leftLength ->
+          phashBlobBranchV1
+            # (self # (psliceLen # bytes # 0 # leftLength))
+            # (self # (psliceLen # bytes # leftLength # (len - leftLength)))
+            # len
 
-At most three chunks, folded left-heavy: one chunk is its own root, two are a
-branch, and three are a branch of that branch with the tail. The shape is fixed
-rather than general because the bound is — 9,215 bytes is three 4,095-byte chunks
-minus nothing, and a fourth would need a different tree.
--}
+-- | Ledger Data has its own 16,384-byte limit. CekConstant retains its separate
+-- 9,215-byte direct-payload admission limit.
 pboundedBlobRootV1 :: forall (s :: S). Term s (PByteString :--> PByteString)
 pboundedBlobRootV1 = phoistAcyclic $
   plam $ \bytes ->
-    plet (plengthBS # bytes) $ \len ->
-      pif (len #<= pmaxBoundedBlobBytes) `flip` perror $
-        pif (len #<= pmaxBlobChunkBytes) (phashBlobChunkV1 # bytes) $
-          plet (psliceLen # bytes # 0 # pmaxBlobChunkBytes) $ \first ->
-            plet (len - pmaxBlobChunkBytes) $ \remaining ->
-              plet
-                ( pif
-                    (remaining #<= pmaxBlobChunkBytes)
-                    remaining
-                    pmaxBlobChunkBytes
-                )
-                $ \secondLength ->
-                  plet (psliceLen # bytes # pmaxBlobChunkBytes # secondLength) $ \second ->
-                    plet
-                      ( phashBlobBranchV1
-                          # (phashBlobChunkV1 # first)
-                          # (phashBlobChunkV1 # second)
-                          # (pmaxBlobChunkBytes + secondLength)
-                      )
-                      $ \left ->
-                        pif (remaining #<= pmaxBlobChunkBytes) left $
-                          plet
-                            ( psliceLen
-                                # bytes
-                                # (pmaxBlobChunkBytes + secondLength)
-                                # (remaining - secondLength)
-                            )
-                            $ \third ->
-                              phashBlobBranchV1 # left # (phashBlobChunkV1 # third) # len
+    pif (plengthBS # bytes #<= pmaxLedgerDataBlobBytes)
+      (pblobRangeRoot # bytes)
+      perror
 
 --------------------------------------------------------------------------------
 -- Encoding

@@ -54,16 +54,18 @@ assetNameTests =
                 , psliceBS # 0 # 4 # challengeName #== pconstant "DACH"
                 , psliceBS # 4 # 28 # bondName #== psliceBS # 4 # 28 # challengeName
                 ]
-    , testCase "tranche indices 0 and 63 use exact two-byte big-endian suffixes" $
+    , testCase "tranche indices 0, 1 and 63 match the target little-endian wire" $
         passertEval $
           let challengeName = pchallengeAssetNameV1 (pconstant fixtureOutRef)
               tranche0 = pto $ ptrancheAssetNameV1 challengeName 0
+              tranche1 = pto $ ptrancheAssetNameV1 challengeName 1
               tranche63 = pto $ ptrancheAssetNameV1 challengeName 63
            in pand'List
                 [ plengthBS # tranche0 #== 32
                 , psliceBS # 0 # 2 # tranche0 #== pconstant "DT"
                 , psliceBS # 30 # 2 # tranche0 #== pconstant "\NUL\NUL"
-                , psliceBS # 30 # 2 # tranche63 #== pconstant "\NUL?"
+                , psliceBS # 30 # 2 # tranche1 #== pconstant "\SOH\NUL"
+                , psliceBS # 30 # 2 # tranche63 #== pconstant "?\NUL"
                 ]
     , testCase "tranche index -1 is rejected" $
         pfails $ ptrancheAssetNameV1 (pchallengeAssetNameV1 $ pconstant fixtureOutRef) (-1)

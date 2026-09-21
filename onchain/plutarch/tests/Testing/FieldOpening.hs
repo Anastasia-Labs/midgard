@@ -300,7 +300,7 @@ accessorTests =
     -- whatever the redeemer's bytes carried.
     testCase "unanchored_validity_code_of returns the code in the supplied bytes" $
       passertEval $
-        punanchoredValidityCodeOf # bodyHandle #== 3
+        punanchoredValidityCodeOf # bodyHandle #== 1
   , testCase "a different trailing code re-derives to the same id and is returned unchanged" $
       passertEval $
         pand'List
@@ -678,7 +678,7 @@ weldedBodyHandle =
     # bodyAnchorT weldedBodyTxId
 
 weldedBodyCbor :: BS.ByteString
-weldedBodyCbor = compactOfBody weldedBody (wsHashOf defaultWitnessSet) 3
+weldedBodyCbor = compactOfBody weldedBody (wsHashOf defaultWitnessSet) 1
 
 weldedBodyTxId :: BS.ByteString
 weldedBodyTxId = txIdOfBody weldedBody
@@ -711,7 +711,7 @@ bodyViewOf body fieldIndex preimage =
     # inputsT []
     # pdata (pconstant certificatePolicy)
   where
-    cbor = compactOfBody body (wsHashOf defaultWitnessSet) 3
+    cbor = compactOfBody body (wsHashOf defaultWitnessSet) 1
 
 -- | The same, with the carriage under the caller's control.
 bodyViewWith :: forall s. Integer -> Term s PFieldCarriageV1 -> Term s PFieldViewV1
@@ -760,7 +760,7 @@ bodyOpenedWalk fieldIndex preimage =
     # pdata (pconstant certificatePolicy)
   where
     body = bodyCommitting fieldIndex preimage
-    cbor = compactOfBody body (wsHashOf defaultWitnessSet) 3
+    cbor = compactOfBody body (wsHashOf defaultWitnessSet) 1
 
 witnessOpenedWalk ::
   forall s. Integer -> BS.ByteString -> Term s (PPair PFieldViewV1 PFieldWalkCheckpointV1)
@@ -785,7 +785,7 @@ openedBodyView fieldIndex preimage =
     # pdata (pconstant certificatePolicy)
   where
     body = bodyCommitting fieldIndex preimage
-    cbor = compactOfBody body (wsHashOf defaultWitnessSet) 3
+    cbor = compactOfBody body (wsHashOf defaultWitnessSet) 1
 
 openedBodyCheckpoint :: forall s. Integer -> BS.ByteString -> Term s PFieldWalkCheckpointV1
 openedBodyCheckpoint fieldIndex preimage =
@@ -799,7 +799,7 @@ openedBodyCheckpoint fieldIndex preimage =
     )
   where
     body = bodyCommitting fieldIndex preimage
-    cbor = compactOfBody body (wsHashOf defaultWitnessSet) 3
+    cbor = compactOfBody body (wsHashOf defaultWitnessSet) 1
 
 openedCertifiedWitnessView :: forall s. Integer -> Term s PFieldViewV1
 openedCertifiedWitnessView fieldIndex =
@@ -830,7 +830,7 @@ openedWeldedCertifiedWitnessView fieldIndex =
     # pdata (pconstant certificatePolicy)
   where
     ws = witnessSetCommitting fieldIndex forgedWitnessPreimage
-    cbor = compactOfBody defaultBody (wsHashOf ws) 3
+    cbor = compactOfBody defaultBody (wsHashOf ws) 1
 
 openedWeldedCertifiedWitnessWalkView :: forall s. Integer -> Term s PFieldViewV1
 openedWeldedCertifiedWitnessWalkView fieldIndex =
@@ -843,7 +843,7 @@ openedWeldedCertifiedWitnessWalkView fieldIndex =
       # pdata (pconstant certificatePolicy)
   where
     ws = witnessSetCommitting fieldIndex forgedWitnessPreimage
-    cbor = compactOfBody defaultBody (wsHashOf ws) 3
+    cbor = compactOfBody defaultBody (wsHashOf ws) 1
 
 pfst :: forall a b s. Term s (PPair a b) -> Term s a
 pfst pair = pmatch pair $ \(PPair a _) -> a
@@ -953,7 +953,7 @@ certifiedBodyView =
     forgedWitnessPreimage
   where
     body = bodyCommitting 5 forgedWitnessPreimage
-    cbor = compactOfBody body (wsHashOf defaultWitnessSet) 3
+    cbor = compactOfBody body (wsHashOf defaultWitnessSet) 1
     committedTxId = txIdOfBody body
 
 certifiedViewAt ::
@@ -1134,7 +1134,7 @@ txIdOfBody b = blake2b256 ("MidgardNativeTxBodyV1" <> cborInt 1 <> compactBody b
 
 -- | The transaction every test anchors against.
 compactCbor :: BS.ByteString
-compactCbor = compactOfBody defaultBody (wsHashOf defaultWitnessSet) 3
+compactCbor = compactOfBody defaultBody (wsHashOf defaultWitnessSet) 1
 
 -- | The same body under a different fee, so it is a different transaction.
 otherCompactCbor :: BS.ByteString
@@ -1144,7 +1144,7 @@ otherCompactCbor =
     , cborInt 1
     , otherBodyCbor
     , defBytes32 (wsHashOf defaultWitnessSet)
-    , cborInt 3
+    , cborInt 1
     ]
 
 otherBodyCbor :: BS.ByteString
@@ -1167,7 +1167,7 @@ otherBodyCbor =
 
 -- | 'compactCbor' with the witness-set hash slot replaced.
 compactWith :: BS.ByteString -> BS.ByteString
-compactWith wsHash = compactOfBody defaultBody wsHash 3
+compactWith wsHash = compactOfBody defaultBody wsHash 1
 
 -- | 'compactCbor' with the trailing validity code replaced. Same id.
 compactCodeOf :: Integer -> BS.ByteString

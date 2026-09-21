@@ -36,6 +36,7 @@ module Midgard.Common.Utils (
   pgetAuthenticInputDatumWithPolicyAt,
   pgetAuthenticInputDatumAndAssetNameWithPolicyAt,
   pgetUniqueWithdrawRedeemer,
+  pgetUniqueMintRedeemer,
   pheadSingleton,
   pplutarchPhasRaw,
   pplutarchPhas,
@@ -733,6 +734,21 @@ pgetUniqueWithdrawRedeemer = phoistAcyclic $
             )
           # redeemers
     (pmatch (pheadSingleton # matching) $ \(PBuiltinPair _ pairSecond) -> pairSecond)
+
+-- | Bind a yielded operation to the exact mint purpose that delegates it.
+pgetUniqueMintRedeemer ::
+  forall (s :: S).
+  Term s
+    (PBuiltinList (PBuiltinPair (PAsData PScriptPurpose) (PAsData PRedeemer))
+      :--> PCurrencySymbol :--> PAsData PRedeemer)
+pgetUniqueMintRedeemer = phoistAcyclic $
+  plam $ \redeemers policyId -> P.do
+    matching <- plet $
+      pfilter # plam (\entry ->
+        pmatch (pfromData (pmatch entry $ \(PBuiltinPair purpose _) -> purpose)) $ \case
+          PMinting candidate -> pfromData candidate #== policyId
+          _ -> pconstant False) # redeemers
+    pmatch (pheadSingleton # matching) $ \(PBuiltinPair _ redeemer) -> redeemer
 
 {- | Aiken @utils.plutarch_phas_raw@.
 

@@ -8,15 +8,25 @@ import Data.ByteString.Base16 qualified as Base16
 import Data.ByteString.Lazy qualified as LBS
 import Data.Text (Text)
 import Data.Text.Encoding qualified as Text
+import Midgard.Validators.FraudProofs.ValidationTrace.CekContext qualified as CekContext
+import Midgard.Validators.FraudProofs.ValidationTrace.CekContextFinalization qualified as CekContextFinalization
+import Midgard.Validators.FraudProofs.ValidationTrace.CekContextItem qualified as CekContextItem
+import Midgard.Validators.FraudProofs.ValidationTrace.CekContextObserver qualified as CekContextObserver
+import Midgard.Validators.FraudProofs.ValidationTrace.CekContextRedeemer qualified as CekContextRedeemer
+import Midgard.Validators.FraudProofs.ValidationTrace.CekSelection qualified as CekSelection
 
-import Midgard.Env (environmentName)
-import System.FilePath ((</>), takeFileName, takeDirectory)
 import MerkleTree.Validators.Membership (membershipStakeValidator, nonMembershipStakeValidator)
+import Midgard.Env (environmentName)
+import Midgard.ScriptSourcesRedeemerItemStepYield (redeemerItemStepValidator)
+import Midgard.ScriptSourcesStageSevenYield (
+    observerBoundValidator,
+    observerItemValidator,
+ )
 import Midgard.Validators.ActiveOperators (
     activeOperatorsMintValidator,
     activeOperatorsSpendValidator,
  )
-import Midgard.Validators.AvailabilityChallenge (availabilityChallengeValidator)
+import Midgard.Validators.AvailabilityChallenge (availabilityChallengeBondYieldValidator, availabilityChallengeCloseYieldValidator, availabilityChallengeOpenYieldValidator, availabilityChallengeSettleYieldValidator, availabilityChallengeTimeoutYieldValidator, availabilityChallengeValidator)
 import Midgard.Validators.CekProgramMaterial (cekProgramMaterialSpendValidator)
 import Midgard.Validators.ComputationThread (computationThreadMintValidator)
 import Midgard.Validators.CorrectionLock (correctionLockSpendValidator)
@@ -52,6 +62,14 @@ import Midgard.Validators.FraudProofs.DaHashPreimage (
     daHashPreimageStep01Validator,
     daHashPreimageStep02Validator,
  )
+import Midgard.Validators.FraudProofs.DistinctAssetAccumulationLimit (
+    distinctAssetAccumulationLimitStep01Validator,
+    distinctAssetAccumulationLimitStep02Validator,
+    distinctAssetAccumulationLimitStep03Validator,
+    distinctAssetAccumulationLimitStep04Validator,
+    distinctAssetAccumulationLimitStep05Validator,
+    distinctAssetAccumulationLimitStep06Validator,
+ )
 import Midgard.Validators.FraudProofs.DoubleSpend (
     doubleSpendStep01Validator,
     doubleSpendStep02Validator,
@@ -61,6 +79,28 @@ import Midgard.Validators.FraudProofs.DoubleSpend (
 import Midgard.Validators.FraudProofs.DoubleWithdraw (
     doubleWithdrawStep01Validator,
     doubleWithdrawStep02Validator,
+ )
+import Midgard.Validators.FraudProofs.ExecutionNativeScriptInvalid (
+    executionNativeScriptInvalidAcceptedInlineSourceValidator,
+    executionNativeScriptInvalidAcceptedMintPrefixValidator,
+    executionNativeScriptInvalidAcceptedObserverPrefixValidator,
+    executionNativeScriptInvalidAcceptedReceivePrefixValidator,
+    executionNativeScriptInvalidAcceptedReconstructionInitValidator,
+    executionNativeScriptInvalidAcceptedReferenceSourceValidator,
+    executionNativeScriptInvalidAcceptedSpendPrefixValidator,
+    executionNativeScriptInvalidStep01Validator,
+    executionNativeScriptInvalidStep02Validator,
+    executionNativeScriptInvalidStep03Validator,
+    executionNativeScriptInvalidStep04Validator,
+    executionNativeScriptInvalidStep05Validator,
+    executionNativeScriptInvalidStep06Validator,
+ )
+import Midgard.Validators.FraudProofs.ExecutionSourceScriptDecoding (
+    executionSourceScriptDecodingStep01Validator,
+    executionSourceScriptDecodingStep02Validator,
+    executionSourceScriptDecodingStep03Validator,
+    executionSourceScriptDecodingStep04Validator,
+    executionSourceScriptDecodingStep05Validator,
  )
 import Midgard.Validators.FraudProofs.FabricatedDeposit (
     fabricatedDepositStep01Validator,
@@ -74,6 +114,17 @@ import Midgard.Validators.FraudProofs.FabricatedWithdrawal (
     fabricatedWithdrawalStep03Validator,
     fabricatedWithdrawalStep04Validator,
  )
+import Midgard.Validators.FraudProofs.FieldItemWidthIllegal (
+    fieldItemWidthIllegalStep01Validator,
+    fieldItemWidthIllegalStep02Validator,
+    fieldItemWidthIllegalStep03Validator,
+ )
+import Midgard.Validators.FraudProofs.FieldPreimageLengthMismatch (
+    fieldPreimageLengthMismatchStep01Validator,
+    fieldPreimageLengthMismatchStep02AcceptedValidator,
+    fieldPreimageLengthMismatchStep02ForcedValidator,
+    fieldPreimageLengthMismatchStep03Validator,
+ )
 import Midgard.Validators.FraudProofs.InputNoIdx (
     inputNoIdxStep01Validator,
     inputNoIdxStep02Validator,
@@ -83,6 +134,8 @@ import Midgard.Validators.FraudProofs.InputNoIdx (
 import Midgard.Validators.FraudProofs.InputSetUniqueness (
     inputSetUniquenessStep01Validator,
     inputSetUniquenessStep02Validator,
+    inputSetUniquenessStep03Validator,
+    inputSetUniquenessStep04Validator,
  )
 import Midgard.Validators.FraudProofs.InvalidRange (
     invalidRangeStep01Validator,
@@ -102,17 +155,27 @@ import Midgard.Validators.FraudProofs.MinAda (
     minAdaStep03Validator,
     minAdaStep04Validator,
     minAdaStep05Validator,
+    minAdaTxYieldValidator,
+    minAdaUtxoYieldValidator,
  )
 import Midgard.Validators.FraudProofs.MinFee (
     minFeeStep01Validator,
     minFeeStep02Validator,
  )
 import Midgard.Validators.FraudProofs.MintAuthorization (
+    mintAuthorizationEvaluateValidator,
     mintAuthorizationStep01Validator,
     mintAuthorizationStep02Validator,
     mintAuthorizationStep03Validator,
     mintAuthorizationStep04Validator,
     mintAuthorizationStep05Validator,
+    mintAuthorizationWitnessScanValidator,
+ )
+import Midgard.Validators.FraudProofs.MintDeclaredAssetLimit (
+    mintDeclaredAssetLimitStep01Validator,
+    mintDeclaredAssetLimitStep02Validator,
+    mintDeclaredAssetLimitStep03Validator,
+    mintDeclaredAssetLimitStep04Validator,
  )
 import Midgard.Validators.FraudProofs.MissingNativeScriptTx (
     missingNativeScriptTxStep01Validator,
@@ -133,7 +196,27 @@ import Midgard.Validators.FraudProofs.MissingNativeScriptUtxo (
     missingNativeScriptUtxoStep06Validator,
     missingNativeScriptUtxoStep07Validator,
  )
+import Midgard.Validators.FraudProofs.MissingRedeemer (
+    missingRedeemerStep01Validator,
+    missingRedeemerStep02Validator,
+    missingRedeemerStep02aValidator,
+    missingRedeemerStep02bValidator,
+    missingRedeemerStep03Validator,
+    missingRedeemerStep04Validator,
+    missingRedeemerStep05Validator,
+ )
+import Midgard.Validators.FraudProofs.MissingScriptSource (
+    missingScriptSourceStep01Validator,
+    missingScriptSourceStep02Validator,
+    missingScriptSourceStep03Validator,
+    missingScriptSourceStep04Validator,
+    missingScriptSourceStep05Validator,
+    missingScriptSourceStep06Validator,
+ )
 import Midgard.Validators.FraudProofs.MissingSignature (
+    missingSignatureForcedSignerValidator,
+    missingSignatureForcedStepValidator,
+    missingSignatureForcedWitnessValidator,
     missingSignatureStep01Validator,
     missingSignatureStep02Validator,
     missingSignatureStep03Validator,
@@ -168,6 +251,8 @@ import Midgard.Validators.FraudProofs.NativeScriptInvalid (
     nativeScriptInvalidStep05Validator,
  )
 import Midgard.Validators.FraudProofs.NetworkId (
+    networkIdForcedScanValidator,
+    networkIdForcedStepValidator,
     networkIdStep01Validator,
     networkIdStep02Validator,
  )
@@ -183,12 +268,78 @@ import Midgard.Validators.FraudProofs.NoReferenceInput (
     noReferenceInputStep03Validator,
     noReferenceInputStep04Validator,
  )
+import Midgard.Validators.FraudProofs.ObserverOrderInvalid (
+    observerOrderInvalidStep01Validator,
+    observerOrderInvalidStep02Validator,
+    observerOrderInvalidStep03Validator,
+    observerOrderInvalidStep04Validator,
+ )
+import Midgard.Validators.FraudProofs.ObserversForbiddenOnUntaggedNetwork (
+    observersForbiddenOnUntaggedNetworkStep01Validator,
+    observersForbiddenOnUntaggedNetworkStep02Validator,
+ )
+import Midgard.Validators.FraudProofs.OutputReferenceScriptDecoding (
+    outputReferenceScriptDecodingStep01Validator,
+    outputReferenceScriptDecodingStep02Validator,
+    outputReferenceScriptDecodingStep03Validator,
+    outputReferenceScriptDecodingStep04Validator,
+    outputReferenceScriptDecodingStep05Validator,
+    outputReferenceScriptDecodingStep06Validator,
+ )
+import Midgard.Validators.FraudProofs.ProtectedOutputSignerMissing (
+    protectedOutputSignerMissingStep01Validator,
+    protectedOutputSignerMissingStep02Validator,
+    protectedOutputSignerMissingStep03Validator,
+    protectedOutputSignerMissingStep04Validator,
+    protectedOutputSignerMissingStep05Validator,
+ )
+import Midgard.Validators.FraudProofs.ReceivePurposeLanguage (
+    receivePurposeLanguageStep01Validator,
+    receivePurposeLanguageStep02Validator,
+    receivePurposeLanguageStep03Validator,
+ )
+import Midgard.Validators.FraudProofs.RedeemerCanonicity (
+    redeemerCanonicityStep01Validator,
+    redeemerCanonicityStep02Validator,
+    redeemerCanonicityStep03Validator,
+ )
 import Midgard.Validators.FraudProofs.ReferenceInputNoIdx (
     referenceInputNoIdxStep01Validator,
     referenceInputNoIdxStep02Validator,
     referenceInputNoIdxStep03Validator,
     referenceInputNoIdxStep04Validator,
  )
+import Midgard.Validators.FraudProofs.ResolvedOutputNonCanonical (
+    resolvedOutputNonCanonicalStep01Validator,
+    resolvedOutputNonCanonicalStep02Validator,
+    resolvedOutputNonCanonicalStep03Validator,
+    resolvedOutputNonCanonicalStep04Validator,
+    resolvedOutputNonCanonicalStep05Validator,
+ )
+import Midgard.Validators.FraudProofs.ScriptIntegrityHashMismatch (
+    scriptIntegrityHashMismatchStep01Validator,
+    scriptIntegrityHashMismatchStep02Validator,
+    scriptIntegrityHashMismatchStep03Validator,
+    scriptIntegrityHashMismatchStep04Validator,
+    scriptIntegrityHashMismatchStep05Validator,
+ )
+import Midgard.Validators.FraudProofs.ScriptIntegrityHashMissing (
+    scriptIntegrityHashMissingRedeemerGrammarValidator,
+    scriptIntegrityHashMissingScriptGrammarValidator,
+    scriptIntegrityHashMissingScriptScanValidator,
+    scriptIntegrityHashMissingStep01Validator,
+    scriptIntegrityHashMissingStep02Validator,
+    scriptIntegrityHashMissingStep03Validator,
+    scriptIntegrityHashMissingStep04Validator,
+ )
+import Midgard.Validators.FraudProofs.SpendInputSignerMissing (
+    spendInputSignerMissingStep01Validator,
+    spendInputSignerMissingStep02Validator,
+    spendInputSignerMissingStep03Validator,
+    spendInputSignerMissingStep04Validator,
+    spendInputSignerMissingStep05Validator,
+ )
+import Midgard.Validators.FraudProofs.TransactionOutputNonCanonical
 import Midgard.Validators.FraudProofs.TransitionTrace (
     transitionTraceAcceptedTransactionV1Validator,
     transitionTraceControlV1Validator,
@@ -199,6 +350,26 @@ import Midgard.Validators.FraudProofs.TransitionTrace (
     transitionTraceRouteV1Validator,
     transitionTraceSourceV1Validator,
     transitionTraceWithdrawalV1Validator,
+ )
+import Midgard.Validators.FraudProofs.TransitionTraceYield qualified as TransitionYield
+import Midgard.Validators.FraudProofs.UnusedRedeemer (
+    unusedRedeemerStep01Validator,
+    unusedRedeemerStep02Validator,
+    unusedRedeemerStep02aValidator,
+    unusedRedeemerStep02bValidator,
+    unusedRedeemerStep02cValidator,
+    unusedRedeemerStep03Validator,
+    unusedRedeemerStep04Validator,
+    unusedRedeemerStep05Validator,
+    unusedRedeemerStep06Validator,
+ )
+import Midgard.Validators.FraudProofs.UnusedScriptWitness (
+    unusedScriptWitnessStep01Validator,
+    unusedScriptWitnessStep02Validator,
+    unusedScriptWitnessStep03Validator,
+    unusedScriptWitnessStep04Validator,
+    unusedScriptWitnessStep05Validator,
+    unusedScriptWitnessStep06Validator,
  )
 import Midgard.Validators.FraudProofs.ValidationTrace.AwardTimeout (
     awardV1Validator,
@@ -222,6 +393,10 @@ import Midgard.Validators.FraudProofs.ValidationTrace.CanonicalDecodePrepare (
     canonicalDecodeV1Validator,
  )
 import Midgard.Validators.FraudProofs.ValidationTrace.Cek (cekV1Validator)
+import Midgard.Validators.FraudProofs.ValidationTrace.CekCore qualified as Core
+import Midgard.Validators.FraudProofs.ValidationTrace.CekCoreArms qualified as CoreArms
+import Midgard.Validators.FraudProofs.ValidationTrace.CekCoreMaterialArms qualified as CoreMaterial
+import Midgard.Validators.FraudProofs.ValidationTrace.CekMaterialTraversal qualified as CekTraversal
 import Midgard.Validators.FraudProofs.ValidationTrace.CekSemantics (
     cekContextStepSemanticV1Validator,
     cekCoreStepSemanticV1Validator,
@@ -250,12 +425,15 @@ import Midgard.Validators.FraudProofs.ValidationTrace.LedgerDelta (
     ledgerDeltaTerminalSemanticV1Validator,
     ledgerDeltaV1Validator,
  )
+import Midgard.Validators.FraudProofs.ValidationTrace.LedgerOutputDescriptorYield qualified as OutputDescriptorYield
+import Midgard.Validators.FraudProofs.ValidationTrace.LedgerOutputProofYield qualified as OutputProofYield
 import Midgard.Validators.FraudProofs.ValidationTrace.NativeScripts (
     nativeScriptsEffectfulSemanticV1Validator,
     nativeScriptsNativeSemanticV1Validator,
     nativeScriptsTerminalSemanticV1Validator,
     nativeScriptsV1Validator,
  )
+import Midgard.Validators.FraudProofs.ValidationTrace.PhaseANativeItemYields qualified as PhaseANativeItemYields
 import Midgard.Validators.FraudProofs.ValidationTrace.PhaseANativePayloads (
     phaseANativeAllOrAnyContainerFramePayloadSemanticV1Validator,
     phaseANativeAllOrAnyEmptyContainerPayloadSemanticV1Validator,
@@ -298,12 +476,33 @@ import Midgard.Validators.FraudProofs.ValidationTrace.ScriptIntegrity (
     scriptIntegrityV1Validator,
     scriptIntegrityWitnessSetSemanticV1Validator,
  )
+import Midgard.Validators.FraudProofs.ValidationTrace.ScriptSourcesMiddleYields qualified as MiddleYields
 import Midgard.Validators.FraudProofs.ValidationTrace.ScriptSourcesRedeemerNormalization (
+    scriptSourcesRedeemerAdvanceBytesExecutorValidator,
+    scriptSourcesRedeemerAdvanceIntegerExecutorValidator,
+    scriptSourcesRedeemerAdvanceLargeConstructorExecutorValidator,
+    scriptSourcesRedeemerAdvanceLargeFieldsExecutorValidator,
+    scriptSourcesRedeemerAttachBytesExecutorValidator,
+    scriptSourcesRedeemerAttachIntegerExecutorValidator,
+    scriptSourcesRedeemerCekEnvelopeValidator,
+    scriptSourcesRedeemerCekSettlementValidator,
+    scriptSourcesRedeemerCloseExecutorValidator,
     scriptSourcesRedeemerEnvelopeV1Validator,
     scriptSourcesRedeemerExecutionSettlementV1Validator,
     scriptSourcesRedeemerFinalizeFrameExecutorV1Validator,
+    scriptSourcesRedeemerFinishDataExecutorValidator,
+    scriptSourcesRedeemerFoldListExecutorValidator,
     scriptSourcesRedeemerFoldMapExecutorV1Validator,
+    scriptSourcesRedeemerHeadLargeConstructorExecutorValidator,
+    scriptSourcesRedeemerHeadMapExecutorValidator,
+    scriptSourcesRedeemerHeadScalarExecutorValidator,
+    scriptSourcesRedeemerHeadSequenceExecutorValidator,
+    scriptSourcesRedeemerInvalidHeaderExecutorValidator,
+    scriptSourcesRedeemerInvalidTailExecutorValidator,
+    scriptSourcesRedeemerOpenHeaderExecutorValidator,
+    scriptSourcesRedeemerOpenTailExecutorValidator,
     scriptSourcesRedeemerOuterNormalizerV1Validator,
+    scriptSourcesRedeemerSourceAuthenticatorValidator,
     scriptSourcesRedeemerTraversalNormalizerV1Validator,
  )
 import Midgard.Validators.FraudProofs.ValidationTrace.ScriptSourcesStageEight (
@@ -385,6 +584,7 @@ import Midgard.Validators.FraudProofs.ValueNotPreserved (
     valueNotPreservedStep03Validator,
     valueNotPreservedStep04Validator,
  )
+import Midgard.Validators.FraudProofs.ValueUnion qualified as ValueUnion
 import Midgard.Validators.FraudProofs.WithdrawalMistag (
     withdrawalMistagStep01Validator,
     withdrawalMistagStep02Validator,
@@ -401,6 +601,12 @@ import Midgard.Validators.FraudProofs.WithdrawnReferenceInput (
     withdrawnReferenceInputStep01Validator,
     withdrawnReferenceInputStep02Validator,
     withdrawnReferenceInputStep03Validator,
+ )
+import Midgard.Validators.FraudProofs.WitnessScriptDecoding (
+    witnessScriptDecodingStep01Validator,
+    witnessScriptDecodingStep02Validator,
+    witnessScriptDecodingStep03Validator,
+    witnessScriptDecodingStep04Validator,
  )
 import Midgard.Validators.FraudProofs.ZeroInput (
     zeroInputStep01Validator,
@@ -420,14 +626,16 @@ import Midgard.Validators.RetiredOperators (
  )
 import Midgard.Validators.Scheduler (schedulerMintValidator, schedulerSpendValidator)
 import Midgard.Validators.Settlement (settlementMintValidator, settlementSpendValidator)
-import Midgard.Validators.StateQueue (stateQueueMintValidator, stateQueueSpendValidator)
+import Midgard.Validators.StateQueue (stateQueueCommitYieldValidator, stateQueueMergeYieldValidator, stateQueueMintValidator, stateQueueRemoveFraudulentYieldValidator, stateQueueRemoveUnattestedYieldValidator, stateQueueRemoveUnavailableYieldValidator, stateQueueSpendValidator)
 import Midgard.Validators.TxOrder (txOrderMintValidator, txOrderSpendValidator)
 import Midgard.Validators.Withdrawal (withdrawalMintValidator, withdrawalSpendValidator)
 import Midgard.Validators.Witness (witnessPublishValidator)
+import Midgard.ValueAssetFoldYield qualified as ValueAssetFoldYield
 import Plutarch.Internal.Term
 import Plutarch.Script (serialiseScript)
 import System.Directory (createDirectoryIfMissing)
 import System.Environment (getArgs)
+import System.FilePath (takeDirectory, takeFileName, (</>))
 import System.IO (hFlush, stdout)
 import Text.Read (readMaybe)
 
@@ -463,6 +671,7 @@ main = do
                 "midgard.da_attestation.spend.unapplied"
                 "generated/da-attestation-spend.unapplied.plutus.json"
                 daAttestationValidator
+        ["operational-yields"] -> writeOperationalYieldScripts
         ["availability-challenge"] -> do
             createDirectoryIfMissing True "generated"
             writePlutusScriptNoTrace
@@ -524,6 +733,66 @@ main = do
         ["additional-fraud-proofs"] -> do
             createDirectoryIfMissing True "generated"
             writeAdditionalFraudProofScripts
+        ["distinct-asset-accumulation-limit"] -> do
+            createDirectoryIfMissing True "generated"
+            writeDistinctAssetAccumulationLimitScripts
+        ["mint-declared-asset-limit"] -> do
+            createDirectoryIfMissing True "generated"
+            writeMintDeclaredAssetLimitScripts
+        ["witness-script-decoding"] -> do
+            createDirectoryIfMissing True "generated"
+            writeWitnessScriptDecodingScripts
+        ["output-reference-script-decoding"] -> do
+            createDirectoryIfMissing True "generated"
+            writeOutputReferenceScriptDecodingScripts
+        ["execution-source-script-decoding"] -> do
+            createDirectoryIfMissing True "generated"
+            writeExecutionSourceScriptDecodingScripts
+        ["missing-redeemer"] -> do
+            createDirectoryIfMissing True "generated"
+            writeMissingRedeemerScripts
+        ["missing-script-source"] -> do
+            createDirectoryIfMissing True "generated"
+            writeMissingScriptSourceScripts
+        ["protected-output-signer-missing"] -> do
+            createDirectoryIfMissing True "generated"
+            writeProtectedOutputSignerMissingScripts
+        ["resolved-output-non-canonical"] -> do
+            createDirectoryIfMissing True "generated"
+            writeResolvedOutputNonCanonicalScripts
+        ["spend-input-signer-missing"] -> do
+            createDirectoryIfMissing True "generated"
+            writeSpendInputSignerMissingScripts
+        ["field-item-width-illegal"] -> do
+            createDirectoryIfMissing True "generated"
+            writeFieldItemWidthIllegalScripts
+        ["field-preimage-length-mismatch"] -> do
+            createDirectoryIfMissing True "generated"
+            writeFieldPreimageLengthMismatchScripts
+        ["observers-forbidden-on-untagged-network"] -> do
+            createDirectoryIfMissing True "generated"
+            writeObserversForbiddenOnUntaggedNetworkScripts
+        ["observer-order-invalid"] -> do
+            createDirectoryIfMissing True "generated"
+            writeObserverOrderInvalidScripts
+        ["redeemer-canonicity"] -> do
+            createDirectoryIfMissing True "generated"
+            writeRedeemerCanonicityScripts
+        ["receive-purpose-language"] -> do
+            createDirectoryIfMissing True "generated"
+            writeReceivePurposeLanguageScripts
+        ["script-integrity-hash-mismatch"] -> do
+            createDirectoryIfMissing True "generated"
+            writeScriptIntegrityHashMismatchScripts
+        ["script-integrity-hash-missing"] -> do
+            createDirectoryIfMissing True "generated"
+            writeScriptIntegrityHashMissingScripts
+        ["unused-redeemer"] -> do
+            createDirectoryIfMissing True "generated"
+            writeUnusedRedeemerScripts
+        ["unused-script-witness"] -> do
+            createDirectoryIfMissing True "generated"
+            writeUnusedScriptWitnessScripts
         ["validation-trace-cek"] -> do
             createDirectoryIfMissing True "generated"
             writeValidationTraceCekSemanticScripts
@@ -550,6 +819,20 @@ main = do
         ["validation-trace-canonical-decode"] -> do
             createDirectoryIfMissing True "generated"
             writeValidationTraceCanonicalDecodeScripts
+        ["script-sources-output"] -> mapM_ (writeValidationTraceScriptSourcesEarlyScripts . Just) [9, 12]
+        ["script-sources-middle"] -> writeScriptSourcesMiddleYields >> writeValidationTraceScriptSourcesEarlyScripts (Just 8)
+        ["resolve-inputs"] -> mapM_ (writeValidationTraceInputLedgerScripts . Just) [0, 1, 2, 3, 6]
+        ["native-descriptors"] -> mapM_ (writeValidationTraceNativeScriptIntegrityScripts . Just) [0 .. 3]
+        ["phase-a-native"] -> mapM_ (writeValidationTracePhaseAScripts . Just) ([0 .. 14] <> [18, 19])
+        ["phase-a-preconditions"] -> mapM_ (writeValidationTracePhaseAScripts . Just) [15, 16, 17]
+        ["signatures-advance-handoff"] -> mapM_ (writeValidationTraceEarlyPhaseScripts . Just) [8, 9]
+        ["signatures-required-item"] -> writeValidationTraceEarlyPhaseScripts (Just 11)
+        ["shared-item"] -> writeValidationTraceScriptSourcesRedeemerScripts Nothing
+        ["cek-context"] -> writeCekContextScripts
+        ["cek-selection"] -> writeCekSelectionScripts
+        ["cek-core"] -> writeCekCoreScripts
+        ["cek-material-traversal"] -> writeCekMaterialTraversalScripts
+        ["ledger-output-proof-yields"] -> writeLedgerOutputProofYieldScripts
         ["validation-trace-input-ledger"] -> do
             createDirectoryIfMissing True "generated"
             writeValidationTraceInputLedgerScripts Nothing
@@ -597,9 +880,9 @@ main = do
             createDirectoryIfMissing True "generated"
             case readMaybe selectedIndex of
                 Just index
-                    | index >= 0 && index <= 15 ->
+                    | index >= 0 && index <= 18 ->
                         writeValidationTraceScriptSourcesLateScripts $ Just index
-                _ -> error "validation-trace-script-sources-late index must be between 0 and 15"
+                _ -> error "validation-trace-script-sources-late index must be between 0 and 18"
         ["validation-trace-script-sources-redeemer"] -> do
             createDirectoryIfMissing True "generated"
             writeValidationTraceScriptSourcesRedeemerScripts Nothing
@@ -607,9 +890,9 @@ main = do
             createDirectoryIfMissing True "generated"
             case readMaybe selectedIndex of
                 Just index
-                    | index >= 0 && index <= 5 ->
+                    | index >= 0 && index <= 26 ->
                         writeValidationTraceScriptSourcesRedeemerScripts $ Just index
-                _ -> error "validation-trace-script-sources-redeemer index must be between 0 and 5"
+                _ -> error "validation-trace-script-sources-redeemer index must be between 0 and 26"
         ["validation-trace-native-script-integrity"] -> do
             createDirectoryIfMissing True "generated"
             writeValidationTraceNativeScriptIntegrityScripts Nothing
@@ -624,6 +907,7 @@ main = do
 
 writeAllScripts :: IO ()
 writeAllScripts = do
+    writeOperationalYieldScripts
     writeMembershipScripts
     -- Unapplied: the two Aiken validator parameters (init UTxO, asset name) are
     -- still outstanding, so this is the deployable script only after
@@ -879,6 +1163,18 @@ writeAllScripts = do
         "generated/fraud-proof-missing-signature-step-04.unapplied.plutus.json"
         missingSignatureStep04Validator
     writePlutusScriptNoTrace
+        "midgard.fraud_proofs.missing_signature.forced_step.unapplied"
+        "generated/fraud-proof-missing-signature-forced-step.unapplied.plutus.json"
+        missingSignatureForcedStepValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.missing_signature.forced_signer.unapplied"
+        "generated/fraud-proof-missing-signature-forced-signer.unapplied.plutus.json"
+        missingSignatureForcedSignerValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.missing_signature.forced_witness.unapplied"
+        "generated/fraud-proof-missing-signature-forced-witness.unapplied.plutus.json"
+        missingSignatureForcedWitnessValidator
+    writePlutusScriptNoTrace
         "midgard.fraud_proofs.no_input.step_01.unapplied"
         "generated/fraud-proof-no-input-step-01.unapplied.plutus.json"
         noInputStep01Validator
@@ -1003,6 +1299,58 @@ writeAllScripts = do
         "generated/fraud-proof-value-not-preserved-step-04.unapplied.plutus.json"
         valueNotPreservedStep04Validator
     writePlutusScriptNoTrace
+        "midgard.fraud_proofs.value_not_preserved.union_accepted_source.unapplied"
+        "generated/fraud-proof-value-not-preserved-union-accepted-source.unapplied.plutus.json"
+        ValueUnion.valueUnionAcceptedSourceValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.value_not_preserved.union_forced_source.unapplied"
+        "generated/fraud-proof-value-not-preserved-union-forced-source.unapplied.plutus.json"
+        ValueUnion.valueUnionForcedSourceValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.value_not_preserved.union_event.unapplied"
+        "generated/fraud-proof-value-not-preserved-union-event.unapplied.plutus.json"
+        ValueUnion.valueUnionEventValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.value_not_preserved.union_pre_state.unapplied"
+        "generated/fraud-proof-value-not-preserved-union-pre-state.unapplied.plutus.json"
+        ValueUnion.valueUnionPreStateValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.value_not_preserved.union_inputs.unapplied"
+        "generated/fraud-proof-value-not-preserved-union-inputs.unapplied.plutus.json"
+        ValueUnion.valueUnionInputsValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.value_not_preserved.union_input_value.unapplied"
+        "generated/fraud-proof-value-not-preserved-union-input-value.unapplied.plutus.json"
+        ValueUnion.valueUnionInputValueValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.value_not_preserved.union_assets.unapplied"
+        "generated/fraud-proof-value-not-preserved-union-assets.unapplied.plutus.json"
+        ValueUnion.valueUnionAssetsValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.value_not_preserved.union_field_grammar.unapplied"
+        "generated/fraud-proof-value-not-preserved-union-field-grammar.unapplied.plutus.json"
+        ValueUnion.valueUnionFieldGrammarValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.value_not_preserved.union_outputs.unapplied"
+        "generated/fraud-proof-value-not-preserved-union-outputs.unapplied.plutus.json"
+        ValueUnion.valueUnionOutputsValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.value_not_preserved.union_output_scan.unapplied"
+        "generated/fraud-proof-value-not-preserved-union-output-scan.unapplied.plutus.json"
+        ValueUnion.valueUnionOutputScanValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.value_not_preserved.union_mint.unapplied"
+        "generated/fraud-proof-value-not-preserved-union-mint.unapplied.plutus.json"
+        ValueUnion.valueUnionMintValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.value_not_preserved.union_update.unapplied"
+        "generated/fraud-proof-value-not-preserved-union-update.unapplied.plutus.json"
+        ValueUnion.valueUnionUpdateValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.value_not_preserved.union_terminal.unapplied"
+        "generated/fraud-proof-value-not-preserved-union-terminal.unapplied.plutus.json"
+        ValueUnion.valueUnionTerminalValidator
+    writePlutusScriptNoTrace
         "midgard.fraud_proofs.withdrawal_mistag.step_01.unapplied"
         "generated/fraud-proof-withdrawal-mistag-step-01.unapplied.plutus.json"
         withdrawalMistagStep01Validator
@@ -1070,15 +1418,72 @@ writeAllScripts = do
         "midgard.fraud_proofs.transition_trace.route_v1.unapplied"
         "generated/fraud-proof-transition-trace-route-v1.unapplied.plutus.json"
         transitionTraceRouteV1Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.transition_trace.accepted_transaction_yields.l2_open.unapplied"
+        "generated/fraud-proof-transition-trace-l2-open.unapplied.plutus.json"
+        TransitionYield.l2OpenValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.transition_trace.accepted_transaction_yields.l2_replay.unapplied"
+        "generated/fraud-proof-transition-trace-l2-replay.unapplied.plutus.json"
+        TransitionYield.l2ReplayValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.transition_trace.accepted_transaction_yields.claim_structure.unapplied"
+        "generated/fraud-proof-transition-trace-claim-structure.unapplied.plutus.json"
+        TransitionYield.claimStructureValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.transition_trace.accepted_transaction_yields.claim_source.unapplied"
+        "generated/fraud-proof-transition-trace-claim-source.unapplied.plutus.json"
+        TransitionYield.claimSourceValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.transition_trace.accepted_transaction_yields.claim_endpoints.unapplied"
+        "generated/fraud-proof-transition-trace-claim-endpoints.unapplied.plutus.json"
+        TransitionYield.claimEndpointsValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.transition_trace.output_scan.scan_output.unapplied"
+        "generated/fraud-proof-transition-trace-output-scan.unapplied.plutus.json"
+        TransitionYield.outputScanValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.transition_trace.output_value.value_output.unapplied"
+        "generated/fraud-proof-transition-trace-output-value.unapplied.plutus.json"
+        TransitionYield.outputValueValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.transition_trace.output_summaries.summaries.unapplied"
+        "generated/fraud-proof-transition-trace-output-summaries.unapplied.plutus.json"
+        TransitionYield.outputSummariesValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.transition_trace.output_assembly.assembly.unapplied"
+        "generated/fraud-proof-transition-trace-output-assembly.unapplied.plutus.json"
+        TransitionYield.outputAssemblyValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.transition_trace.deposit_yields.projection.unapplied"
+        "generated/fraud-proof-transition-trace-deposit-projection.unapplied.plutus.json"
+        TransitionYield.depositProjectionValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.transition_trace.deposit_value.value_output.unapplied"
+        "generated/fraud-proof-transition-trace-deposit-value.unapplied.plutus.json"
+        TransitionYield.depositValueValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.transition_trace.deposit_summaries.summaries.unapplied"
+        "generated/fraud-proof-transition-trace-deposit-summaries.unapplied.plutus.json"
+        TransitionYield.depositSummariesValidator
     writeValidationTraceCanonicalDecodeScripts
     writeValidationTraceEarlyPhaseScripts Nothing
     writeValidationTracePhaseAScripts Nothing
     writeValidationTraceScriptSourcesEarlyScripts Nothing
+    writeScriptSourcesMiddleYields
     writeValidationTraceScriptSourcesLateScripts Nothing
     writeValidationTraceScriptSourcesRedeemerScripts Nothing
     writeValidationTraceNativeScriptIntegrityScripts Nothing
     writeValidationTraceInputLedgerScripts Nothing
+    writeLedgerOutputProofYieldScripts
+    -- The aggregate CEK writer still emits the shared semantic entry points.
+    -- Write it before the split graph so the final artifacts are the reviewed
+    -- NoTrace binder, selection and context validators below.
     writeValidationTraceResolutionScripts True
+    writeCekMaterialTraversalScripts
+    writeCekCoreScripts
+    writeCekSelectionScripts
+    writeCekContextScripts
 
 writeMembershipScripts :: IO ()
 writeMembershipScripts = do
@@ -1093,8 +1498,542 @@ writeMembershipScripts = do
         "generated/non-membership-stake.plutus.json"
         nonMembershipStakeValidator
 
+writeFieldItemWidthIllegalScripts :: IO ()
+writeFieldItemWidthIllegalScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.field_item_width_illegal.step_01.unapplied"
+        "generated/fraud-proof-field-item-width-illegal-step-01.unapplied.plutus.json"
+        fieldItemWidthIllegalStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.field_item_width_illegal.step_02.unapplied"
+        "generated/fraud-proof-field-item-width-illegal-step-02.unapplied.plutus.json"
+        fieldItemWidthIllegalStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.field_item_width_illegal.step_03.unapplied"
+        "generated/fraud-proof-field-item-width-illegal-step-03.unapplied.plutus.json"
+        fieldItemWidthIllegalStep03Validator
+
+writeFieldPreimageLengthMismatchScripts :: IO ()
+writeFieldPreimageLengthMismatchScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.field_preimage_length_mismatch.step_01.unapplied"
+        "generated/fraud-proof-field-preimage-length-mismatch-step-01.unapplied.plutus.json"
+        fieldPreimageLengthMismatchStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.field_preimage_length_mismatch.step_02_accepted.unapplied"
+        "generated/fraud-proof-field-preimage-length-mismatch-step-02-accepted.unapplied.plutus.json"
+        fieldPreimageLengthMismatchStep02AcceptedValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.field_preimage_length_mismatch.step_02_forced.unapplied"
+        "generated/fraud-proof-field-preimage-length-mismatch-step-02-forced.unapplied.plutus.json"
+        fieldPreimageLengthMismatchStep02ForcedValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.field_preimage_length_mismatch.step_03.unapplied"
+        "generated/fraud-proof-field-preimage-length-mismatch-step-03.unapplied.plutus.json"
+        fieldPreimageLengthMismatchStep03Validator
+
+writeObserversForbiddenOnUntaggedNetworkScripts :: IO ()
+writeObserversForbiddenOnUntaggedNetworkScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.observers_forbidden_on_untagged_network.step_01.unapplied"
+        "generated/fraud-proof-observers-forbidden-on-untagged-network-step-01.unapplied.plutus.json"
+        observersForbiddenOnUntaggedNetworkStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.observers_forbidden_on_untagged_network.step_02.unapplied"
+        "generated/fraud-proof-observers-forbidden-on-untagged-network-step-02.unapplied.plutus.json"
+        observersForbiddenOnUntaggedNetworkStep02Validator
+
+writeObserverOrderInvalidScripts :: IO ()
+writeObserverOrderInvalidScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.observer_order_invalid.step_01.unapplied"
+        "generated/fraud-proof-observer-order-invalid-step-01.unapplied.plutus.json"
+        observerOrderInvalidStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.observer_order_invalid.step_02.unapplied"
+        "generated/fraud-proof-observer-order-invalid-step-02.unapplied.plutus.json"
+        observerOrderInvalidStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.observer_order_invalid.step_03.unapplied"
+        "generated/fraud-proof-observer-order-invalid-step-03.unapplied.plutus.json"
+        observerOrderInvalidStep03Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.observer_order_invalid.step_04.unapplied"
+        "generated/fraud-proof-observer-order-invalid-step-04.unapplied.plutus.json"
+        observerOrderInvalidStep04Validator
+
+writeRedeemerCanonicityScripts :: IO ()
+writeRedeemerCanonicityScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.redeemer_canonicity.step_01.unapplied"
+        "generated/fraud-proof-redeemer-canonicity-step-01.unapplied.plutus.json"
+        redeemerCanonicityStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.redeemer_canonicity.step_02.unapplied"
+        "generated/fraud-proof-redeemer-canonicity-step-02.unapplied.plutus.json"
+        redeemerCanonicityStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.redeemer_canonicity.step_03.unapplied"
+        "generated/fraud-proof-redeemer-canonicity-step-03.unapplied.plutus.json"
+        redeemerCanonicityStep03Validator
+
+writeScriptIntegrityHashMismatchScripts :: IO ()
+writeScriptIntegrityHashMismatchScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.script_integrity_hash_mismatch.step_01.unapplied"
+        "generated/fraud-proof-script-integrity-hash-mismatch-step-01.unapplied.plutus.json"
+        scriptIntegrityHashMismatchStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.script_integrity_hash_mismatch.step_02.unapplied"
+        "generated/fraud-proof-script-integrity-hash-mismatch-step-02.unapplied.plutus.json"
+        scriptIntegrityHashMismatchStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.script_integrity_hash_mismatch.step_03.unapplied"
+        "generated/fraud-proof-script-integrity-hash-mismatch-step-03.unapplied.plutus.json"
+        scriptIntegrityHashMismatchStep03Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.script_integrity_hash_mismatch.step_04.unapplied"
+        "generated/fraud-proof-script-integrity-hash-mismatch-step-04.unapplied.plutus.json"
+        scriptIntegrityHashMismatchStep04Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.script_integrity_hash_mismatch.step_05.unapplied"
+        "generated/fraud-proof-script-integrity-hash-mismatch-step-05.unapplied.plutus.json"
+        scriptIntegrityHashMismatchStep05Validator
+
+writeScriptIntegrityHashMissingScripts :: IO ()
+writeScriptIntegrityHashMissingScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.script_integrity_hash_missing.step_01.unapplied"
+        "generated/fraud-proof-script-integrity-hash-missing-step-01.unapplied.plutus.json"
+        scriptIntegrityHashMissingStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.script_integrity_hash_missing.step_02.unapplied"
+        "generated/fraud-proof-script-integrity-hash-missing-step-02.unapplied.plutus.json"
+        scriptIntegrityHashMissingStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.script_integrity_hash_missing.step_03.unapplied"
+        "generated/fraud-proof-script-integrity-hash-missing-step-03.unapplied.plutus.json"
+        scriptIntegrityHashMissingStep03Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.script_integrity_hash_missing.script_grammar.unapplied"
+        "generated/fraud-proof-script-integrity-hash-missing-script-grammar.unapplied.plutus.json"
+        scriptIntegrityHashMissingScriptGrammarValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.script_integrity_hash_missing.script_scan.unapplied"
+        "generated/fraud-proof-script-integrity-hash-missing-script-scan.unapplied.plutus.json"
+        scriptIntegrityHashMissingScriptScanValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.script_integrity_hash_missing.redeemer_grammar.unapplied"
+        "generated/fraud-proof-script-integrity-hash-missing-redeemer-grammar.unapplied.plutus.json"
+        scriptIntegrityHashMissingRedeemerGrammarValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.script_integrity_hash_missing.step_04.unapplied"
+        "generated/fraud-proof-script-integrity-hash-missing-step-04.unapplied.plutus.json"
+        scriptIntegrityHashMissingStep04Validator
+
+writeReceivePurposeLanguageScripts :: IO ()
+writeReceivePurposeLanguageScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.receive_purpose_language.step_01.unapplied"
+        "generated/fraud-proof-receive-purpose-language-step-01.unapplied.plutus.json"
+        receivePurposeLanguageStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.receive_purpose_language.step_02.unapplied"
+        "generated/fraud-proof-receive-purpose-language-step-02.unapplied.plutus.json"
+        receivePurposeLanguageStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.receive_purpose_language.step_03.unapplied"
+        "generated/fraud-proof-receive-purpose-language-step-03.unapplied.plutus.json"
+        receivePurposeLanguageStep03Validator
+
+writeDistinctAssetAccumulationLimitScripts :: IO ()
+writeDistinctAssetAccumulationLimitScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.distinct_asset_accumulation_limit.step_01.unapplied"
+        "generated/fraud-proof-distinct-asset-accumulation-limit-step-01.unapplied.plutus.json"
+        distinctAssetAccumulationLimitStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.distinct_asset_accumulation_limit.step_02.unapplied"
+        "generated/fraud-proof-distinct-asset-accumulation-limit-step-02.unapplied.plutus.json"
+        distinctAssetAccumulationLimitStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.distinct_asset_accumulation_limit.step_03.unapplied"
+        "generated/fraud-proof-distinct-asset-accumulation-limit-step-03.unapplied.plutus.json"
+        distinctAssetAccumulationLimitStep03Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.distinct_asset_accumulation_limit.step_04.unapplied"
+        "generated/fraud-proof-distinct-asset-accumulation-limit-step-04.unapplied.plutus.json"
+        distinctAssetAccumulationLimitStep04Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.distinct_asset_accumulation_limit.step_05.unapplied"
+        "generated/fraud-proof-distinct-asset-accumulation-limit-step-05.unapplied.plutus.json"
+        distinctAssetAccumulationLimitStep05Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.distinct_asset_accumulation_limit.step_06.unapplied"
+        "generated/fraud-proof-distinct-asset-accumulation-limit-step-06.unapplied.plutus.json"
+        distinctAssetAccumulationLimitStep06Validator
+
+writeMintDeclaredAssetLimitScripts :: IO ()
+writeMintDeclaredAssetLimitScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.mint_declared_asset_limit.step_01.unapplied"
+        "generated/fraud-proof-mint-declared-asset-limit-step-01.unapplied.plutus.json"
+        mintDeclaredAssetLimitStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.mint_declared_asset_limit.step_02.unapplied"
+        "generated/fraud-proof-mint-declared-asset-limit-step-02.unapplied.plutus.json"
+        mintDeclaredAssetLimitStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.mint_declared_asset_limit.step_03.unapplied"
+        "generated/fraud-proof-mint-declared-asset-limit-step-03.unapplied.plutus.json"
+        mintDeclaredAssetLimitStep03Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.mint_declared_asset_limit.step_04.unapplied"
+        "generated/fraud-proof-mint-declared-asset-limit-step-04.unapplied.plutus.json"
+        mintDeclaredAssetLimitStep04Validator
+
+writeWitnessScriptDecodingScripts :: IO ()
+writeWitnessScriptDecodingScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.witness_script_decoding.step_01.unapplied"
+        "generated/fraud-proof-witness-script-decoding-step-01.unapplied.plutus.json"
+        witnessScriptDecodingStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.witness_script_decoding.step_02.unapplied"
+        "generated/fraud-proof-witness-script-decoding-step-02.unapplied.plutus.json"
+        witnessScriptDecodingStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.witness_script_decoding.step_03.unapplied"
+        "generated/fraud-proof-witness-script-decoding-step-03.unapplied.plutus.json"
+        witnessScriptDecodingStep03Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.witness_script_decoding.step_04.unapplied"
+        "generated/fraud-proof-witness-script-decoding-step-04.unapplied.plutus.json"
+        witnessScriptDecodingStep04Validator
+
+writeOutputReferenceScriptDecodingScripts :: IO ()
+writeOutputReferenceScriptDecodingScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.output_reference_script_decoding.step_01.unapplied"
+        "generated/fraud-proof-output-reference-script-decoding-step-01.unapplied.plutus.json"
+        outputReferenceScriptDecodingStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.output_reference_script_decoding.step_02.unapplied"
+        "generated/fraud-proof-output-reference-script-decoding-step-02.unapplied.plutus.json"
+        outputReferenceScriptDecodingStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.output_reference_script_decoding.step_03.unapplied"
+        "generated/fraud-proof-output-reference-script-decoding-step-03.unapplied.plutus.json"
+        outputReferenceScriptDecodingStep03Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.output_reference_script_decoding.step_04.unapplied"
+        "generated/fraud-proof-output-reference-script-decoding-step-04.unapplied.plutus.json"
+        outputReferenceScriptDecodingStep04Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.output_reference_script_decoding.step_05.unapplied"
+        "generated/fraud-proof-output-reference-script-decoding-step-05.unapplied.plutus.json"
+        outputReferenceScriptDecodingStep05Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.output_reference_script_decoding.step_06.unapplied"
+        "generated/fraud-proof-output-reference-script-decoding-step-06.unapplied.plutus.json"
+        outputReferenceScriptDecodingStep06Validator
+
+writeExecutionSourceScriptDecodingScripts :: IO ()
+writeExecutionSourceScriptDecodingScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.execution_source_script_decoding.step_01.unapplied"
+        "generated/fraud-proof-execution-source-script-decoding-step-01.unapplied.plutus.json"
+        executionSourceScriptDecodingStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.execution_source_script_decoding.step_02.unapplied"
+        "generated/fraud-proof-execution-source-script-decoding-step-02.unapplied.plutus.json"
+        executionSourceScriptDecodingStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.execution_source_script_decoding.step_03.unapplied"
+        "generated/fraud-proof-execution-source-script-decoding-step-03.unapplied.plutus.json"
+        executionSourceScriptDecodingStep03Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.execution_source_script_decoding.step_04.unapplied"
+        "generated/fraud-proof-execution-source-script-decoding-step-04.unapplied.plutus.json"
+        executionSourceScriptDecodingStep04Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.execution_source_script_decoding.step_05.unapplied"
+        "generated/fraud-proof-execution-source-script-decoding-step-05.unapplied.plutus.json"
+        executionSourceScriptDecodingStep05Validator
+
+writeExecutionNativeScriptInvalidScripts :: IO ()
+writeExecutionNativeScriptInvalidScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.execution_native_script_invalid.accepted_inline_source.unapplied"
+        "generated/fraud-proof-execution-native-script-invalid-accepted-inline-source.unapplied.plutus.json"
+        executionNativeScriptInvalidAcceptedInlineSourceValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.execution_native_script_invalid.accepted_reference_source.unapplied"
+        "generated/fraud-proof-execution-native-script-invalid-accepted-reference-source.unapplied.plutus.json"
+        executionNativeScriptInvalidAcceptedReferenceSourceValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.execution_native_script_invalid.accepted_spend_prefix.unapplied"
+        "generated/fraud-proof-execution-native-script-invalid-accepted-spend-prefix.unapplied.plutus.json"
+        executionNativeScriptInvalidAcceptedSpendPrefixValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.execution_native_script_invalid.accepted_mint_prefix.unapplied"
+        "generated/fraud-proof-execution-native-script-invalid-accepted-mint-prefix.unapplied.plutus.json"
+        executionNativeScriptInvalidAcceptedMintPrefixValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.execution_native_script_invalid.accepted_observer_prefix.unapplied"
+        "generated/fraud-proof-execution-native-script-invalid-accepted-observer-prefix.unapplied.plutus.json"
+        executionNativeScriptInvalidAcceptedObserverPrefixValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.execution_native_script_invalid.accepted_receive_prefix.unapplied"
+        "generated/fraud-proof-execution-native-script-invalid-accepted-receive-prefix.unapplied.plutus.json"
+        executionNativeScriptInvalidAcceptedReceivePrefixValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.execution_native_script_invalid.accepted_reconstruction_init.unapplied"
+        "generated/fraud-proof-execution-native-script-invalid-accepted-reconstruction-init.unapplied.plutus.json"
+        executionNativeScriptInvalidAcceptedReconstructionInitValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.execution_native_script_invalid.step_01.unapplied"
+        "generated/fraud-proof-execution-native-script-invalid-step-01.unapplied.plutus.json"
+        executionNativeScriptInvalidStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.execution_native_script_invalid.step_02.unapplied"
+        "generated/fraud-proof-execution-native-script-invalid-step-02.unapplied.plutus.json"
+        executionNativeScriptInvalidStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.execution_native_script_invalid.step_03.unapplied"
+        "generated/fraud-proof-execution-native-script-invalid-step-03.unapplied.plutus.json"
+        executionNativeScriptInvalidStep03Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.execution_native_script_invalid.step_04.unapplied"
+        "generated/fraud-proof-execution-native-script-invalid-step-04.unapplied.plutus.json"
+        executionNativeScriptInvalidStep04Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.execution_native_script_invalid.step_05.unapplied"
+        "generated/fraud-proof-execution-native-script-invalid-step-05.unapplied.plutus.json"
+        executionNativeScriptInvalidStep05Validator
+    -- Retain all constructor fields: used-field analysis miscompiles this
+    -- staged evaluator's resumed scan/finalize redeemers (covered by the emulator).
+    writePlutusScriptAllFieldsNoTrace
+        "midgard.fraud_proofs.execution_native_script_invalid.step_06.unapplied"
+        "generated/fraud-proof-execution-native-script-invalid-step-06.unapplied.plutus.json"
+        executionNativeScriptInvalidStep06Validator
+
+writeMissingRedeemerScripts :: IO ()
+writeMissingRedeemerScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.missing_redeemer.step_01.unapplied"
+        "generated/fraud-proof-missing-redeemer-step-01.unapplied.plutus.json"
+        missingRedeemerStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.missing_redeemer.step_02.unapplied"
+        "generated/fraud-proof-missing-redeemer-step-02.unapplied.plutus.json"
+        missingRedeemerStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.missing_redeemer.step_02a.unapplied"
+        "generated/fraud-proof-missing-redeemer-step-02a.unapplied.plutus.json"
+        missingRedeemerStep02aValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.missing_redeemer.step_02b.unapplied"
+        "generated/fraud-proof-missing-redeemer-step-02b.unapplied.plutus.json"
+        missingRedeemerStep02bValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.missing_redeemer.step_03.unapplied"
+        "generated/fraud-proof-missing-redeemer-step-03.unapplied.plutus.json"
+        missingRedeemerStep03Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.missing_redeemer.step_04.unapplied"
+        "generated/fraud-proof-missing-redeemer-step-04.unapplied.plutus.json"
+        missingRedeemerStep04Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.missing_redeemer.step_05.unapplied"
+        "generated/fraud-proof-missing-redeemer-step-05.unapplied.plutus.json"
+        missingRedeemerStep05Validator
+
+writeUnusedRedeemerScripts :: IO ()
+writeUnusedRedeemerScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.unused_redeemer.step_01.unapplied"
+        "generated/fraud-proof-unused-redeemer-step-01.unapplied.plutus.json"
+        unusedRedeemerStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.unused_redeemer.step_02.unapplied"
+        "generated/fraud-proof-unused-redeemer-step-02.unapplied.plutus.json"
+        unusedRedeemerStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.unused_redeemer.step_02a.unapplied"
+        "generated/fraud-proof-unused-redeemer-step-02a.unapplied.plutus.json"
+        unusedRedeemerStep02aValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.unused_redeemer.step_02b.unapplied"
+        "generated/fraud-proof-unused-redeemer-step-02b.unapplied.plutus.json"
+        unusedRedeemerStep02bValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.unused_redeemer.step_02c.unapplied"
+        "generated/fraud-proof-unused-redeemer-step-02c.unapplied.plutus.json"
+        unusedRedeemerStep02cValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.unused_redeemer.step_03.unapplied"
+        "generated/fraud-proof-unused-redeemer-step-03.unapplied.plutus.json"
+        unusedRedeemerStep03Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.unused_redeemer.step_04.unapplied"
+        "generated/fraud-proof-unused-redeemer-step-04.unapplied.plutus.json"
+        unusedRedeemerStep04Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.unused_redeemer.step_05.unapplied"
+        "generated/fraud-proof-unused-redeemer-step-05.unapplied.plutus.json"
+        unusedRedeemerStep05Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.unused_redeemer.step_06.unapplied"
+        "generated/fraud-proof-unused-redeemer-step-06.unapplied.plutus.json"
+        unusedRedeemerStep06Validator
+
+writeUnusedScriptWitnessScripts :: IO ()
+writeUnusedScriptWitnessScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.unused_script_witness.step_01.unapplied"
+        "generated/fraud-proof-unused-script-witness-step-01.unapplied.plutus.json"
+        unusedScriptWitnessStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.unused_script_witness.step_02.unapplied"
+        "generated/fraud-proof-unused-script-witness-step-02.unapplied.plutus.json"
+        unusedScriptWitnessStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.unused_script_witness.step_03.unapplied"
+        "generated/fraud-proof-unused-script-witness-step-03.unapplied.plutus.json"
+        unusedScriptWitnessStep03Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.unused_script_witness.step_04.unapplied"
+        "generated/fraud-proof-unused-script-witness-step-04.unapplied.plutus.json"
+        unusedScriptWitnessStep04Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.unused_script_witness.step_05.unapplied"
+        "generated/fraud-proof-unused-script-witness-step-05.unapplied.plutus.json"
+        unusedScriptWitnessStep05Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.unused_script_witness.step_06.unapplied"
+        "generated/fraud-proof-unused-script-witness-step-06.unapplied.plutus.json"
+        unusedScriptWitnessStep06Validator
+
+writeMissingScriptSourceScripts :: IO ()
+writeMissingScriptSourceScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.missing_script_source.step_01.unapplied"
+        "generated/fraud-proof-missing-script-source-step-01.unapplied.plutus.json"
+        missingScriptSourceStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.missing_script_source.step_02.unapplied"
+        "generated/fraud-proof-missing-script-source-step-02.unapplied.plutus.json"
+        missingScriptSourceStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.missing_script_source.step_03.unapplied"
+        "generated/fraud-proof-missing-script-source-step-03.unapplied.plutus.json"
+        missingScriptSourceStep03Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.missing_script_source.step_04.unapplied"
+        "generated/fraud-proof-missing-script-source-step-04.unapplied.plutus.json"
+        missingScriptSourceStep04Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.missing_script_source.step_05.unapplied"
+        "generated/fraud-proof-missing-script-source-step-05.unapplied.plutus.json"
+        missingScriptSourceStep05Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.missing_script_source.step_06.unapplied"
+        "generated/fraud-proof-missing-script-source-step-06.unapplied.plutus.json"
+        missingScriptSourceStep06Validator
+
+writeProtectedOutputSignerMissingScripts :: IO ()
+writeProtectedOutputSignerMissingScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.protected_output_signer_missing.step_01.unapplied"
+        "generated/fraud-proof-protected-output-signer-missing-step-01.unapplied.plutus.json"
+        protectedOutputSignerMissingStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.protected_output_signer_missing.step_02.unapplied"
+        "generated/fraud-proof-protected-output-signer-missing-step-02.unapplied.plutus.json"
+        protectedOutputSignerMissingStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.protected_output_signer_missing.step_03.unapplied"
+        "generated/fraud-proof-protected-output-signer-missing-step-03.unapplied.plutus.json"
+        protectedOutputSignerMissingStep03Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.protected_output_signer_missing.step_04.unapplied"
+        "generated/fraud-proof-protected-output-signer-missing-step-04.unapplied.plutus.json"
+        protectedOutputSignerMissingStep04Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.protected_output_signer_missing.step_05.unapplied"
+        "generated/fraud-proof-protected-output-signer-missing-step-05.unapplied.plutus.json"
+        protectedOutputSignerMissingStep05Validator
+
+writeResolvedOutputNonCanonicalScripts :: IO ()
+writeResolvedOutputNonCanonicalScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.resolved_output_non_canonical.step_01.unapplied"
+        "generated/fraud-proof-resolved-output-non-canonical-step-01.unapplied.plutus.json"
+        resolvedOutputNonCanonicalStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.resolved_output_non_canonical.step_02.unapplied"
+        "generated/fraud-proof-resolved-output-non-canonical-step-02.unapplied.plutus.json"
+        resolvedOutputNonCanonicalStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.resolved_output_non_canonical.step_03.unapplied"
+        "generated/fraud-proof-resolved-output-non-canonical-step-03.unapplied.plutus.json"
+        resolvedOutputNonCanonicalStep03Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.resolved_output_non_canonical.step_04.unapplied"
+        "generated/fraud-proof-resolved-output-non-canonical-step-04.unapplied.plutus.json"
+        resolvedOutputNonCanonicalStep04Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.resolved_output_non_canonical.step_05.unapplied"
+        "generated/fraud-proof-resolved-output-non-canonical-step-05.unapplied.plutus.json"
+        resolvedOutputNonCanonicalStep05Validator
+
+writeSpendInputSignerMissingScripts :: IO ()
+writeSpendInputSignerMissingScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.spend_input_signer_missing.step_01.unapplied"
+        "generated/fraud-proof-spend-input-signer-missing-step-01.unapplied.plutus.json"
+        spendInputSignerMissingStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.spend_input_signer_missing.step_02.unapplied"
+        "generated/fraud-proof-spend-input-signer-missing-step-02.unapplied.plutus.json"
+        spendInputSignerMissingStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.spend_input_signer_missing.step_03.unapplied"
+        "generated/fraud-proof-spend-input-signer-missing-step-03.unapplied.plutus.json"
+        spendInputSignerMissingStep03Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.spend_input_signer_missing.step_04.unapplied"
+        "generated/fraud-proof-spend-input-signer-missing-step-04.unapplied.plutus.json"
+        spendInputSignerMissingStep04Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.spend_input_signer_missing.step_05.unapplied"
+        "generated/fraud-proof-spend-input-signer-missing-step-05.unapplied.plutus.json"
+        spendInputSignerMissingStep05Validator
+
 writeAdditionalFraudProofScripts :: IO ()
 writeAdditionalFraudProofScripts = do
+    writeFieldItemWidthIllegalScripts
+    writeFieldPreimageLengthMismatchScripts
+    writeObserversForbiddenOnUntaggedNetworkScripts
+    writeObserverOrderInvalidScripts
+    writeRedeemerCanonicityScripts
+    writeDistinctAssetAccumulationLimitScripts
+    writeMintDeclaredAssetLimitScripts
+    writeWitnessScriptDecodingScripts
+    writeOutputReferenceScriptDecodingScripts
+    writeExecutionNativeScriptInvalidScripts
+    writeExecutionSourceScriptDecodingScripts
+    writeMissingRedeemerScripts
+    writeUnusedRedeemerScripts
+    writeUnusedScriptWitnessScripts
+    writeMissingScriptSourceScripts
+    writeScriptIntegrityHashMissingScripts
+    writeProtectedOutputSignerMissingScripts
+    writeResolvedOutputNonCanonicalScripts
+    writeSpendInputSignerMissingScripts
+    writeReceivePurposeLanguageScripts
+    writeScriptIntegrityHashMismatchScripts
     writePlutusScriptNoTrace
         "midgard.fraud_proofs.mpf_chunked_proof.challenge.unapplied"
         "generated/fraud-proof-mpf-chunked-proof-challenge.unapplied.plutus.json"
@@ -1172,6 +2111,14 @@ writeAdditionalFraudProofScripts = do
         "generated/fraud-proof-input-set-uniqueness-step-02.unapplied.plutus.json"
         inputSetUniquenessStep02Validator
     writePlutusScriptNoTrace
+        "midgard.fraud_proofs.input_set_uniqueness.step_03.unapplied"
+        "generated/fraud-proof-input-set-uniqueness-step-03.unapplied.plutus.json"
+        inputSetUniquenessStep03Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.input_set_uniqueness.step_04.unapplied"
+        "generated/fraud-proof-input-set-uniqueness-step-04.unapplied.plutus.json"
+        inputSetUniquenessStep04Validator
+    writePlutusScriptNoTrace
         "midgard.fraud_proofs.l2_tx_mistag.step_01.unapplied"
         "generated/fraud-proof-l2-tx-mistag-step-01.unapplied.plutus.json"
         l2TxMistagStep01Validator
@@ -1200,6 +2147,14 @@ writeAdditionalFraudProofScripts = do
         "midgard.fraud_proofs.mint_authorization.step_05.unapplied"
         "generated/fraud-proof-mint-authorization-step-05.unapplied.plutus.json"
         mintAuthorizationStep05Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.mint_authorization.evaluate.unapplied"
+        "generated/fraud-proof-mint-authorization-evaluate.unapplied.plutus.json"
+        mintAuthorizationEvaluateValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.mint_authorization.witness_scan.unapplied"
+        "generated/fraud-proof-mint-authorization-witness-scan.unapplied.plutus.json"
+        mintAuthorizationWitnessScanValidator
     writePlutusScriptNoTrace
         "midgard.fraud_proofs.native_script_decoding.step_01.unapplied"
         "generated/fraud-proof-native-script-decoding-step-01.unapplied.plutus.json"
@@ -1240,10 +2195,28 @@ writeAdditionalFraudProofScripts = do
         "midgard.fraud_proofs.native_script_invalid.step_04.unapplied"
         "generated/fraud-proof-native-script-invalid-step-04.unapplied.plutus.json"
         nativeScriptInvalidStep04Validator
-    writePlutusScriptNoTrace
+    -- Retain all constructor fields: used-field analysis miscompiles this
+    -- staged evaluator's scan/finalize redeemers (covered by the emulator).
+    writePlutusScriptAllFieldsNoTrace
         "midgard.fraud_proofs.native_script_invalid.step_05.unapplied"
         "generated/fraud-proof-native-script-invalid-step-05.unapplied.plutus.json"
         nativeScriptInvalidStep05Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.transaction_output_non_canonical.step_01.unapplied"
+        "generated/fraud-proof-transaction-output-non-canonical-step-01.unapplied.plutus.json"
+        transactionOutputNonCanonicalStep01Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.transaction_output_non_canonical.step_02.unapplied"
+        "generated/fraud-proof-transaction-output-non-canonical-step-02.unapplied.plutus.json"
+        transactionOutputNonCanonicalStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.transaction_output_non_canonical.step_03.unapplied"
+        "generated/fraud-proof-transaction-output-non-canonical-step-03.unapplied.plutus.json"
+        transactionOutputNonCanonicalStep03Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.transaction_output_non_canonical.step_04.unapplied"
+        "generated/fraud-proof-transaction-output-non-canonical-step-04.unapplied.plutus.json"
+        transactionOutputNonCanonicalStep04Validator
     writePlutusScriptNoTrace
         "midgard.fraud_proofs.network_id.step_01.unapplied"
         "generated/fraud-proof-network-id-step-01.unapplied.plutus.json"
@@ -1252,6 +2225,14 @@ writeAdditionalFraudProofScripts = do
         "midgard.fraud_proofs.network_id.step_02.unapplied"
         "generated/fraud-proof-network-id-step-02.unapplied.plutus.json"
         networkIdStep02Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.network_id.forced_step.unapplied"
+        "generated/fraud-proof-network-id-forced-step.unapplied.plutus.json"
+        networkIdForcedStepValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.network_id.forced_scan.unapplied"
+        "generated/fraud-proof-network-id-forced-scan.unapplied.plutus.json"
+        networkIdForcedScanValidator
     writePlutusScriptNoTrace
         "midgard.fraud_proofs.withdrawn_input.step_01.unapplied"
         "generated/fraud-proof-withdrawn-input-step-01.unapplied.plutus.json"
@@ -1458,6 +2439,17 @@ writeValidationTracePhaseAScripts selectedIndex = do
             "generated/fraud-proof-validation-trace-phase-a-script-preconditions-item-semantic-v1.unapplied.plutus.json"
             phaseAScriptPreconditionsItemSemanticV1Validator
 
+    writeAt 18 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.phase_a_native_scripts_item_yields.native.unapplied"
+            "generated/fraud-proof-validation-trace-phase-a-native-scripts-item-native-yield.unapplied.plutus.json"
+            PhaseANativeItemYields.nativeValidator
+    writeAt 19 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.phase_a_native_scripts_item_yields.foreign.unapplied"
+            "generated/fraud-proof-validation-trace-phase-a-native-scripts-item-foreign-yield.unapplied.plutus.json"
+            PhaseANativeItemYields.foreignValidator
+
 writeValidationTraceScriptSourcesEarlyScripts :: Maybe Int -> IO ()
 writeValidationTraceScriptSourcesEarlyScripts selectedIndex = do
     let writeAt index action = when (maybe True (== index) selectedIndex) action
@@ -1610,6 +2602,21 @@ writeValidationTraceScriptSourcesLateScripts selectedIndex = do
             "midgard.fraud_proofs.validation_trace.script_sources_stage_twelve_redeemer_semantic_v1.unapplied"
             "generated/fraud-proof-validation-trace-script-sources-stage-twelve-redeemer-semantic-v1.unapplied.plutus.json"
             scriptSourcesStageTwelveRedeemerSemanticV1Validator
+    writeAt 16 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_seven_observer_item_yield_v1.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-seven-observer-item-yield-v1.unapplied.plutus.json"
+            observerItemValidator
+    writeAt 17 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_seven_observer_bound_yield_v1.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-seven-observer-bound-yield-v1.unapplied.plutus.json"
+            observerBoundValidator
+    writeAt 18 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_redeemer_item_step_yield_v1.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-redeemer-item-step-yield-v1.unapplied.plutus.json"
+            redeemerItemStepValidator
 
 writeValidationTraceScriptSourcesRedeemerScripts :: Maybe Int -> IO ()
 writeValidationTraceScriptSourcesRedeemerScripts selectedIndex = do
@@ -1644,6 +2651,112 @@ writeValidationTraceScriptSourcesRedeemerScripts selectedIndex = do
             "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_execution_settlement_v1.unapplied"
             "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-execution-settlement-v1.unapplied.plutus.json"
             scriptSourcesRedeemerExecutionSettlementV1Validator
+    writeAt 6 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_cek_envelope.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-cek-envelope.unapplied.plutus.json"
+            scriptSourcesRedeemerCekEnvelopeValidator
+    writeAt 7 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_cek_settlement.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-cek-settlement.unapplied.plutus.json"
+            scriptSourcesRedeemerCekSettlementValidator
+    writeAt 8 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_source_authenticator.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-source-authenticator.unapplied.plutus.json"
+            scriptSourcesRedeemerSourceAuthenticatorValidator
+    writeAt 9 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_open_header_executor.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-open-header-executor.unapplied.plutus.json"
+            scriptSourcesRedeemerOpenHeaderExecutorValidator
+    writeAt 10 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_open_tail_executor.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-open-tail-executor.unapplied.plutus.json"
+            scriptSourcesRedeemerOpenTailExecutorValidator
+    writeAt 11 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_head_scalar_executor.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-head-scalar-executor.unapplied.plutus.json"
+            scriptSourcesRedeemerHeadScalarExecutorValidator
+    writeAt 12 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_head_sequence_executor.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-head-sequence-executor.unapplied.plutus.json"
+            scriptSourcesRedeemerHeadSequenceExecutorValidator
+    writeAt 13 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_head_map_executor.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-head-map-executor.unapplied.plutus.json"
+            scriptSourcesRedeemerHeadMapExecutorValidator
+    writeAt 14 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_head_large_constructor_executor.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-head-large-constructor-executor.unapplied.plutus.json"
+            scriptSourcesRedeemerHeadLargeConstructorExecutorValidator
+    writeAt 15 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_attach_integer_executor.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-attach-integer-executor.unapplied.plutus.json"
+            scriptSourcesRedeemerAttachIntegerExecutorValidator
+    writeAt 16 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_attach_bytes_executor.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-attach-bytes-executor.unapplied.plutus.json"
+            scriptSourcesRedeemerAttachBytesExecutorValidator
+    writeAt 17 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_fold_list_executor.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-fold-list-executor.unapplied.plutus.json"
+            scriptSourcesRedeemerFoldListExecutorValidator
+    writeAt 18 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_advance_integer_executor.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-advance-integer-executor.unapplied.plutus.json"
+            scriptSourcesRedeemerAdvanceIntegerExecutorValidator
+    writeAt 19 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_advance_bytes_executor.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-advance-bytes-executor.unapplied.plutus.json"
+            scriptSourcesRedeemerAdvanceBytesExecutorValidator
+    writeAt 20 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_advance_large_constructor_executor.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-advance-large-constructor-executor.unapplied.plutus.json"
+            scriptSourcesRedeemerAdvanceLargeConstructorExecutorValidator
+    writeAt 21 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_advance_large_fields_executor.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-advance-large-fields-executor.unapplied.plutus.json"
+            scriptSourcesRedeemerAdvanceLargeFieldsExecutorValidator
+    writeAt 22 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_close_executor.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-close-executor.unapplied.plutus.json"
+            scriptSourcesRedeemerCloseExecutorValidator
+    writeAt 23 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_finish_data_executor.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-finish-data-executor.unapplied.plutus.json"
+            scriptSourcesRedeemerFinishDataExecutorValidator
+    writeAt 24 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_invalid_header_executor.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-invalid-header-executor.unapplied.plutus.json"
+            scriptSourcesRedeemerInvalidHeaderExecutorValidator
+    writeAt 25 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_invalid_tail_executor.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-invalid-tail-executor.unapplied.plutus.json"
+            scriptSourcesRedeemerInvalidTailExecutorValidator
+
+    writeAt 26 $
+        writePlutusScriptNoTrace
+            "midgard.fraud_proofs.validation_trace.script_sources_stage_one_redeemer_semantic_v1.unapplied"
+            "generated/fraud-proof-validation-trace-script-sources-stage-one-redeemer-semantic-v1.unapplied.plutus.json"
+            scriptSourcesStageOneRedeemerSemanticV1Validator
 
 writeValidationTraceNativeScriptIntegrityScripts :: Maybe Int -> IO ()
 writeValidationTraceNativeScriptIntegrityScripts selectedIndex = do
@@ -1862,6 +2975,10 @@ writeValidationTraceValueAndMintSemanticScripts = do
         "midgard.fraud_proofs.validation_trace.value_and_mint_finalize_semantic_v1.unapplied"
         "generated/fraud-proof-validation-trace-value-and-mint-finalize-semantic-v1.unapplied.plutus.json"
         valueAndMintFinalizeSemanticV1Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.value_and_mint_asset_fold_yield.unapplied"
+        "generated/fraud-proof-validation-trace-value-and-mint-asset-fold-yield.unapplied.plutus.json"
+        ValueAssetFoldYield.validator
 
 writeValidationTraceCekSemanticScripts :: IO ()
 writeValidationTraceCekSemanticScripts = do
@@ -1926,6 +3043,14 @@ writeMinAdaScripts = do
         "midgard.fraud_proofs.min_ada.step_05.unapplied"
         "generated/fraud-proof-min-ada-step-05.unapplied.plutus.json"
         minAdaStep05Validator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.min_ada.step_02_yields.tx.unapplied"
+        "generated/fraud-proof-min-ada-tx-yield.unapplied.plutus.json"
+        minAdaTxYieldValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.min_ada.step_02_yields.utxo.unapplied"
+        "generated/fraud-proof-min-ada-utxo-yield.unapplied.plutus.json"
+        minAdaUtxoYieldValidator
 
 -- NOTE: write the *compiled* script directly (like the applied-script export
 -- path does via tryCompile). The previous implementation wrote the
@@ -1952,9 +3077,10 @@ writePlutusScriptWithInternalConfig internalConfig cfg title filepath term = do
                     scriptType = "PlutusScriptV3" :: String
                     plutusJson = object ["type" .= scriptType, "description" .= title, "cborHex" .= encodeSerialiseCBOR script]
                     content = encodePretty plutusJson
-                let outputPath = if environmentName == "testnet"
-                        then "generated/testnet" </> takeFileName filepath
-                        else filepath
+                let outputPath =
+                        if environmentName == "testnet"
+                            then "generated/testnet" </> takeFileName filepath
+                            else filepath
                 createDirectoryIfMissing True (takeDirectory outputPath)
                 LBS.writeFile outputPath content
                 putStrLn $ "Wrote " <> outputPath
@@ -1973,3 +3099,502 @@ artifacts from taking hours to compile or exhausting the generator process.
 writePlutusScriptAllFieldsNoTrace :: String -> FilePath -> (forall s. Term s a) -> IO ()
 writePlutusScriptAllFieldsNoTrace =
     writePlutusScriptWithInternalConfig (InternalConfig False False) NoTracing
+
+-- | Arm-specific withdrawals, with unapplied target deployment parameters.
+writeOperationalYieldScripts :: IO ()
+writeOperationalYieldScripts = do
+    createDirectoryIfMissing True "generated"
+    writePlutusScriptNoTrace
+        "midgard.state_queue_yields.commit.unapplied"
+        "generated/state-queue-yield-commit.unapplied.plutus.json"
+        stateQueueCommitYieldValidator
+    writePlutusScriptNoTrace
+        "midgard.state_queue_yields.remove_unattested.unapplied"
+        "generated/state-queue-yield-remove-unattested.unapplied.plutus.json"
+        stateQueueRemoveUnattestedYieldValidator
+    writePlutusScriptNoTrace
+        "midgard.state_queue_yields.remove_unavailable.unapplied"
+        "generated/state-queue-yield-remove-unavailable.unapplied.plutus.json"
+        stateQueueRemoveUnavailableYieldValidator
+    writePlutusScriptNoTrace
+        "midgard.state_queue_yields.remove_fraudulent.unapplied"
+        "generated/state-queue-yield-remove-fraudulent.unapplied.plutus.json"
+        stateQueueRemoveFraudulentYieldValidator
+    writePlutusScriptNoTrace
+        "midgard.state_queue_yields.merge.unapplied"
+        "generated/state-queue-yield-merge.unapplied.plutus.json"
+        stateQueueMergeYieldValidator
+    writePlutusScriptNoTrace
+        "midgard.availability_challenge_yields.bond.unapplied"
+        "generated/availability-challenge-yield-bond.unapplied.plutus.json"
+        availabilityChallengeBondYieldValidator
+    writePlutusScriptNoTrace
+        "midgard.availability_challenge_yields.open.unapplied"
+        "generated/availability-challenge-yield-open.unapplied.plutus.json"
+        availabilityChallengeOpenYieldValidator
+    writePlutusScriptNoTrace
+        "midgard.availability_challenge_yields.settle.unapplied"
+        "generated/availability-challenge-yield-settle.unapplied.plutus.json"
+        availabilityChallengeSettleYieldValidator
+    writePlutusScriptNoTrace
+        "midgard.availability_challenge_yields.close.unapplied"
+        "generated/availability-challenge-yield-close.unapplied.plutus.json"
+        availabilityChallengeCloseYieldValidator
+    writePlutusScriptNoTrace
+        "midgard.availability_challenge_yields.timeout.unapplied"
+        "generated/availability-challenge-yield-timeout.unapplied.plutus.json"
+        availabilityChallengeTimeoutYieldValidator
+
+writeLedgerOutputProofYieldScripts :: IO ()
+writeLedgerOutputProofYieldScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_datum_advance_bytes_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-datum-advance-bytes-yield.unapplied.plutus.json"
+        OutputProofYield.datumAdvanceBytesValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_datum_advance_integer_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-datum-advance-integer-yield.unapplied.plutus.json"
+        OutputProofYield.datumAdvanceIntegerValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_datum_attach_bytes_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-datum-attach-bytes-yield.unapplied.plutus.json"
+        OutputProofYield.datumAttachBytesValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_datum_attach_integer_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-datum-attach-integer-yield.unapplied.plutus.json"
+        OutputProofYield.datumAttachIntegerValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_datum_close_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-datum-close-yield.unapplied.plutus.json"
+        OutputProofYield.datumCloseValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_datum_finalize_frame_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-datum-finalize-frame-yield.unapplied.plutus.json"
+        OutputProofYield.datumFinalizeFrameValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_datum_finish_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-datum-finish-yield.unapplied.plutus.json"
+        OutputProofYield.datumFinishValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_datum_fold_list_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-datum-fold-list-yield.unapplied.plutus.json"
+        OutputProofYield.datumFoldListValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_datum_fold_map_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-datum-fold-map-yield.unapplied.plutus.json"
+        OutputProofYield.datumFoldMapValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_datum_head_large_constructor_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-datum-head-large-constructor-yield.unapplied.plutus.json"
+        OutputProofYield.datumHeadLargeConstructorValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_datum_head_map_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-datum-head-map-yield.unapplied.plutus.json"
+        OutputProofYield.datumHeadMapValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_datum_head_scalar_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-datum-head-scalar-yield.unapplied.plutus.json"
+        OutputProofYield.datumHeadScalarValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_datum_head_sequence_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-datum-head-sequence-yield.unapplied.plutus.json"
+        OutputProofYield.datumHeadSequenceValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_datum_large_constructor_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-datum-large-constructor-yield.unapplied.plutus.json"
+        OutputProofYield.datumLargeConstructorValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_datum_large_fields_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-datum-large-fields-yield.unapplied.plutus.json"
+        OutputProofYield.datumLargeFieldsValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_native_script_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-native-script-yield.unapplied.plutus.json"
+        OutputProofYield.nativeScriptValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_reference_script_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-reference-script-yield.unapplied.plutus.json"
+        OutputProofYield.referenceScriptValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_scalar_bytes_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-scalar-bytes-yield.unapplied.plutus.json"
+        OutputProofYield.scalarBytesValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_scalar_integer_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-scalar-integer-yield.unapplied.plutus.json"
+        OutputProofYield.scalarIntegerValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_script_hash_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-script-hash-yield.unapplied.plutus.json"
+        OutputProofYield.scriptHashValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_span_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-span-yield.unapplied.plutus.json"
+        OutputProofYield.spanValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_structure_assets_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-structure-assets-yield.unapplied.plutus.json"
+        OutputProofYield.structureAssetsValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_structure_finish_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-structure-finish-yield.unapplied.plutus.json"
+        OutputProofYield.structureFinishValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_structure_optional_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-structure-optional-yield.unapplied.plutus.json"
+        OutputProofYield.structureOptionalValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_structure_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-structure-yield.unapplied.plutus.json"
+        OutputProofYield.structureValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_proof_value_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-proof-value-yield.unapplied.plutus.json"
+        OutputProofYield.valueValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_descriptor_datum_summary_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-descriptor-datum-summary-yield.unapplied.plutus.json"
+        OutputDescriptorYield.datumSummaryValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_descriptor_reference_script_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-descriptor-reference-script-yield.unapplied.plutus.json"
+        OutputDescriptorYield.referenceScriptValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_descriptor_scan_facts_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-descriptor-scan-facts-yield.unapplied.plutus.json"
+        OutputDescriptorYield.scanFactsValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.ledger_output_descriptor_value_summary_yield.main.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-ledger-output-descriptor-value-summary-yield.unapplied.plutus.json"
+        OutputDescriptorYield.valueSummaryValidator
+
+writeCekMaterialTraversalScripts :: IO ()
+writeCekMaterialTraversalScripts = do
+    writePlutusScriptNoTrace
+        "midgard.cek_material_traversal_v1.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-material-traversal-v1.unapplied.plutus.json"
+        CekTraversal.traversalValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_material_traversal_yields.program.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-cek-material-traversal-program-yield.unapplied.plutus.json"
+        CekTraversal.programYieldValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_material_traversal_yields.data.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-cek-material-traversal-data-yield.unapplied.plutus.json"
+        CekTraversal.dataYieldValidator
+
+writeCekCoreScripts :: IO ()
+writeCekCoreScripts = do
+    writePlutusScriptNoTrace
+        "midgard.cek_core_arm_compute.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-arm-compute.unapplied.plutus.json"
+        CoreArms.computeValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_builtin_roots.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-builtin-roots.unapplied.plutus.json"
+        CoreArms.builtinRootsValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_semantic_result.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-semantic-result.unapplied.plutus.json"
+        CoreArms.semanticResultValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_builtin_budget.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-builtin-budget.unapplied.plutus.json"
+        CoreArms.builtinBudgetValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_direct_scalar.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-direct-scalar.unapplied.plutus.json"
+        CoreArms.directScalarValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_direct_structured.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-direct-structured.unapplied.plutus.json"
+        CoreArms.directStructuredValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_arm_machine.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-arm-machine.unapplied.plutus.json"
+        CoreMaterial.machineValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_arm_map_conversion.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-arm-map-conversion.unapplied.plutus.json"
+        CoreMaterial.mapConversionValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_semantic_pair.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-semantic-pair.unapplied.plutus.json"
+        CoreMaterial.semanticPairValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_semantic_list_construct.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-semantic-list-construct.unapplied.plutus.json"
+        CoreMaterial.semanticListConstructValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_semantic_list_select.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-semantic-list-select.unapplied.plutus.json"
+        CoreMaterial.semanticListSelectValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_semantic_choose.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-semantic-choose.unapplied.plutus.json"
+        CoreMaterial.semanticChooseValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_semantic_data_construct.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-semantic-data-construct.unapplied.plutus.json"
+        CoreMaterial.semanticDataConstructValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_semantic_data_scalar.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-semantic-data-scalar.unapplied.plutus.json"
+        CoreMaterial.semanticDataScalarValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_semantic_data_misc.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-semantic-data-misc.unapplied.plutus.json"
+        CoreMaterial.semanticDataMiscValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_failure_known.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-failure-known.unapplied.plutus.json"
+        CoreMaterial.failureKnownValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_failure_budget.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-failure-budget.unapplied.plutus.json"
+        CoreMaterial.failureBudgetValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_semantic_failure_roots.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-semantic-failure-roots.unapplied.plutus.json"
+        CoreMaterial.semanticFailureRootsValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_semantic_failure_material.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-semantic-failure-material.unapplied.plutus.json"
+        CoreMaterial.semanticFailureMaterialValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_type_failure_roots.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-type-failure-roots.unapplied.plutus.json"
+        CoreMaterial.typeFailureRootsValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_type_failure_kinds.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-type-failure-kinds.unapplied.plutus.json"
+        CoreMaterial.typeFailureKindsValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_bls_budget.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-bls-budget.unapplied.plutus.json"
+        CoreMaterial.blsBudgetValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_bls_roots.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-bls-roots.unapplied.plutus.json"
+        CoreMaterial.blsRootsValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_bls_final.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-bls-final.unapplied.plutus.json"
+        CoreMaterial.blsFinalValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_map_start_roots.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-map-start-roots.unapplied.plutus.json"
+        CoreMaterial.mapStartRootsValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_map_start_budget.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-map-start-budget.unapplied.plutus.json"
+        CoreMaterial.mapStartBudgetValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_map_start_nodes.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-map-start-nodes.unapplied.plutus.json"
+        CoreMaterial.mapStartNodesValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_settle.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-settle.unapplied.plutus.json"
+        Core.settleValidator
+    writePlutusScriptNoTrace
+        "midgard.cek_core_step_semantic_v1.unapplied"
+        "generated/fraud-proof-validation-trace-cek-core-step-semantic-v1.unapplied.plutus.json"
+        Core.bindValidator
+
+writeCekSelectionScripts :: IO ()
+writeCekSelectionScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_execution_selection_semantic_v1.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-execution-selection-semantic-v1.unapplied.plutus.json"
+        CekSelection.selectionValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_execution_selection_yields.authenticate.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-cek-execution-selection-authenticate-yield.unapplied.plutus.json"
+        CekSelection.authenticateValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_execution_selection_yields.successor.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-cek-execution-selection-successor-yield.unapplied.plutus.json"
+        CekSelection.successorValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_execution_selection_yields.material_program.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-cek-execution-selection-material-program-yield.unapplied.plutus.json"
+        CekSelection.programValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_execution_selection_yields.material_data.withdraw.unapplied"
+        "generated/fraud-proof-validation-trace-cek-execution-selection-material-data-yield.unapplied.plutus.json"
+        CekSelection.dataValidator
+
+writeCekContextScripts :: IO ()
+writeCekContextScripts = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_step_semantic_v1.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-step-semantic-v1.unapplied.plutus.json"
+        CekContext.bindValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_control.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-control.unapplied.plutus.json"
+        CekContext.controlValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_settle.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-settle.unapplied.plutus.json"
+        CekContext.settleValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_reference.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-reference.unapplied.plutus.json"
+        CekContext.referenceValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_spend.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-spend.unapplied.plutus.json"
+        CekContext.spendValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_output.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-output.unapplied.plutus.json"
+        CekContext.outputValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_signer.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-signer.unapplied.plutus.json"
+        CekContext.signerValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_mint_init.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-mint-init.unapplied.plutus.json"
+        CekContext.mintInitValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_mint_item.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-mint-item.unapplied.plutus.json"
+        CekContext.mintItemValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_assemble.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-assemble.unapplied.plutus.json"
+        CekContext.assembleValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_tx_info.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-tx-info.unapplied.plutus.json"
+        CekContext.txInfoValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_seed.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-seed.unapplied.plutus.json"
+        CekContext.seedValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_redeemer_begin.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-redeemer-begin.unapplied.plutus.json"
+        CekContext.redeemerBeginValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_redeemer_select_authenticate.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-redeemer-select-authenticate.unapplied.plutus.json"
+        CekContextRedeemer.authenticateValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_redeemer_select_initialize.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-redeemer-select-initialize.unapplied.plutus.json"
+        CekContextRedeemer.initializeValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_redeemer_select_hash.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-redeemer-select-hash.unapplied.plutus.json"
+        CekContextRedeemer.hashValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_redeemer_select_finish.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-redeemer-select-finish.unapplied.plutus.json"
+        CekContextRedeemer.finishValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_finalize_authenticate.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-finalize-authenticate.unapplied.plutus.json"
+        CekContextFinalization.authenticateValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_finalize_spend.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-finalize-spend.unapplied.plutus.json"
+        CekContextFinalization.spendValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_finalize_mint.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-finalize-mint.unapplied.plutus.json"
+        CekContextFinalization.mintValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_finalize_withdraw.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-finalize-withdraw.unapplied.plutus.json"
+        CekContextFinalization.withdrawValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_finalize_observe.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-finalize-observe.unapplied.plutus.json"
+        CekContextFinalization.observeValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_finalize_midgard.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-finalize-midgard.unapplied.plutus.json"
+        CekContextFinalization.midgardValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_observer_authenticate.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-observer-authenticate.unapplied.plutus.json"
+        CekContextObserver.authenticateValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_observer_fold.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-observer-fold.unapplied.plutus.json"
+        CekContextObserver.foldValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_item_bind.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-item-bind.unapplied.plutus.json"
+        CekContextItem.bindValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_item_return.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-item-return.unapplied.plutus.json"
+        CekContextItem.returnValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_item_hash.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-item-hash.unapplied.plutus.json"
+        CekContextItem.hashValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_item_finalize.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-item-finalize.unapplied.plutus.json"
+        CekContextItem.finalizeValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_item_selection_continue.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-item-selection-continue.unapplied.plutus.json"
+        CekContextItem.selectionContinueValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_item_selection_finish.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-item-selection-finish.unapplied.plutus.json"
+        CekContextItem.selectionFinishValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_item_data_continue.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-item-data-continue.unapplied.plutus.json"
+        CekContextItem.dataContinueValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_item_data_finish_descriptor.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-item-data-finish-descriptor.unapplied.plutus.json"
+        CekContextItem.dataFinishDescriptorValidator
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs/validation_trace/cek_context_item_data_finish_value.main.spend.unapplied"
+        "generated/fraud-proof-validation-trace-cek-context-item-data-finish-value.unapplied.plutus.json"
+        CekContextItem.dataFinishValueValidator
+
+writeScriptSourcesMiddleYields :: IO ()
+writeScriptSourcesMiddleYields = do
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.script_sources_middle_stage_two_advance.unapplied"
+        "generated/fraud-proof-validation-trace-script-sources-middle-stage-two-advance-yield.unapplied.plutus.json"
+        (MiddleYields.validator 0)
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.script_sources_middle_stage_three_replay.unapplied"
+        "generated/fraud-proof-validation-trace-script-sources-middle-stage-three-replay-yield.unapplied.plutus.json"
+        (MiddleYields.validator 1)
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.script_sources_middle_stage_three_finish.unapplied"
+        "generated/fraud-proof-validation-trace-script-sources-middle-stage-three-finish-yield.unapplied.plutus.json"
+        (MiddleYields.validator 2)
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.script_sources_middle_stage_four_begin.unapplied"
+        "generated/fraud-proof-validation-trace-script-sources-middle-stage-four-begin-yield.unapplied.plutus.json"
+        (MiddleYields.fieldValidator 3)
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.script_sources_middle_stage_four_finish.unapplied"
+        "generated/fraud-proof-validation-trace-script-sources-middle-stage-four-finish-yield.unapplied.plutus.json"
+        (MiddleYields.validator 4)
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.script_sources_middle_stage_six_begin_policy.unapplied"
+        "generated/fraud-proof-validation-trace-script-sources-middle-stage-six-begin-policy-yield.unapplied.plutus.json"
+        (MiddleYields.fieldValidator 5)
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.script_sources_middle_stage_six_fold_asset.unapplied"
+        "generated/fraud-proof-validation-trace-script-sources-middle-stage-six-fold-asset-yield.unapplied.plutus.json"
+        (MiddleYields.validator 6)
+    writePlutusScriptNoTrace
+        "midgard.fraud_proofs.validation_trace.script_sources_middle_stage_six_finish.unapplied"
+        "generated/fraud-proof-validation-trace-script-sources-middle-stage-six-finish-yield.unapplied.plutus.json"
+        (MiddleYields.validator 7)

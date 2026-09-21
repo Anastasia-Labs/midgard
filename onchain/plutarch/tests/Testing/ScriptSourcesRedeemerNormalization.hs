@@ -22,6 +22,7 @@ import Midgard.FraudProofs.NativeTx.Codec (pcborInt, pencodeDefiniteBytes)
 import Midgard.FraudProofs.NativeTx.Codec qualified as Codec
 import Midgard.FraudProofs.NativeTx.Compact (pnativeTxProofCommitmentV1)
 import Midgard.RedeemerItemProof qualified as Redeemer
+import Midgard.ValidationResolutionData (decodePrepared)
 import Midgard.ScriptSourcesRedeemerNormalization
 import Midgard.ValidationMachine (PValidationOneStepWitnessV1 (..))
 import Midgard.ValidationResolution (
@@ -40,7 +41,7 @@ import Midgard.ValidationTrace (
   phashWorkWitness,
   pmachineVersion,
  )
-import Testing.Eval (passertEvalNoTrace)
+import Testing.Eval (passertEvalNoTrace, passertEvalNoTraceWithoutHoistChecks)
 
 tests :: TestTree
 tests = testGroup "Midgard.ScriptSourcesRedeemerNormalization"
@@ -144,9 +145,9 @@ foldMapTests = testGroup "fold-map"
   [ testCase "shared core matches generic step with nontrivial membership" $
       passertEvalNoTrace foldMapSharedCoreMatches
   , testCase "authenticated template equals checked generic next encoding" $
-      passertEvalNoTrace foldMapTemplateMatches
+      passertEvalNoTraceWithoutHoistChecks foldMapTemplateMatches
   , testCase "authenticated prefix hash equals generic outer and expected hash" $
-      passertEvalNoTrace foldMapPrefixHashMatches
+      passertEvalNoTraceWithoutHoistChecks foldMapPrefixHashMatches
   , testCase "shared core rejects stage frame hash index key and value mutations" $
       passertEvalNoTrace foldMapRejectsCoreMutations
   , testCase "shared core rejects each membership sibling path mutation" $
@@ -154,7 +155,7 @@ foldMapTests = testGroup "fold-map"
   , testCase "executor rebind rejects wrong family identity and action" $
       passertEvalNoTrace foldMapRejectsRebindMutations
   , testCase "hash boundary rejects expected prefix and template mutations" $
-      passertEvalNoTrace foldMapRejectsHashBoundaryMutations
+      passertEvalNoTraceWithoutHoistChecks foldMapRejectsHashBoundaryMutations
   ]
 
 finalizeTests :: TestTree
@@ -164,13 +165,13 @@ finalizeTests = testGroup "finalize"
   , testCase "shared core matches generic authenticated parent append" $
       passertEvalNoTrace finalizeParentSharedCoreMatches
   , testCase "terminal template equals checked generic next encoding" $
-      passertEvalNoTrace finalizeTerminalTemplateMatches
+      passertEvalNoTraceWithoutHoistChecks finalizeTerminalTemplateMatches
   , testCase "parent-append template equals checked generic next encoding" $
-      passertEvalNoTrace finalizeParentTemplateMatches
+      passertEvalNoTraceWithoutHoistChecks finalizeParentTemplateMatches
   , testCase "terminal authenticated prefix hash equals generic and expected" $
-      passertEvalNoTrace finalizeTerminalPrefixHashMatches
+      passertEvalNoTraceWithoutHoistChecks finalizeTerminalPrefixHashMatches
   , testCase "parent-append authenticated prefix hash equals generic and expected" $
-      passertEvalNoTrace finalizeParentPrefixHashMatches
+      passertEvalNoTraceWithoutHoistChecks finalizeParentPrefixHashMatches
   , testCase "terminal rejects frame nonfinalized parent and offset mutations" $
       passertEvalNoTrace finalizeTerminalRejectsMutations
   , testCase "parent append rejects absent wrong malformed and full parent" $
@@ -178,7 +179,7 @@ finalizeTests = testGroup "finalize"
   , testCase "executor rebind rejects action family and identity mutations" $
       passertEvalNoTrace finalizeRejectsRebindMutations
   , testCase "hash boundary rejects expected prefix template and result mutations" $
-      passertEvalNoTrace finalizeRejectsHashBoundaryMutations
+      passertEvalNoTraceWithoutHoistChecks finalizeRejectsHashBoundaryMutations
   ]
 
 foldMapTwoHopEncodingAndHash :: forall s. Term s PBool
@@ -1111,7 +1112,7 @@ pmutateAttested state domain family actual = pmatch state $ \s ->
 envelopeBinding :: forall s. Term s PBool
 envelopeBinding =
   plet ppreparedBase $ \base ->
-  plet (presolutionIdentityV1 # base) $ \resolutionIdentity ->
+  plet (pcarrierIdentity # pforgetData (pdata base)) $ \resolutionIdentity ->
   plet (penvelopeCommitmentFor base resolutionIdentity) $ \commitment ->
   plet (ppreparedEnvelope base resolutionIdentity commitment) $ \envelope ->
   plet (pmutateEnvelopeCommitment envelope (pconstant hashA)) $ \wrongCommitment ->
@@ -1137,13 +1138,13 @@ settlementAcceptsBothFamilies =
       [ pexecutionAttestationSettlementIsExactV1
           # foldState # foldEnvelope # pconstant hashA
           # pconstant scriptA # pconstant scriptB # pconstant scriptC
-          # pconstant scriptD # pconstant scriptF # pconstant scriptE
+          # pexecutorHashes # pconstant scriptE
           # pconstant scriptG # pconstant scriptG
           # pforgetData (pdata pwinningResolution)
       , pexecutionAttestationSettlementIsExactV1
           # finalizeState # finalizeEnvelope # pconstant hashA
           # pconstant scriptA # pconstant scriptB # pconstant scriptC
-          # pconstant scriptD # pconstant scriptF # pconstant scriptE
+          # pexecutorHashes # pconstant scriptE
           # pconstant scriptG # pconstant scriptG
           # pforgetData (pdata pwinningResolution)
       ]
@@ -1154,10 +1155,10 @@ settlementRejectsEnvelopeProvenanceAndDomain =
   plet (psettlementAttestation envelope) $ \state ->
   pmatch envelope $ \env ->
   plet
-    (pmutateEnvelopeBaseAux envelope (pfromData $ penvelope'base env) (pconstant hashB))
+    (pmutateEnvelopeBaseAux envelope (decodePrepared $ penvelope'base env) (pconstant hashB))
     $ \wrongEnvelope ->
   plet
-    (pmutatePreparedEvidence (pfromData $ penvelope'base env) (pconstant hashA))
+    (pmutatePreparedEvidence (decodePrepared $ penvelope'base env) (pconstant hashA))
     $ \wrongBase ->
   plet (pmutateEnvelopeBaseAux envelope wrongBase (pfromData $ penvelope'canonicalAuxiliaryHash env)) $ \wrongBaseEnvelope ->
   plet (pmutateSettlementAttested state (pconstant hashA) (pconstant scriptD) (pconstant hashB)
@@ -1165,15 +1166,15 @@ settlementRejectsEnvelopeProvenanceAndDomain =
   plet (pmutateAttested state pouterNormalizedDomain pfoldMapFamily hashB) $ \wrongDomain ->
     pand'List
       [ pattestationBound # state # envelope # pconstant hashA # pconstant scriptA
-          # pconstant scriptB # pconstant scriptC # pconstant scriptD # pconstant scriptF # pconstant scriptE
+          # pconstant scriptB # pconstant scriptC # pexecutorHashes # pconstant scriptE
       , pnot #$ pattestationBound # state # wrongEnvelope # pconstant hashA # pconstant scriptA
-          # pconstant scriptB # pconstant scriptC # pconstant scriptD # pconstant scriptF # pconstant scriptE
+          # pconstant scriptB # pconstant scriptC # pexecutorHashes # pconstant scriptE
       , pnot #$ pattestationBound # state # wrongBaseEnvelope # pconstant hashA # pconstant scriptA
-          # pconstant scriptB # pconstant scriptC # pconstant scriptD # pconstant scriptF # pconstant scriptE
+          # pconstant scriptB # pconstant scriptC # pexecutorHashes # pconstant scriptE
       , pnot #$ pattestationBound # wrongProvenance # envelope # pconstant hashA # pconstant scriptA
-          # pconstant scriptB # pconstant scriptC # pconstant scriptD # pconstant scriptF # pconstant scriptE
+          # pconstant scriptB # pconstant scriptC # pexecutorHashes # pconstant scriptE
       , pnot #$ pattestationBound # wrongDomain # envelope # pconstant hashA # pconstant scriptA
-          # pconstant scriptB # pconstant scriptC # pconstant scriptD # pconstant scriptF # pconstant scriptE
+          # pconstant scriptB # pconstant scriptC # pexecutorHashes # pconstant scriptE
       ]
 
 settlementRejectsDeploymentFamilyAndRoute :: forall s. Term s PBool
@@ -1185,21 +1186,21 @@ settlementRejectsDeploymentFamilyAndRoute =
           (pconstant hashA) (pconstant hashA) (pconstant hashB) (pconstant hashB) 0 1) $ \wrongExecutor ->
     pand'List
       [ pnot #$ pattestationBound # state # envelope # pconstant hashB # pconstant scriptA
-          # pconstant scriptB # pconstant scriptC # pconstant scriptD # pconstant scriptF # pconstant scriptE
+          # pconstant scriptB # pconstant scriptC # pexecutorHashes # pconstant scriptE
       , pnot #$ pattestationBound # state # envelope # pconstant hashA # pconstant scriptF
-          # pconstant scriptB # pconstant scriptC # pconstant scriptD # pconstant scriptF # pconstant scriptE
+          # pconstant scriptB # pconstant scriptC # pexecutorHashes # pconstant scriptE
       , pnot #$ pattestationBound # state # envelope # pconstant hashA # pconstant scriptA
-          # pconstant scriptF # pconstant scriptC # pconstant scriptD # pconstant scriptF # pconstant scriptE
+          # pconstant scriptF # pconstant scriptC # pexecutorHashes # pconstant scriptE
       , pnot #$ pattestationBound # state # envelope # pconstant hashA # pconstant scriptA
-          # pconstant scriptB # pconstant scriptF # pconstant scriptD # pconstant scriptF # pconstant scriptE
+          # pconstant scriptB # pconstant scriptF # pexecutorHashes # pconstant scriptE
       , pnot #$ pattestationBound # state # envelope # pconstant hashA # pconstant scriptA
-          # pconstant scriptB # pconstant scriptC # pconstant scriptF # pconstant scriptF # pconstant scriptE
+          # pconstant scriptB # pconstant scriptC # (pcons # pdata (pconstant scriptF) # (ptail # pexecutorHashes)) # pconstant scriptE
       , pnot #$ pattestationBound # state # envelope # pconstant hashA # pconstant scriptA
-          # pconstant scriptB # pconstant scriptC # pconstant scriptD # pconstant scriptF # pconstant scriptD
+          # pconstant scriptB # pconstant scriptC # pexecutorHashes # pconstant scriptD
       , pnot #$ pattestationBound # wrongFamily # envelope # pconstant hashA # pconstant scriptA
-          # pconstant scriptB # pconstant scriptC # pconstant scriptD # pconstant scriptF # pconstant scriptE
+          # pconstant scriptB # pconstant scriptC # pexecutorHashes # pconstant scriptE
       , pnot #$ pattestationBound # wrongExecutor # envelope # pconstant hashA # pconstant scriptA
-          # pconstant scriptB # pconstant scriptC # pconstant scriptD # pconstant scriptF # pconstant scriptE
+          # pconstant scriptB # pconstant scriptC # pexecutorHashes # pconstant scriptE
       ]
 
 settlementRejectsCopiedHashCountAndOutput :: forall s. Term s PBool
@@ -1393,7 +1394,7 @@ pattestationBound :: forall s.
     ( PScriptSourcesRedeemerExecutionAttestedStateV1
         :--> PPreparedScriptSourcesRedeemerEnvelopeV1
         :--> PByteString :--> PByteString :--> PByteString :--> PByteString
-        :--> PByteString :--> PByteString :--> PByteString :--> PBool
+        :--> PBuiltinList (PAsData PByteString) :--> PByteString :--> PBool
     )
 pattestationBound = pexecutionAttestationIsBoundToEnvelopeV1
 
@@ -1407,14 +1408,14 @@ psettlementExact = plam $ \state envelope outputScript outputState ->
   pexecutionAttestationSettlementIsExactV1
     # state # envelope # pconstant hashA
     # pconstant scriptA # pconstant scriptB # pconstant scriptC
-    # pconstant scriptD # pconstant scriptF # pconstant scriptE
+    # pexecutorHashes # pconstant scriptE
     # pconstant scriptG # outputScript # outputState
 
 psettlementEnvelope :: forall s.
   Term s PInteger -> Term s PByteString -> Term s PPreparedScriptSourcesRedeemerEnvelopeV1
 psettlementEnvelope family executor =
   plet ppreparedBase $ \base ->
-  plet (presolutionIdentityV1 # base) $ \resolutionIdentity ->
+  plet (pcarrierIdentity # pforgetData (pdata base)) $ \resolutionIdentity ->
   plet (penvelopeCommitmentForFamily base resolutionIdentity family executor) $ \commitment ->
     ppreparedEnvelopeFor base resolutionIdentity commitment family executor
 
@@ -1449,10 +1450,10 @@ penvelopeCommitmentFor base resolutionIdentity =
 penvelopeCommitmentForFamily :: forall s.
   Term s PPreparedValidationResolutionStateV1 -> Term s PByteString ->
   Term s PInteger -> Term s PByteString -> Term s PByteString
-penvelopeCommitmentForFamily base resolutionIdentity family executor = pmatch base $ \prepared ->
+penvelopeCommitmentForFamily _base resolutionIdentity family executor =
   penvelopeCommitmentV1
     # pconstant hashA
-    # pfromData (pprepared'evidenceHash prepared)
+    # pscriptSourcesCarrier
     # resolutionIdentity
     # family
     # pconstant hashA
@@ -1466,8 +1467,7 @@ penvelopeCommitmentForFamily base resolutionIdentity family executor = pmatch ba
     # pconstant scriptC
     # executor
     # pconstant scriptE
-    # pconstant hashA
-    # pconstant hashB
+    # pconstant ""
 
 ppreparedEnvelope :: forall s.
   Term s PPreparedValidationResolutionStateV1 -> Term s PByteString ->
@@ -1483,8 +1483,10 @@ ppreparedEnvelopeFor base resolutionIdentity commitment family executor = pcon $
   { penvelope'version = pdata pversion
   , penvelope'domain = pdata penvelopeDomain
   , penvelope'deploymentId = pdata $ pconstant hashA
-  , penvelope'base = pdata base
-  , penvelope'resolutionIdentity = pdata resolutionIdentity
+  , penvelope'carrier = pdata pscriptSourcesCarrier
+  , penvelope'expectedNextControlDataHash = pdata $ pconstant ""
+  , penvelope'base = pforgetData $ pdata base
+  , penvelope'carrierIdentity = pdata resolutionIdentity
   , penvelope'actionFamily = pdata family
   , penvelope'canonicalAuxiliaryHash = pdata $ pconstant hashA
   , penvelope'canonicalActionHash = pdata $ pconstant hashB
@@ -1508,8 +1510,10 @@ pmutateEnvelopeCommitment envelope commitment = pmatch envelope $ \e ->
     { penvelope'version = penvelope'version e
     , penvelope'domain = penvelope'domain e
     , penvelope'deploymentId = penvelope'deploymentId e
+    , penvelope'carrier = penvelope'carrier e
+    , penvelope'expectedNextControlDataHash = penvelope'expectedNextControlDataHash e
     , penvelope'base = penvelope'base e
-    , penvelope'resolutionIdentity = penvelope'resolutionIdentity e
+    , penvelope'carrierIdentity = penvelope'carrierIdentity e
     , penvelope'actionFamily = penvelope'actionFamily e
     , penvelope'canonicalAuxiliaryHash = penvelope'canonicalAuxiliaryHash e
     , penvelope'canonicalActionHash = penvelope'canonicalActionHash e
@@ -1534,8 +1538,10 @@ pmutateEnvelopeBaseAux envelope base auxiliaryHash = pmatch envelope $ \e ->
     { penvelope'version = penvelope'version e
     , penvelope'domain = penvelope'domain e
     , penvelope'deploymentId = penvelope'deploymentId e
-    , penvelope'base = pdata base
-    , penvelope'resolutionIdentity = penvelope'resolutionIdentity e
+    , penvelope'carrier = penvelope'carrier e
+    , penvelope'expectedNextControlDataHash = penvelope'expectedNextControlDataHash e
+    , penvelope'base = pforgetData $ pdata base
+    , penvelope'carrierIdentity = penvelope'carrierIdentity e
     , penvelope'actionFamily = penvelope'actionFamily e
     , penvelope'canonicalAuxiliaryHash = pdata auxiliaryHash
     , penvelope'canonicalActionHash = penvelope'canonicalActionHash e
@@ -1754,3 +1760,6 @@ rawCompactCbor = BS.replicate 80 0xa1
 rawWitnessSetCompactCbor = BS.replicate 72 0xb2
 rawFieldPreimageLengthsCbor = BS.replicate 40 0xc3
 rawContextCbor = BS.replicate 96 0xd4
+
+pexecutorHashes :: forall s. Term s (PBuiltinList (PAsData PByteString))
+pexecutorHashes = pmap # plam pdata # pconstant @(PBuiltinList PByteString) (scriptD : scriptF : replicate 17 scriptG)

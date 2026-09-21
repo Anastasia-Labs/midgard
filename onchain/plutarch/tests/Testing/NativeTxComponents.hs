@@ -59,6 +59,7 @@ import Midgard.FraudProofs.NativeTx.Components (
   pdecodeMidgardTxInputCbor,
   pdecodeMidgardTxOutputCbor,
   pdecodeMidgardTxOutputData,
+  pdecodeMidgardTxOutputNetworkIdCbor,
   pdecodeMidgardVersionedScriptAt,
   pdecodeMidgardVersionedScriptData,
   pencodeFixedOutputIndex,
@@ -98,6 +99,7 @@ tests =
     , addressTests
     , valueTests
     , scriptTests
+    , outputNetworkTests
     , outputTests
     , q25NegativeOutputValueTests
     , witnessTests
@@ -121,7 +123,8 @@ inputTests =
             , (pencodeFixedOutputIndex # 65535) #== pconstant "\x19\xff\xff"
             ]
     , testCase "the input matches an independent encoding" $
-        holds $ (pencodeMidgardTxInput # inputT defaultInput) #== pconstant (encodeInput defaultInput)
+        holds $
+          (pencodeMidgardTxInput # inputT defaultInput) #== pconstant (encodeInput defaultInput)
     , testCase "the input round-trips" $
         holds $
           (pdecodeMidgardTxInputCbor # pconstant (encodeInput defaultInput)) #== inputT defaultInput
@@ -134,25 +137,31 @@ inputTests =
             ]
     , -- Rejecting the minimal form is what keeps the encoding unique.
       testCase "the decoder rejects a minimally encoded output index" $
-        pfails $ pdecodeMidgardTxInputCbor # pconstant ("\x82" <> definiteBytes (bytes32 1) <> "\x00")
+        pfails $
+          pdecodeMidgardTxInputCbor # pconstant ("\x82" <> definiteBytes (bytes32 1) <> "\x00")
     , testCase "the decoder rejects the one-byte 18 XX form" $
-        pfails $ pdecodeMidgardTxInputCbor # pconstant ("\x82" <> definiteBytes (bytes32 1) <> "\x18\x20")
+        pfails $
+          pdecodeMidgardTxInputCbor # pconstant ("\x82" <> definiteBytes (bytes32 1) <> "\x18\x20")
     , testCase "the decoder rejects the four-byte form" $
         pfails $
           pdecodeMidgardTxInputCbor
             # pconstant ("\x82" <> definiteBytes (bytes32 1) <> "\x1a\x00\x00\x00\x01")
     , testCase "the encoder rejects an output index above 65535" $
-        pfails $ pencodeMidgardTxInput # inputT defaultInput {iIndex = 65536}
+        pfails $
+          pencodeMidgardTxInput # inputT defaultInput {iIndex = 65536}
     , testCase "the encoder rejects a negative output index" $
-        pfails $ pencodeMidgardTxInput # inputT defaultInput {iIndex = -1}
+        pfails $
+          pencodeMidgardTxInput # inputT defaultInput {iIndex = -1}
     , testCase "the encoder rejects a transaction id that is not 32 bytes" $
-        pfails $ pencodeMidgardTxInput # inputT defaultInput {iTxId = BS.replicate 31 0x01}
+        pfails $
+          pencodeMidgardTxInput # inputT defaultInput {iTxId = BS.replicate 31 0x01}
     , testCase "the decoder rejects a transaction id that is not 32 bytes" $
         pfails $
           pdecodeMidgardTxInputCbor
             # pconstant ("\x82" <> definiteBytes (BS.replicate 31 0x01) <> "\x19\x00\x00")
     , testCase "the decoder rejects trailing bytes" $
-        pfails $ pdecodeMidgardTxInputCbor # pconstant (encodeInput defaultInput <> "\x00")
+        pfails $
+          pdecodeMidgardTxInputCbor # pconstant (encodeInput defaultInput <> "\x00")
     ]
 
 --------------------------------------------------------------------------------
@@ -203,16 +212,19 @@ addressTests =
           (\network -> pfails $ pencodeMidgardAddress # addrT (Addr False network (PubKey h28a) Nothing))
           [-1, 8]
     , testCase "the encoder rejects a credential hash that is not 28 bytes" $
-        pfails $ pencodeMidgardAddress # addrT (Addr False 0 (PubKey (BS.replicate 27 0x01)) Nothing)
+        pfails $
+          pencodeMidgardAddress # addrT (Addr False 0 (PubKey (BS.replicate 27 0x01)) Nothing)
     , -- Both directions of the length/type cross-check.
       testCase "the decoder rejects a 29-byte payload whose type expects a stake credential" $
-        pfails $ pdecodeMidgardAddressBytes # pconstant (BS.pack [0x00] <> h28a)
+        pfails $
+          pdecodeMidgardAddressBytes # pconstant (BS.pack [0x00] <> h28a)
     , testCase "the decoder rejects a 57-byte payload whose type expects none" $
-        pfails $ pdecodeMidgardAddressBytes # pconstant (BS.pack [0x70] <> h28a <> h28b)
+        pfails $
+          pdecodeMidgardAddressBytes # pconstant (BS.pack [0x70] <> h28a <> h28b)
     , testCase "the decoder rejects a payload of any other length" $
         mapM_
-            (\n -> pfails $ pdecodeMidgardAddressBytes # pconstant (BS.replicate n 0x00))
-            [0, 1, 28, 30, 56, 58]
+          (\n -> pfails $ pdecodeMidgardAddressBytes # pconstant (BS.replicate n 0x00))
+          [0, 1, 28, 30, 56, 58]
     , testCase "the protected bit survives the round trip on its own" $
         holds $
           pnot
@@ -271,15 +283,20 @@ valueTests =
             , let outOf x = Out defaultAddr x Nothing Nothing
             ]
     , testCase "the encoder rejects a negative lovelace" $
-        pfails $ pencodeMidgardValue # valueT (Val (-1) [])
+        pfails $
+          pencodeMidgardValue # valueT (Val (-1) [])
     , testCase "the encoder rejects a zero quantity" $
-        pfails $ pencodeMidgardValue # valueT (Val 1 [(pidA <> "\x01", 0)])
+        pfails $
+          pencodeMidgardValue # valueT (Val 1 [(pidA <> "\x01", 0)])
     , testCase "the encoder rejects a negative quantity" $
-        pfails $ pencodeMidgardValue # valueT (Val 1 [(pidA <> "\x01", -1)])
+        pfails $
+          pencodeMidgardValue # valueT (Val 1 [(pidA <> "\x01", -1)])
     , testCase "the encoder rejects a unit shorter than a policy id" $
-        pfails $ pencodeMidgardValue # valueT (Val 1 [(BS.replicate 27 0x01, 1)])
+        pfails $
+          pencodeMidgardValue # valueT (Val 1 [(BS.replicate 27 0x01, 1)])
     , testCase "the encoder rejects a unit whose asset name is over 32 bytes" $
-        pfails $ pencodeMidgardValue # valueT (Val 1 [(pidA <> BS.replicate 33 0x01, 1)])
+        pfails $
+          pencodeMidgardValue # valueT (Val 1 [(pidA <> BS.replicate 33 0x01, 1)])
     , testCase "the Data decoder rejects a policy with no tokens" $
         pfails $
           pdecodeMidgardTxOutputData
@@ -294,14 +311,17 @@ valueTests =
             # pconstant
               (outputDataWith (List [I 1, Map [(B (BS.replicate 27 0x01), Map [(B "\x01", I 1)])]]))
     , testCase "the Data decoder rejects a negative lovelace" $
-        pfails $ pdecodeMidgardTxOutputData # pconstant (outputDataWith (List [I (-1), Map []]))
+        pfails $
+          pdecodeMidgardTxOutputData # pconstant (outputDataWith (List [I (-1), Map []]))
     , testCase "the unit builder concatenates a policy id and an asset name" $
         holds $
           (passetUnitFromPolicyAsset # pconstant pidA # pconstant "\x01") #== pconstant (pidA <> "\x01")
     , testCase "the unit builder rejects a policy id that is not 28 bytes" $
-        pfails $ passetUnitFromPolicyAsset # pconstant (BS.replicate 27 0x01) # pconstant "\x01"
+        pfails $
+          passetUnitFromPolicyAsset # pconstant (BS.replicate 27 0x01) # pconstant "\x01"
     , testCase "the unit builder rejects an asset name over 32 bytes" $
-        pfails $ passetUnitFromPolicyAsset # pconstant pidA # pconstant (BS.replicate 33 0x01)
+        pfails $
+          passetUnitFromPolicyAsset # pconstant pidA # pconstant (BS.replicate 33 0x01)
     ]
 
 --------------------------------------------------------------------------------
@@ -341,7 +361,7 @@ scriptTests =
         holds $
           pall'
             [ pfstOf (pdecodeMidgardVersionedScriptAt # pconstant (encodeScript s) # 0)
-              #== pconstant (fromIntegral (BS.length (encodeScript s)))
+                #== pconstant (fromIntegral (BS.length (encodeScript s)))
             | s <- allScripts
             ]
     , testCase "every language round-trips at the Data decoder" $
@@ -352,15 +372,17 @@ scriptTests =
             ]
     , testCase "the byte decoder rejects an unknown tag" $
         mapM_
-            ( \tag ->
-                pfails $
-                  psndOf (pdecodeMidgardVersionedScriptAt # pconstant ("\x82" <> tag <> definiteBytes "\x01") # 0)
-            )
-            ["\x01", "\x02", "\x04", "\x17", "\x18\x7f", "\x18\xff"]
+          ( \tag ->
+              pfails $
+                psndOf (pdecodeMidgardVersionedScriptAt # pconstant ("\x82" <> tag <> definiteBytes "\x01") # 0)
+          )
+          ["\x01", "\x02", "\x04", "\x17", "\x18\x7f", "\x18\xff"]
     , testCase "the Data decoder rejects an unknown tag" $
-        pfails $ pdecodeMidgardVersionedScriptData # pconstant (List [I 1, B "\x01"])
+        pfails $
+          pdecodeMidgardVersionedScriptData # pconstant (List [I 1, B "\x01"])
     , testCase "the Data decoder rejects a wrong arity" $
-        pfails $ pdecodeMidgardVersionedScriptData # pconstant (List [I 0, B "\x01", B "\x02"])
+        pfails $
+          pdecodeMidgardVersionedScriptData # pconstant (List [I 0, B "\x01", B "\x02"])
     ]
 
 --------------------------------------------------------------------------------
@@ -404,15 +426,15 @@ outputTests =
             ]
     , testCase "the byte decoder rejects trailing bytes" $
         mapM_
-            (\o -> pfails $ pdecodeMidgardTxOutputCbor # pconstant (encodeOutput o <> "\x00"))
-            allOutputs
+          (\o -> pfails $ pdecodeMidgardTxOutputCbor # pconstant (encodeOutput o <> "\x00"))
+          allOutputs
     , testCase "the byte decoder rejects a map header outside a2..a4" $
         mapM_
-            ( \tag ->
-                pfails $
-                  pdecodeMidgardTxOutputCbor # pconstant (BS.pack [tag] <> BS.drop 1 (encodeOutput baseOutput))
-            )
-            [0xa1, 0xa5, 0xb8]
+          ( \tag ->
+              pfails $
+                pdecodeMidgardTxOutputCbor # pconstant (BS.pack [tag] <> BS.drop 1 (encodeOutput baseOutput))
+          )
+          [0xa1, 0xa5, 0xb8]
     , testCase "the byte decoder rejects a wrong first key" $
         pfails $
           pdecodeMidgardTxOutputCbor
@@ -471,7 +493,8 @@ outputTests =
                   ]
               )
     , testCase "the Data decoder rejects a one-entry map" $
-        pfails $ pdecodeMidgardTxOutputData # pconstant (Map [(I 0, B (encodeAddress defaultAddr))])
+        pfails $
+          pdecodeMidgardTxOutputData # pconstant (Map [(I 0, B (encodeAddress defaultAddr))])
     ]
 
 --------------------------------------------------------------------------------
@@ -483,28 +506,39 @@ q25NegativeOutputValueTests =
   testGroup
     "Q25 Negative Output Value Aiken Parity"
     [ testCase "q25_negative_lovelace_rejected_by_raw_cbor_output_decoder" $
-        pfails $ q25RawOutputLovelace q25NegativeLovelaceOutput #< 0
+        pfails $
+          q25RawOutputLovelace q25NegativeLovelaceOutput #< 0
     , testCase "q25_negative_lovelace_rejected_by_data_output_decoder" $
-        pfails $ q25DataOutputLovelace q25NegativeLovelaceOutput #< 0
+        pfails $
+          q25DataOutputLovelace q25NegativeLovelaceOutput #< 0
     , testCase "q25_negative_lovelace_rejected_by_ledger_output_v1" $
         holds $
-          pdecodeCanonicalOutput # pconstant q25NegativeLovelaceOutput
+          pdecodeCanonicalOutput
+            # pconstant q25NegativeLovelaceOutput
             #== pcon PNothing
     , testCase "q25_negative_lovelace_rejected_by_canonical_value_encoder" $
         pfails $
           pnot # (pencodeMidgardValue # valueT (Val (-1) []) #== pconstant "")
     , testCase "q25_zero_asset_quantity_rejected_by_raw_cbor_output_decoder" $
-        pfails $ q25RawOutputLovelace q25ZeroQuantityOutput #== 0
+        pfails $
+          q25RawOutputLovelace q25ZeroQuantityOutput #== 0
     , testCase "q25_zero_asset_quantity_rejected_by_data_output_decoder" $
-        pfails $ q25DataOutputLovelace q25ZeroQuantityOutput #== 0
+        pfails $
+          q25DataOutputLovelace q25ZeroQuantityOutput #== 0
     , testCase "q25_negative_asset_quantity_rejected_by_raw_cbor_output_decoder" $
-        pfails $ q25RawOutputLovelace q25NegativeQuantityOutput #== 0
+        pfails $
+          q25RawOutputLovelace q25NegativeQuantityOutput #== 0
     , testCase "q25_negative_asset_quantity_rejected_by_data_output_decoder" $
-        pfails $ q25DataOutputLovelace q25NegativeQuantityOutput #== 0
+        pfails $
+          q25DataOutputLovelace q25NegativeQuantityOutput #== 0
     , testCase "q25_nonpositive_asset_quantities_rejected_by_ledger_output_v1" $
         holds $
-          pdecodeCanonicalOutput # pconstant q25ZeroQuantityOutput #== pcon PNothing
-            #&& pdecodeCanonicalOutput # pconstant q25NegativeQuantityOutput #== pcon PNothing
+          pdecodeCanonicalOutput
+            # pconstant q25ZeroQuantityOutput
+            #== pcon PNothing
+            #&& pdecodeCanonicalOutput
+            # pconstant q25NegativeQuantityOutput
+            #== pcon PNothing
     , testCase "q25_negative_asset_quantity_rejected_by_canonical_value_encoder" $
         pfails $
           pnot
@@ -559,7 +593,8 @@ q25PositiveValueReencodes :: forall s. Term s PBool
 q25PositiveValueReencodes =
   pmatch (pdecodeMidgardTxOutputCbor # pconstant q25PositiveQuantityOutput) $
     \(PMidgardTxOutput _ value _ _) ->
-      pencodeMidgardValue # pfromData value
+      pencodeMidgardValue
+        # pfromData value
         #== pconstant q25PositiveQuantityValueCbor
 
 q25Address :: Addr
@@ -596,9 +631,11 @@ witnessTests =
           (pdecodeMidgardAddressWitnessCbor # pconstant (encodeAddressWitness defaultAw))
             #== addressWitnessT defaultAw
     , testCase "the address witness encoder rejects a key that is not 32 bytes" $
-        pfails $ pencodeMidgardAddressWitness # addressWitnessT (Aw (BS.replicate 31 0x01) sig64)
+        pfails $
+          pencodeMidgardAddressWitness # addressWitnessT (Aw (BS.replicate 31 0x01) sig64)
     , testCase "the address witness encoder rejects a signature that is not 64 bytes" $
-        pfails $ pencodeMidgardAddressWitness # addressWitnessT (Aw key32 (BS.replicate 63 0x02))
+        pfails $
+          pencodeMidgardAddressWitness # addressWitnessT (Aw key32 (BS.replicate 63 0x02))
     , testCase "the address witness decoder rejects a key that is not 32 bytes" $
         pfails $
           pdecodeMidgardAddressWitnessCbor
@@ -630,7 +667,7 @@ witnessTests =
         holds $
           pall'
             [ pfstOf (pdecodeMidgardRedeemerWitnessAt # pconstant (encodeRedeemer r) # 0)
-              #== pconstant (fromIntegral (BS.length (encodeRedeemer r)))
+                #== pconstant (fromIntegral (BS.length (encodeRedeemer r)))
             | r <- allRedeemers
             ]
     , -- The offset decoder is the one that reads out of a longer preimage, so
@@ -650,13 +687,15 @@ witnessTests =
             | r <- allRedeemers
             ]
     , testCase "the encoder rejects a negative index" $
-        pfails $ pencodeMidgardRedeemerWitness # redeemerT defaultRw {rIndex = -1}
+        pfails $
+          pencodeMidgardRedeemerWitness # redeemerT defaultRw {rIndex = -1}
     , testCase "the encoder rejects negative execution units" $
         mapM_
-            (\r -> pfails $ pencodeMidgardRedeemerWitness # redeemerT r)
-            [defaultRw {rMemory = -1}, defaultRw {rSteps = -1}]
+          (\r -> pfails $ pencodeMidgardRedeemerWitness # redeemerT r)
+          [defaultRw {rMemory = -1}, defaultRw {rSteps = -1}]
     , testCase "the Data encoder rejects a negative index" $
-        pfails $ pencodeMidgardRedeemerWitnessData # redeemerT defaultRw {rIndex = -1}
+        pfails $
+          pencodeMidgardRedeemerWitnessData # redeemerT defaultRw {rIndex = -1}
     , testCase "the byte decoder rejects an unknown purpose tag" $
         pfails $
           psndOf
@@ -669,7 +708,8 @@ witnessTests =
           pdecodeMidgardRedeemerWitnessData
             # pconstant (List [I 7, I 0, B "\x01", List [I 1, I 2]])
     , testCase "the Data decoder rejects a wrong arity" $
-        pfails $ pdecodeMidgardRedeemerWitnessData # pconstant (List [I 0, I 0, B "\x01"])
+        pfails $
+          pdecodeMidgardRedeemerWitnessData # pconstant (List [I 0, I 0, B "\x01"])
     , testCase "the Data decoder rejects wrong execution units" $
         pfails $
           pdecodeMidgardRedeemerWitnessData
@@ -844,8 +884,8 @@ encodePolicyAssets assets =
   mapHeader (length groups)
     <> mconcat
       [ definiteBytes policyId
-        <> mapHeader (length tokens)
-        <> mconcat [definiteBytes name <> cborInt quantity | (name, quantity) <- tokens]
+          <> mapHeader (length tokens)
+          <> mconcat [definiteBytes name <> cborInt quantity | (name, quantity) <- tokens]
       | (policyId, tokens) <- groups
       ]
   where
@@ -1063,7 +1103,7 @@ redeemerT (Rw purpose index cbor memory steps) =
               )
       }
 
-maybeD :: forall s a. PIsData a => Maybe (Term s a) -> Term s (PMaybeData a)
+maybeD :: forall s a. (PIsData a) => Maybe (Term s a) -> Term s (PMaybeData a)
 maybeD = maybe (pcon PDNothing) (pcon . PDJust . pdata)
 
 --------------------------------------------------------------------------------
@@ -1081,3 +1121,34 @@ pfstOf p = pmatch p $ \(PPair a _) -> a
 
 psndOf :: forall s a b. Term s (PPair a b) -> Term s b
 psndOf p = pmatch p $ \(PPair _ b) -> b
+
+outputNetworkTests :: TestTree
+outputNetworkTests =
+  testGroup
+    "output network prefix"
+    [ testCase "agrees with the whole decoder for every output shape" $
+        holds $
+          pall'
+            [ pmatch (pdecodeMidgardTxOutputCbor # pconstant (encodeOutput o)) $ \PMidgardTxOutput {ptxOutput'address} ->
+                pmatch (pfromData ptxOutput'address) $ \PMidgardAddress {paddress'networkId} ->
+                  pdecodeMidgardTxOutputNetworkIdCbor # pconstant (encodeOutput o) #== pfromData paddress'networkId
+            | o <- allOutputs
+            ]
+    , testCase "reads the address even when later entries are malformed" $
+        holds $
+          pdecodeMidgardTxOutputNetworkIdCbor # pconstant ("\xa2\x00\x58\x1d\x60" <> BS.replicate 28 0x11 <> "\xff") #== 0
+    , testCase "refuses noncanonical output map heads" $
+        mapM_
+          ( \tag ->
+              pfails $
+                pdecodeMidgardTxOutputNetworkIdCbor # pconstant (BS.singleton tag <> "\x00\x58\x1d\x60" <> BS.replicate 28 0x11)
+          )
+          [0xa1, 0xa5, 0xbf]
+    , testCase "refuses a different first key" $
+        pfails $
+          pdecodeMidgardTxOutputNetworkIdCbor
+            # pconstant ("\xa2\x01\x58\x1d\x60" <> BS.replicate 28 0x11)
+    -- The target prefix decoder does not require credential payload bytes.
+    , testCase "matches target prefix semantics for a truncated credential" $ holds $ pdecodeMidgardTxOutputNetworkIdCbor # pconstant "\xa2\x00\x58\x1d\x60" #== 0
+    , testCase "refuses a missing address header" $ pfails $ pdecodeMidgardTxOutputNetworkIdCbor # pconstant "\xa2\x00\x58\x1d"
+    ]

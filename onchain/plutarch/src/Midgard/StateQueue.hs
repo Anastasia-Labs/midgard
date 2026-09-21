@@ -12,6 +12,7 @@ is a separate slice.
 -}
 module Midgard.StateQueue (
   PMintRedeemer (..),
+  PYieldRedeemer (..),
   PSpendRedeemer (..),
   PSlashingApproach (..),
   PBlockRemovalApproach (..),
@@ -156,7 +157,8 @@ data PMintRedeemer (s :: S)
   = PInitV1 {psqInit'outputIndex :: Term s (PAsData PInteger)}
   | PDeinit
   | PCommitBlockHeader
-      { psqCommit'newBlockOutputIndex :: Term s (PAsData PInteger)
+      { psqCommit'yieldToRefInputIndex :: Term s (PAsData PInteger)
+      , psqCommit'newBlockOutputIndex :: Term s (PAsData PInteger)
       , psqCommit'continuedLatestBlockOutputIndex :: Term s (PAsData PInteger)
       , psqCommit'operator :: Term s (PAsData PPubKeyHash)
       , psqCommit'schedulerRefInputIndex :: Term s (PAsData PInteger)
@@ -166,23 +168,27 @@ data PMintRedeemer (s :: S)
       , psqCommit'mHeadStateQueueNodeRefInputIndex :: Term s (PAsData (PMaybeData PInteger))
       }
   | PRemoveFraudulentBlockHeader
-      { psqRemove'fraudulentOperator :: Term s (PAsData PPubKeyHash)
+      { psqRemove'yieldToRefInputIndex :: Term s (PAsData PInteger)
+      , psqRemove'fraudulentOperator :: Term s (PAsData PPubKeyHash)
       , psqRemove'fraudulentBlocksHeaderHash :: Term s (PAsData PHeaderHash)
       , psqRemove'slashingApproach :: Term s (PAsData PSlashingApproach)
       , psqRemove'fraudProofRefInputIndex :: Term s (PAsData PInteger)
       , psqRemove'blockRemovalApproach :: Term s (PAsData PBlockRemovalApproach)
       }
   | PRemoveUnattestedBlockAfterTimeout
-      { psqRemoveUnattested'timedOutHeaderHash :: Term s (PAsData PHeaderHash)
+      { psqRemoveUnattested'yieldToRefInputIndex :: Term s (PAsData PInteger)
+      , psqRemoveUnattested'timedOutHeaderHash :: Term s (PAsData PHeaderHash)
       , psqRemoveUnattested'removalApproach :: Term s (PAsData PAttestationTimeoutRemovalApproach)
       }
   | PRemoveUnavailableBlockAfterTimeout
-      { psqRemoveUnavailable'unavailableHeaderHash :: Term s (PAsData PHeaderHash)
+      { psqRemoveUnavailable'yieldToRefInputIndex :: Term s (PAsData PInteger)
+      , psqRemoveUnavailable'unavailableHeaderHash :: Term s (PAsData PHeaderHash)
       , psqRemoveUnavailable'challengeAssetName :: Term s (PAsData PTokenName)
       , psqRemoveUnavailable'removalApproach :: Term s (PAsData PAttestationTimeoutRemovalApproach)
       }
   | PMergeToConfirmedStateV1
-      { psqMerge'headerNodeKey :: Term s (PAsData PByteString)
+      { psqMerge'yieldToRefInputIndex :: Term s (PAsData PInteger)
+      , psqMerge'headerNodeKey :: Term s (PAsData PByteString)
       , psqMerge'confirmedStateInputOutref :: Term s (PAsData PTxOutRef)
       , psqMerge'confirmedStateOutputIndex :: Term s (PAsData PInteger)
       , psqMerge'mSettlementRedeemerIndex :: Term s (PAsData (PMaybeData PInteger))
@@ -204,6 +210,12 @@ data PMintRedeemer (s :: S)
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PMintRedeemer)
+
+-- | Fieldless withdrawal payload; the operation comes from the unique mint redeemer.
+data PYieldRedeemer (s :: S) = PYieldStateQueue
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PYieldRedeemer)
 
 {- | Aiken @state_queue.confirmed_state_asset_name@.
 

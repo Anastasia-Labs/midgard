@@ -379,33 +379,67 @@ maximalAddressFixtureControl = do
 
 runMissingSignatureStep04 :: forall s. AddressFixture -> BS.ByteString -> Term s PUnit
 runMissingSignatureStep04 fixture missingVerificationKey =
-  missingSignatureStep04Validator
-    # pdata (pconstant fpPolicy)
-    # pdata (pconstant fraudProofAddress)
-    # pdata (pconstant ctPolicy)
-    # pdata (pconstant certificatePolicy)
-    # pconstant
-      ( spendContext
-          (stepDatum (Just state))
-          ( PD.Constr
-              1
-              [ PD.Constr
-                  0
-                  [ PD.I 0
-                  , PD.I 0
-                  , PD.I 0
-                  , witnessOpeningRaw (acCompact fixture) (acWitnessSetHashes fixture) (acPreimage fixture)
-                  ]
-              ]
-          )
-          [threadInput]
-          [convictionOutput fraudProofAddress threadName]
-          referenceInputs
-          [fraudProofMintEntry threadName]
-          (singleton fpPolicy (TokenName (toBuiltin threadName)) 1)
-      )
+  foldr (\unit rest -> plet unit $ \_ -> rest) (execute finalIndex True) [execute index False | index <- [0, 32 .. finalIndex - 1]]
   where
-    state = PD.Constr 0 [PD.B missingVerificationKey, PD.B (acTxId fixture), PD.B (acWitnessSetHash fixture)]
+    count = length (acVerificationKeys fixture)
+    finalIndex = ((count - 1) `div` 32) * 32
+    checkpointWire index =
+      "\x86\x58\x20"
+        <> acTxId fixture
+        <> "\x41\x07"
+        <> scalar3 (BS.length (acPreimage fixture))
+        <> scalar3 count
+        <> scalar3 index
+        <> scalar3 (fieldHeaderBytes count + addressWitnessStride * index)
+    scalar3 value =
+      "\x43"
+        <> BS.pack
+          [ fromIntegral (value `div` 65536 `mod` 256)
+          , fromIntegral (value `div` 256 `mod` 256)
+          , fromIntegral (value `mod` 256)
+          ]
+    checkpointHash 0 = ""
+    checkpointHash index = blake2b256 ("MidgardFieldWalkCheckpointV1" <> checkpointWire index)
+    checkpointOption 0 = PD.Constr 1 []
+    checkpointOption index = PD.Constr 0 [PD.B (checkpointWire index)]
+    state index =
+      PD.Constr
+        0
+        [ PD.B missingVerificationKey
+        , PD.B (acTxId fixture)
+        , PD.B (acWitnessSetHash fixture)
+        , PD.B (checkpointHash index)
+        ]
+    execute index final =
+      missingSignatureStep04Validator
+        # pdata (pconstant fpPolicy)
+        # pdata (pconstant fraudProofAddress)
+        # pdata (pconstant ctPolicy)
+        # pdata (pconstant certificatePolicy)
+        # pconstant
+          ( spendContext
+              (stepDatum (Just (state index)))
+              ( PD.Constr
+                  1
+                  [ PD.Constr
+                      (if final then 1 else 0)
+                      ( [PD.I 0, PD.I 0]
+                          <> [PD.I 0 | final]
+                          <> [ witnessOpeningRaw (acCompact fixture) (acWitnessSetHashes fixture) (acPreimage fixture)
+                             , checkpointOption index
+                             ]
+                      )
+                  ]
+              )
+              [threadInput]
+              [ if final
+                  then convictionOutput fraudProofAddress threadName
+                  else stepOutput stepScript (Just (state (index + 32)))
+              ]
+              referenceInputs
+              [fraudProofMintEntry threadName | final]
+              (if final then singleton fpPolicy (TokenName (toBuiltin threadName)) 1 else mempty)
+          )
 
 declaredFieldCount :: BS.ByteString -> Int
 declaredFieldCount bytes =

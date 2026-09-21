@@ -5,6 +5,9 @@ module Midgard.RedeemerItemProof (
   PRedeemerItemProofActionV1 (..), PRedeemerItemProofWitnessV1 (..), PRedeemerItemProofStepResultV1 (..),
   pversion, predeemerFieldIndex, pmodeDescriptor, pmodeData, pstageHeader, pstageTail, pstageData,
   pstageTerminal, pmaxHeaderSpan, pmaxTailSpan, pstageDataOuterFieldsAreWellFormedV1,
+  pouterFieldsAreWellFormed, phashOuterWithCheckedOptionalTraversal, pinitialControlHash,
+  pprevalidatedNextSourceSpan, pauthenticateSourceWindow, pprevalidatedOpenHeader, pprevalidatedOpenTail,
+  pdescriptorControlIsWellFormedV1, phashDescriptorControlV1, pdescriptorStepV1,
   pcontrolIsWellFormed, pinitialControlV1, pencodeControlV1, pdecodeControlV1, phashControlV1,
   pstageDataOuterControlPrefixV1, pstageDataSomeTraversalHashPrefixV1,
   phashStageDataFromAuthenticatedPrefixV1, phashStageDataOuterWithCheckedTraversalV1,
@@ -164,8 +167,8 @@ pstageDataOuterFieldsAreWellFormedV1 = phoistAcyclic $ plam $ \control -> pmatch
   , ptraversalOuterMatches control
   ]
 
-pcontrolIsWellFormed :: forall s. Term s (PRedeemerItemProofControlV1 :--> PBool)
-pcontrolIsWellFormed = phoistAcyclic $ plam $ \control -> pmatch control $ \c ->
+pouterFieldsAreWellFormed :: forall s. Term s (PRedeemerItemProofControlV1 :--> PBool)
+pouterFieldsAreWellFormed = phoistAcyclic $ plam $ \control -> pmatch control $ \c ->
   plet (pfromData $ predeemerControl'stage c) $ \stage ->
   plet (pfromData $ predeemerControl'mode c) $ \mode ->
   plet (pfromData $ predeemerControl'traversal c) $ \traversal ->
@@ -193,17 +196,21 @@ pcontrolIsWellFormed = phoistAcyclic $ plam $ \control -> pmatch control $ \c ->
           (descriptorOpen #&& pfromData (predeemerControl'executionMemory c) #== -1
             #&& pfromData (predeemerControl'executionSteps c) #== -1 #&& traversal #== pcon PDNothing)
           (pif (stage #== pstageData)
-            (pstageDataOuterFieldsAreWellFormedV1 # control
-              #&& pmatch traversal (\case PDNothing -> pconstant False; PDJust t -> Traverse.pcontrolIsWellFormed # pfromData t))
+            (pstageDataOuterFieldsAreWellFormedV1 # control)
             (pif (mode #== pmodeDescriptor)
               (descriptorOpen #&& exUnitsOpen #&& traversal #== pcon PDNothing)
               (descriptorOpen #&& exUnitsOpen #&& ptraversalOuterMatches control
                 #&& pmatch traversal (\case
                   PDNothing -> pconstant False
-                  PDJust t -> Traverse.pcontrolIsWellFormed # pfromData t
-                    #&& pmatch (pfromData t) (\tf -> pfromData (Traverse.ptraverse'stage tf) #== Traverse.pstageTerminal)
-                    #&& pnot # (Traverse.pfinalizeV1 # pfromData t #== pcon PNothing))))))
+                  PDJust t -> pmatch (pfromData t) (\tf -> pfromData (Traverse.ptraverse'stage tf) #== Traverse.pstageTerminal
+                    #&& pnot # (pfromData (Traverse.ptraverse'result tf) #== pcon PDNothing)))))))
     ]
+
+pcontrolIsWellFormed :: forall s. Term s (PRedeemerItemProofControlV1 :--> PBool)
+pcontrolIsWellFormed = phoistAcyclic $ plam $ \control -> pmatch control $ \c ->
+  pouterFieldsAreWellFormed # control #&& pmatch (pfromData $ predeemerControl'traversal c) (\case
+    PDNothing -> pconstant True
+    PDJust traversal -> Traverse.pcontrolIsWellFormed # pfromData traversal)
 
 pinitialControlV1 :: forall s. Term s (PInteger :--> PInteger :--> PInteger :--> PInteger :--> PByteString :--> PInteger :--> PInteger :--> PRedeemerItemProofControlV1)
 pinitialControlV1 = phoistAcyclic $ plam $ \mode itemIndex itemCount total commitment expectedPurpose expectedPointer ->
@@ -211,7 +218,7 @@ pinitialControlV1 = phoistAcyclic $ plam $ \mode itemIndex itemCount total commi
     (pdata pversion) (pdata mode) (pdata pstageHeader) (pdata itemIndex) (pdata itemCount) (pdata total)
     (pdata commitment) (pdata expectedPurpose) (pdata expectedPointer) (pdata $ -1) (pdata $ -1)
     (pdata 0) (pdata 0) (pdata $ -1) (pdata $ -1) (pdata $ pcon PDNothing)) $ \control ->
-      pif (pcontrolIsWellFormed # control) control perror
+      pif (pouterFieldsAreWellFormed # control) control perror
 
 pencodeControlPrefix :: forall s. Term s PRedeemerItemProofControlV1 -> Term s PByteString
 pencodeControlPrefix control = pmatch control $ \c ->
@@ -296,8 +303,10 @@ pfinalizeV1 = phoistAcyclic $ plam $ \control -> pmatch control $ \c ->
       PDJust traversal -> Traverse.pfinalizeV1 # pfromData traversal) (pcon PNothing)
 
 pnextSourceSpanV1 :: forall s. Term s (PRedeemerItemProofControlV1 :--> PMaybe PRedeemerItemSourceSpanV1)
-pnextSourceSpanV1 = phoistAcyclic $ plam $ \control -> pmatch control $ \c ->
-  pif (pnot # (pcontrolIsWellFormed # control)) (pcon PNothing) $
+pnextSourceSpanV1 = phoistAcyclic $ plam $ \control -> pif (pcontrolIsWellFormed # control) (pprevalidatedNextSourceSpan # control) (pcon PNothing)
+
+pprevalidatedNextSourceSpan :: forall s. Term s (PRedeemerItemProofControlV1 :--> PMaybe PRedeemerItemSourceSpanV1)
+pprevalidatedNextSourceSpan = phoistAcyclic $ plam $ \control -> pmatch control $ \c ->
     pif (pfromData (predeemerControl'stage c) #== pstageHeader)
       (pcon $ PJust $ pcon $ PRedeemerItemSourceSpanV1 (pdata 0)
         (pdata $ pif (pfromData (predeemerControl'totalLength c) #< pmaxHeaderSpan)
@@ -309,7 +318,7 @@ pnextSourceSpanV1 = phoistAcyclic $ plam $ \control -> pmatch control $ \c ->
     pif (pfromData (predeemerControl'stage c) #== pstageData)
       (pmatch (pfromData $ predeemerControl'traversal c) $ \case
         PDNothing -> pcon PNothing
-        PDJust traversal -> pmatch (Traverse.pnextSourceSpanV1 # pfromData traversal) $ \case
+        PDJust traversal -> pmatch (Traverse.pprevalidatedNextSourceSpan # pfromData traversal) $ \case
           PNothing -> pcon PNothing
           PJust spanValue -> pmatch spanValue $ \s -> pcon $ PJust $ pcon $ PRedeemerItemSourceSpanV1
             (Blob.pspan'absoluteStart s) (Blob.pspan'length s)) (pcon PNothing)
@@ -354,7 +363,10 @@ pwithHeaderFields control purpose pointer offset length = pmatch control $ \c ->
   (predeemerControl'executionMemory c) (predeemerControl'executionSteps c) (predeemerControl'traversal c)
 
 pheaderStep :: forall s. Term s PRedeemerItemProofControlV1 -> Term s PByteString -> Term s PRedeemerItemProofStepResultV1
-pheaderStep control source = pmatch (pheadAtV1 # source # 0 # 4) $ \case
+pheaderStep control source = popenHeaderWithValidation control source (\next -> pcontrolIsWellFormed # next)
+
+popenHeaderWithValidation :: forall s. Term s PRedeemerItemProofControlV1 -> Term s PByteString -> (Term s PRedeemerItemProofControlV1 -> Term s PBool) -> Term s PRedeemerItemProofStepResultV1
+popenHeaderWithValidation control source validate = pmatch (pheadAtV1 # source # 0 # 4) $ \case
   PNothing -> pcon PRedeemerItemProofInvalid
   PJust outer -> pmatch outer $ \o -> pif (pcborHead'value o #/= 4) (pcon PRedeemerItemProofInvalid) $
     pmatch (pheadAtV1 # source # pcborHead'nextOffset o # 0) $ \case
@@ -365,7 +377,7 @@ pheaderStep control source = pmatch (pheadAtV1 # source # 0 # 4) $ \case
           PNothing -> pcon PRedeemerItemProofInvalid
           PJust dat -> pmatch dat $ \d -> plet
             (pwithHeaderFields control (pcborHead'value p) (pcborHead'value i) (pcborHead'nextOffset d) (pcborHead'value d)) $ \next ->
-              pif (pcontrolIsWellFormed # next) (pcon $ PRedeemerItemProofAdvanced $ pdata next) (pcon PRedeemerItemProofInvalid)
+              pif (validate next) (pcon $ PRedeemerItemProofAdvanced $ pdata next) (pcon PRedeemerItemProofInvalid)
 
 pwithTailFields :: forall s. Term s PRedeemerItemProofControlV1 -> Term s PInteger -> Term s PInteger -> Term s PRedeemerItemProofControlV1
 pwithTailFields control memory steps = pmatch control $ \c ->
@@ -380,7 +392,12 @@ pwithTailFields control memory steps = pmatch control $ \c ->
         # pfromData (predeemerControl'dataLength c)) (pcon PDNothing))
 
 ptailStep :: forall s. Term s PRedeemerItemProofControlV1 -> Term s PByteString -> Term s PRedeemerItemProofStepResultV1
-ptailStep control source = pmatch (pheadAtV1 # source # 0 # 4) $ \case
+ptailStep control source = popenTailWithSuccessor source $ \memory steps ->
+  plet (pwithTailFields control memory steps) $ \next ->
+    pif (pcontrolIsWellFormed # next) (pcon $ PRedeemerItemProofAdvanced $ pdata next) (pcon PRedeemerItemProofInvalid)
+
+popenTailWithSuccessor :: forall s. Term s PByteString -> (Term s PInteger -> Term s PInteger -> Term s PRedeemerItemProofStepResultV1) -> Term s PRedeemerItemProofStepResultV1
+popenTailWithSuccessor source successor = pmatch (pheadAtV1 # source # 0 # 4) $ \case
   PNothing -> pcon PRedeemerItemProofInvalid
   PJust outer -> pmatch outer $ \o -> pif (pcborHead'value o #/= 2) (pcon PRedeemerItemProofInvalid) $
     pmatch (pheadAtV1 # source # pcborHead'nextOffset o # 0) $ \case
@@ -389,8 +406,7 @@ ptailStep control source = pmatch (pheadAtV1 # source # 0 # 4) $ \case
         PNothing -> pcon PRedeemerItemProofInvalid
         PJust steps -> pmatch steps $ \st ->
           pif (pcborHead'nextOffset st #/= plengthBS # source) (pcon PRedeemerItemProofInvalid) $
-            plet (pwithTailFields control (pcborHead'value m) (pcborHead'value st)) $ \next ->
-              pif (pcontrolIsWellFormed # next) (pcon $ PRedeemerItemProofAdvanced $ pdata next) (pcon PRedeemerItemProofInvalid)
+            successor (pcborHead'value m) (pcborHead'value st)
 
 padvanced :: forall s. Term s PRedeemerItemProofControlV1 -> Term s (PMaybe PRedeemerItemProofStepResultV1)
 padvanced control = pif (pcontrolIsWellFormed # control)
@@ -440,9 +456,9 @@ papplyStep control source action = pmatch control $ \c ->
               PJust next -> padvanced $ pwithTraversal control next
             _ -> pcon PNothing)) (pcon PNothing)
 
-pauthenticateWitness :: forall s. Term s PRedeemerItemProofControlV1 -> Term s PRedeemerItemProofWitnessV1 -> Term s (PMaybe (PMaybe PByteString))
-pauthenticateWitness control witness = pmatch witness $ \w ->
-  pmatch (pnextSourceSpanV1 # control) $ \case
+pauthenticateSourceWindow :: forall s. Term s (PRedeemerItemProofControlV1 :--> PMaybe PRedeemerItemSourceSpanV1 :--> PRedeemerItemProofWitnessV1 :--> PMaybe (PMaybe PByteString))
+pauthenticateSourceWindow = phoistAcyclic $ plam $ \control span witness -> pmatch witness $ \w ->
+  pmatch span $ \case
     PNothing -> pif (pfromData (predeemerWitness'chunkProof w) #== pcon PDNothing
         #&& pfromData (predeemerWitness'nextChunkProof w) #== pcon PDNothing)
       (pcon $ PJust $ pcon PNothing) (pcon PNothing)
@@ -452,6 +468,9 @@ pauthenticateWitness control witness = pmatch witness $ \w ->
           (pfromData $ predeemerWitness'nextChunkProof w)) $ \case
         PNothing -> pcon PNothing
         PJust bytes -> pcon $ PJust $ pcon $ PJust bytes
+
+pauthenticateWitness :: forall s. Term s PRedeemerItemProofControlV1 -> Term s PRedeemerItemProofWitnessV1 -> Term s (PMaybe (PMaybe PByteString))
+pauthenticateWitness control witness = pauthenticateSourceWindow # control # (pnextSourceSpanV1 # control) # witness
 
 pheaderProofStepV1 :: forall s. Term s (PRedeemerItemProofControlV1 :--> PRedeemerItemProofWitnessV1 :--> PMaybe PRedeemerItemProofStepResultV1)
 pheaderProofStepV1 = phoistAcyclic $ plam $ \control witness ->
@@ -483,3 +502,44 @@ pstepV1 = phoistAcyclic $ plam $ \control witness ->
   pmatch (pauthenticateWitness control witness) $ \case
     PNothing -> pcon PNothing
     PJust source -> papplyStep control source (pfromData $ predeemerWitness'action w)
+
+phashOuterWithCheckedOptionalTraversal :: forall s. Term s (PRedeemerItemProofControlV1 :--> PByteString :--> PByteString)
+phashOuterWithCheckedOptionalTraversal = phoistAcyclic $ plam $ \control optionalCbor ->
+  pif (pouterFieldsAreWellFormed # control) (pblake2b_256 # (pcontrolHashPrefix control <> optionalCbor)) perror
+
+pinitialControlHash :: forall s. Term s (PInteger :--> PInteger :--> PInteger :--> PInteger :--> PByteString :--> PInteger :--> PInteger :--> PByteString)
+pinitialControlHash = phoistAcyclic $ plam $ \mode index count length commitment purpose pointer ->
+  phashOuterWithCheckedOptionalTraversal # (pinitialControlV1 # mode # index # count # length # commitment # purpose # pointer) # pconstant "\xd8\x7a\x80"
+
+pprevalidatedOpenHeader, pprevalidatedOpenTail :: forall s. Term s (PRedeemerItemProofControlV1 :--> PByteString :--> PRedeemerItemProofStepResultV1)
+pprevalidatedOpenHeader = phoistAcyclic $ plam $ \control bytes -> pheaderStep control bytes
+pprevalidatedOpenTail = phoistAcyclic $ plam $ \control bytes -> ptailStep control bytes
+
+pdescriptorControlIsWellFormedV1 :: forall s. Term s (PRedeemerItemProofControlV1 :--> PBool)
+pdescriptorControlIsWellFormedV1 = phoistAcyclic $ plam $ \control -> pmatch control $ \c ->
+  pfromData (predeemerControl'mode c) #== pmodeDescriptor
+    #&& pfromData (predeemerControl'traversal c) #== pcon PDNothing
+    #&& (pfromData (predeemerControl'stage c) #== pstageHeader #|| pfromData (predeemerControl'stage c) #== pstageTail #|| pfromData (predeemerControl'stage c) #== pstageTerminal)
+    #&& pouterFieldsAreWellFormed # control
+
+phashDescriptorControlV1 :: forall s. Term s (PRedeemerItemProofControlV1 :--> PByteString)
+phashDescriptorControlV1 = phoistAcyclic $ plam $ \control ->
+  pif (pdescriptorControlIsWellFormedV1 # control) (pblake2b_256 # (pcontrolHashPrefix control <> pconstant "\xd8\x7a\x80")) perror
+
+pdescriptorStepV1 :: forall s. Term s (PRedeemerItemProofControlV1 :--> PBool :--> PChunkProofV1 :--> PMaybeData PChunkProofV1 :--> PMaybe PRedeemerItemProofStepResultV1)
+pdescriptorStepV1 = phoistAcyclic $ plam $ \control tail proof nextProof -> pmatch control $ \c ->
+  pif (pdescriptorControlIsWellFormedV1 # control #&& pfromData (predeemerControl'stage c) #== pif tail pstageTail pstageHeader)
+    (plet (pif tail
+      (pcon $ PRedeemerItemSourceSpanV1 (pdata $ pfromData (predeemerControl'dataOffset c) + pfromData (predeemerControl'dataLength c))
+        (pdata $ pfromData (predeemerControl'totalLength c) - pfromData (predeemerControl'dataOffset c) - pfromData (predeemerControl'dataLength c)))
+      (pcon $ PRedeemerItemSourceSpanV1 (pdata 0) (pdata $ pif (pfromData (predeemerControl'totalLength c) #< pmaxHeaderSpan) (pfromData $ predeemerControl'totalLength c) pmaxHeaderSpan))) $ \span ->
+      pmatch (pauthenticatedSpan control span proof nextProof) $ \case
+        PNothing -> pcon PNothing
+        PJust bytes -> pcon $ PJust $ pif tail
+          (popenTailWithSuccessor bytes $ \memory steps ->
+            plet (pcon c { predeemerControl'stage = pdata pstageTerminal
+                        , predeemerControl'executionMemory = pdata memory
+                        , predeemerControl'executionSteps = pdata steps
+                        , predeemerControl'traversal = pdata $ pcon PDNothing }) $ \next ->
+              pif (pdescriptorControlIsWellFormedV1 # next) (pcon $ PRedeemerItemProofAdvanced $ pdata next) (pcon PRedeemerItemProofInvalid))
+          (popenHeaderWithValidation control bytes (\next -> pdescriptorControlIsWellFormedV1 # next))) (pcon PNothing)

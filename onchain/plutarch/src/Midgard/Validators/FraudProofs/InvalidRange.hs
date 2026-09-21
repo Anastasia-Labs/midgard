@@ -1,35 +1,4 @@
-{- |
-Module      : Midgard.Validators.FraudProofs.InvalidRange
-Description : Plutarch port of @validators/fraud-proofs/invalid-range/step-0{1,2}.ak@.
-
-The invalid-range fraud proof (spec §5.1.1): a committed transaction one or both
-of whose validity bounds fall outside the block's own time range — or whose range
-is unsatisfiable outright.
-
-Two validators. Step-01 binds the transaction, normalises its interval against
-'Midgard.Env.pposixTimeNone' and pairs it with the header's @start_time@ and
-@end_time@; step-02 adjudicates the pair.
-
-=== Only bounded ends are adjudicated
-
-An /unbounded/ end is not a fault. A transaction with no upper bound does not
-"exceed" the block's end — it simply never asserted one — so @FromNegInf@ is
-checked on its upper bound alone and @ToPosInf@ on its lower. @Always@ asserts
-nothing at all, and step-02 __aborts__ on it rather than returning @False@: a
-thread that reached step-02 with an unbounded range was built on a premise the
-family cannot be about, and the abort says so where a refusal would look like an
-ordinary failed proof.
-
-=== Exclusive on the wire, inclusive in the type
-
-A native body's @validity_interval_end@ is /exclusive/ and every bounded
-constructor of @NormalizedTimeRange@ holds an /inclusive/ upper, so step-01
-subtracts one. That is also why step-02's upper test is @>=@ against the block's
-@end_time@ while its lower test is @<@ against @start_time@: the block's range is
-read as inclusive-lower, exclusive-upper, which the Aiken source flags as an
-assumption pending a spec clarification. The port keeps the asymmetry rather than
-tidying it, because tidying it would change which transactions are convictable.
--}
+-- | Bind accepted or forced carriage, then adjudicate the exact interval claim.
 module Midgard.Validators.FraudProofs.InvalidRange (
   invalidRangeStep01Validator,
   invalidRangeStep02Validator,
@@ -47,22 +16,25 @@ import Plutarch.Prelude
 
 import DesignPatterns.ValidityRangeNormalization (PNormalizedTimeRange (..))
 import Midgard.Env qualified as Env
-import Midgard.FraudProofs.Common (pfinalize, ppassNativeTxToNextStepCarried)
-import Midgard.FraudProofs.InvalidRange (PStep02Args (..), PStep02State (..))
+import Midgard.FraudProofs.Common (pcontinue, pfinalize, ppassNativeTxToNextStepCarried)
+import Midgard.FraudProofs.InvalidRange
+import Midgard.FraudProofs.NativeTx.Compact (pverifyNativeTxProofSourceV1)
 import Midgard.FraudProofs.NativeTx.Types (
   PNativeTxBodyCompact (..),
   PNativeTxCompact (..),
   PVerifiedMidgardNativeTxCompact (..),
  )
-import Midgard.LedgerState (PHeaderV1 (..))
+import Midgard.FraudProofs.ProofThreadSubstrate qualified as Subject
+import Midgard.LedgerState (PForcedInclusionTxV1 (..), PHeaderV1 (..), PNativeTxProofSourceV1 (..))
+import Midgard.TransitionTrace (PRootMembershipProof (..))
 import Midgard.Validators.FraudProofs.Step (
   pdispatch,
   pexpectDatum,
   pexpectStateAs,
-  pexpecting,
   pstateIsAbsent,
   pstep,
  )
+import Plutarch.Unsafe (punsafeCoerce)
 
 {- | Aiken @validators/fraud-proofs/invalid-range/step-01.ak@'s
 @normalize_native_validity_range@.
@@ -122,50 +94,78 @@ invalidRangeStep01Validator ::
 invalidRangeStep01Validator = plam $
   \step02ValidatorScriptHash computationThreadTokenPolicyId hubOracle ctx ->
     pstep ctx $ \datum redeemer ownOutRef txInfo ->
-      pdispatch computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
-        \carriage -> P.do
-          PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
-            pmatch txInfo
-          ppassNativeTxToNextStepCarried
-            computationThreadTokenPolicyId
-            hubOracle
-            datum
-            carriage
-            ownOutRef
-            (pfromData ptxInfo'inputs)
-            (pfromData ptxInfo'referenceInputs)
-            (pfromData ptxInfo'outputs)
-            (pto (pto (pfromData ptxInfo'redeemers)))
-            $ \_ownScriptHash
-               _threadTokenAssetName
-               _fraudProver
-               mInputStateData
-               outputScriptHash
-               outputStateData
-               header
-               _badTxId
-               badTxView -> P.do
-                PHeaderV1 {pheader'blockSlot} <- pmatch (pfromData header)
-                PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch badTxView
-                PNativeTxCompact {pcompact'body, pcompact'validityCode} <- pmatch pverified'txCompact
-                pexpecting (pstateIsAbsent mInputStateData)
-                  $ pexpecting (pcompact'validityCode #== 0)
-                  $ pexpecting (outputScriptHash #== step02ValidatorScriptHash)
-                  $ pexpecting
-                    ( outputStateData
-                        #== pforgetData
-                          ( pdata
-                              ( pcon
-                                  ( PStep02State
-                                      { pstep02State'blockSlot = pheader'blockSlot
-                                      , pstep02State'badTxNormalizedValidityRange =
-                                          pdata (pnormalizeNativeValidityRange # pcompact'body)
-                                      }
-                                  )
-                              )
-                          )
-                    )
-                    (pconstant True)
+      pdispatch @_ @PStep01Args computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
+        \args -> P.do
+          PStep01Args source <- pmatch args
+          PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <- pmatch txInfo
+          pmatch (pfromData source) $ \case
+            PAcceptedSource carriage ->
+              ppassNativeTxToNextStepCarried
+                computationThreadTokenPolicyId
+                hubOracle
+                datum
+                (pfromData carriage)
+                ownOutRef
+                (pfromData ptxInfo'inputs)
+                (pfromData ptxInfo'referenceInputs)
+                (pfromData ptxInfo'outputs)
+                (pto (pto (pfromData ptxInfo'redeemers)))
+                $ \_ _ _ inputState outputScriptHash outputStateData header _ verified ->
+                  pstateIsAbsent inputState
+                    #&& outputScriptHash
+                    #== step02ValidatorScriptHash
+                    #&& outputStateData
+                    #== expectedState (Subject.pbindAcceptedSubject # verified) (pfromData header) verified
+            PForcedSource inputIndex outputIndex header membership direction ->
+              pcontinue
+                computationThreadTokenPolicyId
+                (pexpectDatum datum)
+                (pfromData inputIndex)
+                (pfromData outputIndex)
+                ownOutRef
+                (pfromData ptxInfo'inputs)
+                (pfromData ptxInfo'outputs)
+                $ \_ threadName _ inputState outputScriptHash outputStateData -> P.do
+                  subject <-
+                    plet $
+                      Subject.pbindForcedSubjectToThread
+                        # pto (pfromData threadName)
+                        # pfromData header
+                        # pfromData membership
+                        # pfromData direction
+                  PRootMembershipProof {prootMembership'value} <- pmatch $ pfromData membership
+                  PForcedInclusionTxV1 {pforcedTx'txId, pforcedTx'source} <-
+                    pmatch $
+                      pfromData (punsafeCoerce prootMembership'value)
+                  PNativeTxProofSourceV1 {..} <- pmatch $ pfromData pforcedTx'source
+                  PPair verified _ <-
+                    pmatch $
+                      pverifyNativeTxProofSourceV1
+                        # pfromData pforcedTx'txId
+                        # pfromData pnativeSource'compactCbor
+                        # pfromData pnativeSource'witnessSetCompactCbor
+                        # pfromData pnativeSource'fieldPreimageLengthsCbor
+                  PVerifiedMidgardNativeTxCompact {pverified'txId} <- pmatch verified
+                  Subject.PVerdictSubject {Subject.psubject'transactionId} <- pmatch subject
+                  pstateIsAbsent inputState
+                    #&& pverified'txId
+                    #== pfromData psubject'transactionId
+                    #&& outputScriptHash
+                    #== step02ValidatorScriptHash
+                    #&& outputStateData
+                    #== expectedState subject (pfromData header) verified
+  where
+    expectedState subject header verified =
+      pmatch header $ \PHeaderV1 {pheader'blockSlot} ->
+        pmatch verified $ \PVerifiedMidgardNativeTxCompact {pverified'txCompact} ->
+          pmatch pverified'txCompact $ \PNativeTxCompact {pcompact'body} ->
+            pforgetData $
+              pdata $
+                pcon $
+                  PStep02State
+                    (pdata subject)
+                    pheader'blockSlot
+                    (pdata $ pnormalizeNativeValidityRange # pcompact'body)
 
 {- | Aiken @validators/fraud-proofs/invalid-range/step-02.ak@.
 
@@ -208,24 +208,12 @@ invalidRangeStep02Validator = plam $
             (pto (pto (pfromData ptxInfo'redeemers)))
             $ \_ownScriptHash _threadTokenAssetName _fraudProver mInputStateData -> P.do
               PStep02State
-                { pstep02State'blockSlot
+                { pstep02State'subject
+                , pstep02State'blockSlot
                 , pstep02State'badTxNormalizedValidityRange
                 } <-
                 pmatch (pexpectStateAs @PStep02State mInputStateData)
-              blockSlot <- plet $ pfromData pstep02State'blockSlot
-              pexpecting
-                ( pmatch (pfromData pstep02State'badTxNormalizedValidityRange) $ \case
-                    PClosedRange {pntr'lower, pntr'upper} ->
-                      pfromData pntr'lower
-                        #> blockSlot
-                        #|| pfromData pntr'upper
-                        #< blockSlot
-                    PFromNegInf {pntr'upperOnly} -> pfromData pntr'upperOnly #< blockSlot
-                    PToPosInf {pntr'lowerOnly} -> pfromData pntr'lowerOnly #> blockSlot
-                    -- Aiken's `fail @"The tx does not have an invalid time
-                    -- range"`: an unbounded range is not a fault, so a thread
-                    -- reaching here was built on a false premise.
-                    PAlways -> perror
-                    PInvalidRange -> pconstant True
-                )
-                (pconstant True)
+              pterminalContradiction
+                # pfromData pstep02State'subject
+                # pfromData pstep02State'badTxNormalizedValidityRange
+                # pfromData pstep02State'blockSlot

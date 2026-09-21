@@ -52,11 +52,13 @@ module Midgard.CekSourceBlob (
 
   -- * Stepping
   pnextSourceSpanV1,
+  pprevalidatedNextSourceSpan,
   pstepV1,
   pfinalizeV1,
 
   -- * Encoding
   pencodeControlV1,
+  pcontrolData,
   pcontrolFromDataV1,
   pdecodeControlV1,
 ) where
@@ -417,6 +419,23 @@ poptionalActiveHashFromData = phoistAcyclic $
           (pcon PDNothing)
           perror
 
+-- | Aiken @control_data_v1@: direct wire Data, with canonical nested controls.
+-- The consuming stage must validate and authenticate the control.
+pcontrolData :: forall (s :: S). Term s (PCekSourceBlobControlV1 :--> PData)
+pcontrolData = phoistAcyclic $ plam $ \control -> pmatch control $ \c ->
+  pforgetData $ pdata $
+    foldr (\item rest -> pcons @PBuiltinList # item # rest) pnil
+      [ pforgetData (pdata pcekSourceBlobVersion)
+      , pforgetData (pdata (pfromData (pblob'stage c)))
+      , pforgetData (pdata (pfromData (pblob'sourceStart c)))
+      , pforgetData (pdata (pfromData (pblob'sourceLength c)))
+      , Frontier.pfrontierData # pfromData (pblob'frontier c)
+      , pmatch (pfromData (pblob'activeHash c)) (\case
+          PDNothing -> pforgetData $ pconstrBuiltin # 1 # pnil
+          PDJust value -> pforgetData $ pconstrBuiltin # 0
+            # (pcons # (Trace.pcontrolData # pfromData value) # pnil))
+      ]
+
 -- | Aiken @control_from_data_v1@.
 pcontrolFromDataV1 :: forall (s :: S). Term s (PData :--> PCekSourceBlobControlV1)
 pcontrolFromDataV1 = phoistAcyclic $
@@ -472,21 +491,28 @@ pnextSourceSpanV1 ::
   Term s (PCekSourceBlobControlV1 :--> PMaybe PCekSourceBlobSpanV1)
 pnextSourceSpanV1 = phoistAcyclic $
   plam $ \control ->
-    pif (pnot # (pcontrolIsWellFormed # control)) (pcon PNothing) $
-      pmatch control $ \c ->
-        pmatch (pfromData (pblob'activeHash c)) $ \case
-          PDNothing -> pcon PNothing
-          PDJust hashControlData ->
-            plet (pfromData hashControlData) $ \hashControl ->
-              pif
-                ( pnot
-                    #$ pfromData (pblob'stage c)
-                    #== pstageActive
-                    #&& ptraceStage hashControl
-                    #== Trace.pstageReady
-                )
-                (pcon PNothing)
-                $ pspanOf control hashControl
+    pif (pcontrolIsWellFormed # control) (pprevalidatedNextSourceSpan # control) (pcon PNothing)
+
+-- | Requires a well-formed control authenticated by the calling stage.
+pprevalidatedNextSourceSpan ::
+  forall (s :: S).
+  Term s (PCekSourceBlobControlV1 :--> PMaybe PCekSourceBlobSpanV1)
+pprevalidatedNextSourceSpan = phoistAcyclic $
+  plam $ \control ->
+    pmatch control $ \c ->
+      pmatch (pfromData (pblob'activeHash c)) $ \case
+        PDNothing -> pcon PNothing
+        PDJust hashControlData ->
+          plet (pfromData hashControlData) $ \hashControl ->
+            pif
+              ( pnot
+                  #$ pfromData (pblob'stage c)
+                  #== pstageActive
+                  #&& ptraceStage hashControl
+                  #== Trace.pstageReady
+              )
+              (pcon PNothing)
+              $ pspanOf control hashControl
 
 pspanOf ::
   forall (s :: S).

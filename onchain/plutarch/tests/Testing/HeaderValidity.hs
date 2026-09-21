@@ -320,6 +320,7 @@ exactStateQueueRedeemerVectors =
       mergeRedeemer =
         pcon $
           StateQueue.PMergeToConfirmedStateV1
+            (pdata 0)
             (pdata $ pconstant $ BS.replicate 28 0x11)
             (pdata $ pconstant $ TxOutRef (TxId $ toBuiltin $ BS.replicate 32 0x44) 0)
             (pdata 0)
@@ -460,7 +461,7 @@ vectorStateQueueNodeCbor = hex "d8799f" <> vectorHeaderCbor <> hex "d87a9f582044
 
 vectorMergeRedeemerCbor :: BS.ByteString
 vectorMergeRedeemerCbor = hex $
-  "d87f9f581c11111111111111111111111111111111111111111111111111111111"
+  "d87f9f00581c11111111111111111111111111111111111111111111111111111111"
     <> "d8799f5820444444444444444444444444444444444444444444444444444444444444444400ff"
     <> "00d8799f01ff"
     <> "58202121212121212121212121212121212121212121212121212121212121212121"

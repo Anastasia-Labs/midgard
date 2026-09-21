@@ -7,6 +7,7 @@ module Midgard.LedgerOutputScan (
   pstageOptionalField, pstageDatumPayload, pstageReferenceScriptPayload, pstageTerminal,
   pinitialControlV1, pcontrolIsWellFormed, pencodeControlV1, pcontrolFromDataV1,
   pdecodeControlV1, pstepV1, pfinishV1, pterminalIsExactV1,
+  pinitialControlCborV1, pstepHeaders, pstepAssets, pstepOptional,
 ) where
 
 import GHC.Generics (Generic)
@@ -462,3 +463,38 @@ pterminalIsExactV1 = phoistAcyclic $ plam $ \control totalLength -> pmatch contr
             #&& scriptLength #>= 0 #&& scriptOffset + scriptLength #== totalLength
         )
     ]
+
+-- Target literal, independently pinned against the initial control encoder.
+pinitialControlCborV1 :: forall s. Term s PByteString
+pinitialControlCborV1 = pconstant "\x97\x01\x00\x00\x00\x00\x40\x00\x00\x00\x00\x00\x40\x40\x40\x00\x80\x20\x00\x00\x20\x20\x20\x00"
+
+-- The physical yield bodies retain the generic scan's exact pre/post checks.
+pnarrowStep :: forall s.
+  Term s PLedgerOutputScanControlV1 -> Term s PInteger -> Term s PByteString -> Term s PInteger ->
+  (Term s PLedgerOutputScanControlV1 -> Term s PByteString -> Term s PInteger -> Term s (PMaybe PLedgerOutputScanControlV1)) ->
+  Term s (PMaybe PLedgerOutputScanControlV1)
+pnarrowStep control totalLength window windowOffset transition = pmatch control $ \c ->
+  plet (pfromData $ pscan'cursor c) $ \cursor ->
+    pif (pcontrolIsWellFormed # control #&& cursor #>= 0 #&& cursor #<= totalLength #&& windowOffset #>= 0 #&& windowOffset #< plengthBS # window)
+      (pmatch (transition control window windowOffset) $ \case
+        PNothing -> pcon PNothing
+        PJust next -> pmatch next $ \n ->
+          pif (pcontrolIsWellFormed # next #&& pfromData (pscan'cursor n) #>= cursor #&& pfromData (pscan'cursor n) #<= totalLength
+              #&& (pfromData (pscan'cursor n) #> cursor #|| pfromData (pscan'stage n) #/= pfromData (pscan'stage c)))
+            (pcon $ PJust next) (pcon PNothing))
+      (pcon PNothing)
+
+pstepHeaders, pstepAssets, pstepOptional :: forall s. Term s (PLedgerOutputScanControlV1 :--> PInteger :--> PByteString :--> PInteger :--> PMaybe PLedgerOutputScanControlV1)
+pstepHeaders = phoistAcyclic $ plam $ \control total window offset ->
+  pnarrowStep control total window offset $ \current bytes at -> pmatch current $ \c ->
+    pif (pfromData (pscan'stage c) #== pstageRequiredFields) (pstepRequiredFields current bytes at) $
+      pif (pfromData (pscan'stage c) #== pstageValueHeader) (pstepValueHeader current bytes at) (pcon PNothing)
+pstepAssets = phoistAcyclic $ plam $ \control total window offset ->
+  pnarrowStep control total window offset $ \current bytes at -> pmatch current $ \c ->
+    pif (pfromData (pscan'stage c) #== pstagePolicyHeader) (pstepPolicyHeader current bytes at) $
+      pif (pfromData (pscan'stage c) #== pstageAsset) (pstepAsset current bytes at) (pcon PNothing)
+pstepOptional = phoistAcyclic $ plam $ \control total window offset ->
+  pnarrowStep control total window offset $ \current bytes at -> pmatch current $ \c ->
+    pif (pfromData (pscan'stage c) #== pstageOptionalField) (pstepOptionalField current bytes at) $
+      pif (pfromData (pscan'stage c) #== pstageDatumPayload #|| pfromData (pscan'stage c) #== pstageReferenceScriptPayload)
+        (pstepPayload current total) (pcon PNothing)

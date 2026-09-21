@@ -34,7 +34,6 @@ import PlutusLedgerApi.V3 (
   ScriptHash (..),
   ScriptInfo (MintingScript, SpendingScript),
   ScriptPurpose (Certifying, Minting, Rewarding),
-  Credential (ScriptCredential),
   TxCert (TxCertRegStaking),
   TxId (..),
   TxInInfo (..),
@@ -79,52 +78,67 @@ tests =
     [ testGroup
         "mint"
         [ testCase "accepts a valid withdrawal holding only Ada and its NFT" $
-            psucceeds $ runMint validityValid mempty
+            psucceeds $
+              runMint validityValid mempty
         , -- Only valid withdrawals may initialise a payout accumulator, so the
           -- other seven verdicts must not be mintable at all.
           testCase "rejects a withdrawal marked as a non-existent UTxO" $
-            pfails $ runMint validityNonExistent mempty
+            pfails $
+              runMint validityNonExistent mempty
         , testCase "rejects a withdrawal marked with an incorrect owner" $
-            pfails $ runMint validityIncorrectOwner mempty
+            pfails $
+              runMint validityIncorrectOwner mempty
         , testCase "rejects a withdrawal marked as spent, which carries a field" $
-            pfails $ runMint validitySpent mempty
+            pfails $
+              runMint validitySpent mempty
         , -- Stricter than the deposit: no basket of assets is allowed here.
           testCase "rejects a withdrawal carrying any asset beyond its NFT" $
-            pfails $ runMint validityValid (singleton otherPolicy (TokenName "x") 1)
+            pfails $
+              runMint validityValid (singleton otherPolicy (TokenName "x") 1)
         ]
     , testGroup
         "spend / InitializePayout"
         [ testCase "opens an accumulator below the L2 target" $
-            psucceeds $ runSpend initializeDefaults
+            psucceeds $
+              runSpend initializeDefaults
         , testCase "accepts an accumulator opened at exactly the target" $
-            psucceeds $ runSpend initializeDefaults {sTargetAda = 2_000_000}
+            psucceeds $
+              runSpend initializeDefaults{sTargetAda = 2_000_000}
         , -- Opening above the target makes the exact-value conclusion path
           -- unreachable, stranding the payout.
           testCase "rejects an accumulator opened above the L2 target" $
-            pfails $ runSpend initializeDefaults {sTargetAda = 1_000_000}
+            pfails $
+              runSpend initializeDefaults{sTargetAda = 1_000_000}
         , testCase "rejects a payout datum that alters the L2 target" $
-            pfails $ runSpend initializeDefaults {sPayoutDatumValue = Just alteredL2Value}
+            pfails $
+              runSpend initializeDefaults{sPayoutDatumValue = Just alteredL2Value}
         , testCase "rejects an output going anywhere but the payout address" $
-            pfails $ runSpend initializeDefaults {sOutputToPayout = False}
+            pfails $
+              runSpend initializeDefaults{sOutputToPayout = False}
         , testCase "rejects a payout mint redeemer naming another UTxO" $
-            pfails $ runSpend initializeDefaults {sMintOutRefMatches = False}
+            pfails $
+              runSpend initializeDefaults{sMintOutRefMatches = False}
         , -- Only a withdrawal the operator judged valid may open an accumulator.
           testCase "rejects initialising from an invalid withdrawal" $
-            pfails $ runSpend initializeDefaults {sTreeValidity = PD.Constr 3 []}
+            pfails $
+              runSpend initializeDefaults{sTreeValidity = PD.Constr 3 []}
         ]
     , testGroup
         "spend / Refund"
         [ testCase "refunds a withdrawal the tree records as invalid" $
-            psucceeds $ runSpend refundDefaults
+            psucceeds $
+              runSpend refundDefaults
         , -- The claimed verdict is substituted into the info before the
           -- membership check, so a verdict the operator never gave cannot pass.
           testCase "rejects a verdict the settlement tree does not record" $
-            pfails $ runSpend refundDefaults {sPurpose = PD.Constr 1 [PD.Constr 4 []]}
+            pfails $
+              runSpend refundDefaults{sPurpose = PD.Constr 1 [PD.Constr 4 []]}
         , testCase "rejects refunding a valid withdrawal" $
             pfails $
-              runSpend refundDefaults {sPurpose = PD.Constr 1 [PD.Constr 0 []], sTreeValidity = PD.Constr 0 []}
+              runSpend refundDefaults{sPurpose = PD.Constr 1 [PD.Constr 0 []], sTreeValidity = PD.Constr 0 []}
         , testCase "rejects a refund sent to the wrong address" $
-            pfails $ runSpend refundDefaults {sRefundAddressMatches = False}
+            pfails $
+              runSpend refundDefaults{sRefundAddressMatches = False}
         ]
     ]
 
@@ -144,8 +158,8 @@ auxiliaryPolicy = repeatedByte 0x55
 
 repeatedByte :: Int -> CurrencySymbol
 repeatedByte b = currencySymbolFromHex (concat (replicate 28 h))
-  where
-    h = let x = showHex b "" in if length x == 1 then '0' : x else x
+ where
+  h = let x = showHex b "" in if length x == 1 then '0' : x else x
 
 nonceRef :: TxOutRef
 nonceRef =
@@ -178,8 +192,8 @@ witnessScriptHash =
             <> toBuiltin (BS.pack [0x00, 0x01])
         )
     )
-  where
-    unTokenName (TokenName b) = b
+ where
+  unTokenName (TokenName b) = b
 
 {- | @env.user_events_witness_script_prefix@.
 
@@ -234,69 +248,70 @@ runMint validity extraAssets =
   withdrawalMintValidator
     # pdata (pconstant (ScriptHash (unCurrencySymbol hubOraclePolicy)))
     # pconstant ctx
-  where
-    withdrawalValue =
-      mkAdaValue 2_000_000 <> singleton withdrawalPolicy nonce 1 <> extraAssets
+ where
+  withdrawalValue =
+    mkAdaValue 2_000_000 <> singleton withdrawalPolicy nonce 1 <> extraAssets
 
-    -- @OptimisticDatum { event, inclusion_time, witness, refund_address,
-    -- refund_datum }@; only the first three are read by the mint path.
-    withdrawalDatum =
-      dataToBuiltinData $
-        PD.Constr
-          0
-          [ PD.Constr -- WithdrawalEvent { id, info }
-              0
-              [ builtinDataToData (toBuiltinData nonceRef)
-              , PD.Constr 0 [PD.B "body", PD.B "sig", validity]
-              ]
-          , PD.I (validTo + eventWaitDuration)
-          , PD.B (fromBuiltin (unScriptHash witnessScriptHash))
-          , addrData auxiliaryPolicy
-          , PD.Constr 0 []
+  -- @OptimisticDatum { event, inclusion_time, witness, refund_address,
+  -- refund_datum }@; only the first three are read by the mint path.
+  withdrawalDatum =
+    dataToBuiltinData $
+      PD.Constr
+        0
+        [ PD.Constr -- WithdrawalEvent { id, info }
+            0
+            [ builtinDataToData (toBuiltinData nonceRef)
+            , PD.Constr 0 [PD.B "body", PD.B "sig", validity]
+            ]
+        , PD.I (validTo + eventWaitDuration)
+        , PD.B (fromBuiltin (unScriptHash witnessScriptHash))
+        , addrData auxiliaryPolicy
+        , PD.Constr 0 []
+        ]
+   where
+    unScriptHash (ScriptHash b) = b
+
+  witnessRedeemer =
+    dataToBuiltinData
+      (PD.Constr 0 [PD.B (fromBuiltin (unCurrencySymbol withdrawalPolicy))])
+
+  mintRedeemer = dataToBuiltinData (PD.Constr 0 [PD.I 0, PD.I 0, PD.I 0, PD.I 0])
+
+  base = buildScriptContext mempty
+  txInfo =
+    (scriptContextTxInfo base)
+      { txInfoInputs =
+          [ TxInInfo
+              nonceRef
+              ( TxOut
+                  (scriptHashAddress (ScriptHash (unCurrencySymbol auxiliaryPolicy)))
+                  (mkAdaValue 2_000_000)
+                  NoOutputDatum
+                  Nothing
+              )
           ]
-      where
-        unScriptHash (ScriptHash b) = b
-
-    witnessRedeemer =
-      dataToBuiltinData
-        (PD.Constr 0 [PD.B (fromBuiltin (unCurrencySymbol withdrawalPolicy))])
-
-    mintRedeemer = dataToBuiltinData (PD.Constr 0 [PD.I 0, PD.I 0, PD.I 0, PD.I 0])
-
-    base = buildScriptContext mempty
-    txInfo =
-      (scriptContextTxInfo base)
-        { txInfoInputs =
-            [ TxInInfo
-                nonceRef
-                ( TxOut
-                    (scriptHashAddress (ScriptHash (unCurrencySymbol auxiliaryPolicy)))
-                    (mkAdaValue 2_000_000)
-                    NoOutputDatum
-                    Nothing
-                )
+      , txInfoReferenceInputs = [hubRefIn]
+      , txInfoOutputs =
+          [ TxOut
+              (scriptHashAddress (ScriptHash (unCurrencySymbol withdrawalPolicy)))
+              withdrawalValue
+              (OutputDatum (Datum withdrawalDatum))
+              Nothing
+          ]
+      , txInfoMint = UnsafeMintValue (getValue (singleton withdrawalPolicy nonce 1))
+      , txInfoValidRange =
+          Interval
+            (LowerBound (Finite (POSIXTime 1_000)) True)
+            (UpperBound (Finite (POSIXTime validTo)) True)
+      , txInfoRedeemers =
+          Map.unsafeFromList
+            [
+              ( Certifying 0 (TxCertRegStaking (ScriptCredential witnessScriptHash) Nothing)
+              , Redeemer witnessRedeemer
+              )
             ]
-        , txInfoReferenceInputs = [hubRefIn]
-        , txInfoOutputs =
-            [ TxOut
-                (scriptHashAddress (ScriptHash (unCurrencySymbol withdrawalPolicy)))
-                withdrawalValue
-                (OutputDatum (Datum withdrawalDatum))
-                Nothing
-            ]
-        , txInfoMint = UnsafeMintValue (getValue (singleton withdrawalPolicy nonce 1))
-        , txInfoValidRange =
-            Interval
-              (LowerBound (Finite (POSIXTime 1_000)) True)
-              (UpperBound (Finite (POSIXTime validTo)) True)
-        , txInfoRedeemers =
-            Map.unsafeFromList
-              [ ( Certifying 0 (TxCertRegStaking (ScriptCredential witnessScriptHash) Nothing)
-                , Redeemer witnessRedeemer
-                )
-              ]
-        }
-    ctx = ScriptContext txInfo (Redeemer mintRedeemer) (MintingScript withdrawalPolicy)
+      }
+  ctx = ScriptContext txInfo (Redeemer mintRedeemer) (MintingScript withdrawalPolicy)
 
 addrData :: CurrencySymbol -> PD.Data
 addrData cs =
@@ -329,8 +344,8 @@ hubDatum =
           <> replicate 4 (addrData auxiliaryPolicy)
           <> [auxPolicyData]
       )
-  where
-    auxPolicyData = PD.B (fromBuiltin (unCurrencySymbol auxiliaryPolicy))
+ where
+  auxPolicyData = PD.B (fromBuiltin (unCurrencySymbol auxiliaryPolicy))
 
 --------------------------------------------------------------------------------
 -- Spend fixtures
@@ -349,7 +364,7 @@ emptyMerkleRoot =
 
 phasValidatorHash :: BS.ByteString
 phasValidatorHash =
-  either (error "bad hex") id (Base16.decode (BS8.pack "1fc59ff54da02f2535d64b40b647a8826c8b3d914d7ba5257f5b2721"))
+  either (error "bad hex") id (Base16.decode (BS8.pack "819adf9eaaed4aa11f717414e99c80b45d416481824321c3474bcb5e"))
 
 phasRoot :: BS.ByteString
 phasRoot = BS.replicate 32 0xaa
@@ -440,162 +455,162 @@ runSpend sp =
   withdrawalSpendValidator
     # pdata (pconstant (ScriptHash (unCurrencySymbol hubOraclePolicy)))
     # pconstant ctx
-  where
-    isInitialize = case sPurpose sp of
-      PD.Constr 0 _ -> True
-      _ -> False
+ where
+  isInitialize = case sPurpose sp of
+    PD.Constr 0 _ -> True
+    _ -> False
 
-    ownValue = mkAdaValue 2_000_000 <> singleton withdrawalPolicy nonce 1
+  ownValue = mkAdaValue 2_000_000 <> singleton withdrawalPolicy nonce 1
 
-    outputValue
-      | isInitialize = mkAdaValue 2_000_000 <> singleton payoutPolicy nonce 1
-      | otherwise = mkAdaValue 2_000_000
+  outputValue
+    | isInitialize = mkAdaValue 2_000_000 <> singleton payoutPolicy nonce 1
+    | otherwise = mkAdaValue 2_000_000
 
-    withdrawalDatum =
-      dataToBuiltinData $
-        PD.Constr
-          0
-          [ PD.Constr 0 [spentEventId, withdrawalInfoWith (sTargetAda sp) (treeVerdict sp)]
-          , PD.I 0
-          , PD.B "witness"
-          , addrData auxiliaryPolicy -- refund_address
-          , PD.Constr 0 [] -- refund_datum: NoDatum
-          ]
-
-    withdrawalIn =
-      TxInInfo
-        (outRefN 0)
-        ( TxOut
-            (scriptHashAddress (ScriptHash (unCurrencySymbol withdrawalPolicy)))
-            ownValue
-            (OutputDatum (Datum withdrawalDatum))
-            Nothing
-        )
-
-    settlementDatum =
-      dataToBuiltinData $
-        PD.Constr
-          0
-          [ PD.B emptyMerkleRoot
-          , PD.B withdrawalsCountedRoot -- withdrawals_root
-          , PD.B emptyMerkleRoot
-          , PD.B emptyMerkleRoot
-          , PD.Constr 1 []
-          ]
-
-    settlementRefIn =
-      TxInInfo
-        (outRefN 8)
-        ( TxOut
-            (scriptHashAddress (ScriptHash (unCurrencySymbol settlementPolicy)))
-            (mkAdaValue 2_000_000 <> singleton settlementPolicy (TokenName "s") 1)
-            (OutputDatum (Datum settlementDatum))
-            Nothing
-        )
-
-    -- What the settlement tree records: the info with the tree's verdict.
-    provenInfo = withdrawalInfoWith (sTargetAda sp) (sTreeValidity sp)
-
-    membershipProof =
+  withdrawalDatum =
+    dataToBuiltinData $
       PD.Constr
         0
-        [ PD.Constr 0 [] -- WithdrawalsRootDomain
-        , PD.B withdrawalsCountedRoot
-        , PD.B phasRoot
-        , PD.I withdrawalCount
+        [ PD.Constr 0 [spentEventId, withdrawalInfoWith (sTargetAda sp) (treeVerdict sp)]
+        , PD.I 0
+        , PD.B "witness"
+        , addrData auxiliaryPolicy -- refund_address
+        , PD.Constr 0 [] -- refund_datum: NoDatum
+        ]
+
+  withdrawalIn =
+    TxInInfo
+      (outRefN 0)
+      ( TxOut
+          (scriptHashAddress (ScriptHash (unCurrencySymbol withdrawalPolicy)))
+          ownValue
+          (OutputDatum (Datum withdrawalDatum))
+          Nothing
+      )
+
+  settlementDatum =
+    dataToBuiltinData $
+      PD.Constr
+        0
+        [ PD.B emptyMerkleRoot
+        , PD.B withdrawalsCountedRoot -- withdrawals_root
+        , PD.B emptyMerkleRoot
+        , PD.B emptyMerkleRoot
+        , PD.Constr 1 []
+        ]
+
+  settlementRefIn =
+    TxInInfo
+      (outRefN 8)
+      ( TxOut
+          (scriptHashAddress (ScriptHash (unCurrencySymbol settlementPolicy)))
+          (mkAdaValue 2_000_000 <> singleton settlementPolicy (TokenName "s") 1)
+          (OutputDatum (Datum settlementDatum))
+          Nothing
+      )
+
+  -- What the settlement tree records: the info with the tree's verdict.
+  provenInfo = withdrawalInfoWith (sTargetAda sp) (sTreeValidity sp)
+
+  membershipProof =
+    PD.Constr
+      0
+      [ PD.Constr 0 [] -- WithdrawalsRootDomain
+      , PD.B withdrawalsCountedRoot
+      , PD.B phasRoot
+      , PD.I withdrawalCount
+      , PD.B (serialisedOf spentEventId)
+      , PD.B (serialisedOf provenInfo)
+      , PD.List [PD.B "step"]
+      ]
+
+  phasRedeemer =
+    dataToBuiltinData $
+      PD.List
+        [ PD.B phasRoot
         , PD.B (serialisedOf spentEventId)
         , PD.B (serialisedOf provenInfo)
         , PD.List [PD.B "step"]
         ]
 
-    phasRedeemer =
-      dataToBuiltinData $
-        PD.List
-          [ PD.B phasRoot
-          , PD.B (serialisedOf spentEventId)
-          , PD.B (serialisedOf provenInfo)
-          , PD.List [PD.B "step"]
+  burnRedeemer =
+    dataToBuiltinData (PD.Constr 1 [PD.B (unTokenName nonce), PD.I 0])
+   where
+    unTokenName (TokenName b) = fromBuiltin b
+
+  -- @payout.MintPayout { withdrawal_utxo_out_ref, withdrawal_input_index,
+  -- withdrawal_spend_redeemer_index, hub_ref_input_index }@.
+  payoutMintRedeemer =
+    dataToBuiltinData $
+      PD.Constr
+        0
+        [ builtinDataToData (toBuiltinData (outRefN (if sMintOutRefMatches sp then 0 else 5)))
+        , PD.I 0
+        , PD.I 0
+        , PD.I 0
+        ]
+
+  payoutDatum =
+    dataToBuiltinData $
+      PD.Constr
+        0
+        [ maybe (l2ValueWith (sTargetAda sp)) id (sPayoutDatumValue sp)
+        , l1AddressData
+        , l1DatumData
+        ]
+
+  spendRedeemer =
+    dataToBuiltinData $
+      PD.Constr
+        0
+        [ PD.I 0 -- input_index
+        , PD.I 0 -- output_index
+        , PD.I 0 -- hub_ref_input_index
+        , PD.I 1 -- settlement_ref_input_index
+        , PD.I 0 -- burn_redeemer_index
+        , PD.I 1 -- payout_mint_redeemer_index
+        , membershipProof
+        , PD.I 2
+        , sPurpose sp
+        ]
+
+  outAddressPolicy
+    | isInitialize = if sOutputToPayout sp then payoutPolicy else auxiliaryPolicy
+    | otherwise = if sRefundAddressMatches sp then auxiliaryPolicy else payoutPolicy
+
+  base = buildScriptContext mempty
+  txInfo =
+    (scriptContextTxInfo base)
+      { txInfoInputs = [withdrawalIn]
+      , txInfoReferenceInputs = [hubSpendRefIn, settlementRefIn]
+      , txInfoOutputs =
+          [ TxOut
+              (scriptHashAddress (ScriptHash (unCurrencySymbol outAddressPolicy)))
+              outputValue
+              (if isInitialize then OutputDatum (Datum payoutDatum) else NoOutputDatum)
+              Nothing
           ]
-
-    burnRedeemer =
-      dataToBuiltinData (PD.Constr 1 [PD.B (unTokenName nonce), PD.I 0])
-      where
-        unTokenName (TokenName b) = fromBuiltin b
-
-    -- @payout.MintPayout { withdrawal_utxo_out_ref, withdrawal_input_index,
-    -- withdrawal_spend_redeemer_index, hub_ref_input_index }@.
-    payoutMintRedeemer =
-      dataToBuiltinData $
-        PD.Constr
-          0
-          [ builtinDataToData (toBuiltinData (outRefN (if sMintOutRefMatches sp then 0 else 5)))
-          , PD.I 0
-          , PD.I 0
-          , PD.I 0
-          ]
-
-    payoutDatum =
-      dataToBuiltinData $
-        PD.Constr
-          0
-          [ maybe (l2ValueWith (sTargetAda sp)) id (sPayoutDatumValue sp)
-          , l1AddressData
-          , l1DatumData
-          ]
-
-    spendRedeemer =
-      dataToBuiltinData $
-        PD.Constr
-          0
-          [ PD.I 0 -- input_index
-          , PD.I 0 -- output_index
-          , PD.I 0 -- hub_ref_input_index
-          , PD.I 1 -- settlement_ref_input_index
-          , PD.I 0 -- burn_redeemer_index
-          , PD.I 1 -- payout_mint_redeemer_index
-          , membershipProof
-          , PD.I 2
-          , sPurpose sp
-          ]
-
-    outAddressPolicy
-      | isInitialize = if sOutputToPayout sp then payoutPolicy else auxiliaryPolicy
-      | otherwise = if sRefundAddressMatches sp then auxiliaryPolicy else payoutPolicy
-
-    base = buildScriptContext mempty
-    txInfo =
-      (scriptContextTxInfo base)
-        { txInfoInputs = [withdrawalIn]
-        , txInfoReferenceInputs = [hubSpendRefIn, settlementRefIn]
-        , txInfoOutputs =
-            [ TxOut
-                (scriptHashAddress (ScriptHash (unCurrencySymbol outAddressPolicy)))
-                outputValue
-                (if isInitialize then OutputDatum (Datum payoutDatum) else NoOutputDatum)
-                Nothing
-            ]
-        , txInfoMint =
-            UnsafeMintValue
-              ( getValue
-                  ( singleton withdrawalPolicy nonce (-1)
-                      <> (if isInitialize then singleton payoutPolicy nonce 1 else mempty)
-                  )
-              )
-        , txInfoRedeemers =
-            Map.unsafeFromList
-              [ (Minting withdrawalPolicy, Redeemer burnRedeemer)
-              , (Minting payoutPolicy, Redeemer payoutMintRedeemer)
-              ,
-                ( Rewarding (ScriptCredential (ScriptHash (toBuiltin phasValidatorHash)))
-                , Redeemer phasRedeemer
+      , txInfoMint =
+          UnsafeMintValue
+            ( getValue
+                ( singleton withdrawalPolicy nonce (-1)
+                    <> (if isInitialize then singleton payoutPolicy nonce 1 else mempty)
                 )
-              ]
-        }
-    ctx =
-      ScriptContext
-        txInfo
-        (Redeemer spendRedeemer)
-        (SpendingScript (outRefN 0) (Just (Datum withdrawalDatum)))
+            )
+      , txInfoRedeemers =
+          Map.unsafeFromList
+            [ (Minting withdrawalPolicy, Redeemer burnRedeemer)
+            , (Minting payoutPolicy, Redeemer payoutMintRedeemer)
+            ,
+              ( Rewarding (ScriptCredential (ScriptHash (toBuiltin phasValidatorHash)))
+              , Redeemer phasRedeemer
+              )
+            ]
+      }
+  ctx =
+    ScriptContext
+      txInfo
+      (Redeemer spendRedeemer)
+      (SpendingScript (outRefN 0) (Just (Datum withdrawalDatum)))
 
 {- | The verdict recorded in the /datum/.
 
@@ -635,5 +650,5 @@ spendHubDatum =
           <> [addrData payoutPolicy] -- address 12: payout_addr
           <> [auxPolicyData]
       )
-  where
-    auxPolicyData = PD.B (fromBuiltin (unCurrencySymbol auxiliaryPolicy))
+ where
+  auxPolicyData = PD.B (fromBuiltin (unCurrencySymbol auxiliaryPolicy))

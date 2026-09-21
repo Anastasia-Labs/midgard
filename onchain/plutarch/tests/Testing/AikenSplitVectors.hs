@@ -25,10 +25,10 @@ import MerkleTree.Validators.Membership (nonMembershipStakeValidator)
 import Midgard.FraudProofs.TransitionTrace.Proof (pvalidateAcceptedTransactionFaultProof, pvalidateTransitionFaultProof)
 import Midgard.Validators.FraudProofs.ValidationTrace.Cek (cekV1Validator)
 import Midgard.Validators.FraudProofs.ValidationTrace.CekSemantics
-import Midgard.Validators.FraudProofs.ValidationTrace.ValueAndMint (valueAndMintV1Validator)
-import Midgard.Validators.FraudProofs.ValidationTrace.ValueAndMintSemantics
 import Testing.ExecutionFrontiers (measure)
 
+-- The four retired core-validator vectors are replaced by the fixed-target
+-- binder/compute/settle corpus in Testing.CekCoreValidators.
 sourceCommit :: String
 sourceCommit = "b93726aa444dd0f2d6a323b266cbf21ca7d63b5d"
 
@@ -48,19 +48,20 @@ tests :: IO TestTree
 tests = do
   Vectors commit vectors <- either fail pure =<< eitherDecodeFileStrict' "tests/fixtures/aiken-split-validators.json"
   if commit /= sourceCommit || null vectors then fail "Missing or wrong-source Aiken split vectors" else pure ()
+  let currentVectors = [vector | vector@(Vector family _ _ _ _) <- vectors, family /= "value-and-mint"]
   mapM_
     ( \(family, count) ->
-        if length [() | Vector f _ _ _ _ <- vectors, f == family] == count
+        if length [() | Vector f _ _ _ _ <- currentVectors, f == family] == count
           then pure ()
           else fail $ "Incomplete source vectors: " <> family
     )
-    [("cek", 35), ("value-and-mint", 55), ("pexcludes", 7), ("transition-frontier", 13)]
+    [("cek", 18), ("pexcludes", 7), ("transition-frontier", 13)]
   pure $
     testGroup
       "Aiken split validator source regressions"
-      ( testCase "finish_witness_tail_layout_is_pinned" (finishTail vectors)
+      ( testCase "finish_witness_tail_layout_is_pinned" (finishTail currentVectors)
           : [ testCase (family <> "/" <> name <> "/" <> show invocation) $ runVector vector
-            | vector@(Vector family name invocation _ _) <- vectors
+            | vector@(Vector family name invocation _ _) <- currentVectors
             ]
       )
 
@@ -126,25 +127,10 @@ compiledValidators =
   , ("validate_accepted_transaction_fault_proof", compiled acceptedTransactionFault)
   , ("cek_v1", compiled cekV1Validator)
   , ("cek_finish_semantic_v1", compiled cekFinishSemanticV1Validator)
-  , ("cek_execution_selection_semantic_v1", compiled cekExecutionSelectionSemanticV1Validator)
-  , ("cek_context_step_semantic_v1", compiled cekContextStepSemanticV1Validator)
-  , ("cek_core_step_semantic_v1", compiled cekCoreStepSemanticV1Validator)
-  , ("value_and_mint_v1", compiled valueAndMintV1Validator)
-  , ("value_and_mint_begin_semantic_v1", compiled valueAndMintBeginSemanticV1Validator)
-  , ("value_and_mint_replay_begin_semantic_v1", compiled valueAndMintReplayBeginSemanticV1Validator)
-  , ("value_and_mint_replay_input_semantic_v1", compiled valueAndMintReplayInputSemanticV1Validator)
-  , ("value_and_mint_replay_asset_semantic_v1", compiled valueAndMintReplayAssetSemanticV1Validator)
-  , ("value_and_mint_replay_finish_semantic_v1", compiled valueAndMintReplayFinishSemanticV1Validator)
-  , ("value_and_mint_output_descriptor_semantic_v1", compiled valueAndMintOutputDescriptorSemanticV1Validator)
-  , ("value_and_mint_output_asset_semantic_v1", compiled valueAndMintOutputAssetSemanticV1Validator)
-  , ("value_and_mint_output_finish_semantic_v1", compiled valueAndMintOutputFinishSemanticV1Validator)
-  , ("value_and_mint_mint_asset_semantic_v1", compiled valueAndMintMintAssetSemanticV1Validator)
-  , ("value_and_mint_mint_finish_semantic_v1", compiled valueAndMintMintFinishSemanticV1Validator)
-  , ("value_and_mint_finalize_semantic_v1", compiled valueAndMintFinalizeSemanticV1Validator)
   ]
-  where
-    compiled :: (forall s. Term s a) -> Script
-    compiled term = either (error . Text.unpack) id $ compileWithInternalConfig (InternalConfig False False) NoTracing term
+ where
+  compiled :: (forall s. Term s a) -> Script
+  compiled term = either (error . Text.unpack) id $ compileWithInternalConfig (InternalConfig False False) NoTracing term
 
 transitionFault :: Bool -> (forall s. Term s (PData :--> PData :--> PData :--> PData :--> PUnit))
 transitionFault expected = plam $ \proof asset hub refs ->

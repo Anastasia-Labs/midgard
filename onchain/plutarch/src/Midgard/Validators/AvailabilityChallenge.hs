@@ -10,6 +10,11 @@ module Midgard.Validators.AvailabilityChallenge (
   availabilityChallengeMintValidator,
   availabilityChallengeSpendValidator,
   availabilityChallengeValidator,
+  availabilityChallengeTimeoutYieldValidator,
+  availabilityChallengeCloseYieldValidator,
+  availabilityChallengeSettleYieldValidator,
+  availabilityChallengeOpenYieldValidator,
+  availabilityChallengeBondYieldValidator,
   pvalidateAdvanceTrancheV1,
   pvalidateConsumeCarrierV1,
   pvalidateCoordinateSpendV1,
@@ -41,7 +46,7 @@ import Plutarch.LedgerApi.V3 (
   PScriptHash,
   PScriptInfo (..),
   PScriptPurpose (..),
-  PTokenName,
+  PTokenName (..),
   PTxInInfo (..),
   PTxInfo (..),
   PTxOut (..),
@@ -53,6 +58,7 @@ import Plutarch.Prelude
 import Plutarch.Repr.Scott (DeriveAsScottRec (..))
 import Plutarch.Unsafe (punsafeCoerce)
 
+import Midgard.StateQueueYield qualified as Yield
 import Midgard.AvailabilityChallenge
 import Midgard.Common.Utils (
   pgetInclusiveBoundsOfAShortValidityRange,
@@ -1422,15 +1428,15 @@ pvalidateCoordinateSpendV1 ownPolicyId ownRef mintRedeemerIndex tx = P.do
           pgetRedeemerAt # redeemers # pdata (pcon $ PMinting $ pdata ownPolicyId) # mintRedeemerIndex
   let refAt index = pmatch (pinputAt inputs index) $ \PTxInInfo {ptxInInfo'outRef} -> ptxInInfo'outRef
   pmatch mintRedeemer $ \case
-    PMintBondFromAttestation _ _ _ _ _ _ -> perror
-    POpenChallenge _ bondInputIndex _ _ _ _ _ _ _ -> refAt (pfromData bondInputIndex) #== ownRef
-    PSettleTranche _ terminalInputIndex _ trancheInputIndex carrierInputIndex ->
+    PMintBondFromAttestation _ _ _ _ _ _ _ -> perror
+    POpenChallenge _ _ bondInputIndex _ _ _ _ _ _ _ -> refAt (pfromData bondInputIndex) #== ownRef
+    PSettleTranche _ _ terminalInputIndex _ trancheInputIndex carrierInputIndex ->
       refAt (pfromData terminalInputIndex) #== ownRef
         #|| refAt (pfromData trancheInputIndex) #== ownRef
         #|| pmatch (pfromData carrierInputIndex) (\case PDNothing -> pconstant False; PDJust index -> refAt (pfromData index) #== ownRef)
-    PCloseChallenge _ bondInputIndex terminalInputIndex _ _ _ _ ->
+    PCloseChallenge _ _ bondInputIndex terminalInputIndex _ _ _ _ ->
       refAt (pfromData bondInputIndex) #== ownRef #|| refAt (pfromData terminalInputIndex) #== ownRef
-    PTimeoutChallenge _ bondInputIndex terminalInputIndex _ _ _ ->
+    PTimeoutChallenge _ _ bondInputIndex terminalInputIndex _ _ _ ->
       refAt (pfromData bondInputIndex) #== ownRef #|| refAt (pfromData terminalInputIndex) #== ownRef
 
 -- | Spending handler for @validators/availability-challenge.ak@.
@@ -1470,94 +1476,154 @@ availabilityChallengeSpendValidator = plam $ \parametersData ctx -> P.do
         pvalidateCoordinateSpendV1 ownPolicyId ownRef (pfromData mintRedeemerIndex) tx
   pif result (pconstant ()) perror
 
--- | Minting handler for @validators/availability-challenge.ak@.
-availabilityChallengeMintValidator ::
-  forall s.
-  Term s (PAsData PCurrencySymbol :--> PAsData PParametersV1 :--> PScriptContext :--> PUnit)
-availabilityChallengeMintValidator = plam $ \hubOraclePolicyIdData parametersData ctx -> P.do
+-- | Minting authenticates the arm-specific role NFT and zero withdrawal.
+availabilityChallengeMintValidator :: forall s.
+  Term s (PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PAsData PParametersV1 :--> PScriptContext :--> PUnit)
+availabilityChallengeMintValidator = plam $ \_hubOracle referenceScriptAuthPolicyId _parameters ctx -> P.do
   PScriptContext {pscriptContext'txInfo, pscriptContext'redeemer, pscriptContext'scriptInfo} <- pmatch ctx
-  ownPolicyId <-
-    plet $ pmatch pscriptContext'scriptInfo $ \case
-      PMintingScript policyId -> policyId
-      _ -> perror
-  redeemer <- plet $ pfromData $ punsafeCoerceOwnRedeemer @PMintRedeemerV1 pscriptContext'redeemer
-  result <-
-    plet $ pmatch redeemer $ \case
-      PMintBondFromAttestation hubRefInputIndex daAttestationInputIndex daAttestationMintRedeemerIndex bondOutputIndex stateQueueInputIndex stateQueueOutputIndex ->
-        pvalidateMintBondFromAttestationV1
-          (pfromData hubOraclePolicyIdData)
-          (pfromData parametersData)
-          (pfromData ownPolicyId)
-          pscriptContext'txInfo
-          (pfromData hubRefInputIndex)
-          (pfromData daAttestationInputIndex)
-          (pfromData daAttestationMintRedeemerIndex)
-          (pfromData bondOutputIndex)
-          (pfromData stateQueueInputIndex)
-          (pfromData stateQueueOutputIndex)
-      POpenChallenge hubRefInputIndex bondInputIndex bondOutputIndex challengerInputIndex stateQueueInputIndex stateQueueOutputIndex firstTrancheOutputIndex terminalOutputIndex challenger ->
-        pvalidateOpenChallengeV1
-          (pfromData hubOraclePolicyIdData)
-          (pfromData parametersData)
-          (pfromData ownPolicyId)
-          pscriptContext'txInfo
-          (pfromData hubRefInputIndex)
-          (pfromData bondInputIndex)
-          (pfromData bondOutputIndex)
-          (pfromData challengerInputIndex)
-          (pfromData stateQueueInputIndex)
-          (pfromData stateQueueOutputIndex)
-          (pfromData firstTrancheOutputIndex)
-          (pfromData terminalOutputIndex)
-          challenger
-      PSettleTranche bondRefInputIndex terminalInputIndex terminalOutputIndex trancheInputIndex carrierInputIndex ->
-        pvalidateSettleTrancheV1
-          (pfromData hubOraclePolicyIdData)
-          (pfromData parametersData)
-          (pfromData ownPolicyId)
-          pscriptContext'txInfo
-          (pfromData bondRefInputIndex)
-          (pfromData terminalInputIndex)
-          (pfromData terminalOutputIndex)
-          (pfromData trancheInputIndex)
-          (pfromData carrierInputIndex)
-      PCloseChallenge hubRefInputIndex bondInputIndex terminalInputIndex stateQueueInputIndex stateQueueOutputIndex daRefundOutputIndex challengerRefundOutputIndex ->
-        pvalidateCloseChallengeV1
-          (pfromData hubOraclePolicyIdData)
-          (pfromData parametersData)
-          (pfromData ownPolicyId)
-          pscriptContext'txInfo
-          (pfromData hubRefInputIndex)
-          (pfromData bondInputIndex)
-          (pfromData terminalInputIndex)
-          (pfromData stateQueueInputIndex)
-          (pfromData stateQueueOutputIndex)
-          (pfromData daRefundOutputIndex)
-          (pfromData challengerRefundOutputIndex)
-      PTimeoutChallenge hubRefInputIndex bondInputIndex terminalInputIndex stateQueueMintRedeemerIndex daSlashOutputIndex challengerRefundOutputIndex ->
-        pvalidateTimeoutChallengeV1
-          (pfromData hubOraclePolicyIdData)
-          (pfromData parametersData)
-          (pfromData ownPolicyId)
-          pscriptContext'txInfo
-          (pfromData hubRefInputIndex)
-          (pfromData bondInputIndex)
-          (pfromData terminalInputIndex)
-          (pfromData stateQueueMintRedeemerIndex)
-          (pfromData daSlashOutputIndex)
-          (pfromData challengerRefundOutputIndex)
+  pmatch pscriptContext'scriptInfo $ \case
+    PMintingScript _ -> P.do
+      redeemer <- plet $ pfromData $ punsafeCoerceOwnRedeemer @PMintRedeemerV1 pscriptContext'redeemer
+      let requireYield role index = plet
+            (Yield.prequireAuthenticatedZeroYield # pscriptContext'txInfo # pfromData referenceScriptAuthPolicyId # role # pfromData index)
+            (const $ pconstant ())
+      pmatch redeemer $ \case
+        PMintBondFromAttestation index _ _ _ _ _ _ -> requireYield (pcon (PTokenName $ pconstant "AvailabilityChallengeBondYield")) index
+        POpenChallenge index _ _ _ _ _ _ _ _ _ -> requireYield (pcon (PTokenName $ pconstant "AvailabilityChallengeOpenYield")) index
+        PSettleTranche index _ _ _ _ _ -> requireYield (pcon (PTokenName $ pconstant "AvailabilityChallengeSettleYield")) index
+        PCloseChallenge index _ _ _ _ _ _ _ -> requireYield (pcon (PTokenName $ pconstant "AvailabilityChallengeCloseYield")) index
+        PTimeoutChallenge index _ _ _ _ _ _ -> requireYield (pcon (PTokenName $ pconstant "AvailabilityChallengeExpiryYield")) index
+    _ -> perror
+
+-- | Aiken @availability_challenge_yields.bond.withdraw@.
+availabilityChallengeBondYieldValidator :: forall s.
+  Term s (PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PAsData PParametersV1 :--> PScriptContext :--> PUnit)
+availabilityChallengeBondYieldValidator = plam $ \ownPolicyId hubOraclePolicyIdData parametersData ctx -> P.do
+  PScriptContext {pscriptContext'txInfo} <- pmatch ctx
+  redeemer <- plet $ pfromData $ punsafeCoerceRedeemer @PMintRedeemerV1 $
+    Yield.pgetYieldedMintRedeemer # ctx # pfromData ownPolicyId
+  result <- plet $ pmatch redeemer $ \case
+    PMintBondFromAttestation _ hubRefInputIndex daAttestationInputIndex daAttestationMintRedeemerIndex bondOutputIndex stateQueueInputIndex stateQueueOutputIndex ->
+            pvalidateMintBondFromAttestationV1
+              (pfromData hubOraclePolicyIdData)
+              (pfromData parametersData)
+              (pfromData ownPolicyId)
+              pscriptContext'txInfo
+              (pfromData hubRefInputIndex)
+              (pfromData daAttestationInputIndex)
+              (pfromData daAttestationMintRedeemerIndex)
+              (pfromData bondOutputIndex)
+              (pfromData stateQueueInputIndex)
+              (pfromData stateQueueOutputIndex)
+    _ -> perror
+  pif result (pconstant ()) perror
+
+-- | Aiken @availability_challenge_yields.open.withdraw@.
+availabilityChallengeOpenYieldValidator :: forall s.
+  Term s (PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PAsData PParametersV1 :--> PScriptContext :--> PUnit)
+availabilityChallengeOpenYieldValidator = plam $ \ownPolicyId hubOraclePolicyIdData parametersData ctx -> P.do
+  PScriptContext {pscriptContext'txInfo} <- pmatch ctx
+  redeemer <- plet $ pfromData $ punsafeCoerceRedeemer @PMintRedeemerV1 $
+    Yield.pgetYieldedMintRedeemer # ctx # pfromData ownPolicyId
+  result <- plet $ pmatch redeemer $ \case
+    POpenChallenge _ hubRefInputIndex bondInputIndex bondOutputIndex challengerInputIndex stateQueueInputIndex stateQueueOutputIndex firstTrancheOutputIndex terminalOutputIndex challenger ->
+            pvalidateOpenChallengeV1
+              (pfromData hubOraclePolicyIdData)
+              (pfromData parametersData)
+              (pfromData ownPolicyId)
+              pscriptContext'txInfo
+              (pfromData hubRefInputIndex)
+              (pfromData bondInputIndex)
+              (pfromData bondOutputIndex)
+              (pfromData challengerInputIndex)
+              (pfromData stateQueueInputIndex)
+              (pfromData stateQueueOutputIndex)
+              (pfromData firstTrancheOutputIndex)
+              (pfromData terminalOutputIndex)
+              challenger
+    _ -> perror
+  pif result (pconstant ()) perror
+
+-- | Aiken @availability_challenge_yields.settle.withdraw@.
+availabilityChallengeSettleYieldValidator :: forall s.
+  Term s (PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PAsData PParametersV1 :--> PScriptContext :--> PUnit)
+availabilityChallengeSettleYieldValidator = plam $ \ownPolicyId hubOraclePolicyIdData parametersData ctx -> P.do
+  PScriptContext {pscriptContext'txInfo} <- pmatch ctx
+  redeemer <- plet $ pfromData $ punsafeCoerceRedeemer @PMintRedeemerV1 $
+    Yield.pgetYieldedMintRedeemer # ctx # pfromData ownPolicyId
+  result <- plet $ pmatch redeemer $ \case
+    PSettleTranche _ bondRefInputIndex terminalInputIndex terminalOutputIndex trancheInputIndex carrierInputIndex ->
+            pvalidateSettleTrancheV1
+              (pfromData hubOraclePolicyIdData)
+              (pfromData parametersData)
+              (pfromData ownPolicyId)
+              pscriptContext'txInfo
+              (pfromData bondRefInputIndex)
+              (pfromData terminalInputIndex)
+              (pfromData terminalOutputIndex)
+              (pfromData trancheInputIndex)
+              (pfromData carrierInputIndex)
+    _ -> perror
+  pif result (pconstant ()) perror
+
+-- | Aiken @availability_challenge_yields.close.withdraw@.
+availabilityChallengeCloseYieldValidator :: forall s.
+  Term s (PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PAsData PParametersV1 :--> PScriptContext :--> PUnit)
+availabilityChallengeCloseYieldValidator = plam $ \ownPolicyId hubOraclePolicyIdData parametersData ctx -> P.do
+  PScriptContext {pscriptContext'txInfo} <- pmatch ctx
+  redeemer <- plet $ pfromData $ punsafeCoerceRedeemer @PMintRedeemerV1 $
+    Yield.pgetYieldedMintRedeemer # ctx # pfromData ownPolicyId
+  result <- plet $ pmatch redeemer $ \case
+    PCloseChallenge _ hubRefInputIndex bondInputIndex terminalInputIndex stateQueueInputIndex stateQueueOutputIndex daRefundOutputIndex challengerRefundOutputIndex ->
+            pvalidateCloseChallengeV1
+              (pfromData hubOraclePolicyIdData)
+              (pfromData parametersData)
+              (pfromData ownPolicyId)
+              pscriptContext'txInfo
+              (pfromData hubRefInputIndex)
+              (pfromData bondInputIndex)
+              (pfromData terminalInputIndex)
+              (pfromData stateQueueInputIndex)
+              (pfromData stateQueueOutputIndex)
+              (pfromData daRefundOutputIndex)
+              (pfromData challengerRefundOutputIndex)
+    _ -> perror
+  pif result (pconstant ()) perror
+
+-- | Aiken @availability_challenge_yields.timeout.withdraw@.
+availabilityChallengeTimeoutYieldValidator :: forall s.
+  Term s (PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PAsData PParametersV1 :--> PScriptContext :--> PUnit)
+availabilityChallengeTimeoutYieldValidator = plam $ \ownPolicyId hubOraclePolicyIdData parametersData ctx -> P.do
+  PScriptContext {pscriptContext'txInfo} <- pmatch ctx
+  redeemer <- plet $ pfromData $ punsafeCoerceRedeemer @PMintRedeemerV1 $
+    Yield.pgetYieldedMintRedeemer # ctx # pfromData ownPolicyId
+  result <- plet $ pmatch redeemer $ \case
+    PTimeoutChallenge _ hubRefInputIndex bondInputIndex terminalInputIndex stateQueueMintRedeemerIndex daSlashOutputIndex challengerRefundOutputIndex ->
+            pvalidateTimeoutChallengeV1
+              (pfromData hubOraclePolicyIdData)
+              (pfromData parametersData)
+              (pfromData ownPolicyId)
+              pscriptContext'txInfo
+              (pfromData hubRefInputIndex)
+              (pfromData bondInputIndex)
+              (pfromData terminalInputIndex)
+              (pfromData stateQueueMintRedeemerIndex)
+              (pfromData daSlashOutputIndex)
+              (pfromData challengerRefundOutputIndex)
+    _ -> perror
   pif result (pconstant ()) perror
 
 -- | Deployable multi-purpose availability-challenge validator.
 availabilityChallengeValidator ::
   forall s.
-  Term s (PAsData PCurrencySymbol :--> PAsData PParametersV1 :--> PScriptContext :--> PUnit)
-availabilityChallengeValidator = plam $ \hubOraclePolicyId parameters ctx -> P.do
+  Term s (PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PAsData PParametersV1 :--> PScriptContext :--> PUnit)
+availabilityChallengeValidator = plam $ \hubOraclePolicyId referenceScriptAuthPolicyId parameters ctx -> P.do
   PScriptContext {pscriptContext'scriptInfo} <- pmatch ctx
   pmatch pscriptContext'scriptInfo $ \case
     PMintingScript _ ->
       availabilityChallengeMintValidator
         # hubOraclePolicyId
+        # referenceScriptAuthPolicyId
         # parameters
         # ctx
     PSpendingScript _ _ ->

@@ -3,6 +3,8 @@ Module      : Midgard.ValidationMachine.ValueAndMintSemantics
 Description : Branch-local ValueAndMint semantic resolvers.
 -}
 module Midgard.ValidationMachine.ValueAndMintSemantics (
+  PVerifiedValueAndMintV1 (..),
+  pverifiedValueAndMintV1,
   pverifyValueAndMintBeginSemanticsV1,
   pverifyValueAndMintReplayBeginSemanticsV1,
   pverifyValueAndMintReplayInputSemanticsV1,

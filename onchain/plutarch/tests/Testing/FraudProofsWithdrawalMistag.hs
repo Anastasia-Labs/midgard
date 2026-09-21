@@ -12,12 +12,13 @@ import Plutarch.LedgerApi.V3 (PTokenName (..))
 import Plutarch.Prelude
 import Plutarch.Unsafe (punsafeCoerce)
 
-import Midgard.FraudProofs.NativeTx.Types (PMidgardTxOutput)
+import Midgard.Common.Value (pfromAssetList)
 import Midgard.FraudProofs.WithdrawalMistag
-import Midgard.LedgerOutputCommitment (pencodeLedgerOutputCommitment)
+import Midgard.LedgerOutputCommitment (PLedgerOutputCommitmentV1 (..), pencodeLedgerOutputCommitment)
 import Midgard.LedgerOutputDescriptor (pbuildV1)
-import Midgard.LedgerState (PWithdrawalBody, PWithdrawalInfo)
+import Midgard.LedgerState (PWithdrawalBody (..), PWithdrawalInfo)
 import Midgard.TransitionTrace (PIndexedTraceProof, PRootMembershipProof)
+import Midgard.ValidationMerkle (pfrontierCommitment)
 import Testing.Eval (pfailsNoTraceWithoutHoistChecks, psucceedsNoTraceWithoutHoistChecks)
 import Testing.FraudProofsFixture (
     blake2b256,
@@ -39,6 +40,7 @@ tests =
         , testGroup "step 03" step03Tests
         , testGroup "step 04" step04Tests
         , testGroup "step 05" step05Tests
+        , testGroup "descriptor parity" descriptorParityTests
         ]
 
 psucceeds :: (forall s. Term s a) -> Assertion
@@ -326,25 +328,9 @@ authenticInfo = withdrawalInfo 1_000_000
 infoTerm :: forall s. Integer -> Term s PWithdrawalInfo
 infoTerm lovelace = pfromData $ punsafeCoerce $ pconstant @PData $ withdrawalInfo lovelace
 
-outputData :: Integer -> BS.ByteString -> PD.Data
-outputData lovelace paymentOwner =
-    PD.Constr
-        0
-        [ PD.Constr
-            0
-            [ PD.Constr 0 []
-            , PD.I 0
-            , PD.Constr 0 [PD.B paymentOwner]
-            , PD.Constr 1 []
-            ]
-        , PD.Constr 0 [PD.I lovelace, PD.Map []]
-        , PD.Constr 1 []
-        , PD.Constr 1 []
-        ]
-
-outputTerm :: forall s. Integer -> BS.ByteString -> Term s PMidgardTxOutput
+outputTerm :: forall s. Integer -> BS.ByteString -> Term s PAuthenticatedOutputProjection
 outputTerm lovelace paymentOwner =
-    pfromData $ punsafeCoerce $ pconstant @PData $ outputData lovelace paymentOwner
+    pcon $ PAuthenticatedOutputProjection 0 0 (pconstant "") 0 0 (pconstant $ BS.cons 0x60 paymentOwner) (pconstant lovelace) (pfrontierCommitment # 0 # pnil)
 
 canonicalOutput :: BS.ByteString
 canonicalOutput = midgardOutputCbor (pubKeyAddressBytes owner) 1_000_000 Nothing
@@ -378,7 +364,7 @@ presentEvidence :: forall s. Term s PWithdrawalLedgerEvidenceV1
 presentEvidence =
     pcon $
         PPresentLedgerOutput
-            (pdata $ pconstant canonicalOutput)
+            (pdata $ pconstant descriptorBytes)
             (punsafeCoerce $ pconstant @PData emptyProof)
 
 absentEvidence :: forall s. Term s PWithdrawalLedgerEvidenceV1
@@ -389,7 +375,7 @@ presentClassification =
     pmatch (pclassifyLedgerEvidenceV1 (classificationState authenticInfo ledgerRoot) (infoTerm 1_000_000) presentEvidence) $ \state ->
         pfromData (pstep03State'outputPresent state)
             #&& pnot
-            # pfromData (pstep03State'coreValid state)
+            # pfromData (pstep03State'ownerSignatureValid state)
             #&& pfromData (pstep03State'cardanoValueSize state)
             #> 0
             #&& pfromData (pstep03State'withdrawalBodyHash state)
@@ -401,7 +387,7 @@ absentClassification =
         pnot
             # pfromData (pstep03State'outputPresent state)
             #&& pnot
-            # pfromData (pstep03State'coreValid state)
+            # pfromData (pstep03State'ownerSignatureValid state)
             #&& pfromData (pstep03State'cardanoValueSize state)
             #== 0
 
@@ -457,6 +443,9 @@ step03State body claimed present core valueSize =
             (pdata $ pconstant present)
             (pdata $ pconstant core)
             (pdata $ pconstant valueSize)
+            (pdata $ pconstant $ case body of PD.Constr 0 [_, _, PD.Map [(PD.B "", PD.Map [(PD.B "", PD.I amount)])], _, _] -> amount; _ -> error "expected ADA fixture")
+            (pdata 0)
+            (pdata $ pfrontierCommitment # 0 # pnil)
 
 forceEstablished :: forall s. Term s PStep04State -> Term s PUnit
 forceEstablished state = pmatch state (\_ -> pconstant @PUnit ())
@@ -471,3 +460,84 @@ terminalState claimed actual bytes required =
             (pdata $ pconstant actual)
             (pdata $ pconstant bytes)
             (pdata $ pconstant required)
+
+-- Descriptor projection deliberately ignores the other authenticated fields.
+projectionData :: Integer -> Integer -> BS.ByteString -> PD.Data
+projectionData index count address =
+    PD.List $
+        [ PD.I 1
+        , PD.I index
+        , PD.I 0
+        , PD.B $ BS.replicate 32 0x55
+        , PD.B address
+        , PD.I 1_000_000
+        , PD.I count
+        , PD.B "frontier"
+        , PD.I 5
+        ]
+            <> replicate 7 (PD.Constr 77 [])
+
+projectionBytes :: BS.ByteString
+projectionBytes = serialise $ projectionData 0 0 (BS.cons 0x60 owner)
+
+classifyBytes :: forall s. BS.ByteString -> BS.ByteString -> Term s PStep03State
+classifyBytes root bytes =
+    pclassifyLedgerEvidenceV1 (classificationState authenticInfo root) (infoTerm 1_000_000) $
+        pcon $
+            PPresentLedgerOutput (pdata $ pconstant bytes) (punsafeCoerce $ pconstant @PData emptyProof)
+
+forceClassification :: forall s. Term s PStep03State -> Term s PUnit
+forceClassification st = pmatch st $ \state -> assertTerm $ pfromData (pstep03State'outputPresent state)
+
+mutateDescriptor :: Integer -> PD.Data -> BS.ByteString
+mutateDescriptor index value = serialise $ case projectionData 0 0 (BS.cons 0x60 owner) of
+    PD.List fields -> PD.List [if n == index then value else field | (n, field) <- zip [0 ..] fields]
+    _ -> error "descriptor fixture"
+
+descriptorParityTests :: [TestTree]
+descriptorParityTests =
+    [ testCase "authenticates raw descriptor with unused fields" $ psucceeds $ forceClassification $ classifyBytes (singleEntryPhasRoot ledgerKey projectionBytes) projectionBytes
+    , testCase "rejects descriptor substitution" $ pfails $ forceClassification $ classifyBytes (singleEntryPhasRoot ledgerKey projectionBytes) (mutateDescriptor 2 $ PD.I 1)
+    , testCase "rejects descriptor under another key" $ pfails $ forceClassification $ classifyBytes (singleEntryPhasRoot (ledgerKey <> "x") projectionBytes) projectionBytes
+    , testCase "rejects authenticated wrong output index" $ pfails $ let bytes = mutateDescriptor 1 (PD.I 1) in forceClassification $ classifyBytes (singleEntryPhasRoot ledgerKey bytes) bytes
+    , testCase "rejects substituted item commitment" $ pfails $ forceClassification $ classifyBytes (singleEntryPhasRoot ledgerKey projectionBytes) (mutateDescriptor 3 $ PD.B $ BS.replicate 32 0x66)
+    , testCase "over-limit authenticated assets skip owner signature" $ psucceeds $ let bytes = serialise $ projectionData 0 101 "" in assertTerm $ pmatch (classifyBytes (singleEntryPhasRoot ledgerKey bytes) bytes) $ \st -> pnot # pfromData (pstep03State'ownerSignatureValid st) #&& pfromData (pstep03State'outputAssetCount st) #== 101
+    , testCase "script payment owner cannot authorize withdrawal" $ psucceeds $ let bytes = serialise $ projectionData 0 0 (BS.cons 0x70 owner) in assertTerm $ pmatch (classifyBytes (singleEntryPhasRoot ledgerKey bytes) bytes) $ \st -> pnot # pfromData (pstep03State'ownerSignatureValid st)
+    ]
+        <> [ testCase label $ pfails $ forceProjection $ mutateDescriptor field value
+           | (label, field, value) <-
+                [ ("wrong descriptor version", 0, PD.I 2)
+                , ("negative output index", 1, PD.I (-1))
+                , ("oversized output index", 1, PD.I 65536)
+                , ("negative total length", 2, PD.I (-1))
+                , ("short item commitment", 3, PD.B "x")
+                , ("negative asset count", 6, PD.I (-1))
+                , ("negative value size", 8, PD.I (-1))
+                , ("oversized value size", 8, PD.I 5001)
+                ]
+           ]
+        <> [ testCase "rejects extra asset name under ADA" $ psucceeds $ assertTerm $ pnot # valueMatches (PD.Map [(PD.B "", PD.Map [(PD.B "", PD.I 1_000_000), (PD.B "x", PD.I 1)])]) 0 (pfrontierCommitment # 0 # pnil)
+           , testCase "rejects negative native quantity" $ psucceeds $ assertTerm $ pnot # valueMatches (namedValue [("x", -1)]) 1 (pconstant "bad")
+           , testCase "mixed-width assets match canonical descriptor" $ psucceeds $ assertTerm $ valueMatches (namedValue [("\x00\x00", 2), ("\xff", 1)]) 2 mixedFrontier
+           , testCase "mixed-width quantity substitution refuses" $ psucceeds $ assertTerm $ pnot # valueMatches (namedValue [("\x00\x00", 3), ("\xff", 1)]) 2 mixedFrontier
+           , testCase "asset count substitution refuses" $ psucceeds $ assertTerm $ pnot # valueMatches (namedValue [("\x00\x00", 2), ("\xff", 1)]) 1 mixedFrontier
+           ]
+
+forceProjection :: forall s. BS.ByteString -> Term s PUnit
+forceProjection bytes = pmatch (pauthenticatedOutputProjection # pconstant bytes) $ \(PAuthenticatedOutputProjection index _ _ _ _ _ _ _) -> assertTerm $ index #>= 0
+
+namedValue :: [(BS.ByteString, Integer)] -> PD.Data
+namedValue tokens = PD.Map [(PD.B "", PD.Map [(PD.B "", PD.I 1_000_000)]), (PD.B $ BS.replicate 28 0xaa, PD.Map [(PD.B name, PD.I amount) | (name, amount) <- tokens])]
+
+valueMatches :: forall s. PD.Data -> Integer -> Term s PByteString -> Term s PBool
+valueMatches value count frontier =
+    plet (pfromData $ punsafeCoerce $ pconstant @PData $ PD.Constr 0 [outref, PD.B owner, value, defaultAddress, noDatum]) $ \body ->
+        pmatch body $ \PWithdrawalBody{pwithdrawalBody'l2Value} ->
+            poutputValueMatchesV1 # body # (pfromAssetList # pfromData pwithdrawalBody'l2Value) # 1_000_000 # pconstant count # frontier
+
+mixedFrontier :: forall s. Term s PByteString
+mixedFrontier = pmatch (pbuildV1 # 0 # pconstant bytes) $ \case
+    PNothing -> perror
+    PJust descriptor -> pmatch descriptor $ \PLedgerOutputCommitmentV1{poutputCommitment'assetFrontierCommitment} -> pfromData poutputCommitment'assetFrontierCommitment
+  where
+    bytes = "\xa2\x00\x58\x1d\x60" <> owner <> "\x01\x82\x1a\x00\x0f\x42\x40\xa1\x58\x1c" <> BS.replicate 28 0xaa <> "\xa2\x41\xff\x01\x42\x00\x00\x02"

@@ -44,9 +44,12 @@ import Test.Tasty.HUnit
 
 import Plutarch.Builtin.Crypto (pblake2b_256)
 import Plutarch.Prelude
+import Plutarch.Unsafe (punsafeCoerce)
 
+import Aiken.Cbor (pdeserialise)
 import Midgard.Blake2b256Trace (
   PBlake2b256TraceControlV1 (..),
+  pcontrolData,
   pcontrolFromDataV1,
   pcontrolIsWellFormed,
   pdecodeControlV1,
@@ -312,12 +315,27 @@ encodingTests =
         pfails $ pcontrolFromDataV1 # pconstant (PD.List [PD.I 1])
     , testCase "decoding a non-array aborts" $
         pfails $ pcontrolFromDataV1 # pconstant (PD.I 1)
+    , testCase "direct control Data cannot hide an invalid cursor" $
+        pfails $ pcontrolFromDataV1 # (pcontrolData # controlT fresh {cCursor = 201})
+    , testCase "the record constructor is not the bare-list control wire form" $
+        pfails $ pcontrolFromDataV1 # pforgetData (pdata (controlT fresh))
+    , testCase "direct control Data rejects a bytes value in the integer cursor field" $
+        pfails $ pcontrolData # pfromData (punsafeCoerce (pconstant @PData
+          (PD.Constr 0
+            [ PD.I 1, PD.I 0, PD.B "bad", PD.I 200, PD.B initialChainingValue
+            , PD.B "", PD.I 0, PD.B "", PD.I 0
+            ])))
     ]
 
 roundTrips ::
   forall (s :: S). (forall (s' :: S). Term s' PBlake2b256TraceControlV1) -> Term s PBool
 roundTrips control =
-  (pdecodeControlV1 #$ pencodeControlV1 # control) #== control
+  plet (pcontrolData # control) $ \directData ->
+    (pcontrolFromDataV1 # directData #== control)
+      #&& (pdecodeControlV1 #$ pencodeControlV1 # control) #== control
+      #&& pmatch (pdeserialise # (pencodeControlV1 # control)) (\case
+        PNothing -> pconstant False
+        PJust wireData -> directData #== wireData)
 
 --------------------------------------------------------------------------------
 -- Driving the trace

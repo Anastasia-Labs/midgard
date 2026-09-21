@@ -36,6 +36,27 @@ tests = testGroup "Midgard.ScriptContext"
   , testCase "offchain_tx_out_semantic_roots_match" $ passertEvalNoTrace txOutSemanticRootsMatch
   , testCase "consolidated_ledger_output_summaries_match_the_separate_entry_points" $
       passertEvalNoTrace consolidatedLedgerOutputSummariesAgree
+  , testGroup "authenticated output summary composition"
+      [ testGroup label
+          [ testCase "supplied value preserves the independent output golden" $ passertEvalNoTrace $
+              pledgerOutputSummariesWithValueV1 # bytes output # pcon (PJust authenticatedValue)
+                #== pledgerOutputSummariesV1 # bytes output
+          , testCase "authenticated parts preserve all three output summaries" $ passertEvalNoTrace $
+              pcon (PJust $ pledgerOutputSummariesOfAuthenticatedPartsV1
+                # pexpectJust (pdecodeCanonicalOutput # bytes output)
+                # authenticatedValue # pconstant datumField)
+                #== pledgerOutputSummariesV1 # bytes output
+          ]
+      | (label, output, datumField) <-
+          [("plain",simpleOutputCbor,PD.Constr 0 []),
+           ("datum",datumOutputCbor,PD.Constr 2 [PD.Constr 2 [PD.I 42]]),
+           ("reference",referenceOutputCbor,PD.Constr 0 []),
+           ("datum and reference",outputCbor,PD.Constr 2 [PD.Constr 2 [PD.I 42]])]
+      ]
+  , testCase "supplied value does not bypass canonical output decoding" $ passertEvalNoTrace $
+      pisNothing $ pledgerOutputSummariesWithValueV1 # bytes (hex "a0") # pcon (PJust authenticatedValue)
+  , testCase "supplied value does not bypass datum materialisation" $ passertEvalNoTrace $
+      pisNothing $ pledgerOutputSummariesWithValueV1 # bytes (outputWithDatum $ head bignumDatums) # pcon (PJust authenticatedValue)
   , testCase "empty_byte_string_datum_is_materialised" $ passertEvalNoTrace $
       let output = bytes $ outputWithDatum $ hex "40"
        in pisJust (pspendDatumSummaryV1 # output)
@@ -434,3 +455,9 @@ encodeBytes value
 
 serialisedOf :: PD.Data -> BS.ByteString
 serialisedOf = Builtins.fromBuiltin . Builtins.serialiseData . Builtins.dataToBuiltinData
+
+-- Independent Plutus Value corresponding to all four fixed output vectors.
+authenticatedValue :: forall s. Term s PDataSummaryV1
+authenticatedValue = psemanticDataSummaryV1 # pconstant (PD.Map
+  [(PD.B "",PD.Map [(PD.B "",PD.I 1234567)]),
+   (PD.B $ BS.replicate 28 0x11,PD.Map [(PD.B $ hex "2233",PD.I 7)])])

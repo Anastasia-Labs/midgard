@@ -21,16 +21,15 @@ import Plutarch.LedgerApi.Utils (PMaybeData (..))
 import Plutarch.LedgerApi.V3 (PCurrencySymbol, PScriptContext, PScriptHash)
 import Plutarch.Prelude
 
+import Midgard.NativeExecutionDescriptor qualified as Descriptor
 import Midgard.BoundedItem (PChunkProofV1)
 import Midgard.ValidationMachine (
   PValidationAuxiliaryWitnessV1 (..),
   PValidationOneStepWitnessV1,
-  pverifyNativeScriptsEffectfulSemanticsV1,
-  pverifyNativeScriptsNativeSemanticsV1,
   pverifyNativeScriptsTerminalSemanticsV1,
  )
 import Midgard.ValidationMerkle (PFrontierPeak)
-import Midgard.ValidationSemantic (pcontinueWinning, pvalidationSemanticPreState)
+import Midgard.ValidationSemantic (pcontinueWinning, pcontinueWinningAt, pvalidationSemanticPreState)
 import Midgard.ValidationTrace (PValidationPhase (PNativeScripts))
 import Midgard.Validators.FraudProofs.Step (pdispatch, pstep)
 import Midgard.Validators.FraudProofs.ValidationTrace.Preparation (
@@ -136,21 +135,12 @@ nativeScriptsEffectfulSemanticV1Validator = plam $ \awardScriptHash policyId ctx
             (pdata $ pcon PDNothing) (pdata pnil)
         )
         $ \auxiliary ->
-          pcontinueWinning
+          pcontinueWinningAt
             (pcon PNativeScripts)
             awardScriptHash policyId datum
             (pfromData inputIndex) (pfromData outputIndex) transition
             (pforgetData $ pdata auxiliary)
-            ( pverifyNativeScriptsEffectfulSemanticsV1
-                # pvalidationSemanticPreState datum # transition
-                # pfromData executionIndexD # pfromData languageTagD
-                # pfromData purposeKindD # pfromData purposeIndexD
-                # pfromData scriptHashD # pfromData subjectD # pfromData purposeSiblingsD
-                # pfromData sourceIndexD # pfromData originKindD # pfromData sourceKeyD
-                # pfromData totalLengthD # pfromData itemCommitmentD
-                # pfromData sourceSiblingsD # pfromData redeemerLeafD
-                # pfromData executionSiblingsD
-            )
+            (\pre -> Descriptor.peffectful # pre # transition # auxiliary)
             ownOutRef txInfo
 
 nativeScriptsNativeSemanticV1Validator :: forall s.
@@ -169,20 +159,10 @@ nativeScriptsNativeSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
             (pdata $ pcon $ PDJust firstChunkProofD) signerPeaksD
         )
         $ \auxiliary ->
-          pcontinueWinning
+          pcontinueWinningAt
             (pcon PNativeScripts)
             awardScriptHash policyId datum
             (pfromData inputIndex) (pfromData outputIndex) transition
             (pforgetData $ pdata auxiliary)
-            ( pverifyNativeScriptsNativeSemanticsV1
-                # pvalidationSemanticPreState datum # transition
-                # pfromData executionIndexD # pfromData purposeKindD
-                # pfromData purposeIndexD # pfromData scriptHashD
-                # pfromData subjectD # pfromData purposeSiblingsD
-                # pfromData sourceIndexD # pfromData originKindD # pfromData sourceKeyD
-                # pfromData totalLengthD # pfromData itemCommitmentD
-                # pfromData sourceSiblingsD # pfromData redeemerLeafD
-                # pfromData executionSiblingsD # pfromData firstChunkProofD
-                # pfromData signerPeaksD
-            )
+            (\pre -> Descriptor.pnative # pre # transition # auxiliary)
             ownOutRef txInfo

@@ -34,11 +34,13 @@ below as a refusal rather than left to the well-formedness check to catch.
 module Testing.CekBlobFrontier (tests) where
 
 import Data.ByteString qualified as BS
+import PlutusCore.Data qualified as PD
 import Test.Tasty
 import Test.Tasty.HUnit
 
 import Plutarch.Prelude
 
+import Aiken.Cbor (pdeserialise)
 import Midgard.CekBlobFrontier (
   PCekBlobFrontierPeakV1 (..),
   PCekBlobFrontierV1 (..),
@@ -48,6 +50,7 @@ import Midgard.CekBlobFrontier (
   pencodeFrontierV1,
   pfinalizeV1,
   pfrontierIsWellFormedV1,
+  pfrontierData,
   prootFromChunksV1,
  )
 import Midgard.CekProof (pboundedBlobRootV1, phashBlobBranchV1, phashBlobChunkV1)
@@ -366,15 +369,14 @@ encodingTests =
     "encoding"
     [ testCase "the empty frontier" $
         passertEval $
-          pencodeFrontierV1 # pemptyFrontierV1 #== pconstant (encodeFrontier 0 0 [])
+          frontierEncodingMatches pemptyFrontierV1 (encodeFrontier 0 0 [])
     , testCase "a one-peak frontier" $
         passertEval $
-          pencodeFrontierV1 # builtFrontier 1
-            #== pconstant (encodeFrontier 1 4095 [(0, hashBlobChunk (chunk 1), 4095)])
+          frontierEncodingMatches (builtFrontier 1)
+            (encodeFrontier 1 4095 [(0, hashBlobChunk (chunk 1), 4095)])
     , testCase "a three-chunk frontier, which has two peaks" $
         passertEval $
-          pencodeFrontierV1 # builtFrontier 3
-            #== pconstant
+          frontierEncodingMatches (builtFrontier 3)
               ( encodeFrontier
                   3
                   (3 * 4095)
@@ -382,9 +384,24 @@ encodingTests =
                   , (1, fst (treeRoot (Node (Leaf (chunk 1)) (Leaf (chunk 2)))), 2 * 4095)
                   ]
               )
+    , testCase "direct frontier Data uses bare-list peaks for a partial chunk" $
+        passertEval $
+          pfrontierData # frontierT 1 3 [(0, hashBlobChunk "abc", 3)]
+            #== pconstant (PD.List
+              [ PD.I 1, PD.I 1, PD.I 3
+              , PD.List [PD.List [PD.I 0, PD.B (hashBlobChunk "abc"), PD.I 3]]
+              ])
     , testCase "a malformed frontier aborts rather than encoding" $
         pfails $ pencodeFrontierV1 # frontierT 1 4094 [(0, BS.replicate 32 0x01, 4095)]
     ]
+
+frontierEncodingMatches ::
+  forall (s :: S). Term s PCekBlobFrontierV1 -> BS.ByteString -> Term s PBool
+frontierEncodingMatches frontier expected =
+  (pencodeFrontierV1 # frontier #== pconstant expected)
+    #&& pmatch (pdeserialise # pconstant expected) (\case
+      PNothing -> pconstant False
+      PJust wireData -> pfrontierData # frontier #== wireData)
 
 --------------------------------------------------------------------------------
 -- Plutarch helpers

@@ -49,9 +49,18 @@ module Midgard.Validators.FraudProofs.MissingSignature (
   missingSignatureStep02Validator,
   missingSignatureStep03Validator,
   missingSignatureStep04Validator,
+  missingSignatureForcedStepValidator,
+  missingSignatureForcedSignerValidator,
+  missingSignatureForcedWitnessValidator,
 ) where
 
-import Plutarch.Builtin.Crypto (pblake2b_224)
+import Midgard.FraudProofCatalogue (pidByteCount)
+import Midgard.FraudProofs.NativeTx.Compact (pverifyNativeTxProofSourceV1)
+import Midgard.LedgerState
+import Midgard.RejectionReason (POperatorVerdictV1 (..), PRejectionReasonV1 (PRequiredSignerUnsigned))
+import Midgard.TransitionTrace
+import Plutarch.Builtin.Crypto (pblake2b_224, pverifyEd25519Signature)
+import Plutarch.LedgerApi.Utils (PMaybeData (..))
 import Plutarch.LedgerApi.V3 (
   PAddress,
   PCurrencySymbol,
@@ -60,9 +69,9 @@ import Plutarch.LedgerApi.V3 (
   PTxInInfo,
   PTxInfo (..),
  )
-import Plutarch.LedgerApi.Utils (PMaybeData (..))
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
+import Plutarch.Unsafe (punsafeCoerce)
 
 import Midgard.FraudProofs.Common (pcontinue, pfinalize, ppassNativeTxToNextStep)
 import Midgard.FraudProofs.FieldOpening (
@@ -71,24 +80,17 @@ import Midgard.FraudProofs.FieldOpening (
   paddressWitnessesFieldIndex,
   popenedFieldView,
   popenedFieldWalk,
-  presumeOpenedFieldWalk,
   prequiredSignersFieldIndex,
+  presumeOpenedFieldWalk,
  )
-import Midgard.FraudProofs.MissingSignature (
-  PStep02Args (..),
-  PStep02State (..),
-  PStep03Args (..),
-  PStep03State (..),
-  PStep04Args (..),
-  PStep04State (..),
- )
+import Midgard.FraudProofs.MissingSignature
 import Midgard.FraudProofs.NativeTx.Components (pdecodeMidgardAddressWitnessCbor)
 import Midgard.FraudProofs.NativeTx.Types (
   PMidgardAddressWitness (..),
   PNativeTxCompact (..),
   PVerifiedMidgardNativeTxCompact (..),
  )
-import Midgard.NativeTxFieldAccess (PFieldViewV1, pfieldItemAt)
+import Midgard.NativeTxFieldAccess (PFieldViewV1, pfieldItemAt, pfieldItemCount)
 import Midgard.NativeTxMachineWalk (
   PFieldWalkCheckpointV1,
   pfieldWalkCheckpointHash,
@@ -99,7 +101,9 @@ import Midgard.Validators.FraudProofs.Step (
   pdispatch,
   pexpectDatum,
   pexpectStateAs,
+  pexpectState,
   pexpecting,
+  pstateIsAbsent,
   pstep,
  )
 
@@ -117,56 +121,75 @@ missingSignatureStep01Validator ::
   Term
     s
     ( PAsData PScriptHash -- step-02's script hash
+        :--> PAsData PScriptHash -- forced-source binding script
         :--> PAsData PCurrencySymbol -- computation thread token policy
         :--> PAsData PScriptHash -- hub oracle
         :--> PScriptContext
         :--> PUnit
     )
 missingSignatureStep01Validator = plam $
-  \step02ValidatorScriptHash computationThreadTokenPolicyId hubOracle ctx ->
+  \step02ValidatorScriptHash forcedStepHash computationThreadTokenPolicyId hubOracle ctx ->
     pstep ctx $ \datum redeemer ownOutRef txInfo ->
-      pdispatch computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
-        \args -> P.do
-          PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
-            pmatch txInfo
-          ppassNativeTxToNextStep
+      pmatch (punsafeCoerce @PStep01Redeemer redeemer) $ \case
+        PForcedDispatch inputIndex outputIndex -> P.do
+          PTxInfo {ptxInfo'inputs, ptxInfo'outputs} <- pmatch txInfo
+          pcontinue
             computationThreadTokenPolicyId
-            hubOracle
-            datum
-            args
+            (pexpectDatum datum)
+            (pfromData inputIndex)
+            (pfromData outputIndex)
             ownOutRef
             (pfromData ptxInfo'inputs)
-            (pfromData ptxInfo'referenceInputs)
             (pfromData ptxInfo'outputs)
-            (pto (pto (pfromData ptxInfo'redeemers)))
-            $ \_ownScriptHash
-               _threadTokenAssetName
-               _fraudProver
-               _mInputStateData
-               outputScriptHash
-               outputStateData
-               _header
-               badTxId
-               badTxView -> P.do
-                PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch badTxView
-                PNativeTxCompact {pcompact'witnessSetHash, pcompact'validityCode} <- pmatch pverified'txCompact
-                pexpecting (pcompact'validityCode #== 0) $
-                  pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
-                  pexpecting
-                    ( outputStateData
-                        #== pforgetData
-                          ( pdata
-                              ( pcon
-                                  ( PStep02State
-                                      { pstep02State'verifiedTxId = pdata badTxId
-                                      , pstep02State'verifiedWitnessSetHash =
-                                          pdata pcompact'witnessSetHash
-                                      }
-                                  )
-                              )
+            $ \_ _ _ inputState outputHash outputState ->
+              pstateIsAbsent inputState
+                #&& outputHash
+                #== forcedStepHash
+                #&& outputState
+                #== pforgetData (pdata (pconstant @PInteger 1))
+        _ ->
+          pdispatch computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
+            \args -> P.do
+              PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
+                pmatch txInfo
+              ppassNativeTxToNextStep
+                computationThreadTokenPolicyId
+                hubOracle
+                datum
+                args
+                ownOutRef
+                (pfromData ptxInfo'inputs)
+                (pfromData ptxInfo'referenceInputs)
+                (pfromData ptxInfo'outputs)
+                (pto (pto (pfromData ptxInfo'redeemers)))
+                $ \_ownScriptHash
+                   _threadTokenAssetName
+                   _fraudProver
+                   _mInputStateData
+                   outputScriptHash
+                   outputStateData
+                   _header
+                   badTxId
+                   badTxView -> P.do
+                    PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch badTxView
+                    PNativeTxCompact {pcompact'witnessSetHash, pcompact'validityCode} <- pmatch pverified'txCompact
+                    pexpecting (pcompact'validityCode #== 0) $
+                      pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
+                        pexpecting
+                          ( outputStateData
+                              #== pforgetData
+                                ( pdata
+                                    ( pcon
+                                        ( PStep02State
+                                            { pstep02State'verifiedTxId = pdata badTxId
+                                            , pstep02State'verifiedWitnessSetHash =
+                                                pdata pcompact'witnessSetHash
+                                            }
+                                        )
+                                    )
+                                )
                           )
-                    )
-                    (pconstant True)
+                          (pconstant True)
 
 --------------------------------------------------------------------------------
 -- Step 02
@@ -188,72 +211,73 @@ missingSignatureStep02Validator ::
         :--> PScriptContext
         :--> PUnit
     )
-missingSignatureStep02Validator = plam $
-  \step03ValidatorScriptHash
-   computationThreadTokenPolicyId
-   fieldPreimageCertificatePolicyId
-   ctx ->
-      pstep ctx $ \datum redeemer ownOutRef txInfo ->
-        pdispatch @_ @PStep02Args computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
-          \args -> P.do
-            PStep02Args
-              { pstep02Args'inputIndex
-              , pstep02Args'outputIndex
-              , pstep02Args'requiredSignersOpening
-              , pstep02Args'badRequiredSignerHashIndex
-              } <-
-              pmatch args
-            PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
-            referenceInputs <- plet $ pfromData ptxInfo'referenceInputs
-            pcontinue
-              computationThreadTokenPolicyId
-              (pexpectDatum datum)
-              (pfromData pstep02Args'inputIndex)
-              (pfromData pstep02Args'outputIndex)
-              ownOutRef
-              (pfromData ptxInfo'inputs)
-              (pfromData ptxInfo'outputs)
-              $ \_ownScriptHash
-                 _threadTokenAssetName
-                 _fraudProver
-                 mInputStateData
-                 outputScriptHash
-                 outputStateData -> P.do
-                  PStep02State {pstep02State'verifiedTxId, pstep02State'verifiedWitnessSetHash} <-
-                    pmatch (pexpectStateAs @PStep02State mInputStateData)
-                  -- Field 4 is a body field, so a body anchor is the right —
-                  -- and the only admissible — one.
-                  requiredSignersView <-
-                    plet $
-                      popenedFieldView
-                        # pfromData pstep02Args'requiredSignersOpening
-                        # pcon (PBodyAnchor {pbodyAnchor'txId = pstep02State'verifiedTxId})
-                        # prequiredSignersFieldIndex
-                        # referenceInputs
-                        # fieldPreimageCertificatePolicyId
-                  missingRequiredSignerHash <-
-                    plet $
-                      pfieldItemAt
-                        # requiredSignersView
-                        # pfromData pstep02Args'badRequiredSignerHashIndex
-                  pexpecting (outputScriptHash #== step03ValidatorScriptHash) $
-                    pexpecting
-                      ( outputStateData
-                          #== pforgetData
-                            ( pdata
-                                ( pcon
-                                    ( PStep03State
-                                        { pstep03State'missingRequiredSignerHash =
-                                            pdata missingRequiredSignerHash
-                                        , pstep03State'verifiedTxId = pstep02State'verifiedTxId
-                                        , pstep03State'verifiedWitnessSetHash =
-                                            pstep02State'verifiedWitnessSetHash
-                                        }
-                                    )
-                                )
-                            )
-                      )
-                      (pconstant True)
+missingSignatureStep02Validator =
+  plam $
+    \step03ValidatorScriptHash
+     computationThreadTokenPolicyId
+     fieldPreimageCertificatePolicyId
+     ctx ->
+        pstep ctx $ \datum redeemer ownOutRef txInfo ->
+          pdispatch @_ @PStep02Args computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
+            \args -> P.do
+              PStep02Args
+                { pstep02Args'inputIndex
+                , pstep02Args'outputIndex
+                , pstep02Args'requiredSignersOpening
+                , pstep02Args'badRequiredSignerHashIndex
+                } <-
+                pmatch args
+              PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
+              referenceInputs <- plet $ pfromData ptxInfo'referenceInputs
+              pcontinue
+                computationThreadTokenPolicyId
+                (pexpectDatum datum)
+                (pfromData pstep02Args'inputIndex)
+                (pfromData pstep02Args'outputIndex)
+                ownOutRef
+                (pfromData ptxInfo'inputs)
+                (pfromData ptxInfo'outputs)
+                $ \_ownScriptHash
+                   _threadTokenAssetName
+                   _fraudProver
+                   mInputStateData
+                   outputScriptHash
+                   outputStateData -> P.do
+                    PStep02State {pstep02State'verifiedTxId, pstep02State'verifiedWitnessSetHash} <-
+                      pmatch (pexpectStateAs @PStep02State mInputStateData)
+                    -- Field 4 is a body field, so a body anchor is the right —
+                    -- and the only admissible — one.
+                    requiredSignersView <-
+                      plet $
+                        popenedFieldView
+                          # pfromData pstep02Args'requiredSignersOpening
+                          # pcon (PBodyAnchor {pbodyAnchor'txId = pstep02State'verifiedTxId})
+                          # prequiredSignersFieldIndex
+                          # referenceInputs
+                          # fieldPreimageCertificatePolicyId
+                    missingRequiredSignerHash <-
+                      plet $
+                        pfieldItemAt
+                          # requiredSignersView
+                          # pfromData pstep02Args'badRequiredSignerHashIndex
+                    pexpecting (outputScriptHash #== step03ValidatorScriptHash) $
+                      pexpecting
+                        ( outputStateData
+                            #== pforgetData
+                              ( pdata
+                                  ( pcon
+                                      ( PStep03State
+                                          { pstep03State'missingRequiredSignerHash =
+                                              pdata missingRequiredSignerHash
+                                          , pstep03State'verifiedTxId = pstep02State'verifiedTxId
+                                          , pstep03State'verifiedWitnessSetHash =
+                                              pstep02State'verifiedWitnessSetHash
+                                          }
+                                      )
+                                  )
+                              )
+                        )
+                        (pconstant True)
 
 --------------------------------------------------------------------------------
 -- Step 03
@@ -300,36 +324,37 @@ missingSignatureStep03Validator = plam $
                mInputStateData
                outputScriptHash
                outputStateData -> P.do
-              PStep03State
-                { pstep03State'missingRequiredSignerHash
-                , pstep03State'verifiedTxId
-                , pstep03State'verifiedWitnessSetHash
-                } <-
-                pmatch (pexpectStateAs @PStep03State mInputStateData)
-              -- 2. @get_verification_key_hash@ is @blake2b_224@.
-              pexpecting
-                ( pblake2b_224 # pfromData pstep03Args'missingRequiredSignerVkey
-                    #== pfromData pstep03State'missingRequiredSignerHash
-                )
-                $ pexpecting (outputScriptHash #== step04ValidatorScriptHash)
-                $ pexpecting
-                  ( outputStateData
-                      #== pforgetData
-                        ( pdata
-                            ( pcon
-                                ( PStep04State
-                                    { pstep04State'missingRequiredSignerVkey =
-                                        pstep03Args'missingRequiredSignerVkey
-                                    , pstep04State'verifiedTxId = pstep03State'verifiedTxId
-                                    , pstep04State'verifiedWitnessSetHash =
-                                        pstep03State'verifiedWitnessSetHash
-                                    , pstep04State'fieldWalkCheckpointHash = pdata (pconstant "")
-                                    }
-                                )
-                            )
-                        )
+                PStep03State
+                  { pstep03State'missingRequiredSignerHash
+                  , pstep03State'verifiedTxId
+                  , pstep03State'verifiedWitnessSetHash
+                  } <-
+                  pmatch (pexpectStateAs @PStep03State mInputStateData)
+                -- 2. @get_verification_key_hash@ is @blake2b_224@.
+                pexpecting
+                  ( pblake2b_224
+                      # pfromData pstep03Args'missingRequiredSignerVkey
+                      #== pfromData pstep03State'missingRequiredSignerHash
                   )
-                  (pconstant True)
+                  $ pexpecting (outputScriptHash #== step04ValidatorScriptHash)
+                  $ pexpecting
+                    ( outputStateData
+                        #== pforgetData
+                          ( pdata
+                              ( pcon
+                                  ( PStep04State
+                                      { pstep04State'missingRequiredSignerVkey =
+                                          pstep03Args'missingRequiredSignerVkey
+                                      , pstep04State'verifiedTxId = pstep03State'verifiedTxId
+                                      , pstep04State'verifiedWitnessSetHash =
+                                          pstep03State'verifiedWitnessSetHash
+                                      , pstep04State'fieldWalkCheckpointHash = pdata (pconstant "")
+                                      }
+                                  )
+                              )
+                          )
+                    )
+                    (pconstant True)
 
 --------------------------------------------------------------------------------
 -- Step 04
@@ -354,91 +379,92 @@ missingSignatureStep04Validator ::
         :--> PScriptContext
         :--> PUnit
     )
-missingSignatureStep04Validator = plam $
-  \fraudProofTokenPolicyId
-   fraudProofTokenAddress
-   computationThreadTokenPolicyId
-   fieldPreimageCertificatePolicyId
-   ctx ->
-      pstep ctx $ \datum redeemer ownOutRef txInfo ->
-        pdispatch @_ @PStep04Args computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
-          \args -> pmatch args $ \case
-            PScan inputIndex outputIndex opening checkpointCbor -> P.do
-              PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
-              pcontinue
-                computationThreadTokenPolicyId
-                (pexpectDatum datum)
-                (pfromData inputIndex)
-                (pfromData outputIndex)
-                ownOutRef
-                (pfromData ptxInfo'inputs)
-                (pfromData ptxInfo'outputs)
-                $ \ownScriptHash _threadTokenAssetName _fraudProver mInputStateData outputScriptHash outputStateData -> P.do
-                  state <- plet $ pexpectStateAs @PStep04State mInputStateData
-                  PPair view checkpoint <-
-                    pmatch $
-                      popenOrResumeWitnessWalk
-                        state
-                        (pfromData opening)
-                        (pfromData checkpointCbor)
-                        (pfromData ptxInfo'referenceInputs)
-                        fieldPreimageCertificatePolicyId
-                  pexpecting (pwalkRemaining # checkpoint #> pwitnessScanBatchSize) $ P.do
-                    PStep04State {pstep04State'missingRequiredSignerVkey} <- pmatch state
-                    PPair found next <-
+missingSignatureStep04Validator =
+  plam $
+    \fraudProofTokenPolicyId
+     fraudProofTokenAddress
+     computationThreadTokenPolicyId
+     fieldPreimageCertificatePolicyId
+     ctx ->
+        pstep ctx $ \datum redeemer ownOutRef txInfo ->
+          pdispatch @_ @PStep04Args computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
+            \args -> pmatch args $ \case
+              PScan inputIndex outputIndex opening checkpointCbor -> P.do
+                PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
+                pcontinue
+                  computationThreadTokenPolicyId
+                  (pexpectDatum datum)
+                  (pfromData inputIndex)
+                  (pfromData outputIndex)
+                  ownOutRef
+                  (pfromData ptxInfo'inputs)
+                  (pfromData ptxInfo'outputs)
+                  $ \ownScriptHash _threadTokenAssetName _fraudProver mInputStateData outputScriptHash outputStateData -> P.do
+                    state <- plet $ pexpectStateAs @PStep04State mInputStateData
+                    PPair view checkpoint <-
                       pmatch $
-                        pwalkFold @PBool
-                          # view
-                          # checkpoint
-                          # pwitnessScanBatchSize
-                          # pconstant False
-                          # (pwitnessPresenceFold # pfromData pstep04State'missingRequiredSignerVkey)
-                    pexpecting (pnot # found) $
-                      pexpecting (outputScriptHash #== ownScriptHash) $
-                        pexpecting
-                          ( outputStateData
-                              #== pforgetData
-                                (pdata $ pstateWithCheckpointHash # state # (pfieldWalkCheckpointHash # next))
-                          )
-                          (pconstant True)
-            PFinalize inputIndex outputIndex mintRedeemerIndex opening checkpointCbor -> P.do
-              PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
-                pmatch txInfo
-              pfinalize
-                computationThreadTokenPolicyId
-                fraudProofTokenPolicyId
-                fraudProofTokenAddress
-                (pexpectDatum datum)
-                (pfromData inputIndex)
-                (pfromData outputIndex)
-                (pfromData mintRedeemerIndex)
-                ownOutRef
-                (pfromData ptxInfo'inputs)
-                (pfromData ptxInfo'outputs)
-                (pto (pto (pfromData ptxInfo'redeemers)))
-                $ \_ownScriptHash _threadTokenAssetName _fraudProver mInputStateData -> P.do
-                  state <- plet $ pexpectStateAs @PStep04State mInputStateData
-                  PPair view checkpoint <-
-                    pmatch $
-                      popenOrResumeWitnessWalk
-                        state
-                        (pfromData opening)
-                        (pfromData checkpointCbor)
-                        (pfromData ptxInfo'referenceInputs)
-                        fieldPreimageCertificatePolicyId
-                  remaining <- plet $ pwalkRemaining # checkpoint
-                  pexpecting (remaining #<= pwitnessScanBatchSize) $ P.do
-                    PStep04State {pstep04State'missingRequiredSignerVkey} <- pmatch state
-                    PPair found terminal <-
+                        popenOrResumeWitnessWalk
+                          state
+                          (pfromData opening)
+                          (pfromData checkpointCbor)
+                          (pfromData ptxInfo'referenceInputs)
+                          fieldPreimageCertificatePolicyId
+                    pexpecting (pwalkRemaining # checkpoint #> pwitnessScanBatchSize) $ P.do
+                      PStep04State {pstep04State'missingRequiredSignerVkey} <- pmatch state
+                      PPair found next <-
+                        pmatch $
+                          pwalkFold @PBool
+                            # view
+                            # checkpoint
+                            # pwitnessScanBatchSize
+                            # pconstant False
+                            # (pwitnessPresenceFold # pfromData pstep04State'missingRequiredSignerVkey)
+                      pexpecting (pnot # found) $
+                        pexpecting (outputScriptHash #== ownScriptHash) $
+                          pexpecting
+                            ( outputStateData
+                                #== pforgetData
+                                  (pdata $ pstateWithCheckpointHash # state # (pfieldWalkCheckpointHash # next))
+                            )
+                            (pconstant True)
+              PFinalize inputIndex outputIndex mintRedeemerIndex opening checkpointCbor -> P.do
+                PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
+                  pmatch txInfo
+                pfinalize
+                  computationThreadTokenPolicyId
+                  fraudProofTokenPolicyId
+                  fraudProofTokenAddress
+                  (pexpectDatum datum)
+                  (pfromData inputIndex)
+                  (pfromData outputIndex)
+                  (pfromData mintRedeemerIndex)
+                  ownOutRef
+                  (pfromData ptxInfo'inputs)
+                  (pfromData ptxInfo'outputs)
+                  (pto (pto (pfromData ptxInfo'redeemers)))
+                  $ \_ownScriptHash _threadTokenAssetName _fraudProver mInputStateData -> P.do
+                    state <- plet $ pexpectStateAs @PStep04State mInputStateData
+                    PPair view checkpoint <-
                       pmatch $
-                        pwalkFold @PBool
-                          # view
-                          # checkpoint
-                          # remaining
-                          # pconstant False
-                          # (pwitnessPresenceFold # pfromData pstep04State'missingRequiredSignerVkey)
-                    pexpecting (pnot # found) $
-                      pexpecting (pwalkRemaining # terminal #== 0) (pconstant True)
+                        popenOrResumeWitnessWalk
+                          state
+                          (pfromData opening)
+                          (pfromData checkpointCbor)
+                          (pfromData ptxInfo'referenceInputs)
+                          fieldPreimageCertificatePolicyId
+                    remaining <- plet $ pwalkRemaining # checkpoint
+                    pexpecting (remaining #<= pwitnessScanBatchSize) $ P.do
+                      PStep04State {pstep04State'missingRequiredSignerVkey} <- pmatch state
+                      PPair found terminal <-
+                        pmatch $
+                          pwalkFold @PBool
+                            # view
+                            # checkpoint
+                            # remaining
+                            # pconstant False
+                            # (pwitnessPresenceFold # pfromData pstep04State'missingRequiredSignerVkey)
+                      pexpecting (pnot # found) $
+                        pexpecting (pwalkRemaining # terminal #== 0) (pconstant True)
 
 -- | Aiken @witness_scan_batch_size@.
 pwitnessScanBatchSize :: forall (s :: S). Term s PInteger
@@ -522,3 +548,140 @@ pstateWithCheckpointHash = phoistAcyclic $
                 , pstep04State'fieldWalkCheckpointHash = pdata checkpointHash
                 }
             )
+
+-- This target family uses a marker handoff and its own forced-source binding,
+-- rather than VerdictSubject. In particular it does not add a header-protocol
+-- guard or carry a full subject into the signer/witness stages.
+missingSignatureForcedStepValidator :: forall s. Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
+missingSignatureForcedStepValidator = plam $ \signerHash threadPolicy ctx ->
+  pstep ctx $ \datum redeemer ownRef txInfo ->
+    pdispatch @_ @PForcedStepArgs threadPolicy datum redeemer ownRef txInfo $ \args -> P.do
+      PForcedStepArgs inputIndex outputIndex headerD membershipD direction <- pmatch args
+      PTxInfo {ptxInfo'inputs, ptxInfo'outputs} <- pmatch txInfo
+      pcontinue
+        threadPolicy
+        (pexpectDatum datum)
+        (pfromData inputIndex)
+        (pfromData outputIndex)
+        ownRef
+        (pfromData ptxInfo'inputs)
+        (pfromData ptxInfo'outputs)
+        $ \_ threadName _ inputState outputHash outputState -> P.do
+          header <- plet $ pfromData headerD
+          membership <- plet $ pfromData membershipD
+          PHeaderV1 {pheader'forcedTransactionsRoot, pheader'forcedTransactionCount} <- pmatch header
+          PRootMembershipProof {prootMembership'key, prootMembership'value} <- pmatch membership
+          PForcedInclusionTxV1 {..} <- pmatch $ pfromData $ punsafeCoerce @(PAsData PForcedInclusionTxV1) prootMembership'value
+          let keyBytes = pserialiseData # prootMembership'key
+              nameBytes = pto $ pfromData threadName
+          pexpecting (pexpectState inputState #== pforgetData (pdata (pconstant @PInteger 1)))
+            $ pexpecting
+              ( pfromData direction
+                  #== 1
+                  #&& pblake2b_224
+                  # (pserialiseData # pforgetData headerD)
+                  #== psliceBS
+                  # pidByteCount
+                  # (plengthBS # nameBytes)
+                  # nameBytes
+                  #&& pverifyRootMembershipWithBytes
+                    membership
+                    (pdata $ pcon PForcedTransactionsV1RootDomain)
+                    (pfromData pheader'forcedTransactionsRoot)
+                    (pfromData pheader'forcedTransactionCount)
+                    keyBytes
+                    (pserialiseData # prootMembership'value)
+              )
+            $ P.do
+              PForcedTxInvalid reason <- pmatch $ pfromData pforcedTx'verdict
+              PRequiredSignerUnsigned signerIndex <- pmatch $ pfromData $ punsafeCoerce @(PAsData PRejectionReasonV1) reason
+              PNativeTxProofSourceV1 {..} <- pmatch $ pfromData pforcedTx'source
+              PPair verified _ <-
+                pmatch $
+                  pverifyNativeTxProofSourceV1
+                    # pfromData pforcedTx'txId
+                    # pfromData pnativeSource'compactCbor
+                    # pfromData pnativeSource'witnessSetCompactCbor
+                    # pfromData pnativeSource'fieldPreimageLengthsCbor
+              PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch verified
+              PNativeTxCompact {pcompact'validityCode, pcompact'witnessSetHash} <- pmatch pverified'txCompact
+              expected <- plet $ pcon $ PForcedSignerState pforcedTx'txId (pdata pcompact'witnessSetHash) (pdata keyBytes) signerIndex
+              pcompact'validityCode #== 1 #&& outputHash #== signerHash #&& outputState #== pforgetData (pdata expected)
+
+missingSignatureForcedSignerValidator :: forall s. Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
+missingSignatureForcedSignerValidator = plam $ \witnessHash threadPolicy certificatePolicy ctx ->
+  pstep ctx $ \datum redeemer ownRef txInfo ->
+    pdispatch @_ @PForcedSignerArgs threadPolicy datum redeemer ownRef txInfo $ \args -> P.do
+      PForcedSignerArgs inputIndex outputIndex opening <- pmatch args
+      PTxInfo {ptxInfo'inputs, ptxInfo'outputs, ptxInfo'referenceInputs} <- pmatch txInfo
+      pcontinue
+        threadPolicy
+        (pexpectDatum datum)
+        (pfromData inputIndex)
+        (pfromData outputIndex)
+        ownRef
+        (pfromData ptxInfo'inputs)
+        (pfromData ptxInfo'outputs)
+        $ \_ _ _ inputState outputHash outputState -> P.do
+          PForcedSignerState txId witnessSetHash sourceKey signerIndex <- pmatch $ pexpectStateAs @PForcedSignerState inputState
+          view <-
+            plet $
+              popenedFieldView
+                # pfromData opening
+                # pcon (PBodyAnchor txId)
+                # prequiredSignersFieldIndex
+                # pfromData ptxInfo'referenceInputs
+                # certificatePolicy
+          selected <-
+            plet $
+              pif
+                (pfromData signerIndex #< 0 #|| pfromData signerIndex #>= pfieldItemCount # view)
+                (pcon PDNothing)
+                (pcon $ PDJust $ pdata $ pfieldItemAt # view # pfromData signerIndex)
+          expected <- plet $ pcon $ PForcedWitnessState txId witnessSetHash sourceKey signerIndex (pdata selected)
+          outputHash #== witnessHash #&& outputState #== pforgetData (pdata expected)
+
+missingSignatureForcedWitnessValidator :: forall s. Term s (PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PAsData PAddress :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
+missingSignatureForcedWitnessValidator = plam $ \threadPolicy fraudPolicy fraudAddress certificatePolicy ctx ->
+  pstep ctx $ \datum redeemer ownRef txInfo ->
+    pdispatch @_ @PForcedWitnessArgs threadPolicy datum redeemer ownRef txInfo $ \args -> P.do
+      PForcedWitnessArgs inputIndex outputIndex mintIndex opening witnessIndex <- pmatch args
+      PTxInfo {ptxInfo'inputs, ptxInfo'outputs, ptxInfo'redeemers, ptxInfo'referenceInputs} <- pmatch txInfo
+      pfinalize
+        threadPolicy
+        fraudPolicy
+        fraudAddress
+        (pexpectDatum datum)
+        (pfromData inputIndex)
+        (pfromData outputIndex)
+        (pfromData mintIndex)
+        ownRef
+        (pfromData ptxInfo'inputs)
+        (pfromData ptxInfo'outputs)
+        (pto $ pto $ pfromData ptxInfo'redeemers)
+        $ \_ _ _ inputState -> P.do
+          PForcedWitnessState txId witnessSetHash _ _ selected <- pmatch $ pexpectStateAs @PForcedWitnessState inputState
+          pmatch (pfromData selected) $ \case
+            PDNothing -> pmatch (pfromData opening) $ \case
+              PDNothing -> pfromData witnessIndex #== 0
+              _ -> perror
+            PDJust signerHash -> P.do
+              PDJust fieldOpening <- pmatch $ pfromData opening
+              view <-
+                plet $
+                  popenedFieldView
+                    # pfromData fieldOpening
+                    # pcon (PWitnessAnchor txId witnessSetHash)
+                    # paddressWitnessesFieldIndex
+                    # pfromData ptxInfo'referenceInputs
+                    # certificatePolicy
+              PMidgardAddressWitness {paddressWitness'verificationKey, paddressWitness'signature} <-
+                pmatch $
+                  pdecodeMidgardAddressWitnessCbor # (pfieldItemAt # view # pfromData witnessIndex)
+              pblake2b_224
+                # pfromData paddressWitness'verificationKey
+                #== pfromData signerHash
+                #&& pverifyEd25519Signature
+                # pfromData paddressWitness'verificationKey
+                # pfromData txId
+                # pfromData paddressWitness'signature

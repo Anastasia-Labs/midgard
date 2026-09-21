@@ -430,11 +430,15 @@ cekDirectRouteBindsSelectedEnvelope =
   verifyMaterialRoute directRoute [] materialScriptHash
     #&& pnot # (verifyMaterialRoute wrongEnvelopeRoute [] materialScriptHash)
     #&& pnot # (verifyMaterialRoute badSidecarRoute [] materialScriptHash)
+    #&& pnot # (verifyMaterialRoute obsoleteSidecarRoute [] materialScriptHash)
     #&& pnot # (verifyMaterialRoute (pcon PNoCekMaterial) [] materialScriptHash)
   where
     directRoute = pcon $ PDirectCekMaterial (pdata $ pconstant oneNodeEnvelope) (pdata $ pconstant oneNodeSidecar)
     wrongEnvelopeRoute = pcon $ PDirectCekMaterial (pdata $ pconstant "\x81\x06") (pdata $ pconstant oneNodeSidecar)
     badSidecarRoute = pcon $ PDirectCekMaterial (pdata $ pconstant oneNodeEnvelope) (pdata $ pconstant $ oneNodeSidecar <> "\x00")
+    obsoleteSidecarRoute = pcon $ PDirectCekMaterial
+      (pdata $ pconstant oneNodeEnvelope)
+      (pdata $ pconstant $ "\x82\x01\x81\x82\x58\x20" <> oneNodeRoot <> "\x83\x01\x00\x42" <> oneNodePreimage)
 
 cekIncrementalRouteRejectsZeroMaterial :: forall s. Term s PBool
 cekIncrementalRouteRejectsZeroMaterial =
@@ -615,7 +619,7 @@ oneNodeRoot = blake2b256 $ "MidgardCekTermNodeV1" <> oneNodePreimage
 oneNodeEnvelope = "\x85\x01\x83\x01\x01\x00\x58\x20" <> oneNodeRoot <> "\x01\x02"
 oneNodeEnvelopeHash = blake2b256 $ "MidgardCekProgramEnvelopeV1" <> oneNodeEnvelope
 oneNodeSidecar =
-  "\x82\x01\x81\x82\x58\x20" <> oneNodeRoot <> "\x83\x01\x00\x42" <> oneNodePreimage
+  "\x82\x01\x81\x82\x58\x20" <> oneNodeRoot <> "\x46\x83\x01\x00\x42" <> oneNodePreimage
 
 substitutedPreimage, substitutedRoot, twoNodeRootPreimage, twoNodeRoot, twoNodeEnvelope, twoNodeEnvelopeHash :: BS.ByteString
 substitutedPreimage = "\x82\x00\x00"

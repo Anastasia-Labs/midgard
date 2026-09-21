@@ -51,6 +51,8 @@ module Midgard.CekMachine (
   pverifyBuiltinBlsFinalStep,
   pverifySemanticBuiltinControlStep,
   pverifyCoreStepV1,
+  pexactState,
+  pverifyAuthenticatedMapConversionNodes,
 ) where
 
 import GHC.Generics (Generic)
@@ -1087,3 +1089,69 @@ pverifyCoreStepV1 = phoistAcyclic $ plam $ \pre post witness ->
                 (pif (pfromData (pstate'mode p) #== pmodeSemanticBuiltin)
                   (pverifySemanticBuiltinControlStep # pre # post # witness) (pconstant False)))))
     (pconstant False)
+
+-- The core chain has authenticated roots and cost before this material hop.
+pverifyAuthenticatedMapConversionNodes ::
+  forall s.
+  Term s PMachineStateV1 -> Term s PMachineStateV1 -> Term s PInteger ->
+  Term s (PBuiltinList (PAsData Builtin.PValueWitnessV1)) -> Term s Builtin.PValueWitnessV1 ->
+  Term s PMapConversionStartWitnessV1 -> Term s PBuiltinBudgetV1 -> Term s PBool
+pverifyAuthenticatedMapConversionNodes pre post tag arguments result material authenticatedBudget = pmatch pre $ \p ->
+  pif (tag #== 38 #|| tag #== 43)
+    (pelimList
+      (\source rest -> pif (pnull # rest)
+        (pmatch material $ \m ->
+          plet (pfromData $ pmapStart'sourceNode m) $ \sourceNode ->
+          plet (pfromData $ pmapStart'resultNode m) $ \resultNode ->
+          plet (Builtin.psemanticConstantPayloadV1 # pfromData source) $ \sourcePayload ->
+          plet (Builtin.psemanticConstantPayloadV1 # result) $ \resultPayload ->
+          pif (sourcePayload #== pdataSummaryFromNode sourceNode
+            #&& resultPayload #== pdataSummaryFromNode resultNode
+            #&& Data.pverifyDataNodeV1 # sourceNode # pfromData (pmapStart'sourceList m) # pfromData (pmapStart'sourcePairs m)
+            #&& Data.pverifyDataNodeV1 # resultNode # pfromData (pmapStart'resultList m) # pfromData (pmapStart'resultPairs m))
+            (plet
+              (pif (tag #== 38)
+                (pif
+                  ( Builtin.psemanticConstantTypeV1 # pfromData source
+                      #== pcon (Constant.PListConstant $ pdata $ pcon $ Constant.PPairConstant
+                        (pdata $ pcon Constant.PDataConstant) (pdata $ pcon Constant.PDataConstant))
+                    #&& Builtin.psemanticConstantTypeV1 # result #== pcon Constant.PDataConstant
+                  )
+                  (pcon $ PPair (plistSequenceFromNode sourceNode) (pmapSequenceFromNode resultNode))
+                  perror)
+                (pif
+                  ( Builtin.psemanticConstantTypeV1 # pfromData source #== pcon Constant.PDataConstant
+                    #&& Builtin.psemanticConstantTypeV1 # result
+                      #== pcon (Constant.PListConstant $ pdata $ pcon $ Constant.PPairConstant
+                        (pdata $ pcon Constant.PDataConstant) (pdata $ pcon Constant.PDataConstant))
+                  )
+                  (pcon $ PPair (pmapSequenceFromNode sourceNode) (plistSequenceFromNode resultNode))
+                  perror))
+              $ \sequences -> pmatch sequences $ \(PPair sourceSequence destinationSequence) ->
+                pmatch sourceSequence $ \sourceParts -> pmatch destinationSequence $ \destinationParts ->
+                pif (pfromData (Data.pseq'length sourceParts) #== pfromData (Data.pseq'length destinationParts)
+                  #&& pif (tag #== 38)
+                    (Builtin.psemanticConstantMemoryV1 # pfromData source
+                      #== pfromData (Data.pseq'memory sourceParts) - pfromData (Data.pseq'length sourceParts) * 4
+                      #&& Builtin.psemanticConstantMemoryV1 # result #== pfromData (Data.pseq'memory destinationParts) + 4)
+                    (Builtin.psemanticConstantMemoryV1 # pfromData source #== pfromData (Data.pseq'memory sourceParts) + 4
+                      #&& Builtin.psemanticConstantMemoryV1 # result
+                        #== pfromData (Data.pseq'memory destinationParts) - pfromData (Data.pseq'length destinationParts) * 4))
+                  (pmatch authenticatedBudget $ \budget ->
+                    plet
+                      (pcon $ PMapConversionControlV1
+                        (pdata tag) (pdata $ Builtin.presultRootV1 # result)
+                        (Data.pseq'root sourceParts) (Data.pseq'length sourceParts)
+                        (Data.pseq'payloadCborLength sourceParts) (Data.pseq'memory sourceParts)
+                        (Data.pseq'root destinationParts) (Data.pseq'length destinationParts)
+                        (Data.pseq'payloadCborLength destinationParts) (Data.pseq'memory destinationParts)
+                        (pbudget'cpu budget) (pbudget'memory budget))
+                      $ \control ->
+                        post #== pexactState pre pmodeSemanticBuiltin (phashMapConversionControlV1 # control)
+                            Proof.pemptyEnvironmentRootV1 (pfromData $ pstate'continuationRoot p) 0 0 0)
+                  perror)
+            perror)
+        perror)
+      perror
+      arguments)
+    perror

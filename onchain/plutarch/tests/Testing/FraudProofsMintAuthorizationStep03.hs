@@ -50,6 +50,8 @@ run ctx =
   mintAuthorizationStep03Validator
     # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
     # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
+    # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
+    # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
     # pdata (pconstant ctPolicy)
     # pdata (pconstant certificatePolicy)
     # pconstant ctx
@@ -61,8 +63,8 @@ presentKey = keyHashFor 0
 priorRoot = hash32 0x55
 
 nativeWitnessTx, plutusWitnessTx :: Tx
-nativeWitnessTx = txScriptSpend {tScripts = [(0, nativeScriptBytes)]}
-plutusWitnessTx = txScriptSpend {tScripts = [(3, "\xde\xad\xbe\xef")]}
+nativeWitnessTx = txScriptSpend{tScripts = [(0, nativeScriptBytes)]}
+plutusWitnessTx = txScriptSpend{tScripts = [(3, "\xde\xad\xbe\xef")]}
 
 stateData :: Tx -> BS.ByteString -> Integer -> Integer -> Integer -> PD.Data
 stateData tx policy direction validityStart validityEnd =
@@ -117,9 +119,9 @@ evaluateContext payload direction validityStart validityEnd openedPreimage polic
     []
     []
     mempty
-  where
-    compact = compactWithValidity txScriptSpend (witnessSetHashOf txScriptSpend) 0
-    policy = maybe (versionedScriptHashOf 0 payload) id policyOverride
+ where
+  compact = compactWithValidity txScriptSpend (witnessSetHashOf txScriptSpend) 0
+  policy = maybe (versionedScriptHashOf 0 payload) id policyOverride
 
 signature :: BS.ByteString -> BS.ByteString
 signature key = "\x82\x00\x58\x1c" <> key
@@ -151,4 +153,4 @@ cancelContext signedByProver =
 
 withoutSignatories :: ScriptContext -> ScriptContext
 withoutSignatories (ScriptContext txInfo redeemer scriptInfo) =
-  ScriptContext txInfo {txInfoSignatories = []} redeemer scriptInfo
+  ScriptContext txInfo{txInfoSignatories = []} redeemer scriptInfo

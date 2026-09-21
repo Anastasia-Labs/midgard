@@ -1,35 +1,7 @@
-{- |
-Module      : Midgard.Validators.FraudProofs.TransitionTrace
-Description : Plutarch port of @validators/fraud-proofs/transition-trace/@.
-
-The dispatch layer above "Midgard.FraudProofs.TransitionTrace.Proof": one router
-and eight final validators, each of which ends a computation thread in a
-conviction if the fault its own entry point recognises holds.
-
-=== Why eight scripts and not one
-
-Every entry point is a different subset of the same ten-armed fault type, and a
-single script answering all ten would have to compile all ten rules — the
-deposit projection chain, the L2 transition's two preimage walks, the L1-event
-readers — into one budget. Splitting them means a challenger pays only for the
-rule they are actually invoking. The cost is that the fault has to be routed to
-the right script before it can be adjudicated, which is what @route-v1@ is for.
-
-=== The router decides nothing about guilt
-
-@route-v1@ reads the fault's constructor and nothing else. It does not open the
-witness, check the header, or look at the thread's asset name; a proof it routes
-is still entirely unadjudicated, and the final validator it lands at is what
-convicts or refuses. Routing is a challenger-only step precisely because it
-cannot go wrong in the operator's favour: sending a fault to the wrong script
-gets it refused there, and sending it to the right one proves nothing by itself.
-
-=== The routing table is a tag read, not a match
-
-@route_index@ is a ten-arm @when@ in which four arms return @0@, two return @2@,
-two return @4@ and two return @6@ — the Plutarch branch-selection hazard at its
-worst shape (see the README). Both reads below go through 'pconstrOf' for that
-reason: the fault's own tag, and then the nested one-step witness's.
+{- | Fixed-boundary Aiken transition-trace dispatchers. Inline faults route to
+direct finals; carried L2, deposit and accepted-claim proofs route to staged
+states. Rewarding validators authenticate each delegated phase, while these
+spending validators retain thread custody, cancellation and conviction.
 -}
 module Midgard.Validators.FraudProofs.TransitionTrace (
   -- * The eight final validators
@@ -53,12 +25,13 @@ import Data.Kind (Type)
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
 
+import Plutarch.LedgerApi.Utils (PMaybeData (..))
 import Plutarch.LedgerApi.V3 (
   PAddress,
   PCurrencySymbol,
   PScriptContext,
   PScriptHash,
-  PTokenName,
+  PTokenName (..),
   PTxInInfo,
   PTxInfo (..),
  )
@@ -66,22 +39,31 @@ import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
 import Plutarch.Unsafe (punsafeCoerce)
 
-import Midgard.Common.Utils (pconstrOf)
+import Midgard.Common.Utils (pconstrOf, pheadSingleton)
+import Midgard.ComputationThread (PStepDatum (..))
 import Midgard.FraudProofs.Common (pcontinue, pfinalize)
 import Midgard.FraudProofs.TransitionTrace.FinalV1 (PTransitionTraceFinalArgs (..))
+import Midgard.FraudProofs.TransitionTrace.FinalYield qualified as Yield
 import Midgard.FraudProofs.TransitionTrace.Proof (
   PTransitionFault,
   PTransitionFaultProof (..),
-  pvalidateAcceptedTransactionFaultProof,
   pvalidateControlFaultProof,
-  pvalidateDepositFaultProof,
   pvalidateDuplicateFaultProof,
   pvalidateForcedFaultProof,
   pvalidateL1EventFaultProof,
   pvalidateSourceFaultProof,
+  pvalidateTransitionHeaderEnvelope,
   pvalidateWithdrawalFaultProof,
  )
+import Midgard.FraudProofs.TransitionTrace.Proof qualified as Proof
+import Midgard.FraudProofs.TransitionTrace.ProofCarriage qualified as Carriage
 import Midgard.HubOracle (PHubOracleDatum, pgetDatum)
+import Midgard.LedgerState (PHeaderV1)
+import Midgard.LedgerState qualified as Ledger
+import Midgard.StateQueueYield (prequireAuthenticatedZeroYield)
+import Midgard.TransitionTrace qualified as Trace
+import Midgard.ValidationClaim qualified as Claim
+import Midgard.ValidationTrace qualified as Validation
 import Midgard.Validators.FraudProofs.Step (
   pdispatch,
   pexpectDatum,
@@ -95,18 +77,7 @@ import Midgard.Validators.FraudProofs.Step (
 -- The shape the eight share
 --------------------------------------------------------------------------------
 
-{- | The whole of a final transition-trace validator except its rule.
-
-All eight Aiken files are the same forty lines with one function name changed:
-spend, cancel or continue, @finalize@, @expect Some(transition_proof)@, and then
-the entry point. Factoring it here leaves each validator below as the one line
-that actually differs.
-
-The rule receives more than most of them use — the hub reference-input index and
-the transaction's reference inputs — because @deposit-v1@ and @l1-event-v1@ need
-both and the other six ignore them. That mirrors the shared @final_v1.Args@:
-one redeemer shape for all eight, so that the router does not have to pick.
--}
+-- | Direct finalization shared by the six non-yielded final validators.
 ptransitionTraceFinal ::
   forall (s :: S).
   Term s (PAsData PCurrencySymbol) ->
@@ -141,7 +112,7 @@ ptransitionTraceFinal
             , pfinalArgs'fraudProofMintRedeemerIndex
             } <-
             pmatch args
-          PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
+          PTxInfo{ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
             pmatch txInfo
           pfinalize
             computationThreadTokenPolicyId
@@ -226,27 +197,12 @@ transitionTraceForcedV1Validator = plam $ \ctPolicy fpPolicy fpAddress ctx ->
   ptransitionTraceFinal ctPolicy fpPolicy fpAddress ctx $ \proof assetName _hubIndex _refs ->
     pvalidateForcedFaultProof proof assetName
 
-{- | Aiken @validators/fraud-proofs/transition-trace/accepted-transaction-v1.ak@.
-
-Answers the L2 transition arm. The tenth fault —
-@AcceptedTransactionTransitionMismatch@ — routes here too, and this port's entry
-point refuses it rather than adjudicating it, because its rule waits on a CBOR
-decoder. A challenger who routes one here gets a validator that declines to
-convict, not one that aborts: see the entry point's own note.
--}
+-- | Aiken staged accepted-transaction dispatcher, including terminal claims.
 transitionTraceAcceptedTransactionV1Validator ::
-  forall (s :: S).
-  Term
-    s
-    ( PAsData PCurrencySymbol
-        :--> PAsData PCurrencySymbol
-        :--> PAsData PAddress
-        :--> PScriptContext
-        :--> PUnit
-    )
-transitionTraceAcceptedTransactionV1Validator = plam $ \ctPolicy fpPolicy fpAddress ctx ->
-  ptransitionTraceFinal ctPolicy fpPolicy fpAddress ctx $ \proof assetName _hubIndex _refs ->
-    pvalidateAcceptedTransactionFaultProof proof assetName
+  forall s.
+  Term s (PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PAsData PAddress :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
+transitionTraceAcceptedTransactionV1Validator = plam $ \ctPolicy fpPolicy fpAddress authPolicy ctx ->
+  ptransitionTraceYieldFinal False ctPolicy fpPolicy fpAddress authPolicy ctx
 
 -- | Aiken @validators/fraud-proofs/transition-trace/duplicate-v1.ak@.
 transitionTraceDuplicateV1Validator ::
@@ -267,37 +223,16 @@ transitionTraceDuplicateV1Validator = plam $ \ctPolicy fpPolicy fpAddress ctx ->
 -- The two that consult the hub oracle
 --------------------------------------------------------------------------------
 
-{- | Aiken @validators/fraud-proofs/transition-trace/deposit-v1.ak@.
-
-The deposit transition reads the deposit policy out of the hub oracle and then
-authenticates one deposit UTxO among the reference inputs against it, so this
-validator takes the hub oracle's own policy id as a fourth parameter and passes
-both the datum and the reference inputs down.
--}
+-- | Aiken staged deposit dispatcher. The hub parameter belongs to projection.
 transitionTraceDepositV1Validator ::
-  forall (s :: S).
-  Term
-    s
-    ( PAsData PCurrencySymbol
-        :--> PAsData PCurrencySymbol
-        :--> PAsData PAddress
-        :--> PAsData PScriptHash
-        :--> PScriptContext
-        :--> PUnit
-    )
-transitionTraceDepositV1Validator = plam $ \ctPolicy fpPolicy fpAddress hubOracle ctx ->
-  ptransitionTraceFinal ctPolicy fpPolicy fpAddress ctx $ \proof assetName hubIndex refs ->
-    pvalidateDepositFaultProof
-      proof
-      assetName
-      (phubDatumAt hubOracle refs hubIndex)
-      refs
+  forall s.
+  Term s (PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PAsData PAddress :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
+transitionTraceDepositV1Validator = plam $ \ctPolicy fpPolicy fpAddress authPolicy ctx ->
+  ptransitionTraceYieldFinal True ctPolicy fpPolicy fpAddress authPolicy ctx
 
 {- | Aiken @validators/fraud-proofs/transition-trace/l1-event-v1.ak@.
 
-Both L1-event faults reach for a withdrawal or transaction-order UTxO among the
-reference inputs, and both find the policy that authenticates it in the hub
-oracle — so this validator has the same shape as @deposit-v1@.
+Both L1-event faults authenticate their event reference through the hub oracle.
 -}
 transitionTraceL1EventV1Validator ::
   forall (s :: S).
@@ -341,7 +276,8 @@ routing one proof and adjudicating another.
 data PTransitionTraceRouteArgs (s :: S) = PTransitionTraceRouteArgs
   { prouteArgs'inputIndex :: Term s (PAsData PInteger)
   , prouteArgs'outputIndex :: Term s (PAsData PInteger)
-  , prouteArgs'proof :: Term s (PAsData PTransitionFaultProof)
+  , prouteArgs'proof :: Term s (PMaybeData PTransitionFaultProof)
+  , prouteArgs'proofRefIndices :: Term s (PAsData (PBuiltinList (PAsData PInteger)))
   }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
@@ -413,25 +349,166 @@ transitionTraceRouteV1Validator = plam $ \finalValidatorScriptHashes ctPolicy ct
     pdispatch @_ @PTransitionTraceRouteArgs ctPolicy datum redeemer ownOutRef txInfo $
       \args -> P.do
         PTransitionTraceRouteArgs
-          {prouteArgs'inputIndex, prouteArgs'outputIndex, prouteArgs'proof} <-
+          { prouteArgs'inputIndex
+          , prouteArgs'outputIndex
+          , prouteArgs'proof
+          , prouteArgs'proofRefIndices
+          } <-
           pmatch args
-        PTxInfo {ptxInfo'inputs, ptxInfo'outputs} <- pmatch txInfo
+        PTxInfo{ptxInfo'inputs, ptxInfo'outputs, ptxInfo'referenceInputs} <- pmatch txInfo
         scriptHashes <- plet $ pfromData finalValidatorScriptHashes
-        pexpecting (plength # scriptHashes #== 8) $
-          pcontinue
-            ctPolicy
-            (pexpectDatum datum)
-            (pfromData prouteArgs'inputIndex)
-            (pfromData prouteArgs'outputIndex)
-            ownOutRef
-            (pfromData ptxInfo'inputs)
-            (pfromData ptxInfo'outputs)
-            $ \_inputScriptHash _ctAssetName _fraudProver mInputState outputScriptHash outputStateData ->
-              P.do
-                PTransitionFaultProof {ptransitionProof'fault} <-
-                  pmatch (pfromData prouteArgs'proof)
-                pexpecting (pstateIsAbsent mInputState) $
-                  outputScriptHash
-                    #== (pelemAt # ptransitionFaultRouteIndex ptransitionProof'fault # scriptHashes)
-                    #&& outputStateData
-                    #== pforgetData prouteArgs'proof
+        pcontinue
+          ctPolicy
+          (pexpectDatum datum)
+          (pfromData prouteArgs'inputIndex)
+          (pfromData prouteArgs'outputIndex)
+          ownOutRef
+          (pfromData ptxInfo'inputs)
+          (pfromData ptxInfo'outputs)
+          $ \_inputHash ctAssetName _prover inputState outputHash outputState ->
+            pexpecting (pstateIsAbsent inputState) $
+              pmatch prouteArgs'proof $ \case
+                PDJust inline -> P.do
+                  PTransitionFaultProof{ptransitionProof'fault} <- pmatch $ pfromData inline
+                  index <- plet $ ptransitionFaultRouteIndex ptransitionProof'fault
+                  pnull
+                    # pfromData prouteArgs'proofRefIndices
+                    #&& pnot
+                    # (index #== 4 #|| index #== 5)
+                    #&& outputHash
+                    #== (pelemAt # index # scriptHashes)
+                    #&& outputState
+                    #== pforgetData inline
+                PDNothing -> P.do
+                  PPair commitment raw <- pmatch $ Carriage.popen # pfromData prouteArgs'proofRefIndices # pfromData ptxInfo'referenceInputs
+                  PBuiltinPair proofTag fields <- pmatch $ pasConstr # raw
+                  pexpecting (proofTag #== 0 #&& plength # fields #== 3) $ P.do
+                    hash <- plet $ pasByteStr # (phead # fields)
+                    header <- plet $ pfromData $ punsafeCoerce @(PAsData PHeaderV1) $ pelemAt # 1 # fields
+                    PBuiltinPair faultTag faultFields <- pmatch $ pasConstr # (pelemAt # 2 # fields)
+                    witness <- plet $ pheadSingleton # faultFields
+                    kind <- plet $ pif (faultTag #== 9) 2 $ pexpecting (faultTag #== 4) $ P.do
+                      PBuiltinPair witnessTag _ <- pmatch $ pasConstr # witness
+                      pif (witnessTag #== 3) 1 $ pif (witnessTag #== 4) 0 perror
+                    pvalidateTransitionHeaderEnvelope hash header ctAssetName
+                      #&& outputHash
+                      #== (pelemAt # (pif (kind #== 1) 5 4) # scriptHashes)
+                      #&& outputState
+                      #== pforgetData (pdata $ Yield.pinitial # kind # commitment)
+
+{- | The staged accepted-transaction and deposit dispatchers share custody and
+cancellation, while their phase tables select distinct authenticated roles.
+-}
+ptransitionTraceYieldFinal ::
+  forall s.
+  Bool ->
+  Term s (PAsData PCurrencySymbol) ->
+  Term s (PAsData PCurrencySymbol) ->
+  Term s (PAsData PAddress) ->
+  Term s (PAsData PCurrencySymbol) ->
+  Term s PScriptContext ->
+  Term s PUnit
+ptransitionTraceYieldFinal deposit ctPolicy fpPolicy fpAddress authPolicy ctx =
+  pstep ctx $ \datum redeemer ownRef tx ->
+    pdispatch @_ @Yield.PArgs ctPolicy datum redeemer ownRef tx $ \args -> P.do
+      stepDatum <- plet $ pexpectDatum datum
+      PStepDatum _ stateData <- pmatch stepDatum
+      state <- plet $ pexpectStateAs @Yield.PState stateData
+      st <- pmatch state
+      a <- pmatch args
+      PTxInfo{ptxInfo'inputs, ptxInfo'outputs, ptxInfo'referenceInputs, ptxInfo'redeemers} <- pmatch tx
+      kind <- plet $ pfromData $ Yield.pstate'kind st
+      phase <- plet $ pfromData $ Yield.pstate'phase st
+      let refs = pfromData ptxInfo'referenceInputs
+          fields = Carriage.pfields # (Carriage.pread # pfromData (Yield.pstate'proofCommitment st) # pfromData (Yield.pargs'proofRefIndices a) # refs)
+          indices = pfromData $ Yield.pargs'yieldRefInputIndices a
+          noYield = pnull # indices
+          invoke role = plet (prequireAuthenticatedZeroYield # tx # pfromData authPolicy # pcon (PTokenName role) # pfromData (pheadSingleton # indices)) $ \_ -> pconstant True
+          replayRole = pconstant $ if deposit then "V1FpTtF5ReplayYield" else "V1FpTtF4L2ReplayYield"
+          role =
+            if deposit
+              then
+                pif (phase #== 0 #|| phase #== 10) (pconstant "V1FpTtF5ProjectionYield") $
+                  pif (phase #== 2) (pconstant "V1FpTtF5ScanYield") $
+                    pif (phase #== 7) (pconstant "V1FpTtF5ValueYield") $
+                      pif (phase #== 8) (pconstant "V1FpTtF5SummariesYield") $
+                        pif (phase #== 3) (pconstant "V1FpTtF5AssemblyYield") $
+                          pif (phase #== 9 #|| phase #== 4 #|| phase #== 5) replayRole perror
+              else
+                pif
+                  (kind #== 2)
+                  ( pif (phase #== 0) (pconstant "V1FpTtF4ClaimStructYield") $
+                      pif (phase #== 1) (pconstant "V1FpTtF4ClaimSourceYield") $
+                        pif (phase #== 2) (pconstant "V1FpTtF4ClaimEndsYield") perror
+                  )
+                  ( pif (phase #== 0) (pconstant "V1FpTtF4L2OpenYield") $
+                      pif (phase #== 1 #|| phase #== 9 #|| phase #== 4) replayRole $
+                        pif (phase #== 2) (pconstant "V1FpTtF4ScanYield") $
+                          pif (phase #== 7) (pconstant "V1FpTtF4ValueYield") $
+                            pif (phase #== 8) (pconstant "V1FpTtF4L2SummariesYield") $
+                              pif (phase #== 3) (pconstant "V1FpTtF4L2AssemblyYield") perror
+                  )
+          bind = P.do
+            PPair headerData fault <- pmatch fields
+            witness <- plet $ Yield.poneStepWitness # fault # (if deposit then 3 else 4)
+            pif
+              (plength # witness #== (if deposit then 6 else 7))
+              ( (if deposit then Proof.pvalidateDepositOneStepBinding else Proof.pvalidateL2OneStepBinding)
+                  (pfromData $ punsafeCoerce @(PAsData PHeaderV1) headerData)
+                  (pfromData $ punsafeCoerce @(PAsData Trace.PRootMembershipProof) $ pelemAt # 0 # witness)
+                  (pfromData $ punsafeCoerce @(PAsData Trace.PRootMembershipProof) $ pelemAt # 1 # witness)
+                  (pfromData $ punsafeCoerce @(PAsData Trace.PRootMembershipProof) $ pelemAt # 2 # witness)
+              )
+              perror
+          launch = (if deposit then phase #== 6 else kind #== 0 #&& phase #== 6)
+          terminal = if deposit then phase #== 5 else pif (kind #== 2) (phase #== 3) (phase #== 5)
+          finalize rule =
+            pfinalize
+              ctPolicy
+              fpPolicy
+              fpAddress
+              stepDatum
+              (pfromData $ Yield.pargs'inputIndex a)
+              (pfromData $ Yield.pargs'outputIndex a)
+              (pfromData $ Yield.pargs'fraudProofMintRedeemerIndex a)
+              ownRef
+              (pfromData ptxInfo'inputs)
+              (pfromData ptxInfo'outputs)
+              (pto $ pto $ pfromData ptxInfo'redeemers)
+              (\_ _ _ _ -> rule)
+          terminalClaim = P.do
+            PPair _ fault <- pmatch fields
+            raw <- plet $ pheadSingleton # (psndBuiltin # (pasConstr # fault))
+            Proof.PAcceptedTransactionTransitionMismatchWitness{Proof.pacceptedMismatch'claim, Proof.pacceptedMismatch'terminalAcceptanceWitnessCbor} <- pmatch $ pfromData $ punsafeCoerce @(PAsData Proof.PAcceptedTransactionTransitionMismatchWitness) raw
+            Claim.PValidationClaimWitnessV1{Claim.pclaim'descriptorMembership, Claim.pclaim'transitionStepMembership, Claim.pclaim'terminalState} <- pmatch $ pfromData pacceptedMismatch'claim
+            Trace.PRootMembershipProof{Trace.prootMembership'value = descriptor} <- pmatch $ pfromData pclaim'descriptorMembership
+            Trace.PRootMembershipProof{Trace.prootMembership'value = transition} <- pmatch $ pfromData pclaim'transitionStepMembership
+            Validation.PValidationTraceDescriptorV1{Validation.pdescriptor'verdict} <- pmatch $ pfromData $ punsafeCoerce @(PAsData Validation.PValidationTraceDescriptorV1) descriptor
+            Ledger.PTransitionStep{Ledger.ptransitionStep'postUtxosRoot} <- pmatch $ pfromData $ punsafeCoerce @(PAsData Ledger.PTransitionStep) transition
+            Validation.PValidationMachineStateV1{Validation.pmachineState'programCounter, Validation.pmachineState'workRoot} <- pmatch $ pfromData pclaim'terminalState
+            let bytes = pfromData pacceptedMismatch'terminalAcceptanceWitnessCbor
+            noYield
+              #&& pfromData pdescriptor'verdict
+              #== pcon Validation.PAccepted
+              #&& pfromData pmachineState'workRoot
+              #== (Validation.phashWorkWitness # pcon Validation.PTerminal # pfromData pmachineState'programCounter # bytes)
+              #&& pnot
+              # ((Proof.pterminalAcceptancePostRoot # bytes) #== pfromData ptransitionStep'postUtxosRoot)
+      (if deposit then kind #== 1 else kind #== 0 #|| kind #== 2)
+        #&& pif
+          terminal
+          (finalize $ if deposit then invoke replayRole else pif (kind #== 2) terminalClaim (invoke replayRole))
+          ( pif
+              launch
+              (noYield #&& Yield.padvance # stepDatum # args # pfromData ptxInfo'outputs # pcon st{Yield.pstate'phase = pdata 0} #&& bind)
+              (invoke role)
+              #&& pcontinue
+                ctPolicy
+                stepDatum
+                (pfromData $ Yield.pargs'inputIndex a)
+                (pfromData $ Yield.pargs'outputIndex a)
+                ownRef
+                (pfromData ptxInfo'inputs)
+                (pfromData ptxInfo'outputs)
+                (\inputHash _ _ _ outputHash _ -> inputHash #== outputHash)
+          )

@@ -626,14 +626,14 @@ goldenStraddleCommitment = goldenItemsHex "c33cac158cd252aeb86e3fafb6776fd03e7af
 
 goldenStraddleChunks, goldenStraddleDigests :: [BS.ByteString]
 goldenStraddleChunks =
-  [ BS.take 15_900 goldenStraddlePreimage
-  , BS.drop 15_900 goldenStraddlePreimage
+  [ BS.take 15_148 goldenStraddlePreimage
+  , BS.drop 15_148 goldenStraddlePreimage
   ]
 goldenStraddleDigests =
   map
     goldenItemsHex
-    [ "3d472a8b6608fd6572a3de26a9f95a37c86c9ba739c39b5b8314f860bc908806"
-    , "7243f0ea84ad415d83212fc24569d54be7e81f50198a257f93de50cfcb3d7cb2"
+    [ "aca116dea52dcd7df1d81db0f89b6538c62f12a9a058bb2a9746aafe80ca4282"
+    , "2a5f24003a2f2ea29bd7bb3e2a8d305772011e94ccc2f862c2f19d2cb93fd8a4"
     ]
 
 goldenStraddleMatches :: forall s. Term s PBool
@@ -649,18 +649,18 @@ goldenStraddleMatches =
     $ \view ->
       pall'
         [ plengthBS # pconstant goldenStraddlePreimage #== 16_003
-        , pchunkBytesK #== 15_900
+        , pchunkBytesK #== 15_148
         , pfieldCommitment # pconstant goldenStraddlePreimage #== pconstant goldenStraddleCommitment
-        , plengthBS # pconstant (head goldenStraddleChunks) #== 15_900
-        , plengthBS # pconstant (goldenStraddleChunks !! 1) #== 103
+        , plengthBS # pconstant (head goldenStraddleChunks) #== 15_148
+        , plengthBS # pconstant (goldenStraddleChunks !! 1) #== 855
         , pblake2b_256 # pconstant (head goldenStraddleChunks) #== pconstant (head goldenStraddleDigests)
         , pblake2b_256 # pconstant (goldenStraddleChunks !! 1) #== pconstant (goldenStraddleDigests !! 1)
-        , ppairIs (pfieldItemExtent # view # 396) 15_845 38
-        , pfieldItemAt # view # 396 #== pconstant (goldenItemsHex "825820d9e0e7eef5fc030a11181f262d343b424950575e656c737a81888f969da4abb2190006")
-        , ppairIs (pfieldItemExtent # view # 397) 15_885 38
-        , pfieldItemAt # view # 397 #== pconstant (goldenItemsHex "825820f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1190007")
-        , ppairIs (pfieldItemExtent # view # 398) 15_925 38
-        , pfieldItemAt # view # 398 #== pconstant (goldenItemsHex "825820171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0190008")
+        , ppairIs (pfieldItemExtent # view # 377) 15_085 38
+        , pfieldItemAt # view # 377 #== pconstant (goldenItemsHex "825820f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1190007")
+        , ppairIs (pfieldItemExtent # view # 378) 15_125 38
+        , pfieldItemAt # view # 378 #== pconstant (goldenItemsHex "825820171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0190008")
+        , ppairIs (pfieldItemExtent # view # 379) 15_165 38
+        , pfieldItemAt # view # 379 #== pconstant (goldenItemsHex "825820363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f190009")
         ]
 
 --------------------------------------------------------------------------------

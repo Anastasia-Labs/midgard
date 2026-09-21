@@ -50,7 +50,7 @@ import Plutarch.Unsafe (punsafeCoerce)
 import Midgard.Common.Types (PMerkleRoot, PProof)
 import Midgard.Env qualified as Env
 import Midgard.LedgerState (PTransitionStep (..), ptransitionStepV1IsValid)
-import Midgard.MpfProof (pdoExcluding, phasV1)
+import Midgard.MpfProof (pdoesNotHave, phasV1)
 
 {- | Aiken @transition_trace.RootDomain@.
 
@@ -358,22 +358,10 @@ data PEventToStepProof (s :: S)
 
 {- | Aiken @transition_trace.verify_root_non_membership_raw@.
 
-Absence under a raw MPF root. Aiken states it as @expect _inserted =
-mpf.insert(tree, key, env.empty, proof)@ — inserting a key that is already there
-is impossible, so a successful insert /is/ the absence proof.
-
-The port states the same thing without building the new root, since Aiken
-discards it: the proof's @excluding@ walk must reproduce the root the caller
-holds. It goes through 'Midgard.MpfProof.pdoExcluding' rather than the Plutarch
-library's @pexcluding@, because the two libraries compute @excluding@ differently
-whenever a step carries @skip > 0@ — see the divergence recorded in
-"Midgard.MpfProof".
-
-__Malformed proofs abort rather than return @False@__, which is also Aiken's
-behaviour here: @mpf.insert@ reads past the end of the path and fails, and the
-@expect@ turns that into an abort. This is /not/ the fail-closed
-@mpf_proof_v1.does_not_have@, whose extra well-formedness gate would refuse
-proofs Aiken accepts.
+Absence under a consistent counted MPF root. The target routes this through
+its total canonical verifier, which checks proof structure before reconstructing
+the exclusion root. This predicate is guarded by the consuming validators;
+a malformed or mismatched proof cannot authorize the transition.
 -}
 pverifyRootNonMembershipRaw ::
   forall (s :: S).
@@ -384,8 +372,7 @@ pverifyRootNonMembershipRaw ::
   Term s PBool
 pverifyRootNonMembershipRaw root count keyBytes proof =
   pphasRootCountIsConsistent root count
-    #&& (pdoExcluding # (pblake2b_256 # keyBytes) # 0 # pto proof)
-    #== pto (pmpfFromMidgardRoot root)
+    #&& (pdoesNotHave # root # keyBytes # proof)
 
 {- | Aiken @transition_trace.verify_root_non_membership_with_key_bytes@.
 

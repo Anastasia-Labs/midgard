@@ -503,7 +503,7 @@ chunkEntry claim =
     )
 
 chunkedVerifyHash :: BS.ByteString
-chunkedVerifyHash = Base16.decodeLenient "dfd0e01fe351bd1d6f75a1ba728d06fb8b11d56bc3bf9ee98e025040"
+chunkedVerifyHash = Base16.decodeLenient "ea8d998a1396392158fa85afb0d202df7bd6d6ede7d3fbc05f55acd6"
 
 data ProofStepRef = BranchStep Integer BS.ByteString
 

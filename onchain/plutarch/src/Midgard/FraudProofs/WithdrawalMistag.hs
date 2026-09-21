@@ -1,5 +1,12 @@
 module Midgard.FraudProofs.WithdrawalMistag (
     PStep01State (..),
+    PStep01Payload (..),
+    PStep02Payload (..),
+    PStep03Payload (..),
+    PStep04Payload (..),
+    PAuthenticatedOutputProjection (..),
+    pauthenticatedOutputProjection,
+    poutputValueMatchesV1,
     PStep01Args (..),
     PStep02State (..),
     PStep02Args (..),
@@ -27,14 +34,17 @@ module Midgard.FraudProofs.WithdrawalMistag (
     pmistagFaultIsEstablishedV1,
 ) where
 
+import Aiken.Cbor (pdeserialise)
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
+import Midgard.FraudProofs.NativeTx.Codec (pencodeDefiniteBytes)
+import Midgard.ValidationMerkle (PBuiltFrontier (..), pbuildFrontier, pfrontierCommitment)
 import Plutarch.Builtin.Crypto (pblake2b_224, pblake2b_256, pverifyEd25519Signature)
+import Plutarch.Core.Internal.Builtins (pindexBS')
 import Plutarch.Core.Utils (pand'List)
 import Plutarch.LedgerApi.Utils (PMaybeData (..))
 import Plutarch.LedgerApi.V3 (
     PAddress (..),
-    PCurrencySymbol (..),
     POutputDatum (..),
     PStakingCredential (..),
     PTokenName (..),
@@ -42,6 +52,7 @@ import Plutarch.LedgerApi.V3 (
 import Plutarch.LedgerApi.Value qualified as Value
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
+import Plutarch.Repr.Scott (DeriveAsScottRec (..))
 import Plutarch.Unsafe (punsafeCoerce)
 
 import Midgard.Common.Types (PProof)
@@ -49,15 +60,9 @@ import Midgard.Common.Value (pfromAssetList)
 import Midgard.FraudProofCatalogue (pidByteCount)
 import Midgard.FraudProofs.NativeTx.Components (pencodeMidgardTxInput)
 import Midgard.FraudProofs.NativeTx.Types (
-    PMidgardAddress (..),
-    PMidgardCredential (..),
     PMidgardTxInput (..),
-    PMidgardTxOutput (..),
-    PMidgardValue (..),
  )
-import Midgard.LedgerOutput (pdecodeCanonicalOutput)
-import Midgard.LedgerOutputCommitment (PLedgerOutputCommitmentV1 (..), pencodeLedgerOutputCommitment)
-import Midgard.LedgerOutputDescriptor (pbuildV1)
+import Midgard.LedgerOutputCommitment (passetLeafHash)
 import Midgard.LedgerState (
     PEventKey (..),
     PEventToStepValue (..),
@@ -114,12 +119,19 @@ data PStep01State (s :: S) = PStep01State
     deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
     deriving (PlutusType) via (DeriveAsDataStruct PStep01State)
 
+data PStep01Payload (s :: S) = PStep01Payload
+    { pstep01Payload'committedWithdrawal :: Term s (PAsData PRootMembershipProof)
+    }
+    deriving stock (Generic)
+    deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+    deriving (PlutusType) via (DeriveAsDataStruct PStep01Payload)
+
 data PStep01Args (s :: S) = PStep01Args
     { pstep01Args'inputIndex :: Term s (PAsData PInteger)
     , pstep01Args'outputIndex :: Term s (PAsData PInteger)
     , pstep01Args'hubRefInputIndex :: Term s (PAsData PInteger)
     , pstep01Args'stateQueueNodeRefInputIndex :: Term s (PAsData PInteger)
-    , pstep01Args'committedWithdrawal :: Term s (PAsData PRootMembershipProof)
+    , pstep01Args'payload :: Term s PData
     }
     deriving stock (Generic)
     deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
@@ -136,12 +148,19 @@ data PStep02State (s :: S) = PStep02State
     deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
     deriving (PlutusType) via (DeriveAsDataStruct PStep02State)
 
+data PStep02Payload (s :: S) = PStep02Payload
+    { pstep02Payload'withdrawalInfo :: Term s PData
+    , pstep02Payload'eventToStep :: Term s (PAsData PRootMembershipProof)
+    , pstep02Payload'transitionStep :: Term s (PAsData PIndexedTraceProof)
+    }
+    deriving stock (Generic)
+    deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+    deriving (PlutusType) via (DeriveAsDataStruct PStep02Payload)
+
 data PStep02Args (s :: S) = PStep02Args
     { pstep02Args'inputIndex :: Term s (PAsData PInteger)
     , pstep02Args'outputIndex :: Term s (PAsData PInteger)
-    , pstep02Args'withdrawalInfo :: Term s PData
-    , pstep02Args'eventToStep :: Term s (PAsData PRootMembershipProof)
-    , pstep02Args'transitionStep :: Term s (PAsData PIndexedTraceProof)
+    , pstep02Args'payload :: Term s PData
     }
     deriving stock (Generic)
     deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
@@ -149,7 +168,7 @@ data PStep02Args (s :: S) = PStep02Args
 
 data PWithdrawalLedgerEvidenceV1 (s :: S)
     = PPresentLedgerOutput
-        { ppresentLedgerOutput'outputCbor :: Term s (PAsData PByteString)
+        { ppresentLedgerOutput'descriptorCbor :: Term s (PAsData PByteString)
         , ppresentLedgerOutput'membershipProof :: Term s (PAsData PProof)
         }
     | PAbsentLedgerOutput
@@ -165,18 +184,28 @@ data PStep03State (s :: S) = PStep03State
     , pstep03State'withdrawalBodyHash :: Term s (PAsData PByteString)
     , pstep03State'claimedValid :: Term s (PAsData PBool)
     , pstep03State'outputPresent :: Term s (PAsData PBool)
-    , pstep03State'coreValid :: Term s (PAsData PBool)
+    , pstep03State'ownerSignatureValid :: Term s (PAsData PBool)
     , pstep03State'cardanoValueSize :: Term s (PAsData PInteger)
+    , pstep03State'outputLovelace :: Term s (PAsData PInteger)
+    , pstep03State'outputAssetCount :: Term s (PAsData PInteger)
+    , pstep03State'outputAssetFrontierCommitment :: Term s (PAsData PByteString)
     }
     deriving stock (Generic)
     deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
     deriving (PlutusType) via (DeriveAsDataStruct PStep03State)
 
+data PStep03Payload (s :: S) = PStep03Payload
+    { pstep03Payload'withdrawalInfo :: Term s PData
+    , pstep03Payload'evidence :: Term s (PAsData PWithdrawalLedgerEvidenceV1)
+    }
+    deriving stock (Generic)
+    deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+    deriving (PlutusType) via (DeriveAsDataStruct PStep03Payload)
+
 data PStep03Args (s :: S) = PStep03Args
     { pstep03Args'inputIndex :: Term s (PAsData PInteger)
     , pstep03Args'outputIndex :: Term s (PAsData PInteger)
-    , pstep03Args'withdrawalInfo :: Term s PData
-    , pstep03Args'evidence :: Term s (PAsData PWithdrawalLedgerEvidenceV1)
+    , pstep03Args'payload :: Term s PData
     }
     deriving stock (Generic)
     deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
@@ -194,10 +223,17 @@ data PStep04State (s :: S) = PStep04State
     deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
     deriving (PlutusType) via (DeriveAsDataStruct PStep04State)
 
+data PStep04Payload (s :: S) = PStep04Payload
+    { pstep04Payload'withdrawalBody :: Term s PData
+    }
+    deriving stock (Generic)
+    deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+    deriving (PlutusType) via (DeriveAsDataStruct PStep04Payload)
+
 data PStep04Args (s :: S) = PStep04Args
     { pstep04Args'inputIndex :: Term s (PAsData PInteger)
     , pstep04Args'outputIndex :: Term s (PAsData PInteger)
-    , pstep04Args'withdrawalBody :: Term s PData
+    , pstep04Args'payload :: Term s PData
     }
     deriving stock (Generic)
     deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
@@ -293,52 +329,181 @@ pwithdrawalSignatureIsValidV1 = phoistAcyclic $ plam $ \info -> P.do
                         # message
                         # signature
 
-pnativeValueToCardano :: forall s. Term s PMidgardValue -> Term s Value.PSortedValue
-pnativeValueToCardano value = P.do
-    PMidgardValue{pvalue'lovelace, pvalue'assets} <- pmatch value
-    let ada = Value.psingletonSortedValue # Value.padaSymbol # Value.padaToken # pfromData pvalue'lovelace
-    pfoldl
-        # plam
-            ( \acc item ->
-                pmatch item $ \(PBuiltinPair unitD quantityD) ->
-                    plet (pfromData unitD) $ \unit ->
-                        plet (pfromData quantityD) $ \quantity ->
-                            Value.punionWith
-                                # plam (+)
-                                # acc
-                                # ( Value.psingletonSortedValue
-                                        # pcon (PCurrencySymbol $ psliceBS # 0 # 28 # unit)
-                                        # pcon (PTokenName $ psliceBS # 28 # (plengthBS # unit - 28) # unit)
-                                        # quantity
-                                  )
-            )
-        # ada
-        # pto (pfromData pvalue'assets)
+data PAuthenticatedOutputProjection (s :: S)
+    = PAuthenticatedOutputProjection
+        (Term s PInteger)
+        (Term s PInteger)
+        (Term s PByteString)
+        (Term s PInteger)
+        (Term s PInteger)
+        (Term s PByteString)
+        (Term s PInteger)
+        (Term s PByteString)
+    deriving stock (Generic)
+    deriving anyclass (SOP.Generic)
+    deriving (PlutusType) via (DeriveAsScottRec PAuthenticatedOutputProjection)
 
-poutputCoreMatchesWithSignatureV1 ::
-    forall s.
-    Term s (PWithdrawalInfo :--> PMidgardTxOutput :--> PBool :--> PBool)
-poutputCoreMatchesWithSignatureV1 = phoistAcyclic $ plam $ \info output signatureIsValid -> P.do
+-- The MPF authenticates the whole descriptor; only these eight projections are
+-- decoded. The ignored descriptor fields are deliberately not revalidated.
+pauthenticatedOutputProjection :: forall s. Term s (PByteString :--> PAuthenticatedOutputProjection)
+pauthenticatedOutputProjection = phoistAcyclic $ plam $ \bytes -> P.do
+    PJust dat <- pmatch $ pdeserialise # bytes
+    items <- plet $ pasList # dat
+    let int i = pasInt # (pelemAt # i # items)
+        bs i = pasByteStr # (pelemAt # i # items)
+    pif
+        ( plength
+            # items
+            #== 16
+            #&& int 0
+            #== 1
+            #&& int 1
+            #>= 0
+            #&& int 1
+            #<= 65535
+            #&& int 2
+            #>= 0
+            #&& plengthBS
+            # bs 3
+            #== 32
+            #&& int 6
+            #>= 0
+            #&& int 8
+            #>= 0
+            #&& int 8
+            #<= 5000
+        )
+        (pcon $ PAuthenticatedOutputProjection (int 1) (int 2) (bs 3) (int 8) (int 6) (bs 4) (int 5) (bs 7))
+        perror
+
+ppaymentOwner :: forall s. Term s (PByteString :--> PMaybe PByteString)
+ppaymentOwner = phoistAcyclic $ plam $ \address ->
+    plet (plengthBS # address) $ \len -> plet (pdiv # (pindexBS' # address # 0) # 16) $ \kind ->
+        pif
+            (pif (len #== 29) (kind #== 6 #|| kind #== 7) (len #== 57 #&& kind #>= 0 #&& kind #<= 3))
+            (pif (kind #== 1 #|| kind #== 3 #|| kind #== 7) (pcon PNothing) (pcon $ PJust $ psliceBS # 1 # 28 # address))
+            perror
+
+type PNamedAsset = PBuiltinPair (PAsData PByteString) (PAsData PByteString)
+type PAssetRun = PBuiltinList PNamedAsset
+
+-- Merge runs preserve the target's bounded mixed-width asset ordering.
+pmergeAssetPairs :: forall s. Term s (PAssetRun :--> PAssetRun :--> PAssetRun)
+pmergeAssetPairs = phoistAcyclic $ pfix $ \self -> plam $ \left right ->
+    pelimList
+        ( \a restLeft ->
+            pelimList
+                ( \b restRight ->
+                    pif
+                        (pfromData (pfstBuiltin # a) #< pfromData (pfstBuiltin # b))
+                        (pcons # a # (self # restLeft # right))
+                        (pcons # b # (self # left # restRight))
+                )
+                left
+                right
+        )
+        right
+        left
+
+pmergeAssetRuns :: forall s. Term s (PBuiltinList PAssetRun :--> PBuiltinList PAssetRun)
+pmergeAssetRuns = phoistAcyclic $ pfix $ \self -> plam $ \runs ->
+    pelimList (\a rest -> pelimList (\b tailRuns -> pcons # (pmergeAssetPairs # a # b) # (self # tailRuns)) runs rest) runs runs
+
+psortedAssetRuns :: forall s. Term s (PBuiltinList PAssetRun :--> PAssetRun)
+psortedAssetRuns = phoistAcyclic $ pfix $ \self -> plam $ \runs ->
+    pelimList (\one rest -> pif (pnull # rest) one (self # (pmergeAssetRuns # runs))) pnil runs
+
+passetPairsAreSorted :: forall s. Term s (PAssetRun :--> PBool)
+passetPairsAreSorted = phoistAcyclic $ pfix $ \self -> plam $ \pairs ->
+    pelimList (\a rest -> pelimList (\b _ -> pfromData (pfstBuiltin # a) #< pfromData (pfstBuiltin # b) #&& self # rest) (pconstant True) rest) (pconstant True) pairs
+
+psortAssetPairs :: forall s. Term s (PAssetRun :--> PAssetRun)
+psortAssetPairs = phoistAcyclic $ plam $ \pairs ->
+    pif (passetPairsAreSorted # pairs) pairs (psortedAssetRuns # (pmap # plam (\x -> pcons # x # pnil) # pairs))
+
+poutputValueMatchesV1 :: forall s. Term s (PWithdrawalBody :--> Value.PSortedValue :--> PInteger :--> PInteger :--> PByteString :--> PBool)
+poutputValueMatchesV1 = phoistAcyclic $ plam $ \body value lovelace count commitment -> P.do
+    PWithdrawalBody{pwithdrawalBody'l2Value} <- pmatch body
+    validDomains <-
+        plet $
+            pall
+                # plam
+                    ( \entry -> P.do
+                        PBuiltinPair policyD tokensD <- pmatch entry
+                        let policy = pto $ pfromData policyD
+                            tokens = pto $ pfromData tokensD
+                        pif
+                            (policy #== pconstant "")
+                            (pelimList (\token rest -> pmatch token $ \(PBuiltinPair name quantity) -> pnull # rest #&& pto (pfromData name) #== pconstant "" #&& pfromData quantity #> 0) (pconstant False) tokens)
+                            (plengthBS # policy #== 28 #&& pall # plam (\token -> pmatch token $ \(PBuiltinPair name quantity) -> plengthBS # pto (pfromData name) #<= 32 #&& pfromData quantity #> 0) # tokens)
+                    )
+                # pto (pfromData pwithdrawalBody'l2Value)
+    pif
+        validDomains
+        ( P.do
+            named <-
+                plet $
+                    psortAssetPairs
+                        # ( pfoldr
+                                # plam
+                                    ( \entry rest -> P.do
+                                        PBuiltinPair policyD tokensD <- pmatch entry
+                                        let policy = pto $ pfromData policyD
+                                        pif
+                                            (policy #== pconstant "")
+                                            rest
+                                            ( pconcat
+                                                # ( pmap
+                                                        # plam
+                                                            ( \token -> pmatch token $ \(PBuiltinPair nameD quantityD) ->
+                                                                plet (pto $ pfromData nameD) $ \name -> ppairDataBuiltin # pdata (policy <> (pencodeDefiniteBytes # name)) # pdata (passetLeafHash # policy # name # pfromData quantityD)
+                                                            )
+                                                        # pto (pto (pfromData tokensD))
+                                                  )
+                                                # rest
+                                            )
+                                    )
+                                # pnil
+                                # pto (pto (pto value))
+                          )
+            pif
+                (plength # named #== count)
+                ( P.do
+                    PBuiltFrontier _ peaks <- pmatch $ pbuildFrontier # (pmap # plam (\pair -> psndBuiltin # pair) # named)
+                    Value.pvalueOf
+                        # value
+                        # Value.padaSymbol
+                        # Value.padaToken
+                        #== lovelace
+                        #&& pfrontierCommitment
+                        # count
+                        # peaks
+                        #== commitment
+                        #&& count
+                        #<= pmaximumWithdrawalAssetCountV1
+                )
+                (pconstant False)
+        )
+        (pconstant False)
+
+poutputCoreMatchesWithSignatureV1 :: forall s. Term s (PWithdrawalInfo :--> PAuthenticatedOutputProjection :--> PBool :--> PBool)
+poutputCoreMatchesWithSignatureV1 = phoistAcyclic $ plam $ \info output signature -> P.do
     PWithdrawalInfo{pwithdrawalInfo'body} <- pmatch info
-    PWithdrawalBody{pwithdrawalBody'l2Owner, pwithdrawalBody'l2Value} <- pmatch $ pfromData pwithdrawalInfo'body
-    PMidgardTxOutput{ptxOutput'address, ptxOutput'value} <- pmatch output
-    PMidgardAddress{paddress'paymentCredential} <- pmatch $ pfromData ptxOutput'address
-    PMidgardValue{pvalue'assets} <- pmatch $ pfromData ptxOutput'value
-    let ownerMatches = pmatch (pfromData paddress'paymentCredential) $ \case
-            PMidgardPubKeyCredential owner -> owner #== punsafeCoerce pwithdrawalBody'l2Owner
-            PMidgardScriptCredential _ -> pconstant False
-    ownerMatches
-        #&& pnativeValueToCardano (pfromData ptxOutput'value)
-        #== pfromAssetList
-        # pfromData pwithdrawalBody'l2Value
-        #&& plength
-        # pto (pfromData pvalue'assets)
-        #<= pmaximumWithdrawalAssetCountV1
-        #&& signatureIsValid
+    body@PWithdrawalBody{pwithdrawalBody'l2Owner, pwithdrawalBody'l2Value} <- pmatch $ pfromData pwithdrawalInfo'body
+    PAuthenticatedOutputProjection _ _ _ _ count address lovelace frontier <- pmatch output
+    ppaymentOwner
+        # address
+        #== pcon (PJust $ pasByteStr # pwithdrawalBody'l2Owner)
+        #&& signature
+        #&& poutputValueMatchesV1
+        # pcon body
+        # (pfromAssetList # pfromData pwithdrawalBody'l2Value)
+        # lovelace
+        # count
+        # frontier
 
-poutputCoreMatchesV1 :: forall s. Term s (PWithdrawalInfo :--> PMidgardTxOutput :--> PBool)
-poutputCoreMatchesV1 = phoistAcyclic $ plam $ \info output ->
-    poutputCoreMatchesWithSignatureV1 # info # output # (pwithdrawalSignatureIsValidV1 # info)
+poutputCoreMatchesV1 :: forall s. Term s (PWithdrawalInfo :--> PAuthenticatedOutputProjection :--> PBool)
+poutputCoreMatchesV1 = phoistAcyclic $ plam $ \info output -> poutputCoreMatchesWithSignatureV1 # info # output # (pwithdrawalSignatureIsValidV1 # info)
 
 poutrefOutputIndex :: forall s. Term s PData -> Term s PInteger
 poutrefOutputIndex outref =
@@ -375,7 +540,7 @@ pclassifyLedgerEvidenceV1 inputState withdrawalInfo evidence = P.do
     let infoHash = pblake2b_256 #$ pserialiseData # pforgetData (pdata withdrawalInfo)
         bodyHash = pblake2b_256 #$ pserialiseData # pforgetData pwithdrawalInfo'body
         key = pwithdrawalLedgerOutrefKeyV1 # pwithdrawalBody'l2Outref
-        result outputPresent coreValid cardanoValueSize =
+        result outputPresent ownerSignature cardanoValueSize lovelace assetCount frontier =
             pcon $
                 PStep03State
                     pstep02State'challengedHeaderHash
@@ -383,8 +548,11 @@ pclassifyLedgerEvidenceV1 inputState withdrawalInfo evidence = P.do
                     (pdata bodyHash)
                     pstep02State'claimedValid
                     (pdata outputPresent)
-                    (pdata coreValid)
+                    (pdata ownerSignature)
                     (pdata cardanoValueSize)
+                    (pdata lovelace)
+                    (pdata assetCount)
+                    (pdata frontier)
     pif (infoHash #== pfromData pstep02State'withdrawalInfoHash) `flip` perror $
         pmatch evidence $ \case
             PAbsentLedgerOutput{pabsentLedgerOutput'nonMembershipProof} ->
@@ -394,30 +562,32 @@ pclassifyLedgerEvidenceV1 inputState withdrawalInfo evidence = P.do
                         # key
                         # pfromData pabsentLedgerOutput'nonMembershipProof
                     )
-                    (result (pconstant False) (pconstant False) 0)
+                    (result (pconstant False) (pconstant False) 0 0 0 (pconstant ""))
                     perror
-            PPresentLedgerOutput{ppresentLedgerOutput'outputCbor, ppresentLedgerOutput'membershipProof} ->
-                plet (pfromData ppresentLedgerOutput'outputCbor) $ \outputCbor ->
-                    pmatch (pbuildV1 # poutrefOutputIndex pwithdrawalBody'l2Outref # outputCbor) $ \case
-                        PNothing -> perror
-                        PJust descriptor ->
+            PPresentLedgerOutput{ppresentLedgerOutput'descriptorCbor, ppresentLedgerOutput'membershipProof} ->
+                plet (pfromData ppresentLedgerOutput'descriptorCbor) $ \descriptorBytes ->
+                    pif
+                        (phasV1 # pfromData pstep02State'preUtxosRoot # key # descriptorBytes # pfromData ppresentLedgerOutput'membershipProof)
+                        ( P.do
+                            PAuthenticatedOutputProjection index _ _ valueSize count address lovelace frontier <- pmatch $ pauthenticatedOutputProjection # descriptorBytes
+                            PWithdrawalBody{pwithdrawalBody'l2Owner} <- pmatch $ pfromData pwithdrawalInfo'body
                             pif
-                                ( phasV1
-                                    # pfromData pstep02State'preUtxosRoot
-                                    # key
-                                    # (pencodeLedgerOutputCommitment # descriptor)
-                                    # pfromData ppresentLedgerOutput'membershipProof
-                                )
-                                ( pmatch (pdecodeCanonicalOutput # outputCbor) $ \case
-                                    PNothing -> perror
-                                    PJust output ->
-                                        pmatch descriptor $ \PLedgerOutputCommitmentV1{poutputCommitment'cardanoValueSize} ->
-                                            result
-                                                (pconstant True)
-                                                (poutputCoreMatchesV1 # withdrawalInfo # output)
-                                                (pfromData poutputCommitment'cardanoValueSize)
+                                (index #== poutrefOutputIndex pwithdrawalBody'l2Outref)
+                                ( result
+                                    (pconstant True)
+                                    ( pif
+                                        (count #> pmaximumWithdrawalAssetCountV1)
+                                        (pconstant False)
+                                        (ppaymentOwner # address #== pcon (PJust $ pasByteStr # pwithdrawalBody'l2Owner) #&& pwithdrawalSignatureIsValidV1 # withdrawalInfo)
+                                    )
+                                    valueSize
+                                    lovelace
+                                    count
+                                    frontier
                                 )
                                 perror
+                        )
+                        perror
 
 pcborBytesHeadLength :: forall s. Term s (PInteger :--> PInteger)
 pcborBytesHeadLength = phoistAcyclic $ plam $ \length' ->
@@ -504,15 +674,29 @@ pestablishMistagV1 inputState withdrawalBody = P.do
         , pstep03State'withdrawalBodyHash
         , pstep03State'claimedValid
         , pstep03State'outputPresent
-        , pstep03State'coreValid
+        , pstep03State'ownerSignatureValid
         , pstep03State'cardanoValueSize
+        , pstep03State'outputLovelace
+        , pstep03State'outputAssetCount
+        , pstep03State'outputAssetFrontierCommitment
         } <-
         pmatch inputState
     let bodyHash = pblake2b_256 #$ pserialiseData # pforgetData (pdata withdrawalBody)
         claimedValid = pfromData pstep03State'claimedValid
-        payable = ppayoutIsExactlyPayableV1 # withdrawalBody # pfromData pstep03State'cardanoValueSize
-        actualValid = pfromData pstep03State'outputPresent #&& pfromData pstep03State'coreValid #&& payable
-        exactOutputBytes = pexactPayoutOutputBytesV1 # withdrawalBody # pfromData pstep03State'cardanoValueSize
+        valueSize = pfromData pstep03State'cardanoValueSize
+    exactOutputBytes <- plet $ pexactPayoutOutputBytesV1 # withdrawalBody # valueSize
+    actualValid <- plet $ pif
+        (pfromData pstep03State'outputPresent #&& pfromData pstep03State'ownerSignatureValid)
+        (P.do
+            PWithdrawalBody {pwithdrawalBody'l2Value} <- pmatch withdrawalBody
+            value <- plet $ pfromAssetList # pfromData pwithdrawalBody'l2Value
+            poutputValueMatchesV1 # withdrawalBody # value
+                # pfromData pstep03State'outputLovelace # pfromData pstep03State'outputAssetCount
+                # pfromData pstep03State'outputAssetFrontierCommitment
+                #&& valueSize #> 0 #&& valueSize #<= 5000
+                #&& poutputMeetsMinAdaV1 # pcoinsPerUtxoByte # exactOutputBytes
+                    # (Value.pvalueOf # value # Value.padaSymbol # Value.padaToken))
+        (pconstant False)
     pif
         (bodyHash #== pfromData pstep03State'withdrawalBodyHash #&& pnot # (claimedValid #== actualValid))
         ( pcon $

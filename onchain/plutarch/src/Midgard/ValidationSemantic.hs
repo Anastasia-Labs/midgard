@@ -3,6 +3,7 @@ module Midgard.ValidationSemantic (
   pvalidationSemanticPreState,
   psemanticHandoffIsValid,
   pcontinueWinning,
+  pcontinueWinningAt,
 ) where
 
 import Plutarch.LedgerApi.Utils (PMaybeData (..))
@@ -127,3 +128,58 @@ pcontinueWinning
                     # pfromData outputScriptHash
                     # pfromData awardScriptHash
                     # outputState
+
+-- | Aiken @continue_winning_at@: apply the predicate to the already-opened pre-state.
+pcontinueWinningAt ::
+  forall (s :: S).
+  Term s PValidationPhase ->
+  Term s (PAsData PScriptHash) ->
+  Term s (PAsData PCurrencySymbol) ->
+  Term s (PMaybeData PStepDatum) ->
+  Term s PInteger ->
+  Term s PInteger ->
+  Term s PValidationOneStepWitnessV1 ->
+  Term s PData ->
+  (Term s PValidationMachineStateV1 -> Term s PBool) ->
+  Term s PTxOutRef ->
+  Term s PTxInfo ->
+  Term s PBool
+pcontinueWinningAt
+  expectedPhase
+  awardScriptHash
+  computationThreadPolicyId
+  datum
+  inputIndex
+  outputIndex
+  transition
+  auxiliary
+  semanticTransitionIsValid
+  ownOutRef
+  txInfo =
+    pmatch txInfo $ \PTxInfo {ptxInfo'inputs, ptxInfo'outputs} ->
+    pmatch datum $ \case
+      PDNothing -> perror
+      PDJust stepDatum ->
+        pcontinue
+          computationThreadPolicyId
+          (pfromData stepDatum)
+          inputIndex
+          outputIndex
+          ownOutRef
+          (pfromData ptxInfo'inputs)
+          (pfromData ptxInfo'outputs)
+          $ \_inputScriptHash _assetName _fraudProver inputState outputScriptHash outputState ->
+            pmatch inputState $ \case
+              PDNothing -> perror
+              PDJust stateData ->
+                plet (punsafeCoerce @PPreparedValidationResolutionStateV1 $ pfromData stateData) $ \state ->
+                  pmatch state $ \prepared ->
+                  pmatch (pfromData $ pprepared'resolution prepared) $ \resolution ->
+                  plet (pfromData $ presolution'preState resolution) $ \pre -> pmatch pre $ \preState ->
+                    ppreparedResolutionIsWellFormed # state
+                      #&& pfromData (pmachineState'phase preState) #== expectedPhase
+                      #&& phashOneStepEvidence # pforgetData (pdata transition) # auxiliary
+                        #== pfromData (pprepared'evidenceHash prepared)
+                      #&& semanticTransitionIsValid pre
+                      #&& pfromData outputScriptHash #== pfromData awardScriptHash
+                      #&& outputState #== pforgetData (pdata pwinningResolution)

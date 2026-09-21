@@ -1,0 +1,5 @@
+{
+    "cborHex": "46450101002601",
+    "description": "midgard.cek_program_material.spend",
+    "type": "PlutusScriptV3"
+}

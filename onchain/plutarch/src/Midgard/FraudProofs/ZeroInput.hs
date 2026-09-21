@@ -1,28 +1,10 @@
-{- |
-Module      : Midgard.FraudProofs.ZeroInput
-Description : Plutarch port of @lib/midgard/fraud-proofs/zero-input/step-0{1,2}.ak@.
-
-The thread state and redeemer payload of the zero-input family (spec §5.1.1): a
-committed transaction that spends nothing.
-
-Step-01 has no state of its own — its @Datum@ is @StepDatum<Data>@ — so only
-step-02's pair is a type.
-
-=== Why the id travels, and not a commitment
-
-The obvious shape for this family is to forward the disputed transaction's
-spend-inputs commitment and compare it against the pinned commitment of the empty
-field. That shape is wrong, and it is wrong in a way that reads as correct: §4
-removed field-index domain separation, so the empty field has /one/ commitment
-that is the same value in all nine slots. A hash equality would prove "some field
-of this transaction is empty" where the rule needs "field 0 is".
-
-So what travels is the transaction id, and step-02 opens field 0 through the
-door and reads its authenticated item count. Positional identity lives inside the
-door; this is how the family gets it.
--}
+-- | Zero-input source carriage, verdict-subject state and decisive rule.
 module Midgard.FraudProofs.ZeroInput (
+  PStep01Source (..),
+  PStep01Args (..),
   PStep02State (..),
+  pbindState,
+  pterminalContradiction,
   PStep02Args (..),
 ) where
 
@@ -31,23 +13,69 @@ import Generics.SOP qualified as SOP
 
 import Plutarch.Prelude
 
+import Midgard.FraudProofs.Common (PNativeTxInclusionCarriage)
 import Midgard.FraudProofs.FieldOpening (PFieldOpeningV1)
+import Midgard.FraudProofs.ProofThreadSubstrate qualified as Subject
+import Midgard.LedgerState (PHeaderV1)
+import Midgard.RejectionReason (PRejectionReasonV1 (PEmptyInputs))
+import Midgard.TransitionTrace (PRootMembershipProof)
 
--- | Aiken @zero_input/step_02.State@ — the disputed transaction's verified id.
+-- | Aiken @zero_input/step_01.SourceV1@ and @Args@.
+data PStep01Source (s :: S)
+  = PAcceptedSource (Term s (PAsData PNativeTxInclusionCarriage))
+  | PForcedSource
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PHeaderV1))
+      (Term s (PAsData PRootMembershipProof))
+      (Term s (PAsData PInteger))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PStep01Source)
+
+newtype PStep01Args (s :: S) = PStep01Args (Term s (PAsData PStep01Source))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PStep01Args)
+
+-- | Aiken @zero_input/rule.StateV1@.
 newtype PStep02State (s :: S) = PStep02State
-  {pstep02State'badTxId :: Term s (PAsData PByteString)}
+  {pstep02State'subject :: Term s (PAsData Subject.PVerdictSubject)}
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PStep02State)
+
+pbindState :: forall s. Term s (Subject.PVerdictSubject :--> PStep02State)
+pbindState = phoistAcyclic $ plam $ \subject ->
+  pif
+    (Subject.psubjectIsCanonical # subject)
+    ( pmatch subject $ \Subject.PVerdictSubject {Subject.psubject'direction} ->
+        let state = pcon $ PStep02State $ pdata subject
+         in pif
+              (pfromData psubject'direction #== 1)
+              (plet (Subject.pbindExactRejectionReason # subject # pcon PEmptyInputs) $ \_ -> state)
+              state
+    )
+    perror
+
+pterminalContradiction :: forall s. Term s (PStep02State :--> PInteger :--> PBool)
+pterminalContradiction = phoistAcyclic $ plam $ \state count ->
+  pif
+    (count #>= 0)
+    ( pmatch state $ \PStep02State {pstep02State'subject} ->
+        Subject.pterminalContradiction # pfromData pstep02State'subject # (count #== 0)
+    )
+    perror
 
 -- | Aiken @zero_input/step_02.Args@.
 data PStep02Args (s :: S) = PStep02Args
   { pstep02Args'inputIndex :: Term s (PAsData PInteger)
   , pstep02Args'outputIndex :: Term s (PAsData PInteger)
   , pstep02Args'fraudProofMintRedeemerIndex :: Term s (PAsData PInteger)
-  , -- | The prover's chosen §8 carriage for field 0's preimage — for a
-    -- genuinely empty field, the single byte @80@.
-    pstep02Args'spendInputsOpening :: Term s (PAsData PFieldOpeningV1)
+  , pstep02Args'spendInputsOpening :: Term s (PAsData PFieldOpeningV1)
+  {- ^ The prover's chosen §8 carriage for field 0's preimage — for a
+  genuinely empty field, the single byte @80@.
+  -}
   }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)

@@ -50,6 +50,14 @@ module Midgard.CekProof (
   PProgramValueMaterialV1 (..),
   PProgramSequenceMaterialV1 (..),
   PProgramBlobMaterialV1 (..),
+  PProgramMaterialTaskV1 (..),
+  PCekMaterialPartitionFacts (..),
+  pprogramPartitionRootMatches,
+  pdataPartitionRootMatches,
+  pprogramPartitionChildren,
+  pdataPartitionChildren,
+  pverifyProgramMaterialPartition,
+  pverifyDataMaterialPartition,
 
   -- * The empty roots
   pemptySequenceRootV1,
@@ -122,7 +130,7 @@ import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
 
 import Plutarch.Builtin.Crypto (pblake2b_256)
-import Plutarch.Core.Utils (pand'List)
+import Plutarch.Core.Utils (pand'List, (#/=))
 import Plutarch.Prelude
 
 import Aiken.Cbor (pdeserialise)
@@ -178,13 +186,13 @@ pprogramEnvelopeVersion = 1
 pmaxProgramEnvelopeCborBytes :: forall (s :: S). Term s PInteger
 pmaxProgramEnvelopeCborBytes = 50
 
--- | @floor((64 MiB − 446 fixed V1 DA bytes) / 42 minimum tuple bytes)@.
+-- | @floor((64 MiB − 447 fixed V1 DA bytes) / 42 minimum tuple bytes)@.
 pmaxProgramNodeCount :: forall (s :: S). Term s PInteger
 pmaxProgramNodeCount = 1597819
 
--- | The structural DA upper bound after the exact 446-byte fixed V1 framing.
+-- | The structural DA upper bound after the exact 447-byte fixed V1 framing.
 pmaxProgramMaterialByteLength :: forall (s :: S). Term s PInteger
-pmaxProgramMaterialByteLength = 67108418
+pmaxProgramMaterialByteLength = 67108417
 
 puint32Max, puint64Max :: forall (s :: S). Term s PInteger
 puint32Max = 4294967295
@@ -1340,7 +1348,7 @@ pinspectBlobBranch preimage =
 
 type PEntryList = PBuiltinList (PAsData PCekProgramMaterialDatumV1)
 
--- | Aiken @encode_program_material_entry_v1@ — @[root, [1, kind, preimage]]@.
+-- | Aiken @encode_program_material_entry_v1@ — @[root, bytes([1, kind, preimage])]@.
 pencodeProgramMaterialEntryV1 ::
   forall (s :: S). Term s (PCekProgramMaterialDatumV1 :--> PByteString)
 pencodeProgramMaterialEntryV1 = phoistAcyclic $
@@ -1348,11 +1356,12 @@ pencodeProgramMaterialEntryV1 = phoistAcyclic $
     pmatch entry $ \(PCekProgramMaterialDatumV1 kind root preimage) ->
       pconstant "\x82"
         <> (pencodeDefiniteBytes #$ pexpectHash # pfromData root)
-        <> ( pconstant "\x83"
-               <> pcborInt 1
-               <> pcborInt (pfromData kind)
-               <> (pencodeDefiniteBytes # pfromData preimage)
-           )
+        <> (pencodeDefiniteBytes #
+              ( pconstant "\x83"
+                  <> pcborInt 1
+                  <> pcborInt (pfromData kind)
+                  <> (pencodeDefiniteBytes # pfromData preimage)
+              ))
 
 -- | Aiken @encode_program_material_entries_v1@ — the entries, back to back.
 pencodeProgramMaterialEntriesV1 :: forall (s :: S). Term s (PEntryList :--> PByteString)
@@ -1385,10 +1394,14 @@ pinspectProgramMaterialEntryDataV1 = phoistAcyclic $
             PNothing -> pcon PNothing
             PJust root ->
               plet (pitemAt items 1) $ \valueData ->
-                pif (pnot # (pdataIsList # valueData)) (pcon PNothing) $
-                  plet (pasList # valueData) $ \valueItems ->
-                    pif (pnot # (plength # valueItems #== 3)) (pcon PNothing) $
-                      pcheckEntryFields root valueItems
+                pif (pnot # (pdataIsBytes # valueData)) (pcon PNothing) $
+                  pmatch (pdeserialise # (pasByteStr # valueData)) $ \case
+                    PNothing -> pcon PNothing
+                    PJust decoded ->
+                      pif (pnot # (pdataIsList # decoded)) (pcon PNothing) $
+                        plet (pasList # decoded) $ \valueItems ->
+                          pif (pnot # (plength # valueItems #== 3)) (pcon PNothing) $
+                            pcheckEntryFields root valueItems
 
 pcheckEntryFields ::
   forall (s :: S).
@@ -2147,3 +2160,120 @@ pdecodeProgramEnvelopeV1 = phoistAcyclic $
     pmatch (pinspectProgramEnvelopeV1 # envelopeCbor) $ \case
       PNothing -> perror
       PJust envelope -> envelope
+
+
+-- The two rewarding arms derive each other's foreign frontier, so their
+-- conjunction establishes complete material coverage without a whole-sidecar
+-- semantic traversal in either arm.
+data PCekMaterialPartitionFacts s = PCekMaterialPartitionFacts
+  { ppartition'programNodeCount :: Term s (PAsData PInteger)
+  , ppartition'programByteLength :: Term s (PAsData PInteger)
+  , ppartition'dataNodeCount :: Term s (PAsData PInteger)
+  , ppartition'dataByteLength :: Term s (PAsData PInteger)
+  , ppartition'dataRoots :: Term s (PAsData (PBuiltinList (PAsData PByteString)))
+  , ppartition'dataBlobRoots :: Term s (PAsData (PBuiltinList (PAsData PByteString)))
+  }
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PCekMaterialPartitionFacts)
+
+data PPartitionTraversal s = PPartitionTraversal
+  (Term s PProgramMaterialTraversalV1)
+  (Term s (PBuiltinList (PAsData PByteString)))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic)
+  deriving (PlutusType) via (DeriveAsSOPStruct PPartitionTraversal)
+
+pprogramPartitionRootMatches, pdataPartitionRootMatches :: forall s. Term s (PCekProgramMaterialDatumV1 :--> PBool)
+pprogramPartitionRootMatches = phoistAcyclic $ plam $ \entry ->
+  plet (pentryRoot # entry) $ \root -> plet (pentryKind # entry) $ \kind -> plet (pentryPreimage # entry) $ \preimage ->
+    pif (plengthBS # root #/= 32) pfalse $
+      pif (kind #== 0) (pmatchesTerm preimage root) $
+      pif (kind #== 1) (pmatchesValue preimage root) $
+      pif (kind #== 2) (pmatchesSequence preimage root) $
+      pif (kind #== 3 #|| kind #== 4) (pmatchesBlob kind preimage root) pfalse
+pdataPartitionRootMatches = phoistAcyclic $ plam $ \entry ->
+  plet (pentryRoot # entry) $ \root -> plet (pentryKind # entry) $ \kind -> plet (pentryPreimage # entry) $ \preimage ->
+    pif (plengthBS # root #/= 32) pfalse $
+      pif (kind #== 5) (pmatchesDataNode preimage root) $
+      pif (kind #== 6) (pmatchesDataListNode preimage root) $
+      pif (kind #== 7) (pmatchesDataPairNode preimage root) pfalse
+
+pprogramPartitionChildren, pdataPartitionChildren :: forall s. Term s (PProgramMaterialTaskV1 :--> PCekProgramMaterialDatumV1 :--> PMaybe PTaskList)
+pprogramPartitionChildren = phoistAcyclic $ plam $ \task entry ->
+  pmatch task $ \(PProgramMaterialTaskV1 kind _ expected) ->
+  plet (pentryKind # entry) $ \entryKind -> plet (pentryPreimage # entry) $ \preimage ->
+    pif (kind #== 0 #&& entryKind #== 0) (ptermChildren preimage) $
+    pif (kind #== 1 #&& entryKind #== 1) (pvalueChildren preimage) $
+    pif (kind #== 2 #&& entryKind #== 2) (psequenceChildren preimage expected) $
+    pif (kind #== 3 #&& (entryKind #== 3 #|| entryKind #== 4)) (pblobChildren entryKind preimage) (pcon PNothing)
+pdataPartitionChildren = phoistAcyclic $ plam $ \task entry ->
+  pmatch task $ \(PProgramMaterialTaskV1 kind _ expected) ->
+  plet (pentryKind # entry) $ \entryKind -> plet (pentryPreimage # entry) $ \preimage ->
+    pif (kind #== 5 #&& entryKind #== 5) (pdataNodeChildren preimage) $
+    pif (kind #== 6 #&& entryKind #== 6) (pdataListChildren preimage expected) $
+    pif (kind #== 7 #&& entryKind #== 7) (pdataPairChildren preimage expected) (pcon PNothing)
+
+pinsertMaterialFrontier :: forall s. Term s (PByteString :--> PBuiltinList (PAsData PByteString) :--> PBuiltinList (PAsData PByteString))
+pinsertMaterialFrontier = phoistAcyclic $ pfix $ \self -> plam $ \root roots ->
+  pelimList (\first rest ->
+    pif (root #< pfromData first) (pcons # pdata root # roots) $
+      pif (root #== pfromData first) roots (pcons # first # (self # root # rest)))
+    (pcons # pdata root # pnil) roots
+
+pwalkMaterialPartition :: forall s. Term s (PTaskList :--> PEntryList :--> PPartitionTraversal :--> (PInteger :--> PBool) :--> (PCekProgramMaterialDatumV1 :--> PBool) :--> (PProgramMaterialTaskV1 :--> PCekProgramMaterialDatumV1 :--> PMaybe PTaskList) :--> PMaybe PPartitionTraversal)
+pwalkMaterialPartition = phoistAcyclic $ pfix $ \self -> plam $ \tasks entries traversal foreignKind rootMatches childrenOf ->
+  pelimList (\task rest -> pmatch task $ \t -> pmatch traversal $ \(PPartitionTraversal visited frontier) ->
+    pif (foreignKind # ptask'kind t)
+      (self # rest # entries # pcon (PPartitionTraversal visited (pinsertMaterialFrontier # ptask'root t # frontier)) # foreignKind # rootMatches # childrenOf)
+      (pmatch (pfindProgramMaterialEntryV1 # ptask'root t # entries) $ \case
+        PNothing -> pcon PNothing
+        PJust entry -> pif (rootMatches # entry)
+          (pmatch (childrenOf # task # entry) $ \case
+            PNothing -> pcon PNothing
+            PJust children -> pmatch visited $ \v ->
+              pif (pelem # pdata (ptask'root t) # ptraversal'seen v)
+                (self # rest # entries # traversal # foreignKind # rootMatches # childrenOf)
+                (self # (pconcat # children # rest) # entries # pcon (PPartitionTraversal
+                  (pcon $ PProgramMaterialTraversalV1
+                    (pcons # pdata (ptask'root t) # ptraversal'seen v)
+                    (ptraversal'nodeCount v + 1)
+                    (ptraversal'materialByteLength v + plengthBS # (pentryPreimage # entry))) frontier)
+                  # foreignKind # rootMatches # childrenOf)) (pcon PNothing)))
+    (pcon $ PJust traversal) tasks
+
+pemptyPartitionTraversal :: forall s. Term s PPartitionTraversal
+pemptyPartitionTraversal = pcon $ PPartitionTraversal (pcon $ PProgramMaterialTraversalV1 pnil 0 0) pnil
+
+ppartitionTasks :: forall s. Term s PInteger -> Term s (PBuiltinList (PAsData PByteString)) -> Term s PTaskList
+ppartitionTasks kind roots = pfoldr # plam (\root rest -> pcons # pmaterialTaskV1 kind (pfromData root) (-1) # rest) # pnil # roots
+
+pverifyProgramMaterialPartition :: forall s. Term s (PByteString :--> PEntryList :--> PCekMaterialPartitionFacts :--> PBool)
+pverifyProgramMaterialPartition = phoistAcyclic $ plam $ \termRoot entries facts -> pmatch facts $ \f ->
+  pif (pstrictlySortedMaterialRootsV1 # entries)
+    (pmatch (pwalkMaterialPartition
+      # (pcons # pmaterialTaskV1 0 termRoot (-1) # ppartitionTasks 3 (pfromData $ ppartition'dataBlobRoots f))
+      # entries # pemptyPartitionTraversal # plam (\kind -> kind #== 5)
+      # pprogramPartitionRootMatches # pprogramPartitionChildren) $ \case
+        PNothing -> pfalse
+        PJust result -> pmatch result $ \(PPartitionTraversal visited frontier) -> pmatch visited $ \v ->
+          frontier #== pfromData (ppartition'dataRoots f)
+            #&& ptraversal'nodeCount v #== pfromData (ppartition'programNodeCount f)
+            #&& ptraversal'materialByteLength v #== pfromData (ppartition'programByteLength f)
+            #&& plength # ptraversal'seen v #== plength # (pfilter # plam (\entry -> plet (pentryKind # pfromData entry) $ \kind -> kind #>= 0 #&& kind #<= 4) # entries)) perror
+
+pverifyDataMaterialPartition :: forall s. Term s (PEntryList :--> PCekMaterialPartitionFacts :--> PInteger :--> PInteger :--> PBool)
+pverifyDataMaterialPartition = phoistAcyclic $ plam $ \entries facts totalCount totalBytes -> pmatch facts $ \f ->
+  pif (pstrictlySortedMaterialRootsV1 # entries)
+    (pmatch (pwalkMaterialPartition # ppartitionTasks 5 (pfromData $ ppartition'dataRoots f)
+      # entries # pemptyPartitionTraversal # plam (\kind -> kind #== 3)
+      # pdataPartitionRootMatches # pdataPartitionChildren) $ \case
+        PNothing -> pfalse
+        PJust result -> pmatch result $ \(PPartitionTraversal visited frontier) -> pmatch visited $ \v ->
+          frontier #== pfromData (ppartition'dataBlobRoots f)
+            #&& ptraversal'nodeCount v #== pfromData (ppartition'dataNodeCount f)
+            #&& ptraversal'materialByteLength v #== pfromData (ppartition'dataByteLength f)
+            #&& plength # ptraversal'seen v #== plength # (pfilter # plam (\entry -> plet (pentryKind # pfromData entry) $ \kind -> kind #>= 5 #&& kind #<= 7) # entries)
+            #&& pfromData (ppartition'programNodeCount f) + pfromData (ppartition'dataNodeCount f) #== totalCount
+            #&& pfromData (ppartition'programByteLength f) + pfromData (ppartition'dataByteLength f) #== totalBytes
+            #&& totalCount #== plength # entries) perror

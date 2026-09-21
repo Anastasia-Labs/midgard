@@ -488,16 +488,9 @@ pfoldIncludingFrame path cursor nextCursor step childRoot =
           (psuffix # key # nextCursor)
           (pfromData pproofStep'value)
 
-{- | Aiken @fold_excluding_frame@.
-
-Identical to the including fold except at the terminal frame, where a fork and a
-leaf stop recursing and contribute their own subtree instead. That is the
-@do_excluding@ divergence "Midgard.MpfProof" documents, and it is why the two
-roots have to be folded together rather than derived from one another.
-
-Note the leaf's terminal case takes @suffix(key, cursor)@ and its non-terminal
-case @nibble(key, cursor)@ with @suffix(key, next_cursor)@ — the cursor, not the
-next cursor, in both. That asymmetry with the including fold is the original's.
+{- | Aiken @fold_excluding_frame@. Terminal forks retain the skipped path.
+The target Aiken frame fold still selects non-terminal leaf neighbours at
+@cursor@, unlike its whole-proof fold. Preserve that distinction for parity.
 -}
 pfoldExcludingFrame ::
   forall (s :: S).
@@ -518,7 +511,7 @@ pfoldExcludingFrame path cursor nextCursor step childRoot isTerminalFrame =
           pif
             isTerminalFrame
             ( pcombine
-                # (pconsBS' # pfromData pneighbor'nibble # pfromData pneighbor'prefix)
+                # ((pnibbles # path # cursor # (nextCursor - 1)) <> (pconsBS' # pfromData pneighbor'nibble # pfromData pneighbor'prefix))
                 # pfromData pneighbor'root
             )
             ( pdoFork

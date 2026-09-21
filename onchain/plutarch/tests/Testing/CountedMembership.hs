@@ -49,44 +49,59 @@ tests =
     [ testGroup
         "validCountedMembership"
         [ testCase "accepts a proof whose counted root reconstructs" $
-            passertEval $ run defaults
+            passertEval $
+              run defaults
         , -- The count is the whole point of the scheme: the same entries in a
           -- tree of a different size must not verify.
           testCase "rejects a count the committed root does not encode" $
-            passertEval $ pnot #$ run defaults {pCount = 4}
+            passertEval $
+              pnot #$ run defaults{pCount = 4}
         , testCase "rejects a domain the committed root does not encode" $
-            passertEval $ pnot #$ run defaults {pDomain = 5}
+            passertEval $
+              pnot #$ run defaults{pDomain = 5}
         , testCase "rejects a root that is not the counted commitment" $
-            passertEval $ pnot #$ run defaults {pExpectedRoot = Just (hex32 0xbb)}
+            passertEval $
+              pnot #$ run defaults{pExpectedRoot = Just (hex32 0xbb)}
         , testCase "rejects a zero count" $
-            passertEval $ pnot #$ run defaults {pCount = 0}
+            passertEval $
+              pnot #$ run defaults{pCount = 0}
         , testCase "rejects a negative count" $
-            passertEval $ pnot #$ run defaults {pCount = -1}
+            passertEval $
+              pnot #$ run defaults{pCount = -1}
         , -- A positive count against the empty tree is inconsistent, and so is
           -- an empty count against a populated one.
           testCase "rejects the empty MPF root paired with a positive count" $
-            passertEval $ pnot #$ run defaults {pPhasRoot = Just emptyMerkleRoot}
+            passertEval $
+              pnot #$ run defaults{pPhasRoot = Just emptyMerkleRoot}
         , testCase "rejects a key the witness does not name" $
-            passertEval $ pnot #$ run defaults {pWitnessKey = Just "other"}
+            passertEval $
+              pnot #$ run defaults{pWitnessKey = Just "other"}
         , testCase "rejects a value the witness does not name" $
-            passertEval $ pnot #$ run defaults {pWitnessValue = Just "other"}
+            passertEval $
+              pnot #$ run defaults{pWitnessValue = Just "other"}
         ]
     , testGroup
         "phas delegation"
         [ testCase "rejects a phas redeemer carrying a different root" $
-            pfails $ run defaults {pRedeemerRoot = Just (hex32 0xcc)}
+            pfails $
+              run defaults{pRedeemerRoot = Just (hex32 0xcc)}
         , testCase "rejects a phas redeemer carrying a different key" $
-            pfails $ run defaults {pRedeemerKey = Just "wrong"}
+            pfails $
+              run defaults{pRedeemerKey = Just "wrong"}
         , testCase "rejects a phas redeemer carrying a different value" $
-            pfails $ run defaults {pRedeemerValue = Just "wrong"}
+            pfails $
+              run defaults{pRedeemerValue = Just "wrong"}
         , testCase "rejects a phas redeemer carrying a different proof" $
-            pfails $ run defaults {pRedeemerProof = Just (PD.I 99)}
+            pfails $
+              run defaults{pRedeemerProof = Just (PD.I 99)}
         , testCase "rejects a transaction with no phas withdrawal at all" $
-            pfails $ run defaults {pPhasWithdrawal = False}
+            pfails $
+              run defaults{pPhasWithdrawal = False}
         , -- The merkelized-validator pattern passes its arguments through the
           -- withdrawal redeemer, so two withdrawals make them ambiguous.
           testCase "rejects two withdrawals by the phas validator" $
-            pfails $ run defaults {pDuplicatePhas = True}
+            pfails $
+              run defaults{pDuplicatePhas = True}
         ]
     ]
 
@@ -99,7 +114,7 @@ emptyMerkleRoot =
   unhex "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8"
 
 phasValidatorHash :: BS.ByteString
-phasValidatorHash = unhex "1fc59ff54da02f2535d64b40b647a8826c8b3d914d7ba5257f5b2721"
+phasValidatorHash = unhex "819adf9eaaed4aa11f717414e99c80b45d416481824321c3474bcb5e"
 
 -- | @transition_trace.counted_root_tag@ — "MidgardRootCountV1".
 countedRootTag :: BS.ByteString
@@ -200,58 +215,58 @@ run p =
     (pconstant @PData entryKey)
     (pconstant @PData entryValue)
     (pconstant redeemers)
-  where
-    phasRoot = maybe defaultPhasRoot id (pPhasRoot p)
-    {- The committed root is built from the *reference* domain and count, not
-    from the tampered ones. That is what makes the mismatch cases bite: the
-    settlement's root is fixed by whoever wrote the datum, and the prover then
-    supplies a witness claiming some other domain or size for it. -}
-    expectedRoot =
-      maybe
-        (commitCountedRoot referenceDomain phasRoot referenceCount)
-        id
-        (pExpectedRoot p)
+ where
+  phasRoot = maybe defaultPhasRoot id (pPhasRoot p)
+  {- The committed root is built from the *reference* domain and count, not
+  from the tampered ones. That is what makes the mismatch cases bite: the
+  settlement's root is fixed by whoever wrote the datum, and the prover then
+  supplies a witness claiming some other domain or size for it. -}
+  expectedRoot =
+    maybe
+      (commitCountedRoot referenceDomain phasRoot referenceCount)
+      id
+      (pExpectedRoot p)
 
-    serialisedKey = serialisedOf entryKey
-    serialisedValue = serialisedOf entryValue
+  serialisedKey = serialisedOf entryKey
+  serialisedValue = serialisedOf entryValue
 
-    witnessKey = maybe serialisedKey id (pWitnessKey p)
-    witnessValue = maybe serialisedValue id (pWitnessValue p)
+  witnessKey = maybe serialisedKey id (pWitnessKey p)
+  witnessValue = maybe serialisedValue id (pWitnessValue p)
 
-    -- @RootMembershipProof { domain, root, phas_root, count, key, value, proof }@
-    witnessData =
-      PD.Constr
-        0
-        [ PD.Constr (pDomain p) []
-        , PD.B expectedRoot
-        , PD.B phasRoot
-        , PD.I (pCount p)
-        , PD.B witnessKey
-        , PD.B witnessValue
-        , proofData
+  -- @RootMembershipProof { domain, root, phas_root, count, key, value, proof }@
+  witnessData =
+    PD.Constr
+      0
+      [ PD.Constr (pDomain p) []
+      , PD.B expectedRoot
+      , PD.B phasRoot
+      , PD.I (pCount p)
+      , PD.B witnessKey
+      , PD.B witnessValue
+      , proofData
+      ]
+
+  -- The phas validator's withdrawal redeemer: [root, key, value, proof, ..].
+  phasRedeemer =
+    dataToBuiltinData $
+      PD.List
+        [ PD.B (maybe phasRoot id (pRedeemerRoot p))
+        , PD.B (maybe serialisedKey id (pRedeemerKey p))
+        , PD.B (maybe serialisedValue id (pRedeemerValue p))
+        , maybe proofData id (pRedeemerProof p)
         ]
 
-    -- The phas validator's withdrawal redeemer: [root, key, value, proof, ..].
-    phasRedeemer =
-      dataToBuiltinData $
-        PD.List
-          [ PD.B (maybe phasRoot id (pRedeemerRoot p))
-          , PD.B (maybe serialisedKey id (pRedeemerKey p))
-          , PD.B (maybe serialisedValue id (pRedeemerValue p))
-          , maybe proofData id (pRedeemerProof p)
-          ]
+  phasEntry =
+    ( Rewarding (ScriptCredential (ScriptHash (toBuiltin phasValidatorHash)))
+    , Redeemer phasRedeemer
+    )
+  unrelatedEntry =
+    (Minting (CurrencySymbol (toBuiltin (BS.replicate 28 0x09))), Redeemer (dataToBuiltinData (PD.I 0)))
 
-    phasEntry =
-      ( Rewarding (ScriptCredential (ScriptHash (toBuiltin phasValidatorHash)))
-      , Redeemer phasRedeemer
-      )
-    unrelatedEntry =
-      (Minting (CurrencySymbol (toBuiltin (BS.replicate 28 0x09))), Redeemer (dataToBuiltinData (PD.I 0)))
-
-    redeemers =
-      [unrelatedEntry]
-        <> [phasEntry | pPhasWithdrawal p]
-        <> [phasEntry | pDuplicatePhas p]
+  redeemers =
+    [unrelatedEntry]
+      <> [phasEntry | pPhasWithdrawal p]
+      <> [phasEntry | pDuplicatePhas p]
 
 -- | @cbor.serialise@ of a @Data@ value, computed off-chain.
 serialisedOf :: PD.Data -> BS.ByteString

@@ -210,12 +210,12 @@ activeRootName = TokenName "MIDGARD_ACTIVE_OPERATORS"
 operator :: BS.ByteString
 operator = "bb"
 
-{- | Testnet @block_maturity_duration_v1@ — three minutes in milliseconds.
+{- | Target @block_maturity_duration_v1@ — seven days in milliseconds.
 
 The fresh hold is the validity range's upper bound plus this.
 -}
 blockMaturityDuration :: Integer
-blockMaturityDuration = 3 * 60 * 1000
+blockMaturityDuration = 7 * 24 * 60 * 60 * 1000
 
 validUpperBound :: Integer
 validUpperBound = 1_000
@@ -445,11 +445,11 @@ goToNextEndOfShift = PD.Constr 0 [PD.I 0]
 -- Other scripts' redeemers
 --------------------------------------------------------------------------------
 
--- | @state_queue.CommitBlockHeader@ is constructor 2; its third field is the
+-- | @state_queue.CommitBlockHeader@ is constructor 2; its fourth field is the
 -- operator.
 commitHeader :: BS.ByteString -> BuiltinData
 commitHeader op =
-  dataToBuiltinData (PD.Constr 2 [PD.I 0, PD.I 0, PD.B op, PD.I 0, PD.I 0, PD.I 0])
+  dataToBuiltinData (PD.Constr 2 [PD.I 0, PD.I 0, PD.I 0, PD.B op, PD.I 0, PD.I 0, PD.I 0, PD.Constr 1 [], PD.Constr 1 []])
 
 -- | @state_queue.Deinit@ is constructor 1 — the wrong branch.
 deinitRedeemer :: BuiltinData

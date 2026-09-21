@@ -17,10 +17,13 @@ module Midgard.CekDataInteger (
   pcontrolIsWellFormed,
   pinitialControlV1,
   pencodeControlV1,
+  pcontrolData,
   pcontrolFromDataV1,
   pdecodeControlV1,
   pnextSourceSpanV1,
+  pprevalidatedNextSourceSpan,
   pstepV1,
+  pprevalidatedStep,
   pfinalizeV1,
 ) where
 
@@ -296,6 +299,23 @@ poptionalBlobFromData = phoistAcyclic $
         )
         $ pif (index #== 1 #&& pnull # fields) (pcon PDNothing) perror
 
+-- | Aiken @control_data_v1@: direct wire Data, with canonical nested controls.
+-- The consuming stage must validate and authenticate the control.
+pcontrolData :: forall (s :: S). Term s (PCekDataIntegerControlV1 :--> PData)
+pcontrolData = phoistAcyclic $ plam $ \control -> pmatch control $ \c ->
+  pforgetData $ pdata $
+    foldr (\item rest -> pcons @PBuiltinList # item # rest) pnil
+      [ pforgetData (pdata pversion)
+      , pforgetData (pdata (pfromData (pint'stage c)))
+      , pforgetData (pdata (pfromData (pint'sourceStart c)))
+      , pforgetData (pdata (pfromData (pint'sourceLength c)))
+      , pforgetData (pdata (pfromData (pint'memory c)))
+      , pmatch (pfromData (pint'blob c)) (\case
+          PDNothing -> pforgetData $ pconstrBuiltin # 1 # pnil
+          PDJust value -> pforgetData $ pconstrBuiltin # 0
+            # (pcons # (Blob.pcontrolData # pfromData value) # pnil))
+      ]
+
 pcontrolFromDataV1 :: forall (s :: S). Term s (PData :--> PCekDataIntegerControlV1)
 pcontrolFromDataV1 = phoistAcyclic $
   plam $ \d ->
@@ -327,24 +347,30 @@ pnextSourceSpanV1 ::
   forall (s :: S). Term s (PCekDataIntegerControlV1 :--> PMaybe Blob.PCekSourceBlobSpanV1)
 pnextSourceSpanV1 = phoistAcyclic $
   plam $ \control ->
-    pif (pnot # (pcontrolIsWellFormed # control)) (pcon PNothing) $
-      pmatch control $ \c ->
-        pif
-          (pfromData (pint'stage c) #== pstageSyntax)
-          ( pcon $
-              PJust $
-                pcon $
-                  Blob.PCekSourceBlobSpanV1
-                    (pint'sourceStart c)
-                    (pdata (pminimum # pfromData (pint'sourceLength c) # psyntaxBytes))
+    pif (pcontrolIsWellFormed # control) (pprevalidatedNextSourceSpan # control) (pcon PNothing)
+
+-- | Requires a well-formed control authenticated by the calling stage.
+pprevalidatedNextSourceSpan ::
+  forall (s :: S). Term s (PCekDataIntegerControlV1 :--> PMaybe Blob.PCekSourceBlobSpanV1)
+pprevalidatedNextSourceSpan = phoistAcyclic $
+  plam $ \control ->
+    pmatch control $ \c ->
+      pif
+        (pfromData (pint'stage c) #== pstageSyntax)
+        ( pcon $
+            PJust $
+              pcon $
+                Blob.PCekSourceBlobSpanV1
+                  (pint'sourceStart c)
+                  (pdata (pminimum # pfromData (pint'sourceLength c) # psyntaxBytes))
+        )
+        $ pif
+          (pfromData (pint'stage c) #== pstageBlob)
+          ( pmatch (pfromData (pint'blob c)) $ \case
+              PDNothing -> perror
+              PDJust blob -> Blob.pprevalidatedNextSourceSpan # pfromData blob
           )
-          $ pif
-            (pfromData (pint'stage c) #== pstageBlob)
-            ( pmatch (pfromData (pint'blob c)) $ \case
-                PDNothing -> perror
-                PDJust blob -> Blob.pnextSourceSpanV1 # pfromData blob
-            )
-            (pcon PNothing)
+          (pcon PNothing)
 
 pstepSyntax ::
   forall (s :: S).
@@ -418,15 +444,27 @@ pstepV1 ::
     )
 pstepV1 = phoistAcyclic $
   plam $ \control sourceBytes ->
-    pif (pnot # (pcontrolIsWellFormed # control)) (pcon PNothing) $
-      pmatch control $ \c ->
-        pif
-          (pfromData (pint'stage c) #== pstageSyntax)
-          (pstepSyntax control sourceBytes)
-          $ pif
-            (pfromData (pint'stage c) #== pstageBlob)
-            (pstepBlob control sourceBytes)
-            (pcon PNothing)
+    pif (pcontrolIsWellFormed # control) (pprevalidatedStep # control # sourceBytes) (pcon PNothing)
+
+-- | Requires a well-formed control authenticated by the calling stage.
+pprevalidatedStep ::
+  forall (s :: S).
+  Term
+    s
+    ( PCekDataIntegerControlV1
+        :--> PMaybe PByteString
+        :--> PMaybe PCekDataIntegerControlV1
+    )
+pprevalidatedStep = phoistAcyclic $
+  plam $ \control sourceBytes ->
+    pmatch control $ \c ->
+      pif
+        (pfromData (pint'stage c) #== pstageSyntax)
+        (pstepSyntax control sourceBytes)
+        $ pif
+          (pfromData (pint'stage c) #== pstageBlob)
+          (pstepBlob control sourceBytes)
+          (pcon PNothing)
 
 pfinalizeV1 ::
   forall (s :: S). Term s (PCekDataIntegerControlV1 :--> PMaybe PDataSummaryV1)

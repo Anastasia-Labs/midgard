@@ -18,30 +18,74 @@ import Testing.Eval (pfails, psucceeds)
 import Testing.FraudProofsFixture
 
 tests :: TestTree
-tests = testGroup "Cross-block duplicate-event fraud proof"
-  [ testCase "step 01 accepts a committed deposit" $ psucceeds $ step01 $ step01Context depositEvent (eProof depositEvent) depositKind duplicatedEventId duplicateThreadName
-  , testCase "step 01 accepts a committed withdrawal" $ psucceeds $ step01 $ step01Context withdrawalEvent (eProof withdrawalEvent) withdrawalKind duplicatedEventId duplicateThreadName
-  , testCase "step 01 accepts a committed forced transaction" $ psucceeds $ step01 $ step01Context forcedEvent (eProof forcedEvent) forcedKind duplicatedEventId duplicateThreadName
-  , testCase "step 01 rejects a forged forced-order root" $ pfails $ step01 $ step01Context forcedEvent (eProof foreignForcedEvent) forcedKind foreignEventId duplicateThreadName
-  , testCase "step 01 rejects a forged deposit root" $ pfails $ step01 $ step01Context depositEvent (eProof foreignDepositEvent) depositKind foreignEventId duplicateThreadName
-  , testCase "step 01 rejects a wrong count" $ pfails $ step01 $ step01Context depositEvent (withCount 2 $ eProof depositEvent) depositKind duplicatedEventId duplicateThreadName
-  , testCase "step 01 rejects another fraud category" $ pfails $ step01 $ step01Context withdrawalEvent (eProof withdrawalEvent) withdrawalKind duplicatedEventId threadName
-  , testCase "step 01 cancels under the prover signature" $ psucceeds $ step01 $ cancellationContext Nothing True
-  , testCase "step 01 rejects unsigned cancellation" $ pfails $ step01 $ cancellationContext Nothing False
-  , testCase "step 02 convicts a confirmed deposit duplicate" $ psucceeds $ step02 $ step02Context depositEvent depositEvent historicalHeaderHash (eProof depositEvent)
-  , testCase "step 02 convicts a confirmed withdrawal duplicate" $ psucceeds $ step02 $ step02Context withdrawalEvent withdrawalEvent historicalHeaderHash (eProof withdrawalEvent)
-  , testCase "step 02 convicts a confirmed forced-order duplicate" $ psucceeds $ step02 $ step02Context forcedEvent forcedEvent historicalHeaderHash (eProof forcedEvent)
-  , testCase "step 02 rejects a different forced-order identity" $ pfails $ step02 $ step02Context forcedEvent foreignForcedEvent historicalHeaderHash (eProof foreignForcedEvent)
-  , testCase "step 02 rejects a different deposit identity" $ pfails $ step02 $ step02Context depositEvent foreignDepositEvent historicalHeaderHash (eProof foreignDepositEvent)
-  , testCase "step 02 rejects a cross-domain event" $ pfails $ step02 $ step02Context depositEvent withdrawalEvent historicalHeaderHash (eProof withdrawalEvent)
-  , testCase "step 02 rejects the challenged header itself" $ pfails $ step02 $ step02Context depositEvent depositEvent challengedHeaderHash (eProof depositEvent)
-  , testCase "step 02 rejects a removed-ancestor copy under another policy" $ pfails $ step02 $ step02ContextWithInput withdrawalEvent (eProof withdrawalEvent) (settlementInputWithPolicy withdrawalEvent historicalHeaderHash foreignSettlementPolicy) duplicateThreadName
-  , testCase "step 02 rejects a forged historical root" $ pfails $ step02 $ step02ContextWithInput depositEvent (eProof foreignDepositEvent) (settlementInput depositEvent historicalHeaderHash) duplicateThreadName
-  , testCase "step 02 rejects a carried header mismatch" $ pfails $ step02 $ step02ContextWithState (stateData historicalHeaderHash depositKind duplicatedEventId) (eProof depositEvent) (settlementInput depositEvent historicalHeaderHash) duplicateThreadName
-  , testCase "step 02 rejects another fraud category" $ pfails $ step02 $ step02ContextWithInput depositEvent (eProof depositEvent) (settlementInput depositEvent historicalHeaderHash) threadName
-  , testCase "step 02 cancels under the prover signature" $ psucceeds $ step02 $ cancellationContext (Just $ stateFor depositEvent) True
-  , testCase "step 02 rejects unsigned cancellation" $ pfails $ step02 $ cancellationContext (Just $ stateFor depositEvent) False
-  ]
+tests =
+  testGroup "Cross-block duplicate-event fraud proof" $
+    [ testCase "step 01 accepts a committed deposit" $ psucceeds $ step01 $ step01Context depositEvent (eProof depositEvent) depositKind duplicatedEventId duplicateThreadName
+    , testCase "step 01 accepts a committed withdrawal" $ psucceeds $ step01 $ step01Context withdrawalEvent (eProof withdrawalEvent) withdrawalKind duplicatedEventId duplicateThreadName
+    , testCase "step 01 accepts a committed forced transaction" $ psucceeds $ step01 $ step01Context forcedEvent (eProof forcedEvent) forcedKind duplicatedEventId duplicateThreadName
+    , testCase "step 01 rejects a forged forced-order root" $ pfails $ step01 $ step01Context forcedEvent (eProof foreignForcedEvent) forcedKind foreignEventId duplicateThreadName
+    , testCase "step 01 rejects a forged deposit root" $ pfails $ step01 $ step01Context depositEvent (eProof foreignDepositEvent) depositKind foreignEventId duplicateThreadName
+    , testCase "step 01 rejects a wrong count" $ pfails $ step01 $ step01Context depositEvent (withCount 2 $ eProof depositEvent) depositKind duplicatedEventId duplicateThreadName
+    , testCase "step 01 rejects another fraud category" $ pfails $ step01 $ step01Context withdrawalEvent (eProof withdrawalEvent) withdrawalKind duplicatedEventId threadName
+    , testCase "step 01 cancels under the prover signature" $ psucceeds $ step01 $ cancellationContext Nothing True
+    , testCase "step 01 rejects unsigned cancellation" $ pfails $ step01 $ cancellationContext Nothing False
+    , testCase "step 02 convicts a confirmed deposit duplicate" $ psucceeds $ step02 $ step02Context depositEvent depositEvent historicalHeaderHash (eProof depositEvent)
+    , testCase "step 02 convicts a confirmed withdrawal duplicate" $ psucceeds $ step02 $ step02Context withdrawalEvent withdrawalEvent historicalHeaderHash (eProof withdrawalEvent)
+    , testCase "step 02 convicts a confirmed forced-order duplicate" $ psucceeds $ step02 $ step02Context forcedEvent forcedEvent historicalHeaderHash (eProof forcedEvent)
+    , testCase "step 02 rejects a different forced-order identity" $ pfails $ step02 $ step02Context forcedEvent foreignForcedEvent historicalHeaderHash (eProof foreignForcedEvent)
+    , testCase "step 02 rejects a different deposit identity" $ pfails $ step02 $ step02Context depositEvent foreignDepositEvent historicalHeaderHash (eProof foreignDepositEvent)
+    , testCase "step 02 rejects a cross-domain event" $ pfails $ step02 $ step02Context depositEvent withdrawalEvent historicalHeaderHash (eProof withdrawalEvent)
+    , testCase "step 02 rejects the challenged header itself" $ pfails $ step02 $ step02Context depositEvent depositEvent challengedHeaderHash (eProof depositEvent)
+    , testCase "step 02 rejects a removed-ancestor copy under another policy" $ pfails $ step02 $ step02ContextWithInput withdrawalEvent (eProof withdrawalEvent) (settlementInputWithPolicy withdrawalEvent historicalHeaderHash foreignSettlementPolicy) duplicateThreadName
+    , testCase "step 02 rejects a forged historical root" $ pfails $ step02 $ step02ContextWithInput depositEvent (eProof foreignDepositEvent) (settlementInput depositEvent historicalHeaderHash) duplicateThreadName
+    , testCase "step 02 rejects a carried header mismatch" $ pfails $ step02 $ step02ContextWithState (stateData historicalHeaderHash depositKind duplicatedEventId) (eProof depositEvent) (settlementInput depositEvent historicalHeaderHash) duplicateThreadName
+    , testCase "step 02 rejects another fraud category" $ pfails $ step02 $ step02ContextWithInput depositEvent (eProof depositEvent) (settlementInput depositEvent historicalHeaderHash) threadName
+    , testCase "step 02 cancels under the prover signature" $ psucceeds $ step02 $ cancellationContext (Just $ stateFor depositEvent) True
+    , testCase "step 02 rejects unsigned cancellation" $ pfails $ step02 $ cancellationContext (Just $ stateFor depositEvent) False
+    ]
+      <> digestTests
+
+digestTests :: [TestTree]
+digestTests = concatMap cases [depositEvent, withdrawalEvent, forcedEvent]
+  where
+    cases event =
+      [ testCase (label "opens challenged digest") $ psucceeds $ step01 $ challenged (digestProof event)
+      , testCase (label "opens confirmed digest") $ psucceeds $ step02 $ settled (digestProof event)
+      ]
+        <> concatMap
+          (refusal event challenged settled)
+          [ ("substituted digest", replaceMember 5 (PD.B $ BS.replicate 32 0x11))
+          , ("short digest", replaceMember 5 (PD.B "x"))
+          , ("wrong key", replaceMember 4 foreignEventId)
+          , ("wrong count", replaceMember 3 (PD.I 2))
+          , ("zero count", replaceMember 3 (PD.I 0))
+          , ("wrong domain", replaceMember 0 (PD.Constr 2 []))
+          , ("wrong event kind", wrongKind)
+          ]
+      where
+        label name = "digest " <> show (eArm event) <> " " <> name
+        challenged proof = step01Context event proof (kindFor event) (eKey event) duplicateThreadName
+        settled proof = step02Context event event historicalHeaderHash proof
+    refusal event challenged settled (name, mutate) =
+      [ testCase (label "challenged") $ pfails $ step01 $ challenged $ mutate $ digestProof event
+      , testCase (label "confirmed") $ pfails $ step02 $ settled $ mutate $ digestProof event
+      ]
+      where
+        label stage = "digest " <> show (eArm event) <> " refuses " <> name <> " " <> stage
+    wrongKind (PD.Constr 3 [PD.Constr kind [], membership]) =
+      PD.Constr 3 [PD.Constr ((kind + 1) `mod` 3) [], membership]
+    wrongKind _ = error "invalid digest fixture"
+
+digestProof :: Event -> PD.Data
+digestProof event = case eProof event of
+  PD.Constr _ [PD.Constr 0 [domain, root, rawRoot, count, key, value, proof]] ->
+    PD.Constr 3 [kindFor event, PD.Constr 0 [domain, root, rawRoot, count, key, PD.B $ blake2b256 $ serialise value, proof]]
+  _ -> error "invalid full event fixture"
+
+replaceMember :: Int -> PD.Data -> PD.Data -> PD.Data
+replaceMember index replacement (PD.Constr 3 [kind, PD.Constr 0 fields]) =
+  PD.Constr 3 [kind, PD.Constr 0 [if i == index then replacement else value | (i, value) <- zip [0 ..] fields]]
+replaceMember _ _ _ = error "invalid digest fixture"
 
 data Event = Event
   { eArm :: Integer
@@ -63,17 +107,21 @@ duplicatedEventId = inputData (BS.replicate 32 0x81, 2)
 foreignEventId = inputData (BS.replicate 32 0x92, 0)
 
 depositInfo, withdrawalInfo, forcedTransaction :: PD.Data
-depositInfo = PD.Constr 0
-  [ PD.Constr 0 [PD.Constr 0 [PD.B $ BS.replicate 28 0x1a], PD.Constr 1 []]
-  , PD.I 0
-  , PD.Constr 1 []
-  ]
+depositInfo =
+  PD.Constr
+    0
+    [ PD.Constr 0 [PD.Constr 0 [PD.B $ BS.replicate 28 0x1a], PD.Constr 1 []]
+    , PD.I 0
+    , PD.Constr 1 []
+    ]
 withdrawalInfo = withdrawalInfoData (BS.replicate 32 0x2b, 1) (PD.Constr 0 [])
-forcedTransaction = PD.Constr 0
-  [ PD.B $ BS.replicate 32 0x11
-  , PD.Constr 0 [PD.B "\x80", PD.B "\x80", PD.B "\x80"]
-  , PD.Constr 0 []
-  ]
+forcedTransaction =
+  PD.Constr
+    0
+    [ PD.B $ BS.replicate 32 0x11
+    , PD.Constr 0 [PD.B "\x80", PD.B "\x80", PD.B "\x80"]
+    , PD.Constr 0 []
+    ]
 
 depositEvent, foreignDepositEvent, withdrawalEvent, forcedEvent, foreignForcedEvent :: Event
 depositEvent = mkEvent 0 depositsDomain duplicatedEventId depositInfo
@@ -118,26 +166,29 @@ eventReferenceInputs event = case eArm event of
   _ -> error "invalid duplicate-event arm"
 
 step01, step02 :: forall s. ScriptContext -> Term s PUnit
-step01 ctx = crossBlockDuplicateEventStep01Validator
-  # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
-  # pdata (pconstant ctPolicy)
-  # pdata (pconstant hubOracleHash)
-  # pconstant ctx
-step02 ctx = crossBlockDuplicateEventStep02Validator
-  # pdata (pconstant fpPolicy)
-  # pdata (pconstant fraudProofAddress)
-  # pdata (pconstant ctPolicy)
-  # pconstant ctx
+step01 ctx =
+  crossBlockDuplicateEventStep01Validator
+    # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
+    # pdata (pconstant ctPolicy)
+    # pdata (pconstant hubOracleHash)
+    # pconstant ctx
+step02 ctx =
+  crossBlockDuplicateEventStep02Validator
+    # pdata (pconstant fpPolicy)
+    # pdata (pconstant fraudProofAddress)
+    # pdata (pconstant ctPolicy)
+    # pconstant ctx
 
 step01Context :: Event -> PD.Data -> PD.Data -> PD.Data -> BS.ByteString -> ScriptContext
-step01Context challenged committedEvent kind key assetName = spendContext
-  (stepDatum Nothing)
-  (PD.Constr 1 [PD.Constr 0 [PD.I 0, PD.I 0, PD.I 0, PD.I 1, committedEvent]])
-  [threadInputWithName assetName]
-  [stepOutputWithName nextScript (Just $ stateData challengedHeaderHash kind key) assetName]
-  (eventReferenceInputs challenged)
-  []
-  mempty
+step01Context challenged committedEvent kind key assetName =
+  spendContext
+    (stepDatum Nothing)
+    (PD.Constr 1 [PD.Constr 0 [PD.I 0, PD.I 0, PD.I 0, PD.I 1, committedEvent]])
+    [threadInputWithName assetName]
+    [stepOutputWithName nextScript (Just $ stateData challengedHeaderHash kind key) assetName]
+    (eventReferenceInputs challenged)
+    []
+    mempty
 
 step02Context :: Event -> Event -> BS.ByteString -> PD.Data -> ScriptContext
 step02Context challenged settled settledHash settledProof =
@@ -147,36 +198,40 @@ step02ContextWithInput :: Event -> PD.Data -> TxInInfo -> BS.ByteString -> Scrip
 step02ContextWithInput challenged = step02ContextWithState (stateFor challenged)
 
 step02ContextWithState :: PD.Data -> PD.Data -> TxInInfo -> BS.ByteString -> ScriptContext
-step02ContextWithState state settledProof settlementRef assetName = spendContext
-  (stepDatum $ Just state)
-  (PD.Constr 1 [PD.Constr 0 [PD.I 0, PD.I 0, PD.I 0, PD.I 0, settledProof]])
-  [threadInputWithName assetName]
-  [convictionOutput fraudProofAddress assetName]
-  [settlementRef]
-  [fraudProofMintEntry assetName]
-  (singleton fpPolicy (TokenName $ toBuiltin assetName) 1)
+step02ContextWithState state settledProof settlementRef assetName =
+  spendContext
+    (stepDatum $ Just state)
+    (PD.Constr 1 [PD.Constr 0 [PD.I 0, PD.I 0, PD.I 0, PD.I 0, settledProof]])
+    [threadInputWithName assetName]
+    [convictionOutput fraudProofAddress assetName]
+    [settlementRef]
+    [fraudProofMintEntry assetName]
+    (singleton fpPolicy (TokenName $ toBuiltin assetName) 1)
 
 settlementInput :: Event -> BS.ByteString -> TxInInfo
 settlementInput event settledHash = settlementInputWithPolicy event settledHash settlementPolicy
 
 settlementInputWithPolicy :: Event -> BS.ByteString -> CurrencySymbol -> TxInInfo
-settlementInputWithPolicy event settledHash policy = TxInInfo
-  (outRefN 7)
-  ( TxOut
-      (scriptHashAddress $ ScriptHash $ unCurrencySymbol policy)
-      (adaValue 3_000_000 <> singleton policy (TokenName $ toBuiltin settledHash) 1)
-      (OutputDatum $ Datum $ dataToBuiltinData $ settlementDatum event)
-      Nothing
-  )
+settlementInputWithPolicy event settledHash policy =
+  TxInInfo
+    (outRefN 7)
+    ( TxOut
+        (scriptHashAddress $ ScriptHash $ unCurrencySymbol policy)
+        (adaValue 3_000_000 <> singleton policy (TokenName $ toBuiltin settledHash) 1)
+        (OutputDatum $ Datum $ dataToBuiltinData $ settlementDatum event)
+        Nothing
+    )
 
 settlementDatum :: Event -> PD.Data
-settlementDatum event = PD.Constr 0
-  [ PD.B $ rootFor 0 (hash32 0xd1)
-  , PD.B $ rootFor 1 (hash32 0xd2)
-  , PD.B $ rootFor 2 (hash32 0xd3)
-  , PD.B $ hash32 0xd4
-  , PD.Constr 1 []
-  ]
+settlementDatum event =
+  PD.Constr
+    0
+    [ PD.B $ rootFor 0 (hash32 0xd1)
+    , PD.B $ rootFor 1 (hash32 0xd2)
+    , PD.B $ rootFor 2 (hash32 0xd3)
+    , PD.B $ hash32 0xd4
+    , PD.Constr 1 []
+    ]
   where
     rootFor arm fallback
       | eArm event == arm = eCountedRoot event
@@ -184,14 +239,15 @@ settlementDatum event = PD.Constr 0
 
 cancellationContext :: Maybe PD.Data -> Bool -> ScriptContext
 cancellationContext state signedByProver =
-  let context = spendContext
-        (stepDatum state)
-        cancelRedeemer
-        [threadInputWithName duplicateThreadName]
-        []
-        []
-        [cancelMintEntry duplicateThreadName]
-        mempty
+  let context =
+        spendContext
+          (stepDatum state)
+          cancelRedeemer
+          [threadInputWithName duplicateThreadName]
+          []
+          []
+          [cancelMintEntry duplicateThreadName]
+          mempty
    in if signedByProver then context else withoutSignatories context
 
 withoutSignatories :: ScriptContext -> ScriptContext

@@ -228,7 +228,7 @@ updated, every membership proof silently checks the wrong script's redeemer.
 -}
 pplutarchPhasValidatorHash :: forall (s :: S). Term s PByteString
 pplutarchPhasValidatorHash =
-  phexByteStr "1fc59ff54da02f2535d64b40b647a8826c8b3d914d7ba5257f5b2721"
+  phexByteStr "819adf9eaaed4aa11f717414e99c80b45d416481824321c3474bcb5e"
 
 {- | Aiken @env.plutarch_pexcludes_validator_hash@.
 
@@ -236,25 +236,25 @@ The @pexcludes@ twin of 'pplutarchPhasValidatorHash': the staking validator that
 proves a key is /absent/ from a Merkle root. Same delegation shape, same
 re-pinning obligation.
 
-Note that this port's @pexcludes@ script and Aiken's are not currently the same
-script — see the MPF arithmetic divergence in @README.md@ — so this constant
-being the Aiken tree's value is a statement about the deployed script, not about
-what "MerkleTree.Validators.Membership" would compile to today.
+This port's @pexcludes@ script and Aiken's are not byte-identical, so this is
+the hash of the Plutarch script deployed from this package rather than an Aiken
+artifact identity.
 -}
 pplutarchPexcludesValidatorHash :: forall (s :: S). Term s PByteString
 pplutarchPexcludesValidatorHash =
-  phexByteStr "03adaadf3154dafde48eea40030cecf5690b07c495f4c74029e4ab6a"
+  phexByteStr "1fa3e7c2ce50fbc74b00aeb6b7254eb3b824c64fb1855c29bdc36c34"
 
-{- | Aiken @env.mpf_chunked_verify_validator_hash@.
+{- | Plutarch @mpf_chunked_verify@ validator hash.
 
 The merkelized verifier of published-chunk proof carriage (issue #545), compiled
-from @validators/mpf-chunked-verify.ak@. A step that takes the published-chunk
-route names this hash so that the walk over the chunk UTxOs runs once, in its
-own script, rather than inside every step that wants a proof.
+by this package. A step that takes the published-chunk route names this hash so
+that the walk over the chunk UTxOs runs once, in its own script, rather than
+inside every step that wants a proof. The Plutarch and Aiken artifacts are not
+byte-identical, so this must track the deployed Plutarch script.
 -}
 pmpfChunkedVerifyValidatorHash :: forall (s :: S). Term s PByteString
 pmpfChunkedVerifyValidatorHash =
-  phexByteStr "dfd0e01fe351bd1d6f75a1ba728d06fb8b11d56bc3bf9ee98e025040"
+  phexByteStr "ea8d998a1396392158fa85afb0d202df7bd6d6ede7d3fbc05f55acd6"
 
 {- | Aiken @env.max_validity_range_length@.
 

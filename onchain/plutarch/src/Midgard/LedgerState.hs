@@ -71,13 +71,9 @@ A transparent alias for the 28-byte hash, exactly as in Aiken — see
 -}
 type PHeaderHash = PH28
 
-{- | Aiken testnet @ledger_state.block_maturity_duration_v1@ — @3 * 60 * 1000@.
-
-The Plutarch deployment currently targets the same fast Preprod E2E profile as
-the Aiken @testnet@ environment. Never use this value for a production build.
--}
+-- | Aiken @ledger_state.block_maturity_duration_v1@: seven days in milliseconds.
 pblockMaturityDurationV1 :: forall (s :: S). Term s PInteger
-pblockMaturityDurationV1 = 3 * 60 * 1000
+pblockMaturityDurationV1 = 7 * 24 * 60 * 60 * 1000
 
 {- | Aiken @ledger_state.DepositId = OutputReference@.
 

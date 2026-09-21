@@ -13,23 +13,20 @@ module Midgard.Validators.FraudProofs.ValidationTrace.PhaseAScriptPreconditions 
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
 
-import Plutarch.LedgerApi.Utils (PMaybeData)
 import Plutarch.LedgerApi.V3 (
   PCurrencySymbol,
   PScriptContext,
   PScriptHash,
   PTxInfo (..),
-  PTxOutRef,
  )
 import Plutarch.Prelude
 
-import Midgard.ComputationThread (PStepDatum)
 import Midgard.NativeTxFieldAccess (PFieldCarriageV1)
 import Midgard.ValidationMachine (
   PValidationAuxiliaryWitnessV1 (..),
-  PValidationOneStepEvidenceV1 (PValidationOneStepEvidenceV1),
   PValidationOneStepWitnessV1,
-  pverifyPhaseAScriptPreconditionsSemanticsV1,
+  pverifyPhaseAScriptPreconditionsFinalizeSemanticsV1,
+  pverifyPhaseAScriptPreconditionsItemSemanticsV1,
  )
 import Midgard.ValidationResolver (pphaseAScriptPreconditionsSemanticResolverCount)
 import Midgard.ValidationSemantic (pcontinueWinning, pvalidationSemanticPreState)
@@ -75,50 +72,17 @@ phaseAScriptPreconditionsV1Validator =
     (pcon PPhaseAScriptPreconditions)
     pphaseAScriptPreconditionsSemanticResolverCount
 
-pcontinuePreconditions :: forall s.
-  Term s (PAsData PScriptHash) ->
-  Term s (PAsData PCurrencySymbol) ->
-  Term s (PAsData PCurrencySymbol) ->
-  Term s (PMaybeData PStepDatum) ->
-  Term s PInteger ->
-  Term s PInteger ->
-  Term s PValidationOneStepWitnessV1 ->
-  Term s PValidationAuxiliaryWitnessV1 ->
-  Term s PTxOutRef ->
-  Term s PTxInfo ->
-  Term s PBool
-pcontinuePreconditions awardScriptHash policyId certificatePolicyId datum inputIndex outputIndex transition auxiliary ownOutRef txInfo =
-  plet transition $ \boundTransition ->
-    plet auxiliary $ \boundAuxiliary ->
-      plet
-        (pcon $ PValidationOneStepEvidenceV1 (pdata boundTransition) (pdata boundAuxiliary))
-        $ \evidence ->
-          pmatch txInfo $ \PTxInfo {ptxInfo'referenceInputs} ->
-          plet (pcon $ PMachineFieldDoorV1 (pfromData ptxInfo'referenceInputs) certificatePolicyId) $ \door ->
-            pcontinueWinning
-              (pcon PPhaseAScriptPreconditions)
-              awardScriptHash policyId datum inputIndex outputIndex boundTransition
-              (pforgetData $ pdata boundAuxiliary)
-              ( pverifyPhaseAScriptPreconditionsSemanticsV1
-                  # pvalidationSemanticPreState datum
-                  # evidence
-                  # door
-              )
-              ownOutRef txInfo
-
 phaseAScriptPreconditionsSemanticV1Validator :: forall s.
-  Term s
-    ( PAsData PScriptHash :--> PAsData PCurrencySymbol
-        :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit
-    )
-phaseAScriptPreconditionsSemanticV1Validator = plam $ \awardScriptHash policyId certificatePolicyId ctx ->
+  Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
+phaseAScriptPreconditionsSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
   pdispatch @_ @PPhaseAScriptPreconditionsActionV1 policyId datum redeemer ownOutRef txInfo $
     \action -> pmatch action $ \(PVerify inputIndex outputIndex transitionD) ->
-      pcontinuePreconditions
-        awardScriptHash policyId certificatePolicyId datum
-        (pfromData inputIndex) (pfromData outputIndex)
-        (pfromData transitionD) (pcon PNoAuxiliaryWitness)
+      plet (pfromData transitionD) $ \transition ->
+      pcontinueWinning (pcon PPhaseAScriptPreconditions) awardScriptHash policyId datum
+        (pfromData inputIndex) (pfromData outputIndex) transition
+        (pforgetData $ pdata $ pcon PNoAuxiliaryWitness)
+        (pverifyPhaseAScriptPreconditionsFinalizeSemanticsV1 # pvalidationSemanticPreState datum # transition)
         ownOutRef txInfo
 
 phaseAScriptPreconditionsItemSemanticV1Validator :: forall s.
@@ -130,9 +94,12 @@ phaseAScriptPreconditionsItemSemanticV1Validator = plam $ \awardScriptHash polic
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
   pdispatch @_ @PPhaseAScriptPreconditionsItemActionV1 policyId datum redeemer ownOutRef txInfo $
     \action -> pmatch action $ \(PVerifyItem inputIndex outputIndex transitionD fieldIndex itemIndex carriage) ->
-      pcontinuePreconditions
-        awardScriptHash policyId certificatePolicyId datum
-        (pfromData inputIndex) (pfromData outputIndex)
-        (pfromData transitionD)
-        (pcon $ PTransactionFieldChunkWitness fieldIndex itemIndex carriage)
+      plet (pfromData transitionD) $ \transition ->
+      pmatch txInfo $ \PTxInfo {ptxInfo'referenceInputs} ->
+      plet (pcon $ PMachineFieldDoorV1 (pfromData ptxInfo'referenceInputs) certificatePolicyId) $ \door ->
+      pcontinueWinning (pcon PPhaseAScriptPreconditions) awardScriptHash policyId datum
+        (pfromData inputIndex) (pfromData outputIndex) transition
+        (pforgetData $ pdata $ pcon $ PTransactionFieldChunkWitness fieldIndex itemIndex carriage)
+        (pverifyPhaseAScriptPreconditionsItemSemanticsV1 # pvalidationSemanticPreState datum # transition # door
+          # pfromData fieldIndex # pfromData itemIndex # pfromData carriage)
         ownOutRef txInfo

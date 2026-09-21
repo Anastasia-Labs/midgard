@@ -27,6 +27,7 @@ module Midgard.ScriptSourcesRedeemerNormalization (
   ptraversalActionIdentityV1,
   ptraversalActionIdentityIsBoundV1,
   pverifyRawEnvelopeV1,
+  prawCommonControlIsInitial,
   ptraversalNormalizedStateIsBoundV1,
   pouterNormalizerRouteIsExactV1,
   ptraversalSerializationTemplateV1,
@@ -35,7 +36,11 @@ module Midgard.ScriptSourcesRedeemerNormalization (
   pexecutionAttestedStateV1,
   pexecutionAttestationIsBoundToEnvelopeV1,
   pexecutionAttestationSettlementIsExactV1,
-  presolutionIdentityV1,
+  pcarrierIdentity,
+  pcanonicalItemActionHash,
+  pscriptSourcesCarrier, pcekContextCarrier,
+  popenHeaderFamily, popenTailFamily, pheadFamily, pattachScalarFamily,
+  pfoldListFamily, padvanceFamily, pfinishDataFamily, pinvalidFamily,
   penvelopeCommitmentV1,
   penvelopeStateIsBoundV1,
   pbaseProvenanceIdentityV1,
@@ -61,7 +66,15 @@ import Midgard.FraudProofs.NativeTx.Codec (
   pencodeDefiniteBytes,
  )
 import Midgard.FraudProofs.NativeTx.Compact (pnativeTxProofCommitmentV1)
+import Midgard.CekContextItemWire qualified as ItemWire
+import Midgard.RedeemerItemProof qualified as Item
+import Midgard.ScriptSourcesRawFrame qualified as Frame
+import Midgard.ScriptProof qualified as Script
+import Midgard.ValidationMerkle qualified as Merkle
+import Midgard.ValidationResolutionData (decodePrepared, recordFields)
+import Midgard.RejectionReason (prejectInvalidFieldType)
 import Midgard.ValidationMachine (
+  prejectedSuccessorIsExact,
   PValidationOneStepWitnessV1 (..),
  )
 import Midgard.ValidationResolution (
@@ -96,6 +109,18 @@ pauxiliaryIdentityDomain = pconstant "MidgardScriptSourcesAuxiliaryIdentityV1"
 pactionIdentityDomain = pconstant "MidgardScriptSourcesNarrowActionIdentityV1"
 ptraversalActionIdentityDomain = pconstant "MidgardScriptSourcesTraversalActionIdentityV1"
 
+pscriptSourcesCarrier, pcekContextCarrier, popenHeaderFamily, popenTailFamily,
+  pheadFamily, pattachScalarFamily, pfoldListFamily, padvanceFamily, pfinishDataFamily, pinvalidFamily :: forall s. Term s PInteger
+pscriptSourcesCarrier = 0
+pcekContextCarrier = 1
+popenHeaderFamily = 2
+popenTailFamily = 3
+pheadFamily = 4
+pattachScalarFamily = 5
+pfoldListFamily = 6
+padvanceFamily = 7
+pfinishDataFamily = 8
+pinvalidFamily = 9
 presolutionIdentityDomain, penvelopeCommitmentDomain,
   pbaseProvenanceIdentityDomain :: forall s. Term s PByteString
 presolutionIdentityDomain = pconstant "MidgardScriptSourcesResolutionIdentityV1"
@@ -117,8 +142,10 @@ data PPreparedScriptSourcesRedeemerEnvelopeV1 (s :: S) = PPreparedScriptSourcesR
   { penvelope'version :: Term s (PAsData PInteger)
   , penvelope'domain :: Term s (PAsData PByteString)
   , penvelope'deploymentId :: Term s (PAsData PByteString)
-  , penvelope'base :: Term s (PAsData PPreparedValidationResolutionStateV1)
-  , penvelope'resolutionIdentity :: Term s (PAsData PByteString)
+  , penvelope'carrier :: Term s (PAsData PInteger)
+  , penvelope'base :: Term s PData
+  , penvelope'carrierIdentity :: Term s (PAsData PByteString)
+  , penvelope'expectedNextControlDataHash :: Term s (PAsData PByteString)
   , penvelope'actionFamily :: Term s (PAsData PInteger)
   , penvelope'canonicalAuxiliaryHash :: Term s (PAsData PByteString)
   , penvelope'canonicalActionHash :: Term s (PAsData PByteString)
@@ -255,45 +282,47 @@ pcanonicalAuxiliaryHashV1 :: forall s. Term s (PData :--> PByteString)
 pcanonicalAuxiliaryHashV1 = phoistAcyclic $ plam $ \auxiliary ->
   pblake2b_256 #$ pauxiliaryIdentityDomain <> (pserialiseData # auxiliary)
 
+
+pcanonicalItemActionHash :: forall s. Term s (PData :--> PData :--> PInteger :--> PByteString)
+pcanonicalItemActionHash = phoistAcyclic $ plam $ \current witness family ->
+  plet (recordFields 3 witness) $ \f -> plet (phead # f) $ \action ->
+  plet (pelemAt # 1 # f) $ \chunk -> plet (pelemAt # 2 # f) $ \nextChunk ->
+  pmatch (pasConstr # action) $ \(PBuiltinPair tag fields) ->
+  pif (family #>= pfoldMapFamily #&& family #<= pfinalizeFrameFamily)
+    (pexpectLength fields 1 $ plet (phead # fields) $ \traversal -> pmatch (pasConstr # traversal) $ \(PBuiltinPair t items) ->
+      pexpecting (tag #== 2 #&& pdataIsNone chunk #&& pdataIsNone nextChunk
+        #&& pif (family #== pfoldMapFamily) (t #== 7 #&& plength # items #== 6) (t #== 8 #&& plength # items #== 2))
+        (pnarrowPreimageHashV1 # current # traversal))
+    (plet (pif (family #== popenHeaderFamily) (tag #== 0 #&& pnull # fields) $
+      pif (family #== popenTailFamily) (tag #== 1 #&& pnull # fields) $
+      pif (family #== pfinishDataFamily) (tag #== 3 #&& pnull # fields #&& pdataIsNone chunk #&& pdataIsNone nextChunk) $
+      pif (family #== pinvalidFamily) ((tag #== 0 #|| tag #== 1) #&& pnull # fields) $
+      pexpectLength fields 1 $ pmatch (pasConstr # (phead # fields)) $ \(PBuiltinPair t items) ->
+        tag #== 2 #&& pif (family #== pheadFamily)
+          ((t #== 1 #&& plength # items #== 1) #|| (t #== 2 #&& plength # items #== 1) #|| (t #== 3 #&& pnull # items) #|| (t #== 4 #&& plength # items #== 2))
+          (pif (family #== pattachScalarFamily) (t #== 5 #&& plength # items #== 1 #&& pdataIsNone chunk #&& pdataIsNone nextChunk) $
+           pif (family #== pfoldListFamily) (t #== 6 #&& plength # items #== 4 #&& pdataIsNone chunk #&& pdataIsNone nextChunk) $
+           family #== padvanceFamily #&& t #== 0 #&& pnull # items)) $ \valid ->
+      pexpecting valid (pblake2b_256 # (pactionIdentityDomain <> (pserialiseData # (plistData # (pcons # current # (pcons # action # (pcons # chunk # (pcons # nextChunk # pnil)))))))))
+
 pcanonicalActionHashV1 :: forall s. Term s (PData :--> PInteger :--> PByteString)
-pcanonicalActionHashV1 = phoistAcyclic $ plam $ \auxiliary family ->
-  pmatch (pasConstr # auxiliary) $ \(PBuiltinPair auxiliaryTag auxiliaryFields) ->
-  pexpectLength auxiliaryFields 3 $
-    plet (phead # auxiliaryFields) $ \redeemerControl ->
-    plet (phead #$ ptail # auxiliaryFields) $ \currentControl ->
-    plet (phead #$ ptail #$ ptail # auxiliaryFields) $ \itemWitness ->
-    pmatch (pasConstr # itemWitness) $ \(PBuiltinPair witnessTag witnessFields) ->
-    pexpectLength witnessFields 3 $
-      plet (phead # witnessFields) $ \itemAction ->
-      plet (phead #$ ptail # witnessFields) $ \chunkProof ->
-      plet (phead #$ ptail #$ ptail # witnessFields) $ \nextChunkProof ->
-      pmatch (pasConstr # itemAction) $ \(PBuiltinPair itemActionTag itemActionFields) ->
-      pexpectLength itemActionFields 1 $
-        plet (phead # itemActionFields) $ \traversalAction ->
-        pmatch (pasConstr # traversalAction) $ \(PBuiltinPair traversalTag traversalFields) ->
-          pexpecting
-            ( auxiliaryTag #== 18
-                #&& witnessTag #== 0
-                #&& itemActionTag #== 2
-                #&& pdataIsNone redeemerControl
-                #&& pdataIsNone chunkProof
-                #&& pdataIsNone nextChunkProof
-                #&& pif
-                  (family #== pfoldMapFamily)
-                  (traversalTag #== 7 #&& plength # traversalFields #== 6)
-                  ( family #== pfinalizeFrameFamily
-                      #&& traversalTag #== 8
-                      #&& plength # traversalFields #== 2
-                  )
-            )
-            (pnarrowPreimageHashV1 # currentControl # traversalAction)
+pcanonicalActionHashV1 = phoistAcyclic $ plam $ \auxiliary family -> pmatch (pasConstr # auxiliary) $ \(PBuiltinPair tag f) ->
+  pexpectLength f 3 $ pexpecting (tag #== 18 #&& pdataIsNone (phead # f))
+    (pcanonicalItemActionHash # (pelemAt # 1 # f) # (pelemAt # 2 # f) # family)
+
 
 pactionMatchesFamilyV1 :: forall s.
   Term s (PDataTraverseActionV1 :--> PInteger :--> PBool)
 pactionMatchesFamilyV1 = phoistAcyclic $ plam $ \action family -> pmatch action $ \case
   PFoldMap _ _ _ _ _ _ -> family #== pfoldMapFamily
   PFinalizeFrame _ _ -> family #== pfinalizeFrameFamily
-  _ -> pconstant False
+  PHeadScalar _ -> family #== pheadFamily
+  PHeadSequence _ -> family #== pheadFamily
+  PHeadMap -> family #== pheadFamily
+  PHeadLargeConstructor _ _ -> family #== pheadFamily
+  PAttachScalar _ -> family #== pattachScalarFamily
+  PFoldList _ _ _ _ -> family #== pfoldListFamily
+  PNoAction -> family #== padvanceFamily
 
 pnarrowActionIsBoundV1 :: forall s.
   Term s (PData :--> PDataTraverseActionV1 :--> PInteger :--> PByteString :--> PBool)
@@ -363,7 +392,13 @@ pverifyRawEnvelopeV1 = phoistAcyclic $
             )
             $ \canonicalPrefixHead ->
           plet (pendingPrefix <> (pencodeDefiniteBytes # currentPendingHash)) $ \expectedWorkWitnessCbor ->
-          plet (pendingPrefix <> (pencodeDefiniteBytes # expectedNextHash)) $ \nextWorkWitnessCbor ->
+          plet (pif (family #== pfinishDataFamily)
+            (pmatch (pasConstr # auxiliary) $ \(PBuiltinPair _ auxiliaryFields) -> pexpectLength auxiliaryFields 3 $
+              pmatch (ItemWire.pdecodeRedeemerItemProofControl # (pelemAt # 1 # auxiliaryFields)) $ \current ->
+              plet (Frame.popenFrameV1 # pre # transition # 31 # 1) $ \frame ->
+              plet (Merkle.pappendLeaf # redeemerCount # (Frame.pitemFrontierV1 # frame # 13) # (Script.predeemerItemLeafHash # redeemerCount # pfromData (Item.predeemerControl'itemCommitment current))) $ \peaks ->
+              Frame.pdropExtensionV1 # (Frame.preplaceItemsV1 # frame # workWitnessCbor # 12 # 2 # (pcborInt (redeemerCount + 1) <> (Merkle.pencodeFrontier # peaks))) # currentPendingHash)
+            (pendingPrefix <> (pencodeDefiniteBytes # expectedNextHash))) $ \nextWorkWitnessCbor ->
           plet (pcanonicalAuxiliaryHashV1 # auxiliary) $ \auxiliaryHash ->
           plet (pcanonicalActionHashV1 # auxiliary # family) $ \actionHash ->
           pmatch pre $ \preState ->
@@ -374,7 +409,7 @@ pverifyRawEnvelopeV1 = phoistAcyclic $
                 , plengthBS # expectedNextHash #== 32
                 , psliceBS # 0 # (plengthBS # canonicalPrefixHead) # pendingPrefix #== canonicalPrefixHead
                 , workWitnessCbor #== expectedWorkWitnessCbor
-                , family #== pfoldMapFamily #|| family #== pfinalizeFrameFamily
+                , family #>= pfoldMapFamily #&& family #<= pinvalidFamily
                 , stage #== 1
                 , pnativeTxProofCommitmentV1
                     # compactCbor # witnessSetCompactCbor # fieldPreimageLengthsCbor
@@ -404,12 +439,11 @@ pverifyRawEnvelopeV1 = phoistAcyclic $
                 , redeemerCount #>= 0
                 , redeemerTotalCount #> redeemerCount
                 , redeemerTotalCount #<= 16384
-                , pfromData (pmachineState'phase successor) #== pcon PScriptSources
-                , pfromData (pmachineState'workRoot successor)
-                    #== phashWorkWitness
-                      # pcon PScriptSources
-                      # (pfromData (pmachineState'programCounter preState) + 1)
-                      # nextWorkWitnessCbor
+                , pif (family #== pinvalidFamily)
+                    (expectedNextHash #== pconstant "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+                      #&& prejectedSuccessorIsExact # pre # pfromData (poneStep'claimedSuccessor step) # prejectInvalidFieldType)
+                    (pfromData (pmachineState'phase successor) #== pcon PScriptSources
+                      #&& pfromData (pmachineState'workRoot successor) #== phashWorkWitness # pcon PScriptSources # (pfromData (pmachineState'programCounter preState) + 1) # nextWorkWitnessCbor)
                 ]
             )
             $ \valid ->
@@ -448,56 +482,21 @@ prawCommonControlIsInitial resolvedPeaks sourceCount replayCursor spendIndex pur
         , pnull # (pasList # (pelemAt # 5 # receiveFields))
         ]
 
-presolutionIdentityV1 :: forall s.
-  Term s (PPreparedValidationResolutionStateV1 :--> PByteString)
-presolutionIdentityV1 = phoistAcyclic $ plam $ \base -> pmatch base $ \prepared ->
-  pblake2b_256 #$ presolutionIdentityDomain <>
-    (pserialiseData # pforgetData (pprepared'resolution prepared))
 
-penvelopeCommitmentV1 :: forall s.
-  Term s
-    ( PByteString
-        :--> PByteString
-        :--> PByteString
-        :--> PInteger
-        :--> PByteString
-        :--> PByteString
-        :--> PByteString
-        :--> PByteString
-        :--> PInteger
-        :--> PInteger
-        :--> PByteString
-        :--> PByteString
-        :--> PByteString
-        :--> PByteString
-        :--> PByteString
-        :--> PByteString
-        :--> PByteString
-        :--> PByteString
-    )
-penvelopeCommitmentV1 = phoistAcyclic $
-  plam $ \deployment evidence resolutionIdentity family auxiliaryHash actionHash currentHash nextHash count total binder traversalNormalizer outerNormalizer semanticExecutor settlement transactionCommitment contextHash ->
-    pblake2b_256 #$
-      penvelopeCommitmentDomain
-        <> (pencodeDefiniteArrayHeader # 18)
-        <> pcborInt pversion
-        <> (pencodeDefiniteBytes # deployment)
-        <> (pencodeDefiniteBytes # evidence)
-        <> (pencodeDefiniteBytes # resolutionIdentity)
-        <> pcborInt family
-        <> (pencodeDefiniteBytes # auxiliaryHash)
-        <> (pencodeDefiniteBytes # actionHash)
-        <> (pencodeDefiniteBytes # currentHash)
-        <> (pencodeDefiniteBytes # nextHash)
-        <> pcborInt count
-        <> pcborInt total
-        <> (pencodeDefiniteBytes # binder)
-        <> (pencodeDefiniteBytes # traversalNormalizer)
-        <> (pencodeDefiniteBytes # outerNormalizer)
-        <> (pencodeDefiniteBytes # semanticExecutor)
-        <> (pencodeDefiniteBytes # settlement)
-        <> (pencodeDefiniteBytes # transactionCommitment)
-        <> (pencodeDefiniteBytes # contextHash)
+pcarrierIdentity :: forall s. Term s (PData :--> PByteString)
+pcarrierIdentity = phoistAcyclic $ plam $ \base -> pblake2b_256 # (presolutionIdentityDomain <> (pserialiseData # base))
+
+
+
+penvelopeCommitmentV1 :: forall s. Term s (PByteString :--> PInteger :--> PByteString :--> PInteger :--> PByteString :--> PByteString :--> PByteString :--> PByteString :--> PInteger :--> PInteger :--> PByteString :--> PByteString :--> PByteString :--> PByteString :--> PByteString :--> PByteString :--> PByteString)
+penvelopeCommitmentV1 = phoistAcyclic $ plam $ \deployment carrier identity family auxiliaryHash actionHash currentHash nextHash count total binder traversal outer executor settlement nextDataHash ->
+  pblake2b_256 # (penvelopeCommitmentDomain <> (pencodeDefiniteArrayHeader # 17)
+    <> pcborInt pversion <> (pencodeDefiniteBytes # deployment) <> pcborInt carrier <> (pencodeDefiniteBytes # identity)
+    <> pcborInt family <> (pencodeDefiniteBytes # auxiliaryHash) <> (pencodeDefiniteBytes # actionHash)
+    <> (pencodeDefiniteBytes # currentHash) <> (pencodeDefiniteBytes # nextHash) <> pcborInt count <> pcborInt total
+    <> (pencodeDefiniteBytes # binder) <> (pencodeDefiniteBytes # traversal) <> (pencodeDefiniteBytes # outer)
+    <> (pencodeDefiniteBytes # executor) <> (pencodeDefiniteBytes # settlement) <> (pencodeDefiniteBytes # nextDataHash))
+
 
 penvelopeStateIsBoundV1 :: forall s.
   Term s
@@ -508,19 +507,15 @@ penvelopeStateIsBoundV1 :: forall s.
     )
 penvelopeStateIsBoundV1 = phoistAcyclic $ plam $ \state deployment binder ->
   pmatch state $ \st ->
-  pmatch (pfromData $ penvelope'base st) $ \base ->
-  pmatch (pfromData $ pprepared'resolution base) $ \resolution ->
-  pmatch (pfromData $ presolution'preState resolution) $ \pre ->
     pfromData (penvelope'version st) #== pversion
       #&& pfromData (penvelope'domain st) #== penvelopeDomain
       #&& plengthBS # pfromData (penvelope'deploymentId st) #== 32
       #&& pfromData (penvelope'deploymentId st) #== deployment
-      #&& pfromData (pprepared'version base) #== ppreparedResolutionVersion
-      #&& plengthBS # pfromData (pprepared'evidenceHash base) #== 32
-      #&& pfromData (penvelope'resolutionIdentity st) #== presolutionIdentityV1 # pfromData (penvelope'base st)
-      #&& ( pfromData (penvelope'actionFamily st) #== pfoldMapFamily
-              #|| pfromData (penvelope'actionFamily st) #== pfinalizeFrameFamily
-          )
+      #&& pfromData (penvelope'carrierIdentity st) #== pcarrierIdentity # penvelope'base st
+      #&& pif (pfromData (penvelope'carrier st) #== pscriptSourcesCarrier)
+        (pfromData (penvelope'expectedNextControlDataHash st) #== pconstant "")
+        (pfromData (penvelope'carrier st) #== pcekContextCarrier #&& plengthBS # pfromData (penvelope'expectedNextControlDataHash st) #== 32)
+      #&& pfromData (penvelope'actionFamily st) #>= pfoldMapFamily #&& pfromData (penvelope'actionFamily st) #<= pinvalidFamily
       #&& plengthBS # pfromData (penvelope'canonicalAuxiliaryHash st) #== 32
       #&& plengthBS # pfromData (penvelope'canonicalActionHash st) #== 32
       #&& plengthBS # pfromData (penvelope'currentPendingItemControlHash st) #== 32
@@ -538,8 +533,8 @@ penvelopeStateIsBoundV1 = phoistAcyclic $ plam $ \state deployment binder ->
       #&& pfromData (penvelope'envelopeCommitment st)
         #== penvelopeCommitmentV1
           # pfromData (penvelope'deploymentId st)
-          # pfromData (pprepared'evidenceHash base)
-          # pfromData (penvelope'resolutionIdentity st)
+          # pfromData (penvelope'carrier st)
+          # pfromData (penvelope'carrierIdentity st)
           # pfromData (penvelope'actionFamily st)
           # pfromData (penvelope'canonicalAuxiliaryHash st)
           # pfromData (penvelope'canonicalActionHash st)
@@ -552,18 +547,16 @@ penvelopeStateIsBoundV1 = phoistAcyclic $ plam $ \state deployment binder ->
           # pfromData (penvelope'outerNormalizerScriptHash st)
           # pfromData (penvelope'semanticExecutorScriptHash st)
           # pfromData (penvelope'settlementScriptHash st)
-          # pfromData (pmachineState'transactionCommitment pre)
-          # pfromData (pmachineState'validationContextHash pre)
+          # pfromData (penvelope'expectedNextControlDataHash st)
 
 pbaseProvenanceIdentityV1 :: forall s.
   Term s (PPreparedScriptSourcesRedeemerEnvelopeV1 :--> PByteString)
 pbaseProvenanceIdentityV1 = phoistAcyclic $ plam $ \state -> pmatch state $ \st ->
-  pmatch (pfromData $ penvelope'base st) $ \base ->
     pblake2b_256 #$
       pbaseProvenanceIdentityDomain
         <> (pencodeDefiniteArrayHeader # 3)
-        <> (pencodeDefiniteBytes # pfromData (pprepared'evidenceHash base))
-        <> (pencodeDefiniteBytes # pfromData (penvelope'resolutionIdentity st))
+        <> pcborInt (pfromData $ penvelope'carrier st)
+        <> (pencodeDefiniteBytes # pfromData (penvelope'carrierIdentity st))
         <> (pencodeDefiniteBytes # pfromData (penvelope'envelopeCommitment st))
 
 ptraversalNormalizerRouteIsExactV1 :: forall s.
@@ -756,25 +749,21 @@ pexecutionAttestationIsBoundToEnvelopeV1 :: forall s.
         :--> PByteString
         :--> PByteString
         :--> PByteString
-        :--> PByteString
-        :--> PByteString
+        :--> PBuiltinList (PAsData PByteString)
         :--> PByteString
         :--> PBool
     )
 pexecutionAttestationIsBoundToEnvelopeV1 = phoistAcyclic $
-  plam $ \state envelope deployment binder traversalNormalizer outerNormalizer foldExecutor finalizeExecutor settlement ->
+  plam $ \state envelope deployment binder traversalNormalizer outerNormalizer executors settlement ->
     pmatch state $ \st -> pmatch envelope $ \env ->
-      plet
-        ( pif
-            (pfromData (pattested'actionFamily st) #== pfoldMapFamily)
-            ( pfromData (pattested'semanticExecutorScriptHash st) #== foldExecutor
-                #&& pfromData (penvelope'semanticExecutorScriptHash env) #== foldExecutor
-            )
-            ( pfromData (pattested'actionFamily st) #== pfinalizeFrameFamily
-                #&& pfromData (pattested'semanticExecutorScriptHash st) #== finalizeExecutor
-                #&& pfromData (penvelope'semanticExecutorScriptHash env) #== finalizeExecutor
-            )
-        )
+      plet (pfromData $ pattested'actionFamily st) $ \family ->
+      plet (pif (family #>= 0 #&& family #<= 9)
+        (pelemAt # family # (pconstant @(PBuiltinList PInteger) [0,1,2,3,4,8,10,11,16,17])) perror) $ \first ->
+      plet (pelemAt # family # (pconstant @(PBuiltinList PInteger) [0,1,2,3,7,9,10,15,16,18])) $ \last ->
+      plet (pattested'semanticExecutorScriptHash st #== penvelope'semanticExecutorScriptHash env
+        #&& (pfix $ \self -> plam $ \index hashes -> pmatch hashes $ \case
+          PNil -> pconstant False
+          PCons hash rest -> (index #>= first #&& index #<= last #&& hash #== pattested'semanticExecutorScriptHash st) #|| self # (index + 1) # rest) # 0 # executors)
         $ \selectedExecutorIsExact ->
           pand'List
             [ pfromData (pattested'version st) #== pversion
@@ -782,7 +771,6 @@ pexecutionAttestationIsBoundToEnvelopeV1 = phoistAcyclic $
             , plengthBS # pfromData (pattested'deploymentId st) #== 32
             , pfromData (pattested'deploymentId st) #== deployment
             , pfromData (penvelope'deploymentId env) #== deployment
-            , ppreparedResolutionIsWellFormed # pfromData (penvelope'base env)
             , penvelopeStateIsBoundV1 # envelope # deployment # binder
             , plengthBS # pfromData (pattested'baseProvenanceIdentity st) #== 32
             , pfromData (pattested'baseProvenanceIdentity st) #== pbaseProvenanceIdentityV1 # envelope
@@ -822,8 +810,7 @@ pexecutionAttestationSettlementIsExactV1 :: forall s.
         :--> PByteString
         :--> PByteString
         :--> PByteString
-        :--> PByteString
-        :--> PByteString
+        :--> PBuiltinList (PAsData PByteString)
         :--> PByteString
         :--> PByteString
         :--> PByteString
@@ -831,9 +818,11 @@ pexecutionAttestationSettlementIsExactV1 :: forall s.
         :--> PBool
     )
 pexecutionAttestationSettlementIsExactV1 = phoistAcyclic $
-  plam $ \state envelope deployment binder traversalNormalizer outerNormalizer foldExecutor finalizeExecutor settlement award outputScript outputState ->
+  plam $ \state envelope deployment binder traversalNormalizer outerNormalizer executors settlement award outputScript outputState ->
+    pmatch envelope $ \env -> plet (decodePrepared $ penvelope'base env) $ \base ->
     pand'List
-      [ plengthBS # award #== 28
+      [ pfromData (penvelope'carrier env) #== pscriptSourcesCarrier
+      , ppreparedResolutionIsWellFormed # base
       , pexecutionAttestationIsBoundToEnvelopeV1
           # state
           # envelope
@@ -841,8 +830,7 @@ pexecutionAttestationSettlementIsExactV1 = phoistAcyclic $
           # binder
           # traversalNormalizer
           # outerNormalizer
-          # foldExecutor
-          # finalizeExecutor
+          # executors
           # settlement
       , outputScript #== award
       , outputState #== pforgetData (pdata pwinningResolution)
