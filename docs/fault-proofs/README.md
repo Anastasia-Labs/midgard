@@ -32,6 +32,7 @@ challenge publication work is tracked in its [size plan](size-plans/availability
 | ---------------------------------------------------------- | --------------------------------------------------------------------------- |
 | [`catalogue-status.md`](catalogue-status.md)               | Source category/installation inventory and acceptance boundaries            |
 | [`remaining-gaps.md`](remaining-gaps.md)                   | Open non-interactive protocol/category gaps and required fixes              |
+| [`event-history-design.md`](event-history-design.md)       | Proposed NIFP-01–03 architecture, lifecycle, alternatives, and acceptance   |
 | [`coverage-matrix.md`](coverage-matrix.md)                 | Ledger-rule coverage and remaining proof/release gaps                       |
 | [`architecture.md`](architecture.md)                       | Catalogue, computation-thread, token, removal, DA, and watcher architecture |
 | [`onchain-reference.md`](onchain-reference.md)             | Aiken module map and compiled identity                                      |

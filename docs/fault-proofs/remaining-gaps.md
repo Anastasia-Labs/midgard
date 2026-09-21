@@ -452,8 +452,11 @@ not closed under the optimistic dispute model.
 
 ## Existing documentation for withdrawal, deposit, and event gaps
 
-The repository contains partial documentation, but no existing document defines
-and closes the complete on-chain history/nonmembership solution:
+The repository contains partial requirements and a proposed
+[event-history architecture](event-history-design.md), which compares the current
+flow, alternatives, checkpoint completeness, retention, and acceptance criteria.
+The proposal is not an accepted or implemented solution; these gaps remain open.
+The earlier documentation establishes the following narrower guarantees:
 
 | Document                                                                                                                                                                                                                      | What it already establishes                                                                                                   | What remains                                                                                                |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
