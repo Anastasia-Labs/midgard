@@ -127,6 +127,7 @@ tests =
     , decliningTests
     , summaryTests
     , semanticTests
+    , ledgerBlobTests
     ]
 
 --------------------------------------------------------------------------------
@@ -916,6 +917,27 @@ semanticTests =
     items = [PD.I 1, PD.B "two", PD.List [PD.I 3]]
     entries = [(PD.B "k", PD.I 1), (PD.I 2, PD.B "v")]
 
+-- Exact target Aiken/host vectors; roots are not derived by the implementation.
+ledgerBlobTests :: TestTree
+ledgerBlobTests = testGroup "ledger Data blob boundary"
+  ([ testCase (show n <> " bytes matches the Aiken golden") $
+       passertEval $
+         pmatch (psemanticDataSummaryV1 # pconstant (PD.B (BS.replicate n 0xab))) $ \summary ->
+           pand'List
+             [ pfromData (psummary'root summary) #== phexByteStr root
+             , pfromData (psummary'cborLength summary) #== pconstant cborLength
+             , pfromData (psummary'memory summary) #== pconstant (fromIntegral n + 4)
+             ]
+   | (n, root, cborLength) <-
+       [ (9215, "c2efac0c7d78bca123484c80799200772859a97f54965d59881f06c434892988", 9505)
+       , (9216, "61705d68831234591650ebd3281d2eaf55819dfc489938644dfeaade1b4658d2", 9506)
+       , (12000, "ff21a0015d198c6ca7497145d7091c3c1f82c6189d8ac36a659338b713ae5ffd", 12378)
+       , (15841, "d120efaa40f0772065121c25fb7039ce03943bb1ea0c59e4e22b1b3f6b7c7c8c", 16339)
+       , (16384, "31a6e4176316af58f404da1d2e282e07190cd552fb6ac7f309b8ddd8b48b1f40", 16898)
+       ]
+   ] <> [testCase "16385 bytes refuses" $
+           pfails $ phashSemanticDataV1 # pconstant (PD.B (BS.replicate 16385 0xab))])
+
 --------------------------------------------------------------------------------
 -- Assertion helpers
 --------------------------------------------------------------------------------
@@ -1159,7 +1181,7 @@ nodeChildRoots = \case
 
 maxChunk, maxBlob :: Int
 maxChunk = 4095
-maxBlob = 9215
+maxBlob = 16384
 
 hashBlobChunk :: BS.ByteString -> BS.ByteString
 hashBlobChunk chunk
@@ -1175,20 +1197,11 @@ blobRoot :: BS.ByteString -> BS.ByteString
 blobRoot bytes
   | len > maxBlob = error "reference blob: too long"
   | len <= maxChunk = hashBlobChunk bytes
-  | remaining <= maxChunk = left
-  | otherwise = hashBlobBranch left (hashBlobChunk third) (fromIntegral len)
+  | otherwise = hashBlobBranch (blobRoot left) (blobRoot right) (fromIntegral len)
   where
     len = BS.length bytes
-    first = BS.take maxChunk bytes
-    remaining = len - maxChunk
-    secondLength = min remaining maxChunk
-    second = BS.take secondLength (BS.drop maxChunk bytes)
-    left =
-      hashBlobBranch
-        (hashBlobChunk first)
-        (hashBlobChunk second)
-        (fromIntegral (maxChunk + secondLength))
-    third = BS.drop (maxChunk + secondLength) bytes
+    splitLength = last (takeWhile (< len) (iterate (* 2) maxChunk))
+    (left, right) = BS.splitAt splitLength bytes
 
 {- | 'definiteBytes' with the 4,095-byte chunk in range.
 

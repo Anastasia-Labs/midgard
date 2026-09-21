@@ -60,17 +60,17 @@ import Midgard.FraudProofs.FieldOpening (
   poutputsFieldIndex,
   preferenceInputsFieldIndex,
  )
+import Midgard.FraudProofs.NativeTx.Types (
+  PMidgardTxInput (..),
+  PNativeTxCompact (..),
+  PVerifiedMidgardNativeTxCompact (..),
+ )
 import Midgard.FraudProofs.ReferenceInputNoIdx (
   PStep02Args (..),
   PStep02State (..),
   PStep03State (..),
   PStep04Args (..),
   PStep04State (..),
- )
-import Midgard.FraudProofs.NativeTx.Types (
-  PMidgardTxInput (..),
-  PNativeTxCompact (..),
-  PVerifiedMidgardNativeTxCompact (..),
  )
 import Midgard.NativeTxFieldAccess (pfieldItemCount)
 import Midgard.NativeTxMachineWalk (pspendInputAt)
@@ -102,7 +102,7 @@ referenceInputNoIdxStep01Validator = plam $
     pstep ctx $ \datum redeemer ownOutRef txInfo ->
       pdispatch computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
         \args -> P.do
-          PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
+          PTxInfo{ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
             pmatch txInfo
           ppassNativeTxToNextStepCarried
             computationThreadTokenPolicyId
@@ -123,16 +123,16 @@ referenceInputNoIdxStep01Validator = plam $
                _header
                badTxId
                badTxView -> P.do
-                PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch badTxView
-                PNativeTxCompact {pcompact'validityCode} <- pmatch pverified'txCompact
+                PVerifiedMidgardNativeTxCompact{pverified'txCompact} <- pmatch badTxView
+                PNativeTxCompact{pcompact'validityCode} <- pmatch pverified'txCompact
                 pexpecting (pcompact'validityCode #== 0) $
                   pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
-                  pexpecting
-                    ( outputStateData
-                        #== pforgetData
-                          (pdata (pcon (PStep02State {pstep02State'verifiedTxId = pdata badTxId})))
-                    )
-                    (pconstant True)
+                    pexpecting
+                      ( outputStateData
+                          #== pforgetData
+                            (pdata (pcon (PStep02State{pstep02State'verifiedTxId = pdata badTxId})))
+                      )
+                      (pconstant True)
 
 --------------------------------------------------------------------------------
 -- Step 02
@@ -153,64 +153,65 @@ referenceInputNoIdxStep02Validator ::
         :--> PScriptContext
         :--> PUnit
     )
-referenceInputNoIdxStep02Validator = plam $
-  \step03ValidatorScriptHash
-   computationThreadTokenPolicyId
-   fieldPreimageCertificatePolicyId
-   ctx ->
-      pstep ctx $ \datum redeemer ownOutRef txInfo ->
-        pdispatch @_ @PStep02Args computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
-          \args -> P.do
-            PStep02Args
-              { pstep02Args'inputIndex
-              , pstep02Args'outputIndex
-              , pstep02Args'referenceInputsOpening
-              , pstep02Args'badReferenceInputIndex
-              } <-
-              pmatch args
-            PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
-            referenceInputs <- plet $ pfromData ptxInfo'referenceInputs
-            pcontinue
-              computationThreadTokenPolicyId
-              (pexpectDatum datum)
-              (pfromData pstep02Args'inputIndex)
-              (pfromData pstep02Args'outputIndex)
-              ownOutRef
-              (pfromData ptxInfo'inputs)
-              (pfromData ptxInfo'outputs)
-              $ \_ownScriptHash
-                 _threadTokenAssetName
-                 _fraudProver
-                 mInputStateData
-                 outputScriptHash
-                 outputStateData -> P.do
-                  PStep02State {pstep02State'verifiedTxId} <-
-                    pmatch (pexpectStateAs @PStep02State mInputStateData)
-                  referenceInputsView <-
-                    plet $
-                      popenedFieldView
-                        # pfromData pstep02Args'referenceInputsOpening
-                        # pcon (PBodyAnchor {pbodyAnchor'txId = pstep02State'verifiedTxId})
-                        # preferenceInputsFieldIndex
-                        # referenceInputs
-                        # fieldPreimageCertificatePolicyId
-                  PMidgardTxInput {ptxInput'txId, ptxInput'outputIndex} <-
-                    pmatch (pspendInputAt # referenceInputsView # pfromData pstep02Args'badReferenceInputIndex)
-                  pexpecting (outputScriptHash #== step03ValidatorScriptHash) $
-                    pexpecting
-                      ( outputStateData
-                          #== pforgetData
-                            ( pdata
-                                ( pcon
-                                    ( PStep03State
-                                        { pstep03State'badReferenceInputTxId = ptxInput'txId
-                                        , pstep03State'badReferenceInputOutputIndex = ptxInput'outputIndex
-                                        }
-                                    )
-                                )
-                            )
-                      )
-                      (pconstant True)
+referenceInputNoIdxStep02Validator =
+  plam $
+    \step03ValidatorScriptHash
+     computationThreadTokenPolicyId
+     fieldPreimageCertificatePolicyId
+     ctx ->
+        pstep ctx $ \datum redeemer ownOutRef txInfo ->
+          pdispatch @_ @PStep02Args computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
+            \args -> P.do
+              PStep02Args
+                { pstep02Args'inputIndex
+                , pstep02Args'outputIndex
+                , pstep02Args'referenceInputsOpening
+                , pstep02Args'badReferenceInputIndex
+                } <-
+                pmatch args
+              PTxInfo{ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
+              referenceInputs <- plet $ pfromData ptxInfo'referenceInputs
+              pcontinue
+                computationThreadTokenPolicyId
+                (pexpectDatum datum)
+                (pfromData pstep02Args'inputIndex)
+                (pfromData pstep02Args'outputIndex)
+                ownOutRef
+                (pfromData ptxInfo'inputs)
+                (pfromData ptxInfo'outputs)
+                $ \_ownScriptHash
+                   _threadTokenAssetName
+                   _fraudProver
+                   mInputStateData
+                   outputScriptHash
+                   outputStateData -> P.do
+                    PStep02State{pstep02State'verifiedTxId} <-
+                      pmatch (pexpectStateAs @PStep02State mInputStateData)
+                    referenceInputsView <-
+                      plet $
+                        popenedFieldView
+                          # pfromData pstep02Args'referenceInputsOpening
+                          # pcon (PBodyAnchor{pbodyAnchor'txId = pstep02State'verifiedTxId})
+                          # preferenceInputsFieldIndex
+                          # referenceInputs
+                          # fieldPreimageCertificatePolicyId
+                    PMidgardTxInput{ptxInput'txId, ptxInput'outputIndex} <-
+                      pmatch (pspendInputAt # referenceInputsView # pfromData pstep02Args'badReferenceInputIndex)
+                    pexpecting (outputScriptHash #== step03ValidatorScriptHash) $
+                      pexpecting
+                        ( outputStateData
+                            #== pforgetData
+                              ( pdata
+                                  ( pcon
+                                      ( PStep03State
+                                          { pstep03State'badReferenceInputTxId = ptxInput'txId
+                                          , pstep03State'badReferenceInputOutputIndex = ptxInput'outputIndex
+                                          }
+                                      )
+                                  )
+                              )
+                        )
+                        (pconstant True)
 
 --------------------------------------------------------------------------------
 -- Step 03
@@ -240,7 +241,7 @@ referenceInputNoIdxStep03Validator = plam $
     pstep ctx $ \datum redeemer ownOutRef txInfo ->
       pdispatch computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
         \args -> P.do
-          PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
+          PTxInfo{ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
             pmatch txInfo
           ppassNativeTxToNextStepCarried
             computationThreadTokenPolicyId
@@ -261,31 +262,33 @@ referenceInputNoIdxStep03Validator = plam $
                _header
                producingTxId
                producingTxView -> P.do
-                PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch producingTxView
-                PNativeTxCompact {pcompact'validityCode} <- pmatch pverified'txCompact
-                PStep03State {pstep03State'badReferenceInputTxId, pstep03State'badReferenceInputOutputIndex} <-
-                  pmatch (pexpectStateAs @PStep03State mInputStateData)
+                PVerifiedMidgardNativeTxCompact{pverified'txCompact} <- pmatch producingTxView
+                PNativeTxCompact{pcompact'validityCode} <- pmatch pverified'txCompact
                 -- 2. The transaction just bound must be the one the disputed
                 --    reference input names. This is where a challenge against a
-                --    valid block dies.
+                --    valid block dies. The target checks validity before it
+                --    decodes the carried state; preserve that strict order.
                 pexpecting (pcompact'validityCode #== 0) $
-                  pexpecting (producingTxId #== pfromData pstep03State'badReferenceInputTxId) $
-                  pexpecting (outputScriptHash #== step04ValidatorScriptHash) $
-                    pexpecting
-                      ( outputStateData
-                          #== pforgetData
-                            ( pdata
-                                ( pcon
-                                    ( PStep04State
-                                        { pstep04State'producingTxId = pdata producingTxId
-                                        , pstep04State'badReferenceInputOutputIndex =
-                                            pstep03State'badReferenceInputOutputIndex
-                                        }
+                  P.do
+                    PStep03State{pstep03State'badReferenceInputTxId, pstep03State'badReferenceInputOutputIndex} <-
+                      pmatch (pexpectStateAs @PStep03State mInputStateData)
+                    pexpecting (producingTxId #== pfromData pstep03State'badReferenceInputTxId) $
+                      pexpecting (outputScriptHash #== step04ValidatorScriptHash) $
+                        pexpecting
+                          ( outputStateData
+                              #== pforgetData
+                                ( pdata
+                                    ( pcon
+                                        ( PStep04State
+                                            { pstep04State'producingTxId = pdata producingTxId
+                                            , pstep04State'badReferenceInputOutputIndex =
+                                                pstep03State'badReferenceInputOutputIndex
+                                            }
+                                        )
                                     )
                                 )
-                            )
-                      )
-                      (pconstant True)
+                          )
+                          (pconstant True)
 
 --------------------------------------------------------------------------------
 -- Step 04
@@ -300,57 +303,59 @@ referenceInputNoIdxStep04Validator ::
   forall (s :: S).
   Term
     s
-    ( PAsData PCurrencySymbol -- fraud proof token policy
+    ( PAsData PCurrencySymbol -- computation thread token policy
+        :--> PAsData PCurrencySymbol -- fraud proof token policy
         :--> PAsData PAddress -- fraud proof token address
-        :--> PAsData PCurrencySymbol -- computation thread token policy
         :--> PAsData PCurrencySymbol -- field preimage certificate policy
         :--> PScriptContext
         :--> PUnit
     )
-referenceInputNoIdxStep04Validator = plam $
-  \fraudProofTokenPolicyId
-   fraudProofTokenAddress
-   computationThreadTokenPolicyId
-   fieldPreimageCertificatePolicyId
-   ctx ->
-      pstep ctx $ \datum redeemer ownOutRef txInfo ->
-        pdispatch @_ @PStep04Args computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
-          \args -> P.do
-            PStep04Args
-              { pstep04Args'inputIndex
-              , pstep04Args'outputIndex
-              , pstep04Args'fraudProofMintRedeemerIndex
-              , pstep04Args'outputsOpening
-              } <-
-              pmatch args
-            PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
-              pmatch txInfo
-            referenceInputs <- plet $ pfromData ptxInfo'referenceInputs
-            pfinalize
-              computationThreadTokenPolicyId
-              fraudProofTokenPolicyId
-              fraudProofTokenAddress
-              (pexpectDatum datum)
-              (pfromData pstep04Args'inputIndex)
-              (pfromData pstep04Args'outputIndex)
-              (pfromData pstep04Args'fraudProofMintRedeemerIndex)
-              ownOutRef
-              (pfromData ptxInfo'inputs)
-              (pfromData ptxInfo'outputs)
-              (pto (pto (pfromData ptxInfo'redeemers)))
-              $ \_ownScriptHash _threadTokenAssetName _fraudProver mInputStateData -> P.do
-                PStep04State {pstep04State'producingTxId, pstep04State'badReferenceInputOutputIndex} <-
-                  pmatch (pexpectStateAs @PStep04State mInputStateData)
-                outputsView <-
-                  plet $
-                    popenedFieldView
-                      # pfromData pstep04Args'outputsOpening
-                      # pcon (PBodyAnchor {pbodyAnchor'txId = pstep04State'producingTxId})
-                      # poutputsFieldIndex
-                      # referenceInputs
-                      # fieldPreimageCertificatePolicyId
-                pexpecting
-                  ( pfromData pstep04State'badReferenceInputOutputIndex
-                      #>= pfieldItemCount # outputsView
-                  )
-                  (pconstant True)
+referenceInputNoIdxStep04Validator =
+  plam $
+    \computationThreadTokenPolicyId
+     fraudProofTokenPolicyId
+     fraudProofTokenAddress
+     fieldPreimageCertificatePolicyId
+     ctx ->
+        pstep ctx $ \datum redeemer ownOutRef txInfo ->
+          pdispatch @_ @PStep04Args computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
+            \args -> P.do
+              PStep04Args
+                { pstep04Args'inputIndex
+                , pstep04Args'outputIndex
+                , pstep04Args'fraudProofMintRedeemerIndex
+                , pstep04Args'outputsOpening
+                } <-
+                pmatch args
+              PTxInfo{ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
+                pmatch txInfo
+              referenceInputs <- plet $ pfromData ptxInfo'referenceInputs
+              pfinalize
+                computationThreadTokenPolicyId
+                fraudProofTokenPolicyId
+                fraudProofTokenAddress
+                (pexpectDatum datum)
+                (pfromData pstep04Args'inputIndex)
+                (pfromData pstep04Args'outputIndex)
+                (pfromData pstep04Args'fraudProofMintRedeemerIndex)
+                ownOutRef
+                (pfromData ptxInfo'inputs)
+                (pfromData ptxInfo'outputs)
+                (pto (pto (pfromData ptxInfo'redeemers)))
+                $ \_ownScriptHash _threadTokenAssetName _fraudProver mInputStateData -> P.do
+                  PStep04State{pstep04State'producingTxId, pstep04State'badReferenceInputOutputIndex} <-
+                    pmatch (pexpectStateAs @PStep04State mInputStateData)
+                  outputsView <-
+                    plet $
+                      popenedFieldView
+                        # pfromData pstep04Args'outputsOpening
+                        # pcon (PBodyAnchor{pbodyAnchor'txId = pstep04State'producingTxId})
+                        # poutputsFieldIndex
+                        # referenceInputs
+                        # fieldPreimageCertificatePolicyId
+                  pexpecting
+                    ( pfromData pstep04State'badReferenceInputOutputIndex
+                        #>= pfieldItemCount
+                        # outputsView
+                    )
+                    (pconstant True)

@@ -18,10 +18,13 @@ module Midgard.CekDataBytes (
   pcontrolIsWellFormed,
   pinitialControlV1,
   pencodeControlV1,
+  pcontrolData,
   pcontrolFromDataV1,
   pdecodeControlV1,
   pnextSourceSpanV1,
+  pprevalidatedNextSourceSpan,
   pstepV1,
+  pprevalidatedStep,
   pfinalizeV1,
 ) where
 
@@ -266,6 +269,23 @@ poptionalBlobFromData = phoistAcyclic $
         )
         $ pif (index #== 1 #&& pnull # fields) (pcon PDNothing) perror
 
+-- | Aiken @control_data_v1@: direct wire Data, with canonical nested controls.
+-- The consuming stage must validate and authenticate the control.
+pcontrolData :: forall (s :: S). Term s (PCekDataBytesControlV1 :--> PData)
+pcontrolData = phoistAcyclic $ plam $ \control -> pmatch control $ \c ->
+  pforgetData $ pdata $
+    foldr (\item rest -> pcons @PBuiltinList # item # rest) pnil
+      [ pforgetData (pdata pversion)
+      , pforgetData (pdata (pfromData (pbytes'stage c)))
+      , pforgetData (pdata (pfromData (pbytes'sourceStart c)))
+      , pforgetData (pdata (pfromData (pbytes'sourceLength c)))
+      , pforgetData (pdata (pfromData (pbytes'bytesLength c)))
+      , pmatch (pfromData (pbytes'blob c)) (\case
+          PDNothing -> pforgetData $ pconstrBuiltin # 1 # pnil
+          PDJust value -> pforgetData $ pconstrBuiltin # 0
+            # (pcons # (Blob.pcontrolData # pfromData value) # pnil))
+      ]
+
 pcontrolFromDataV1 :: forall (s :: S). Term s (PData :--> PCekDataBytesControlV1)
 pcontrolFromDataV1 = phoistAcyclic $
   plam $ \d ->
@@ -337,16 +357,16 @@ pmappedRawLength = phoistAcyclic $
                         + takeBytes
                         + self # bytesLength # (contentCursor + takeBytes) # (remaining - takeBytes)
 
-pcontentPlan ::
+pprevalidatedContentPlan ::
   forall (s :: S). Term s (PCekDataBytesControlV1 :--> PMaybe PContentPlanV1)
-pcontentPlan = phoistAcyclic $
+pprevalidatedContentPlan = phoistAcyclic $
   plam $ \control ->
     pmatch control $ \c ->
       pif (pnot # (pfromData (pbytes'stage c) #== pstageBlob)) (pcon PNothing) $
         pmatch (pfromData (pbytes'blob c)) $ \case
           PDNothing -> perror
           PDJust blobData ->
-            pmatch (Blob.pnextSourceSpanV1 # pfromData blobData) $ \case
+            pmatch (Blob.pprevalidatedNextSourceSpan # pfromData blobData) $ \case
               PNothing -> pcon PNothing
               PJust virtualSpan ->
                 pmatch virtualSpan $ \(Blob.PCekSourceBlobSpanV1 absoluteStart spanLength) ->
@@ -485,30 +505,36 @@ pnextSourceSpanV1 ::
   forall (s :: S). Term s (PCekDataBytesControlV1 :--> PMaybe Blob.PCekSourceBlobSpanV1)
 pnextSourceSpanV1 = phoistAcyclic $
   plam $ \control ->
-    pif (pnot # (pcontrolIsWellFormed # control)) (pcon PNothing) $
-      pmatch control $ \c ->
-        pif
-          (pfromData (pbytes'stage c) #== pstageSyntax)
+    pif (pcontrolIsWellFormed # control) (pprevalidatedNextSourceSpan # control) (pcon PNothing)
+
+-- | Requires a well-formed control authenticated by the calling stage.
+pprevalidatedNextSourceSpan ::
+  forall (s :: S). Term s (PCekDataBytesControlV1 :--> PMaybe Blob.PCekSourceBlobSpanV1)
+pprevalidatedNextSourceSpan = phoistAcyclic $
+  plam $ \control ->
+    pmatch control $ \c ->
+      pif
+        (pfromData (pbytes'stage c) #== pstageSyntax)
+        ( pcon $
+            PJust $
+              pcon $
+                Blob.PCekSourceBlobSpanV1
+                  (pbytes'sourceStart c)
+                  (pdata (pminimum # pfromData (pbytes'sourceLength c) # psyntaxBytes))
+        )
+        $ pif
+          (pfromData (pbytes'stage c) #== pstageBreak)
           ( pcon $
               PJust $
                 pcon $
                   Blob.PCekSourceBlobSpanV1
-                    (pbytes'sourceStart c)
-                    (pdata (pminimum # pfromData (pbytes'sourceLength c) # psyntaxBytes))
+                    (pdata (pfromData (pbytes'sourceStart c) + pfromData (pbytes'sourceLength c) - 1))
+                    (pdata 1)
           )
-          $ pif
-            (pfromData (pbytes'stage c) #== pstageBreak)
-            ( pcon $
-                PJust $
-                  pcon $
-                    Blob.PCekSourceBlobSpanV1
-                      (pdata (pfromData (pbytes'sourceStart c) + pfromData (pbytes'sourceLength c) - 1))
-                      (pdata 1)
-            )
-            $ pmatch (pcontentPlan # control)
-            $ \case
-              PNothing -> pcon PNothing
-              PJust plan -> pmatch plan $ \(PContentPlanV1 span _ _) -> pcon (PJust span)
+          $ pmatch (pprevalidatedContentPlan # control)
+          $ \case
+            PNothing -> pcon PNothing
+            PJust plan -> pmatch plan $ \(PContentPlanV1 span _ _) -> pcon (PJust span)
 
 pstepSyntax ::
   forall (s :: S).
@@ -589,7 +615,7 @@ pstepBlob control sourceBytes =
                     $ \next ->
                       pif (pcontrolIsWellFormed # next) (pcon (PJust next)) (pcon PNothing)
             )
-            $ pmatch (pcontentPlan # control)
+            $ pmatch (pprevalidatedContentPlan # control)
             $ \case
               PNothing ->
                 pmatch sourceBytes $ \case
@@ -625,18 +651,30 @@ pstepV1 ::
     )
 pstepV1 = phoistAcyclic $
   plam $ \control sourceBytes ->
-    pif (pnot # (pcontrolIsWellFormed # control)) (pcon PNothing) $
-      pmatch control $ \c ->
-        pif
-          (pfromData (pbytes'stage c) #== pstageSyntax)
-          (pstepSyntax control sourceBytes)
+    pif (pcontrolIsWellFormed # control) (pprevalidatedStep # control # sourceBytes) (pcon PNothing)
+
+-- | Requires a well-formed control authenticated by the calling stage.
+pprevalidatedStep ::
+  forall (s :: S).
+  Term
+    s
+    ( PCekDataBytesControlV1
+        :--> PMaybe PByteString
+        :--> PMaybe PCekDataBytesControlV1
+    )
+pprevalidatedStep = phoistAcyclic $
+  plam $ \control sourceBytes ->
+    pmatch control $ \c ->
+      pif
+        (pfromData (pbytes'stage c) #== pstageSyntax)
+        (pstepSyntax control sourceBytes)
+        $ pif
+          (pfromData (pbytes'stage c) #== pstageBlob)
+          (pstepBlob control sourceBytes)
           $ pif
-            (pfromData (pbytes'stage c) #== pstageBlob)
-            (pstepBlob control sourceBytes)
-            $ pif
-              (pfromData (pbytes'stage c) #== pstageBreak)
-              (pstepBreak control sourceBytes)
-              (pcon PNothing)
+            (pfromData (pbytes'stage c) #== pstageBreak)
+            (pstepBreak control sourceBytes)
+            (pcon PNothing)
 
 pfinalizeV1 :: forall (s :: S). Term s (PCekDataBytesControlV1 :--> PMaybe PDataSummaryV1)
 pfinalizeV1 = phoistAcyclic $

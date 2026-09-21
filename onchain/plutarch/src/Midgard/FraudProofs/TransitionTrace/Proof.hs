@@ -114,6 +114,7 @@ module Midgard.FraudProofs.TransitionTrace.Proof (
   papplyL2Spends,
   papplyL2Outputs,
   pvalidateL2TransactionTransition,
+  pdecodeL2TransactionSource,
 
   -- * The deposit projection
   PAuthenticatedDepositReference (..),
@@ -124,6 +125,7 @@ module Midgard.FraudProofs.TransitionTrace.Proof (
   pprojectedDepositValue,
   pdepositDatumCbor,
   pprojectedDepositOutputCbor,
+  pprojectedDepositOutput,
   pgetAuthenticatedDepositReference,
   pvalidateValidDepositTransition,
 
@@ -148,6 +150,7 @@ module Midgard.FraudProofs.TransitionTrace.Proof (
   PTransitionFaultProof (..),
   ptransitionTraceFraudCategoryId,
   pvalidateTransitionFaultProofEnvelope,
+  pvalidateTransitionHeaderEnvelope,
   pvalidateTransitionFault,
   pvalidateControlFaultProof,
   pvalidateSourceFaultProof,
@@ -204,51 +207,52 @@ import Midgard.FraudProofs.FieldOpening (
   pspendInputsFieldIndex,
   punanchoredValidityCodeOf,
  )
-import Midgard.MpfProof qualified as MpfProof
-import Midgard.NativeTxFieldAccess (PFieldCarriageV1 (..))
-import Midgard.FraudProofs.NativeTx.Compact (pverifyNativeTxCompactCborV1)
+import Midgard.FraudProofs.NativeTx.Compact (pencodeNativeTxCompactV1, pverifyNativeTxCompactCborV1)
 import Midgard.FraudProofs.NativeTx.Components (
   pdecodeMidgardTxInputCbor,
   pencodeMidgardTxInput,
   pencodeMidgardTxOutput,
  )
 import Midgard.FraudProofs.NativeTx.Types (
-  PNativeTxBodyCompact (..),
-  PNativeTxCompact (..),
-  PVerifiedMidgardNativeTxCompact (..),
   PMidgardAddress (..),
   PMidgardAssets,
   PMidgardCredential (..),
   PMidgardTxInput (..),
   PMidgardTxOutput (..),
   PMidgardValue (..),
+  PNativeTxBodyCompact (..),
+  PNativeTxCompact (..),
+  PVerifiedMidgardNativeTxCompact (..),
  )
 import Midgard.HubOracle (PHubOracleDatum (..))
 import Midgard.LedgerOutputDescriptor qualified as LedgerOutputDescriptor
 import Midgard.LedgerState (
   PDepositInfo (..),
-  PHeaderHash,
   PEventToStepValue (..),
   PForcedInclusionTxV1 (..),
+  PHeaderHash,
   PHeaderV1 (..),
   PNativeTxProofSourceV1 (..),
+  PL2TransactionSourceV1 (..),
   PTransitionPhase,
   PTransitionStep (..),
   PTxOrderEventV1 (..),
   PTxOrderPayloadV1 (..),
-  PWithdrawalEvent (..),
   PWithdrawalBody (..),
+  PWithdrawalEvent (..),
   PWithdrawalInfo (..),
   PWithdrawalValidity (..),
   punsafeEventToKeyValuePair,
  )
+import Midgard.MpfProof qualified as MpfProof
+import Midgard.NativeTxFieldAccess (PFieldCarriageV1 (..))
 import Midgard.RejectionReason (POperatorVerdictV1 (..))
 import Midgard.TransitionTrace (
   PAdjacentTraceProof (..),
   PEventToStepProof (..),
   PIndexedTraceProof,
-  PRootDomain (..),
   PRootCountProof (..),
+  PRootDomain (..),
   PRootMembershipProof (..),
   PRootNonMembershipProof (..),
   pmpfFromMidgardRoot,
@@ -426,43 +430,45 @@ Six of the header's seven counts. The seventh — the validation-trace count —
 not a source of steps, so it plays no part in the index arithmetic below.
 -}
 pheaderCountsAreNonNegative :: forall (s :: S). Term s PHeaderV1 -> Term s PBool
-pheaderCountsAreNonNegative header = pmatch header $
-  \( PHeaderV1
-      { pheader'withdrawalCount
-      , pheader'forcedTransactionCount
-      , pheader'l2TransactionCount
-      , pheader'depositCount
-      , pheader'totalEventCount
-      , pheader'transitionStepCount
-      }
-    ) ->
-      pfromData pheader'withdrawalCount
-        #>= 0
-        #&& pfromData pheader'forcedTransactionCount
-        #>= 0
-        #&& pfromData pheader'l2TransactionCount
-        #>= 0
-        #&& pfromData pheader'depositCount
-        #>= 0
-        #&& pfromData pheader'totalEventCount
-        #>= 0
-        #&& pfromData pheader'transitionStepCount
-        #>= 0
+pheaderCountsAreNonNegative header =
+  pmatch header $
+    \( PHeaderV1
+         { pheader'withdrawalCount
+         , pheader'forcedTransactionCount
+         , pheader'l2TransactionCount
+         , pheader'depositCount
+         , pheader'totalEventCount
+         , pheader'transitionStepCount
+         }
+       ) ->
+        pfromData pheader'withdrawalCount
+          #>= 0
+          #&& pfromData pheader'forcedTransactionCount
+          #>= 0
+          #&& pfromData pheader'l2TransactionCount
+          #>= 0
+          #&& pfromData pheader'depositCount
+          #>= 0
+          #&& pfromData pheader'totalEventCount
+          #>= 0
+          #&& pfromData pheader'transitionStepCount
+          #>= 0
 
 -- | Aiken @proof.source_count_sum@ — the four event counts, added up.
 psourceCountSum :: forall (s :: S). Term s PHeaderV1 -> Term s PInteger
-psourceCountSum header = pmatch header $
-  \( PHeaderV1
-      { pheader'withdrawalCount
-      , pheader'forcedTransactionCount
-      , pheader'l2TransactionCount
-      , pheader'depositCount
-      }
-    ) ->
-      pfromData pheader'withdrawalCount
-        + pfromData pheader'forcedTransactionCount
-        + pfromData pheader'l2TransactionCount
-        + pfromData pheader'depositCount
+psourceCountSum header =
+  pmatch header $
+    \( PHeaderV1
+         { pheader'withdrawalCount
+         , pheader'forcedTransactionCount
+         , pheader'l2TransactionCount
+         , pheader'depositCount
+         }
+       ) ->
+        pfromData pheader'withdrawalCount
+          + pfromData pheader'forcedTransactionCount
+          + pfromData pheader'l2TransactionCount
+          + pfromData pheader'depositCount
 
 {- | Aiken @proof.phase_for_step_index@.
 
@@ -539,7 +545,7 @@ peventKeyFromSourceMembership ::
   forall (s :: S). Term s (PAsData PSourceMembershipProof) -> Term s PData
 peventKeyFromSourceMembership source =
   pmatch (pcoerceData @PRootMembershipProof (ponlyField source)) $
-    \PRootMembershipProof {prootMembership'key} ->
+    \PRootMembershipProof{prootMembership'key} ->
       pforgetData
         ( pconstrBuiltin
             # peventKeyTagForSourceTag (fst (pconstrOf source))
@@ -566,7 +572,7 @@ psourceNonMembershipEventKey ::
   forall (s :: S). Term s (PAsData PSourceNonMembershipProof) -> Term s PData
 psourceNonMembershipEventKey source =
   pmatch (pcoerceData @PRootNonMembershipProof (ponlyField source)) $
-    \PRootNonMembershipProof {prootNonMembership'key} ->
+    \PRootNonMembershipProof{prootNonMembership'key} ->
       pforgetData
         ( pconstrBuiltin
             # peventKeyTagForSourceTag (fst (pconstrOf source))
@@ -581,8 +587,8 @@ psourceNonMembershipEventKey source =
 pverifyEventToStepMembership ::
   forall (s :: S). Term s PHeaderV1 -> Term s PRootMembershipProof -> Term s PBool
 pverifyEventToStepMembership header membership = P.do
-  PHeaderV1 {pheader'eventToStepRoot, pheader'totalEventCount} <- pmatch header
-  PRootMembershipProof {prootMembership'key, prootMembership'value} <- pmatch membership
+  PHeaderV1{pheader'eventToStepRoot, pheader'totalEventCount} <- pmatch header
+  PRootMembershipProof{prootMembership'key, prootMembership'value} <- pmatch membership
   pverifyRootMembershipWithBytes
     membership
     (pdata (pcon PEventToStepRootDomain))
@@ -595,8 +601,8 @@ pverifyEventToStepMembership header membership = P.do
 pverifyEventToStepNonMembership ::
   forall (s :: S). Term s PHeaderV1 -> Term s PRootNonMembershipProof -> Term s PBool
 pverifyEventToStepNonMembership header nonMembership = P.do
-  PHeaderV1 {pheader'eventToStepRoot, pheader'totalEventCount} <- pmatch header
-  PRootNonMembershipProof {prootNonMembership'key} <- pmatch nonMembership
+  PHeaderV1{pheader'eventToStepRoot, pheader'totalEventCount} <- pmatch header
+  PRootNonMembershipProof{prootNonMembership'key} <- pmatch nonMembership
   pverifyRootNonMembershipWithKeyBytes
     nonMembership
     (pdata (pcon PEventToStepRootDomain))
@@ -628,7 +634,7 @@ pverifySourceMembership header source = P.do
     pmatch header
   tag <- plet (fst (pconstrOf source))
   membership <- plet (pcoerceData @PRootMembershipProof (ponlyField source))
-  PRootMembershipProof {prootMembership'key, prootMembership'value} <- pmatch membership
+  PRootMembershipProof{prootMembership'key, prootMembership'value} <- pmatch membership
   let against domain root count keyBytes valueBytes =
         pverifyRootMembershipWithBytes
           membership
@@ -697,7 +703,7 @@ pverifySourceNonMembership header source = P.do
     pmatch header
   tag <- plet (fst (pconstrOf source))
   nonMembership <- plet (pcoerceData @PRootNonMembershipProof (ponlyField source))
-  PRootNonMembershipProof {prootNonMembership'key} <- pmatch nonMembership
+  PRootNonMembershipProof{prootNonMembership'key} <- pmatch nonMembership
   let against domain root count keyBytes =
         pverifyRootNonMembershipWithKeyBytes
           nonMembership
@@ -744,20 +750,20 @@ pverifyTraceBindingToEventToStep ::
   Term s PRootMembershipProof ->
   Term s PBool
 pverifyTraceBindingToEventToStep header traceProof eventToStep = P.do
-  PHeaderV1 {pheader'transitionTraceRoot, pheader'transitionStepCount} <- pmatch header
+  PHeaderV1{pheader'transitionTraceRoot, pheader'transitionStepCount} <- pmatch header
   PRootMembershipProof
     { prootMembership'key = eventToStepKey
     , prootMembership'value = eventToStepValue
     } <-
     pmatch eventToStep
-  PRootMembershipProof {prootMembership'value = stepValue} <- pmatch traceProof
+  PRootMembershipProof{prootMembership'value = stepValue} <- pmatch traceProof
   PTransitionStep
     { ptransitionStep'eventKey
     , ptransitionStep'stepIndex
     , ptransitionStep'phase
     } <-
     pmatch (pcoerceData stepValue)
-  PEventToStepValue {peventToStepValue'stepIndex, peventToStepValue'phase} <-
+  PEventToStepValue{peventToStepValue'stepIndex, peventToStepValue'phase} <-
     pmatch (pcoerceData eventToStepValue)
   pverifyIndexedTraceProof
     traceProof
@@ -799,8 +805,8 @@ pvalidateTraceBoundary header side traceProof = P.do
     , pheader'transitionStepCount
     } <-
     pmatch header
-  PRootMembershipProof {prootMembership'key, prootMembership'value} <- pmatch traceProof
-  PTransitionStep {ptransitionStep'preUtxosRoot, ptransitionStep'postUtxosRoot} <-
+  PRootMembershipProof{prootMembership'key, prootMembership'value} <- pmatch traceProof
+  PTransitionStep{ptransitionStep'preUtxosRoot, ptransitionStep'postUtxosRoot} <-
     pmatch (pcoerceData prootMembership'value)
   stepCount <- plet (pfromData pheader'transitionStepCount)
   key <- plet (pasInt # prootMembership'key)
@@ -820,9 +826,10 @@ pvalidateTraceBoundary header side traceProof = P.do
             # (ptransitionStep'preUtxosRoot #== pheader'prevUtxosRoot)
         )
         ( key
-            #== stepCount - 1
-            #&& pnot
-            # (ptransitionStep'postUtxosRoot #== pheader'utxosRoot)
+            #== stepCount
+            - 1
+              #&& pnot
+              # (ptransitionStep'postUtxosRoot #== pheader'utxosRoot)
         )
     )
     perror
@@ -838,14 +845,14 @@ pvalidateTraceLink ::
   Term s PAdjacentTraceProof ->
   Term s PBool
 pvalidateTraceLink header adjacent = P.do
-  PHeaderV1 {pheader'transitionTraceRoot, pheader'transitionStepCount} <- pmatch header
-  PAdjacentTraceProof {padjacentTrace'lower, padjacentTrace'upper} <- pmatch adjacent
-  PRootMembershipProof {prootMembership'value = lowerValue} <-
+  PHeaderV1{pheader'transitionTraceRoot, pheader'transitionStepCount} <- pmatch header
+  PAdjacentTraceProof{padjacentTrace'lower, padjacentTrace'upper} <- pmatch adjacent
+  PRootMembershipProof{prootMembership'value = lowerValue} <-
     pmatch (pfromData padjacentTrace'lower)
-  PRootMembershipProof {prootMembership'value = upperValue} <-
+  PRootMembershipProof{prootMembership'value = upperValue} <-
     pmatch (pfromData padjacentTrace'upper)
-  PTransitionStep {ptransitionStep'postUtxosRoot} <- pmatch (pcoerceData lowerValue)
-  PTransitionStep {ptransitionStep'preUtxosRoot} <- pmatch (pcoerceData upperValue)
+  PTransitionStep{ptransitionStep'postUtxosRoot} <- pmatch (pcoerceData lowerValue)
+  PTransitionStep{ptransitionStep'preUtxosRoot} <- pmatch (pcoerceData upperValue)
   pverifyAdjacentTraceProof
     adjacent
     (pfromData pheader'transitionTraceRoot)
@@ -864,7 +871,7 @@ the block. Aiken's @or { }@ short-circuits for the same reason.
 ptraceHasBadPhase ::
   forall (s :: S). Term s PHeaderV1 -> Term s PIndexedTraceProof -> Term s PBool
 ptraceHasBadPhase header traceProof = P.do
-  PRootMembershipProof {prootMembership'value} <- pmatch traceProof
+  PRootMembershipProof{prootMembership'value} <- pmatch traceProof
   PTransitionStep
     { ptransitionStep'eventKey
     , ptransitionStep'stepIndex
@@ -892,8 +899,8 @@ pvalidateEventToStepMismatch ::
   Term s PEventToStepProof ->
   Term s PBool
 pvalidateEventToStepMismatch header traceProof eventToStep = P.do
-  PHeaderV1 {pheader'transitionTraceRoot, pheader'transitionStepCount} <- pmatch header
-  PRootMembershipProof {prootMembership'value} <- pmatch traceProof
+  PHeaderV1{pheader'transitionTraceRoot, pheader'transitionStepCount} <- pmatch header
+  PRootMembershipProof{prootMembership'value} <- pmatch traceProof
   PTransitionStep
     { ptransitionStep'eventKey
     , ptransitionStep'stepIndex
@@ -907,14 +914,14 @@ pvalidateEventToStepMismatch header traceProof eventToStep = P.do
         (pfromData pheader'transitionStepCount)
     )
     ( pmatch eventToStep $ \case
-        PEventToStepMembership {peventToStepMembership'membership} -> P.do
+        PEventToStepMembership{peventToStepMembership'membership} -> P.do
           membership <- plet (pfromData peventToStepMembership'membership)
           PRootMembershipProof
             { prootMembership'key = mapKey
             , prootMembership'value = mapValue
             } <-
             pmatch membership
-          PEventToStepValue {peventToStepValue'stepIndex, peventToStepValue'phase} <-
+          PEventToStepValue{peventToStepValue'stepIndex, peventToStepValue'phase} <-
             pmatch (pcoerceData mapValue)
           pif
             (pverifyEventToStepMembership header membership)
@@ -928,9 +935,9 @@ pvalidateEventToStepMismatch header traceProof eventToStep = P.do
                     )
             )
             perror
-        PEventToStepNonMembership {peventToStepNonMembership'nonMembership} -> P.do
+        PEventToStepNonMembership{peventToStepNonMembership'nonMembership} -> P.do
           nonMembership <- plet (pfromData peventToStepNonMembership'nonMembership)
-          PRootNonMembershipProof {prootNonMembership'key} <- pmatch nonMembership
+          PRootNonMembershipProof{prootNonMembership'key} <- pmatch nonMembership
           pverifyEventToStepNonMembership header nonMembership
             #&& prootNonMembership'key
             #== pforgetData ptransitionStep'eventKey
@@ -949,7 +956,7 @@ pvalidateSourceMembershipMismatch ::
   Term s (PAsData PSourceMembershipMismatchWitness) ->
   Term s PBool
 pvalidateSourceMembershipMismatch header witness = P.do
-  PHeaderV1 {pheader'transitionTraceRoot, pheader'transitionStepCount} <- pmatch header
+  PHeaderV1{pheader'transitionTraceRoot, pheader'transitionStepCount} <- pmatch header
   pmatch (pfromData witness) $ \case
     PMappedEventMissingFromSource
       { pmappedEvent'traceProof
@@ -957,8 +964,8 @@ pvalidateSourceMembershipMismatch header witness = P.do
       , pmappedEvent'sourceNonMembership
       } -> P.do
         traceProof <- plet (pfromData pmappedEvent'traceProof)
-        PRootMembershipProof {prootMembership'value} <- pmatch traceProof
-        PTransitionStep {ptransitionStep'eventKey} <- pmatch (pcoerceData prootMembership'value)
+        PRootMembershipProof{prootMembership'value} <- pmatch traceProof
+        PTransitionStep{ptransitionStep'eventKey} <- pmatch (pcoerceData prootMembership'value)
         pverifyTraceBindingToEventToStep
           header
           traceProof
@@ -971,15 +978,15 @@ pvalidateSourceMembershipMismatch header witness = P.do
       , psourceEvent'eventToStepNonMembership
       } -> P.do
         nonMembership <- plet (pfromData psourceEvent'eventToStepNonMembership)
-        PRootNonMembershipProof {prootNonMembership'key} <- pmatch nonMembership
+        PRootNonMembershipProof{prootNonMembership'key} <- pmatch nonMembership
         pverifySourceMembership header psourceEvent'sourceMembership
           #&& pverifyEventToStepNonMembership header nonMembership
           #&& prootNonMembership'key
           #== peventKeyFromSourceMembership psourceEvent'sourceMembership
-    PSourcePhaseMismatch {pphaseMismatch'traceProof, pphaseMismatch'sourceMembership} -> P.do
+    PSourcePhaseMismatch{pphaseMismatch'traceProof, pphaseMismatch'sourceMembership} -> P.do
       traceProof <- plet (pfromData pphaseMismatch'traceProof)
-      PRootMembershipProof {prootMembership'value} <- pmatch traceProof
-      PTransitionStep {ptransitionStep'eventKey, ptransitionStep'phase} <-
+      PRootMembershipProof{prootMembership'value} <- pmatch traceProof
+      PTransitionStep{ptransitionStep'eventKey, ptransitionStep'phase} <-
         pmatch (pcoerceData prootMembership'value)
       pverifyIndexedTraceProof
         traceProof
@@ -1045,9 +1052,7 @@ pverifyLedgerNonMembership ::
   Term s PProof ->
   Term s PBool
 pverifyLedgerNonMembership root key proof =
-  pmatch (MpfProof.pinsertRoot # pto (pmpfFromMidgardRoot root) # key # pconstant "" # proof) $ \case
-    PJust _ -> pconstant True
-    PNothing -> perror
+  pif (MpfProof.pdoesNotHave # pto (pmpfFromMidgardRoot root) # key # proof) (pconstant True) perror
 
 -- | Aiken @proof.insert_root@ — the trie's root after an insertion.
 pinsertRoot ::
@@ -1058,7 +1063,7 @@ pinsertRoot ::
   Term s PProof ->
   Term s PByteString
 pinsertRoot root key value proof =
-  pmatch (MpfProof.pinsertRoot # pto (pmpfFromMidgardRoot root) # key # value # proof) $ \case
+  pmatch (MpfProof.pinsertRootPairedFold # pto (pmpfFromMidgardRoot root) # key # value # proof) $ \case
     PJust newRoot -> newRoot
     PNothing -> perror
 
@@ -1071,7 +1076,7 @@ pdeleteRoot ::
   Term s PProof ->
   Term s PByteString
 pdeleteRoot root key value proof =
-  pmatch (MpfProof.pdeleteRoot # pto (pmpfFromMidgardRoot root) # key # value # proof) $ \case
+  pmatch (MpfProof.pdeleteRootPairedFold # pto (pmpfFromMidgardRoot root) # key # value # proof) $ \case
     PJust newRoot -> newRoot
     PNothing -> perror
 
@@ -1088,25 +1093,26 @@ papplyDeleteWitness ::
   Term s PByteString ->
   Term s PLedgerDeleteWitness ->
   Term s PByteString
-papplyDeleteWitness root witness = pmatch witness $
-  \( PLedgerDeleteWitness
-      { pledgerDelete'key
-      , pledgerDelete'value
-      , pledgerDelete'membershipProof
-      , pledgerDelete'deleteProof
-      }
-    ) ->
-      plet (pfromData pledgerDelete'key) $ \key ->
-        plet (pfromData pledgerDelete'value) $ \value ->
-          pif
-            ( pverifyLedgerMembership
-                root
-                key
-                value
-                (pfromData pledgerDelete'membershipProof)
-            )
-            (pdeleteRoot root key value (pfromData pledgerDelete'deleteProof))
-            perror
+papplyDeleteWitness root witness =
+  pmatch witness $
+    \( PLedgerDeleteWitness
+         { pledgerDelete'key
+         , pledgerDelete'value
+         , pledgerDelete'membershipProof
+         , pledgerDelete'deleteProof
+         }
+       ) ->
+        plet (pfromData pledgerDelete'key) $ \key ->
+          plet (pfromData pledgerDelete'value) $ \value ->
+            pif
+              ( pverifyLedgerMembership
+                  root
+                  key
+                  value
+                  (pfromData pledgerDelete'membershipProof)
+              )
+              (pdeleteRoot root key value (pfromData pledgerDelete'deleteProof))
+              perror
 
 -- | Aiken @proof.apply_insert_witness@.
 papplyInsertWitness ::
@@ -1114,28 +1120,29 @@ papplyInsertWitness ::
   Term s PByteString ->
   Term s PLedgerInsertWitness ->
   Term s PByteString
-papplyInsertWitness root witness = pmatch witness $
-  \( PLedgerInsertWitness
-      { pledgerInsert'key
-      , pledgerInsert'value
-      , pledgerInsert'nonMembershipProof
-      , pledgerInsert'insertProof
-      }
-    ) ->
-      plet (pfromData pledgerInsert'key) $ \key ->
-        pif
-          ( pverifyLedgerNonMembership
-              root
-              key
-              (pfromData pledgerInsert'nonMembershipProof)
-          )
-          ( pinsertRoot
-              root
-              key
-              (pfromData pledgerInsert'value)
-              (pfromData pledgerInsert'insertProof)
-          )
-          perror
+papplyInsertWitness root witness =
+  pmatch witness $
+    \( PLedgerInsertWitness
+         { pledgerInsert'key
+         , pledgerInsert'value
+         , pledgerInsert'nonMembershipProof
+         , pledgerInsert'insertProof
+         }
+       ) ->
+        plet (pfromData pledgerInsert'key) $ \key ->
+          pif
+            ( pverifyLedgerNonMembership
+                root
+                key
+                (pfromData pledgerInsert'nonMembershipProof)
+            )
+            ( pinsertRoot
+                root
+                key
+                (pfromData pledgerInsert'value)
+                (pfromData pledgerInsert'insertProof)
+            )
+            perror
 
 --------------------------------------------------------------------------------
 -- One-step bindings
@@ -1158,9 +1165,9 @@ poneStepBinding ::
   Term s PRootMembershipProof ->
   Term s PBool
 poneStepBinding header sourceTag traceProof eventToStep sourceMembership = P.do
-  PRootMembershipProof {prootMembership'value = stepValue} <- pmatch traceProof
-  PRootMembershipProof {prootMembership'key = sourceKey} <- pmatch sourceMembership
-  PTransitionStep {ptransitionStep'eventKey, ptransitionStep'phase} <-
+  PRootMembershipProof{prootMembership'value = stepValue} <- pmatch traceProof
+  PRootMembershipProof{prootMembership'key = sourceKey} <- pmatch sourceMembership
+  PTransitionStep{ptransitionStep'eventKey, ptransitionStep'phase} <-
     pmatch (pcoerceData stepValue)
   source <-
     plet $
@@ -1234,14 +1241,14 @@ pvalidateValidWithdrawalTransition ::
   Term s PLedgerDeleteWitness ->
   Term s PBool
 pvalidateValidWithdrawalTransition header traceProof eventToStep sourceMembership spentUtxo = P.do
-  PRootMembershipProof {prootMembership'value = stepValue} <- pmatch traceProof
-  PRootMembershipProof {prootMembership'value = withdrawalValue} <- pmatch sourceMembership
-  PTransitionStep {ptransitionStep'preUtxosRoot, ptransitionStep'postUtxosRoot} <-
+  PRootMembershipProof{prootMembership'value = stepValue} <- pmatch traceProof
+  PRootMembershipProof{prootMembership'value = withdrawalValue} <- pmatch sourceMembership
+  PTransitionStep{ptransitionStep'preUtxosRoot, ptransitionStep'postUtxosRoot} <-
     pmatch (pcoerceData stepValue)
-  PWithdrawalInfo {pwithdrawalInfo'body, pwithdrawalInfo'validity} <-
+  PWithdrawalInfo{pwithdrawalInfo'body, pwithdrawalInfo'validity} <-
     pmatch (pcoerceData withdrawalValue)
-  PWithdrawalBody {pwithdrawalBody'l2Outref} <- pmatch (pfromData pwithdrawalInfo'body)
-  PLedgerDeleteWitness {pledgerDelete'key} <- pmatch spentUtxo
+  PWithdrawalBody{pwithdrawalBody'l2Outref} <- pmatch (pfromData pwithdrawalInfo'body)
+  PLedgerDeleteWitness{pledgerDelete'key} <- pmatch spentUtxo
   pif
     ( pwithdrawalInfo'validity
         #== pdata (pcon PWithdrawalIsValid)
@@ -1270,11 +1277,11 @@ pvalidateInvalidWithdrawalNoOpTransition ::
   Term s PRootMembershipProof ->
   Term s PBool
 pvalidateInvalidWithdrawalNoOpTransition header traceProof eventToStep sourceMembership = P.do
-  PRootMembershipProof {prootMembership'value = stepValue} <- pmatch traceProof
-  PRootMembershipProof {prootMembership'value = withdrawalValue} <- pmatch sourceMembership
-  PTransitionStep {ptransitionStep'preUtxosRoot, ptransitionStep'postUtxosRoot} <-
+  PRootMembershipProof{prootMembership'value = stepValue} <- pmatch traceProof
+  PRootMembershipProof{prootMembership'value = withdrawalValue} <- pmatch sourceMembership
+  PTransitionStep{ptransitionStep'preUtxosRoot, ptransitionStep'postUtxosRoot} <-
     pmatch (pcoerceData stepValue)
-  PWithdrawalInfo {pwithdrawalInfo'validity} <- pmatch (pcoerceData withdrawalValue)
+  PWithdrawalInfo{pwithdrawalInfo'validity} <- pmatch (pcoerceData withdrawalValue)
   pif
     (pnot # (pwithdrawalInfo'validity #== pdata (pcon PWithdrawalIsValid)))
     ( pvalidateWithdrawalOneStepBinding header traceProof eventToStep sourceMembership
@@ -1296,11 +1303,11 @@ pvalidateInvalidForcedTransactionNoOpTransition ::
   Term s PRootMembershipProof ->
   Term s PBool
 pvalidateInvalidForcedTransactionNoOpTransition header traceProof eventToStep sourceMembership = P.do
-  PRootMembershipProof {prootMembership'value = stepValue} <- pmatch traceProof
-  PRootMembershipProof {prootMembership'value = forcedValue} <- pmatch sourceMembership
-  PTransitionStep {ptransitionStep'preUtxosRoot, ptransitionStep'postUtxosRoot} <-
+  PRootMembershipProof{prootMembership'value = stepValue} <- pmatch traceProof
+  PRootMembershipProof{prootMembership'value = forcedValue} <- pmatch sourceMembership
+  PTransitionStep{ptransitionStep'preUtxosRoot, ptransitionStep'postUtxosRoot} <-
     pmatch (pcoerceData stepValue)
-  PForcedInclusionTxV1 {pforcedTx'verdict} <- pmatch (pcoerceData forcedValue)
+  PForcedInclusionTxV1{pforcedTx'verdict} <- pmatch (pcoerceData forcedValue)
   pmatch (pfromData pforcedTx'verdict) $ \case
     PForcedTxInvalid _ ->
       pvalidateForcedTransactionOneStepBinding header traceProof eventToStep sourceMembership
@@ -1325,7 +1332,7 @@ pvalidateDuplicateTraceEvent ::
   Term s PIndexedTraceProof ->
   Term s PBool
 pvalidateDuplicateTraceEvent header left right = P.do
-  PHeaderV1 {pheader'transitionTraceRoot, pheader'transitionStepCount} <- pmatch header
+  PHeaderV1{pheader'transitionTraceRoot, pheader'transitionStepCount} <- pmatch header
   root <- plet (pfromData pheader'transitionTraceRoot)
   count <- plet (pfromData pheader'transitionStepCount)
   PRootMembershipProof
@@ -1338,8 +1345,8 @@ pvalidateDuplicateTraceEvent header left right = P.do
     , prootMembership'value = rightValue
     } <-
     pmatch right
-  PTransitionStep {ptransitionStep'eventKey = leftEvent} <- pmatch (pcoerceData leftValue)
-  PTransitionStep {ptransitionStep'eventKey = rightEvent} <- pmatch (pcoerceData rightValue)
+  PTransitionStep{ptransitionStep'eventKey = leftEvent} <- pmatch (pcoerceData leftValue)
+  PTransitionStep{ptransitionStep'eventKey = rightEvent} <- pmatch (pcoerceData rightValue)
   pverifyIndexedTraceProof left root count
     #&& pverifyIndexedTraceProof right root count
     #&& pnot
@@ -1397,7 +1404,7 @@ pvalidateCountFault header witness = P.do
       countProof = pcoerceData @PRootCountProof countProofData
       countDomainTag = fst (pconstrOfData (phead # snd (pconstrOfData countProofData)))
       against domain root published =
-        pmatch countProof $ \PRootCountProof {prootCount'count} ->
+        pmatch countProof $ \PRootCountProof{prootCount'count} ->
           plet (pfromData prootCount'count) $ \count ->
             pverifyRootCountProof countProof (pdata (pcon domain)) (pfromData root) count
               #&& pnot
@@ -1464,12 +1471,19 @@ pterminalAcceptancePostRoot = phoistAcyclic $
       PNothing -> perror
       PJust witnessData ->
         plet (pasList # witnessData) $ \fields ->
-          pif (plength # fields #== 4)
+          pif
+            (plength # fields #== 4)
             ( plet (pasByteStr # (pelemAt # 2 # fields)) $ \postRoot ->
                 pif
-                  ( pasInt # (pelemAt # 0 # fields) #== 1
-                      #&& pasByteStr # (pelemAt # 1 # fields) #== pconstant ""
-                      #&& plengthBS # postRoot #== 32
+                  ( pasInt
+                      # (pelemAt # 0 # fields)
+                      #== 1
+                      #&& pasByteStr
+                      # (pelemAt # 1 # fields)
+                      #== pconstant ""
+                      #&& plengthBS
+                      # postRoot
+                      #== 32
                   )
                   postRoot
                   perror
@@ -1495,13 +1509,13 @@ pvalidateAcceptedTransactionTransitionMismatch header witness = P.do
     , pclaim'terminalState
     } <-
     pmatch claim
-  PRootMembershipProof {prootMembership'value = descriptorData} <-
+  PRootMembershipProof{prootMembership'value = descriptorData} <-
     pmatch (pfromData pclaim'descriptorMembership)
-  PRootMembershipProof {prootMembership'value = transitionStepData} <-
+  PRootMembershipProof{prootMembership'value = transitionStepData} <-
     pmatch (pfromData pclaim'transitionStepMembership)
-  PValidationTraceDescriptorV1 {pdescriptor'verdict} <-
+  PValidationTraceDescriptorV1{pdescriptor'verdict} <-
     pmatch (pcoerceData descriptorData)
-  PTransitionStep {ptransitionStep'postUtxosRoot} <-
+  PTransitionStep{ptransitionStep'postUtxosRoot} <-
     pmatch (pcoerceData transitionStepData)
   PValidationMachineStateV1
     { pmachineState'programCounter
@@ -1510,12 +1524,18 @@ pvalidateAcceptedTransactionTransitionMismatch header witness = P.do
     pmatch (pfromData pclaim'terminalState)
   terminalWitnessCbor <- plet (pfromData pacceptedMismatch'terminalAcceptanceWitnessCbor)
   postRoot <- plet (pterminalAcceptancePostRoot # terminalWitnessCbor)
-  pcommittedClaimIsValid # header # claim
-    #&& pfromData pdescriptor'verdict #== pcon PAccepted
+  pcommittedClaimIsValid
+    # header
+    # claim
+    #&& pfromData pdescriptor'verdict
+    #== pcon PAccepted
     #&& pfromData pmachineState'workRoot
-      #== phashWorkWitness # pcon PTerminal # pfromData pmachineState'programCounter # terminalWitnessCbor
+    #== phashWorkWitness
+    # pcon PTerminal
+    # pfromData pmachineState'programCounter
+    # terminalWitnessCbor
     #&& pnot
-      # (postRoot #== pfromData ptransitionStep'postUtxosRoot)
+    # (postRoot #== pfromData ptransitionStep'postUtxosRoot)
 
 --------------------------------------------------------------------------------
 -- The L2 transaction transition
@@ -1529,8 +1549,8 @@ neither side is serialised on the way in — unlike every other source tree.
 pverifyL2SourceMembership ::
   forall (s :: S). Term s PHeaderV1 -> Term s PRootMembershipProof -> Term s PBool
 pverifyL2SourceMembership header membership = P.do
-  PHeaderV1 {pheader'transactionsRoot, pheader'l2TransactionCount} <- pmatch header
-  PRootMembershipProof {prootMembership'key, prootMembership'value} <- pmatch membership
+  PHeaderV1{pheader'transactionsRoot, pheader'l2TransactionCount} <- pmatch header
+  PRootMembershipProof{prootMembership'key, prootMembership'value} <- pmatch membership
   pverifyRootMembershipWithBytes
     membership
     (pdata (pcon PTransactionsV1RootDomain))
@@ -1554,9 +1574,9 @@ pvalidateL2OneStepBinding ::
   Term s PRootMembershipProof ->
   Term s PBool
 pvalidateL2OneStepBinding header traceProof eventToStep sourceMembership = P.do
-  PRootMembershipProof {prootMembership'value = stepValue} <- pmatch traceProof
-  PRootMembershipProof {prootMembership'key = sourceKey} <- pmatch sourceMembership
-  PTransitionStep {ptransitionStep'eventKey, ptransitionStep'phase} <-
+  PRootMembershipProof{prootMembership'value = stepValue} <- pmatch traceProof
+  PRootMembershipProof{prootMembership'key = sourceKey} <- pmatch sourceMembership
+  PTransitionStep{ptransitionStep'eventKey, ptransitionStep'phase} <-
     pmatch (pcoerceData stepValue)
   eventKey <- plet (pforgetData ptransitionStep'eventKey)
   txId <-
@@ -1598,7 +1618,7 @@ pdoorBodyFieldItems anchored fieldIndex preimage =
     # ( panchoredFieldWalk
           # anchored
           # fieldIndex
-          # pcon (PInline {pinline'preimage = pdata preimage})
+          # pcon (PInline{pinline'preimage = pdata preimage})
           # (pcon PNil :: Term s (PBuiltinList (PAsData PTxInInfo)))
           # pdata (pcon (PCurrencySymbol (pconstant "")))
       )
@@ -1630,7 +1650,7 @@ papplyL2Spends = phoistAcyclic $
     pelimList
       ( \item rest -> P.do
           witness <- plet (pfromData (phead # witnesses))
-          PLedgerDeleteWitness {pledgerDelete'key} <- pmatch witness
+          PLedgerDeleteWitness{pledgerDelete'key} <- pmatch witness
           expectedKey <-
             plet (pencodeMidgardTxInput #$ pdecodeMidgardTxInputCbor # item)
           pif
@@ -1668,15 +1688,15 @@ papplyL2Outputs = phoistAcyclic $
     pelimList
       ( \item rest -> P.do
           witness <- plet (pfromData (phead # witnesses))
-          PLedgerInsertWitness {pledgerInsert'key, pledgerInsert'value} <- pmatch witness
+          PLedgerInsertWitness{pledgerInsert'key, pledgerInsert'value} <- pmatch witness
           expectedKey <-
-            plet $
-              pencodeMidgardTxInput
+            plet
+              $ pencodeMidgardTxInput
                 #$ pcon
-                $ PMidgardTxInput
-                  { ptxInput'txId = pdata txId
-                  , ptxInput'outputIndex = pdata outputIndex
-                  }
+              $ PMidgardTxInput
+                { ptxInput'txId = pdata txId
+                , ptxInput'outputIndex = pdata outputIndex
+                }
           expectedValue <-
             plet $
               pmatch (LedgerOutputDescriptor.pledgerValueV1 # outputIndex # item) $ \case
@@ -1700,27 +1720,33 @@ papplyL2Outputs = phoistAcyclic $
       (pif (pnull # witnesses) root perror)
       items
 
+-- | Decode the exact Aiken source record and its nested three-byte-string
+-- record. Reconstructing the typed record makes canonical reserialization cover
+-- every field, including the two body-dispute metadata fields.
+pdecodeL2TransactionSource :: forall s. Term s (PByteString :--> PL2TransactionSourceV1)
+pdecodeL2TransactionSource = phoistAcyclic $ plam $ \bytes ->
+  pmatch (pdeserialise # bytes) $ \case
+    PNothing -> perror
+    PJust raw -> P.do
+      PBuiltinPair tag fields <- pmatch $ pasConstr # raw
+      pif (tag #== 0 #&& plength # fields #== 2) (P.do
+        PBuiltinPair sourceTag sourceFields <- pmatch $ pasConstr # (pelemAt # 1 # fields)
+        pif (sourceTag #== 0 #&& plength # sourceFields #== 3)
+          (pcon $ PL2TransactionSourceV1 (pdata $ pasByteStr # (phead # fields))
+            (pdata $ pcon $ PNativeTxProofSourceV1
+              (pdata $ pasByteStr # (pelemAt # 0 # sourceFields))
+              (pdata $ pasByteStr # (pelemAt # 1 # sourceFields))
+              (pdata $ pasByteStr # (pelemAt # 2 # sourceFields)))) perror) perror
+
 {- | Aiken @proof.validate_l2_transaction_transition@.
 
 The fault that an L2 transaction the block declared valid did not move the ledger
 the way its own body says it should. Field 0 is spent, field 2 is produced, and
 the resulting root is compared with the one the step published.
 
-=== The source leaf is supplied decoded, not decoded here
-
-Aiken deserialises the leaf bytes, casts the result to an @L2TransactionSourceV1@
-and then requires @cbor.serialise(source) == source_membership.value@. Plutus has
-no deserialising builtin, and the canonicality clause is what makes one
-unnecessary: those three steps hold together exactly when the leaf bytes are the
-canonical serialisation of a well-formed source value, so this port has the
-prover supply the proof-source triple and rebuilds the leaf from it —
-
-@serialiseData(Constr 0 [B key, triple]) == leaf bytes@
-
-— which is Aiken's canonicality clause and its @source.tx_id == key@ clause at
-once. The accepted set is identical: serialisation is injective, so the equality
-admits exactly one triple per leaf, and a malformed shape has no preimage at all.
-The cost is one extra redeemer field.
+The source is decoded from the committed leaf and checked against its canonical
+serialization and transaction id. The witness therefore has the exact seven
+fields used by Aiken.
 
 === The anchor is derived once
 
@@ -1740,7 +1766,6 @@ pvalidateL2TransactionTransition ::
   Term s PIndexedTraceProof ->
   Term s PRootMembershipProof ->
   Term s PRootMembershipProof ->
-  Term s (PAsData PNativeTxProofSourceV1) ->
   Term s PByteString ->
   Term s PByteString ->
   Term s (PBuiltinList (PAsData PLedgerDeleteWitness)) ->
@@ -1751,7 +1776,6 @@ pvalidateL2TransactionTransition
   traceProof
   eventToStep
   sourceMembership
-  sourceTriple
   spendInputsPreimage
   outputsPreimage
   spentUtxos
@@ -1761,11 +1785,14 @@ pvalidateL2TransactionTransition
       , prootMembership'value = sourceValue
       } <-
       pmatch sourceMembership
-    PRootMembershipProof {prootMembership'value = stepValue} <- pmatch traceProof
-    PTransitionStep {ptransitionStep'preUtxosRoot, ptransitionStep'postUtxosRoot} <-
+    PRootMembershipProof{prootMembership'value = stepValue} <- pmatch traceProof
+    PTransitionStep{ptransitionStep'preUtxosRoot, ptransitionStep'postUtxosRoot} <-
       pmatch (pcoerceData stepValue)
     txId <- plet (pasByteStr # sourceKey)
-    PNativeTxProofSourceV1 {pnativeSource'compactCbor} <- pmatch (pfromData sourceTriple)
+    sourceBytes <- plet $ pasByteStr # sourceValue
+    source <- plet $ pdecodeL2TransactionSource # sourceBytes
+    PL2TransactionSourceV1{pl2Source'txId, pl2Source'source} <- pmatch source
+    PNativeTxProofSourceV1{pnativeSource'compactCbor} <- pmatch $ pfromData pl2Source'source
     anchored <-
       plet $
         panchoredNativeTx
@@ -1787,20 +1814,12 @@ pvalidateL2TransactionTransition
               )
           expectedPostRoot <-
             plet (papplyL2Outputs # afterSpends # txId # 0 # outputItems # producedUtxos)
-          leafBytes <-
-            plet $
-              pserialiseData
-                #$ pforgetData
-                $ pconstrBuiltin
-                  # 0
-                  #$ pcons
-                  # pforgetData (pdata txId)
-                  #$ pcons
-                  # pforgetData sourceTriple
-                  # pcon PNil
           pvalidateL2OneStepBinding header traceProof eventToStep sourceMembership
-            #&& leafBytes
-            #== (pasByteStr # sourceValue)
+            #&& pserialiseData
+            # pforgetData (pdata source)
+            #== sourceBytes
+            #&& pfromData pl2Source'txId
+            #== txId
             #&& (panchoredNativeTxVersion # anchored)
             #== 1
             #&& pnot
@@ -1853,7 +1872,7 @@ that matters: this one refuses before the address is built.
 pdepositAddressToMidgard ::
   forall (s :: S). Term s PAddress -> Term s PInteger -> Term s PMidgardAddress
 pdepositAddressToMidgard address networkId = P.do
-  PAddress {paddress'credential, paddress'stakingCredential} <- pmatch address
+  PAddress{paddress'credential, paddress'stakingCredential} <- pmatch address
   pif (networkId #== 0 #|| networkId #== 1) `flip` perror $
     pcon $
       PMidgardAddress
@@ -1984,19 +2003,21 @@ comparison in 'pvalidateValidDepositTransition' a statement about the operator.
 
 No script reference: a deposit projects funds, never a script.
 -}
-pprojectedDepositOutputCbor ::
+pprojectedDepositOutputCbor :: forall s. Term s PDepositInfo -> Term s Value.PSortedValue -> Term s (PAsData PCurrencySymbol) -> Term s (PAsData PTokenName) -> Term s PByteString
+pprojectedDepositOutputCbor info value policy name = pencodeMidgardTxOutput # pprojectedDepositOutput info value policy name
+
+pprojectedDepositOutput ::
   forall (s :: S).
   Term s PDepositInfo ->
   Term s Value.PSortedValue ->
   Term s (PAsData PCurrencySymbol) ->
   Term s (PAsData PTokenName) ->
-  Term s PByteString
-pprojectedDepositOutputCbor depositInfo depositValue depositPolicyId eventAssetName = P.do
-  PDepositInfo {pdepositInfo'l2Address, pdepositInfo'l2NetworkId, pdepositInfo'l2Datum} <-
+  Term s PMidgardTxOutput
+pprojectedDepositOutput depositInfo depositValue depositPolicyId eventAssetName = P.do
+  PDepositInfo{pdepositInfo'l2Address, pdepositInfo'l2NetworkId, pdepositInfo'l2Datum} <-
     pmatch depositInfo
-  pencodeMidgardTxOutput
-    #$ pcon
-    $ PMidgardTxOutput
+  pcon $
+    PMidgardTxOutput
       { ptxOutput'address =
           pdata
             ( pdepositAddressToMidgard
@@ -2021,7 +2042,8 @@ compare the id against a committed key and read the info through the projection,
 and both of those refuse a malformed value on their own.
 -}
 data PAuthenticatedDepositReference (s :: S) = PAuthenticatedDepositReference
-  { pauthDeposit'id :: Term s PData
+  { pauthDeposit'outRef :: Term s (PAsData PTxOutRef)
+  , pauthDeposit'id :: Term s PData
   , pauthDeposit'info :: Term s PData
   , pauthDeposit'inclusionTime :: Term s PInteger
   , pauthDeposit'value :: Term s Value.PSortedValue
@@ -2057,13 +2079,13 @@ pgetAuthenticatedDepositReference ::
     )
 pgetAuthenticatedDepositReference = phoistAcyclic $
   plam $ \referenceInputs depositPolicyId eventAssetName eventRefInputIndex -> P.do
-    PTxInInfo {ptxInInfo'resolved} <-
+    PTxInInfo{ptxInInfo'outRef, ptxInInfo'resolved} <-
       pmatch (pfromData (pelemAt # eventRefInputIndex # referenceInputs))
-    PTxOut {ptxOut'value, ptxOut'datum} <- pmatch ptxInInfo'resolved
+    PTxOut{ptxOut'value, ptxOut'datum} <- pmatch ptxInInfo'resolved
     datumData <-
       plet
         ( pmatch ptxOut'datum $ \case
-            POutputDatum {poutputDatum'outputDatum} -> pto poutputDatum'outputDatum
+            POutputDatum{poutputDatum'outputDatum} -> pto poutputDatum'outputDatum
             _ -> perror
         )
     value <- plet (pto (pfromData ptxOut'value))
@@ -2073,7 +2095,8 @@ pgetAuthenticatedDepositReference = phoistAcyclic $
             punsafeEventToKeyValuePair (phead # fields)
       pcon $
         PAuthenticatedDepositReference
-          { pauthDeposit'id = depositIdData
+          { pauthDeposit'outRef = pdata ptxInInfo'outRef
+          , pauthDeposit'id = depositIdData
           , pauthDeposit'info = depositInfoData
           , pauthDeposit'inclusionTime = pasInt #$ phead #$ ptail # fields
           , pauthDeposit'value = value
@@ -2124,14 +2147,14 @@ pvalidateValidDepositTransition
   eventRefInputIndex
   eventAssetName
   projectedUtxo = P.do
-    PHubOracleDatum {phubOracle'deposit} <- pmatch hubDatum
+    PHubOracleDatum{phubOracle'deposit} <- pmatch hubDatum
     PRootMembershipProof
       { prootMembership'key = sourceKey
       , prootMembership'value = sourceValue
       } <-
       pmatch sourceMembership
-    PRootMembershipProof {prootMembership'value = stepValue} <- pmatch traceProof
-    PTransitionStep {ptransitionStep'preUtxosRoot, ptransitionStep'postUtxosRoot} <-
+    PRootMembershipProof{prootMembership'value = stepValue} <- pmatch traceProof
+    PTransitionStep{ptransitionStep'preUtxosRoot, ptransitionStep'postUtxosRoot} <-
       pmatch (pcoerceData stepValue)
     PLedgerInsertWitness
       { pledgerInsert'key
@@ -2153,7 +2176,7 @@ pvalidateValidDepositTransition
             # eventRefInputIndex
         )
     expectedKey <- plet (pledgerOutrefKey sourceKey)
-    PTxOutRef {ptxOutRef'idx = sourceOutputIndex} <- pmatch (pcoerceData sourceKey)
+    PTxOutRef{ptxOutRef'idx = sourceOutputIndex} <- pmatch (pcoerceData sourceKey)
     expectedValue <-
       plet
         ( pmatch
@@ -2211,7 +2234,7 @@ block that ended there.
 ptimedL1EventIsDue ::
   forall (s :: S). Term s PHeaderV1 -> Term s PInteger -> Term s PBool
 ptimedL1EventIsDue header inclusionTime = P.do
-  PHeaderV1 {pheader'startTime, pheader'endTime} <- pmatch header
+  PHeaderV1{pheader'startTime, pheader'endTime} <- pmatch header
   pfromData pheader'startTime
     #< inclusionTime
     #&& inclusionTime
@@ -2234,7 +2257,7 @@ pforcedTxIsDue ::
   Term s PInteger ->
   Term s PBool
 pforcedTxIsDue header validityIntervalStart validityIntervalEnd = P.do
-  PHeaderV1 {pheader'startTime, pheader'endTime} <- pmatch header
+  PHeaderV1{pheader'startTime, pheader'endTime} <- pmatch header
   startTime <- plet (pfromData pheader'startTime)
   endTime <- plet (pfromData pheader'endTime)
   pif
@@ -2266,7 +2289,9 @@ pforcedEventIsDue ::
   Term s PBool
 pforcedEventIsDue header inclusionTime compactBody = P.do
   PNativeTxBodyCompact
-    {pbodyCompact'validityIntervalStart, pbodyCompact'validityIntervalEnd} <-
+    { pbodyCompact'validityIntervalStart
+    , pbodyCompact'validityIntervalEnd
+    } <-
     pmatch compactBody
   ptimedL1EventIsDue header inclusionTime
     #&& pforcedTxIsDue
@@ -2288,16 +2313,16 @@ transaction whose window was invented by the prover.
 ptxOrderCompactBody ::
   forall (s :: S). Term s PTxOrderPayloadV1 -> Term s PNativeTxBodyCompact
 ptxOrderCompactBody payload = P.do
-  PTxOrderPayloadV1 {ptxOrderPayload'txId, ptxOrderPayload'source} <- pmatch payload
-  PNativeTxProofSourceV1 {pnativeSource'compactCbor} <-
+  PTxOrderPayloadV1{ptxOrderPayload'txId, ptxOrderPayload'source} <- pmatch payload
+  PNativeTxProofSourceV1{pnativeSource'compactCbor} <-
     pmatch (pfromData ptxOrderPayload'source)
-  PVerifiedMidgardNativeTxCompact {pverified'txCompact} <-
+  PVerifiedMidgardNativeTxCompact{pverified'txCompact} <-
     pmatch
       ( pverifyNativeTxCompactCborV1
           # pfromData ptxOrderPayload'txId
           # pfromData pnativeSource'compactCbor
       )
-  pmatch pverified'txCompact $ \PNativeTxCompact {pcompact'body} -> pcompact'body
+  pmatch pverified'txCompact $ \PNativeTxCompact{pcompact'body} -> pcompact'body
 
 {- | Aiken @proof.get_deposit_event_with_nft@, as its two read fields.
 
@@ -2424,7 +2449,7 @@ pvalidateOmittedDueL1Event ::
   Term s (PAsData POmittedDueL1EventWitness) ->
   Term s PBool
 pvalidateOmittedDueL1Event header hubDatum referenceInputs witness = P.do
-  PHubOracleDatum {phubOracle'deposit, phubOracle'withdrawal, phubOracle'txOrder} <-
+  PHubOracleDatum{phubOracle'deposit, phubOracle'withdrawal, phubOracle'txOrder} <-
     pmatch hubDatum
   PHeaderV1
     { pheader'withdrawalsRoot
@@ -2448,7 +2473,7 @@ pvalidateOmittedDueL1Event header hubDatum referenceInputs witness = P.do
       , pomittedDeposit'eventAssetName
       , pomittedDeposit'sourceNonMembership
       } -> P.do
-        PAuthenticatedDepositReference {pauthDeposit'id, pauthDeposit'inclusionTime} <-
+        PAuthenticatedDepositReference{pauthDeposit'id, pauthDeposit'inclusionTime} <-
           pmatch
             ( pgetAuthenticatedDepositReference
                 # referenceInputs
@@ -2457,7 +2482,7 @@ pvalidateOmittedDueL1Event header hubDatum referenceInputs witness = P.do
                 # pfromData pomittedDeposit'eventRefInputIndex
             )
         nonMembership <- plet (pfromData pomittedDeposit'sourceNonMembership)
-        PRootNonMembershipProof {prootNonMembership'key} <- pmatch nonMembership
+        PRootNonMembershipProof{prootNonMembership'key} <- pmatch nonMembership
         ptimedL1EventIsDue header pauthDeposit'inclusionTime
           #&& prootNonMembership'key
           #== pauthDeposit'id
@@ -2472,7 +2497,7 @@ pvalidateOmittedDueL1Event header hubDatum referenceInputs witness = P.do
       , pomittedWithdrawal'eventAssetName
       , pomittedWithdrawal'sourceNonMembership
       } -> P.do
-        PWithdrawalDatum {pwithdrawalDatum'event, pwithdrawalDatum'inclusionTime} <-
+        PWithdrawalDatum{pwithdrawalDatum'event, pwithdrawalDatum'inclusionTime} <-
           pmatch
             ( pgetWithdrawalDatumWithNft
                 # referenceInputs
@@ -2480,9 +2505,9 @@ pvalidateOmittedDueL1Event header hubDatum referenceInputs witness = P.do
                 # pomittedWithdrawal'eventAssetName
                 # pfromData pomittedWithdrawal'eventRefInputIndex
             )
-        PWithdrawalEvent {pwithdrawalEvent'id} <- pmatch (pfromData pwithdrawalDatum'event)
+        PWithdrawalEvent{pwithdrawalEvent'id} <- pmatch (pfromData pwithdrawalDatum'event)
         nonMembership <- plet (pfromData pomittedWithdrawal'sourceNonMembership)
-        PRootNonMembershipProof {prootNonMembership'key} <- pmatch nonMembership
+        PRootNonMembershipProof{prootNonMembership'key} <- pmatch nonMembership
         ptimedL1EventIsDue header (pfromData pwithdrawalDatum'inclusionTime)
           #&& prootNonMembership'key
           #== pforgetData pwithdrawalEvent'id
@@ -2497,7 +2522,7 @@ pvalidateOmittedDueL1Event header hubDatum referenceInputs witness = P.do
       , pomittedForced'eventAssetName
       , pomittedForced'sourceNonMembership
       } -> P.do
-        PTxOrderDatum {ptxOrderDatum'event, ptxOrderDatum'inclusionTime} <-
+        PTxOrderDatum{ptxOrderDatum'event, ptxOrderDatum'inclusionTime} <-
           pmatch
             ( pgetTxOrderDatumWithNft
                 # referenceInputs
@@ -2505,10 +2530,10 @@ pvalidateOmittedDueL1Event header hubDatum referenceInputs witness = P.do
                 # pomittedForced'eventAssetName
                 # pfromData pomittedForced'eventRefInputIndex
             )
-        PTxOrderEventV1 {ptxOrderEvent'id, ptxOrderEvent'tx} <-
+        PTxOrderEventV1{ptxOrderEvent'id, ptxOrderEvent'tx} <-
           pmatch (pfromData ptxOrderDatum'event)
         nonMembership <- plet (pfromData pomittedForced'sourceNonMembership)
-        PRootNonMembershipProof {prootNonMembership'key} <- pmatch nonMembership
+        PRootNonMembershipProof{prootNonMembership'key} <- pmatch nonMembership
         pforcedEventIsDue
           header
           (pfromData ptxOrderDatum'inclusionTime)
@@ -2546,7 +2571,7 @@ pvalidateOutOfWindowSourceEvent ::
   Term s (PAsData POutOfWindowSourceEventWitness) ->
   Term s PBool
 pvalidateOutOfWindowSourceEvent header hubDatum referenceInputs witness = P.do
-  PHubOracleDatum {phubOracle'deposit, phubOracle'withdrawal, phubOracle'txOrder} <-
+  PHubOracleDatum{phubOracle'deposit, phubOracle'withdrawal, phubOracle'txOrder} <-
     pmatch hubDatum
   pmatch (pfromData witness) $ \case
     POutOfWindowDeposit
@@ -2555,7 +2580,10 @@ pvalidateOutOfWindowSourceEvent header hubDatum referenceInputs witness = P.do
       , poutOfWindowDeposit'sourceMembership
       } -> P.do
         PAuthenticatedDepositReference
-          {pauthDeposit'id, pauthDeposit'info, pauthDeposit'inclusionTime} <-
+          { pauthDeposit'id
+          , pauthDeposit'info
+          , pauthDeposit'inclusionTime
+          } <-
           pmatch
             ( pgetAuthenticatedDepositReference
                 # referenceInputs
@@ -2563,7 +2591,7 @@ pvalidateOutOfWindowSourceEvent header hubDatum referenceInputs witness = P.do
                 # poutOfWindowDeposit'eventAssetName
                 # pfromData poutOfWindowDeposit'eventRefInputIndex
             )
-        PRootMembershipProof {prootMembership'key, prootMembership'value} <-
+        PRootMembershipProof{prootMembership'key, prootMembership'value} <-
           pmatch (pfromData poutOfWindowDeposit'sourceMembership)
         pnot
           # ptimedL1EventIsDue header pauthDeposit'inclusionTime
@@ -2578,7 +2606,7 @@ pvalidateOutOfWindowSourceEvent header hubDatum referenceInputs witness = P.do
       , poutOfWindowWithdrawal'validityOverride
       , poutOfWindowWithdrawal'sourceMembership
       } -> P.do
-        PWithdrawalDatum {pwithdrawalDatum'event, pwithdrawalDatum'inclusionTime} <-
+        PWithdrawalDatum{pwithdrawalDatum'event, pwithdrawalDatum'inclusionTime} <-
           pmatch
             ( pgetWithdrawalDatumWithNft
                 # referenceInputs
@@ -2586,9 +2614,9 @@ pvalidateOutOfWindowSourceEvent header hubDatum referenceInputs witness = P.do
                 # poutOfWindowWithdrawal'eventAssetName
                 # pfromData poutOfWindowWithdrawal'eventRefInputIndex
             )
-        PWithdrawalEvent {pwithdrawalEvent'id, pwithdrawalEvent'info} <-
+        PWithdrawalEvent{pwithdrawalEvent'id, pwithdrawalEvent'info} <-
           pmatch (pfromData pwithdrawalDatum'event)
-        PWithdrawalInfo {pwithdrawalInfo'body, pwithdrawalInfo'signature} <-
+        PWithdrawalInfo{pwithdrawalInfo'body, pwithdrawalInfo'signature} <-
           pmatch (pfromData pwithdrawalEvent'info)
         expectedInfo <-
           plet $
@@ -2599,7 +2627,7 @@ pvalidateOutOfWindowSourceEvent header hubDatum referenceInputs witness = P.do
                   , pwithdrawalInfo'signature = pwithdrawalInfo'signature
                   , pwithdrawalInfo'validity = poutOfWindowWithdrawal'validityOverride
                   }
-        PRootMembershipProof {prootMembership'key, prootMembership'value} <-
+        PRootMembershipProof{prootMembership'key, prootMembership'value} <-
           pmatch (pfromData poutOfWindowWithdrawal'sourceMembership)
         pnot
           # ptimedL1EventIsDue header (pfromData pwithdrawalDatum'inclusionTime)
@@ -2614,7 +2642,7 @@ pvalidateOutOfWindowSourceEvent header hubDatum referenceInputs witness = P.do
       , poutOfWindowForced'validityOverride
       , poutOfWindowForced'sourceMembership
       } -> P.do
-        PTxOrderDatum {ptxOrderDatum'event, ptxOrderDatum'inclusionTime} <-
+        PTxOrderDatum{ptxOrderDatum'event, ptxOrderDatum'inclusionTime} <-
           pmatch
             ( pgetTxOrderDatumWithNft
                 # referenceInputs
@@ -2622,26 +2650,31 @@ pvalidateOutOfWindowSourceEvent header hubDatum referenceInputs witness = P.do
                 # poutOfWindowForced'eventAssetName
                 # pfromData poutOfWindowForced'eventRefInputIndex
             )
-        PTxOrderEventV1 {ptxOrderEvent'id, ptxOrderEvent'tx} <-
+        PTxOrderEventV1{ptxOrderEvent'id, ptxOrderEvent'tx} <-
           pmatch (pfromData ptxOrderDatum'event)
-        PTxOrderPayloadV1 {ptxOrderPayload'txId, ptxOrderPayload'source} <-
+        PTxOrderPayloadV1{ptxOrderPayload'txId, ptxOrderPayload'source} <-
           pmatch (pfromData ptxOrderEvent'tx)
+        source <- pmatch $ pfromData ptxOrderPayload'source
+        PVerifiedMidgardNativeTxCompact{pverified'txCompact} <- pmatch $ pverifyNativeTxCompactCborV1 # pfromData ptxOrderPayload'txId # pfromData (pnativeSource'compactCbor source)
+        compact <- pmatch pverified'txCompact
+        let adjudicated = pcon compact{pcompact'validityCode = pif (pfromData poutOfWindowForced'validityOverride #== pcon PForcedTxValid) 0 1}
+            adjudicatedSource = pcon source{pnativeSource'compactCbor = pdata $ pencodeNativeTxCompactV1 # adjudicated}
         expectedValue <-
           plet $
             pdata $
               pcon $
                 PForcedInclusionTxV1
                   { pforcedTx'txId = ptxOrderPayload'txId
-                  , pforcedTx'source = ptxOrderPayload'source
+                  , pforcedTx'source = pdata adjudicatedSource
                   , pforcedTx'verdict = poutOfWindowForced'validityOverride
                   }
-        PRootMembershipProof {prootMembership'key, prootMembership'value} <-
+        PRootMembershipProof{prootMembership'key, prootMembership'value} <-
           pmatch (pfromData poutOfWindowForced'sourceMembership)
         pnot
           # pforcedEventIsDue
             header
             (pfromData ptxOrderDatum'inclusionTime)
-            (ptxOrderCompactBody (pfromData ptxOrderEvent'tx))
+            (pcompact'body compact)
           #&& prootMembership'key
           #== pforgetData ptxOrderEvent'id
           #&& prootMembership'value
@@ -2670,13 +2703,6 @@ psourceArm tag membership =
 
 {- | Aiken @proof.InvalidOneStepTransitionWitness@ — which transition is being
 disputed, and the evidence for it.
-
-The L2 arm carries __one field Aiken's does not__: the proof-source triple. That
-is the redeemer cost of the decoder collapse described on
-'pvalidateL2TransactionTransition' — Aiken deserialises the committed leaf and
-this port rebuilds it from a supplied triple instead. It sits last so that every
-field before it is positionally the Aiken one, which is what a cross-checking
-reader will want.
 -}
 data PInvalidOneStepTransitionWitness (s :: S)
   = PValidWithdrawalTransition
@@ -2711,7 +2737,6 @@ data PInvalidOneStepTransitionWitness (s :: S)
       , pl2Transition'outputsPreimage :: Term s (PAsData PByteString)
       , pl2Transition'spentUtxos :: Term s (PAsData (PBuiltinList (PAsData PLedgerDeleteWitness)))
       , pl2Transition'producedUtxos :: Term s (PAsData (PBuiltinList (PAsData PLedgerInsertWitness)))
-      , pl2Transition'source :: Term s (PAsData PNativeTxProofSourceV1)
       }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
@@ -2796,14 +2821,12 @@ pvalidateInvalidOneStepTransition header hubDatum referenceInputs witness =
       , pl2Transition'outputsPreimage
       , pl2Transition'spentUtxos
       , pl2Transition'producedUtxos
-      , pl2Transition'source
       } ->
         pvalidateL2TransactionTransition
           header
           (pfromData pl2Transition'traceProof)
           (pfromData pl2Transition'eventToStep)
           (pfromData pl2Transition'sourceMembership)
-          pl2Transition'source
           (pfromData pl2Transition'spendInputsPreimage)
           (pfromData pl2Transition'outputsPreimage)
           (pfromData pl2Transition'spentUtxos)
@@ -2882,19 +2905,23 @@ pvalidateTransitionFaultProofEnvelope ::
   Term s (PAsData PTokenName) ->
   Term s PBool
 pvalidateTransitionFaultProofEnvelope proof computationThreadTokenAssetName = P.do
-  PTransitionFaultProof {ptransitionProof'challengedHeaderHash, ptransitionProof'header} <-
+  PTransitionFaultProof{ptransitionProof'challengedHeaderHash, ptransitionProof'header} <-
     pmatch proof
-  challengedHeaderHash <- plet (pfromData ptransitionProof'challengedHeaderHash)
+  pvalidateTransitionHeaderEnvelope (pfromData ptransitionProof'challengedHeaderHash) (pfromData ptransitionProof'header) computationThreadTokenAssetName
+
+pvalidateTransitionHeaderEnvelope :: forall s. Term s PByteString -> Term s PHeaderV1 -> Term s (PAsData PTokenName) -> Term s PBool
+pvalidateTransitionHeaderEnvelope challengedHeaderHash header computationThreadTokenAssetName = P.do
   nameBytes <- plet (pto (pfromData computationThreadTokenAssetName))
-  (pblake2b_224 #$ pserialiseData # pforgetData ptransitionProof'header)
+  (pblake2b_224 #$ pserialiseData # pforgetData (pdata header))
     #== challengedHeaderHash
     #&& plengthBS
     # nameBytes
-    #== pidByteCount + 28
-    #&& (psliceBS # 0 # pidByteCount # nameBytes)
-    #== ptransitionTraceFraudCategoryId
-    #&& (psliceBS # pidByteCount # 28 # nameBytes)
-    #== challengedHeaderHash
+    #== pidByteCount
+    + 28
+      #&& (psliceBS # 0 # pidByteCount # nameBytes)
+      #== ptransitionTraceFraudCategoryId
+      #&& (psliceBS # pidByteCount # 28 # nameBytes)
+      #== challengedHeaderHash
 
 {- | Aiken @proof.validate_transition_fault@ — every fault behind one redeemer.
 
@@ -2913,44 +2940,44 @@ pvalidateTransitionFault header fault hubDatum referenceInputs = P.do
   tag <- plet (fst (pconstrOf fault))
   fields <- plet (snd (pconstrOf fault))
   first <- plet (phead # fields)
-  pif (tag #== 0) (pvalidateTraceBoundary header (punsafeCoerce first) (psecondOf fields)) $
-    pif (tag #== 1) (pvalidateTraceLink header (pcoerceData first)) $
-      pif
-        (tag #== 2)
-        (pvalidateEventToStepMismatch header (pcoerceData first) (psecondOf fields))
-        $ pif (tag #== 3) (pvalidateSourceMembershipMismatch header (punsafeCoerce first))
-        $ pif
-          (tag #== 4)
-          ( pvalidateInvalidOneStepTransition
-              header
-              hubDatum
-              referenceInputs
-              (punsafeCoerce first)
-          )
-        $ pif
-          (tag #== 5)
-          ( pvalidateOmittedDueL1Event
-              header
-              hubDatum
-              referenceInputs
-              (punsafeCoerce first)
-          )
-        $ pif
-          (tag #== 6)
-          (pvalidateDuplicateTraceEvent header (pcoerceData first) (psecondOf fields))
-        $ pif
-          (tag #== 7)
-          ( pvalidateOutOfWindowSourceEvent
-              header
-              hubDatum
-              referenceInputs
-              (punsafeCoerce first)
-          )
-        $ pif (tag #== 8) (pvalidateCountFault header (punsafeCoerce first)) $
-          pif
-            (tag #== 9)
-            (pvalidateAcceptedTransactionTransitionMismatch header (pcoerceData first))
-            perror
+  pif (tag #== 0) (pvalidateTraceBoundary header (punsafeCoerce first) (psecondOf fields))
+    $ pif (tag #== 1) (pvalidateTraceLink header (pcoerceData first))
+    $ pif
+      (tag #== 2)
+      (pvalidateEventToStepMismatch header (pcoerceData first) (psecondOf fields))
+    $ pif (tag #== 3) (pvalidateSourceMembershipMismatch header (punsafeCoerce first))
+    $ pif
+      (tag #== 4)
+      ( pvalidateInvalidOneStepTransition
+          header
+          hubDatum
+          referenceInputs
+          (punsafeCoerce first)
+      )
+    $ pif
+      (tag #== 5)
+      ( pvalidateOmittedDueL1Event
+          header
+          hubDatum
+          referenceInputs
+          (punsafeCoerce first)
+      )
+    $ pif
+      (tag #== 6)
+      (pvalidateDuplicateTraceEvent header (pcoerceData first) (psecondOf fields))
+    $ pif
+      (tag #== 7)
+      ( pvalidateOutOfWindowSourceEvent
+          header
+          hubDatum
+          referenceInputs
+          (punsafeCoerce first)
+      )
+    $ pif (tag #== 8) (pvalidateCountFault header (punsafeCoerce first))
+    $ pif
+      (tag #== 9)
+      (pvalidateAcceptedTransactionTransitionMismatch header (pcoerceData first))
+      perror
 
 -- | The second field of a constructor, decoded.
 psecondOf ::
@@ -2979,7 +3006,7 @@ pfaultProofEntry ::
   ) ->
   Term s PBool
 pfaultProofEntry proof assetName selected = P.do
-  PTransitionFaultProof {ptransitionProof'header, ptransitionProof'fault} <- pmatch proof
+  PTransitionFaultProof{ptransitionProof'header, ptransitionProof'fault} <- pmatch proof
   pvalidateTransitionFaultProofEnvelope proof assetName
     #&& selected
       (pfromData ptransitionProof'header)
@@ -2996,15 +3023,15 @@ pvalidateControlFaultProof ::
 pvalidateControlFaultProof proof assetName =
   pfaultProofEntry proof assetName $ \header tag _fault fields ->
     plet (phead # fields) $ \first ->
-      pif (tag #== 0) (pvalidateTraceBoundary header (punsafeCoerce first) (psecondOf fields)) $
-        pif (tag #== 1) (pvalidateTraceLink header (pcoerceData first)) $
-          pif
-            (tag #== 2)
-            (pvalidateEventToStepMismatch header (pcoerceData first) (psecondOf fields))
-            $ pif
-              (tag #== 8)
-              (pvalidateCountFault header (punsafeCoerce first))
-              (pconstant False)
+      pif (tag #== 0) (pvalidateTraceBoundary header (punsafeCoerce first) (psecondOf fields))
+        $ pif (tag #== 1) (pvalidateTraceLink header (pcoerceData first))
+        $ pif
+          (tag #== 2)
+          (pvalidateEventToStepMismatch header (pcoerceData first) (psecondOf fields))
+        $ pif
+          (tag #== 8)
+          (pvalidateCountFault header (punsafeCoerce first))
+          (pconstant False)
 
 -- | Aiken @proof.validate_source_fault_proof@.
 pvalidateSourceFaultProof ::
@@ -3085,7 +3112,8 @@ pvalidateAcceptedTransactionFaultProof proof assetName =
     pif
       (tag #== 9)
       (pvalidateAcceptedTransactionTransitionMismatch header (pcoerceData $ phead # fields))
-      $ pif (tag #== 4) `flip` pconstant False $ P.do
+      $ pif (tag #== 4) `flip` pconstant False
+      $ P.do
         witness <- plet (punsafeCoerce @(PAsData PInvalidOneStepTransitionWitness) (phead # fields))
         let witnessTag = fst (pconstrOf witness)
             wf = snd (pconstrOf witness)
@@ -3096,7 +3124,6 @@ pvalidateAcceptedTransactionFaultProof proof assetName =
               (pcoerceData (pfieldAt 0 wf))
               (pcoerceData (pfieldAt 1 wf))
               (pcoerceData (pfieldAt 2 wf))
-              (punsafeCoerce (pfieldAt 7 wf))
               (pasByteStr # pfieldAt 3 wf)
               (pasByteStr # pfieldAt 4 wf)
               (punsafeCoerce (pasList # pfieldAt 5 wf))
@@ -3206,7 +3233,7 @@ pvalidateTransitionFaultProof ::
   Term s (PBuiltinList (PAsData PTxInInfo)) ->
   Term s PBool
 pvalidateTransitionFaultProof proof assetName hubDatum referenceInputs = P.do
-  PTransitionFaultProof {ptransitionProof'header, ptransitionProof'fault} <- pmatch proof
+  PTransitionFaultProof{ptransitionProof'header, ptransitionProof'fault} <- pmatch proof
   pvalidateTransitionFaultProofEnvelope proof assetName
     #&& pvalidateTransitionFault
       (pfromData ptransitionProof'header)

@@ -99,6 +99,7 @@ module Midgard.NativeTxMachineWalk (
 
   -- * Advancing
   pwalkNext,
+  pwalkNextExtent,
   pwalkFold,
   pwalkSkip,
   pcertifyFieldGrammar,
@@ -775,6 +776,18 @@ pwalkNext ::
         :--> PPair PByteString PFieldWalkCheckpointV1
     )
 pwalkNext = phoistAcyclic $
+  plam $ \view checkpoint ->
+    pmatch (pwalkNextExtent # view # checkpoint) $ \(PPair extent advanced) ->
+      pmatch extent $ \(PPair offset len) ->
+        pcon $ PPair (pfieldReadRange # view # offset # len) advanced
+
+-- | Advance the authenticated envelope without materializing the payload.
+-- Callers must consume the returned extent before using its semantic value.
+pwalkNextExtent ::
+  forall (s :: S).
+  Term s (PFieldViewV1 :--> PFieldWalkCheckpointV1
+    :--> PPair (PPair PInteger PInteger) PFieldWalkCheckpointV1)
+pwalkNextExtent = phoistAcyclic $
   plam $ \view checkpoint -> P.do
     PFieldWalkCheckpointV1
       { pcheckpoint'txId
@@ -816,7 +829,7 @@ pwalkNext = phoistAcyclic $
         )
         ( pcon
             ( PPair
-                (pfieldReadRange # view # payloadOffset # len)
+                (pcon $ PPair payloadOffset len)
                 ( pcon
                     ( PFieldWalkCheckpointV1
                         { pcheckpoint'txId = pcheckpoint'txId

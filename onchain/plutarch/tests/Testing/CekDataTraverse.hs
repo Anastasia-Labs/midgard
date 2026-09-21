@@ -14,6 +14,7 @@ import Plutarch.Core.Utils (pand'List)
 import Plutarch.Evaluate (applyArguments, evalScriptHuge)
 import Plutarch.Internal.Other (printScript)
 import Plutarch.Internal.Term (Config (NoTracing), compile)
+import Plutarch.LedgerApi.Utils (PMaybeData (..))
 import Plutarch.Prelude
 import Plutarch.Script (Script)
 import Plutarch.Unsafe (punsafeCoerce)
@@ -21,6 +22,7 @@ import PlutusCore.Data qualified as PD
 import Test.Tasty
 import Test.Tasty.HUnit
 
+import Midgard.CekDataBytes qualified as Bytes
 import Midgard.CekData qualified as Data
 import Midgard.CekDataFrame qualified as Frame
 import Midgard.CekDataTraverse qualified as Traverse
@@ -654,9 +656,33 @@ maximumSourceWindowRuntime = do
       parsed = "8a01021118860040d87a80d87a80d8799f8601011118861880d8799f8601000018808401000080d8799f890100001897584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffd87a80"
   assertStep initial (Just "5f58406a6a6a6a6a6a6a6a6a6a6a") (PD.Constr 1 [PD.I 134]) opened
   assertStep opened (Just "5f58") (PD.Constr 0 []) parsed
+  -- The split byte advance must produce the independent target successor;
+  -- normalization of that successor supplies the gate required by this API.
   passertEvalNoTrace $
-    pmatch (pexpectJust (Traverse.pnextSourceSpanV1 # (Traverse.pdecodeControlV1 # pconstant (decodeHex parsed)))) $
-      \(Blob.PCekSourceBlobSpanV1 _ len) -> pfromData len #== 109 #&& pfromData len #<= Traverse.pmaxSourceSpan
+    plet (Traverse.pdecodeControlV1 # pconstant (decodeHex opened)) $ \control ->
+      plet (pexpectJust (Traverse.pprevalidatedAdvanceBytes # control # pcon (PJust (pconstant (decodeHex "5f58"))))) $ \next ->
+        next #== Traverse.pdecodeControlV1 # pconstant (decodeHex parsed)
+  passertEvalNoTrace $
+    plet (Traverse.pdecodeControlV1 # pconstant (decodeHex parsed)) $ \control ->
+      plet (Traverse.pprevalidatedNextSourceSpan # control) $ \span ->
+        span #== Traverse.pnextSourceSpanV1 # control #&&
+          pmatch (pexpectJust span) (\(Blob.PCekSourceBlobSpanV1 _ len) ->
+            pfromData len #== 109 #&& pfromData len #<= Traverse.pmaxSourceSpan)
+  -- A forged nested byte control must still be refused by the normal entry
+  -- points; exposing the prevalidated operations must not weaken those gates.
+  passertEvalNoTrace $
+    pmatch (Traverse.pdecodeControlV1 # pconstant (decodeHex parsed)) $ \c ->
+      pmatch (pfromData (Traverse.ptraverse'bytes c)) $ \case
+        PDNothing -> perror
+        PDJust bytesData -> pmatch (pfromData bytesData) $ \bytesControl ->
+          plet (pcon c {Traverse.ptraverse'bytes = pdata (pcon (PDJust (pdata
+            (pcon bytesControl {Bytes.pbytes'blob = pdata (pcon PDNothing)}))))}) $ \forged ->
+            Traverse.pnextSourceSpanV1 # forged #== pcon PNothing
+              #&& Traverse.pstepV1 # forged # pcon PNothing # pcon Traverse.PNoAction #== pcon PNothing
+  passertEvalNoTrace $
+    plet (Traverse.pdecodeControlV1 # pconstant (decodeHex opened)) $ \control ->
+      Traverse.pprevalidatedAdvanceBytes # control # pcon PNothing #== pcon PNothing
+        #&& Traverse.pprevalidatedAttachBytes # control # pcon PDNothing #== pcon PNothing
 
 malformedInputsRuntime :: Assertion
 malformedInputsRuntime = do

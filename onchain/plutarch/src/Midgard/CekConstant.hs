@@ -49,6 +49,7 @@ module Midgard.CekConstant (
 
   -- * Roots
   pconstantRootV1,
+  pconstantSemanticProjection,
   pverifyConstantWitnessV1,
   psemanticConstantRootV1,
   psemanticDataConstantRootV1,
@@ -363,6 +364,18 @@ pconstantRootV1 = phoistAcyclic $
                 # pfromData cborLength
                 # pfromData root
                 # (psemanticMemorySizeV1 # constantType # payload)
+
+-- | Exact compact projection of a canonical, type-checked constant.
+pconstantSemanticProjection ::
+  forall (s :: S). Term s (PConstantWitnessV1 :--> PPair PDataSummaryV1 PInteger)
+pconstantSemanticProjection = phoistAcyclic $
+  plam $ \witness ->
+    pmatch witness $ \(PConstantWitnessV1 typeCbor payloadCbor) ->
+      plet (pdecodeConstantTypeV1 # pfromData typeCbor) $ \constantType ->
+        plet (pdecodeConstantPayloadV1 # pfromData payloadCbor) $ \payload ->
+          pif (ppayloadMatchesTypeV1 # constantType # payload)
+            (pcon $ PPair (psemanticDataSummaryV1 # payload) (psemanticMemorySizeV1 # constantType # payload))
+            perror
 
 -- | Aiken @verify_constant_witness_v1@.
 pverifyConstantWitnessV1 ::

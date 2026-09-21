@@ -17,11 +17,14 @@ module Testing.SettlementValidator (tests) where
 import Numeric (showHex)
 
 import Data.ByteString qualified as BS
+import Data.ByteString.Base16 qualified as Base16
+import Data.ByteString.Char8 qualified as BS8
 import PlutusCore.Data qualified as PD
 import PlutusLedgerApi.V1.Address (scriptHashAddress)
 import PlutusLedgerApi.V1.Interval (Extended (..), Interval (..), LowerBound (..), UpperBound (..))
 import PlutusLedgerApi.V1.Value (CurrencySymbol (..), TokenName (..), Value, getValue, singleton)
 import PlutusLedgerApi.V3 (
+  Credential (ScriptCredential),
   Datum (..),
   OutputDatum (..),
   POSIXTime (..),
@@ -30,7 +33,6 @@ import PlutusLedgerApi.V3 (
   ScriptContext (..),
   ScriptHash (..),
   ScriptInfo (MintingScript, SpendingScript),
-  Credential (ScriptCredential),
   ScriptPurpose (Minting, Rewarding, Spending),
   TxId (..),
   TxInInfo (..),
@@ -48,8 +50,6 @@ import PlutusLedgerApi.V3 (
  )
 import PlutusLedgerApi.V3.MintValue (MintValue (UnsafeMintValue))
 import PlutusTx.AssocMap qualified as Map
-import Data.ByteString.Base16 qualified as Base16
-import Data.ByteString.Char8 qualified as BS8
 import PlutusTx.Builtins (
   BuiltinData,
   blake2b_256,
@@ -77,169 +77,227 @@ tests =
     "Settlement Validator Tests"
     [ testGroup
         "decodeMintRedeemer (mirrors the Aiken test blocks)"
-        [ testCase "settlement_mint_redeemer_parser_preserves_spawn_field_order" $
-            passertEval $
-              pmatch
-                (pdecodeMintRedeemer # pconstant @PData (PD.Constr 0 [PD.B "aa", PD.I 1, PD.I 2, PD.I 3]))
-                $ \case
-                  PSpawn a b c d ->
-                    pand'List
-                      [ pto (pfromData a) #== pconstant ("aa" :: BS.ByteString)
-                      , pfromData b #== 1
-                      , pfromData c #== 2
-                      , pfromData d #== 3
-                      ]
-                  _ -> pconstant False
-        , testCase "settlement_mint_redeemer_parser_preserves_remove_field_order" $
-            passertEval $
-              pmatch
-                (pdecodeMintRedeemer # pconstant @PData (PD.Constr 1 [PD.B "bb", PD.I 4, PD.I 5]))
-                $ \case
-                  PRemove a b c ->
-                    pand'List
-                      [ pto (pfromData a) #== pconstant ("bb" :: BS.ByteString)
-                      , pfromData b #== 4
-                      , pfromData c #== 5
-                      ]
-                  _ -> pconstant False
+        [ testCase "settlement_mint_redeemer_parser_preserves_spawn_field_order"
+            $ passertEval
+            $ pmatch
+              (pdecodeMintRedeemer # pconstant @PData (PD.Constr 0 [PD.B "aa", PD.I 1, PD.I 2, PD.I 3]))
+            $ \case
+              PSpawn a b c d ->
+                pand'List
+                  [ pto (pfromData a) #== pconstant ("aa" :: BS.ByteString)
+                  , pfromData b #== 1
+                  , pfromData c #== 2
+                  , pfromData d #== 3
+                  ]
+              _ -> pconstant False
+        , testCase "settlement_mint_redeemer_parser_preserves_remove_field_order"
+            $ passertEval
+            $ pmatch
+              (pdecodeMintRedeemer # pconstant @PData (PD.Constr 1 [PD.B "bb", PD.I 4, PD.I 5]))
+            $ \case
+              PRemove a b c ->
+                pand'List
+                  [ pto (pfromData a) #== pconstant ("bb" :: BS.ByteString)
+                  , pfromData b #== 4
+                  , pfromData c #== 5
+                  ]
+              _ -> pconstant False
         , testCase "settlement_mint_redeemer_parser_rejects_unknown_tag" $
-            pfails $ decodeTotal (PD.Constr 2 [])
+            pfails $
+              decodeTotal (PD.Constr 2 [])
         , testCase "settlement_mint_redeemer_parser_rejects_spawn_wrong_arity" $
-            pfails $ decodeTotal (PD.Constr 0 [PD.B "aa", PD.I 1, PD.I 2])
+            pfails $
+              decodeTotal (PD.Constr 0 [PD.B "aa", PD.I 1, PD.I 2])
         , testCase "settlement_mint_redeemer_parser_rejects_remove_wrong_type" $
-            pfails $ decodeTotal (PD.Constr 1 [PD.B "bb", PD.B "04", PD.I 5])
+            pfails $
+              decodeTotal (PD.Constr 1 [PD.B "bb", PD.B "04", PD.I 5])
         ]
     , testGroup
         "mint / Spawn"
         [ testCase "settlement_handler_mint_spawn_accepts_honest_merge" $
-            psucceeds $ runSpawn spawnDefaults
+            psucceeds $
+              runSpawn spawnDefaults
         , testCase "settlement_handler_mint_spawn_rejects_unauthentic_hub_oracle_reference_input" $
-            pfails $ runSpawn spawnDefaults {spAuthenticHub = False}
+            pfails $
+              runSpawn spawnDefaults{spAuthenticHub = False}
         , testCase "settlement_handler_mint_spawn_rejects_merge_redeemer_at_a_foreign_policy" $
-            pfails $ runSpawn spawnDefaults {spMergeAtStateQueuePolicy = False}
+            pfails $
+              runSpawn spawnDefaults{spMergeAtStateQueuePolicy = False}
         , testCase "settlement_handler_mint_spawn_rejects_non_merge_state_queue_redeemer" $
-            pfails $ runSpawn spawnDefaults {spMergeTag = 2}
+            pfails $
+              runSpawn spawnDefaults{spMergeTag = 2}
         , testCase "settlement_handler_mint_spawn_rejects_merge_redeemer_of_the_wrong_arity" $
-            pfails $ runSpawn spawnDefaults {spMergeArity = 17}
+            pfails $
+              runSpawn spawnDefaults{spMergeArity = 18}
         , testCase "settlement_handler_mint_spawn_rejects_settlement_id_that_is_not_the_merged_header_hash" $
-            pfails $ runSpawn spawnDefaults {spHeaderKey = Just "zz"}
+            pfails $
+              runSpawn spawnDefaults{spHeaderKey = Just "zz"}
         , -- Absence of the optional index would let an empty block through.
           testCase "settlement_handler_mint_spawn_rejects_merge_without_a_settlement_redeemer_index" $
-            pfails $ runSpawn spawnDefaults {spSettlementIndexPresent = False}
+            pfails $
+              runSpawn spawnDefaults{spSettlementIndexPresent = False}
         , testCase "settlement_handler_mint_spawn_rejects_output_at_a_foreign_address" $
-            pfails $ runSpawn spawnDefaults {spOutputAtSettlementAddress = False}
+            pfails $
+              runSpawn spawnDefaults{spOutputAtSettlementAddress = False}
         , testCase "settlement_handler_mint_spawn_rejects_output_without_the_settlement_nft" $
-            pfails $ runSpawn spawnDefaults {spOutputHasSettlementNft = False}
+            pfails $
+              runSpawn spawnDefaults{spOutputHasSettlementNft = False}
         , testCase "settlement_handler_mint_spawn_rejects_output_carrying_a_reference_script" $
-            pfails $ runSpawn spawnDefaults {spOutputHasReferenceScript = True}
+            pfails $
+              runSpawn spawnDefaults{spOutputHasReferenceScript = True}
         , -- The roots come from the state queue's redeemer, so the settlement
           -- cannot claim roots the merge did not commit to.
           testCase "settlement_handler_mint_spawn_rejects_deposits_root_not_from_the_merged_block" $
-            pfails $ runSpawn spawnDefaults {spDepositsRoot = Just (root 0xee)}
+            pfails $
+              runSpawn spawnDefaults{spDepositsRoot = Just (root 0xee)}
         , testCase "settlement_handler_mint_spawn_rejects_produced_datum_with_a_resolution_claim" $
-            pfails $ runSpawn spawnDefaults {spWithClaim = True}
+            pfails $
+              runSpawn spawnDefaults{spWithClaim = True}
         , testCase "settlement_handler_mint_spawn_rejects_a_second_token_under_the_settlement_policy" $
-            pfails $ runSpawn spawnDefaults {spExtraMint = True}
+            pfails $
+              runSpawn spawnDefaults{spExtraMint = True}
         , testCase "settlement_handler_mint_spawn_rejects_a_mint_quantity_other_than_one" $
-            pfails $ runSpawn spawnDefaults {spMintQuantity = 2}
+            pfails $
+              runSpawn spawnDefaults{spMintQuantity = 2}
         ]
     , testGroup
         "mint / Remove"
         [ testCase "settlement_handler_mint_remove_accepts_resolved_settlement" $
-            psucceeds $ runRemove removeDefaults
+            psucceeds $
+              runRemove removeDefaults
         , testCase "settlement_handler_mint_remove_rejects_input_without_the_settlement_nft" $
-            pfails $ runRemove removeDefaults {rmInputHasSettlementNft = False}
+            pfails $
+              runRemove removeDefaults{rmInputHasSettlementNft = False}
         , testCase "settlement_handler_mint_remove_rejects_spend_redeemer_that_is_not_resolve" $
-            pfails $ runRemove removeDefaults {rmResolveRedeemer = False}
+            pfails $
+              runRemove removeDefaults{rmResolveRedeemer = False}
         , testCase "settlement_handler_mint_remove_rejects_spend_redeemer_at_a_foreign_purpose" $
-            pfails $ runRemove removeDefaults {rmSpendPurposeMatches = False}
+            pfails $
+              runRemove removeDefaults{rmSpendPurposeMatches = False}
         , testCase "settlement_handler_mint_remove_rejects_settlement_id_mismatch_across_redeemers" $
-            pfails $ runRemove removeDefaults {rmSpendId = Just "zz"}
+            pfails $
+              runRemove removeDefaults{rmSpendId = Just "zz"}
         , testCase "settlement_handler_mint_remove_rejects_settlement_without_a_resolution_claim" $
-            pfails $ runRemove removeDefaults {rmHasClaim = False}
+            pfails $
+              runRemove removeDefaults{rmHasClaim = False}
         , testCase "settlement_handler_mint_remove_rejects_missing_operator_signature" $
-            pfails $ runRemove removeDefaults {rmSigned = False}
+            pfails $
+              runRemove removeDefaults{rmSigned = False}
         , testCase "settlement_handler_mint_remove_rejects_lower_bound_before_the_resolution_time" $
-            pfails $ runRemove removeDefaults {rmValidFrom = 500}
+            pfails $
+              runRemove removeDefaults{rmValidFrom = 500}
         , -- Additional identity check beyond the Aiken named matrix.
           testCase "rejects removal signed by somebody else" $
-            pfails $ runRemove removeDefaults {rmSigner = Just "zz"}
+            pfails $
+              runRemove removeDefaults{rmSigner = Just "zz"}
         ]
     , testGroup
         "spend / AttachResolutionClaim"
         [ testCase "settlement_handler_spend_attach_accepts_honest_claim" $
-            psucceeds $ runAttach attachDefaults
+            psucceeds $
+              runAttach attachDefaults
         , testCase "settlement_handler_spend_rejects_missing_datum" $
-            pfails $ runAttach attachDefaults {atOwnDatumPresent = False}
+            pfails $
+              runAttach attachDefaults{atOwnDatumPresent = False}
         , testCase "settlement_handler_spend_attach_rejects_preexisting_resolution_claim" $
-            pfails $ runAttach attachDefaults {atExistingClaim = True}
+            pfails $
+              runAttach attachDefaults{atExistingClaim = True}
         , testCase "settlement_handler_spend_attach_rejects_missing_operator_signature" $
-            pfails $ runAttach attachDefaults {atSigned = False}
+            pfails $
+              runAttach attachDefaults{atSigned = False}
         , testCase "settlement_handler_spend_attach_rejects_input_index_not_the_spent_utxo" $
-            pfails $ runAttach attachDefaults {atOwnOutRefMatchesInput = False}
+            pfails $
+              runAttach attachDefaults{atOwnOutRefMatchesInput = False}
         , testCase "settlement_handler_spend_attach_rejects_output_at_a_foreign_address" $
-            pfails $ runAttach attachDefaults {atOutputAtSettlementAddress = False}
+            pfails $
+              runAttach attachDefaults{atOutputAtSettlementAddress = False}
         , testCase "settlement_handler_spend_attach_rejects_output_without_the_settlement_nft" $
-            pfails $ runAttach attachDefaults {atOutputHasSettlementNft = False}
+            pfails $
+              runAttach attachDefaults{atOutputHasSettlementNft = False}
         , testCase "settlement_handler_spend_attach_rejects_output_carrying_a_reference_script" $
-            pfails $ runAttach attachDefaults {atOutputHasReferenceScript = True}
+            pfails $
+              runAttach attachDefaults{atOutputHasReferenceScript = True}
         , testCase "settlement_handler_spend_attach_rejects_unauthentic_hub_oracle_reference_input" $
-            pfails $ runAttach attachDefaults {atAuthenticHub = False}
+            pfails $
+              runAttach attachDefaults{atAuthenticHub = False}
         , testCase "settlement_handler_spend_attach_rejects_wrong_active_operators_redeemer_constructor" $
-            pfails $ runAttach attachDefaults {atActiveRedeemerIsBondHold = False}
+            pfails $
+              runAttach attachDefaults{atActiveRedeemerIsBondHold = False}
         , testCase "settlement_handler_spend_attach_rejects_active_operators_input_at_a_foreign_address" $
-            pfails $ runAttach attachDefaults {atActiveInputAtExpectedAddress = False}
+            pfails $
+              runAttach attachDefaults{atActiveInputAtExpectedAddress = False}
         , testCase "settlement_handler_spend_attach_rejects_operator_mismatch_with_active_operators_redeemer" $
-            pfails $ runAttach attachDefaults {atActiveOperator = Just "zz"}
+            pfails $
+              runAttach attachDefaults{atActiveOperator = Just "zz"}
         , -- The resolution time comes from the bond hold, not from here.
           testCase "settlement_handler_spend_attach_rejects_resolution_time_not_from_active_operators_redeemer" $
-            pfails $ runAttach attachDefaults {atOutputTime = Just 9_999}
+            pfails $
+              runAttach attachDefaults{atOutputTime = Just 9_999}
         , testCase "settlement_handler_spend_attach_rejects_mutated_deposits_root_in_continuing_datum" $
-            pfails $ runAttach attachDefaults {atOutputDepositsRoot = Just (root 0xee)}
+            pfails $
+              runAttach attachDefaults{atOutputDepositsRoot = Just (root 0xee)}
         , testCase "settlement_handler_spend_attach_rejects_scheduler_without_an_active_operator" $
-            pfails $ runAttach attachDefaults {atSchedulerIsActive = False}
+            pfails $
+              runAttach attachDefaults{atSchedulerIsActive = False}
         , -- The scheduler must currently appoint the claiming operator.
           testCase "settlement_handler_spend_attach_rejects_operator_that_is_not_the_current_scheduler_operator" $
-            pfails $ runAttach attachDefaults {atSchedulerOperator = Just "zz"}
+            pfails $
+              runAttach attachDefaults{atSchedulerOperator = Just "zz"}
         ]
     , testGroup
         "spend / Resolve"
         [ testCase "settlement_handler_spend_resolve_accepts_exact_burn" $
-            psucceeds $ runResolve resolveDefaults
+            psucceeds $
+              runResolve resolveDefaults
         , testCase "settlement_handler_spend_resolve_rejects_absent_burn" $
-            pfails $ runResolve resolveDefaults {rsBurnQuantity = 0}
+            pfails $
+              runResolve resolveDefaults{rsBurnQuantity = 0}
         , testCase "settlement_handler_spend_resolve_rejects_burn_of_a_different_settlement_id" $
-            pfails $ runResolve resolveDefaults {rsBurnId = Just "other"}
+            pfails $
+              runResolve resolveDefaults{rsBurnId = Just "other"}
         , testCase "settlement_handler_spend_resolve_rejects_burn_of_the_wrong_quantity" $
-            pfails $ runResolve resolveDefaults {rsBurnQuantity = -2}
+            pfails $
+              runResolve resolveDefaults{rsBurnQuantity = -2}
         ]
     , testGroup
         "spend / DisproveResolutionClaim"
         [ testCase "settlement_handler_spend_disprove_accepts_honest_active_operator_disproof" $
-            psucceeds $ runDisprove disproveDefaults
+            psucceeds $
+              runDisprove disproveDefaults
         , testCase "settlement_handler_spend_disprove_accepts_honest_retired_operator_disproof" $
-            psucceeds $ runDisprove disproveDefaults {dsOperatorIsActive = False}
+            psucceeds $
+              runDisprove disproveDefaults{dsOperatorIsActive = False}
         , testCase "settlement_handler_spend_disprove_rejects_settlement_without_a_resolution_claim" $
-            pfails $ runDisprove disproveDefaults {dsHasClaim = False}
+            pfails $
+              runDisprove disproveDefaults{dsHasClaim = False}
         , testCase "settlement_handler_spend_disprove_rejects_operator_mismatch_with_the_claim" $
-            pfails $ runDisprove disproveDefaults {dsClaimOperator = Just "zz"}
+            pfails $
+              runDisprove disproveDefaults{dsClaimOperator = Just "zz"}
         , testCase "settlement_handler_spend_disprove_rejects_input_index_not_the_spent_utxo" $
-            pfails $ runDisprove disproveDefaults {dsOwnOutRefMatchesInput = False}
+            pfails $
+              runDisprove disproveDefaults{dsOwnOutRefMatchesInput = False}
         , testCase "settlement_handler_spend_disprove_rejects_continuing_datum_that_keeps_the_claim" $
-            pfails $ runDisprove disproveDefaults {dsOutputKeepsClaim = True}
+            pfails $
+              runDisprove disproveDefaults{dsOutputKeepsClaim = True}
         , testCase "settlement_handler_spend_disprove_rejects_unauthentic_hub_oracle_reference_input" $
-            pfails $ runDisprove disproveDefaults {dsAuthenticHub = False}
+            pfails $
+              runDisprove disproveDefaults{dsAuthenticHub = False}
         , testCase "settlement_handler_spend_disprove_rejects_event_reference_input_of_the_wrong_script" $
-            pfails $ runDisprove disproveDefaults {dsEventAtDepositPolicy = False}
+            pfails $
+              runDisprove disproveDefaults{dsEventAtDepositPolicy = False}
         , testCase "settlement_handler_spend_disprove_rejects_membership_witness_for_a_foreign_root" $
-            pfails $ runDisprove disproveDefaults {dsMembershipRoot = Just (root 0xdf)}
+            pfails $
+              runDisprove disproveDefaults{dsMembershipRoot = Just (root 0xdf)}
         , testCase "settlement_handler_spend_disprove_rejects_phas_withdraw_redeemer_that_does_not_match" $
-            pfails $ runDisprove disproveDefaults {dsPhasRedeemerRoot = Just (root 0xdf)}
+            pfails $
+              runDisprove disproveDefaults{dsPhasRedeemerRoot = Just (root 0xdf)}
         , -- The dispute must land inside the claim's own deadline.
           testCase "settlement_handler_spend_disprove_rejects_upper_bound_at_or_after_the_resolution_time" $
-            pfails $ runDisprove disproveDefaults {dsValidTo = attachResolutionTime}
+            pfails $
+              runDisprove disproveDefaults{dsValidTo = attachResolutionTime}
         , testCase "settlement_handler_spend_disprove_rejects_slashing_redeemer_for_another_operator" $
-            pfails $ runDisprove disproveDefaults {dsSlashedOperator = Just "zz"}
+            pfails $
+              runDisprove disproveDefaults{dsSlashedOperator = Just "zz"}
         , testCase "settlement_handler_spend_disprove_rejects_retired_slashing_redeemer_for_another_operator" $
             pfails $
               runDisprove
@@ -249,10 +307,12 @@ tests =
                   }
         , -- The slash must be *for this reason*, not merely happening.
           testCase "settlement_handler_spend_disprove_rejects_slashing_for_a_reason_other_than_settlement" $
-            pfails $ runDisprove disproveDefaults {dsSlashReasonIsSettlement = False}
+            pfails $
+              runDisprove disproveDefaults{dsSlashReasonIsSettlement = False}
         , -- Additional event/value binding beyond the Aiken named matrix.
           testCase "rejects an event whose datum differs from the membership value" $
-            pfails $ runDisprove disproveDefaults {dsProvenInfo = Just (PD.Constr 0 [addrData auxiliaryPolicy, PD.I 9, PD.Constr 1 []])}
+            pfails $
+              runDisprove disproveDefaults{dsProvenInfo = Just (PD.Constr 0 [addrData auxiliaryPolicy, PD.I 9, PD.Constr 1 []])}
         ]
     ]
 
@@ -265,8 +325,8 @@ reject.
 decodeTotal :: forall s. PD.Data -> Term s PBool
 decodeTotal d =
   pmatch (pdecodeMintRedeemer # pconstant @PData d) $ \case
-    PSpawn {} -> pconstant True
-    PRemove {} -> pconstant True
+    PSpawn{} -> pconstant True
+    PRemove{} -> pconstant True
 
 --------------------------------------------------------------------------------
 -- Fixtures
@@ -280,8 +340,8 @@ auxiliaryPolicy = repeatedByte 0x55
 
 repeatedByte :: Int -> CurrencySymbol
 repeatedByte b = currencySymbolFromHex (concat (replicate 28 h))
-  where
-    h = let x = showHex b "" in if length x == 1 then '0' : x else x
+ where
+  h = let x = showHex b "" in if length x == 1 then '0' : x else x
 
 hubAssetName :: TokenName
 hubAssetName = TokenName "MIDGARD_HUB_ORACLE"
@@ -333,8 +393,8 @@ hubDatum =
           <> replicate 2 (addrData auxiliaryPolicy)
           <> [auxPolicyData]
       )
-  where
-    auxPolicyData = PD.B (fromBuiltin (unCurrencySymbol auxiliaryPolicy))
+ where
+  auxPolicyData = PD.B (fromBuiltin (unCurrencySymbol auxiliaryPolicy))
 
 toMint :: Value -> MintValue
 toMint = UnsafeMintValue . getValue
@@ -372,7 +432,7 @@ spawnDefaults =
     , spWithClaim = False
     , spHeaderKey = Nothing
     , spMergeTag = 6
-    , spMergeArity = 18
+    , spMergeArity = 19
     , spSettlementIndexPresent = True
     , spExtraMint = False
     }
@@ -382,98 +442,99 @@ runSpawn sp =
   settlementMintValidator
     # pdata (pconstant (ScriptHash (unCurrencySymbol hubOraclePolicy)))
     # pconstant ctx
-  where
-    settlementId = TokenName (toBuiltin headerKey)
-    outputSettlementId =
-      if spOutputHasSettlementNft sp
-        then settlementId
-        else TokenName "other"
-    outputPolicy =
-      if spOutputAtSettlementAddress sp
-        then settlementPolicy
-        else auxiliaryPolicy
-    mergePolicy =
-      if spMergeAtStateQueuePolicy sp
-        then stateQueuePolicy
-        else auxiliaryPolicy
+ where
+  settlementId = TokenName (toBuiltin headerKey)
+  outputSettlementId =
+    if spOutputHasSettlementNft sp
+      then settlementId
+      else TokenName "other"
+  outputPolicy =
+    if spOutputAtSettlementAddress sp
+      then settlementPolicy
+      else auxiliaryPolicy
+  mergePolicy =
+    if spMergeAtStateQueuePolicy sp
+      then stateQueuePolicy
+      else auxiliaryPolicy
 
-    hubReferenceInput
-      | spAuthenticHub sp = hubRefIn
-      | otherwise = case hubRefIn of
-          TxInInfo ref (TxOut address _ datum referenceScript) ->
-            TxInInfo
-              ref
-              ( TxOut
-                  address
-                  (mkAdaValue 2_000_000 <> singleton auxiliaryPolicy hubAssetName 1)
-                  datum
-                  referenceScript
+  hubReferenceInput
+    | spAuthenticHub sp = hubRefIn
+    | otherwise = case hubRefIn of
+        TxInInfo ref (TxOut address _ datum referenceScript) ->
+          TxInInfo
+            ref
+            ( TxOut
+                address
+                (mkAdaValue 2_000_000 <> singleton auxiliaryPolicy hubAssetName 1)
+                datum
+                referenceScript
+            )
+
+  {- The state queue's @MergeToConfirmedStateV1@ redeemer. Only fields 1, 4
+  and 5..8 are read; the rest are padding, but the arity check means they
+  have to be there. -}
+  mergeRedeemer =
+    dataToBuiltinData $
+      PD.Constr
+        (spMergeTag sp)
+        ( take
+            (spMergeArity sp)
+            ( [ PD.I 0 -- yield_to_ref_input_index
+              , PD.B (maybe headerKey id (spHeaderKey sp)) -- 1: header node key
+              , PD.I 0
+              , PD.I 0
+              , if spSettlementIndexPresent sp
+                  then PD.Constr 0 [PD.I 0] -- 3: Some(index)
+                  else PD.Constr 1 [] -- None
+              , PD.B withdrawalsRoot -- 4
+              , PD.B forcedRoot -- 5
+              , PD.B txsRoot -- 6
+              , PD.B depositsRoot -- 7
+              ]
+                <> replicate 10 (PD.I 0)
+            )
+        )
+
+  settlementDatum =
+    dataToBuiltinData $
+      PD.Constr
+        0
+        [ PD.B (maybe depositsRoot id (spDepositsRoot sp))
+        , PD.B withdrawalsRoot
+        , PD.B forcedRoot
+        , PD.B txsRoot
+        , if spWithClaim sp
+            then PD.Constr 0 [PD.Constr 0 [PD.I 1, PD.B "op"]]
+            else PD.Constr 1 []
+        ]
+
+  -- @Spawn { settlement_id, output_index, merge_redeemer_index, hub_index }@.
+  mintRedeemer =
+    dataToBuiltinData (PD.Constr 0 [PD.B headerKey, PD.I 0, PD.I 0, PD.I 0])
+
+  base = buildScriptContext mempty
+  txInfo =
+    (scriptContextTxInfo base)
+      { txInfoReferenceInputs = [hubReferenceInput]
+      , txInfoOutputs =
+          [ TxOut
+              (scriptHashAddress (ScriptHash (unCurrencySymbol outputPolicy)))
+              (mkAdaValue 2_000_000 <> singleton settlementPolicy outputSettlementId 1)
+              (OutputDatum (Datum settlementDatum))
+              ( if spOutputHasReferenceScript sp
+                  then Just (ScriptHash (unCurrencySymbol auxiliaryPolicy))
+                  else Nothing
               )
-
-    {- The state queue's @MergeToConfirmedStateV1@ redeemer. Only fields 0, 3
-    and 4..7 are read; the rest are padding, but the arity check means they
-    have to be there. -}
-    mergeRedeemer =
-      dataToBuiltinData $
-        PD.Constr
-          (spMergeTag sp)
-          ( take
-              (spMergeArity sp)
-              ( [ PD.B (maybe headerKey id (spHeaderKey sp)) -- 0: header node key
-                , PD.I 0
-                , PD.I 0
-                , if spSettlementIndexPresent sp
-                    then PD.Constr 0 [PD.I 0] -- 3: Some(index)
-                    else PD.Constr 1 [] -- None
-                , PD.B withdrawalsRoot -- 4
-                , PD.B forcedRoot -- 5
-                , PD.B txsRoot -- 6
-                , PD.B depositsRoot -- 7
-                ]
-                  <> replicate 10 (PD.I 0)
-              )
-          )
-
-    settlementDatum =
-      dataToBuiltinData $
-        PD.Constr
-          0
-          [ PD.B (maybe depositsRoot id (spDepositsRoot sp))
-          , PD.B withdrawalsRoot
-          , PD.B forcedRoot
-          , PD.B txsRoot
-          , if spWithClaim sp
-              then PD.Constr 0 [PD.Constr 0 [PD.I 1, PD.B "op"]]
-              else PD.Constr 1 []
           ]
-
-    -- @Spawn { settlement_id, output_index, merge_redeemer_index, hub_index }@.
-    mintRedeemer =
-      dataToBuiltinData (PD.Constr 0 [PD.B headerKey, PD.I 0, PD.I 0, PD.I 0])
-
-    base = buildScriptContext mempty
-    txInfo =
-      (scriptContextTxInfo base)
-        { txInfoReferenceInputs = [hubReferenceInput]
-        , txInfoOutputs =
-            [ TxOut
-                (scriptHashAddress (ScriptHash (unCurrencySymbol outputPolicy)))
-                (mkAdaValue 2_000_000 <> singleton settlementPolicy outputSettlementId 1)
-                (OutputDatum (Datum settlementDatum))
-                ( if spOutputHasReferenceScript sp
-                    then Just (ScriptHash (unCurrencySymbol auxiliaryPolicy))
-                    else Nothing
-                )
-            ]
-        , txInfoMint =
-            toMint
-              ( singleton settlementPolicy settlementId (spMintQuantity sp)
-                  <> (if spExtraMint sp then singleton settlementPolicy (TokenName "x") 1 else mempty)
-              )
-        , txInfoRedeemers =
-            Map.unsafeFromList [(Minting mergePolicy, Redeemer mergeRedeemer)]
-        }
-    ctx = ScriptContext txInfo (Redeemer mintRedeemer) (MintingScript settlementPolicy)
+      , txInfoMint =
+          toMint
+            ( singleton settlementPolicy settlementId (spMintQuantity sp)
+                <> (if spExtraMint sp then singleton settlementPolicy (TokenName "x") 1 else mempty)
+            )
+      , txInfoRedeemers =
+          Map.unsafeFromList [(Minting mergePolicy, Redeemer mergeRedeemer)]
+      }
+  ctx = ScriptContext txInfo (Redeemer mintRedeemer) (MintingScript settlementPolicy)
 
 --------------------------------------------------------------------------------
 -- Remove
@@ -516,67 +577,68 @@ runRemove rm =
   settlementMintValidator
     # pdata (pconstant (ScriptHash (unCurrencySymbol hubOraclePolicy)))
     # pconstant ctx
-  where
-    settlementId = TokenName (toBuiltin headerKey)
+ where
+  settlementId = TokenName (toBuiltin headerKey)
 
-    settlementDatum =
-      dataToBuiltinData $
-        PD.Constr
-          0
-          [ PD.B depositsRoot
-          , PD.B withdrawalsRoot
-          , PD.B forcedRoot
-          , PD.B txsRoot
-          , if rmHasClaim rm
-              then PD.Constr 0 [PD.Constr 0 [PD.I resolutionTime, PD.B claimOperator]]
-              else PD.Constr 1 []
-          ]
+  settlementDatum =
+    dataToBuiltinData $
+      PD.Constr
+        0
+        [ PD.B depositsRoot
+        , PD.B withdrawalsRoot
+        , PD.B forcedRoot
+        , PD.B txsRoot
+        , if rmHasClaim rm
+            then PD.Constr 0 [PD.Constr 0 [PD.I resolutionTime, PD.B claimOperator]]
+            else PD.Constr 1 []
+        ]
 
-    settlementIn =
-      TxInInfo
-        (outRefN 0)
-        ( TxOut
-            (scriptHashAddress (ScriptHash (unCurrencySymbol settlementPolicy)))
-            ( mkAdaValue 2_000_000
-                <> singleton
-                  settlementPolicy
-                  (if rmInputHasSettlementNft rm then settlementId else TokenName "other")
-                  1
-            )
-            (OutputDatum (Datum settlementDatum))
-            Nothing
-        )
+  settlementIn =
+    TxInInfo
+      (outRefN 0)
+      ( TxOut
+          (scriptHashAddress (ScriptHash (unCurrencySymbol settlementPolicy)))
+          ( mkAdaValue 2_000_000
+              <> singleton
+                settlementPolicy
+                (if rmInputHasSettlementNft rm then settlementId else TokenName "other")
+                1
+          )
+          (OutputDatum (Datum settlementDatum))
+          Nothing
+      )
 
-    -- @Resolve@ is constructor 2 of the settlement spend redeemer.
-    spendRedeemer
-      | rmResolveRedeemer rm =
-          dataToBuiltinData (PD.Constr 2 [PD.B (maybe headerKey id (rmSpendId rm))])
-      | otherwise = dataToBuiltinData (PD.Constr 0 (replicate 7 (PD.I 0)))
+  -- @Resolve@ is constructor 2 of the settlement spend redeemer.
+  spendRedeemer
+    | rmResolveRedeemer rm =
+        dataToBuiltinData (PD.Constr 2 [PD.B (maybe headerKey id (rmSpendId rm))])
+    | otherwise = dataToBuiltinData (PD.Constr 0 (replicate 7 (PD.I 0)))
 
-    -- @Remove { settlement_id, input_index, spend_redeemer_index }@.
-    mintRedeemer =
-      dataToBuiltinData (PD.Constr 1 [PD.B headerKey, PD.I 0, PD.I 0])
+  -- @Remove { settlement_id, input_index, spend_redeemer_index }@.
+  mintRedeemer =
+    dataToBuiltinData (PD.Constr 1 [PD.B headerKey, PD.I 0, PD.I 0])
 
-    base = buildScriptContext mempty
-    txInfo =
-      (scriptContextTxInfo base)
-        { txInfoInputs = [settlementIn]
-        , txInfoReferenceInputs = [hubRefIn]
-        , txInfoMint = toMint (singleton settlementPolicy settlementId (-1))
-        , txInfoSignatories =
-            [PubKeyHash (toBuiltin (maybe claimOperator id (rmSigner rm))) | rmSigned rm]
-        , txInfoValidRange =
-            Interval
-              (LowerBound (Finite (POSIXTime (rmValidFrom rm))) True)
-              (UpperBound PosInf True)
-        , txInfoRedeemers =
-            Map.unsafeFromList
-              [ ( Spending (if rmSpendPurposeMatches rm then outRefN 0 else outRefN 1)
-                , Redeemer spendRedeemer
-                )
-              ]
-        }
-    ctx = ScriptContext txInfo (Redeemer mintRedeemer) (MintingScript settlementPolicy)
+  base = buildScriptContext mempty
+  txInfo =
+    (scriptContextTxInfo base)
+      { txInfoInputs = [settlementIn]
+      , txInfoReferenceInputs = [hubRefIn]
+      , txInfoMint = toMint (singleton settlementPolicy settlementId (-1))
+      , txInfoSignatories =
+          [PubKeyHash (toBuiltin (maybe claimOperator id (rmSigner rm))) | rmSigned rm]
+      , txInfoValidRange =
+          Interval
+            (LowerBound (Finite (POSIXTime (rmValidFrom rm))) True)
+            (UpperBound PosInf True)
+      , txInfoRedeemers =
+          Map.unsafeFromList
+            [
+              ( Spending (if rmSpendPurposeMatches rm then outRefN 0 else outRefN 1)
+              , Redeemer spendRedeemer
+              )
+            ]
+      }
+  ctx = ScriptContext txInfo (Redeemer mintRedeemer) (MintingScript settlementPolicy)
 
 --------------------------------------------------------------------------------
 -- Spend
@@ -641,137 +703,137 @@ runAttach at =
     # pdata (pconstant (ScriptHash (unCurrencySymbol hubOraclePolicy)))
     # pdata (pconstant (ScriptHash (unCurrencySymbol settlementPolicy)))
     # pconstant ctx
-  where
-    settlementId = TokenName (toBuiltin headerKey)
-    settlementValue = mkAdaValue 2_000_000 <> singleton settlementPolicy settlementId 1
-    outputSettlementId =
-      if atOutputHasSettlementNft at
-        then settlementId
-        else TokenName "other"
-    outputAddressPolicy =
-      if atOutputAtSettlementAddress at
-        then settlementPolicy
-        else auxiliaryPolicy
-    activeInputAddressPolicy =
-      if atActiveInputAtExpectedAddress at
-        then activeOperatorsPolicy
-        else auxiliaryPolicy
-    ownOutRef =
-      if atOwnOutRefMatchesInput at
-        then outRefN 0
-        else outRefN 99
+ where
+  settlementId = TokenName (toBuiltin headerKey)
+  settlementValue = mkAdaValue 2_000_000 <> singleton settlementPolicy settlementId 1
+  outputSettlementId =
+    if atOutputHasSettlementNft at
+      then settlementId
+      else TokenName "other"
+  outputAddressPolicy =
+    if atOutputAtSettlementAddress at
+      then settlementPolicy
+      else auxiliaryPolicy
+  activeInputAddressPolicy =
+    if atActiveInputAtExpectedAddress at
+      then activeOperatorsPolicy
+      else auxiliaryPolicy
+  ownOutRef =
+    if atOwnOutRefMatchesInput at
+      then outRefN 0
+      else outRefN 99
 
-    claimData t = PD.Constr 0 [PD.Constr 0 [PD.I t, PD.B claimOperatorKey]]
+  claimData t = PD.Constr 0 [PD.Constr 0 [PD.I t, PD.B claimOperatorKey]]
 
-    datumWith deposits claim =
-      dataToBuiltinData $
-        PD.Constr 0 [PD.B deposits, PD.B withdrawalsRoot, PD.B forcedRoot, PD.B txsRoot, claim]
+  datumWith deposits claim =
+    dataToBuiltinData $
+      PD.Constr 0 [PD.B deposits, PD.B withdrawalsRoot, PD.B forcedRoot, PD.B txsRoot, claim]
 
-    inputDatum = datumWith depositsRoot (if atExistingClaim at then claimData 1 else PD.Constr 1 [])
-    outputDatum =
-      datumWith
-        (maybe depositsRoot id (atOutputDepositsRoot at))
-        (claimData (maybe attachResolutionTime id (atOutputTime at)))
+  inputDatum = datumWith depositsRoot (if atExistingClaim at then claimData 1 else PD.Constr 1 [])
+  outputDatum =
+    datumWith
+      (maybe depositsRoot id (atOutputDepositsRoot at))
+      (claimData (maybe attachResolutionTime id (atOutputTime at)))
 
-    settlementInput =
-      TxOut
-        (scriptHashAddress (ScriptHash (unCurrencySymbol settlementPolicy)))
-        settlementValue
-        (OutputDatum (Datum inputDatum))
-        Nothing
+  settlementInput =
+    TxOut
+      (scriptHashAddress (ScriptHash (unCurrencySymbol settlementPolicy)))
+      settlementValue
+      (OutputDatum (Datum inputDatum))
+      Nothing
 
-    settlementOutput =
-      TxOut
-        (scriptHashAddress (ScriptHash (unCurrencySymbol outputAddressPolicy)))
-        (mkAdaValue 2_000_000 <> singleton settlementPolicy outputSettlementId 1)
-        (OutputDatum (Datum outputDatum))
-        ( if atOutputHasReferenceScript at
-            then Just (ScriptHash (unCurrencySymbol auxiliaryPolicy))
-            else Nothing
-        )
+  settlementOutput =
+    TxOut
+      (scriptHashAddress (ScriptHash (unCurrencySymbol outputAddressPolicy)))
+      (mkAdaValue 2_000_000 <> singleton settlementPolicy outputSettlementId 1)
+      (OutputDatum (Datum outputDatum))
+      ( if atOutputHasReferenceScript at
+          then Just (ScriptHash (unCurrencySymbol auxiliaryPolicy))
+          else Nothing
+      )
 
-    activeNodeIn =
-      TxInInfo
-        (outRefN 1)
-        ( TxOut
-            (scriptHashAddress (ScriptHash (unCurrencySymbol activeInputAddressPolicy)))
-            (mkAdaValue 2_000_000)
-            NoOutputDatum
-            Nothing
-        )
+  activeNodeIn =
+    TxInInfo
+      (outRefN 1)
+      ( TxOut
+          (scriptHashAddress (ScriptHash (unCurrencySymbol activeInputAddressPolicy)))
+          (mkAdaValue 2_000_000)
+          NoOutputDatum
+          Nothing
+      )
 
-    -- @UpdateBondHoldNewSettlement@ is constructor 2 of the active spend
-    -- redeemer; operator is field 0 and resolution_time field 6.
-    activeRedeemer
-      | atActiveRedeemerIsBondHold at =
-          dataToBuiltinData $
-            PD.Constr
-              2
-              [ PD.B (maybe claimOperatorKey id (atActiveOperator at))
-              , PD.I 0
-              , PD.I 0
-              , PD.I 0
-              , PD.I 0
-              , PD.I 0
-              , PD.I attachResolutionTime
-              ]
-      | otherwise = dataToBuiltinData (PD.Constr 0 [])
+  -- @UpdateBondHoldNewSettlement@ is constructor 2 of the active spend
+  -- redeemer; operator is field 0 and resolution_time field 6.
+  activeRedeemer
+    | atActiveRedeemerIsBondHold at =
+        dataToBuiltinData $
+          PD.Constr
+            2
+            [ PD.B (maybe claimOperatorKey id (atActiveOperator at))
+            , PD.I 0
+            , PD.I 0
+            , PD.I 0
+            , PD.I 0
+            , PD.I 0
+            , PD.I attachResolutionTime
+            ]
+    | otherwise = dataToBuiltinData (PD.Constr 0 [])
 
-    schedulerRefIn =
-      TxInInfo
-        (outRefN 7)
-        ( TxOut
-            (scriptHashAddress (ScriptHash (unCurrencySymbol schedulerPolicy)))
-            (mkAdaValue 2_000_000 <> singleton schedulerPolicy (TokenName "MIDGARD_SCHEDULER") 1)
-            ( OutputDatum
-                ( Datum
-                    ( dataToBuiltinData
-                        ( if atSchedulerIsActive at
-                            then
-                              PD.Constr
-                                1
-                                [PD.B (maybe claimOperatorKey id (atSchedulerOperator at)), PD.I 0]
-                            else PD.Constr 0 []
-                        )
-                    )
-                )
-            )
-            Nothing
-        )
-
-    spendRedeemer =
-      dataToBuiltinData
-        (PD.Constr 0 [PD.I 0, PD.I 0, PD.I 0, PD.I 1, PD.I 0, PD.B claimOperatorKey, PD.I 1])
-
-    base = buildScriptContext mempty
-    hubReferenceInput
-      | atAuthenticHub at = hubSpendRefIn
-      | otherwise = case hubSpendRefIn of
-          TxInInfo ref (TxOut address _ datum referenceScript) ->
-            TxInInfo
-              ref
-              ( TxOut
-                  address
-                  (mkAdaValue 2_000_000 <> singleton auxiliaryPolicy hubAssetName 1)
-                  datum
-                  referenceScript
+  schedulerRefIn =
+    TxInInfo
+      (outRefN 7)
+      ( TxOut
+          (scriptHashAddress (ScriptHash (unCurrencySymbol schedulerPolicy)))
+          (mkAdaValue 2_000_000 <> singleton schedulerPolicy (TokenName "MIDGARD_SCHEDULER") 1)
+          ( OutputDatum
+              ( Datum
+                  ( dataToBuiltinData
+                      ( if atSchedulerIsActive at
+                          then
+                            PD.Constr
+                              1
+                              [PD.B (maybe claimOperatorKey id (atSchedulerOperator at)), PD.I 0]
+                          else PD.Constr 0 []
+                      )
+                  )
               )
-    txInfo =
-      (scriptContextTxInfo base)
-        { txInfoInputs = [TxInInfo (outRefN 0) settlementInput, activeNodeIn]
-        , txInfoReferenceInputs = [hubReferenceInput, schedulerRefIn]
-        , txInfoOutputs = [settlementOutput]
-        , txInfoSignatories = [PubKeyHash (toBuiltin claimOperatorKey) | atSigned at]
-        , txInfoRedeemers = Map.unsafeFromList [(Spending (outRefN 1), Redeemer activeRedeemer)]
-        }
-    ctx =
-      ScriptContext
-        txInfo
-        (Redeemer spendRedeemer)
-        ( SpendingScript
-            ownOutRef
-            (if atOwnDatumPresent at then Just (Datum inputDatum) else Nothing)
-        )
+          )
+          Nothing
+      )
+
+  spendRedeemer =
+    dataToBuiltinData
+      (PD.Constr 0 [PD.I 0, PD.I 0, PD.I 0, PD.I 1, PD.I 0, PD.B claimOperatorKey, PD.I 1])
+
+  base = buildScriptContext mempty
+  hubReferenceInput
+    | atAuthenticHub at = hubSpendRefIn
+    | otherwise = case hubSpendRefIn of
+        TxInInfo ref (TxOut address _ datum referenceScript) ->
+          TxInInfo
+            ref
+            ( TxOut
+                address
+                (mkAdaValue 2_000_000 <> singleton auxiliaryPolicy hubAssetName 1)
+                datum
+                referenceScript
+            )
+  txInfo =
+    (scriptContextTxInfo base)
+      { txInfoInputs = [TxInInfo (outRefN 0) settlementInput, activeNodeIn]
+      , txInfoReferenceInputs = [hubReferenceInput, schedulerRefIn]
+      , txInfoOutputs = [settlementOutput]
+      , txInfoSignatories = [PubKeyHash (toBuiltin claimOperatorKey) | atSigned at]
+      , txInfoRedeemers = Map.unsafeFromList [(Spending (outRefN 1), Redeemer activeRedeemer)]
+      }
+  ctx =
+    ScriptContext
+      txInfo
+      (Redeemer spendRedeemer)
+      ( SpendingScript
+          ownOutRef
+          (if atOwnDatumPresent at then Just (Datum inputDatum) else Nothing)
+      )
 
 data Resolve = Resolve
   { rsBurnId :: Maybe BS.ByteString
@@ -779,7 +841,7 @@ data Resolve = Resolve
   }
 
 resolveDefaults :: Resolve
-resolveDefaults = Resolve {rsBurnId = Nothing, rsBurnQuantity = -1}
+resolveDefaults = Resolve{rsBurnId = Nothing, rsBurnQuantity = -1}
 
 -- | A @Resolve@ spend: exactly this settlement's NFT must be burnt once.
 runResolve :: forall s. Resolve -> Term s PUnit
@@ -788,24 +850,24 @@ runResolve resolve =
     # pdata (pconstant (ScriptHash (unCurrencySymbol hubOraclePolicy)))
     # pdata (pconstant (ScriptHash (unCurrencySymbol settlementPolicy)))
     # pconstant ctx
-  where
-    burnedId = TokenName (toBuiltin (maybe headerKey id (rsBurnId resolve)))
-    inputDatum =
-      dataToBuiltinData $
-        PD.Constr
-          0
-          [PD.B depositsRoot, PD.B withdrawalsRoot, PD.B forcedRoot, PD.B txsRoot, PD.Constr 1 []]
-    base = buildScriptContext mempty
-    txInfo =
-      (scriptContextTxInfo base)
-        { txInfoMint =
-            toMint (singleton settlementPolicy burnedId (rsBurnQuantity resolve))
-        }
-    ctx =
-      ScriptContext
-        txInfo
-        (Redeemer (dataToBuiltinData (PD.Constr 2 [PD.B headerKey])))
-        (SpendingScript (outRefN 0) (Just (Datum inputDatum)))
+ where
+  burnedId = TokenName (toBuiltin (maybe headerKey id (rsBurnId resolve)))
+  inputDatum =
+    dataToBuiltinData $
+      PD.Constr
+        0
+        [PD.B depositsRoot, PD.B withdrawalsRoot, PD.B forcedRoot, PD.B txsRoot, PD.Constr 1 []]
+  base = buildScriptContext mempty
+  txInfo =
+    (scriptContextTxInfo base)
+      { txInfoMint =
+          toMint (singleton settlementPolicy burnedId (rsBurnQuantity resolve))
+      }
+  ctx =
+    ScriptContext
+      txInfo
+      (Redeemer (dataToBuiltinData (PD.Constr 2 [PD.B headerKey])))
+      (SpendingScript (outRefN 0) (Just (Datum inputDatum)))
 
 {- | The hub oracle as the spend path reads it.
 
@@ -842,8 +904,8 @@ spendHubDatum =
           <> replicate 11 (addrData auxiliaryPolicy)
           <> [auxPolicyData]
       )
-  where
-    auxPolicyData = PD.B (fromBuiltin (unCurrencySymbol auxiliaryPolicy))
+ where
+  auxPolicyData = PD.B (fromBuiltin (unCurrencySymbol auxiliaryPolicy))
 
 --------------------------------------------------------------------------------
 -- DisproveResolutionClaim
@@ -857,8 +919,10 @@ retiredOperatorsPolicy = repeatedByte 0x88
 
 phasValidatorHash :: BS.ByteString
 phasValidatorHash =
-  either (error "bad hex") id
-    (Base16.decode (BS8.pack "1fc59ff54da02f2535d64b40b647a8826c8b3d914d7ba5257f5b2721"))
+  either
+    (error "bad hex")
+    id
+    (Base16.decode (BS8.pack "819adf9eaaed4aa11f717414e99c80b45d416481824321c3474bcb5e"))
 
 disprovePhasRoot :: BS.ByteString
 disprovePhasRoot = BS.replicate 32 0xaa
@@ -934,148 +998,148 @@ runDisprove ds =
     # pdata (pconstant (ScriptHash (unCurrencySymbol hubOraclePolicy)))
     # pdata (pconstant (ScriptHash (unCurrencySymbol settlementPolicy)))
     # pconstant ctx
-  where
-    settlementId = TokenName (toBuiltin headerKey)
-    settlementValue = mkAdaValue 2_000_000 <> singleton settlementPolicy settlementId 1
-    ownOutRef =
-      if dsOwnOutRefMatchesInput ds
-        then outRefN 0
-        else outRefN 99
-    eventPolicy =
-      if dsEventAtDepositPolicy ds
-        then depositEventPolicy
-        else auxiliaryPolicy
+ where
+  settlementId = TokenName (toBuiltin headerKey)
+  settlementValue = mkAdaValue 2_000_000 <> singleton settlementPolicy settlementId 1
+  ownOutRef =
+    if dsOwnOutRefMatchesInput ds
+      then outRefN 0
+      else outRefN 99
+  eventPolicy =
+    if dsEventAtDepositPolicy ds
+      then depositEventPolicy
+      else auxiliaryPolicy
 
-    claimOperator = maybe claimOperatorKey id (dsClaimOperator ds)
-    claimData =
-      PD.Constr 0 [PD.Constr 0 [PD.I attachResolutionTime, PD.B claimOperator]]
+  claimOperator = maybe claimOperatorKey id (dsClaimOperator ds)
+  claimData =
+    PD.Constr 0 [PD.Constr 0 [PD.I attachResolutionTime, PD.B claimOperator]]
 
-    datumWith claim =
-      dataToBuiltinData $
-        PD.Constr
-          0
-          [PD.B disproveDepositsRoot, PD.B withdrawalsRoot, PD.B forcedRoot, PD.B txsRoot, claim]
-
-    inputDatum = datumWith (if dsHasClaim ds then claimData else PD.Constr 1 [])
-    outputDatum = datumWith (if dsOutputKeepsClaim ds then claimData else PD.Constr 1 [])
-
-    settlementUtxo d =
-      TxOut
-        (scriptHashAddress (ScriptHash (unCurrencySymbol settlementPolicy)))
-        settlementValue
-        (OutputDatum (Datum d))
-        Nothing
-
-    eventRefIn =
-      TxInInfo
-        (outRefN 4)
-        ( TxOut
-            (scriptHashAddress (ScriptHash (unCurrencySymbol eventPolicy)))
-            (mkAdaValue 2_000_000 <> singleton eventPolicy eventAssetName 1)
-            (OutputDatum (Datum (dataToBuiltinData (PD.Constr 0 [disproveEventId, disproveDepositInfo]))))
-            Nothing
-        )
-
-    provenInfo = maybe disproveDepositInfo id (dsProvenInfo ds)
-
-    -- @DepositMembership { witness }@ — constructor 0.
-    membershipProof =
+  datumWith claim =
+    dataToBuiltinData $
       PD.Constr
         0
-        [ PD.Constr
-            0
-            [ PD.Constr 3 [] -- DepositsRootDomain
-            , PD.B (maybe disproveDepositsRoot id (dsMembershipRoot ds))
-            , PD.B disprovePhasRoot
-            , PD.I disproveCount
-            , PD.B (serialisedOf disproveEventId)
-            , PD.B (serialisedOf provenInfo)
-            , PD.List [PD.B "step"]
-            ]
-        ]
+        [PD.B disproveDepositsRoot, PD.B withdrawalsRoot, PD.B forcedRoot, PD.B txsRoot, claim]
 
-    phasRedeemer =
-      dataToBuiltinData $
-        PD.List
-          [ PD.B (maybe disprovePhasRoot id (dsPhasRedeemerRoot ds))
+  inputDatum = datumWith (if dsHasClaim ds then claimData else PD.Constr 1 [])
+  outputDatum = datumWith (if dsOutputKeepsClaim ds then claimData else PD.Constr 1 [])
+
+  settlementUtxo d =
+    TxOut
+      (scriptHashAddress (ScriptHash (unCurrencySymbol settlementPolicy)))
+      settlementValue
+      (OutputDatum (Datum d))
+      Nothing
+
+  eventRefIn =
+    TxInInfo
+      (outRefN 4)
+      ( TxOut
+          (scriptHashAddress (ScriptHash (unCurrencySymbol eventPolicy)))
+          (mkAdaValue 2_000_000 <> singleton eventPolicy eventAssetName 1)
+          (OutputDatum (Datum (dataToBuiltinData (PD.Constr 0 [disproveEventId, disproveDepositInfo]))))
+          Nothing
+      )
+
+  provenInfo = maybe disproveDepositInfo id (dsProvenInfo ds)
+
+  -- @DepositMembership { witness }@ — constructor 0.
+  membershipProof =
+    PD.Constr
+      0
+      [ PD.Constr
+          0
+          [ PD.Constr 3 [] -- DepositsRootDomain
+          , PD.B (maybe disproveDepositsRoot id (dsMembershipRoot ds))
+          , PD.B disprovePhasRoot
+          , PD.I disproveCount
           , PD.B (serialisedOf disproveEventId)
           , PD.B (serialisedOf provenInfo)
           , PD.List [PD.B "step"]
           ]
+      ]
 
-    -- @SlashingArguments { slashed_operator, hub_index, anchor_outref,
-    -- anchor_output_index, slashing_reason }@.
-    slashingArguments =
-      PD.Constr
-        0
-        [ PD.B (maybe claimOperatorKey id (dsSlashedOperator ds))
-        , PD.I 0
-        , builtinDataToData (toBuiltinData (outRefN 0))
-        , PD.I 0
-        , if dsSlashReasonIsSettlement ds
-            then PD.Constr 1 [PD.I 0, PD.I 0] -- SlashOperatorForBadSettlement
-            else PD.Constr 0 [PD.I 0] -- SlashOperatorForBadState
+  phasRedeemer =
+    dataToBuiltinData $
+      PD.List
+        [ PD.B (maybe disprovePhasRoot id (dsPhasRedeemerRoot ds))
+        , PD.B (serialisedOf disproveEventId)
+        , PD.B (serialisedOf provenInfo)
+        , PD.List [PD.B "step"]
         ]
 
-    -- Active @SlashOperator@ is constructor 4 (two fields); retired
-    -- @SlashOperator@ is constructor 4 (one field).
-    slashRedeemer
-      | dsOperatorIsActive ds = dataToBuiltinData (PD.Constr 4 [slashingArguments, PD.I 0])
-      | otherwise = dataToBuiltinData (PD.Constr 4 [slashingArguments])
+  -- @SlashingArguments { slashed_operator, hub_index, anchor_outref,
+  -- anchor_output_index, slashing_reason }@.
+  slashingArguments =
+    PD.Constr
+      0
+      [ PD.B (maybe claimOperatorKey id (dsSlashedOperator ds))
+      , PD.I 0
+      , builtinDataToData (toBuiltinData (outRefN 0))
+      , PD.I 0
+      , if dsSlashReasonIsSettlement ds
+          then PD.Constr 1 [PD.I 0, PD.I 0] -- SlashOperatorForBadSettlement
+          else PD.Constr 0 [PD.I 0] -- SlashOperatorForBadState
+      ]
 
-    slashPolicy =
-      if dsOperatorIsActive ds then activeOperatorsPolicy else retiredOperatorsPolicy
+  -- Active @SlashOperator@ is constructor 4 (two fields); retired
+  -- @SlashOperator@ is constructor 4 (one field).
+  slashRedeemer
+    | dsOperatorIsActive ds = dataToBuiltinData (PD.Constr 4 [slashingArguments, PD.I 0])
+    | otherwise = dataToBuiltinData (PD.Constr 4 [slashingArguments])
 
-    spendRedeemer =
-      dataToBuiltinData $
-        PD.Constr
-          1
-          [ PD.I 0 -- settlement_input_index
-          , PD.I 0 -- settlement_output_index
-          , PD.I 0 -- hub_ref_input_index
-          , PD.I 0 -- operators_redeemer_index
-          , PD.B claimOperatorKey
-          , PD.Constr (if dsOperatorIsActive ds then 1 else 0) [] -- operator_is_active
-          , PD.I 1 -- unresolved_event_ref_input_index
-          , PD.B "evt"
-          , PD.Constr 0 [] -- event_type: Deposit
-          , membershipProof
-          , PD.I 1
-          ]
+  slashPolicy =
+    if dsOperatorIsActive ds then activeOperatorsPolicy else retiredOperatorsPolicy
 
-    base = buildScriptContext mempty
-    hubReferenceInput
-      | dsAuthenticHub ds = hubSpendRefIn
-      | otherwise = case hubSpendRefIn of
-          TxInInfo ref (TxOut address _ datum referenceScript) ->
-            TxInInfo
-              ref
-              ( TxOut
-                  address
-                  (mkAdaValue 2_000_000 <> singleton auxiliaryPolicy hubAssetName 1)
-                  datum
-                  referenceScript
+  spendRedeemer =
+    dataToBuiltinData $
+      PD.Constr
+        1
+        [ PD.I 0 -- settlement_input_index
+        , PD.I 0 -- settlement_output_index
+        , PD.I 0 -- hub_ref_input_index
+        , PD.I 0 -- operators_redeemer_index
+        , PD.B claimOperatorKey
+        , PD.Constr (if dsOperatorIsActive ds then 1 else 0) [] -- operator_is_active
+        , PD.I 1 -- unresolved_event_ref_input_index
+        , PD.B "evt"
+        , PD.Constr 0 [] -- event_type: Deposit
+        , membershipProof
+        , PD.I 1
+        ]
+
+  base = buildScriptContext mempty
+  hubReferenceInput
+    | dsAuthenticHub ds = hubSpendRefIn
+    | otherwise = case hubSpendRefIn of
+        TxInInfo ref (TxOut address _ datum referenceScript) ->
+          TxInInfo
+            ref
+            ( TxOut
+                address
+                (mkAdaValue 2_000_000 <> singleton auxiliaryPolicy hubAssetName 1)
+                datum
+                referenceScript
+            )
+  txInfo =
+    (scriptContextTxInfo base)
+      { txInfoInputs = [TxInInfo (outRefN 0) (settlementUtxo inputDatum)]
+      , txInfoReferenceInputs = [hubReferenceInput, eventRefIn]
+      , txInfoOutputs = [settlementUtxo outputDatum]
+      , txInfoValidRange =
+          Interval
+            (LowerBound NegInf True)
+            (UpperBound (Finite (POSIXTime (dsValidTo ds))) True)
+      , txInfoRedeemers =
+          Map.unsafeFromList
+            [ (Minting slashPolicy, Redeemer slashRedeemer)
+            ,
+              ( Rewarding (ScriptCredential (ScriptHash (toBuiltin phasValidatorHash)))
+              , Redeemer phasRedeemer
               )
-    txInfo =
-      (scriptContextTxInfo base)
-        { txInfoInputs = [TxInInfo (outRefN 0) (settlementUtxo inputDatum)]
-        , txInfoReferenceInputs = [hubReferenceInput, eventRefIn]
-        , txInfoOutputs = [settlementUtxo outputDatum]
-        , txInfoValidRange =
-            Interval
-              (LowerBound NegInf True)
-              (UpperBound (Finite (POSIXTime (dsValidTo ds))) True)
-        , txInfoRedeemers =
-            Map.unsafeFromList
-              [ (Minting slashPolicy, Redeemer slashRedeemer)
-              ,
-                ( Rewarding (ScriptCredential (ScriptHash (toBuiltin phasValidatorHash)))
-                , Redeemer phasRedeemer
-                )
-              ]
-        }
-    ctx =
-      ScriptContext
-        txInfo
-        (Redeemer spendRedeemer)
-        (SpendingScript ownOutRef (Just (Datum inputDatum)))
+            ]
+      }
+  ctx =
+    ScriptContext
+      txInfo
+      (Redeemer spendRedeemer)
+      (SpendingScript ownOutRef (Just (Datum inputDatum)))

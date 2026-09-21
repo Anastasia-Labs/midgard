@@ -14,6 +14,7 @@ import Plutarch.Unsafe (punsafeCoerce)
 
 import Midgard.FraudProofs.Common (pcontinue, pfinalize)
 import Midgard.FraudProofs.FabricatedWithdrawal (pverifyCommittedWithdrawalMembershipV1)
+import Midgard.FraudProofs.StructuredDataCarriage qualified as Carriage
 import Midgard.FraudProofs.WithdrawalMistag
 import Midgard.HubOracle (PHubOracleDatum (..))
 import Midgard.HubOracle qualified as Hub
@@ -31,7 +32,6 @@ import Midgard.Validators.FraudProofs.Step (
     pexpectDatum,
     pexpectStateAs,
     pexpecting,
-    pstateIsAbsent,
     pstep,
  )
 
@@ -46,12 +46,13 @@ withdrawalMistagStep01Validator = plam $ \step02ScriptHash computationThreadPoli
                 , pstep01Args'outputIndex
                 , pstep01Args'hubRefInputIndex
                 , pstep01Args'stateQueueNodeRefInputIndex
-                , pstep01Args'committedWithdrawal
+                , pstep01Args'payload
                 } <-
                 pmatch args
             PTxInfo{ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
+            PStep01Payload{pstep01Payload'committedWithdrawal} <- pmatch $ punsafeCoerce @PStep01Payload $ Carriage.presolve # pstep01Args'payload # pfromData ptxInfo'referenceInputs
             membership@PRootMembershipProof{prootMembership'key, prootMembership'value} <-
-                pmatch $ pfromData pstep01Args'committedWithdrawal
+                pmatch $ pfromData pstep01Payload'committedWithdrawal
             pcontinue
                 computationThreadPolicy
                 (pexpectDatum datum)
@@ -60,7 +61,7 @@ withdrawalMistagStep01Validator = plam $ \step02ScriptHash computationThreadPoli
                 ownOutRef
                 (pfromData ptxInfo'inputs)
                 (pfromData ptxInfo'outputs)
-                $ \_ownScriptHash threadName _prover inputState outputScriptHash outputStateData ->
+                $ \_ownScriptHash threadName _prover _inputState outputScriptHash outputStateData ->
                     pif (pcategoryIsWithdrawalMistagV1 # threadName) `flip` perror $ P.do
                         PHubOracleDatum{phubOracle'stateQueue} <-
                             pmatch $ Hub.pgetDatum # pfromData ptxInfo'referenceInputs # hubOracle # pfromData pstep01Args'hubRefInputIndex
@@ -94,11 +95,10 @@ withdrawalMistagStep01Validator = plam $ \step02ScriptHash computationThreadPoli
                                                 pheader'totalEventCount
                                                 pheader'transitionTraceRoot
                                                 pheader'transitionStepCount
-                                pexpecting (pstateIsAbsent inputState) $
-                                    pexpecting (headerHash #== pchallengedHeaderHashOfV1 # threadName) $
-                                        pexpecting (pverifyCommittedWithdrawalMembershipV1 (pdata $ pcon header) $ pcon membership) $
-                                            pexpecting (outputScriptHash #== step02ScriptHash) $
-                                                pexpecting (outputStateData #== pforgetData (pdata expected)) (pconstant True)
+                                pexpecting (headerHash #== pchallengedHeaderHashOfV1 # threadName) $
+                                    pexpecting (pverifyCommittedWithdrawalMembershipV1 (pdata $ pcon header) $ pcon membership) $
+                                        pexpecting (outputScriptHash #== step02ScriptHash) $
+                                            pexpecting (outputStateData #== pforgetData (pdata expected)) (pconstant True)
 
 withdrawalMistagStep02Validator ::
     forall s.
@@ -110,12 +110,11 @@ withdrawalMistagStep02Validator = plam $ \step03ScriptHash computationThreadPoli
                 PStep02Args
                     { pstep02Args'inputIndex
                     , pstep02Args'outputIndex
-                    , pstep02Args'withdrawalInfo
-                    , pstep02Args'eventToStep
-                    , pstep02Args'transitionStep
+                    , pstep02Args'payload
                     } <-
                     pmatch args
-                PTxInfo{ptxInfo'inputs, ptxInfo'outputs} <- pmatch txInfo
+                PTxInfo{ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
+                PStep02Payload{pstep02Payload'withdrawalInfo, pstep02Payload'eventToStep, pstep02Payload'transitionStep} <- pmatch $ punsafeCoerce @PStep02Payload $ Carriage.presolve # pstep02Args'payload # pfromData ptxInfo'referenceInputs
                 pcontinue
                     computationThreadPolicy
                     (pexpectDatum datum)
@@ -132,7 +131,7 @@ withdrawalMistagStep02Validator = plam $ \step03ScriptHash computationThreadPoli
                             , pstep01State'claimedValid
                             } <-
                             pmatch $ pexpectStateAs @PStep01State inputState
-                        PRootMembershipProof{prootMembership'value} <- pmatch $ pfromData pstep02Args'transitionStep
+                        PRootMembershipProof{prootMembership'value} <- pmatch $ pfromData pstep02Payload'transitionStep
                         PTransitionStep{ptransitionStep'preUtxosRoot} <-
                             pmatch $ pfromData $ punsafeCoerce @(PAsData PTransitionStep) prootMembership'value
                         expected <-
@@ -145,9 +144,9 @@ withdrawalMistagStep02Validator = plam $ \step03ScriptHash computationThreadPoli
                                         pstep01State'claimedValid
                                         ptransitionStep'preUtxosRoot
                         pexpecting
-                            (pblake2b_256 # (pserialiseData # pstep02Args'withdrawalInfo) #== pfromData pstep01State'withdrawalInfoHash)
+                            (pblake2b_256 # (pserialiseData # pstep02Payload'withdrawalInfo) #== pfromData pstep01State'withdrawalInfoHash)
                             ( pexpecting
-                                (ptraceCoordinateIsExactV1 (pcon state) (pfromData pstep02Args'eventToStep) (pfromData pstep02Args'transitionStep))
+                                (ptraceCoordinateIsExactV1 (pcon state) (pfromData pstep02Payload'eventToStep) (pfromData pstep02Payload'transitionStep))
                                 ( pexpecting
                                     (outputScriptHash #== step03ScriptHash)
                                     (pexpecting (outputStateData #== pforgetData (pdata expected)) (pconstant True))
@@ -163,11 +162,11 @@ withdrawalMistagStep03Validator = plam $ \step04ScriptHash computationThreadPoli
             PStep03Args
                 { pstep03Args'inputIndex
                 , pstep03Args'outputIndex
-                , pstep03Args'withdrawalInfo
-                , pstep03Args'evidence
+                , pstep03Args'payload
                 } <-
                 pmatch args
-            PTxInfo{ptxInfo'inputs, ptxInfo'outputs} <- pmatch txInfo
+            PTxInfo{ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
+            PStep03Payload{pstep03Payload'withdrawalInfo, pstep03Payload'evidence} <- pmatch $ punsafeCoerce @PStep03Payload $ Carriage.presolve # pstep03Args'payload # pfromData ptxInfo'referenceInputs
             pcontinue
                 computationThreadPolicy
                 (pexpectDatum datum)
@@ -182,8 +181,8 @@ withdrawalMistagStep03Validator = plam $ \step04ScriptHash computationThreadPoli
                         plet $
                             pclassifyLedgerEvidenceV1
                                 state
-                                (pfromData $ punsafeCoerce @(PAsData PWithdrawalInfo) pstep03Args'withdrawalInfo)
-                                (pfromData pstep03Args'evidence)
+                                (pfromData $ punsafeCoerce @(PAsData PWithdrawalInfo) pstep03Payload'withdrawalInfo)
+                                (pfromData pstep03Payload'evidence)
                     pexpecting
                         (outputScriptHash #== step04ScriptHash)
                         (pexpecting (outputStateData #== pforgetData (pdata expected)) (pconstant True))
@@ -194,8 +193,9 @@ withdrawalMistagStep04Validator ::
 withdrawalMistagStep04Validator = plam $ \step05ScriptHash computationThreadPolicy ctx ->
     pstep ctx $ \datum redeemer ownOutRef txInfo ->
         pdispatch @_ @PStep04Args computationThreadPolicy datum redeemer ownOutRef txInfo $ \args -> P.do
-            PStep04Args{pstep04Args'inputIndex, pstep04Args'outputIndex, pstep04Args'withdrawalBody} <- pmatch args
-            PTxInfo{ptxInfo'inputs, ptxInfo'outputs} <- pmatch txInfo
+            PStep04Args{pstep04Args'inputIndex, pstep04Args'outputIndex, pstep04Args'payload} <- pmatch args
+            PTxInfo{ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
+            PStep04Payload{pstep04Payload'withdrawalBody} <- pmatch $ punsafeCoerce @PStep04Payload $ Carriage.presolve # pstep04Args'payload # pfromData ptxInfo'referenceInputs
             pcontinue
                 computationThreadPolicy
                 (pexpectDatum datum)
@@ -210,7 +210,7 @@ withdrawalMistagStep04Validator = plam $ \step05ScriptHash computationThreadPoli
                         plet $
                             pestablishMistagV1
                                 state
-                                (pfromData $ punsafeCoerce @(PAsData PWithdrawalBody) pstep04Args'withdrawalBody)
+                                (pfromData $ punsafeCoerce @(PAsData PWithdrawalBody) pstep04Payload'withdrawalBody)
                     pexpecting (outputScriptHash #== step05ScriptHash) $
                         pexpecting (outputStateData #== pforgetData (pdata expected)) (pconstant True)
 

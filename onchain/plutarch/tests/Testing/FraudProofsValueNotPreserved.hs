@@ -112,6 +112,8 @@ runStep01 tx descriptor claim =
         # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
         # pdata (pconstant ctPolicy)
         # pdata (pconstant hubOracleHash)
+        # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
+        # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
         # pconstant context
   where
     root = singleEntryPhasRoot spentInputKey descriptor

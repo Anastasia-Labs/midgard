@@ -16,7 +16,15 @@ import PlutusLedgerApi.V3 (
   Address,
   POSIXTime (..),
   PubKeyHash (..),
-  ScriptContext,
+  ScriptContext (..),
+  ScriptInfo (..),
+  ScriptPurpose (..),
+  Credential (..),
+  Redeemer (..),
+  TxInfo (..),
+  TxInInfo (..),
+  TxOut (..),
+  OutputDatum (..),
   ScriptHash (..),
   TxId (..),
   TxOutRef (..),
@@ -31,6 +39,7 @@ import PlutusTx.Builtins (
   serialiseData,
   toBuiltin,
  )
+import PlutusTx.AssocMap qualified as AssocMap
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -42,6 +51,11 @@ import Midgard.AvailabilityChallenge
 import Midgard.Validators.AvailabilityChallenge (
   availabilityChallengeSpendValidator,
   availabilityChallengeValidator,
+  availabilityChallengeBondYieldValidator,
+  availabilityChallengeOpenYieldValidator,
+  availabilityChallengeSettleYieldValidator,
+  availabilityChallengeCloseYieldValidator,
+  availabilityChallengeTimeoutYieldValidator,
   pvalidateInitialTerminalAccumulatorOutputV1,
   pvalidateInitialTrancheOutputsV1,
  )
@@ -299,6 +313,52 @@ initialOutputsContext trancheDatum terminalAccumulatorDatum =
             <> withTxOutInlineDatum (dataToBuiltinData terminalAccumulatorDatum)
         )
 
+-- Every operational test evaluates both scripts against the same transaction.
+-- The role reference is appended so existing semantic reference indices stay fixed.
+runYieldedOperation :: forall s. BS.ByteString ->
+  Term s (PAsData PV3.PCurrencySymbol :--> PAsData PV3.PCurrencySymbol :--> PAsData PParametersV1 :--> PV3.PScriptContext :--> PUnit) ->
+  ScriptContext -> Term s PUnit
+runYieldedOperation role rewarding original =
+  plet (availabilityChallengeValidator
+    # pdata (pconstant hubOraclePolicy)
+    # pdata (pconstant yieldAuthPolicy)
+    # pdata canonicalParameters
+    # pconstant mintContext) $ \_ ->
+      rewarding
+        # pdata (pconstant availabilityPolicy)
+        # pdata (pconstant hubOraclePolicy)
+        # pdata canonicalParameters
+        # pconstant rewardContext
+  where
+    originalTx = scriptContextTxInfo original
+    referenceIndex = fromIntegral $ length $ txInfoReferenceInputs originalTx
+    originalRedeemer = case scriptContextRedeemer original of Redeemer d -> d
+    mintData = case builtinDataToData originalRedeemer of
+      PD.Constr tag (_ : fields) -> PD.Constr tag (PD.I referenceIndex : fields)
+      _ -> error "operational fixture must supply the target mint redeemer"
+    mintRedeemer = Redeemer $ dataToBuiltinData mintData
+    yieldRedeemer = Redeemer $ dataToBuiltinData $ PD.Constr 0 []
+    credential = ScriptCredential yieldScriptHash
+    reference = TxInInfo (TxOutRef (TxId $ toBuiltin $ BS.replicate 32 0xf8) 0)
+      (TxOut hubAddress (mkAdaValue 2_000_000 <> singleton yieldAuthPolicy (TokenName $ toBuiltin role) 1)
+        NoOutputDatum (Just yieldScriptHash))
+    tx = originalTx
+      { txInfoReferenceInputs = txInfoReferenceInputs originalTx <> [reference]
+      , txInfoWdrl = AssocMap.unsafeFromList [(credential, 0)]
+      , txInfoRedeemers = AssocMap.unsafeFromList $
+          [(purpose, if purpose == Minting availabilityPolicy then mintRedeemer else value)
+            | (purpose, value) <- AssocMap.toList $ txInfoRedeemers originalTx]
+          <> [(Rewarding credential, yieldRedeemer)]
+      }
+    mintContext = original {scriptContextTxInfo = tx, scriptContextRedeemer = mintRedeemer}
+    rewardContext = ScriptContext tx yieldRedeemer (RewardingScript credential)
+
+yieldAuthPolicy :: CurrencySymbol
+yieldAuthPolicy = CurrencySymbol $ toBuiltin $ BS.replicate 28 0xf7
+
+yieldScriptHash :: ScriptHash
+yieldScriptHash = ScriptHash $ toBuiltin $ BS.replicate 28 0xf6
+
 data MintBondContext = MintBondContext
   { mintBondDeploymentIdentity :: BS.ByteString
   , mintBondBondOutputIndex :: Integer
@@ -317,10 +377,8 @@ validMintBond =
 
 runMintBond :: MintBondContext -> forall s. Term s PUnit
 runMintBond fixture =
-  availabilityChallengeValidator
-    # pdata (pconstant hubOraclePolicy)
-    # pdata canonicalParameters
-    # pconstant (mintBondContext fixture)
+  runYieldedOperation "AvailabilityChallengeBondYield"
+    availabilityChallengeBondYieldValidator (mintBondContext fixture)
 
 mintBondContext :: MintBondContext -> ScriptContext
 mintBondContext fixture =
@@ -356,7 +414,8 @@ mintBondContext fixture =
     availabilityRedeemer =
       PD.Constr
         0
-        [ PD.I 0
+        [ PD.I 0 -- yield reference
+        , PD.I 0
         , PD.I 0
         , PD.I 1
         , PD.I $ mintBondBondOutputIndex fixture
@@ -442,10 +501,8 @@ validCloseChallenge =
 
 runCloseChallenge :: CloseChallengeContext -> forall s. Term s PUnit
 runCloseChallenge fixture =
-  availabilityChallengeValidator
-    # pdata (pconstant hubOraclePolicy)
-    # pdata canonicalParameters
-    # pconstant (closeChallengeContext fixture)
+  runYieldedOperation "AvailabilityChallengeCloseYield"
+    availabilityChallengeCloseYieldValidator (closeChallengeContext fixture)
 
 closeChallengeContext :: CloseChallengeContext -> ScriptContext
 closeChallengeContext fixture =
@@ -485,7 +542,8 @@ closeChallengeContext fixture =
     redeemer =
       PD.Constr
         3
-        [ PD.I 0
+        [ PD.I 0 -- yield reference
+        , PD.I 0
         , PD.I 0
         , PD.I 2
         , PD.I 1
@@ -569,10 +627,8 @@ validTimeoutChallenge =
 
 runTimeoutChallenge :: TimeoutChallengeContext -> forall s. Term s PUnit
 runTimeoutChallenge fixture =
-  availabilityChallengeValidator
-    # pdata (pconstant hubOraclePolicy)
-    # pdata canonicalParameters
-    # pconstant (timeoutChallengeContext fixture)
+  runYieldedOperation "AvailabilityChallengeExpiryYield"
+    availabilityChallengeTimeoutYieldValidator (timeoutChallengeContext fixture)
 
 timeoutChallengeContext :: TimeoutChallengeContext -> ScriptContext
 timeoutChallengeContext fixture =
@@ -609,7 +665,8 @@ timeoutChallengeContext fixture =
     redeemer =
       PD.Constr
         4
-        [ PD.I 0
+        [ PD.I 0 -- yield reference
+        , PD.I 0
         , PD.I 0
         , PD.I $ timeoutTerminalInputIndex fixture
         , PD.I 1
@@ -619,7 +676,8 @@ timeoutChallengeContext fixture =
     stateQueueRedeemer =
       PD.Constr
         5
-        [ PD.B headerHash
+        [ PD.I 0 -- yield reference
+        , PD.B headerHash
         , PD.B $ timeoutStateQueueChallengeName fixture
         , PD.Constr
             0
@@ -696,10 +754,8 @@ validOpenChallenge =
 
 runOpenChallenge :: OpenChallengeContext -> forall s. Term s PUnit
 runOpenChallenge fixture =
-  availabilityChallengeValidator
-    # pdata (pconstant hubOraclePolicy)
-    # pdata canonicalParameters
-    # pconstant (openChallengeContext fixture)
+  runYieldedOperation "AvailabilityChallengeOpenYield"
+    availabilityChallengeOpenYieldValidator (openChallengeContext fixture)
 
 openChallengeContext :: OpenChallengeContext -> ScriptContext
 openChallengeContext fixture =
@@ -774,7 +830,8 @@ openChallengeContext fixture =
     redeemer =
       PD.Constr
         1
-        [ PD.I 0
+        [ PD.I 0 -- yield reference
+        , PD.I 0
         , PD.I 0
         , PD.I $ openBondOutputIndex fixture
         , PD.I 2
@@ -801,10 +858,8 @@ runContext ctx =
 
 runSettlement :: SettlementContext -> forall s. Term s PUnit
 runSettlement fixture =
-  availabilityChallengeValidator
-    # pdata (pconstant hubOraclePolicy)
-    # pdata canonicalParameters
-    # pconstant (settlementScriptContext fixture)
+  runYieldedOperation "AvailabilityChallengeSettleYield"
+    availabilityChallengeSettleYieldValidator (settlementScriptContext fixture)
 
 data SettlementContext = SettlementContext
   { settlementPublished :: Bool
@@ -919,7 +974,8 @@ settleRedeemer :: SettlementContext -> PD.Data
 settleRedeemer fixture =
   PD.Constr
     2
-    [ PD.I 0
+    [ PD.I 0 -- yield reference
+    , PD.I 0
     , PD.I 0
     , PD.I 0
     , PD.I $ settlementTrancheInputIndex fixture
@@ -1225,7 +1281,8 @@ openChallengeRedeemerAt :: Integer -> PD.Data
 openChallengeRedeemerAt bondInputIndex =
   PD.Constr
     1
-    [ PD.I 0
+    [ PD.I 0 -- yield reference
+    , PD.I 0
     , PD.I bondInputIndex
     , PD.I 0
     , PD.I 0
@@ -1235,7 +1292,7 @@ openChallengeRedeemerAt bondInputIndex =
     , PD.I 0
     , PD.B challengerBytes
     ]
-mintBondRedeemer = PD.Constr 0 (replicate 6 $ PD.I 0)
+mintBondRedeemer = PD.Constr 0 (replicate 7 $ PD.I 0)
 
 activeDatum, receiptDatum, publicationDatum, descriptorData :: PD.Data
 activeDatum =

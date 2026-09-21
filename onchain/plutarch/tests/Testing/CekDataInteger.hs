@@ -8,22 +8,26 @@ import Plutarch.Prelude
 import Test.Tasty
 import Test.Tasty.HUnit
 
+import Aiken.Cbor (pdeserialise)
 import Midgard.CekData (PDataSummaryV1 (..))
 import Midgard.CekDataInteger (
   PCekDataIntegerControlV1 (..),
+  pcontrolData,
+  pcontrolFromDataV1,
   pdecodeControlV1,
   pencodeControlV1,
   pfinalizeV1,
   pinitialControlV1,
-  pnextSourceSpanV1,
   pparseLargeConstructorSyntaxV1,
   pparseSyntaxV1,
   pstageTerminal,
   pstepV1,
+  pprevalidatedNextSourceSpan,
+  pprevalidatedStep,
  )
 import Midgard.CekSourceBlob (PCekSourceBlobSpanV1 (..))
 import Midgard.FraudProofs.NativeTx.Codec (psliceLen)
-import Testing.Eval (passertEval)
+import Testing.Eval (passertEval, pfails)
 
 tests :: TestTree
 tests =
@@ -40,6 +44,12 @@ integerV1ParityTests =
         passertEval provesNegativeBignum
     , testCase "decodes_the_typescript_terminal_control" $
         passertEval decodesTypescriptControl
+    , testCase "direct control Data matches syntax and terminal wire forms" $
+        passertEval $
+          directControlMatches (pinitialControlV1 # 17 # 11)
+            #&& directControlMatches (pdecodeControlV1 # typescriptTerminalControlCbor)
+    , testCase "a constructor-wrapped scalar control is rejected" $
+        pfails $ pcontrolFromDataV1 # pforgetData (pdata (pinitialControlV1 # 17 # 11))
     , testCase "canonical_signed_boundaries_have_exact_cek_memory" $
         passertEval canonicalBoundaries
     , testCase "accepts_only_canonical_constructor_alternatives_above_127" $
@@ -152,26 +162,36 @@ pfinishTrace ::
         :--> PCekDataIntegerControlV1
     )
 pfinishTrace =
-  pfix $ \self -> plam $ \control wholeSource sourceStart ->
-    pmatch control $ \c ->
-      pif
-        (pfromData (pint'stage c) #== pstageTerminal)
-        control
-        $ pmatch (pnextSourceSpanV1 # control)
-        $ \case
-          PNothing ->
-            pmatch (pstepV1 # control # pcon PNothing) $ \case
-              PNothing -> perror
-              PJust next -> self # next # wholeSource # sourceStart
-          PJust span ->
-            pmatch span $ \(PCekSourceBlobSpanV1 absoluteStart spanLength) ->
-              plet
-                ( psliceLen
-                    # wholeSource
-                    # (pfromData absoluteStart - sourceStart)
-                    # pfromData spanLength
-                )
-                $ \sourceBytes ->
-                  pmatch (pstepV1 # control # pcon (PJust sourceBytes)) $ \case
-                    PNothing -> perror
-                    PJust next -> self # next # wholeSource # sourceStart
+  pfix $ \self -> plam $ \provided wholeSource sourceStart ->
+    plet (pcontrolFromDataV1 # (pcontrolData # provided)) $ \control ->
+      pif (pnot # (control #== provided)) perror $
+        pmatch control $ \c ->
+          pif
+            (pfromData (pint'stage c) #== pstageTerminal)
+            control
+            $ pmatch (pprevalidatedNextSourceSpan # control)
+            $ \case
+              PNothing ->
+                pmatch (pprevalidatedStep # control # pcon PNothing) $ \case
+                  PNothing -> perror
+                  PJust next -> self # next # wholeSource # sourceStart
+              PJust span ->
+                pmatch span $ \(PCekSourceBlobSpanV1 absoluteStart spanLength) ->
+                  plet
+                    ( psliceLen
+                        # wholeSource
+                        # (pfromData absoluteStart - sourceStart)
+                        # pfromData spanLength
+                    )
+                    $ \sourceBytes ->
+                      pmatch (pprevalidatedStep # control # pcon (PJust sourceBytes)) $ \case
+                        PNothing -> perror
+                        PJust next -> self # next # wholeSource # sourceStart
+
+directControlMatches :: forall (s :: S). Term s PCekDataIntegerControlV1 -> Term s PBool
+directControlMatches control =
+  plet (pcontrolData # control) $ \wireData ->
+    (pcontrolFromDataV1 # wireData #== control)
+      #&& pmatch (pdeserialise # (pencodeControlV1 # control)) (\case
+        PNothing -> pconstant False
+        PJust decoded -> wireData #== decoded)

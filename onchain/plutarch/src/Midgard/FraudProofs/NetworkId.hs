@@ -4,6 +4,13 @@ module Midgard.FraudProofs.NetworkId (
   PPostUtxoMembershipV1 (..),
   PPostUtxoStateV1 (..),
   PStep01Args (..),
+  PForcedDispatch (..),
+  PForcedStepArgs (..),
+  PForcedBound (..),
+  PForcedScanState (..),
+  PForcedScanAction (..),
+  pgrammarBatch,
+  pscanBatch,
   PPostUtxoPredecessorCarriageV1 (..),
   PStep02State (..),
   PStep02Args (..),
@@ -11,6 +18,7 @@ module Midgard.FraudProofs.NetworkId (
   pisSupportedNetworkIdV1,
   pisTransactionNetworkViolationV1,
   pisOutputNetworkViolationV1,
+  pisAnyNetworkViolationV1,
 ) where
 
 import GHC.Generics (Generic)
@@ -26,12 +34,15 @@ import Midgard.FraudProofs.Common (
   PNonMembershipCarriage,
  )
 import Midgard.FraudProofs.FieldOpening (PFieldOpeningV1)
+import Midgard.LedgerState (PHeaderV1)
+import Midgard.TransitionTrace (PRootMembershipProof)
 
--- | Which of Q35's three authenticated network claims is being adjudicated.
+-- | Accepted network faults and the exact forced-rejection marker.
 data PNetworkIdFaultV1 (s :: S)
   = PTransactionNetwork
   | POutputNetwork {poutputNetwork'outputIndex :: Term s (PAsData PInteger)}
   | POutputNetworkUtxo {poutputNetworkUtxo'observedNetworkId :: Term s (PAsData PInteger)}
+  | PForcedNetworkIdMismatch
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PNetworkIdFaultV1)
@@ -76,6 +87,7 @@ data PPostUtxoStateV1 (s :: S) = PPostUtxoStateV1
 data PStep01Args (s :: S) = PStep01Args
   { pstep01Args'txInclusion :: Term s (PMaybeData PNativeTxInclusionCarriage)
   , pstep01Args'postUtxoMembership :: Term s (PMaybeData PPostUtxoMembershipV1)
+  , pstep01Args'forcedSource :: Term s (PMaybeData PForcedDispatch)
   , pstep01Args'fault :: Term s (PAsData PNetworkIdFaultV1)
   }
   deriving stock (Generic)
@@ -97,6 +109,7 @@ data PStep02State (s :: S) = PStep02State
   , pstep02State'expectedNetworkId :: Term s (PAsData PInteger)
   , pstep02State'fault :: Term s (PAsData PNetworkIdFaultV1)
   , pstep02State'postUtxo :: Term s (PMaybeData PPostUtxoStateV1)
+  , pstep02State'forcedSourceKey :: Term s (PMaybeData PByteString)
   }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
@@ -128,3 +141,57 @@ pisTransactionNetworkViolationV1 = phoistAcyclic $ plam $ \committed expected ->
 
 pisOutputNetworkViolationV1 :: forall s. Term s (PInteger :--> PInteger :--> PBool)
 pisOutputNetworkViolationV1 = phoistAcyclic $ plam $ \observed expected -> observed #/= expected
+
+-- Constructor and field order follow the target forced-step/forced-scan ABI.
+data PForcedDispatch (s :: S) = PForcedDispatch (Term s (PAsData PInteger)) (Term s (PAsData PInteger))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PForcedDispatch)
+data PForcedStepArgs (s :: S)
+  = PForcedStepArgs
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PHeaderV1))
+      (Term s (PAsData PRootMembershipProof))
+      (Term s (PAsData PInteger))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PForcedStepArgs)
+data PForcedBound (s :: S) = PForcedBound
+  { pforcedBound'txId :: Term s (PAsData PByteString)
+  , pforcedBound'committedNetwork :: Term s (PAsData PInteger)
+  , pforcedBound'expectedNetwork :: Term s (PAsData PInteger)
+  , pforcedBound'sourceKey :: Term s (PAsData PByteString)
+  }
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PForcedBound)
+data PForcedScanState (s :: S)
+  = PReady (Term s (PAsData PForcedBound))
+  | PGrammar (Term s (PAsData PForcedBound)) (Term s (PAsData PByteString))
+  | PScanning (Term s (PAsData PForcedBound)) (Term s (PAsData PByteString))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PForcedScanState)
+data PForcedScanAction (s :: S)
+  = POpen (Term s (PAsData PInteger)) (Term s (PAsData PInteger)) (Term s (PAsData PFieldOpeningV1))
+  | PStartGrammar (Term s (PAsData PInteger)) (Term s (PAsData PInteger)) (Term s (PAsData PFieldOpeningV1)) (Term s (PAsData PInteger))
+  | PResumeGrammar (Term s (PAsData PInteger)) (Term s (PAsData PInteger)) (Term s (PAsData PFieldOpeningV1)) (Term s (PAsData PByteString)) (Term s (PAsData PInteger))
+  | PFinishGrammar (Term s (PAsData PInteger)) (Term s (PAsData PInteger)) (Term s (PAsData PFieldOpeningV1)) (Term s (PAsData PByteString))
+  | PAdvance (Term s (PAsData PInteger)) (Term s (PAsData PInteger)) (Term s (PAsData PFieldOpeningV1)) (Term s (PAsData PByteString)) (Term s (PAsData PInteger))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PForcedScanAction)
+
+pgrammarBatch, pscanBatch :: forall s. Term s PInteger
+pgrammarBatch = 128
+pscanBatch = 64
+
+pisAnyNetworkViolationV1 :: forall s. Term s (PInteger :--> PBuiltinList PInteger :--> PInteger :--> PBool)
+pisAnyNetworkViolationV1 = phoistAcyclic $ plam $ \committed outputs expected ->
+  pisTransactionNetworkViolationV1
+    # committed
+    # expected
+    #|| pany
+    # (plam $ \observed -> observed #/= expected)
+    # outputs

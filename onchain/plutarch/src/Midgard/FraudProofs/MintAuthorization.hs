@@ -2,6 +2,7 @@ module Midgard.FraudProofs.MintAuthorization (
   PStep01Args (..),
   PStep02State (..),
   PStep02Args (..),
+  PClaimEvidence (..),
   PStep03State (..),
   PStep03Args (..),
   PStep04State (..),
@@ -16,6 +17,7 @@ import Plutarch.Prelude
 
 import Midgard.FraudProofs.Common (PNativeTxInclusionCarriage)
 import Midgard.FraudProofs.FieldOpening (PFieldOpeningV1)
+import Midgard.FraudProofs.MintAuthorizationScan (PMintControl)
 import Midgard.LedgerState (PHeaderV1)
 import Midgard.MpfProof.Types (PProof)
 import Midgard.TransitionTrace (PRootMembershipProof)
@@ -26,29 +28,55 @@ newtype PStep01Args s = PStep01Args
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PStep01Args)
 
-data PStep02State s = PStep02State
-  { pstep02State'badTxId :: Term s (PAsData PByteString)
-  , pstep02State'badTxWitnessSetHash :: Term s (PAsData PByteString)
-  , pstep02State'validityIntervalStart :: Term s (PAsData PInteger)
-  , pstep02State'validityIntervalEnd :: Term s (PAsData PInteger)
-  }
+data PStep02State s
+  = PStep02State
+      { pstep02State'badTxId :: Term s (PAsData PByteString)
+      , pstep02State'badTxWitnessSetHash :: Term s (PAsData PByteString)
+      , pstep02State'validityIntervalStart :: Term s (PAsData PInteger)
+      , pstep02State'validityIntervalEnd :: Term s (PAsData PInteger)
+      }
+  | PMintScanState
+      { pmintState'badTxId :: Term s (PAsData PByteString)
+      , pmintState'witnessSetHash :: Term s (PAsData PByteString)
+      , pmintState'validityStart :: Term s (PAsData PInteger)
+      , pmintState'validityEnd :: Term s (PAsData PInteger)
+      , pmintState'priorLedgerRoot :: Term s (PAsData PByteString)
+      , pmintState'policyIndex :: Term s (PAsData PInteger)
+      , pmintState'direction :: Term s (PAsData PInteger)
+      , pmintState'fieldHash :: Term s (PAsData PByteString)
+      , pmintState'control :: Term s (PAsData PMintControl)
+      }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PStep02State)
 
-data PStep02Args s = PStep02Args
-  { pstep02Args'inputIndex :: Term s (PAsData PInteger)
-  , pstep02Args'outputIndex :: Term s (PAsData PInteger)
-  , pstep02Args'header :: Term s (PAsData PHeaderV1)
-  , pstep02Args'eventToStepMembership :: Term s (PAsData PRootMembershipProof)
-  , pstep02Args'transitionStepMembership :: Term s (PAsData PRootMembershipProof)
-  , pstep02Args'policyIndex :: Term s (PAsData PInteger)
-  , pstep02Args'direction :: Term s (PAsData PInteger)
-  , pstep02Args'mintOpening :: Term s (PAsData PFieldOpeningV1)
-  }
+data PStep02Args s
+  = PStep02Args
+      { pstep02Args'inputIndex :: Term s (PAsData PInteger)
+      , pstep02Args'outputIndex :: Term s (PAsData PInteger)
+      , pstep02Args'header :: Term s (PAsData PHeaderV1)
+      , pstep02Args'eventToStepMembership :: Term s (PAsData PRootMembershipProof)
+      , pstep02Args'transitionStepMembership :: Term s (PAsData PRootMembershipProof)
+      , pstep02Args'policyIndex :: Term s (PAsData PInteger)
+      , pstep02Args'direction :: Term s (PAsData PInteger)
+      , pstep02Args'mintOpening :: Term s (PAsData PFieldOpeningV1)
+      }
+  | PPublishedArgs (Term s (PAsData PInteger)) (Term s (PAsData PInteger)) (Term s PData) (Term s (PAsData PFieldOpeningV1))
+  | PAdvanceMintScan (Term s (PAsData PInteger)) (Term s (PAsData PInteger)) (Term s (PAsData PFieldOpeningV1))
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PStep02Args)
+
+data PClaimEvidence s
+  = PClaimEvidence
+      (Term s (PAsData PHeaderV1))
+      (Term s (PAsData PRootMembershipProof))
+      (Term s (PAsData PRootMembershipProof))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PClaimEvidence)
 
 data PStep03State s = PStep03State
   { pstep03State'policyId :: Term s (PAsData PByteString)
@@ -72,6 +100,17 @@ data PStep03Args s
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
       (Term s (PAsData PByteString))
+      (Term s (PAsData PFieldOpeningV1))
+  | PStartUnsatisfied
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData (PBuiltinList (PAsData PInteger))))
+      (Term s (PAsData PFieldOpeningV1))
+  | PStartAbsence
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData (PBuiltinList (PAsData PInteger))))
       (Term s (PAsData PFieldOpeningV1))
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)

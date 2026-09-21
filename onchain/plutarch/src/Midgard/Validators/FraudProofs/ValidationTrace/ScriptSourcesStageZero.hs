@@ -32,18 +32,16 @@ import Plutarch.Prelude
 import Midgard.BoundedItem (PChunkProofV1)
 import Midgard.ComputationThread (PStepDatum)
 import Midgard.NativeTxFieldAccess (PFieldCarriageV1)
+import Midgard.ScriptSourcesStageZeroBeginSemantics qualified as StageZeroBegin
+import Midgard.ScriptSourcesStageZeroFinishSemantics qualified as StageZeroFinish
+import Midgard.ScriptSourcesStageZeroHashSemantics qualified as StageZeroHash
 import Midgard.ValidationMachine (
   PValidationAuxiliaryWitnessV1 (..),
   PValidationOneStepWitnessV1,
-  pverifyScriptSourcesStageZeroBeginSemanticsV1,
-  pverifyScriptSourcesStageZeroFinishSemanticsV1,
-  pverifyScriptSourcesStageZeroHashAdvanceSemanticsV1,
-  pverifyScriptSourcesStageZeroHashBlockSemanticsV1,
-  pverifyScriptSourcesStageZeroHashTerminalSemanticsV1,
  )
+import Midgard.ValidationMachineFieldDoor (PMachineFieldDoorV1 (..))
 import Midgard.ValidationSemantic (pcontinueWinning, pvalidationSemanticPreState)
 import Midgard.ValidationTrace (PValidationPhase (PScriptSources))
-import Midgard.ValidationMachineFieldDoor (PMachineFieldDoorV1 (..))
 import Midgard.Validators.FraudProofs.Step (pdispatch, pstep)
 import Midgard.Validators.FraudProofs.ValidationTrace.Preparation (
   pprepareSelectedValidator,
@@ -99,8 +97,10 @@ data PScriptSourcesStageZeroHashTerminalActionV1 (s :: S)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PScriptSourcesStageZeroHashTerminalActionV1)
 
-scriptSourcesV1Validator :: forall s.
-  Term s
+scriptSourcesV1Validator ::
+  forall s.
+  Term
+    s
     ( PAsData (PBuiltinList (PAsData PScriptHash))
         :--> PAsData PCurrencySymbol
         :--> PScriptContext
@@ -108,7 +108,8 @@ scriptSourcesV1Validator :: forall s.
     )
 scriptSourcesV1Validator = pprepareSelectedValidator (pcon PScriptSources) 29
 
-pcontinueScriptSources :: forall s.
+pcontinueScriptSources ::
+  forall s.
   Term s (PAsData PScriptHash) ->
   Term s (PAsData PCurrencySymbol) ->
   Term s (PMaybeData PStepDatum) ->
@@ -123,88 +124,134 @@ pcontinueScriptSources :: forall s.
 pcontinueScriptSources awardScriptHash policyId datum inputIndex outputIndex transition auxiliary isValid ownOutRef txInfo =
   pcontinueWinning
     (pcon PScriptSources)
-    awardScriptHash policyId datum inputIndex outputIndex transition
+    awardScriptHash
+    policyId
+    datum
+    inputIndex
+    outputIndex
+    transition
     (pforgetData $ pdata auxiliary)
-    isValid ownOutRef txInfo
+    isValid
+    ownOutRef
+    txInfo
 
-scriptSourcesStageZeroFinishSemanticV1Validator :: forall s.
+scriptSourcesStageZeroFinishSemanticV1Validator ::
+  forall s.
   Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
 scriptSourcesStageZeroFinishSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
-  pdispatch @_ @PScriptSourcesStageZeroFinishActionV1 policyId datum redeemer ownOutRef txInfo $
-    \action -> pmatch action $ \(PVerifyFinish inputIndex outputIndex transitionD) ->
-      plet (pfromData transitionD) $ \transition ->
-        pcontinueScriptSources
-          awardScriptHash policyId datum
-          (pfromData inputIndex) (pfromData outputIndex) transition
-          (pcon PNoAuxiliaryWitness)
-          (pverifyScriptSourcesStageZeroFinishSemanticsV1 # pvalidationSemanticPreState datum # transition)
-          ownOutRef txInfo
+    pdispatch @_ @PScriptSourcesStageZeroFinishActionV1 policyId datum redeemer ownOutRef txInfo $
+      \action -> pmatch action $ \(PVerifyFinish inputIndex outputIndex transitionD) ->
+        plet (pfromData transitionD) $ \transition ->
+          pcontinueScriptSources
+            awardScriptHash
+            policyId
+            datum
+            (pfromData inputIndex)
+            (pfromData outputIndex)
+            transition
+            (pcon PNoAuxiliaryWitness)
+            (StageZeroFinish.pverify # pvalidationSemanticPreState datum # transition)
+            ownOutRef
+            txInfo
 
-scriptSourcesStageZeroBeginSemanticV1Validator :: forall s.
-  Term s
-    ( PAsData PScriptHash :--> PAsData PCurrencySymbol
-        :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit
+scriptSourcesStageZeroBeginSemanticV1Validator ::
+  forall s.
+  Term
+    s
+    ( PAsData PScriptHash
+        :--> PAsData PCurrencySymbol
+        :--> PAsData PCurrencySymbol
+        :--> PScriptContext
+        :--> PUnit
     )
 scriptSourcesStageZeroBeginSemanticV1Validator = plam $ \awardScriptHash policyId certificatePolicyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
-  pdispatch @_ @PScriptSourcesStageZeroBeginActionV1 policyId datum redeemer ownOutRef txInfo $
-    \action -> pmatch action $ \(PVerifyBegin inputIndex outputIndex transitionD fieldIndexD itemIndexD carriageD) ->
-      plet (pfromData transitionD) $ \transition ->
-      pmatch txInfo $ \PTxInfo {ptxInfo'referenceInputs} ->
-      plet (pcon $ PMachineFieldDoorV1 (pfromData ptxInfo'referenceInputs) certificatePolicyId) $ \door ->
-        pcontinueScriptSources
-          awardScriptHash policyId datum
-          (pfromData inputIndex) (pfromData outputIndex) transition
-          (pcon $ PTransactionFieldChunkWitness fieldIndexD itemIndexD carriageD)
-          ( pverifyScriptSourcesStageZeroBeginSemanticsV1
-              # pvalidationSemanticPreState datum # transition
-              # door # pfromData fieldIndexD # pfromData itemIndexD
-              # pfromData carriageD
-          )
-          ownOutRef txInfo
+    pdispatch @_ @PScriptSourcesStageZeroBeginActionV1 policyId datum redeemer ownOutRef txInfo $
+      \action -> pmatch action $ \(PVerifyBegin inputIndex outputIndex transitionD fieldIndexD itemIndexD carriageD) ->
+        plet (pfromData transitionD) $ \transition ->
+          pmatch txInfo $ \PTxInfo{ptxInfo'referenceInputs} ->
+            plet (pcon $ PMachineFieldDoorV1 (pfromData ptxInfo'referenceInputs) certificatePolicyId) $ \door ->
+              pcontinueScriptSources
+                awardScriptHash
+                policyId
+                datum
+                (pfromData inputIndex)
+                (pfromData outputIndex)
+                transition
+                (pcon $ PTransactionFieldChunkWitness fieldIndexD itemIndexD carriageD)
+                ( StageZeroBegin.pverify
+                    # pvalidationSemanticPreState datum
+                    # transition
+                    # door
+                    # pfromData fieldIndexD
+                    # pfromData itemIndexD
+                    # pfromData carriageD
+                )
+                ownOutRef
+                txInfo
 
-scriptSourcesStageZeroHashBlockSemanticV1Validator :: forall s.
+scriptSourcesStageZeroHashBlockSemanticV1Validator ::
+  forall s.
   Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
 scriptSourcesStageZeroHashBlockSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
-  pdispatch @_ @PScriptSourcesStageZeroHashBlockActionV1 policyId datum redeemer ownOutRef txInfo $
-    \action -> pmatch action $ \(PVerifyHashBlock inputIndex outputIndex transitionD chunkProofD nextChunkProofD) ->
-      plet (pfromData transitionD) $ \transition ->
-        pcontinueScriptSources
-          awardScriptHash policyId datum
-          (pfromData inputIndex) (pfromData outputIndex) transition
-          (pcon $ PScriptSourceHashBlockWitness chunkProofD nextChunkProofD)
-          ( pverifyScriptSourcesStageZeroHashBlockSemanticsV1
-              # pvalidationSemanticPreState datum # transition
-              # pfromData chunkProofD # pfromData nextChunkProofD
-          )
-          ownOutRef txInfo
+    pdispatch @_ @PScriptSourcesStageZeroHashBlockActionV1 policyId datum redeemer ownOutRef txInfo $
+      \action -> pmatch action $ \(PVerifyHashBlock inputIndex outputIndex transitionD chunkProofD nextChunkProofD) ->
+        plet (pfromData transitionD) $ \transition ->
+          pcontinueScriptSources
+            awardScriptHash
+            policyId
+            datum
+            (pfromData inputIndex)
+            (pfromData outputIndex)
+            transition
+            (pcon $ PScriptSourceHashBlockWitness chunkProofD nextChunkProofD)
+            ( StageZeroHash.pblock
+                # pvalidationSemanticPreState datum
+                # transition
+                # pfromData chunkProofD
+                # pfromData nextChunkProofD
+            )
+            ownOutRef
+            txInfo
 
-scriptSourcesStageZeroHashAdvanceSemanticV1Validator :: forall s.
+scriptSourcesStageZeroHashAdvanceSemanticV1Validator ::
+  forall s.
   Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
 scriptSourcesStageZeroHashAdvanceSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
-  pdispatch @_ @PScriptSourcesStageZeroHashAdvanceActionV1 policyId datum redeemer ownOutRef txInfo $
-    \action -> pmatch action $ \(PVerifyHashAdvance inputIndex outputIndex transitionD) ->
-      plet (pfromData transitionD) $ \transition ->
-        pcontinueScriptSources
-          awardScriptHash policyId datum
-          (pfromData inputIndex) (pfromData outputIndex) transition
-          (pcon PNoAuxiliaryWitness)
-          (pverifyScriptSourcesStageZeroHashAdvanceSemanticsV1 # pvalidationSemanticPreState datum # transition)
-          ownOutRef txInfo
+    pdispatch @_ @PScriptSourcesStageZeroHashAdvanceActionV1 policyId datum redeemer ownOutRef txInfo $
+      \action -> pmatch action $ \(PVerifyHashAdvance inputIndex outputIndex transitionD) ->
+        plet (pfromData transitionD) $ \transition ->
+          pcontinueScriptSources
+            awardScriptHash
+            policyId
+            datum
+            (pfromData inputIndex)
+            (pfromData outputIndex)
+            transition
+            (pcon PNoAuxiliaryWitness)
+            (StageZeroHash.padvance # pvalidationSemanticPreState datum # transition)
+            ownOutRef
+            txInfo
 
-scriptSourcesStageZeroHashTerminalSemanticV1Validator :: forall s.
+scriptSourcesStageZeroHashTerminalSemanticV1Validator ::
+  forall s.
   Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
 scriptSourcesStageZeroHashTerminalSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
-  pdispatch @_ @PScriptSourcesStageZeroHashTerminalActionV1 policyId datum redeemer ownOutRef txInfo $
-    \action -> pmatch action $ \(PVerifyHashTerminal inputIndex outputIndex transitionD) ->
-      plet (pfromData transitionD) $ \transition ->
-        pcontinueScriptSources
-          awardScriptHash policyId datum
-          (pfromData inputIndex) (pfromData outputIndex) transition
-          (pcon PNoAuxiliaryWitness)
-          (pverifyScriptSourcesStageZeroHashTerminalSemanticsV1 # pvalidationSemanticPreState datum # transition)
-          ownOutRef txInfo
+    pdispatch @_ @PScriptSourcesStageZeroHashTerminalActionV1 policyId datum redeemer ownOutRef txInfo $
+      \action -> pmatch action $ \(PVerifyHashTerminal inputIndex outputIndex transitionD) ->
+        plet (pfromData transitionD) $ \transition ->
+          pcontinueScriptSources
+            awardScriptHash
+            policyId
+            datum
+            (pfromData inputIndex)
+            (pfromData outputIndex)
+            transition
+            (pcon PNoAuxiliaryWitness)
+            (StageZeroHash.pterminal # pvalidationSemanticPreState datum # transition)
+            ownOutRef
+            txInfo

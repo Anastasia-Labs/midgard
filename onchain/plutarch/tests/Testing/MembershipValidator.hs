@@ -12,6 +12,7 @@ import Testing.Eval (pfails, psucceeds)
 
 import Codec.Serialise (deserialise)
 import Data.ByteString qualified as BS
+import Data.Bits (shiftR)
 import Data.ByteString.Base16.Lazy qualified as BS16
 import Data.ByteString.Lazy.Char8 qualified as BS8
 import Plutarch.Internal.Term
@@ -123,7 +124,7 @@ simpleNonMembershipRedeemer =
     }
 
 -- A terminal skip-1 Fork exercises both Aiken's neighbour ABI and its
--- excluding arithmetic: the reconstructed prefix is just nibble : prefix.
+-- excluding arithmetic: the reconstructed prefix retains the skipped nibble.
 canonicalForkNonMembershipRedeemer :: BuiltinData
 canonicalForkNonMembershipRedeemer = forkNonMembershipRedeemer canonicalNeighbor
 
@@ -150,8 +151,11 @@ forkRoot, nullHash :: BS.ByteString
 forkRoot =
   fromBuiltin $
     Builtins.blake2b_256 $
-      toBuiltin ("\x02\xbb" <> nullHash)
+      toBuiltin (BS.singleton (BS.head forkPath `shiftR` 4) <> "\x02\xbb" <> nullHash)
 nullHash = BS.replicate 32 0
+
+forkPath :: BS.ByteString
+forkPath = fromBuiltin (Builtins.blake2b_256 (toBuiltin ("fork-key" :: BS.ByteString)))
 
 runRawNonMembership :: BuiltinData -> Term s PUnit
 runRawNonMembership redeemer =

@@ -293,7 +293,7 @@ daAttestationMintValidator = plam $ \daParamsPolicyId refScriptAuthPolicyId avai
                 availabilityBindingIsValid <-
                   plet $
                     pmatch availabilityRedeemer $ \case
-                      Availability.PMintBondFromAttestation _ availabilityAttestationInputIndex _ _ availabilityStateQueueInputIndex availabilityStateQueueOutputIndex ->
+                      Availability.PMintBondFromAttestation _ _ availabilityAttestationInputIndex _ _ availabilityStateQueueInputIndex availabilityStateQueueOutputIndex ->
                         pfromData availabilityAttestationInputIndex #== pfromData papply'daAttestationInputIndex
                           #&& pfromData availabilityStateQueueInputIndex #== pfromData papply'stateQueueInputIndex
                           #&& pfromData availabilityStateQueueOutputIndex #== pfromData papply'stateQueueOutputIndex

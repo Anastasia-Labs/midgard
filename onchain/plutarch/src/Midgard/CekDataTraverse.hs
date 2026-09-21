@@ -27,6 +27,19 @@ module Midgard.CekDataTraverse (
   pdecodeControlV1,
   phashControlV1,
   pnextSourceSpanV1,
+  pprevalidatedNextSourceSpan,
+  pprevalidatedHeadScalar,
+  pprevalidatedHeadSequence,
+  pprevalidatedHeadMap,
+  pprevalidatedHeadLargeConstructor,
+  pprevalidatedAdvanceLargeConstructor,
+  pprevalidatedAdvanceLargeFields,
+  pprevalidatedClose,
+  pprevalidatedAttachInteger,
+  pprevalidatedAttachBytes,
+  pprevalidatedAdvanceInteger,
+  pprevalidatedAdvanceBytes,
+  pprevalidatedFoldListNextFrameRoot,
   pprevalidatedFinalizeFrameTransitionV1,
   pprevalidatedFoldMapNextFrameRootV1,
   pstepHead,
@@ -399,7 +412,13 @@ phashControlV1 = phoistAcyclic $ plam $ \control -> pblake2b_256 # (pcontrolDoma
 
 pnextSourceSpanV1 :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PMaybe Blob.PCekSourceBlobSpanV1)
 pnextSourceSpanV1 = phoistAcyclic $ plam $ \control ->
-  pif (pnot # (pcontrolIsWellFormed # control)) (pcon PNothing) $ pmatch control $ \c ->
+  pif (pcontrolIsWellFormed # control) (pprevalidatedNextSourceSpan # control) (pcon PNothing)
+
+-- | The caller authenticates the complete well-formed control, including nested
+-- scalar, blob and hash controls, before using this span selection.
+pprevalidatedNextSourceSpan :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PMaybe Blob.PCekSourceBlobSpanV1)
+pprevalidatedNextSourceSpan = phoistAcyclic $ plam $ \control ->
+  pmatch control $ \c ->
     plet (pfromData (ptraverse'stage c)) $ \stage ->
       pif (stage #== pstageHead)
         (pcon (PJust (pcon (Blob.PCekSourceBlobSpanV1
@@ -408,11 +427,11 @@ pnextSourceSpanV1 = phoistAcyclic $ plam $ \control ->
       pif (stage #== pstageInteger #|| stage #== pstageLargeConstructor)
         (pmatch (pfromData (ptraverse'integer c)) $ \case
           PDNothing -> perror
-          PDJust exact -> Integer.pnextSourceSpanV1 # pfromData exact) $
+          PDJust exact -> Integer.pprevalidatedNextSourceSpan # pfromData exact) $
       pif (stage #== pstageBytes)
         (pmatch (pfromData (ptraverse'bytes c)) $ \case
           PDNothing -> perror
-          PDJust exact -> Bytes.pnextSourceSpanV1 # pfromData exact) $
+          PDJust exact -> Bytes.pprevalidatedNextSourceSpan # pfromData exact) $
       pif (stage #== pstageLargeFields #|| stage #== pstageClose)
         (pcon (PJust (pcon (Blob.PCekSourceBlobSpanV1
           (pdata (pfromData (ptraverse'sourceStart c) + pfromData (ptraverse'offset c)))
@@ -517,8 +536,9 @@ pattachSummary control summary parent offset = pmatch control $ \c ->
           , ptraverse'result = pdata nextResult
           })
 
-pstepHeadScalar :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PByteString :--> PInteger :--> PMaybe PDataTraverseControlV1)
-pstepHeadScalar = phoistAcyclic $ plam $ \control bytes itemLength -> pmatch control $ \c ->
+-- | Requires a well-formed traversal control and the corresponding authenticated stage.
+pprevalidatedHeadScalar :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PByteString :--> PInteger :--> PMaybe PDataTraverseControlV1)
+pprevalidatedHeadScalar = phoistAcyclic $ plam $ \control bytes itemLength -> pmatch control $ \c ->
   pif (itemLength #<= 0 #|| pnot # (puint32IsWellFormed # itemLength) #||
        pfromData (ptraverse'offset c) + itemLength #> pfromData (ptraverse'sourceLength c)) (pcon PNothing) $
     plet (pbyteAt # bytes # 0) $ \first ->
@@ -544,8 +564,9 @@ popenedFrameControl = phoistAcyclic $ plam $ \control frame headLength -> pmatch
     , ptraverse'frameRoot = pdata (Frame.phashFrameV1 # frame)
     })
 
-pstepHeadSequence :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PByteString :--> PInteger :--> PMaybe PDataTraverseControlV1)
-pstepHeadSequence = phoistAcyclic $ plam $ \control bytes expectedChildren ->
+-- | Requires a well-formed traversal control and the corresponding authenticated stage.
+pprevalidatedHeadSequence :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PByteString :--> PInteger :--> PMaybe PDataTraverseControlV1)
+pprevalidatedHeadSequence = phoistAcyclic $ plam $ \control bytes expectedChildren ->
   pif (pnot # (puint32IsWellFormed # expectedChildren)) (pcon PNothing) $
     plet (pif (expectedChildren #== 0) 128 159) $ \header ->
       pmatch (pparseSmallConstructorHead # bytes) $ \case
@@ -559,16 +580,18 @@ pstepHeadSequence = phoistAcyclic $ plam $ \control bytes expectedChildren ->
           (popenedFrameControl # control # (Frame.pinitialListFrameV1 # (pframeRoot control) # expectedChildren) # 1)
           (pcon PNothing)
 
-pstepHeadMap :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PByteString :--> PMaybe PDataTraverseControlV1)
-pstepHeadMap = phoistAcyclic $ plam $ \control bytes -> pmatch (preadCanonicalArgument # bytes # 0) $ \case
+-- | Requires a well-formed traversal control and the corresponding authenticated stage.
+pprevalidatedHeadMap :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PByteString :--> PMaybe PDataTraverseControlV1)
+pprevalidatedHeadMap = phoistAcyclic $ plam $ \control bytes -> pmatch (preadCanonicalArgument # bytes # 0) $ \case
   PNothing -> pcon PNothing
   PJust argument -> pmatch argument $ \(PCborArgumentV1 major value nextOffset) ->
     pif (major #== 5 #&& value #<= pquot # puint32Max # 2)
       (popenedFrameControl # control # (Frame.pinitialMapFrameV1 # (pframeRoot control) # (value * 2)) # nextOffset)
       (pcon PNothing)
 
-pstepHeadLargeConstructor :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PByteString :--> PInteger :--> PInteger :--> PMaybe PDataTraverseControlV1)
-pstepHeadLargeConstructor = phoistAcyclic $ plam $ \control bytes constructorCborLength expectedChildren -> pmatch control $ \c ->
+-- | Requires a well-formed traversal control and the corresponding authenticated stage.
+pprevalidatedHeadLargeConstructor :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PByteString :--> PInteger :--> PInteger :--> PMaybe PDataTraverseControlV1)
+pprevalidatedHeadLargeConstructor = phoistAcyclic $ plam $ \control bytes constructorCborLength expectedChildren -> pmatch control $ \c ->
   pif
     ( constructorCborLength #> 0
         #&& puint32IsWellFormed # constructorCborLength
@@ -598,12 +621,60 @@ pstepHead :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PMaybe PByteSt
 pstepHead = phoistAcyclic $ plam $ \control sourceBytes action -> pmatch (pexactSourceBytes control sourceBytes) $ \case
   PNothing -> pcon PNothing
   PJust bytes -> pmatch action $ \case
-    PHeadScalar itemLength -> pstepHeadScalar # control # bytes # pfromData itemLength
-    PHeadSequence expectedChildren -> pstepHeadSequence # control # bytes # pfromData expectedChildren
-    PHeadMap -> pstepHeadMap # control # bytes
+    PHeadScalar itemLength -> pprevalidatedHeadScalar # control # bytes # pfromData itemLength
+    PHeadSequence expectedChildren -> pprevalidatedHeadSequence # control # bytes # pfromData expectedChildren
+    PHeadMap -> pprevalidatedHeadMap # control # bytes
     PHeadLargeConstructor constructorLength expectedChildren ->
-      pstepHeadLargeConstructor # control # bytes # pfromData constructorLength # pfromData expectedChildren
+      pprevalidatedHeadLargeConstructor # control # bytes # pfromData constructorLength # pfromData expectedChildren
     _ -> pcon PNothing
+
+-- | The caller authenticates the well-formed scalar-stage control. Attachment
+-- still validates the finalized summary and its parent frame.
+pprevalidatedAttachInteger :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PMaybeData Frame.PDataFrameV1 :--> PMaybe PDataTraverseControlV1)
+pprevalidatedAttachInteger = phoistAcyclic $ plam $ \control parent -> pmatch control $ \c ->
+  pmatch (pfromData (ptraverse'integer c)) $ \case
+    PDNothing -> perror
+    PDJust scalarData -> plet (pfromData scalarData) $ \integer ->
+      pmatch (Integer.pfinalizeV1 # integer) $ \case
+        PNothing -> pcon PNothing
+        PJust summary -> pmatch integer $ \scalarControl ->
+          pattachSummary control summary parent
+            (pfromData (ptraverse'offset c) + pfromData (Integer.pint'sourceLength scalarControl))
+
+-- | Requires a well-formed nonterminal scalar-stage control. The caller must
+-- also check the resulting traversal control or compare it with an independently
+-- normalized, well-formed claimed successor, as the split Aiken callers do.
+pprevalidatedAdvanceInteger :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PMaybe PByteString :--> PMaybe PDataTraverseControlV1)
+pprevalidatedAdvanceInteger = phoistAcyclic $ plam $ \control sourceBytes -> pmatch control $ \c ->
+  pmatch (pfromData (ptraverse'integer c)) $ \case
+    PDNothing -> perror
+    PDJust scalarData -> pmatch (Integer.pstepV1 # pfromData scalarData # sourceBytes) $ \case
+      PNothing -> pcon PNothing
+      PJust next -> pcon (PJust (pcon c {ptraverse'integer = pdata (pcon (PDJust (pdata next)))}))
+
+-- | The caller authenticates the well-formed scalar-stage control. Attachment
+-- still validates the finalized summary and its parent frame.
+pprevalidatedAttachBytes :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PMaybeData Frame.PDataFrameV1 :--> PMaybe PDataTraverseControlV1)
+pprevalidatedAttachBytes = phoistAcyclic $ plam $ \control parent -> pmatch control $ \c ->
+  pmatch (pfromData (ptraverse'bytes c)) $ \case
+    PDNothing -> perror
+    PDJust scalarData -> plet (pfromData scalarData) $ \bytesControl ->
+      pmatch (Bytes.pfinalizeV1 # bytesControl) $ \case
+        PNothing -> pcon PNothing
+        PJust summary -> pmatch bytesControl $ \scalarControl ->
+          pattachSummary control summary parent
+            (pfromData (ptraverse'offset c) + pfromData (Bytes.pbytes'sourceLength scalarControl))
+
+-- | Requires a well-formed nonterminal scalar-stage control. The caller must
+-- also check the resulting traversal control or compare it with an independently
+-- normalized, well-formed claimed successor, as the split Aiken callers do.
+pprevalidatedAdvanceBytes :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PMaybe PByteString :--> PMaybe PDataTraverseControlV1)
+pprevalidatedAdvanceBytes = phoistAcyclic $ plam $ \control sourceBytes -> pmatch control $ \c ->
+  pmatch (pfromData (ptraverse'bytes c)) $ \case
+    PDNothing -> perror
+    PDJust scalarData -> pmatch (Bytes.pstepV1 # pfromData scalarData # sourceBytes) $ \case
+      PNothing -> pcon PNothing
+      PJust next -> pcon (PJust (pcon c {ptraverse'bytes = pdata (pcon (PDJust (pdata next)))}))
 
 pstepInteger :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PMaybe PByteString :--> PDataTraverseActionV1 :--> PMaybe PDataTraverseControlV1)
 pstepInteger = phoistAcyclic $ plam $ \control sourceBytes action -> pmatch control $ \c ->
@@ -614,15 +685,12 @@ pstepInteger = phoistAcyclic $ plam $ \control sourceBytes action -> pmatch cont
         (pmatch sourceBytes $ \case
           PJust _ -> pcon PNothing
           PNothing -> pmatch action $ \case
-            PAttachScalar parent -> pmatch (Integer.pfinalizeV1 # integer) $ \case
-              PNothing -> pcon PNothing
-              PJust summary -> pattachSummary control summary (pfromData parent)
-                (pfromData (ptraverse'offset c) + pfromData (Integer.pint'sourceLength i))
+            PAttachScalar parent -> pprevalidatedAttachInteger # control # pfromData parent
             _ -> pcon PNothing) $
       pif (pnot # (pactionIsNoAction action)) (pcon PNothing) $
-        pmatch (Integer.pstepV1 # integer # sourceBytes) $ \case
+        pmatch (pprevalidatedAdvanceInteger # control # sourceBytes) $ \case
           PNothing -> pcon PNothing
-          PJust next -> pcheckedControl (pcon c {ptraverse'integer = pdata (pcon (PDJust (pdata next)))})
+          PJust next -> pcheckedControl next
 
 pstepBytes :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PMaybe PByteString :--> PDataTraverseActionV1 :--> PMaybe PDataTraverseControlV1)
 pstepBytes = phoistAcyclic $ plam $ \control sourceBytes action -> pmatch control $ \c ->
@@ -633,18 +701,16 @@ pstepBytes = phoistAcyclic $ plam $ \control sourceBytes action -> pmatch contro
         (pmatch sourceBytes $ \case
           PJust _ -> pcon PNothing
           PNothing -> pmatch action $ \case
-            PAttachScalar parent -> pmatch (Bytes.pfinalizeV1 # bytesControl) $ \case
-              PNothing -> pcon PNothing
-              PJust summary -> pattachSummary control summary (pfromData parent)
-                (pfromData (ptraverse'offset c) + pfromData (Bytes.pbytes'sourceLength b))
+            PAttachScalar parent -> pprevalidatedAttachBytes # control # pfromData parent
             _ -> pcon PNothing) $
       pif (pnot # (pactionIsNoAction action)) (pcon PNothing) $
-        pmatch (Bytes.pstepV1 # bytesControl # sourceBytes) $ \case
+        pmatch (pprevalidatedAdvanceBytes # control # sourceBytes) $ \case
           PNothing -> pcon PNothing
-          PJust next -> pcheckedControl (pcon c {ptraverse'bytes = pdata (pcon (PDJust (pdata next)))})
+          PJust next -> pcheckedControl next
 
-pstepLargeConstructor :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PMaybe PByteString :--> PDataTraverseActionV1 :--> PMaybe PDataTraverseControlV1)
-pstepLargeConstructor = phoistAcyclic $ plam $ \control sourceBytes action -> pmatch control $ \c ->
+-- | Requires a well-formed traversal control and the corresponding authenticated stage.
+pprevalidatedAdvanceLargeConstructor :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PMaybe PByteString :--> PDataTraverseActionV1 :--> PMaybe PDataTraverseControlV1)
+pprevalidatedAdvanceLargeConstructor = phoistAcyclic $ plam $ \control sourceBytes action -> pmatch control $ \c ->
   pmatch (pfromData (ptraverse'integer c)) $ \case
     PDNothing -> perror
     PDJust integerData -> plet (pfromData integerData) $ \integer -> pmatch integer $ \i ->
@@ -669,8 +735,9 @@ pstepLargeConstructor = phoistAcyclic $ plam $ \control sourceBytes action -> pm
               PNothing -> pcon PNothing
               PJust next -> pcheckedControl (pcon c {ptraverse'integer = pdata (pcon (PDJust (pdata next)))})
 
-pstepLargeFields :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PMaybe PByteString :--> PDataTraverseActionV1 :--> PMaybe PDataTraverseControlV1)
-pstepLargeFields = phoistAcyclic $ plam $ \control sourceBytes action ->
+-- | Requires a well-formed traversal control and the corresponding authenticated stage.
+pprevalidatedAdvanceLargeFields :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PMaybe PByteString :--> PDataTraverseActionV1 :--> PMaybe PDataTraverseControlV1)
+pprevalidatedAdvanceLargeFields = phoistAcyclic $ plam $ \control sourceBytes action ->
   pif (pnot # (pactionIsNoAction action)) (pcon PNothing) $ pmatch control $ \c ->
     pmatch (pfromData (ptraverse'pendingLargeExpectedChildren c)) $ \case
       PDNothing -> perror
@@ -699,8 +766,9 @@ pstepLargeFields = phoistAcyclic $ plam $ \control sourceBytes action ->
                           }))
                       (pcon PNothing)
 
-pstepClose :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PMaybe PByteString :--> PDataTraverseActionV1 :--> PMaybe PDataTraverseControlV1)
-pstepClose = phoistAcyclic $ plam $ \control sourceBytes action ->
+-- | Requires a well-formed traversal control and the corresponding authenticated stage.
+pprevalidatedClose :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PMaybe PByteString :--> PDataTraverseActionV1 :--> PMaybe PDataTraverseControlV1)
+pprevalidatedClose = phoistAcyclic $ plam $ \control sourceBytes action ->
   pif (pnot # (pactionIsNoAction action)) (pcon PNothing) $
     pmatch (pexactSourceBytes control sourceBytes) $ \case
       PNothing -> pcon PNothing
@@ -751,18 +819,29 @@ pprevalidatedFoldMapNextFrameRootV1 = phoistAcyclic $ plam $ \currentRoot frame 
       PJust next -> pcon (PJust (Frame.phashFrameV1 # next)))
     (pcon PNothing)
 
+-- | Authenticate the supplied frame before folding the list child. Traversal
+-- control and stage authentication remain the responsibility of the caller.
+pprevalidatedFoldListNextFrameRoot ::
+  forall (s :: S).
+  Term s (PByteString :--> Frame.PDataFrameV1 :--> PInteger :--> PDataSummaryV1 :-->
+    PBuiltinList (PAsData PByteString) :--> PMaybe PByteString)
+pprevalidatedFoldListNextFrameRoot = phoistAcyclic $ plam $ \currentRoot frame childIndex child siblings ->
+  pif (Frame.pframeIsWellFormedV1 # frame #&& Frame.phashFrameV1 # frame #== currentRoot)
+    (pmatch (Frame.pfoldListChildV1 # frame # childIndex # child # siblings) $ \case
+      PNothing -> pcon PNothing
+      PJust next -> pcon (PJust (Frame.phashFrameV1 # next)))
+    (pcon PNothing)
+
 pstepFold :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PMaybe PByteString :--> PDataTraverseActionV1 :--> PMaybe PDataTraverseControlV1)
 pstepFold = phoistAcyclic $ plam $ \control sourceBytes action -> pmatch sourceBytes $ \case
   PJust _ -> pcon PNothing
   PNothing -> pmatch action $ \case
     PFoldList frameData childIndex childData siblingsData ->
-      plet (pfromData frameData) $ \frame ->
-      pif (Frame.pframeIsWellFormedV1 # frame #&& Frame.phashFrameV1 # frame #== pframeRoot control)
-        (pmatch (Frame.pfoldListChildV1 # frame # pfromData childIndex # pfromData childData # pfromData siblingsData) $ \case
+      pmatch (pprevalidatedFoldListNextFrameRoot # pframeRoot control # pfromData frameData #
+        pfromData childIndex # pfromData childData # pfromData siblingsData) $ \case
           PNothing -> pcon PNothing
-          PJust next -> pmatch control $ \c -> pcheckedControl (pcon c
-            {ptraverse'frameRoot = pdata (Frame.phashFrameV1 # next)}))
-        (pcon PNothing)
+          PJust nextRoot -> pmatch control $ \c -> pcheckedControl (pcon c
+            {ptraverse'frameRoot = pdata nextRoot})
     PFoldMap frameData pairIndex keyData valueData keySiblingsData valueSiblingsData ->
       pmatch (pprevalidatedFoldMapNextFrameRootV1 # (pframeRoot control) # pfromData frameData #
         pfromData pairIndex # pfromData keyData # pfromData valueData #
@@ -780,9 +859,9 @@ pstepV1 = phoistAcyclic $ plam $ \control sourceBytes action ->
       pif (stage #== pstageHead) (pstepHead # control # sourceBytes # action) $
       pif (stage #== pstageInteger) (pstepInteger # control # sourceBytes # action) $
       pif (stage #== pstageBytes) (pstepBytes # control # sourceBytes # action) $
-      pif (stage #== pstageLargeConstructor) (pstepLargeConstructor # control # sourceBytes # action) $
-      pif (stage #== pstageLargeFields) (pstepLargeFields # control # sourceBytes # action) $
-      pif (stage #== pstageClose) (pstepClose # control # sourceBytes # action) $
+      pif (stage #== pstageLargeConstructor) (pprevalidatedAdvanceLargeConstructor # control # sourceBytes # action) $
+      pif (stage #== pstageLargeFields) (pprevalidatedAdvanceLargeFields # control # sourceBytes # action) $
+      pif (stage #== pstageClose) (pprevalidatedClose # control # sourceBytes # action) $
       pif (stage #== pstageFold) (pstepFold # control # sourceBytes # action) (pcon PNothing)
 
 pfinalizeV1 :: forall (s :: S). Term s (PDataTraverseControlV1 :--> PMaybe PDataSummaryV1)

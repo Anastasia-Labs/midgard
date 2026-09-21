@@ -63,17 +63,21 @@ tests =
     [ testGroup
         "mint / Init"
         [ testCase "ct_init_accepts_authentic_catalogue_backed_thread" $
-            psucceeds $ runInit defaultInit
+            psucceeds $
+              runInit defaultInit
         , -- The output must go to the very script that will check the proof.
           testCase "ct_init_rejects_first_step_not_at_proven_category" $
-            pfails $ runInit defaultInit {iOutputScript = otherScript}
+            pfails $
+              runInit defaultInit{iOutputScript = otherScript}
         , -- A thread starts having computed nothing.
           testCase "ct_init_rejects_preloaded_step_state" $
-            pfails $ runInit defaultInit {iStepData = Just (PD.I 1)}
+            pfails $
+              runInit defaultInit{iStepData = Just (PD.I 1)}
         , -- The reward is payable to the datum's prover, so only that prover
           -- may open the thread.
           testCase "ct_init_rejects_missing_prover_signature" $
-            pfails $ runInit defaultInit {iSigners = [otherProver]}
+            pfails $
+              runInit defaultInit{iSigners = [otherProver]}
         , -- Two threads in one transaction would let one catalogue proof back
           -- two different fraud claims.
           testCase "ct_init_rejects_parallel_thread_mint_in_one_tx" $
@@ -91,32 +95,42 @@ tests =
         , -- The catalogue is what makes a fraud category real; a UTxO under
           -- another policy is not the catalogue.
           testCase "ct_init_rejects_substituted_catalogue_reference" $
-            pfails $ runInit defaultInit {iCataloguePolicy = otherPolicy}
+            pfails $
+              runInit defaultInit{iCataloguePolicy = otherPolicy}
         , -- The delegated proof must be about *this* category.
           testCase "ct_init_rejects_uncatalogued_fraud_category" $
-            pfails $ runInit defaultInit {iAttestedCategory = otherScript}
+            pfails $
+              runInit defaultInit{iAttestedCategory = otherScript}
         , testCase "ct_init_rejects_absent_membership_attestation" $
-            pfails $ runInit defaultInit {iWithdrawRedeemer = False}
+            pfails $
+              runInit defaultInit{iWithdrawRedeemer = False}
         , -- The hub oracle is where the state queue's policy id comes from.
           testCase "ct_init_rejects_substituted_hub_oracle" $
-            pfails $ runInit defaultInit {iHubPolicy = otherPolicy}
+            pfails $
+              runInit defaultInit{iHubPolicy = otherPolicy}
         , -- The block must be a real queue entry, not any UTxO.
           testCase "ct_init_rejects_unregistered_block_reference" $
-            pfails $ runInit defaultInit {iBlockPolicy = otherPolicy}
+            pfails $
+              runInit defaultInit{iBlockPolicy = otherPolicy}
         , -- The token name binds the thread to one category and one block.
           testCase "rejects a token name naming another block" $
-            pfails $ runInit defaultInit {iAssetNameHash = otherHeaderHash}
+            pfails $
+              runInit defaultInit{iAssetNameHash = otherHeaderHash}
         , testCase "rejects a token name naming another category" $
-            pfails $ runInit defaultInit {iAssetNameId = otherCategoryId}
+            pfails $
+              runInit defaultInit{iAssetNameId = otherCategoryId}
         ]
     , testGroup
         "mint / Success"
         [ testCase "ct_success_accepts_thread_token_burn" $
-            psucceeds $ runSuccess (toMint (threadToken (-1)))
+            psucceeds $
+              runSuccess (toMint (threadToken (-1)))
         , testCase "ct_success_rejects_missing_thread_token_burn" $
-            pfails $ runSuccess (toMint (singleton otherPolicy (TokenName "x") (-1)))
+            pfails $
+              runSuccess (toMint (singleton otherPolicy (TokenName "x") (-1)))
         , testCase "rejects a mint where a burn is required" $
-            pfails $ runSuccess (toMint (threadToken 1))
+            pfails $
+              runSuccess (toMint (threadToken 1))
         , -- Unlike cancellation, success permits other tokens alongside: the
           -- fraud-proof token is minted in the same transaction.
           testCase "permits the fraud-proof token minted alongside" $
@@ -130,7 +144,8 @@ tests =
     , testGroup
         "mint / BurnForCancellation"
         [ testCase "ct_burn_for_cancellation_accepts_exact_burn" $
-            psucceeds $ runCancellation (toMint (threadToken (-1)))
+            psucceeds $
+              runCancellation (toMint (threadToken (-1)))
         , -- A cancellation earns nothing, so nothing may ride along with it —
           -- in particular no fraud-proof token.
           testCase "ct_burn_for_cancellation_rejects_extra_mint" $
@@ -138,9 +153,11 @@ tests =
               runCancellation
                 (toMint (threadToken (-1) <> singleton otherPolicy (TokenName "fp") 1))
         , testCase "rejects a mint where a burn is required" $
-            pfails $ runCancellation (toMint (threadToken 1))
+            pfails $
+              runCancellation (toMint (threadToken 1))
         , testCase "rejects burning a token of another policy" $
-            pfails $ runCancellation (toMint (singleton otherPolicy (TokenName "x") (-1)))
+            pfails $
+              runCancellation (toMint (singleton otherPolicy (TokenName "x") (-1)))
         ]
     ]
 
@@ -186,66 +203,66 @@ runInit i =
     # pdata (pconstant cataloguePolicy)
     # pdata (pconstant hubPolicy)
     # pconstant ctx
-  where
-    threadName = TokenName (toBuiltin (iAssetNameId i <> iAssetNameHash i))
-    outputValue =
-      mkAdaValue 2_000_000
-        <> singleton threadPolicy threadName 1
-        <> maybe mempty id (iExtraOutputTokens i)
-    minted = singleton threadPolicy threadName 1 <> maybe mempty id (iExtraMint i)
-    stepDatum =
-      PD.Constr
-        0
-        [ PD.B prover
-        , maybe (PD.Constr 1 []) (\d -> PD.Constr 0 [d]) (iStepData i)
-        ]
-    firstStepOutput =
-      TxOut
-        (scriptHashAddress (ScriptHash (toBuiltin (iOutputScript i))))
-        outputValue
-        (OutputDatum (Datum (dataToBuiltinData stepDatum)))
-        Nothing
-    base = buildScriptContext mempty
-    txInfo =
-      (scriptContextTxInfo base)
-        { txInfoOutputs = [firstStepOutput]
-        , txInfoReferenceInputs =
-            [ catalogueRefIn (iCataloguePolicy i)
-            , hubRefIn (iHubPolicy i)
-            , blockRefIn (iBlockPolicy i)
-            ]
-        , txInfoMint = toMint minted
-        , txInfoSignatories = map (PubKeyHash . toBuiltin) (iSigners i)
-        , txInfoRedeemers =
-            Map.unsafeFromList
-              [ (Rewarding (ScriptCredential (ScriptHash (toBuiltin phasHash))), phasRedeemer)
-              | iWithdrawRedeemer i
-              ]
-        }
-    -- The `phas` validator's redeemer, restating the four arguments it proved.
-    -- The port checks these against its own, so an attestation about another
-    -- category cannot back this thread.
-    phasRedeemer =
-      Redeemer . dataToBuiltinData $
-        PD.List
-          [ PD.B catalogueRoot
-          , PD.B (cborBytes categoryId)
-          , PD.B (cborBytes (iAttestedCategory i))
-          , PD.List []
+ where
+  threadName = TokenName (toBuiltin (iAssetNameId i <> iAssetNameHash i))
+  outputValue =
+    mkAdaValue 2_000_000
+      <> singleton threadPolicy threadName 1
+      <> maybe mempty id (iExtraOutputTokens i)
+  minted = singleton threadPolicy threadName 1 <> maybe mempty id (iExtraMint i)
+  stepDatum =
+    PD.Constr
+      0
+      [ PD.B prover
+      , maybe (PD.Constr 1 []) (\d -> PD.Constr 0 [d]) (iStepData i)
+      ]
+  firstStepOutput =
+    TxOut
+      (scriptHashAddress (ScriptHash (toBuiltin (iOutputScript i))))
+      outputValue
+      (OutputDatum (Datum (dataToBuiltinData stepDatum)))
+      Nothing
+  base = buildScriptContext mempty
+  txInfo =
+    (scriptContextTxInfo base)
+      { txInfoOutputs = [firstStepOutput]
+      , txInfoReferenceInputs =
+          [ catalogueRefIn (iCataloguePolicy i)
+          , hubRefIn (iHubPolicy i)
+          , blockRefIn (iBlockPolicy i)
           ]
-    ctx = ScriptContext txInfo (Redeemer (dataToBuiltinData initRedeemer)) (MintingScript threadPolicy)
-    initRedeemer =
-      PD.Constr
-        0
-        [ PD.I 0 -- first_step_output_index
-        , PD.B categoryId
-        , PD.B (iOutputScript i)
-        , PD.List [] -- membership proof
-        , PD.I 0 -- catalogue ref input index
-        , PD.I 0 -- inclusion proof redeemer index
-        , PD.I 1 -- hub oracle ref input index
-        , PD.I 2 -- fraudulent block ref input index
+      , txInfoMint = toMint minted
+      , txInfoSignatories = map (PubKeyHash . toBuiltin) (iSigners i)
+      , txInfoRedeemers =
+          Map.unsafeFromList
+            [ (Rewarding (ScriptCredential (ScriptHash (toBuiltin phasHash))), phasRedeemer)
+            | iWithdrawRedeemer i
+            ]
+      }
+  -- The `phas` validator's redeemer, restating the four arguments it proved.
+  -- The port checks these against its own, so an attestation about another
+  -- category cannot back this thread.
+  phasRedeemer =
+    Redeemer . dataToBuiltinData $
+      PD.List
+        [ PD.B catalogueRoot
+        , PD.B (cborBytes categoryId)
+        , PD.B (cborBytes (iAttestedCategory i))
+        , PD.List []
         ]
+  ctx = ScriptContext txInfo (Redeemer (dataToBuiltinData initRedeemer)) (MintingScript threadPolicy)
+  initRedeemer =
+    PD.Constr
+      0
+      [ PD.I 0 -- first_step_output_index
+      , PD.B categoryId
+      , PD.B (iOutputScript i)
+      , PD.List [] -- membership proof
+      , PD.I 0 -- catalogue ref input index
+      , PD.I 0 -- inclusion proof redeemer index
+      , PD.I 1 -- hub oracle ref input index
+      , PD.I 2 -- fraudulent block ref input index
+      ]
 
 {- | The CBOR encoding of a bytestring, as @cbor.serialise@ produces it.
 
@@ -258,8 +275,8 @@ cborBytes b
   | n < 24 = BS.cons (0x40 + fromIntegral n) b
   | n < 256 = BS.pack [0x58, fromIntegral n] <> b
   | otherwise = error "cborBytes: fixture bytestrings stay under 256 bytes"
-  where
-    n = BS.length b
+ where
+  n = BS.length b
 
 --------------------------------------------------------------------------------
 -- Success and BurnForCancellation
@@ -277,16 +294,16 @@ runBurn tag minted =
     # pdata (pconstant cataloguePolicy)
     # pdata (pconstant hubPolicy)
     # pconstant ctx
-  where
-    base = buildScriptContext mempty
-    txInfo = (scriptContextTxInfo base) {txInfoMint = minted}
-    redeemer =
-      PD.Constr (fromIntegral tag) [PD.B (categoryId <> headerHash)]
-    ctx =
-      ScriptContext
-        txInfo
-        (Redeemer (dataToBuiltinData redeemer))
-        (MintingScript threadPolicy)
+ where
+  base = buildScriptContext mempty
+  txInfo = (scriptContextTxInfo base){txInfoMint = minted}
+  redeemer =
+    PD.Constr (fromIntegral tag) [PD.B (categoryId <> headerHash)]
+  ctx =
+    ScriptContext
+      txInfo
+      (Redeemer (dataToBuiltinData redeemer))
+      (MintingScript threadPolicy)
 
 threadToken :: Integer -> Value
 threadToken = singleton threadPolicy (TokenName (toBuiltin (categoryId <> headerHash)))
@@ -300,8 +317,8 @@ policyFor n = currencySymbolFromHex (concat (replicate 28 (hexByte n)))
 
 hexByte :: Int -> String
 hexByte x = [d (x `div` 16), d (x `mod` 16)]
-  where
-    d i = "0123456789abcdef" !! i
+ where
+  d i = "0123456789abcdef" !! i
 
 threadPolicy, cataloguePolicy, hubPolicy, stateQueuePolicy, otherPolicy :: CurrencySymbol
 threadPolicy = policyFor 0x11
@@ -329,14 +346,38 @@ otherProver = BS.replicate 28 0x32
 catalogueRoot :: BS.ByteString
 catalogueRoot = BS.replicate 32 0x12
 
--- | Aiken @env.plutarch_phas_validator_hash@, copied independently.
+-- | Deployed Plutarch @phas@ validator hash, copied independently.
 phasHash :: BS.ByteString
 phasHash =
   BS.pack
-    [ 0x1f, 0xc5, 0x9f, 0xf5, 0x4d, 0xa0, 0x2f, 0x25
-    , 0x35, 0xd6, 0x4b, 0x40, 0xb6, 0x47, 0xa8, 0x82
-    , 0x6c, 0x8b, 0x3d, 0x91, 0x4d, 0x7b, 0xa5, 0x25
-    , 0x7f, 0x5b, 0x27, 0x21
+    [ 0x81
+    , 0x9a
+    , 0xdf
+    , 0x9e
+    , 0xaa
+    , 0xed
+    , 0x4a
+    , 0xa1
+    , 0x1f
+    , 0x71
+    , 0x74
+    , 0x14
+    , 0xe9
+    , 0x9c
+    , 0x80
+    , 0xb4
+    , 0x5d
+    , 0x41
+    , 0x64
+    , 0x81
+    , 0x82
+    , 0x43
+    , 0x21
+    , 0xc3
+    , 0x47
+    , 0x4b
+    , 0xcb
+    , 0x5e
     ]
 
 toMint :: Value -> MintValue
@@ -386,9 +427,9 @@ blockRefIn policy =
         (OutputDatum (Datum (dataToBuiltinData element)))
         Nothing
     )
-  where
-    element = PD.Constr 0 [PD.Constr 1 [node], PD.Constr 1 []]
-    node = PD.Constr 0 [headerData, PD.B ""]
+ where
+  element = PD.Constr 0 [PD.Constr 1 [node], PD.Constr 1 []]
+  node = PD.Constr 0 [headerData, PD.B ""]
 
 headerData :: PD.Data
 headerData =
@@ -417,7 +458,7 @@ hubDatum =
           <> replicate 13 addressData
           <> [PD.B (cs (policyFor 0x4f))]
       )
-  where
-    cs = fromBuiltin . unCurrencySymbol
-    addressData =
-      PD.Constr 0 [PD.Constr 1 [PD.B (cs (policyFor 0x42))], PD.Constr 1 []]
+ where
+  cs = fromBuiltin . unCurrencySymbol
+  addressData =
+    PD.Constr 0 [PD.Constr 1 [PD.B (cs (policyFor 0x42))], PD.Constr 1 []]

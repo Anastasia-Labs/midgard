@@ -13,22 +13,29 @@ import Test.Tasty.HUnit
 import Midgard.BoundedItem (PChunkProofV1 (..), pfromBytes, phashChunk)
 import Midgard.CekData (PDataSummaryV1 (..))
 import Midgard.CekDataTraverse (PDataTraverseControlV1 (..))
+import Midgard.ScriptSourcesItemNormalization qualified as Normalized
 import Midgard.RedeemerItemProof
 import Midgard.ValidationMerkle (PFrontierPeak, pappendLeaf, pemptyFrontier)
-import Testing.Eval (passertEvalNoTrace)
+import Testing.Eval (passertEvalNoTraceWithoutHoistChecks)
 
 tests :: TestTree
 tests = testGroup "Midgard.RedeemerItemProof"
-  [ testCase "redeemer_item_descriptor_authenticates_header_tail_and_exact_metadata" $
-      passertEvalNoTrace descriptorAuthenticatesExactMetadata
+  [ testCase "descriptor specialization preserves header, tail and hashes" $ passertEvalNoTraceWithoutHoistChecks descriptorSpecialization
+  , testCase "initial hash matches both modes and maximum coordinates" $ passertEvalNoTraceWithoutHoistChecks initialHashParity
+  , testCase "source authentication preserves exact data header and tail windows" $ passertEvalNoTraceWithoutHoistChecks exactDataWindows
+  , testCase "source authentication refuses missing and excess chunks" $ passertEvalNoTraceWithoutHoistChecks rejectsWindowProofMutations
+  , testCase "descriptor specialization refuses substituted evidence and wrong stage" $ passertEvalNoTraceWithoutHoistChecks descriptorRefusals
+  , testCase "terminal outer hash equals checked complete control hash" $ passertEvalNoTraceWithoutHoistChecks terminalOuterHash
+  , testCase "redeemer_item_descriptor_authenticates_header_tail_and_exact_metadata" $
+      passertEvalNoTraceWithoutHoistChecks descriptorAuthenticatesExactMetadata
   , testGroup "redeemer_item_rejects_mutated_header_tail_and_chunk_evidence"
-      [ testCase "authenticated malformed header" $ passertEvalNoTrace rejectsMalformedHeader
-      , testCase "authenticated malformed tail" $ passertEvalNoTrace rejectsMalformedTail
-      , testCase "substituted chunk proof" $ passertEvalNoTrace rejectsSubstitutedChunk
-      , testCase "initial item count changes hash" $ passertEvalNoTrace initialItemCountChangesHash
-      , testCase "tail item count changes hash" $ passertEvalNoTrace tailItemCountChangesHash
+      [ testCase "authenticated malformed header" $ passertEvalNoTraceWithoutHoistChecks rejectsMalformedHeader
+      , testCase "authenticated malformed tail" $ passertEvalNoTraceWithoutHoistChecks rejectsMalformedTail
+      , testCase "substituted chunk proof" $ passertEvalNoTraceWithoutHoistChecks rejectsSubstitutedChunk
+      , testCase "initial item count changes hash" $ passertEvalNoTraceWithoutHoistChecks initialItemCountChangesHash
+      , testCase "tail item count changes hash" $ passertEvalNoTraceWithoutHoistChecks tailItemCountChangesHash
       ]
-  , testCase "redeemer_item_terminal_data_summary_agrees_with_typescript" $ passertEvalNoTrace terminalSummaryAgrees
+  , testCase "redeemer_item_terminal_data_summary_agrees_with_typescript" $ passertEvalNoTraceWithoutHoistChecks terminalSummaryAgrees
   ]
 
 descriptorAuthenticatesExactMetadata :: forall s. Term s PBool
@@ -173,3 +180,55 @@ substitutedRedeemer = bytes "8400004100820a15"
 
 bytes :: forall s. BS.ByteString -> Term s PByteString
 bytes = pconstant . Base16.decodeLenient
+
+normalizedHashExact :: forall s. Term s PRedeemerItemProofControlV1 -> Term s PBool
+normalizedHashExact control = pcontrolIsWellFormed # control
+  #&& phashOuterWithCheckedOptionalTraversal # control # (Normalized.pcheckedOptionalTraversalCbor # control) #== phashControlV1 # control
+  #&& pprevalidatedNextSourceSpan # control #== pnextSourceSpanV1 # control
+
+descriptorSpecialization :: forall s. Term s PBool
+descriptorSpecialization = plet pinitial $ \initial ->
+  plet (pproofFor smallRedeemer) $ \proof ->
+  plet (pdescriptorStepV1 # initial # pconstant False # proof # pcon PDNothing) $ \header ->
+  plet (pexpectAdvanced header) $ \tailControl ->
+  plet (pdescriptorStepV1 # tailControl # pconstant True # proof # pcon PDNothing) $ \tailResult ->
+  plet (pexpectAdvanced tailResult) $ \terminal ->
+    header #== pstepV1 # initial # pwitness PRedeemerItemOpenHeader proof
+      #&& tailResult #== pstepV1 # tailControl # pwitness PRedeemerItemOpenTail proof
+      #&& normalizedHashExact initial #&& normalizedHashExact tailControl #&& normalizedHashExact terminal
+      #&& phashDescriptorControlV1 # tailControl #== phashControlV1 # tailControl
+      #&& phashDescriptorControlV1 # terminal #== phashControlV1 # terminal
+
+initialHashParity :: forall s. Term s PBool
+initialHashParity =
+  pinitialControlHash # 0 # 0 # 1 # 8 # pitemCommitment smallRedeemer # (-1) # (-1)
+    #== phashControlV1 # (pinitialControlV1 # 0 # 0 # 1 # 8 # pitemCommitment smallRedeemer # (-1) # (-1))
+  #&& pinitialControlHash # 1 # 16383 # 16384 # 32768 # pitemCommitment smallRedeemer # (-1) # (-1)
+    #== phashControlV1 # (pinitialControlV1 # 1 # 16383 # 16384 # 32768 # pitemCommitment smallRedeemer # (-1) # (-1))
+
+authenticatedBytes :: forall s. Term s PRedeemerItemProofControlV1 -> Term s PRedeemerItemProofWitnessV1 -> Term s PByteString
+authenticatedBytes control witness = pexpectJust $ pexpectJust $ pauthenticateSourceWindow # control # (pnextSourceSpanV1 # control) # witness
+
+exactDataWindows :: forall s. Term s PBool
+exactDataWindows = pmatch pinitial $ \initial -> plet (pcon initial { predeemerControl'mode = pdata pmodeData }) $ \current ->
+  plet (pwitness PRedeemerItemOpenHeader $ pproofFor smallRedeemer) $ \headerWitness ->
+  plet (pprevalidatedOpenHeader # current # authenticatedBytes current headerWitness) $ \header ->
+  plet (pexpectAdvanced $ pcon $ PJust header) $ \tailControl ->
+  plet (pwitness PRedeemerItemOpenTail $ pproofFor smallRedeemer) $ \tailWitness ->
+    pcon (PJust header) #== pstepV1 # current # headerWitness
+      #&& pcon (PJust $ pprevalidatedOpenTail # tailControl # authenticatedBytes tailControl tailWitness) #== pstepV1 # tailControl # tailWitness
+      #&& normalizedHashExact tailControl
+
+rejectsWindowProofMutations :: forall s. Term s PBool
+rejectsWindowProofMutations = plet (pproofFor smallRedeemer) $ \proof -> pmatch (pwitness PRedeemerItemOpenHeader proof) $ \w ->
+  pauthenticateSourceWindow # pinitial # (pnextSourceSpanV1 # pinitial) # pcon w { predeemerWitness'chunkProof = pdata $ pcon PDNothing } #== pcon PNothing
+    #&& pauthenticateSourceWindow # pinitial # (pnextSourceSpanV1 # pinitial) # pcon w { predeemerWitness'nextChunkProof = pdata $ pcon $ PDJust $ pdata proof } #== pcon PNothing
+
+descriptorRefusals :: forall s. Term s PBool
+descriptorRefusals =
+  pdescriptorStepV1 # pinitial # pconstant True # pproofFor smallRedeemer # pcon PDNothing #== pcon PNothing
+    #&& pdescriptorStepV1 # pinitial # pconstant False # pproofFor substitutedRedeemer # pcon PDNothing #== pcon PNothing
+    #&& pdescriptorStepV1 # pinitialFor wrongHeader # pconstant False # pproofFor wrongHeader # pcon PDNothing #== pcon (PJust $ pcon PRedeemerItemProofInvalid)
+
+terminalOuterHash :: forall s. Term s PBool
+terminalOuterHash = normalizedHashExact (pdecodeControlV1 # terminalControlCbor)

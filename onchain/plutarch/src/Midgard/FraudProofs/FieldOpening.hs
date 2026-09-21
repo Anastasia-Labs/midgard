@@ -124,6 +124,7 @@ module Midgard.FraudProofs.FieldOpening (
 
   -- * Single-field openings
   popenedFieldView,
+  popenedCommittedPreimage,
   popenedFieldWalk,
   presumeOpenedFieldWalk,
   popenedFieldGrammarCertification,
@@ -155,6 +156,7 @@ import Midgard.FraudProofs.NativeTx.Types (
 import Midgard.NativeTxFieldAccess (
   PFieldCarriageV1,
   PFieldViewV1,
+  pauthenticatedCommittedPreimage,
   pauthenticatedFieldView,
   pfieldItemCount,
  )
@@ -406,17 +408,17 @@ panchoredNativeTx ::
 panchoredNativeTx = phoistAcyclic $
   plam $ \opening anchor ->
     pmatch opening $ \case
-      PBodyTxOpening {pbodyTxOpening'nativeTxCompactCbor} ->
+      PBodyTxOpening{pbodyTxOpening'nativeTxCompactCbor} ->
         -- The thread anchored a body dispute. A `WitnessAnchor` here would mean
         -- the family's own step-01 recorded a witness-set anchor and this step
         -- is opening it without the witness set that anchor names, so the two
         -- §2.5 halves have to agree before any byte is read.
         pmatch anchor $ \case
-          PBodyAnchor {pbodyAnchor'txId} -> P.do
+          PBodyAnchor{pbodyAnchor'txId} -> P.do
             txId <- plet $ pfromData pbodyAnchor'txId
             verified <-
               plet $ pverifyNativeTxCompactCborV1 # txId # pbodyTxOpening'nativeTxCompactCbor
-            PVerifiedMidgardNativeTxCompact {pverified'txId} <- pmatch verified
+            PVerifiedMidgardNativeTxCompact{pverified'txId} <- pmatch verified
             -- Tautological given the verifier, and there to force it; see the
             -- module header.
             pexpecting (pverified'txId #== txId) $
@@ -427,18 +429,18 @@ panchoredNativeTx = phoistAcyclic $
                     , panchored'opensWitnessSetFields = pconstant False
                     }
                 )
-          PWitnessAnchor {} -> perror
-      PWitnessTxOpening {pwitnessTxOpening'nativeTxCompactCbor, pwitnessTxOpening'witnessSet} ->
+          PWitnessAnchor{} -> perror
+      PWitnessTxOpening{pwitnessTxOpening'nativeTxCompactCbor, pwitnessTxOpening'witnessSet} ->
         -- The thread anchored a witness-set dispute. A `BodyAnchor` carries no
         -- `witness_set_hash`, so there would be nothing to authenticate the
         -- supplied witness set against.
         pmatch anchor $ \case
-          PWitnessAnchor {pwitnessAnchor'txId, pwitnessAnchor'witnessSetHash} -> P.do
+          PWitnessAnchor{pwitnessAnchor'txId, pwitnessAnchor'witnessSetHash} -> P.do
             txId <- plet $ pfromData pwitnessAnchor'txId
             verified <-
               plet $ pverifyNativeTxCompactCborV1 # txId # pwitnessTxOpening'nativeTxCompactCbor
-            PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch verified
-            PNativeTxCompact {pcompact'witnessSetHash} <- pmatch pverified'txCompact
+            PVerifiedMidgardNativeTxCompact{pverified'txCompact} <- pmatch verified
+            PNativeTxCompact{pcompact'witnessSetHash} <- pmatch pverified'txCompact
             pexpecting (pcompact'witnessSetHash #== pfromData pwitnessAnchor'witnessSetHash) $
               pcon
                 ( PAnchoredNativeTxV1
@@ -447,7 +449,7 @@ panchoredNativeTx = phoistAcyclic $
                     , panchored'opensWitnessSetFields = pconstant True
                     }
                 )
-          PBodyAnchor {} -> perror
+          PBodyAnchor{} -> perror
 
 {- | Aiken @field_opening_v1.anchored_native_tx_version@.
 
@@ -462,8 +464,8 @@ panchoredNativeTxVersion ::
   forall (s :: S). Term s (PAnchoredNativeTxV1 :--> PInteger)
 panchoredNativeTxVersion = phoistAcyclic $
   plam $ \anchored ->
-    pmatch anchored $ \PAnchoredNativeTxV1 {panchored'verified} ->
-      pmatch panchored'verified $ \PVerifiedMidgardNativeTxCompact {pverified'version} ->
+    pmatch anchored $ \PAnchoredNativeTxV1{panchored'verified} ->
+      pmatch panchored'verified $ \PVerifiedMidgardNativeTxCompact{pverified'version} ->
         pverified'version
 
 {- | Aiken @field_opening_v1.unanchored_validity_code_of@.
@@ -501,9 +503,9 @@ punanchoredValidityCodeOf ::
   forall (s :: S). Term s (PAnchoredNativeTxV1 :--> PInteger)
 punanchoredValidityCodeOf = phoistAcyclic $
   plam $ \anchored ->
-    pmatch anchored $ \PAnchoredNativeTxV1 {panchored'verified} ->
-      pmatch panchored'verified $ \PVerifiedMidgardNativeTxCompact {pverified'txCompact} ->
-        pmatch pverified'txCompact $ \PNativeTxCompact {pcompact'validityCode} ->
+    pmatch anchored $ \PAnchoredNativeTxV1{panchored'verified} ->
+      pmatch panchored'verified $ \PVerifiedMidgardNativeTxCompact{pverified'txCompact} ->
+        pmatch pverified'txCompact $ \PNativeTxCompact{pcompact'validityCode} ->
           pcompact'validityCode
 
 --------------------------------------------------------------------------------
@@ -534,7 +536,7 @@ panchoredFieldView ::
 panchoredFieldView = phoistAcyclic $
   plam $ \anchored fieldIndex carriage referenceInputs certificatePolicyId ->
     pexpecting (pfieldPairsWith # anchored # fieldIndex) $
-      pmatch anchored $ \PAnchoredNativeTxV1 {panchored'verified, panchored'witnessSet} ->
+      pmatch anchored $ \PAnchoredNativeTxV1{panchored'verified, panchored'witnessSet} ->
         pauthenticatedFieldView
           # panchored'verified
           # panchored'witnessSet
@@ -566,7 +568,7 @@ panchoredFieldWalk ::
 panchoredFieldWalk = phoistAcyclic $
   plam $ \anchored fieldIndex carriage referenceInputs certificatePolicyId ->
     pexpecting (pfieldPairsWith # anchored # fieldIndex) $
-      pmatch anchored $ \PAnchoredNativeTxV1 {panchored'verified, panchored'witnessSet} ->
+      pmatch anchored $ \PAnchoredNativeTxV1{panchored'verified, panchored'witnessSet} ->
         popenFieldWalk
           # panchored'verified
           # panchored'witnessSet
@@ -657,7 +659,7 @@ presumeOpenedFieldWalk = phoistAcyclic $
   plam $ \opening anchor fieldIndex committed checkpointBytes referenceInputs certificatePolicyId -> P.do
     anchored <- plet $ panchoredNativeTx # (ptxOpeningOf # opening) # anchor
     pexpecting (pfieldPairsWith # anchored # fieldIndex) $
-      pmatch anchored $ \PAnchoredNativeTxV1 {panchored'verified, panchored'witnessSet} ->
+      pmatch anchored $ \PAnchoredNativeTxV1{panchored'verified, panchored'witnessSet} ->
         presumeFieldWalkFromCommitment
           # panchored'verified
           # panchored'witnessSet
@@ -682,7 +684,7 @@ popenedFieldGrammarCertification = phoistAcyclic $
   plam $ \opening anchor fieldIndex referenceInputs certificatePolicyId -> P.do
     anchored <- plet $ panchoredNativeTx # (ptxOpeningOf # opening) # anchor
     pexpecting (pfieldPairsWith # anchored # fieldIndex) $
-      pmatch anchored $ \PAnchoredNativeTxV1 {panchored'verified, panchored'witnessSet} ->
+      pmatch anchored $ \PAnchoredNativeTxV1{panchored'verified, panchored'witnessSet} ->
         popenFieldGrammarCertification
           # panchored'verified
           # panchored'witnessSet
@@ -708,7 +710,7 @@ presumeOpenedFieldGrammarCertification = phoistAcyclic $
   plam $ \opening anchor fieldIndex committed checkpointBytes referenceInputs certificatePolicyId -> P.do
     anchored <- plet $ panchoredNativeTx # (ptxOpeningOf # opening) # anchor
     pexpecting (pfieldPairsWith # anchored # fieldIndex) $
-      pmatch anchored $ \PAnchoredNativeTxV1 {panchored'verified, panchored'witnessSet} ->
+      pmatch anchored $ \PAnchoredNativeTxV1{panchored'verified, panchored'witnessSet} ->
         presumeFieldGrammarCertificationFromCommitment
           # panchored'verified
           # panchored'witnessSet
@@ -735,7 +737,7 @@ popenedCertifiedFieldWalkFromGrammar = phoistAcyclic $
   plam $ \opening anchor fieldIndex committed checkpointBytes referenceInputs certificatePolicyId -> P.do
     anchored <- plet $ panchoredNativeTx # (ptxOpeningOf # opening) # anchor
     pexpecting (pfieldPairsWith # anchored # fieldIndex) $
-      pmatch anchored $ \PAnchoredNativeTxV1 {panchored'verified, panchored'witnessSet} ->
+      pmatch anchored $ \PAnchoredNativeTxV1{panchored'verified, panchored'witnessSet} ->
         popenCertifiedFieldWalkFromGrammarCommitment
           # panchored'verified
           # panchored'witnessSet
@@ -771,7 +773,7 @@ pfieldPairsWith ::
   Term s (PAnchoredNativeTxV1 :--> PInteger :--> PBool)
 pfieldPairsWith = phoistAcyclic $
   plam $ \anchored fieldIndex ->
-    pmatch anchored $ \PAnchoredNativeTxV1 {panchored'opensWitnessSetFields} ->
+    pmatch anchored $ \PAnchoredNativeTxV1{panchored'opensWitnessSetFields} ->
       pexpecting
         (panchored'opensWitnessSetFields #== (fieldIndex #>= pfirstWitnessSetFieldIndex))
         (pconstant True)
@@ -781,13 +783,13 @@ ptxOpeningOf :: forall (s :: S). Term s (PFieldOpeningV1 :--> PNativeTxOpeningV1
 ptxOpeningOf = phoistAcyclic $
   plam $ \opening ->
     pmatch opening $ \case
-      PBodyFieldOpening {pbodyOpening'nativeTxCompactCbor} ->
+      PBodyFieldOpening{pbodyOpening'nativeTxCompactCbor} ->
         pcon
           ( PBodyTxOpening
               { pbodyTxOpening'nativeTxCompactCbor = pfromData pbodyOpening'nativeTxCompactCbor
               }
           )
-      PWitnessFieldOpening {pwitnessOpening'nativeTxCompactCbor, pwitnessOpening'witnessSet} ->
+      PWitnessFieldOpening{pwitnessOpening'nativeTxCompactCbor, pwitnessOpening'witnessSet} ->
         pcon
           ( PWitnessTxOpening
               { pwitnessTxOpening'nativeTxCompactCbor =
@@ -801,8 +803,8 @@ pcarriageOf :: forall (s :: S). Term s (PFieldOpeningV1 :--> PFieldCarriageV1)
 pcarriageOf = phoistAcyclic $
   plam $ \opening ->
     pmatch opening $ \case
-      PBodyFieldOpening {pbodyOpening'carriage} -> pfromData pbodyOpening'carriage
-      PWitnessFieldOpening {pwitnessOpening'carriage} -> pfromData pwitnessOpening'carriage
+      PBodyFieldOpening{pbodyOpening'carriage} -> pfromData pbodyOpening'carriage
+      PWitnessFieldOpening{pwitnessOpening'carriage} -> pfromData pwitnessOpening'carriage
 
 --------------------------------------------------------------------------------
 -- Folding a whole field
@@ -867,3 +869,12 @@ pfoldOpenedField = phoistAcyclic $
 -- | Aiken's @expect cond@ — evaluate to @value@ when @cond@ holds, abort otherwise.
 pexpecting :: forall (a :: S -> Type) (s :: S). Term s PBool -> Term s a -> Term s a
 pexpecting cond value = pif cond value perror
+
+-- Authenticate exact field bytes without paying a whole-field envelope walk.
+-- MintAuthorization's bounded machines perform the subsequent grammar work.
+popenedCommittedPreimage :: forall s. Term s (PFieldOpeningV1 :--> PNativeTxAnchorV1 :--> PInteger :--> PBuiltinList (PAsData PTxInInfo) :--> PAsData PCurrencySymbol :--> PByteString)
+popenedCommittedPreimage = phoistAcyclic $ plam $ \opening anchor fieldIndex refs certificatePolicy -> P.do
+  anchored <- plet $ panchoredNativeTx # (ptxOpeningOf # opening) # anchor
+  pexpecting (pfieldPairsWith # anchored # fieldIndex) $
+    pmatch anchored $ \PAnchoredNativeTxV1{panchored'verified, panchored'witnessSet} ->
+      pauthenticatedCommittedPreimage # panchored'verified # panchored'witnessSet # fieldIndex # (pcarriageOf # opening) # refs # certificatePolicy

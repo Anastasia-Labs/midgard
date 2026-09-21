@@ -58,8 +58,8 @@ import PlutusLedgerApi.V3 (
   TxOut (..),
   TxOutRef (..),
  )
-import PlutusTx.Builtins qualified as Builtins
 import PlutusTx.Builtins (dataToBuiltinData, fromBuiltin, toBuiltin)
+import PlutusTx.Builtins qualified as Builtins
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -80,6 +80,9 @@ import Midgard.NativeTxFieldAccess (
   PFieldViewV1 (..),
   paddressWitnessItemBytes,
   paddressWitnessStride,
+  pauthenticatedFieldView,
+  pauthenticatedWholeFieldViewByCommitment,
+  pauthenticatedWholeFixedFieldView,
   pchunkBytesK,
   pdecodeFieldArrayHeader,
   pemptyFieldCommitment,
@@ -88,6 +91,7 @@ import Midgard.NativeTxFieldAccess (
   pexpectedChunkCount,
   pfieldCommitment,
   pfieldCommitmentFromItems,
+  pfieldFixedItemExtent,
   pfieldHeaderLen,
   pfieldItemAt,
   pfieldItemCount,
@@ -99,6 +103,7 @@ import Midgard.NativeTxFieldAccess (
   pfieldTotalLength,
   pfieldViewStride,
   pfixedItemWrapperBytes,
+  pfixedStrideItemBatch,
   phash28ItemBytes,
   phash28Stride,
   pmaxFieldItemCount,
@@ -107,10 +112,11 @@ import Midgard.NativeTxFieldAccess (
   pmaxTier3ChunkCount,
   pmaxTransactionAggregateFieldBytes,
   pmaximumCardanoSpendRedeemerCount,
-  pauthenticatedFieldView,
   pspendInputItemBytes,
   pspendInputStride,
   pwalkDerivedStride,
+  pwholeViewItemCount,
+  pwholeViewReadRange,
  )
 import Testing.Eval (passertEval, pfails)
 import Testing.FraudProofsFixture (cborInt)
@@ -124,7 +130,8 @@ tests :: TestTree
 tests =
   testGroup
     "Native Tx Field Access Tests"
-    [ fieldAccessGoldenTests
+    [ testGroup "fixed and commitment doors" fixedDoorTests
+    , fieldAccessGoldenTests
     , testGroup "constants" constantTests
     , testGroup "field_stride" strideTests
     , testGroup "field_preimage_certificate_asset_name" assetNameTests
@@ -1609,3 +1616,88 @@ noDatumRefIn =
         NoOutputDatum
         Nothing
     )
+
+fixedDoor :: Integer -> BS.ByteString -> Term s PFieldCarriageV1 -> [TxInInfo] -> Term s PFieldViewV1
+fixedDoor index bytes carriage refs =
+  pauthenticatedWholeFixedFieldView
+    # verifiedT (bodyCommitting index bytes)
+    # witnessSetT defaultWitnessSet
+    # pconstant index
+    # carriage
+    # inputsT refs
+    # pdata (pconstant certificatePolicy)
+
+commitmentDoor :: Integer -> BS.ByteString -> Term s PFieldCarriageV1 -> [TxInInfo] -> Term s PFieldViewV1
+commitmentDoor index commitment carriage refs =
+  pauthenticatedWholeFieldViewByCommitment
+    # pconstant txId
+    # pconstant index
+    # pconstant commitment
+    # carriage
+    # inputsT refs
+    # pdata (pconstant certificatePolicy)
+
+fixedDoorTests :: [TestTree]
+fixedDoorTests =
+  [ testCase ("fixed/general agreement field " <> show index) $
+      passertEval $
+        plet (fixedDoor index bytes (inlineCarriage bytes) []) $ \fixed ->
+          plet (openWitness defaultWitnessSet index bytes) $ \general ->
+            pand'List
+              [ pmatch (pfieldFixedItemExtent # fixed # pconstant i) $ \(PPair offset len) ->
+                  pwholeViewReadRange # fixed # offset # len #== pfieldItemAt # general # pconstant i
+              | i <- if index == 7 then [0] else [0, 1, 2]
+              ]
+  | (index, bytes) <- [(0, spendInputPreimage), (1, spendInputPreimage), (3, hash28Preimage), (4, hash28Preimage), (7, addressWitnessPreimage)]
+  ]
+    <> [ testCase "materialises authenticated certified bytes across a chunk boundary"
+           $ passertEval
+           $ plet
+             ( fixedDoor
+                 3
+                 bigPreimage
+                 (pcon $ PCertified (pdata 0) (pdata $ pconstant [1, 2]))
+                 (certRefIn defaultCert : map bytesRefIn (chunksOf bigPreimage))
+             )
+           $ \view ->
+             pmatch (pfieldFixedItemExtent # view # 504) $ \(PPair offset len) ->
+               pwholeViewReadRange # view # offset # len #== pfieldItemAt # openCertified defaultCert # 504
+       , testCase "authenticates raw carriage" $
+           passertEval $
+             pwholeViewItemCount # fixedDoor 4 hash28Preimage (pcon $ PRawUtxo $ pdata 0) [bytesRefIn hash28Preimage] #== 3
+       , testCase "refuses variable-stride fields" $ pfails $ pwholeViewItemCount # fixedDoor 2 variablePreimage (inlineCarriage variablePreimage) []
+       , testCase "refuses a substituted fixed commitment" $ pfails $ pwholeViewItemCount # fixedDoor 4 hash28Preimage (inlineCarriage "\x80") []
+       , testCase "refuses a noncanonical fixed wrapper" $ pfails $ pfieldFixedItemExtent # fixedDoor 3 wrapperCorruptedPreimage (inlineCarriage wrapperCorruptedPreimage) [] # 1
+       , testCase "refuses fixed negative indices" $ pfails $ pfieldFixedItemExtent # fixedDoor 4 hash28Preimage (inlineCarriage hash28Preimage) [] # (-1)
+       , testCase "refuses a fixed index after the end" $ pfails $ pfieldFixedItemExtent # fixedDoor 4 hash28Preimage (inlineCarriage hash28Preimage) [] # 3
+       , testCase "never clamps whole range reads" $ pfails $ pwholeViewReadRange # fixedDoor 4 hash28Preimage (inlineCarriage hash28Preimage) [] # pconstant (fromIntegral $ BS.length hash28Preimage) # 1
+       , testCase "opens a bound commitment" $ passertEval $ pfieldItemAt # commitmentDoor 4 (blake2b256 hash28Preimage) (inlineCarriage hash28Preimage) [] # 0 #== pfieldItemAt # openInlineCommitting 4 hash28Preimage # 0
+       , testCase "refuses a substituted direct commitment" $ pfails $ pfieldItemCount # commitmentDoor 4 (hash32 0xff) (inlineCarriage hash28Preimage) []
+       , testCase "fixed door refuses committed miscounts" $ pfails $ pwholeViewItemCount # fixedDoor 4 miscount (inlineCarriage miscount) []
+       , testCase "fixed door refuses committed truncation" $ pfails $ pwholeViewItemCount # fixedDoor 4 truncated (inlineCarriage truncated) []
+       , testCase "fixed door opens empty body fields" $
+           passertEval $
+             pand'List
+               [pwholeViewItemCount # fixedDoor field "\x80" (inlineCarriage "\x80") [] #== 0 | field <- [0, 1, 3, 4]]
+       , testCase "batch read matches individual authenticated items" $
+           passertEval $
+             pfixedStrideItemBatch
+               # openCertified defaultCert
+               # 504
+               # 3
+               #== pcons
+               # (pfieldItemAt # openCertified defaultCert # 504)
+               # ( pcons
+                     # (pfieldItemAt # openCertified defaultCert # 505)
+                     # (pcons # (pfieldItemAt # openCertified defaultCert # 506) # pnil)
+                 )
+       , testCase "batch refuses zero work" $ pfails $ pfixedStrideItemBatch # openInlineCommitting 4 hash28Preimage # 0 # 0
+       , testCase "batch refuses negative start" $ pfails $ pfixedStrideItemBatch # openInlineCommitting 4 hash28Preimage # (-1) # 1
+       , testCase "batch refuses an overrun" $ pfails $ pfixedStrideItemBatch # openInlineCommitting 4 hash28Preimage # 2 # 2
+       , testCase "batch refuses variable stride" $ pfails $ pfixedStrideItemBatch # openInlineCommitting 2 variablePreimage # 0 # 1
+       , testCase "batch checks every wrapper" $ pfails $ pfixedStrideItemBatch # openInlineCommitting 3 wrapperCorruptedPreimage # 0 # 3
+       , testCase "direct commitment bounds the field index" $ pfails $ pfieldItemCount # commitmentDoor 9 (blake2b256 hash28Preimage) (inlineCarriage hash28Preimage) []
+       ]
+ where
+  miscount = BS.cons 0x82 (BS.tail hash28Preimage)
+  truncated = BS.init hash28Preimage

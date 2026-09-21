@@ -31,6 +31,22 @@ module Midgard.CekBuiltin (
   psemanticConstantPayloadV1,
   psemanticConstantMemoryV1,
   presultRootV1,
+  pverifySemanticChooseDataV1,
+  pverifySemanticPairV1,
+  prevealedRuntimePayloadBytesV1,
+  pbuiltinArgumentsAreWellTypedV1,
+  pverifyDirectScalarSemantics,
+  pverifyDirectStructuredSemantics,
+  pverifySemanticDataConstruct,
+  pverifySemanticDataScalar,
+  pverifySemanticDataMisc,
+  pverifySemanticListConstruct,
+  pverifySemanticListSelect,
+  pauthenticatedBuiltinFailureBudget,
+  pverifySemanticFailureMaterial,
+  pcompactSemanticValue,
+  pverifyBlsExpressionRoots,
+  pverifyAuthenticatedBlsFinal,
 ) where
 
 import GHC.Generics (Generic)
@@ -76,6 +92,7 @@ import Midgard.CekConstant (
   PConstantTypeV1 (..),
   PConstantWitnessV1 (..),
   pconstantMemorySizeV1,
+  pconstantSemanticProjection,
   pconstantPayloadMemorySizeV1,
   pconstantPayloadV1,
   pconstantRootV1,
@@ -281,55 +298,73 @@ pvalueMemorySizeV1 = phoistAcyclic $ plam $ \value -> pmatch value $ \case
     pif (plengthBS # pfromData expressionRoot #== 32) 192 perror
 
 pconstantTypeOf :: forall (s :: S). Term s PValueWitnessV1 -> Term s PConstantTypeV1
-pconstantTypeOf value = pmatch value $ \case
-  PConstantValue witness -> pconstantTypeV1 # pfromData witness
-  PSemanticConstantValue typeCbor _ _ -> pdecodeConstantTypeV1 # pfromData typeCbor
-  POpaqueValue _ -> perror
-  PBlsMillerLoopValue _ -> perror
+pconstantTypeOf value =
+  (phoistAcyclic $ plam $ \value ->
+    pmatch value $ \case
+      PConstantValue witness -> pconstantTypeV1 # pfromData witness
+      PSemanticConstantValue typeCbor _ _ -> pdecodeConstantTypeV1 # pfromData typeCbor
+      POpaqueValue _ -> perror
+      PBlsMillerLoopValue _ -> perror
+  ) # value
 
 pconstantPayloadOf :: forall (s :: S). Term s PValueWitnessV1 -> Term s PData
-pconstantPayloadOf value = pmatch value $ \case
-  PConstantValue witness -> pconstantPayloadV1 # pfromData witness
-  _ -> perror
+pconstantPayloadOf value =
+  (phoistAcyclic $ plam $ \value ->
+    pmatch value $ \case
+      PConstantValue witness -> pconstantPayloadV1 # pfromData witness
+      _ -> perror
+  ) # value
 
 pbytesV1 :: forall (s :: S). Term s PValueWitnessV1 -> Term s PByteString
 pbytesV1 value =
-  pif (pconstantTypeOf value #== pcon PByteStringConstant)
-    (pasByteStr # pconstantPayloadOf value)
-    perror
+  (phoistAcyclic $ plam $ \value ->
+    pif (pconstantTypeOf value #== pcon PByteStringConstant)
+        (pasByteStr # pconstantPayloadOf value)
+        perror
+  ) # value
 
 pg1BytesV1 :: forall (s :: S). Term s PValueWitnessV1 -> Term s PByteString
 pg1BytesV1 value =
-  pif (pconstantTypeOf value #== pcon PBlsG1Constant)
-    (plet (pasByteStr # pconstantPayloadOf value) $ \bytes ->
-      pif (plengthBS # bytes #== 48) bytes perror)
-    perror
+  (phoistAcyclic $ plam $ \value ->
+    pif (pconstantTypeOf value #== pcon PBlsG1Constant)
+        (plet (pasByteStr # pconstantPayloadOf value) $ \bytes ->
+          pif (plengthBS # bytes #== 48) bytes perror)
+        perror
+  ) # value
 
 pg2BytesV1 :: forall (s :: S). Term s PValueWitnessV1 -> Term s PByteString
 pg2BytesV1 value =
-  pif (pconstantTypeOf value #== pcon PBlsG2Constant)
-    (plet (pasByteStr # pconstantPayloadOf value) $ \bytes ->
-      pif (plengthBS # bytes #== 96) bytes perror)
-    perror
+  (phoistAcyclic $ plam $ \value ->
+    pif (pconstantTypeOf value #== pcon PBlsG2Constant)
+        (plet (pasByteStr # pconstantPayloadOf value) $ \bytes ->
+          pif (plengthBS # bytes #== 96) bytes perror)
+        perror
+  ) # value
 
 pbooleanV1 :: forall (s :: S). Term s PValueWitnessV1 -> Term s PBool
 pbooleanV1 value =
-  pif (pconstantTypeOf value #== pcon PBooleanConstant) `flip` perror $
-    pmatch (pasConstr # pconstantPayloadOf value) $ \(PBuiltinPair tag fields) ->
-      pif (pnull # fields #&& (tag #== 0 #|| tag #== 1)) (tag #== 1) perror
+  (phoistAcyclic $ plam $ \value ->
+    pif (pconstantTypeOf value #== pcon PBooleanConstant) `flip` perror $
+        pmatch (pasConstr # pconstantPayloadOf value) $ \(PBuiltinPair tag fields) ->
+          pif (pnull # fields #&& (tag #== 0 #|| tag #== 1)) (tag #== 1) perror
+  ) # value
 
 pstringBytesV1 :: forall (s :: S). Term s PValueWitnessV1 -> Term s PByteString
 pstringBytesV1 value =
-  pif (pconstantTypeOf value #== pcon PStringConstant)
-    (pasByteStr # pconstantPayloadOf value)
-    perror
+  (phoistAcyclic $ plam $ \value ->
+    pif (pconstantTypeOf value #== pcon PStringConstant)
+        (pasByteStr # pconstantPayloadOf value)
+        perror
+  ) # value
 
 punitV1 :: forall (s :: S). Term s PValueWitnessV1 -> Term s PBool
 punitV1 value =
-  pif
-    (pconstantTypeOf value #== pcon PUnitConstant #&& pconstantPayloadOf value #== pboolData (pconstant False))
-    (pconstant True)
-    perror
+  (phoistAcyclic $ plam $ \value ->
+    pif
+        (pconstantTypeOf value #== pcon PUnitConstant #&& pconstantPayloadOf value #== pboolData (pconstant False))
+        (pconstant True)
+        perror
+  ) # value
 
 pstandardCostSizes ::
   forall (s :: S).
@@ -421,22 +456,27 @@ pdirectBuiltinBudgetV1 = phoistAcyclic $ plam $ \tag arguments ->
 presultIsConstantV1 ::
   forall (s :: S).
   Term s PValueWitnessV1 -> Term s PConstantTypeV1 -> Term s PData -> Term s PBool
-presultIsConstantV1 result expectedType expectedPayload = pmatch result $ \case
-  PConstantValue witness ->
-    (pconstantTypeV1 # pfromData witness #== expectedType)
-      #&& (pconstantPayloadV1 # pfromData witness #== expectedPayload)
-  PSemanticConstantValue typeCbor payload memory ->
-    (pdecodeConstantTypeV1 # pfromData typeCbor #== expectedType)
-      #&& (pfromData payload #== psemanticDataSummaryV1 # expectedPayload)
-      #&& (pfromData memory #== pconstantPayloadMemorySizeV1 # expectedType # expectedPayload)
-  POpaqueValue _ -> pconstant False
-  PBlsMillerLoopValue _ -> pconstant False
+presultIsConstantV1 result expectedType expectedPayload =
+  (phoistAcyclic $ plam $ \result expectedType expectedPayload ->
+    pmatch result $ \case
+      PConstantValue witness ->
+        (pconstantTypeV1 # pfromData witness #== expectedType)
+          #&& (pconstantPayloadV1 # pfromData witness #== expectedPayload)
+      PSemanticConstantValue typeCbor payload memory ->
+        (pdecodeConstantTypeV1 # pfromData typeCbor #== expectedType)
+          #&& (pfromData payload #== psemanticDataSummaryV1 # expectedPayload)
+          #&& (pfromData memory #== pconstantPayloadMemorySizeV1 # expectedType # expectedPayload)
+      POpaqueValue _ -> pconstant False
+      PBlsMillerLoopValue _ -> pconstant False
+  ) # result # expectedType # expectedPayload
 
 pintegerV1 :: forall (s :: S). Term s PValueWitnessV1 -> Term s PInteger
 pintegerV1 value =
-  pif (pconstantTypeOf value #== pcon PIntegerConstant)
-    (pasInt # pconstantPayloadOf value)
-    perror
+  (phoistAcyclic $ plam $ \value ->
+    pif (pconstantTypeOf value #== pcon PIntegerConstant)
+        (pasInt # pconstantPayloadOf value)
+        perror
+  ) # value
 
 presultIsSelectedV1 ::
   forall (s :: S). Term s PValueWitnessV1 -> Term s PValueWitnessV1 -> Term s PBool
@@ -1609,23 +1649,26 @@ data PSemanticPartsV1 (s :: S) = PSemanticPartsV1
   deriving (PlutusType) via (DeriveAsSOPStruct PSemanticPartsV1)
 
 psemanticPartsV1 :: forall (s :: S). Term s PValueWitnessV1 -> Term s PSemanticPartsV1
-psemanticPartsV1 value = pmatch value $ \case
-  PConstantValue witness ->
-    plet (pconstantPayloadV1 # pfromData witness) $ \payload ->
-      pcon $ PSemanticPartsV1
-        (pconstantTypeV1 # pfromData witness)
-        (psemanticDataSummaryV1 # payload)
-        (pconstantMemorySizeV1 # pfromData witness)
-  PSemanticConstantValue typeCbor payload memory ->
-    pmatch (pfromData payload) $ \summary ->
-      pif
-        (plengthBS # pfromData (psummary'root summary) #== 32
-          #&& 0 #<= pfromData (psummary'cborLength summary)
-          #&& 0 #<= pfromData (psummary'memory summary)
-          #&& 0 #<= pfromData memory)
-        (pcon $ PSemanticPartsV1 (pdecodeConstantTypeV1 # pfromData typeCbor) (pfromData payload) (pfromData memory))
-        perror
-  _ -> perror
+psemanticPartsV1 value =
+  (phoistAcyclic $ plam $ \value ->
+    pmatch value $ \case
+      PConstantValue witness ->
+        plet (pconstantPayloadV1 # pfromData witness) $ \payload ->
+          pcon $ PSemanticPartsV1
+            (pconstantTypeV1 # pfromData witness)
+            (psemanticDataSummaryV1 # payload)
+            (pconstantMemorySizeV1 # pfromData witness)
+      PSemanticConstantValue typeCbor payload memory ->
+        pmatch (pfromData payload) $ \summary ->
+          pif
+            (plengthBS # pfromData (psummary'root summary) #== 32
+              #&& 0 #<= pfromData (psummary'cborLength summary)
+              #&& 0 #<= pfromData (psummary'memory summary)
+              #&& 0 #<= pfromData memory)
+            (pcon $ PSemanticPartsV1 (pdecodeConstantTypeV1 # pfromData typeCbor) (pfromData payload) (pfromData memory))
+            perror
+      _ -> perror
+  ) # value
 
 psemanticConstantTypeV1 :: forall (s :: S). Term s (PValueWitnessV1 :--> PConstantTypeV1)
 psemanticConstantTypeV1 = phoistAcyclic $ plam $ \value ->
@@ -1663,8 +1706,10 @@ presultIsSemanticConstantV1 ::
   forall (s :: S).
   Term s PValueWitnessV1 -> Term s PConstantTypeV1 -> Term s PDataSummaryV1 -> Term s PInteger -> Term s PBool
 presultIsSemanticConstantV1 result expectedType expectedPayload expectedMemory =
-  pmatch (psemanticPartsV1 result) $ \(PSemanticPartsV1 actualType actualPayload actualMemory) ->
-    actualType #== expectedType #&& actualPayload #== expectedPayload #&& actualMemory #== expectedMemory
+  (phoistAcyclic $ plam $ \result expectedType expectedPayload expectedMemory ->
+    pmatch (psemanticPartsV1 result) $ \(PSemanticPartsV1 actualType actualPayload actualMemory) ->
+        actualType #== expectedType #&& actualPayload #== expectedPayload #&& actualMemory #== expectedMemory
+  ) # result # expectedType # expectedPayload # expectedMemory
 
 pexactOneData ::
   forall (s :: S) (a :: S -> Type) (r :: S -> Type). (PIsData a) =>
@@ -2232,3 +2277,117 @@ pverifySemanticBuiltinFailureV1 = phoistAcyclic $ plam $ \tag builtinRoot argume
 
 presultRootV1 :: forall (s :: S). Term s (PValueWitnessV1 :--> PByteString)
 presultRootV1 = pvalueRootV1
+
+
+-- The physical CEK core hops authenticate the argument/result roots before
+-- invoking these narrow semantic operations. Their guards deliberately match
+-- the corresponding target helpers, including the direct payload cap.
+pverifyDirectScalarSemantics, pverifyDirectStructuredSemantics :: forall s. Term s (PInteger :--> PBuiltinList (PAsData PValueWitnessV1) :--> PValueWitnessV1 :--> PBool)
+pverifyDirectScalarSemantics = phoistAcyclic $ plam $ \tag arguments result ->
+  pif (prevealedArgumentPayloadBytesV1 # arguments + prevealedPayloadBytesV1 # result #<= pmaxDirectBuiltinRevealedPayloadBytes)
+    (pif (tag #>= 0 #&& tag #<= 9) (pverifyIntegerBinaryV1 tag arguments result) $
+      pif (tag #>= 10 #&& tag #<= 20) (pverifyBytesV1 tag arguments result) $
+      pif (tag #== 21 #|| tag #== 52 #|| tag #== 53) (pverifySignatureV1 tag arguments result) $
+      pif (tag #>= 22 #&& tag #<= 25) (pverifyStringsV1 tag arguments result) $
+      pif (tag #>= 26 #&& tag #<= 28) (pverifyControlV1 tag arguments result) $
+      pif (tag #>= 71 #&& tag #<= 86) (pverifyV3BytesV1 tag arguments result) (pconstant False)) perror
+pverifyDirectStructuredSemantics = phoistAcyclic $ plam $ \tag arguments result ->
+  pif (prevealedArgumentPayloadBytesV1 # arguments + prevealedPayloadBytesV1 # result #<= pmaxDirectBuiltinRevealedPayloadBytes)
+    (pif (tag #>= 29 #&& tag #<= 35) (pverifyPairAndListV1 tag arguments result) $
+      pif (tag #== 36) (pverifyChooseDataV1 arguments result) $
+      pif (tag #>= 37 #&& tag #<= 51) (pverifyDataV1 tag arguments result) $
+      pif (tag #>= 54 #&& tag #<= 60) (pverifyBlsG1V1 tag arguments result) $
+      pif (tag #>= 61 #&& tag #<= 67) (pverifyBlsG2V1 tag arguments result) $
+      pif (tag #== 68 #|| tag #== 69) (pverifyBlsExpressionV1 tag arguments result) (pconstant False)) perror
+
+pverifySemanticDataConstruct, pverifySemanticDataScalar, pverifySemanticDataMisc, pverifySemanticListConstruct, pverifySemanticListSelect :: forall s. Term s (PInteger :--> PBuiltinList (PAsData PValueWitnessV1) :--> PValueWitnessV1 :--> PSemanticBuiltinWitnessV1 :--> PBool)
+pverifySemanticDataConstruct = phoistAcyclic $ plam $ \tag arguments result witness ->
+  pif (tag #== 37) (pverifySemanticMkConstrV1 arguments result witness) $
+    pif (tag #== 42) (pwithOneValue arguments $ \source -> pverifySemanticUnconstrV1 source result witness) (pconstant False)
+pverifySemanticDataScalar = phoistAcyclic $ plam $ \tag arguments result witness ->
+  pif (tag #== 39) (pwithOneValue arguments $ \items -> pverifySemanticMkListV1 items result witness) $
+    pif (tag #== 40 #|| tag #== 41 #|| tag #== 45 #|| tag #== 46)
+      (pwithOneValue arguments $ \source -> pverifySemanticScalarV1 tag source result witness) $
+    pif (tag #== 44) (pwithOneValue arguments $ \source -> pverifySemanticUnlistV1 source result witness) (pconstant False)
+pverifySemanticDataMisc = phoistAcyclic $ plam $ \tag arguments result witness ->
+  pif (tag #>= 47 #&& tag #<= 50) (pverifySemanticSummaryOnlyDataV1 tag arguments result witness) $
+    pif (tag #== 51) (pwithOneValue arguments $ \source -> pverifySemanticSerialiseDataV1 source result witness) (pconstant False)
+pverifySemanticListConstruct = phoistAcyclic $ plam $ \tag arguments result witness ->
+  pif (tag #== 31 #|| tag #== 35) (pverifySemanticListSimpleV1 tag arguments result witness) $
+    pif (tag #== 32) (pverifySemanticListConsV1 arguments result witness) (pconstant False)
+pverifySemanticListSelect = phoistAcyclic $ plam $ \tag arguments result witness ->
+  pif (tag #== 33 #|| tag #== 34) (pwithOneValue arguments $ \source -> pverifySemanticListHeadV1 tag source result witness) (pconstant False)
+
+pbuiltinArgumentsAreWellTypedV1 :: forall s. Term s (PInteger :--> PBuiltinList (PAsData PRuntimeValueWitnessV1) :--> PBool)
+pbuiltinArgumentsAreWellTypedV1 = phoistAcyclic $ plam $ \tag arguments ->
+  pif (tag #== 32) (pmkConsArgumentsAreWellTypedV1 arguments) (pruntimeArgumentsMatchKindsV1 # arguments # pbuiltinArgumentKindsV1 tag)
+
+-- Failure material has already been authenticated by the preceding core hop.
+-- In particular this function does not re-run the known-failure predicate.
+pauthenticatedBuiltinFailureBudget :: forall s. Term s (PInteger :--> PBuiltinList (PAsData PValueWitnessV1) :--> PBuiltinBudgetV1)
+pauthenticatedBuiltinFailureBudget = phoistAcyclic $ plam $ \tag arguments ->
+  plet (pif (tag #== 60) (pwithOneValue arguments $ \source -> plengthBS # pbytesV1 source #== 48) $
+    pif (tag #== 67) (pwithOneValue arguments $ \source -> plengthBS # pbytesV1 source #== 96) (pconstant False)) $ \blsPaid ->
+      pif (tag #== 4 #|| tag #== 5 #|| tag #== 6 #|| tag #== 52 #|| tag #== 53 #|| tag #== 58 #|| tag #== 65 #|| tag #== 73 #|| blsPaid)
+        (pdirectBuiltinBudgetV1 # tag # arguments) (pcon $ PBuiltinBudgetV1 (pdata 0) (pdata 0))
+
+pverifySemanticFailureMaterial :: forall s. Term s (PInteger :--> PBuiltinList (PAsData PValueWitnessV1) :--> PSemanticBuiltinWitnessV1 :--> PBool)
+pverifySemanticFailureMaterial = phoistAcyclic $ plam $ \tag arguments witness ->
+  pwithOneValue arguments $ \source -> pmatch witness $ \w ->
+    pexactOneData (pfromData $ psemantic'dataNodes w) $ \node ->
+    pif (pnull # pfromData (psemantic'scalarPreimages w))
+      (plet (plistCandidateForNodeV1 node $ pfromData $ psemantic'listNodes w) $ \listSummary ->
+       plet (ppairCandidateForNodeV1 node $ pfromData $ psemantic'pairNodes w) $ \pairSummary ->
+       pif (tag #== 33 #|| tag #== 34)
+         (pif (pnull # pfromData (psemantic'pairNodes w))
+           (pmatch (psemanticPartsV1 source) $ \(PSemanticPartsV1 constantType payload memory) -> pmatch constantType $ \case
+             PListConstant _ ->
+               pif (ptopNodeMatchesV1 payload node listSummary (pcon PDNothing) #&& psemanticListMemoryMatchesV1 source constantType node memory)
+                 (pmatch (psequenceFromListNodeV1 node) $ \sequence -> pfromData (pseq'length sequence) #== 0) perror
+             _ -> perror) perror)
+         (pif (tag #>= 42 #&& tag #<= 46)
+           (pif (ptopNodeMatchesV1 (pdataConstantSummaryV1 source) node listSummary pairSummary)
+             (pmatch node $ \case
+               PConstrSmallData {} -> tag #/= 42
+               PConstrLargeData {} -> tag #/= 42
+               PMapDataNode {} -> tag #/= 43
+               PListDataNode {} -> tag #/= 44
+               PIntegerDataNode {} -> tag #/= 45
+               PBytesDataNode {} -> tag #/= 46) perror)
+           (pconstant False))) perror
+
+pcompactSemanticValue :: forall s. Term s (PValueWitnessV1 :--> PValueWitnessV1)
+pcompactSemanticValue = phoistAcyclic $ plam $ \value -> pmatch value $ \case
+  PConstantValue witness -> pmatch (pfromData witness) $ \w ->
+    pmatch (pconstantSemanticProjection # pfromData witness) $ \(PPair payload memory) ->
+      pcon $ PSemanticConstantValue (pwitness'typeCbor w) (pdata payload) (pdata memory)
+  _ -> value
+
+pauthenticatedBlsExpressionRoot :: forall s. Term s (PBlsExpressionWitnessV1 :--> PByteString)
+pauthenticatedBlsExpressionRoot = phoistAcyclic $ pfix $ \self -> plam $ \expression -> pmatch expression $ \case
+  PBlsMillerLoopExpression g1 g2 -> phashBlsMillerLoopExpressionV1 # (pconstantRootV1 # pfromData g1) # (pconstantRootV1 # pfromData g2)
+  PBlsMultiplyExpression left right -> phashBlsMultiplyExpressionV1 # (self # pfromData left) # (self # pfromData right)
+
+pverifyBlsExpressionRoots :: forall s. Term s (PBlsExpressionWitnessV1 :--> PBlsExpressionWitnessV1 :--> PByteString :--> PByteString :--> PBool)
+pverifyBlsExpressionRoots = phoistAcyclic $ plam $ \left right leftRoot rightRoot ->
+  pmatch (pblsExpressionMetricsV1 # left) $ \(PPair leftLeaves leftDepth) ->
+  pmatch (pblsExpressionMetricsV1 # right) $ \(PPair rightLeaves rightDepth) ->
+    leftLeaves + rightLeaves #<= pmaxDirectBlsMillerLoopLeaves
+      #&& leftDepth #<= pmaxDirectBlsMillerLoopLeaves #&& rightDepth #<= pmaxDirectBlsMillerLoopLeaves
+      #&& pauthenticatedBlsExpressionRoot # left #== leftRoot #&& pauthenticatedBlsExpressionRoot # right #== rightRoot
+
+-- Miller-loop results are nonserializable; keep them in continuations until
+-- the final pairing check, as the target authenticated evaluation hop does.
+pwithAuthenticatedBlsEvaluation :: forall s. Term s (PBlsExpressionWitnessV1 :--> (PBuiltinBLS12_381_MlResult :--> PBool) :--> PBool)
+pwithAuthenticatedBlsEvaluation = phoistAcyclic $ pfix $ \self -> plam $ \expression next -> pmatch expression $ \case
+  PBlsMillerLoopExpression g1 g2 -> next # (pbls12_381_millerLoop
+    # (pbls12_381_G1_uncompress # pg1BytesV1 (pcon $ PConstantValue g1))
+    # (pbls12_381_G2_uncompress # pg2BytesV1 (pcon $ PConstantValue g2)))
+  PBlsMultiplyExpression left right -> self # pfromData left # plam (\leftResult ->
+    self # pfromData right # plam (\rightResult -> next # (pbls12_381_mulMlResult # leftResult # rightResult)))
+
+pverifyAuthenticatedBlsFinal :: forall s. Term s (PBlsExpressionWitnessV1 :--> PBlsExpressionWitnessV1 :--> PValueWitnessV1 :--> PBool)
+pverifyAuthenticatedBlsFinal = phoistAcyclic $ plam $ \left right result ->
+  pwithAuthenticatedBlsEvaluation # left # plam (\leftResult ->
+    pwithAuthenticatedBlsEvaluation # right # plam (\rightResult ->
+      presultIsConstantV1 result (pcon PBooleanConstant) (pboolData $ pbls12_381_finalVerify # leftResult # rightResult)))

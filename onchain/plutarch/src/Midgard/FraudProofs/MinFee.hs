@@ -18,6 +18,8 @@ Aiken's; step-02 decodes the few scalar fields it needs back into the existing
 Scott representation before applying the canonical-size calculation.
 -}
 module Midgard.FraudProofs.MinFee (
+  PStep01Source (..),
+  PStep01Args (..),
   PStep02State (..),
   PStep02Args (..),
 ) where
@@ -27,8 +29,29 @@ import Generics.SOP qualified as SOP
 
 import Plutarch.Prelude
 
+import Midgard.FraudProofs.Common (PNativeTxInclusionCarriage)
 import Midgard.FraudProofs.NativeTx.Types (PNativeTxWitnessSetCompact)
+import Midgard.FraudProofs.ProofThreadSubstrate qualified as Subject
+import Midgard.LedgerState (PHeaderV1)
 import Midgard.NativeTxFieldAccess (PFieldCarriageV1)
+import Midgard.TransitionTrace (PRootMembershipProof)
+
+data PStep01Source (s :: S)
+  = PAcceptedSource (Term s (PAsData PNativeTxInclusionCarriage))
+  | PForcedSource
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PHeaderV1))
+      (Term s (PAsData PRootMembershipProof))
+      (Term s (PAsData PInteger))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PStep01Source)
+
+newtype PStep01Args (s :: S) = PStep01Args (Term s (PAsData PStep01Source))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PStep01Args)
 
 {- | Aiken @min_fee/step_02.State@.
 
@@ -36,7 +59,8 @@ import Midgard.NativeTxFieldAccess (PFieldCarriageV1)
 why it is not decoded.
 -}
 data PStep02State (s :: S) = PStep02State
-  { pstep02State'badTx :: Term s PData
+  { pstep02State'subject :: Term s (PAsData Subject.PVerdictSubject)
+  , pstep02State'badTx :: Term s PData
   , pstep02State'badTxBodyFee :: Term s (PAsData PInteger)
   , pstep02State'badTxId :: Term s (PAsData PByteString)
   , pstep02State'minFeeA :: Term s (PAsData PInteger)

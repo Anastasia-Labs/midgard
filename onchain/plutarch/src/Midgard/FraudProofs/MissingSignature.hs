@@ -32,6 +32,12 @@ one anchor — field 4 there, field 7 here — so the thread never carries a fie
 hash whose slot §4's plain hashing no longer records.
 -}
 module Midgard.FraudProofs.MissingSignature (
+  PStep01Redeemer (..),
+  PForcedStepArgs (..),
+  PForcedSignerState (..),
+  PForcedSignerArgs (..),
+  PForcedWitnessState (..),
+  PForcedWitnessArgs (..),
   PStep02State (..),
   PStep02Args (..),
   PStep03State (..),
@@ -46,7 +52,10 @@ import Generics.SOP qualified as SOP
 import Plutarch.LedgerApi.Utils (PMaybeData)
 import Plutarch.Prelude
 
+import Midgard.FraudProofs.Common (PNativeTxInclusionArgs)
 import Midgard.FraudProofs.FieldOpening (PFieldOpeningV1)
+import Midgard.LedgerState (PHeaderV1)
+import Midgard.TransitionTrace (PRootMembershipProof)
 
 -- | Aiken @missing_signature/step_02.State@ — the §2.5 anchor, both halves.
 data PStep02State (s :: S) = PStep02State
@@ -61,8 +70,8 @@ data PStep02State (s :: S) = PStep02State
 data PStep02Args (s :: S) = PStep02Args
   { pstep02Args'inputIndex :: Term s (PAsData PInteger)
   , pstep02Args'outputIndex :: Term s (PAsData PInteger)
-  , -- | The prover's chosen §8 carriage for field 4's preimage.
-    pstep02Args'requiredSignersOpening :: Term s (PAsData PFieldOpeningV1)
+  , pstep02Args'requiredSignersOpening :: Term s (PAsData PFieldOpeningV1)
+  -- ^ The prover's chosen §8 carriage for field 4's preimage.
   , pstep02Args'badRequiredSignerHashIndex :: Term s (PAsData PInteger)
   }
   deriving stock (Generic)
@@ -100,9 +109,10 @@ data PStep04State (s :: S) = PStep04State
   { pstep04State'missingRequiredSignerVkey :: Term s (PAsData PByteString)
   , pstep04State'verifiedTxId :: Term s (PAsData PByteString)
   , pstep04State'verifiedWitnessSetHash :: Term s (PAsData PByteString)
-  , -- | Empty before the first batch; thereafter the hash of the exact
-    -- authenticated field-walk checkpoint emitted by the preceding scan.
-    pstep04State'fieldWalkCheckpointHash :: Term s (PAsData PByteString)
+  , pstep04State'fieldWalkCheckpointHash :: Term s (PAsData PByteString)
+  {- ^ Empty before the first batch; thereafter the hash of the exact
+  authenticated field-walk checkpoint emitted by the preceding scan.
+  -}
   }
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
@@ -128,3 +138,65 @@ data PStep04Args (s :: S)
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PStep04Args)
+
+-- The third arm is outside the generic computation-thread redeemer. The first
+-- two constructor tags and fields retain their existing wire representation.
+data PStep01Redeemer s
+  = PSourceCancel (Term s (PAsData PInteger)) (Term s (PAsData PInteger))
+  | PSourceContinue (Term s (PAsData PNativeTxInclusionArgs))
+  | PForcedDispatch (Term s (PAsData PInteger)) (Term s (PAsData PInteger))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PStep01Redeemer)
+
+data PForcedStepArgs s
+  = PForcedStepArgs
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PHeaderV1))
+      (Term s (PAsData PRootMembershipProof))
+      (Term s (PAsData PInteger))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PForcedStepArgs)
+
+data PForcedSignerState s
+  = PForcedSignerState
+      (Term s (PAsData PByteString))
+      (Term s (PAsData PByteString))
+      (Term s (PAsData PByteString))
+      (Term s (PAsData PInteger))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PForcedSignerState)
+
+data PForcedSignerArgs s
+  = PForcedSignerArgs
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PFieldOpeningV1))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PForcedSignerArgs)
+
+data PForcedWitnessState s
+  = PForcedWitnessState
+      (Term s (PAsData PByteString))
+      (Term s (PAsData PByteString))
+      (Term s (PAsData PByteString))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData (PMaybeData PByteString)))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PForcedWitnessState)
+
+data PForcedWitnessArgs s
+  = PForcedWitnessArgs
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData (PMaybeData PFieldOpeningV1)))
+      (Term s (PAsData PInteger))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PForcedWitnessArgs)

@@ -8,7 +8,7 @@ module Midgard.Validators.FraudProofs.NativeScriptInvalid (
 
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
-import Plutarch.Builtin.Crypto (pblake2b_224, pblake2b_256)
+import Plutarch.Builtin.Crypto (pblake2b_256)
 import Plutarch.LedgerApi.V3 (PAddress, PCurrencySymbol, PScriptContext, PScriptHash, PTxInInfo, PTxInfo (..))
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
@@ -20,8 +20,11 @@ import Midgard.FraudProofs.FieldOpening (
   PNativeTxAnchorV1 (..),
   paddressWitnessesFieldIndex,
   pfoldOpenedField,
+  popenedCertifiedFieldWalkFromGrammar,
+  popenedFieldGrammarCertification,
   popenedFieldView,
   popenedFieldWalk,
+  presumeOpenedFieldGrammarCertification,
   presumeOpenedFieldWalk,
   pscriptWitnessesFieldIndex,
  )
@@ -29,6 +32,7 @@ import Midgard.FraudProofs.MintAuthorization.Engine (PNativeScriptVerdictV1 (..)
 import Midgard.FraudProofs.NativeScriptInvalid (
   PSignerQueryV1 (..),
   PStep01Args (..),
+  PStep01Source (..),
   PStep02Args (..),
   PStep02State (..),
   PStep03Args (..),
@@ -38,27 +42,31 @@ import Midgard.FraudProofs.NativeScriptInvalid (
   PStep05Args (..),
   PStep05PhaseV1 (..),
   PStep05State (..),
+  pauthenticatedSigner,
+  pbindScriptIndex,
   pdirectScriptBytesLimit,
   pdirectSignerLimit,
   pstagedNodeBatchLimit,
-  pstagedSignerBatchLimit,
+  pstagedSignerFinalizeBatchLimit,
+  pstagedSignerResumeBatchLimit,
+  pstagedSignerStartBatchLimit,
  )
+import Midgard.FraudProofs.NativeTx.Compact (pverifyNativeTxCompactCborV1)
 import Midgard.FraudProofs.NativeTx.Components (
-  pdecodeMidgardAddressWitnessCbor,
   pdecodeMidgardVersionedScriptAt,
-  pencodeMidgardAddressWitness,
   pencodeMidgardVersionedScript,
  )
 import Midgard.FraudProofs.NativeTx.Types (
-  PMidgardAddressWitness (..),
   PMidgardScriptLanguage (..),
   PMidgardVersionedScript (..),
   PNativeTxBodyCompact (..),
   PNativeTxCompact (..),
   PVerifiedMidgardNativeTxCompact (..),
  )
+import Midgard.FraudProofs.ProofThreadSubstrate qualified as Subject
+import Midgard.LedgerState (PForcedInclusionTxV1 (..), PNativeTxProofSourceV1 (..))
 import Midgard.NativeTxFieldAccess (PFieldViewV1, pfieldItemAt, pfieldItemCount)
-import Midgard.NativeTxMachineWalk (PFieldWalkCheckpointV1, pfieldWalkCheckpointHash, pwalkFold, pwalkIsComplete)
+import Midgard.NativeTxMachineWalk (PFieldWalkCheckpointV1, pcertifyFieldGrammar, pfieldGrammarCheckpointHash, pfieldGrammarIsComplete, pfieldWalkCheckpointHash, pwalkFold, pwalkIsComplete, pwalkNext, pwalkNextItemIndex, pwalkSkip)
 import Midgard.NativeTxScriptPushdown (
   PNativeScriptWalkV1,
   pnativeScriptCursorHash,
@@ -68,7 +76,9 @@ import Midgard.NativeTxScriptPushdown (
   popenNativeScriptWalk,
   presumeNativeScriptWalkFromCommitment,
  )
+import Midgard.RejectionReason (PRejectionReasonV1 (..))
 import Midgard.ScriptProof (psignerLeafHash)
+import Midgard.TransitionTrace (PRootMembershipProof (..))
 import Midgard.ValidationMachine (PSignerSetProofV1 (..))
 import Midgard.ValidationMerkle (
   PFrontierPeak,
@@ -79,6 +89,7 @@ import Midgard.ValidationMerkle (
   pverifyMembership,
  )
 import Midgard.Validators.FraudProofs.Step (pdispatch, pexpectDatum, pexpectStateAs, pexpecting, pstateIsAbsent, pstep)
+import Plutarch.Unsafe (punsafeCoerce)
 
 data PSignerAccumulatorV1 s = PSignerAccumulatorV1
   { psignerAccumulator'previousSignerHash :: Term s PByteString
@@ -95,95 +106,188 @@ nativeScriptInvalidStep01Validator ::
 nativeScriptInvalidStep01Validator = plam $ \step02ScriptHash computationThreadPolicy hubOracle ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
     pdispatch @_ @PStep01Args computationThreadPolicy datum redeemer ownOutRef txInfo $ \args -> P.do
-      PStep01Args {pstep01Args'carriage} <- pmatch args
+      PStep01Args source <- pmatch args
       PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <- pmatch txInfo
-      ppassNativeTxToNextStepCarried
-        computationThreadPolicy
-        hubOracle
-        datum
-        (pfromData pstep01Args'carriage)
-        ownOutRef
-        (pfromData ptxInfo'inputs)
-        (pfromData ptxInfo'referenceInputs)
-        (pfromData ptxInfo'outputs)
-        (pto $ pto $ pfromData ptxInfo'redeemers)
-        $ \_ownScriptHash _threadName _prover inputState outputScriptHash outputStateData _header badTxId badTxView -> P.do
-          PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch badTxView
-          PNativeTxCompact {pcompact'body, pcompact'witnessSetHash, pcompact'validityCode} <- pmatch pverified'txCompact
-          PNativeTxBodyCompact {pbodyCompact'validityIntervalStart, pbodyCompact'validityIntervalEnd} <- pmatch pcompact'body
-          expectedState <-
-            plet $
-              pcon $
-                PStep02State
-                  (pdata badTxId)
-                  (pdata pcompact'witnessSetHash)
-                  (pdata pbodyCompact'validityIntervalStart)
-                  (pdata pbodyCompact'validityIntervalEnd)
-          pexpecting (pstateIsAbsent inputState) $
-            pexpecting (pcompact'validityCode #== 0) $
-              pexpecting (outputScriptHash #== step02ScriptHash) $
-                pexpecting (outputStateData #== pforgetData (pdata expectedState)) (pconstant True)
+      pmatch (pfromData source) $ \case
+        PAcceptedSource carriage ->
+          ppassNativeTxToNextStepCarried
+            computationThreadPolicy
+            hubOracle
+            datum
+            (pfromData carriage)
+            ownOutRef
+            (pfromData ptxInfo'inputs)
+            (pfromData ptxInfo'referenceInputs)
+            (pfromData ptxInfo'outputs)
+            (pto $ pto $ pfromData ptxInfo'redeemers)
+            $ \_ _ _ inputState outputHash outputData _ _ verified ->
+              pexpecting (pstateIsAbsent inputState) $
+                pexpecting (outputHash #== step02ScriptHash) $
+                  outputData #== expectedState (Subject.pbindAcceptedSubject # verified) verified
+        PForcedSource inputIndex outputIndex header membership direction ->
+          pcontinue
+            computationThreadPolicy
+            (pexpectDatum datum)
+            (pfromData inputIndex)
+            (pfromData outputIndex)
+            ownOutRef
+            (pfromData ptxInfo'inputs)
+            (pfromData ptxInfo'outputs)
+            $ \_ name _ prior outputHash outputData -> P.do
+              subject <-
+                plet $
+                  Subject.pbindForcedSubjectToThread
+                    # pto (pfromData name)
+                    # pfromData header
+                    # pfromData membership
+                    # pfromData direction
+              Subject.PVerdictSubject {Subject.psubject'direction, Subject.psubject'transactionId} <- pmatch subject
+              pexpecting (pstateIsAbsent prior) $
+                pexpecting (pfromData psubject'direction #== 1) $
+                  pmatch (Subject.prejectionReasonOf # subject) $ \case
+                    PWitnessNativeScriptFalse scriptIndex -> P.do
+                      PRootMembershipProof {prootMembership'value} <- pmatch $ pfromData membership
+                      PForcedInclusionTxV1 {pforcedTx'source} <- pmatch $ pfromData $ punsafeCoerce prootMembership'value
+                      PNativeTxProofSourceV1 {pnativeSource'compactCbor} <- pmatch $ pfromData pforcedTx'source
+                      verified <- plet $ pverifyNativeTxCompactCborV1 # pfromData psubject'transactionId # pfromData pnativeSource'compactCbor
+                      pexpecting (pfromData scriptIndex #>= 0) $
+                        pexpecting (outputHash #== step02ScriptHash) $
+                          outputData #== expectedState subject verified
+                    _ -> perror
+  where
+    expectedState subject verified = P.do
+      PVerifiedMidgardNativeTxCompact {pverified'txId, pverified'txCompact} <- pmatch verified
+      PNativeTxCompact {pcompact'body, pcompact'witnessSetHash} <- pmatch pverified'txCompact
+      PNativeTxBodyCompact {pbodyCompact'validityIntervalStart, pbodyCompact'validityIntervalEnd} <- pmatch pcompact'body
+      pforgetData $
+        pdata $
+          pcon $
+            PStep02State
+              (pdata subject)
+              (pdata pverified'txId)
+              (pdata pcompact'witnessSetHash)
+              (pdata pbodyCompact'validityIntervalStart)
+              (pdata pbodyCompact'validityIntervalEnd)
+              (pdata $ pconstant "")
+              (pdata $ pconstant False)
+              (pdata $ pconstant "")
 
 nativeScriptInvalidStep02Validator ::
   forall s.
   Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
 nativeScriptInvalidStep02Validator = plam $ \step03ScriptHash computationThreadPolicy certificatePolicy ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
-    pdispatch @_ @PStep02Args computationThreadPolicy datum redeemer ownOutRef txInfo $ \args -> P.do
-      PStep02Args
-        { pstep02Args'inputIndex
-        , pstep02Args'outputIndex
-        , pstep02Args'scriptIndex
-        , pstep02Args'scriptTxWitsOpening
-        } <-
-        pmatch args
+    pdispatch @_ @PStep02Args computationThreadPolicy datum redeemer ownOutRef txInfo $ \action -> P.do
+      PPair inputIndex outputIndex <- pmatch $ pmatch action $ \case
+        PStep02Args input output _ _ -> pcon $ PPair input output
+        PCertifyScriptField input output _ _ _ -> pcon $ PPair input output
+        PSelectCertifiedScript input output _ _ _ _ _ -> pcon $ PPair input output
       PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
       pcontinue
         computationThreadPolicy
         (pexpectDatum datum)
-        (pfromData pstep02Args'inputIndex)
-        (pfromData pstep02Args'outputIndex)
+        (pfromData inputIndex)
+        (pfromData outputIndex)
         ownOutRef
         (pfromData ptxInfo'inputs)
         (pfromData ptxInfo'outputs)
-        $ \_ownScriptHash _threadName _prover inputState outputScriptHash outputStateData -> P.do
-          PStep02State
-            { pstep02State'badTxId
-            , pstep02State'badTxWitnessSetHash
-            , pstep02State'validityIntervalStart
-            , pstep02State'validityIntervalEnd
-            } <-
-            pmatch $ pexpectStateAs @PStep02State inputState
-          scriptView <-
-            plet $
-              popenedFieldView
-                # pfromData pstep02Args'scriptTxWitsOpening
-                # pcon
-                  ( PWitnessAnchor
-                      { pwitnessAnchor'txId = pstep02State'badTxId
-                      , pwitnessAnchor'witnessSetHash = pstep02State'badTxWitnessSetHash
-                      }
-                  )
-                # pscriptWitnessesFieldIndex
-                # pfromData ptxInfo'referenceInputs
-                # certificatePolicy
-          scriptItem <- plet $ pfieldItemAt # scriptView # pfromData pstep02Args'scriptIndex
-          PPair offset script <- pmatch $ pdecodeMidgardVersionedScriptAt # scriptItem # 0
-          PMidgardVersionedScript {pversionedScript'language} <- pmatch script
-          expectedState <-
-            plet $
-              pcon $
-                PStep03State
-                  pstep02State'badTxId
-                  pstep02State'badTxWitnessSetHash
-                  (pdata $ pblake2b_256 # scriptItem)
-                  pstep02State'validityIntervalStart
-                  pstep02State'validityIntervalEnd
-          pexpecting (offset #== plengthBS # scriptItem) $
-            pexpecting (pencodeMidgardVersionedScript # script #== scriptItem) $
-              pexpecting (pfromData pversionedScript'language #== pcon PNativeCardanoScript) $
-                pexpecting (outputScriptHash #== step03ScriptHash) $
-                  pexpecting (outputStateData #== pforgetData (pdata expectedState)) (pconstant True)
+        $ \ownHash _ _ inputState outputHash outputData -> P.do
+          state <- plet $ pexpectStateAs @PStep02State inputState
+          st@PStep02State {..} <- pmatch state
+          let anchor = pcon $ PWitnessAnchor pstep02State'badTxId pstep02State'badTxWitnessSetHash
+              references = pfromData ptxInfo'referenceInputs
+              selected item =
+                pexpecting (outputHash #== step03ScriptHash) $
+                  outputData #== (pselectedScriptState # state # item)
+              continuing expected =
+                pexpecting (outputHash #== ownHash) $
+                  outputData #== pforgetData (pdata $ pcon expected)
+          pmatch action $ \case
+            PStep02Args _ _ index opening ->
+              pexpecting (pfromData pstep02State'grammarCheckpointHash #== pconstant "") $
+                pexpecting (pbindScriptIndex # pfromData pstep02State'subject # pfromData index) $ P.do
+                  view <- plet $ popenedFieldView # pfromData opening # anchor # pscriptWitnessesFieldIndex # references # certificatePolicy
+                  selected (pfieldItemAt # view # pfromData index)
+            PCertifyScriptField _ _ opening checkpoint budget ->
+              pexpecting (pnot # pfromData pstep02State'grammarComplete) $
+                pexpecting (pfromData pstep02State'scriptCheckpointHash #== pconstant "") $
+                  pexpecting (pfromData budget #> 0 #&& pfromData budget #<= 32) $ P.do
+                    PPair view prior <-
+                      pmatch $
+                        pif
+                          (pfromData pstep02State'grammarCheckpointHash #== pconstant "")
+                          ( pexpecting (pfromData checkpoint #== pconstant "") $
+                              popenedFieldGrammarCertification # pfromData opening # anchor # pscriptWitnessesFieldIndex # references # certificatePolicy
+                          )
+                          ( presumeOpenedFieldGrammarCertification
+                              # pfromData opening
+                              # anchor
+                              # pscriptWitnessesFieldIndex
+                              # pfromData pstep02State'grammarCheckpointHash
+                              # pfromData checkpoint
+                              # references
+                              # certificatePolicy
+                          )
+                    next <- plet $ pcertifyFieldGrammar # view # prior # pfromData budget
+                    continuing
+                      st
+                        { pstep02State'grammarCheckpointHash = pdata $ pfieldGrammarCheckpointHash # next
+                        , pstep02State'grammarComplete = pdata $ pfieldGrammarIsComplete # next
+                        }
+            PSelectCertifiedScript _ _ index opening grammarBytes walkBytes budget ->
+              pexpecting (pfromData pstep02State'grammarComplete) $
+                pexpecting (pbindScriptIndex # pfromData pstep02State'subject # pfromData index) $
+                  pexpecting (pfromData budget #> 0 #&& pfromData budget #<= 32) $ P.do
+                    PPair view prior <-
+                      pmatch $
+                        pif
+                          (pfromData pstep02State'scriptCheckpointHash #== pconstant "")
+                          ( pexpecting (pfromData walkBytes #== pconstant "") $
+                              popenedCertifiedFieldWalkFromGrammar
+                                # pfromData opening
+                                # anchor
+                                # pscriptWitnessesFieldIndex
+                                # pfromData pstep02State'grammarCheckpointHash
+                                # pfromData grammarBytes
+                                # references
+                                # certificatePolicy
+                          )
+                          ( presumeOpenedFieldWalk
+                              # pfromData opening
+                              # anchor
+                              # pscriptWitnessesFieldIndex
+                              # pfromData pstep02State'scriptCheckpointHash
+                              # pfromData walkBytes
+                              # references
+                              # certificatePolicy
+                          )
+                    remaining <- plet $ pfromData index - (pwalkNextItemIndex # prior)
+                    pexpecting (remaining #>= 0) $
+                      pif
+                        (remaining #< pfromData budget)
+                        (pmatch (pwalkNext # view # (pwalkSkip # view # prior # remaining)) $ \(PPair item _) -> selected item)
+                        ( plet (pwalkSkip # view # prior # pfromData budget) $ \next ->
+                            continuing st {pstep02State'scriptCheckpointHash = pdata $ pfieldWalkCheckpointHash # next}
+                        )
+
+pselectedScriptState :: forall s. Term s (PStep02State :--> PByteString :--> PData)
+pselectedScriptState = phoistAcyclic $ plam $ \state item -> P.do
+  PStep02State {..} <- pmatch state
+  PPair offset script <- pmatch $ pdecodeMidgardVersionedScriptAt # item # 0
+  PMidgardVersionedScript {pversionedScript'language} <- pmatch script
+  pexpecting (offset #== plengthBS # item) $
+    pexpecting (pencodeMidgardVersionedScript # script #== item) $
+      pexpecting (pfromData pversionedScript'language #== pcon PNativeCardanoScript) $
+        pforgetData $
+          pdata $
+            pcon $
+              PStep03State
+                pstep02State'subject
+                pstep02State'badTxId
+                pstep02State'badTxWitnessSetHash
+                (pdata $ pblake2b_256 # item)
+                pstep02State'validityIntervalStart
+                pstep02State'validityIntervalEnd
 
 nativeScriptInvalidStep03Validator ::
   forall s.
@@ -219,7 +323,8 @@ nativeScriptInvalidStep03Validator =
               $ \_ownScriptHash _threadName _prover inputState -> P.do
                 state <- plet $ pexpectStateAs @PStep03State inputState
                 PStep03State
-                  { pstep03State'validityIntervalStart
+                  { pstep03State'subject
+                  , pstep03State'validityIntervalStart
                   , pstep03State'validityIntervalEnd
                   } <-
                   pmatch state
@@ -237,7 +342,11 @@ nativeScriptInvalidStep03Validator =
                     pfoldOpenedField @(PBuiltinList PByteString)
                       # addressWalk
                       # pnil
-                      # plam (\acc _index item -> pcons # (psignerHashOf # item) # acc)
+                      # plam
+                        ( \acc _index item -> pmatch (pauthenticatedSigner # pfromData pstep03State'subject # item) $ \case
+                            PJust hash -> pcons # hash # acc
+                            PNothing -> acc
+                        )
                 pexpecting (plengthBS # scriptBytes #<= pdirectScriptBytesLimit)
                   $ pexpecting (pfieldItemCount # addressView #<= pdirectSignerLimit)
                   $ pmatch
@@ -248,7 +357,7 @@ nativeScriptInvalidStep03Validator =
                         # pfromData pstep03State'validityIntervalEnd
                     )
                   $ \case
-                    PScriptEvaluatedV1 satisfiedD -> pnot # pfromData satisfiedD
+                    PScriptEvaluatedV1 satisfiedD -> Subject.pterminalContradiction # pfromData pstep03State'subject # (pnot # pfromData satisfiedD)
                     _ -> perror
           PStartSignerScan inputIndexD outputIndexD scriptItemD openingD itemBudgetD -> P.do
             PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
@@ -265,7 +374,8 @@ nativeScriptInvalidStep03Validator =
               $ \_ownScriptHash _threadName _prover inputState outputScriptHash outputStateData -> P.do
                 state <- plet $ pexpectStateAs @PStep03State inputState
                 PStep03State
-                  { pstep03State'badTxId
+                  { pstep03State'subject
+                  , pstep03State'badTxId
                   , pstep03State'badTxWitnessSetHash
                   , pstep03State'scriptItemHash
                   , pstep03State'validityIntervalStart
@@ -288,12 +398,17 @@ nativeScriptInvalidStep03Validator =
                       # start
                       # itemBudget
                       # pcon (PSignerAccumulatorV1 (pconstant "") 0 pemptyFrontier)
-                      # plam (\acc index item -> pappendSigner # acc # index # (psignerHashOf # item))
+                      # plam
+                        ( \acc index item -> pmatch (pauthenticatedSigner # pfromData pstep03State'subject # item) $ \case
+                            PJust hash -> pappendSigner # acc # index # hash
+                            PNothing -> acc
+                        )
                 PSignerAccumulatorV1 previousSigner signerCount signerPeaks <- pmatch accumulator
                 expectedState <-
                   plet $
                     pcon $
                       PStep04State
+                        pstep03State'subject
                         pstep03State'badTxId
                         pstep03State'badTxWitnessSetHash
                         pstep03State'scriptItemHash
@@ -349,13 +464,6 @@ pnativeScriptBytes = phoistAcyclic $ plam $ \state scriptItem -> P.do
         pexpecting (pfromData pversionedScript'language #== pcon PNativeCardanoScript) $
           pfromData pversionedScript'scriptBytes
 
-psignerHashOf :: forall s. Term s (PByteString :--> PByteString)
-psignerHashOf = phoistAcyclic $ plam $ \item -> P.do
-  witness <- plet $ pdecodeMidgardAddressWitnessCbor # item
-  PMidgardAddressWitness {paddressWitness'verificationKey} <- pmatch witness
-  pexpecting (pencodeMidgardAddressWitness # witness #== item) $
-    pblake2b_224 # pfromData paddressWitness'verificationKey
-
 pappendSigner :: forall s. Term s (PSignerAccumulatorV1 :--> PInteger :--> PByteString :--> PSignerAccumulatorV1)
 pappendSigner = phoistAcyclic $ plam $ \accumulator _index signerHash ->
   pmatch accumulator $
@@ -378,7 +486,7 @@ pappendSigner = phoistAcyclic $ plam $ \accumulator _index signerHash ->
 pvalidStagedBudget :: forall s. Term s (PInteger :--> PBool)
 pvalidStagedBudget = phoistAcyclic $ plam $ \budget ->
   pexpecting (budget #> 0) $
-    pexpecting (budget #<= pstagedSignerBatchLimit) (pconstant True)
+    pexpecting (budget #<= pstagedSignerStartBatchLimit) (pconstant True)
 
 nativeScriptInvalidStep04Validator ::
   forall s.
@@ -398,7 +506,8 @@ nativeScriptInvalidStep04Validator = plam $ \step05ScriptHash computationThreadP
         $ \ownScriptHash _threadName _prover inputState outputScriptHash outputStateData -> P.do
           state <- plet $ pexpectStateAs @PStep04State inputState
           PStep04State
-            { pstep04State'badTxId
+            { pstep04State'subject
+            , pstep04State'badTxId
             , pstep04State'badTxWitnessSetHash
             , pstep04State'scriptItemHash
             , pstep04State'validityIntervalStart
@@ -436,7 +545,11 @@ nativeScriptInvalidStep04Validator = plam $ \step05ScriptHash computationThreadP
                       (pfromData pstep04State'signerCount)
                       (pfromData pstep04State'signerPeaks)
                   )
-                # plam (\acc index item -> pappendSigner # acc # index # (psignerHashOf # item))
+                # plam
+                  ( \acc index item -> pmatch (pauthenticatedSigner # pfromData pstep04State'subject # item) $ \case
+                      PJust hash -> pappendSigner # acc # index # hash
+                      PNothing -> acc
+                  )
           PSignerAccumulatorV1
             { psignerAccumulator'previousSignerHash = previousSigner
             , psignerAccumulator'signerCount = signerCount
@@ -446,7 +559,7 @@ nativeScriptInvalidStep04Validator = plam $ \step05ScriptHash computationThreadP
           pmatch action $ \case
             PResumeSignerScan _ _ _ _ itemBudgetD ->
               pexpecting (pfromData itemBudgetD #> 0) $
-                pexpecting (pfromData itemBudgetD #<= pstagedSignerBatchLimit) $
+                pexpecting (pfromData itemBudgetD #<= pstagedSignerResumeBatchLimit) $
                   pexpecting (pnot #$ pwalkIsComplete # next) $
                     pexpecting (outputScriptHash #== ownScriptHash) $
                       pexpecting
@@ -455,6 +568,7 @@ nativeScriptInvalidStep04Validator = plam $ \step05ScriptHash computationThreadP
                               ( pdata $
                                   pcon $
                                     PStep04State
+                                      pstep04State'subject
                                       pstep04State'badTxId
                                       pstep04State'badTxWitnessSetHash
                                       pstep04State'scriptItemHash
@@ -469,7 +583,7 @@ nativeScriptInvalidStep04Validator = plam $ \step05ScriptHash computationThreadP
                         (pconstant True)
             PFinalizeSignerScan _ _ _ _ itemBudgetD ->
               pexpecting (pfromData itemBudgetD #>= 0) $
-                pexpecting (pfromData itemBudgetD #<= pstagedSignerBatchLimit) $
+                pexpecting (pfromData itemBudgetD #<= pstagedSignerFinalizeBatchLimit) $
                   pexpecting (pwalkIsComplete # next) $
                     pexpecting (outputScriptHash #== step05ScriptHash) $
                       pexpecting
@@ -478,6 +592,7 @@ nativeScriptInvalidStep04Validator = plam $ \step05ScriptHash computationThreadP
                               ( pdata $
                                   pcon $
                                     PStep05State
+                                      pstep04State'subject
                                       pstep04State'badTxId
                                       pstep04State'scriptItemHash
                                       pstep04State'validityIntervalStart
@@ -548,7 +663,8 @@ nativeScriptInvalidStep05Validator = plam $ \computationThreadPolicy fraudProofP
                 terminal <- plet $ prunStep05Action # state # action
                 pexpecting (pnativeScriptWalkIsComplete # terminal) $
                   pmatch (pnativeScriptVerdict # terminal) $ \case
-                    PJust verdict -> pnot # verdict
+                    PJust verdict -> pmatch state $ \PStep05State {pstep05State'subject} ->
+                      Subject.pterminalContradiction # pfromData pstep05State'subject # (pnot # verdict)
                     PNothing -> perror
         )
         ( P.do
@@ -564,7 +680,8 @@ nativeScriptInvalidStep05Validator = plam $ \computationThreadPolicy fraudProofP
               $ \ownScriptHash _threadName _prover inputState outputScriptHash outputStateData -> P.do
                 state <- plet $ pexpectStateAs @PStep05State inputState
                 PStep05State
-                  { pstep05State'badTxId
+                  { pstep05State'subject
+                  , pstep05State'badTxId
                   , pstep05State'scriptItemHash
                   , pstep05State'validityIntervalStart
                   , pstep05State'validityIntervalEnd
@@ -577,6 +694,7 @@ nativeScriptInvalidStep05Validator = plam $ \computationThreadPolicy fraudProofP
                   plet $
                     pcon $
                       PStep05State
+                        pstep05State'subject
                         pstep05State'badTxId
                         pstep05State'scriptItemHash
                         pstep05State'validityIntervalStart

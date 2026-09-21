@@ -36,9 +36,23 @@ the machine, and the difference matters to a caller that treats False as "this
 challenge does not hold".
 -}
 module Midgard.ValidationMachine (
+  PMintChunkWindowV1 (..),
+  pscriptSourcesControlFromDataItems,
+  pscriptSourcesReplayItem,
+  pdecodeCanonicalBytesAt,
+  pdecodeCanonicalMapHeaderAt,
+  pscriptSourcesCanonicalBytesKeyPrecedes,
+  pscriptSourcesMintChunkWindow,
+  pprependCekMintAssetSummary,
+  pfinalizeCurrentCekMintPolicy,
+  pobserverContextIsPristine,
+  pfirstSourceChunkIdentityMatches,
+  pcekSelectionSuccessorIsExact,
+  pmaxAggregateFieldPreimageBytes,
   PValidationOneStepWitnessV1 (..),
   PLedgerDeltaOperationProofV1 (..),
   PSignerSetProofV1 (..),
+  PCekMintHead (..),
   PValidationAuxiliaryWitnessV1 (..),
   pvalidationAuxiliaryWitnessFromData,
   PValidationOneStepEvidenceV1 (..),
@@ -132,6 +146,8 @@ module Midgard.ValidationMachine (
   pverifySignaturesHandoffSemanticsV1,
   pverifySignaturesOneStepV1,
   pphaseANativeControlIsBound,
+  pphaseANativeControlIsBoundCarried,
+  pphaseANativePayloadControlIsBound,
   pphaseANativeSuccessorIsExact,
   pphaseANativeToPreconditionsIsExact,
   presetPhaseANativeControl,
@@ -180,6 +196,8 @@ module Midgard.ValidationMachine (
   pphaseAScriptPreconditionsFinalize,
   pphaseAScriptPreconditionsWithObserver,
   pverifyPhaseAScriptPreconditions,
+  pverifyPhaseAScriptPreconditionsFinalizeSemanticsV1,
+  pverifyPhaseAScriptPreconditionsItemSemanticsV1,
   pverifyPhaseAScriptPreconditionsOneStepV1,
   pverifyPhaseAScriptPreconditionsSemanticsV1,
   presolveInputsControlIsBound,
@@ -196,6 +214,8 @@ module Midgard.ValidationMachine (
   pemptyScriptDiscoveryControl,
   pencodeScriptDiscoveryControl,
   pdecodeScriptDiscoveryControl,
+  pencodeScriptDiscoveryBitmap,
+  pdecodeScriptDiscoveryBitmap,
   pencodeScriptSourcesDiscoveryWitness,
   pencodeInlineSourceHashControlV1,
   pdecodeInlineSourceHashControlV1,
@@ -216,7 +236,6 @@ module Midgard.ValidationMachine (
   pverifyScriptSourcesStageOneRedeemerHeaderSemanticsV1,
   pverifyScriptSourcesStageOneRedeemerStepSemanticsV1,
   pverifyScriptSourcesStageOneSemanticsV1,
-  pverifyScriptSourcesStageOneRedeemerSemanticsV1,
   pverifyScriptSourcesStageTwoSemanticsV1,
   pverifyScriptSourcesStageThreeFinishSemanticsV1,
   pverifyScriptSourcesStageThreeReplaySemanticsV1,
@@ -238,6 +257,8 @@ module Midgard.ValidationMachine (
   pscriptSourcesStageSevenControlIsBound,
   pscriptSourcesStageSevenObserverScanIsComplete,
   pverifyScriptSourcesStageSevenObserverSemanticsV1,
+  pverifyScriptSourcesStageSevenObserverItemFactsV1,
+  pverifyScriptSourcesStageSevenObserverBoundSemanticsV1,
   pverifyScriptSourcesStageSevenReceiveSemanticsV1,
   pverifyScriptSourcesStageSevenFinishSemanticsV1,
   pverifyScriptSourcesStageSevenSemanticsV1,
@@ -280,6 +301,11 @@ module Midgard.ValidationMachine (
   pscriptSourcesStageTwelveRedeemerAuxiliaryIsFamily,
   pverifyScriptSourcesStageTwelveRedeemerSemanticsV1,
   pverifyScriptSourcesStageTwelveSemanticsV1,
+  pdescriptorClaimAuxiliary,
+  pverifyDescriptorStepClaim,
+  pverifyDescriptorMatch,
+  pverifyDescriptorMismatch,
+  pverifyDescriptorUsed,
   pscriptSourcesControlFromWitness,
   pscriptDiscoveryControlIsWellFormed,
   pscriptSourcesObserverScanIsWellFormed,
@@ -298,6 +324,10 @@ module Midgard.ValidationMachine (
   pencodeSignaturesScanWitness,
   pencodePhaseAScriptPreconditionsWitness,
   pencodeTerminalRejectionWitness,
+  prejectedSuccessorIsExact,
+  pinputSignerAuthorization,
+  pprotectedOutputAuthorization,
+  preceiveSourceSuccessor,
   pvalidityIntervalIsMalformed,
   predeemerTagForPurposeKindV1,
   predeemerPointerMatchesPurposeV1,
@@ -314,6 +344,7 @@ module Midgard.ValidationMachine (
   ptransactionResolutionScheduleHash,
   pencodeResolveInputOutputProof,
   pencodeResolveInputsWitness,
+  pencodeResolveInputsInitialWitness,
   pdecodeValidationContext,
   pinputSetsControlFromWitness,
   psignaturesControlFromWitness,
@@ -463,6 +494,7 @@ import Aiken.Cbor (pdeserialise)
 import Data.ByteString qualified as BS
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
+import Plutarch.Builtin.ByteString (pbyteStringToInteger, pintegerToByteString, pmostSignificantFirst)
 import Plutarch.Builtin.Crypto (pblake2b_224, pblake2b_256, pverifyEd25519Signature)
 import Plutarch.Core.Internal.Builtins (pindexBS')
 import Plutarch.Core.Utils (pand'List, (#/=))
@@ -520,6 +552,7 @@ import Midgard.RejectionReason qualified as RejectionReason
 import Midgard.ScriptContext qualified as ScriptContext
 import Midgard.ScriptLanguageViews qualified as ScriptLanguageViews
 import Midgard.ScriptProof qualified as ScriptProof
+import Midgard.ScriptSourcesDescriptor qualified as ScriptSourcesDescriptor
 import Midgard.ValidationMachineFieldDoor qualified as FieldDoor
 import Midgard.ValidationMerkle (PBuiltFrontier (..), PFrontierPeak (..), pappendLeaf, pencodeFrontier, pfrontierCommitment, pfrontierIsWellFormed, pverifyMembership)
 import Midgard.ValidationTrace (
@@ -1084,7 +1117,18 @@ data PSignerSetProofV1 (s :: S)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PSignerSetProofV1)
 
--- | Aiken @ValidationAuxiliaryWitnessV1@. Constructor order is the datum ABI.
+{- | Aiken @ValidationAuxiliaryWitnessV1@. Constructor order is the datum ABI.
+| Authenticated head of the accumulated mint asset map.
+-}
+data PCekMintHead s = PCekMintHead
+  { pmintHead'assetName :: Term s (PAsData PByteString)
+  , pmintHead'quantity :: Term s (PAsData PInteger)
+  , pmintHead'tail :: Term s (PAsData CekData.PDataSequenceSummaryV1)
+  }
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
+  deriving (PlutusType) via (DeriveAsDataStruct PCekMintHead)
+
 data PValidationAuxiliaryWitnessV1 (s :: S)
   = PNoAuxiliaryWitness
   | PTransactionFieldChunkWitness
@@ -1178,6 +1222,7 @@ data PValidationAuxiliaryWitnessV1 (s :: S)
       (Term s (PAsData PByteString))
       (Term s (PAsData PInteger))
       (Term s (PAsData (PBuiltinList (PAsData PByteString))))
+      (Term s (PAsData (PMaybeData PCekMintHead)))
   | PCekRedeemerContextSelectWitness
       (Term s (PAsData PCekRedeemerContextControlV1))
       (Term s (PAsData PInteger))
@@ -1318,51 +1363,51 @@ pvalidationAuxiliaryWitnessFromData = phoistAcyclic $ plam $ \dat ->
             perror
       )
       perror
-  where
-    auxiliaryArities :: BS.ByteString
-    auxiliaryArities =
-      BS.pack
-        [ 0
-        , 3
-        , 2
-        , 3
-        , 1
-        , 6
-        , 4
-        , 4
-        , 5
-        , 8
-        , 5
-        , 16
-        , 1
-        , 5
-        , 3
-        , 4
-        , 5
-        , 12
-        , 3
-        , 1
-        , 5
-        , 1
-        , 1
-        , 1
-        , 11
-        , 9
-        , 6
-        , 4
-        , 3
-        , 1
-        , 1
-        , 4
-        , 1
-        , 2
-        , 2
-        , 4
-        , 2
-        , 17
-        , 3
-        , 2
-        ]
+ where
+  auxiliaryArities :: BS.ByteString
+  auxiliaryArities =
+    BS.pack
+      [ 0
+      , 3
+      , 2
+      , 3
+      , 1
+      , 6
+      , 4
+      , 4
+      , 5
+      , 8
+      , 5
+      , 16
+      , 1
+      , 5
+      , 3
+      , 4
+      , 6
+      , 12
+      , 3
+      , 1
+      , 5
+      , 1
+      , 1
+      , 1
+      , 11
+      , 9
+      , 6
+      , 4
+      , 3
+      , 1
+      , 1
+      , 4
+      , 1
+      , 2
+      , 2
+      , 4
+      , 2
+      , 17
+      , 3
+      , 2
+      ]
 
 pdecodeValidationAuxiliaryWitnessV1 ::
   forall s.
@@ -3815,20 +3860,38 @@ pverifyCekMintContextItem ::
         :--> PByteString
         :--> PInteger
         :--> PBuiltinList (PAsData PByteString)
+        :--> PMaybeData PCekMintHead
         :--> PInteger
         :--> PInteger
         :--> PInteger
         :--> PBool
     )
-pverifyCekMintContextItem = phoistAcyclic $ plam $ \pre witness nativeControl contextControl mintIndex policyId assetName quantity siblings executionCursor completedCpu completedMemory ->
+pverifyCekMintContextItem = phoistAcyclic $ plam $ \pre witness nativeControl contextControl mintIndex policyId assetName quantity siblings previous executionCursor completedCpu completedMemory ->
   pmatch nativeControl $ \native ->
     pmatch contextControl $ \context ->
       plet
-        (pfromData (pnativeControl'mintCount native) - pfromData (pcekContext'mintCursor context) - 1)
-        $ \expectedIndex ->
+        ( pif
+            (pfromData (pcekContext'currentMintPolicy context) #== pconstant "")
+            (previous #== pcon PDNothing #&& pfromData (pcekContext'mintCursor context) #== 0)
+            ( pif
+                (policyId #== pfromData (pcekContext'currentMintPolicy context))
+                ( pmatch previous $ \case
+                    PDNothing -> perror
+                    PDJust headData -> pmatch (pfromData headData) $ \headOpening ->
+                      assetName
+                        #< pfromData (pmintHead'assetName headOpening)
+                        #&& pprependCekMintAssetSummary
+                        # pfromData (pmintHead'assetName headOpening)
+                        # pfromData (pmintHead'quantity headOpening)
+                        # pfromData (pmintHead'tail headOpening)
+                        #== pfromData (pcekContext'currentMintAssets context)
+                )
+                (previous #== pcon PDNothing #&& policyId #< pfromData (pcekContext'currentMintPolicy context))
+            )
+        )
+        $ \orderVerified ->
           plet
-            ( mintIndex
-                #== expectedIndex
+            ( orderVerified
                 #&& pverifyMembership
                 # pfromData (pnativeControl'mintCount native)
                 # pfromData (pnativeControl'mintPeaks native)
@@ -4755,7 +4818,7 @@ pcekContextAuxiliaryMatchesStage = phoistAcyclic $ plam $ \contextControl auxili
         (stage #== 0)
         ( pif
             (pfromData (pcekContext'redeemerContextControlHash context) #== pconstant "")
-            (pmatch auxiliary $ \case PRedeemerScanBeginWitness {} -> pconstant True; _ -> pconstant False)
+            (pmatch auxiliary $ \case PRedeemerScanBeginWitness{} -> pconstant True; _ -> pconstant False)
             ( pmatch auxiliary $ \case
                 PRedeemerItemStepWitness redeemerControl _ _ ->
                   pmatch (pfromData redeemerControl) $ \case
@@ -4766,27 +4829,27 @@ pcekContextAuxiliaryMatchesStage = phoistAcyclic $ plam $ \contextControl auxili
         )
         $ pif
           (stage #== 1 #|| stage #== 2)
-          (pmatch auxiliary $ \case PNoAuxiliaryWitness -> pconstant True; PCekResolvedContextItemWitness {} -> pconstant True; _ -> pconstant False)
+          (pmatch auxiliary $ \case PNoAuxiliaryWitness -> pconstant True; PCekResolvedContextItemWitness{} -> pconstant True; _ -> pconstant False)
         $ pif
           (stage #== 3)
-          (pmatch auxiliary $ \case PNoAuxiliaryWitness -> pconstant True; PCekOutputContextItemWitness {} -> pconstant True; _ -> pconstant False)
+          (pmatch auxiliary $ \case PNoAuxiliaryWitness -> pconstant True; PCekOutputContextItemWitness{} -> pconstant True; _ -> pconstant False)
         $ pif
           (stage #== 4)
-          (pmatch auxiliary $ \case PNoAuxiliaryWitness -> pconstant True; PCekSignerContextItemWitness {} -> pconstant True; _ -> pconstant False)
+          (pmatch auxiliary $ \case PNoAuxiliaryWitness -> pconstant True; PCekSignerContextItemWitness{} -> pconstant True; _ -> pconstant False)
         $ pif
           (stage #== 5)
-          (pmatch auxiliary $ \case PNoAuxiliaryWitness -> pconstant True; PTransactionFieldChunkWitness {} -> pconstant True; _ -> pconstant False)
+          (pmatch auxiliary $ \case PNoAuxiliaryWitness -> pconstant True; PTransactionFieldChunkWitness{} -> pconstant True; _ -> pconstant False)
         $ pif
           (stage #== 6)
           (pmatch auxiliary $ \case PNoAuxiliaryWitness -> pconstant True; _ -> pconstant False)
         $ pif (stage #== 7) (pconstant False)
         $ pif
           (stage #== 8)
-          (pmatch auxiliary $ \case PNoAuxiliaryWitness -> pconstant True; PCekMintContextItemWitness {} -> pconstant True; _ -> pconstant False)
+          (pmatch auxiliary $ \case PNoAuxiliaryWitness -> pconstant True; PCekMintContextItemWitness{} -> pconstant True; _ -> pconstant False)
         $ pif
           (stage #== 9)
           ( pmatch auxiliary $ \case
-              PCekRedeemerContextSelectWitness {} -> pconstant True
+              PCekRedeemerContextSelectWitness{} -> pconstant True
               PRedeemerItemStepWitness redeemerControl _ _ ->
                 pmatch (pfromData redeemerControl) $ \case
                   PDNothing -> pconstant False
@@ -4801,18 +4864,18 @@ pcekContextAuxiliaryMatchesStage = phoistAcyclic $ plam $ \contextControl auxili
                   #&& pfromData (pcekContext'purposeKind context)
                   #== 0
               )
-              (pmatch auxiliary $ \case PCekContextFinalizeSpendWitness {} -> pconstant True; _ -> pconstant False)
-              (pmatch auxiliary $ \case PCekContextFinalizeWitness {} -> pconstant True; _ -> pconstant False)
+              (pmatch auxiliary $ \case PCekContextFinalizeSpendWitness{} -> pconstant True; _ -> pconstant False)
+              (pmatch auxiliary $ \case PCekContextFinalizeWitness{} -> pconstant True; _ -> pconstant False)
           )
         $ pif
           (stage #== 11)
-          (pmatch auxiliary $ \case PCekContextAssembleWitness {} -> pconstant True; _ -> pconstant False)
+          (pmatch auxiliary $ \case PCekContextAssembleWitness{} -> pconstant True; _ -> pconstant False)
         $ pif
           (stage #== 12)
-          (pmatch auxiliary $ \case PCekTxInfoFinalizeWitness {} -> pconstant True; _ -> pconstant False)
+          (pmatch auxiliary $ \case PCekTxInfoFinalizeWitness{} -> pconstant True; _ -> pconstant False)
         $ pif
           (stage #== 13)
-          (pmatch auxiliary $ \case PCekContextSeedWitness {} -> pconstant True; _ -> pconstant False)
+          (pmatch auxiliary $ \case PCekContextSeedWitness{} -> pconstant True; _ -> pconstant False)
           (pconstant False)
 
 -- | Aiken @verify_cek_context_step@ with the auxiliary witness sum intact.
@@ -5038,7 +5101,7 @@ pverifyCekContextStep = phoistAcyclic $ plam $ \pre witness auxiliary nativeCont
                       # executionCursor
                       # completedCpu
                       # completedMemory
-                  PCekMintContextItemWitness mintIndex policyId assetName quantity siblings ->
+                  PCekMintContextItemWitness mintIndex policyId assetName quantity siblings previous ->
                     pverifyCekMintContextItem
                       # pre
                       # witness
@@ -5049,6 +5112,7 @@ pverifyCekContextStep = phoistAcyclic $ plam $ \pre witness auxiliary nativeCont
                       # pfromData assetName
                       # pfromData quantity
                       # pfromData siblings
+                      # pfromData previous
                       # executionCursor
                       # completedCpu
                       # completedMemory
@@ -7702,7 +7766,7 @@ pverifyRequiredSignerItem = phoistAcyclic $ plam $ \pre witness control door car
               pmatch (pverified'txCompact verifiedSource) $ \compact ->
                 pmatch (pcompact'body compact) $ \body ->
                   plet
-                    ( FieldDoor.popenMachineFieldItem
+                    ( FieldDoor.popenMachineFixedFieldItem
                         # door
                         # verified
                         # witnessSet
@@ -7711,9 +7775,9 @@ pverifyRequiredSignerItem = phoistAcyclic $ plam $ \pre witness control door car
                         # carriage
                     )
                     $ \item ->
-                      plet (FieldDoor.pmachineFieldItemCount # item) $ \itemCount ->
+                      plet (FieldDoor.pmachineFixedFieldItemCount # item) $ \itemCount ->
                         plet (pif (pfromData (psignatures'requiredCount c) #== (-1)) itemCount (pfromData $ psignatures'requiredCount c)) $ \activeCount ->
-                          plet (FieldDoor.pmachineFieldItemBytes # item) $ \signerHash ->
+                          plet (FieldDoor.pmachineFixedFieldItemBytes # item) $ \signerHash ->
                             plet (psignaturesAfterRequired # control # activeCount) $ \nextControl ->
                               plet (prequiredSignerMembershipIsValid # signerHash # control # signerProof) $ \present ->
                                 plet (prequiredSignerNonMembershipIsValid # signerHash # control # signerProof) $ \absent ->
@@ -8079,6 +8143,167 @@ pphaseANativeControlIsBound = phoistAcyclic $ plam $ \pre witness control verifi
                           , stageShapeIsValid
                           , pfromData (poneStep'workWitnessCbor stepWitness) #== pencodePhaseANativeControlV1 # control
                           ]
+
+pphaseANativeControlIsBoundCarried ::
+  forall s.
+  Term
+    s
+    ( PValidationMachineStateV1
+        :--> PValidationOneStepWitnessV1
+        :--> PPhaseANativeScriptsControlV1
+        :--> PVerifiedMidgardNativeTxCompact
+        :--> PNativeTxWitnessSetCompact
+        :--> PBool
+    )
+pphaseANativeControlIsBoundCarried = phoistAcyclic $ plam $ \pre witness control verified witnessSet ->
+  pmatch pre $ \preState ->
+    pmatch witness $ \stepWitness ->
+      pmatch control $ \c ->
+        pmatch verified $ \verifiedSource ->
+          pmatch witnessSet $ \ws ->
+            plet (pfromData (pphaseANative'continuationCbor c) #/= pconstant "") $ \isLateContinuation ->
+              plet (pfromData (pwitnessSetCompact'scriptTxWitsHash ws) #== NativeField.pemptyFieldCommitment) $ \scriptsAreEmpty ->
+                plet
+                  ( pif
+                      isLateContinuation
+                      ( pand'List
+                          [ pfromData (pphaseANative'stage c) #> 0
+                          , pfromData (pphaseANative'scriptCount c) #== 1
+                          , pfromData (pphaseANative'scriptSeen c) #== 0
+                          , pfromData (pphaseANative'containsNonNativeScript c) #== 0
+                          ]
+                      )
+                      ( pif
+                          scriptsAreEmpty
+                          (pfromData (pphaseANative'scriptCount c) #== 0 #&& pfromData (pphaseANative'scriptSeen c) #== 0)
+                          ( pif
+                              (pfromData (pphaseANative'scriptCount c) #== (-1))
+                              (pfromData (pphaseANative'scriptSeen c) #== 0)
+                              (pfromData (pphaseANative'scriptCount c) #> 0 #&& pfromData (pphaseANative'scriptSeen c) #<= pfromData (pphaseANative'scriptCount c))
+                          )
+                      )
+                  )
+                  $ \sourceShapeIsValid ->
+                    plet
+                      ( pif
+                          (pfromData (pphaseANative'stage c) #== 0)
+                          ( pand'List
+                              [ pnot # isLateContinuation
+                              , pfromData (pphaseANative'itemLength c) #== 0
+                              , pfromData (pphaseANative'itemCommitment c) #== pconstant ""
+                              , pfromData (pphaseANative'cursor c) #== 0
+                              , pfromData (pphaseANative'stackRoot c) #== pconstant ""
+                              , pfromData (pphaseANative'stackDepth c) #== 0
+                              , pfromData (pphaseANative'nodeCount c) #== 0
+                              , pfromData (pphaseANative'result c) #== (-1)
+                              ]
+                          )
+                          ( pand'List
+                              [ pfromData (pphaseANative'scriptCount c) #> 0
+                              , pfromData (pphaseANative'scriptSeen c) #< pfromData (pphaseANative'scriptCount c)
+                              , pfromData (pphaseANative'itemLength c) #> 0
+                              , plengthBS # pfromData (pphaseANative'itemCommitment c) #== 32
+                              , pif
+                                  (pfromData (pphaseANative'stackRoot c) #== pconstant "")
+                                  (pfromData (pphaseANative'stackDepth c) #== 0)
+                                  (plengthBS # pfromData (pphaseANative'stackRoot c) #== 32 #&& pfromData (pphaseANative'stackDepth c) #> 0)
+                              , pif
+                                  (pfromData (pphaseANative'stage c) #== 2)
+                                  (pfromData (pphaseANative'result c) #>= 0)
+                                  (pfromData (pphaseANative'result c) #== (-1))
+                              ]
+                          )
+                      )
+                      $ \stageShapeIsValid ->
+                        pand'List
+                          [ pverified'version verifiedSource #== 1
+                          , NativeCompact.pnativeTxProofCommitmentV1
+                              # pfromData (pphaseANative'compactCbor c)
+                              # pfromData (pphaseANative'witnessSetCompactCbor c)
+                              # pfromData (pphaseANative'fieldPreimageLengthsCbor c)
+                              #== pfromData (pmachineState'transactionCommitment preState)
+                          , phashValidationContext
+                              # pfromData (pphaseANative'contextCbor c)
+                              #== pfromData (pmachineState'validationContextHash preState)
+                          , plengthBS # pfromData (pphaseANative'resolutionScheduleHash c) #== 32
+                          , pfromData (pphaseANative'stage c) #>= 0
+                          , pfromData (pphaseANative'stage c) #<= 8
+                          , pfromData (pphaseANative'scriptCount c) #>= (-1)
+                          , pfromData (pphaseANative'scriptCount c) #<= pmaxTxSizeDerivedItemCount
+                          , pfromData (pphaseANative'scriptSeen c) #>= 0
+                          , sourceShapeIsValid
+                          , pfromData (pphaseANative'containsNonNativeScript c)
+                              #== 0
+                              #|| pfromData (pphaseANative'containsNonNativeScript c)
+                              #== 1
+                          , pfromData (pphaseANative'signerCount c) #>= 0
+                          , pfromData (pphaseANative'signerCount c) #<= pmaxTxSizeDerivedItemCount
+                          , pfrontierIsWellFormed # pfromData (pphaseANative'signerCount c) # pfromData (pphaseANative'signerPeaks c)
+                          , pfromData (pphaseANative'itemLength c) #>= 0
+                          , pfromData (pphaseANative'itemLength c) #<= pmaxAggregateFieldPreimageBytes
+                          , pfromData (pphaseANative'cursor c) #>= 0
+                          , pfromData (pphaseANative'cursor c) #<= pfromData (pphaseANative'itemLength c)
+                          , pfromData (pphaseANative'stackDepth c) #>= 0
+                          , pfromData (pphaseANative'stackDepth c) #<= NativeScriptScan.pmaxNativeScriptDepth
+                          , pfromData (pphaseANative'nodeCount c) #>= 0
+                          , pfromData (pphaseANative'nodeCount c) #<= NativeScriptScan.pmaxNativeScriptNodes
+                          , pfromData (pphaseANative'result c) #>= (-1)
+                          , pfromData (pphaseANative'result c) #<= 1
+                          , stageShapeIsValid
+                          , pfromData (poneStep'workWitnessCbor stepWitness) #== pencodePhaseANativeControlV1 # control
+                          ]
+
+pphaseANativePayloadControlIsBound ::
+  forall s.
+  Term s (PValidationMachineStateV1 :--> PValidationOneStepWitnessV1 :--> PPhaseANativeScriptsControlV1 :--> PInteger :--> PInteger :--> PBool)
+pphaseANativePayloadControlIsBound = phoistAcyclic $ plam $ \pre witness control minStage maxStage ->
+  pmatch pre $ \p -> pmatch witness $ \w -> pmatch control $ \c ->
+    pand'List
+      [ NativeCompact.pnativeTxProofCommitmentV1
+          # pfromData (pphaseANative'compactCbor c)
+          # pfromData (pphaseANative'witnessSetCompactCbor c)
+          # pfromData (pphaseANative'fieldPreimageLengthsCbor c)
+          #== pfromData (pmachineState'transactionCommitment p)
+      , phashValidationContext # pfromData (pphaseANative'contextCbor c) #== pfromData (pmachineState'validationContextHash p)
+      , plengthBS # pfromData (pphaseANative'resolutionScheduleHash c) #== 32
+      , pfromData (pphaseANative'stage c) #>= minStage
+      , pfromData (pphaseANative'stage c) #<= maxStage
+      , pfromData (pphaseANative'scriptCount c) #> 0
+      , pfromData (pphaseANative'scriptCount c) #<= pmaxTxSizeDerivedItemCount
+      , pfromData (pphaseANative'scriptSeen c) #>= 0
+      , pfromData (pphaseANative'scriptSeen c) #< pfromData (pphaseANative'scriptCount c)
+      , pif
+          (pfromData (pphaseANative'continuationCbor c) #/= pconstant "")
+          ( pfromData (pphaseANative'stage c)
+              #> 0
+              #&& pfromData (pphaseANative'scriptCount c)
+              #== 1
+              #&& pfromData (pphaseANative'scriptSeen c)
+              #== 0
+              #&& pfromData (pphaseANative'containsNonNativeScript c)
+              #== 0
+          )
+          (pconstant True)
+      , pfromData (pphaseANative'containsNonNativeScript c) #== 0 #|| pfromData (pphaseANative'containsNonNativeScript c) #== 1
+      , pfromData (pphaseANative'signerCount c) #>= 0
+      , pfromData (pphaseANative'signerCount c) #<= pmaxTxSizeDerivedItemCount
+      , pfrontierIsWellFormed # pfromData (pphaseANative'signerCount c) # pfromData (pphaseANative'signerPeaks c)
+      , pfromData (pphaseANative'itemLength c) #> 0
+      , plengthBS # pfromData (pphaseANative'itemCommitment c) #== 32
+      , pfromData (pphaseANative'itemLength c) #<= pmaxAggregateFieldPreimageBytes
+      , pfromData (pphaseANative'cursor c) #>= 0
+      , pfromData (pphaseANative'cursor c) #<= pfromData (pphaseANative'itemLength c)
+      , pfromData (pphaseANative'stackDepth c) #>= 0
+      , pfromData (pphaseANative'stackDepth c) #<= NativeScriptScan.pmaxNativeScriptDepth
+      , pfromData (pphaseANative'nodeCount c) #>= 0
+      , pfromData (pphaseANative'nodeCount c) #<= NativeScriptScan.pmaxNativeScriptNodes
+      , pfromData (pphaseANative'result c) #== (-1)
+      , pif
+          (pfromData (pphaseANative'stackRoot c) #== pconstant "")
+          (pfromData (pphaseANative'stackDepth c) #== 0)
+          (plengthBS # pfromData (pphaseANative'stackRoot c) #== 32 #&& pfromData (pphaseANative'stackDepth c) #> 0)
+      , pfromData (poneStep'workWitnessCbor w) #== pencodePhaseANativeControlV1 # control
+      ]
 
 pphaseANativeSuccessorIsExact ::
   forall s.
@@ -8567,76 +8792,67 @@ pverifyPhaseANativeTokenHeadScanV1 ::
 pverifyPhaseANativeTokenHeadScanV1 = phoistAcyclic $
   plam $
     \pre witness control chunkProof nextChunkProof ->
-      pmatch pre $ \preState ->
-        pmatch witness $ \stepWitness ->
-          pmatch control $ \c ->
-            pmatch
-              ( NativeCompact.pverifyNativeTxProofSourceV1
-                  # pfromData (pmachineState'transactionId preState)
-                  # pfromData (pphaseANative'compactCbor c)
-                  # pfromData (pphaseANative'witnessSetCompactCbor c)
-                  # pfromData (pphaseANative'fieldPreimageLengthsCbor c)
-              )
-              $ \(PPair verified witnessSet) ->
-                pif
-                  ( pphaseANativeControlIsBound
-                      # pre
-                      # witness
-                      # control
-                      # verified
-                      # witnessSet
-                      #&& pfromData (pphaseANative'stage c)
-                      #== 1
-                  )
-                  ( pmatch (pphaseANativeChunkWindow # control # chunkProof # nextChunkProof) $ \case
-                      PNothing -> pconstant False
-                      PJust authenticated -> pmatch authenticated $ \(PPair windowBytes windowOffset) ->
-                        pmatch (NativeScriptScan.ptokenHeadAtV1 # windowBytes # windowOffset) $ \case
-                          PNothing ->
-                            prejectedSuccessorIsExact
-                              # pre
-                              # pfromData (poneStep'claimedSuccessor stepWitness)
-                              # pconstant "E_INVALID_FIELD_TYPE"
-                          PJust headValue -> pmatch headValue $ \h ->
-                            pif
-                              (pnot # (NativeScriptScan.ptokenHeadIsWellFormedV1 # headValue))
-                              ( prejectedSuccessorIsExact
-                                  # pre
-                                  # pfromData (poneStep'claimedSuccessor stepWitness)
-                                  # pconstant "E_INVALID_FIELD_TYPE"
+      pmatch witness $ \stepWitness ->
+        pmatch control $ \c ->
+          pif
+            ( pphaseANativePayloadControlIsBound
+                # pre
+                # witness
+                # control
+                # 1
+                # 1
+                #&& pfromData (pphaseANative'stage c)
+                #== 1
+            )
+            ( pmatch (pphaseANativeChunkWindow # control # chunkProof # nextChunkProof) $ \case
+                PNothing -> pconstant False
+                PJust authenticated -> pmatch authenticated $ \(PPair windowBytes windowOffset) ->
+                  pmatch (NativeScriptScan.ptokenHeadAtV1 # windowBytes # windowOffset) $ \case
+                    PNothing ->
+                      prejectedSuccessorIsExact
+                        # pre
+                        # pfromData (poneStep'claimedSuccessor stepWitness)
+                        # pconstant "E_INVALID_FIELD_TYPE"
+                    PJust headValue -> pmatch headValue $ \h ->
+                      pif
+                        (pnot # (NativeScriptScan.ptokenHeadIsWellFormedV1 # headValue))
+                        ( prejectedSuccessorIsExact
+                            # pre
+                            # pfromData (poneStep'claimedSuccessor stepWitness)
+                            # pconstant "E_INVALID_FIELD_TYPE"
+                        )
+                        ( plet (pfromData (pphaseANative'nodeCount c) + 1) $ \nextNodeCount ->
+                            plet
+                              ( pfromData (pphaseANative'cursor c)
+                                  + pfromData (NativeScriptScan.ptokenHead'nextOffset h)
+                                  - windowOffset
                               )
-                              ( plet (pfromData (pphaseANative'nodeCount c) + 1) $ \nextNodeCount ->
-                                  plet
-                                    ( pfromData (pphaseANative'cursor c)
-                                        + pfromData (NativeScriptScan.ptokenHead'nextOffset h)
-                                        - windowOffset
-                                    )
-                                    $ \nextOffset ->
-                                      pif
-                                        (nextNodeCount #> NativeScriptScan.pmaxNativeScriptNodes)
-                                        ( prejectedSuccessorIsExact
-                                            # pre
-                                            # pfromData (poneStep'claimedSuccessor stepWitness)
-                                            # pconstant "E_NATIVE_SCRIPT_NODE_COUNT"
+                              $ \nextOffset ->
+                                pif
+                                  (nextNodeCount #> NativeScriptScan.pmaxNativeScriptNodes)
+                                  ( prejectedSuccessorIsExact
+                                      # pre
+                                      # pfromData (poneStep'claimedSuccessor stepWitness)
+                                      # pconstant "E_NATIVE_SCRIPT_NODE_COUNT"
+                                  )
+                                  ( nextOffset
+                                      #<= pfromData (pphaseANative'itemLength c)
+                                      #&& pphaseANativeSuccessorIsExact
+                                      # pre
+                                      # pfromData (poneStep'claimedSuccessor stepWitness)
+                                      # ( pphaseANativeSetExecution
+                                            # control
+                                            # (pfromData (NativeScriptScan.ptokenHead'tag h) + 3)
+                                            # nextOffset
+                                            # pfromData (pphaseANative'stackRoot c)
+                                            # pfromData (pphaseANative'stackDepth c)
+                                            # nextNodeCount
+                                            # pfromData (pphaseANative'result c)
                                         )
-                                        ( nextOffset
-                                            #<= pfromData (pphaseANative'itemLength c)
-                                            #&& pphaseANativeSuccessorIsExact
-                                            # pre
-                                            # pfromData (poneStep'claimedSuccessor stepWitness)
-                                            # ( pphaseANativeSetExecution
-                                                  # control
-                                                  # (pfromData (NativeScriptScan.ptokenHead'tag h) + 3)
-                                                  # nextOffset
-                                                  # pfromData (pphaseANative'stackRoot c)
-                                                  # pfromData (pphaseANative'stackDepth c)
-                                                  # nextNodeCount
-                                                  # pfromData (pphaseANative'result c)
-                                              )
-                                        )
-                              )
-                  )
-                  (pconstant False)
+                                  )
+                        )
+            )
+            (pconstant False)
 
 pverifyPhaseANativeTimelockPayloadScanV1 ::
   forall s.
@@ -8667,7 +8883,7 @@ pverifyPhaseANativeTimelockPayloadScanV1 = phoistAcyclic $
                   pmatch (pverified'txCompact verifiedSource) $ \compact ->
                     pmatch (pcompact'body compact) $ \body ->
                       pif
-                        ( pphaseANativeControlIsBound
+                        ( pphaseANativeControlIsBoundCarried
                             # pre
                             # witness
                             # control
@@ -8744,118 +8960,109 @@ pverifyPhaseANativeContainerPayloadScanV1 ::
 pverifyPhaseANativeContainerPayloadScanV1 = phoistAcyclic $
   plam $
     \pre witness control chunkProof nextChunkProof payloadMode expectEmpty ->
-      pmatch pre $ \preState ->
-        pmatch witness $ \stepWitness ->
-          pmatch control $ \c ->
-            pmatch
-              ( NativeCompact.pverifyNativeTxProofSourceV1
-                  # pfromData (pmachineState'transactionId preState)
-                  # pfromData (pphaseANative'compactCbor c)
-                  # pfromData (pphaseANative'witnessSetCompactCbor c)
-                  # pfromData (pphaseANative'fieldPreimageLengthsCbor c)
+      pmatch witness $ \stepWitness ->
+        pmatch control $ \c ->
+          plet (pfromData $ pphaseANative'stage c) $ \stage ->
+            pif
+              ( pphaseANativePayloadControlIsBound
+                  # pre
+                  # witness
+                  # control
+                  # (pif (payloadMode #== 0) 4 6)
+                  # (pif (payloadMode #== 0) 5 6)
+                  #&& pif
+                    (payloadMode #== 0)
+                    (stage #== 4 #|| stage #== 5)
+                    (stage #== 6)
               )
-              $ \(PPair verified witnessSet) ->
-                plet (pfromData $ pphaseANative'stage c) $ \stage ->
-                  pif
-                    ( pphaseANativeControlIsBound
-                        # pre
-                        # witness
-                        # control
-                        # verified
-                        # witnessSet
-                        #&& pif
+              ( pmatch (pphaseANativeChunkWindow # control # chunkProof # nextChunkProof) $ \case
+                  PNothing -> pconstant False
+                  PJust authenticated -> pmatch authenticated $ \(PPair windowBytes windowOffset) ->
+                    plet
+                      ( pif
                           (payloadMode #== 0)
-                          (stage #== 4 #|| stage #== 5)
-                          (stage #== 6)
-                    )
-                    ( pmatch (pphaseANativeChunkWindow # control # chunkProof # nextChunkProof) $ \case
-                        PNothing -> pconstant False
-                        PJust authenticated -> pmatch authenticated $ \(PPair windowBytes windowOffset) ->
-                          plet
-                            ( pif
-                                (payloadMode #== 0)
-                                ( NativeScriptScan.pallOrAnyPayloadAtV1
-                                    # windowBytes
-                                    # windowOffset
-                                    # pfromData (pphaseANative'cursor c)
-                                    # (stage - 3)
-                                )
-                                ( NativeScriptScan.patLeastPayloadAtV1
-                                    # windowBytes
-                                    # windowOffset
-                                    # pfromData (pphaseANative'cursor c)
-                                )
-                            )
-                            $ \payload ->
-                              pmatch payload $ \case
-                                PNothing ->
-                                  prejectedSuccessorIsExact
-                                    # pre
-                                    # pfromData (poneStep'claimedSuccessor stepWitness)
-                                    # pconstant "E_INVALID_FIELD_TYPE"
-                                PJust token -> pmatch token $ \t ->
-                                  pif
-                                    expectEmpty
-                                    ( pif
-                                        (pfromData (NativeScriptScan.ptoken'childCount t) #/= 0)
-                                        (pconstant False)
-                                        ( pmatch (NativeScriptScan.pemptyContainerResultV1 # token) $ \case
-                                            PNothing -> pconstant False
-                                            PJust valid ->
-                                              pfromData (NativeScriptScan.ptoken'nextOffset t)
-                                                #<= pfromData (pphaseANative'itemLength c)
-                                                #&& pphaseANativeSuccessorIsExact
-                                                # pre
-                                                # pfromData (poneStep'claimedSuccessor stepWitness)
-                                                # ( pphaseANativeSetExecution
-                                                      # control
-                                                      # 2
-                                                      # pfromData (NativeScriptScan.ptoken'nextOffset t)
-                                                      # pfromData (pphaseANative'stackRoot c)
-                                                      # pfromData (pphaseANative'stackDepth c)
-                                                      # pfromData (pphaseANative'nodeCount c)
-                                                      # pif valid 1 0
-                                                  )
-                                        )
-                                    )
-                                    ( pif
-                                        (pfromData (NativeScriptScan.ptoken'childCount t) #<= 0)
-                                        (pconstant False)
-                                        ( pmatch
-                                            ( NativeScriptScan.pframeForTokenV1
-                                                # token
+                          ( NativeScriptScan.pallOrAnyPayloadAtV1
+                              # windowBytes
+                              # windowOffset
+                              # pfromData (pphaseANative'cursor c)
+                              # (stage - 3)
+                          )
+                          ( NativeScriptScan.patLeastPayloadAtV1
+                              # windowBytes
+                              # windowOffset
+                              # pfromData (pphaseANative'cursor c)
+                          )
+                      )
+                      $ \payload ->
+                        pmatch payload $ \case
+                          PNothing ->
+                            prejectedSuccessorIsExact
+                              # pre
+                              # pfromData (poneStep'claimedSuccessor stepWitness)
+                              # pconstant "E_INVALID_FIELD_TYPE"
+                          PJust token -> pmatch token $ \t ->
+                            pif
+                              expectEmpty
+                              ( pif
+                                  (pfromData (NativeScriptScan.ptoken'childCount t) #/= 0)
+                                  (pconstant False)
+                                  ( pmatch (NativeScriptScan.pemptyContainerResultV1 # token) $ \case
+                                      PNothing -> pconstant False
+                                      PJust valid ->
+                                        pfromData (NativeScriptScan.ptoken'nextOffset t)
+                                          #<= pfromData (pphaseANative'itemLength c)
+                                          #&& pphaseANativeSuccessorIsExact
+                                          # pre
+                                          # pfromData (poneStep'claimedSuccessor stepWitness)
+                                          # ( pphaseANativeSetExecution
+                                                # control
+                                                # 2
+                                                # pfromData (NativeScriptScan.ptoken'nextOffset t)
                                                 # pfromData (pphaseANative'stackRoot c)
+                                                # pfromData (pphaseANative'stackDepth c)
+                                                # pfromData (pphaseANative'nodeCount c)
+                                                # pif valid 1 0
                                             )
-                                            $ \case
-                                              PNothing -> pconstant False
-                                              PJust frame ->
-                                                plet (pfromData (pphaseANative'stackDepth c) + 1) $ \nextDepth ->
-                                                  pif
-                                                    (nextDepth #> NativeScriptScan.pmaxNativeScriptDepth)
-                                                    ( prejectedSuccessorIsExact
-                                                        # pre
-                                                        # pfromData (poneStep'claimedSuccessor stepWitness)
-                                                        # pconstant "E_NATIVE_SCRIPT_DEPTH"
+                                  )
+                              )
+                              ( pif
+                                  (pfromData (NativeScriptScan.ptoken'childCount t) #<= 0)
+                                  (pconstant False)
+                                  ( pmatch
+                                      ( NativeScriptScan.pframeForTokenV1
+                                          # token
+                                          # pfromData (pphaseANative'stackRoot c)
+                                      )
+                                      $ \case
+                                        PNothing -> pconstant False
+                                        PJust frame ->
+                                          plet (pfromData (pphaseANative'stackDepth c) + 1) $ \nextDepth ->
+                                            pif
+                                              (nextDepth #> NativeScriptScan.pmaxNativeScriptDepth)
+                                              ( prejectedSuccessorIsExact
+                                                  # pre
+                                                  # pfromData (poneStep'claimedSuccessor stepWitness)
+                                                  # pconstant "E_NATIVE_SCRIPT_DEPTH"
+                                              )
+                                              ( pfromData (NativeScriptScan.ptoken'nextOffset t)
+                                                  #<= pfromData (pphaseANative'itemLength c)
+                                                  #&& pphaseANativeSuccessorIsExact
+                                                  # pre
+                                                  # pfromData (poneStep'claimedSuccessor stepWitness)
+                                                  # ( pphaseANativeSetExecution
+                                                        # control
+                                                        # 1
+                                                        # pfromData (NativeScriptScan.ptoken'nextOffset t)
+                                                        # (NativeScriptScan.phashFrameV1 # frame)
+                                                        # nextDepth
+                                                        # pfromData (pphaseANative'nodeCount c)
+                                                        # pfromData (pphaseANative'result c)
                                                     )
-                                                    ( pfromData (NativeScriptScan.ptoken'nextOffset t)
-                                                        #<= pfromData (pphaseANative'itemLength c)
-                                                        #&& pphaseANativeSuccessorIsExact
-                                                        # pre
-                                                        # pfromData (poneStep'claimedSuccessor stepWitness)
-                                                        # ( pphaseANativeSetExecution
-                                                              # control
-                                                              # 1
-                                                              # pfromData (NativeScriptScan.ptoken'nextOffset t)
-                                                              # (NativeScriptScan.phashFrameV1 # frame)
-                                                              # nextDepth
-                                                              # pfromData (pphaseANative'nodeCount c)
-                                                              # pfromData (pphaseANative'result c)
-                                                          )
-                                                    )
-                                        )
-                                    )
-                    )
-                    (pconstant False)
+                                              )
+                                  )
+                              )
+              )
+              (pconstant False)
 
 pverifyPhaseANativeAllOrAnyContainerFramePayloadScanV1 ::
   forall s.
@@ -8964,68 +9171,59 @@ pverifyPhaseANativeSignaturePayloadScanV1 ::
 pverifyPhaseANativeSignaturePayloadScanV1 = phoistAcyclic $
   plam $
     \pre witness control chunkProof nextChunkProof signerProof ->
-      pmatch pre $ \preState ->
-        pmatch witness $ \stepWitness ->
-          pmatch control $ \c ->
-            pmatch
-              ( NativeCompact.pverifyNativeTxProofSourceV1
-                  # pfromData (pmachineState'transactionId preState)
-                  # pfromData (pphaseANative'compactCbor c)
-                  # pfromData (pphaseANative'witnessSetCompactCbor c)
-                  # pfromData (pphaseANative'fieldPreimageLengthsCbor c)
-              )
-              $ \(PPair verified witnessSet) ->
-                pif
-                  ( pphaseANativeControlIsBound
-                      # pre
-                      # witness
-                      # control
-                      # verified
-                      # witnessSet
-                      #&& pfromData (pphaseANative'stage c)
-                      #== 3
-                  )
-                  ( pmatch (pphaseANativeChunkWindow # control # chunkProof # nextChunkProof) $ \case
-                      PNothing -> pconstant False
-                      PJust authenticated -> pmatch authenticated $ \(PPair windowBytes windowOffset) ->
+      pmatch witness $ \stepWitness ->
+        pmatch control $ \c ->
+          pif
+            ( pphaseANativePayloadControlIsBound
+                # pre
+                # witness
+                # control
+                # 3
+                # 3
+                #&& pfromData (pphaseANative'stage c)
+                #== 3
+            )
+            ( pmatch (pphaseANativeChunkWindow # control # chunkProof # nextChunkProof) $ \case
+                PNothing -> pconstant False
+                PJust authenticated -> pmatch authenticated $ \(PPair windowBytes windowOffset) ->
+                  pmatch
+                    ( NativeScriptScan.psignaturePayloadAtV1
+                        # windowBytes
+                        # windowOffset
+                        # pfromData (pphaseANative'cursor c)
+                    )
+                    $ \case
+                      PNothing ->
+                        prejectedSuccessorIsExact
+                          # pre
+                          # pfromData (poneStep'claimedSuccessor stepWitness)
+                          # pconstant "E_INVALID_FIELD_TYPE"
+                      PJust token -> pmatch token $ \t ->
                         pmatch
-                          ( NativeScriptScan.psignaturePayloadAtV1
-                              # windowBytes
-                              # windowOffset
-                              # pfromData (pphaseANative'cursor c)
+                          ( pphaseANativeSignatureResult
+                              # pfromData (NativeScriptScan.ptoken'keyHash t)
+                              # control
+                              # signerProof
                           )
                           $ \case
-                            PNothing ->
-                              prejectedSuccessorIsExact
+                            PNothing -> pconstant False
+                            PJust valid ->
+                              pfromData (NativeScriptScan.ptoken'nextOffset t)
+                                #<= pfromData (pphaseANative'itemLength c)
+                                #&& pphaseANativeSuccessorIsExact
                                 # pre
                                 # pfromData (poneStep'claimedSuccessor stepWitness)
-                                # pconstant "E_INVALID_FIELD_TYPE"
-                            PJust token -> pmatch token $ \t ->
-                              pmatch
-                                ( pphaseANativeSignatureResult
-                                    # pfromData (NativeScriptScan.ptoken'keyHash t)
-                                    # control
-                                    # signerProof
-                                )
-                                $ \case
-                                  PNothing -> pconstant False
-                                  PJust valid ->
-                                    pfromData (NativeScriptScan.ptoken'nextOffset t)
-                                      #<= pfromData (pphaseANative'itemLength c)
-                                      #&& pphaseANativeSuccessorIsExact
-                                      # pre
-                                      # pfromData (poneStep'claimedSuccessor stepWitness)
-                                      # ( pphaseANativeSetExecution
-                                            # control
-                                            # 2
-                                            # pfromData (NativeScriptScan.ptoken'nextOffset t)
-                                            # pfromData (pphaseANative'stackRoot c)
-                                            # pfromData (pphaseANative'stackDepth c)
-                                            # pfromData (pphaseANative'nodeCount c)
-                                            # pif valid 1 0
-                                        )
-                  )
-                  (pconstant False)
+                                # ( pphaseANativeSetExecution
+                                      # control
+                                      # 2
+                                      # pfromData (NativeScriptScan.ptoken'nextOffset t)
+                                      # pfromData (pphaseANative'stackRoot c)
+                                      # pfromData (pphaseANative'stackDepth c)
+                                      # pfromData (pphaseANative'nodeCount c)
+                                      # pif valid 1 0
+                                  )
+            )
+            (pconstant False)
 
 pverifyPhaseANativeTokenScan ::
   forall s.
@@ -9058,7 +9256,7 @@ pverifyPhaseANativeTokenScan = phoistAcyclic $
                   pmatch (pverified'txCompact verifiedSource) $ \compact ->
                     pmatch (pcompact'body compact) $ \body ->
                       pif
-                        ( pphaseANativeControlIsBound
+                        ( pphaseANativeControlIsBoundCarried
                             # pre
                             # witness
                             # control
@@ -9207,7 +9405,7 @@ pverifyPhaseANativeTypedTokenScanV1 = phoistAcyclic $
                   pmatch (pverified'txCompact verifiedSource) $ \compact ->
                     pmatch (pcompact'body compact) $ \body ->
                       pif
-                        ( pphaseANativeControlIsBound
+                        ( pphaseANativeControlIsBoundCarried
                             # pre
                             # witness
                             # control
@@ -10086,15 +10284,15 @@ pphaseAScriptPreconditionsRejection ::
 pphaseAScriptPreconditionsRejection = phoistAcyclic $
   plam $
     \observerCount hasRedeemers containsNonNativeScript scriptIntegrityHash networkId ->
-      plet (pconstant $ BS.replicate 32 0) $ \zeroHash ->
+      plet (ScriptLanguageViews.pemptyScriptIntegrityHash) $ \emptyHash ->
         plet
-          (containsNonNativeScript #|| hasRedeemers #|| scriptIntegrityHash #/= zeroHash)
+          (containsNonNativeScript #|| hasRedeemers #|| scriptIntegrityHash #/= emptyHash)
           $ \requiresPlutusEvaluation ->
             pif
               (pnot # requiresPlutusEvaluation)
               (pcon PNothing)
               ( pif
-                  (scriptIntegrityHash #== zeroHash)
+                  (scriptIntegrityHash #== emptyHash)
                   (pcon $ PJust $ pconstant "E_INVALID_FIELD_TYPE")
                   ( pif
                       (observerCount #> 0 #&& networkId #== 255)
@@ -10255,7 +10453,7 @@ pphaseAScriptPreconditionsFinalize = phoistAcyclic $
                             #== phashWorkWitness
                             # pcon PResolveInputs
                             # (pfromData (pmachineState'programCounter preState) + 1)
-                            # ( pencodeResolveInputsWitness
+                            # ( pencodeResolveInputsInitialWitness
                                   # pfromData (pphaseAPreconditions'compactCbor c)
                                   # pfromData (pphaseAPreconditions'witnessSetCompactCbor c)
                                   # pfromData (pphaseAPreconditions'fieldPreimageLengthsCbor c)
@@ -10265,7 +10463,6 @@ pphaseAScriptPreconditionsFinalize = phoistAcyclic $
                                   # pfromData (pphaseAPreconditions'resolutionScheduleHash c)
                                   # pfromData (pphaseAPreconditions'signerCount c)
                                   # pfromData (pphaseAPreconditions'signerFrontierCommitment c)
-                                  # pcon PDNothing
                                   # pfromData (pphaseAPreconditions'resolutionScheduleHash c)
                               )
 
@@ -10433,6 +10630,112 @@ pverifyPhaseAScriptPreconditions = phoistAcyclic $ plam $ \pre witness auxiliary
                                     )
                                 )
                                 (pconstant False)
+
+-- The target exposes separate finalize and item predicates so the finalize
+-- script does not carry a field door or its certificate policy parameter.
+pverifyPhaseAScriptPreconditionsFinalizeSemanticsV1 ::
+  forall s.
+  Term s (PValidationMachineStateV1 :--> PValidationOneStepWitnessV1 :--> PBool)
+pverifyPhaseAScriptPreconditionsFinalizeSemanticsV1 = phoistAcyclic $ plam $ \pre witness ->
+  pmatch pre $ \p -> pmatch witness $ \w ->
+    plet (pphaseAScriptPreconditionsControlFromWitness # pfromData (poneStep'workWitnessCbor w)) $ \control -> pmatch control $ \c ->
+      pmatch
+        ( NativeCompact.pverifyNativeTxProofSourceV1
+            # pfromData (pmachineState'transactionId p)
+            # pfromData (pphaseAPreconditions'compactCbor c)
+            # pfromData (pphaseAPreconditions'witnessSetCompactCbor c)
+            # pfromData (pphaseAPreconditions'fieldPreimageLengthsCbor c)
+        )
+        $ \(PPair source witnessSet) ->
+          pmatch source $ \verified -> pmatch (pverified'txCompact verified) $ \compact -> pmatch (pcompact'body compact) $ \body ->
+            pmatch witnessSet $ \ws ->
+              plet (pbodyCompact'requiredObserversHash body) $ \commitment ->
+                plet (pfromData (pwitnessSetCompact'redeemerTxWitsHash ws) #/= NativeField.pemptyFieldCommitment) $ \hasRedeemers ->
+                  pverified'version verified
+                    #== 1
+                    #&& pphaseAScriptPreconditionsControlIsBound
+                    # pre
+                    # witness
+                    # control
+                    # commitment
+                    #&& pif
+                      (commitment #== NativeField.pemptyFieldCommitment)
+                      (pphaseAScriptPreconditionsFinalize # pre # witness # control # source # hasRedeemers # 0)
+                      ( pfromData (pphaseAPreconditions'observerCount c)
+                          #> 0
+                          #&& pphaseAPreconditions'observerSeen c
+                          #== pphaseAPreconditions'observerCount c
+                          #&& pphaseAScriptPreconditionsFinalize
+                          # pre
+                          # witness
+                          # control
+                          # source
+                          # hasRedeemers
+                          # pfromData (pphaseAPreconditions'observerCount c)
+                      )
+
+pverifyPhaseAScriptPreconditionsItemSemanticsV1 ::
+  forall s.
+  Term
+    s
+    ( PValidationMachineStateV1
+        :--> PValidationOneStepWitnessV1
+        :--> FieldDoor.PMachineFieldDoorV1
+        :--> PInteger
+        :--> PInteger
+        :--> NativeField.PFieldCarriageV1
+        :--> PBool
+    )
+pverifyPhaseAScriptPreconditionsItemSemanticsV1 = phoistAcyclic $ plam $ \pre witness door fieldIndex itemIndex carriage ->
+  pmatch pre $ \p -> pmatch witness $ \w ->
+    plet (pphaseAScriptPreconditionsControlFromWitness # pfromData (poneStep'workWitnessCbor w)) $ \control -> pmatch control $ \c ->
+      pmatch
+        ( NativeCompact.pverifyNativeTxProofSourceV1
+            # pfromData (pmachineState'transactionId p)
+            # pfromData (pphaseAPreconditions'compactCbor c)
+            # pfromData (pphaseAPreconditions'witnessSetCompactCbor c)
+            # pfromData (pphaseAPreconditions'fieldPreimageLengthsCbor c)
+        )
+        $ \(PPair source witnessSet) ->
+          pmatch source $ \verified -> pmatch (pverified'txCompact verified) $ \compact -> pmatch (pcompact'body compact) $ \body ->
+            plet (pbodyCompact'requiredObserversHash body) $ \commitment ->
+              pverified'version verified
+                #== 1
+                #&& pphaseAScriptPreconditionsControlIsBound
+                # pre
+                # witness
+                # control
+                # commitment
+                #&& commitment
+                #/= NativeField.pemptyFieldCommitment
+                #&& pnot
+                # (pfromData (pphaseAPreconditions'observerCount c) #> 0 #&& pphaseAPreconditions'observerSeen c #== pphaseAPreconditions'observerCount c)
+                #&& ( plet (FieldDoor.popenMachineFieldItem # door # source # witnessSet # 3 # pfromData (pphaseAPreconditions'observerSeen c) # carriage) $ \item ->
+                        plet (FieldDoor.pmachineFieldItemCount # item) $ \count ->
+                          plet (pif (pfromData (pphaseAPreconditions'observerCount c) #== 0) count (pfromData $ pphaseAPreconditions'observerCount c)) $ \active ->
+                            plet (FieldDoor.pmachineFieldItemBytes # item) $ \observer ->
+                              active
+                                #> 0
+                                #&& active
+                                #<= pmaxTxSizeDerivedItemCount
+                                #&& fieldIndex
+                                #== 3
+                                #&& itemIndex
+                                #== pfromData (pphaseAPreconditions'observerSeen c)
+                                #&& count
+                                #== active
+                                #&& FieldDoor.pmachineFieldItemLength
+                                # item
+                                #== 28
+                                #&& pif
+                                  (pfromData (pphaseAPreconditions'observerSeen c) #> 0 #&& pnot # (pfromData (pphaseAPreconditions'previousObserver c) #< observer))
+                                  (prejectedSuccessorIsExact # pre # pfromData (poneStep'claimedSuccessor w) # pconstant "E_INVALID_FIELD_TYPE")
+                                  ( pphaseAScriptPreconditionsSuccessorIsExact
+                                      # pre
+                                      # pfromData (poneStep'claimedSuccessor w)
+                                      # (pphaseAScriptPreconditionsWithObserver # control # active # (pfromData (pphaseAPreconditions'observerSeen c) + 1) # observer)
+                                  )
+                    )
 
 pverifyPhaseAScriptPreconditionsOneStepV1 ::
   forall s.
@@ -11167,7 +11470,45 @@ presolveMembershipProofFinalize ::
         :--> PSignerSetProofV1
         :--> PBool
     )
-presolveMembershipProofFinalize = phoistAcyclic $
+presolveMembershipProofFinalize = phoistAcyclic $ plam $ \pre witness control pending descriptor signer ->
+  pmatch pending $ \active ->
+    pif
+      (LedgerOutputProof.pfactsCompleteV1 # pfromData (presolveOutputProof'outputProof active))
+      (presolveMembershipProofTerminal # pre # witness # control # pending # descriptor # signer)
+      ( descriptor
+          #== pfromData (presolveOutputProof'descriptorCbor active)
+          #&& ( pmatch (LedgerOutputProof.pfactAttachV1 # pfromData (presolveOutputProof'outputProof active) # descriptor) $ \case
+                  PNothing -> pconstant False
+                  PJust next ->
+                    presolveMembershipProofResult
+                      # pre
+                      # witness
+                      # control
+                      # pending
+                      # pcon (LedgerOutputProof.PLedgerOutputProofAdvanced $ pdata next)
+              )
+      )
+
+poutputProofFactsAreExact :: forall s. Term s (LedgerOutputProof.PLedgerOutputProofControlV1 :--> PByteString :--> PBool)
+poutputProofFactsAreExact = phoistAcyclic $ plam $ \control descriptor ->
+  pmatch (LedgerOutputProof.pterminalClaimedSummariesV1 # control) $ \case
+    PNothing -> pconstant False
+    PJust pair -> pmatch pair $ \(PPair value datum) ->
+      LedgerOutputProof.pfactsAreExactV1 # control # descriptor # value # datum
+
+presolveMembershipProofTerminal ::
+  forall s.
+  Term
+    s
+    ( PValidationMachineStateV1
+        :--> PValidationOneStepWitnessV1
+        :--> PResolveInputsControlV1
+        :--> PResolveInputOutputProofV1
+        :--> PByteString
+        :--> PSignerSetProofV1
+        :--> PBool
+    )
+presolveMembershipProofTerminal = phoistAcyclic $
   plam $
     \pre witness control pending descriptorCbor signerProof ->
       pmatch witness $ \stepWitness ->
@@ -11178,6 +11519,9 @@ presolveMembershipProofFinalize = phoistAcyclic $
                 pif
                   ( descriptorCbor
                       #== pfromData (presolveOutputProof'descriptorCbor active)
+                      #&& poutputProofFactsAreExact
+                      # pfromData (presolveOutputProof'outputProof active)
+                      # descriptorCbor
                       #&& LedgerOutputProof.pdescriptorIsExactV1
                       # pfromData (presolveOutputProof'outputProof active)
                       # descriptor
@@ -11485,6 +11829,22 @@ pemptyScriptDiscoveryControl =
       (pdata 0)
       (pdata pnil)
 
+pencodeScriptDiscoveryBitmap :: forall s. Term s (PInteger :--> PByteString)
+pencodeScriptDiscoveryBitmap = phoistAcyclic $ plam $ \value ->
+  pif
+    (value #>= 0)
+    ( plet (pif (value #== 0) (pconstant "") (pintegerToByteString # pmostSignificantFirst # 0 # value)) $ \bytes ->
+        pif (plengthBS # bytes #<= 2048) bytes perror
+    )
+    perror
+
+pdecodeScriptDiscoveryBitmap :: forall s. Term s (PByteString :--> PInteger)
+pdecodeScriptDiscoveryBitmap = phoistAcyclic $ plam $ \bytes -> plet (plengthBS # bytes) $ \length ->
+  pif
+    (length #<= 2048 #&& (length #== 0 #|| pindexBS # bytes # 0 #/= (pintegerToByte # 0)))
+    (pbyteStringToInteger # pmostSignificantFirst # bytes)
+    perror
+
 pencodeScriptDiscoveryControl ::
   forall s.
   Term s (PScriptDiscoveryControlV1 :--> PByteString)
@@ -11501,8 +11861,8 @@ pencodeScriptDiscoveryControl = phoistAcyclic $ plam $ \control ->
       <> pcborInt (pfromData $ pscriptDiscovery'matchedSourceIndex c)
       <> pcborInt (pfromData $ pscriptDiscovery'matchedLanguageTag c)
       <> (pencodeDefiniteBytes # pfromData (pscriptDiscovery'matchedSourceLeaf c))
-      <> pcborInt (pfromData $ pscriptDiscovery'usedInlineBitmap c)
-      <> pcborInt (pfromData $ pscriptDiscovery'usedRedeemerBitmap c)
+      <> (pencodeDefiniteBytes # (pencodeScriptDiscoveryBitmap # pfromData (pscriptDiscovery'usedInlineBitmap c)))
+      <> (pencodeDefiniteBytes # (pencodeScriptDiscoveryBitmap # pfromData (pscriptDiscovery'usedRedeemerBitmap c)))
       <> (pencodeDefiniteBytes # pfromData (pscriptDiscovery'redeemerItemControlHash c))
       <> pcborInt (pfromData $ pscriptDiscovery'executionCount c)
       <> (pencodeFrontier # pfromData (pscriptDiscovery'executionPeaks c))
@@ -11529,17 +11889,17 @@ pdecodeScriptDiscoveryControl = phoistAcyclic $ plam $ \discoveryCbor ->
                 (di 7 items)
                 (di 8 items)
                 (db 9 items)
-                (di 10 items)
-                (di 11 items)
+                (pdata $ pdecodeScriptDiscoveryBitmap # (pasByteStr # (pelemAt # 10 # items)))
+                (pdata $ pdecodeScriptDiscoveryBitmap # (pasByteStr # (pelemAt # 11 # items)))
                 (db 12 items)
                 (di 13 items)
                 (dp 14 items)
           )
           perror
-  where
-    di index xs = pdata $ pasInt # (pelemAt # index # xs)
-    db index xs = pdata $ pasByteStr # (pelemAt # index # xs)
-    dp index xs = pdata $ pdecodeFrontierPeakItems # (pasList # (pelemAt # index # xs))
+ where
+  di index xs = pdata $ pasInt # (pelemAt # index # xs)
+  db index xs = pdata $ pasByteStr # (pelemAt # index # xs)
+  dp index xs = pdata $ pdecodeFrontierPeakItems # (pasList # (pelemAt # index # xs))
 
 pscriptSourcesWithStageDiscovery ::
   forall s.
@@ -11889,10 +12249,10 @@ pscriptSourcesControlFromDataItems = phoistAcyclic $ plam $ \items pendingSource
                             (db 29 items)
           )
           perror
-  where
-    di index xs = pdata $ pasInt # (pelemAt # index # xs)
-    db index xs = pdata $ pasByteStr # (pelemAt # index # xs)
-    dp index xs = pdata $ pdecodeFrontierPeakItems # (pasList # (pelemAt # index # xs))
+ where
+  di index xs = pdata $ pasInt # (pelemAt # index # xs)
+  db index xs = pdata $ pasByteStr # (pelemAt # index # xs)
+  dp index xs = pdata $ pdecodeFrontierPeakItems # (pasList # (pelemAt # index # xs))
 
 pscriptSourcesStageZeroControlFromWitness ::
   forall s.
@@ -13618,143 +13978,6 @@ pverifyScriptSourcesStageOneSemanticsV1 = phoistAcyclic $
                                         )
                                     )
 
-pverifyScriptSourcesStageOneRedeemerSemanticsV1 ::
-  forall s.
-  Term
-    s
-    ( PValidationMachineStateV1
-        :--> PValidationOneStepWitnessV1
-        :--> PValidationAuxiliaryWitnessV1
-        :--> FieldDoor.PMachineFieldDoorV1
-        :--> PBool
-    )
-pverifyScriptSourcesStageOneRedeemerSemanticsV1 = phoistAcyclic $
-  plam $
-    \pre witness auxiliary door ->
-      pmatch pre $ \preState ->
-        pmatch witness $ \stepWitness ->
-          plet
-            (pscriptSourcesStageZeroControlFromWitness # pfromData (poneStep'workWitnessCbor stepWitness))
-            $ \control ->
-              pmatch control $ \c ->
-                pmatch
-                  ( NativeCompact.pverifyNativeTxProofSourceV1
-                      # pfromData (pmachineState'transactionId preState)
-                      # pfromData (pscriptSources'compactCbor c)
-                      # pfromData (pscriptSources'witnessSetCompactCbor c)
-                      # pfromData (pscriptSources'fieldPreimageLengthsCbor c)
-                  )
-                  $ \(PPair verifiedSource witnessSet) ->
-                    pmatch verifiedSource $ \verified ->
-                      pmatch witnessSet $ \ws ->
-                        plet (pfromData $ pwitnessSetCompact'redeemerTxWitsHash ws) $ \redeemerCommitment ->
-                          plet (pfromData $ pscriptSources'pendingSourceCbor c) $ \pendingCbor ->
-                            plet
-                              ( pfromData (pscriptSources'redeemerTotalCount c)
-                                  #> 0
-                                  #&& pfromData (pscriptSources'redeemerCount c)
-                                  #== pfromData (pscriptSources'redeemerTotalCount c)
-                              )
-                              $ \scanIsComplete ->
-                                pif
-                                  ( pverified'version verified
-                                      #== 1
-                                      #&& pscriptSourcesStageOneControlIsBound
-                                      # pre
-                                      # witness
-                                      # control
-                                      #&& pscriptSourcesStageOneCommonControlIsInitial
-                                      # control
-                                  )
-                                  ( pmatch auxiliary $ \case
-                                      PTransactionRedeemerItemBeginWitness carriageD ->
-                                        redeemerCommitment
-                                          #/= NativeField.pemptyFieldCommitment
-                                          #&& pnot
-                                          # scanIsComplete
-                                          #&& pendingCbor
-                                          #== pconstant ""
-                                          #&& pverifyScriptSourcesStageOneRedeemerBeginSemanticsV1
-                                          # pre
-                                          # witness
-                                          # door
-                                          # pfromData carriageD
-                                      PRedeemerItemStepWitness redeemerControlD itemControlD itemWitnessD ->
-                                        plet (pfromData itemControlD) $ \itemControl ->
-                                          plet (pfromData itemWitnessD) $ \itemWitness ->
-                                            pmatch itemControl $ \item ->
-                                              plet
-                                                ( pand'List
-                                                    [ RedeemerItemProof.pcontrolIsWellFormed # itemControl
-                                                    , pfromData (RedeemerItemProof.predeemerControl'mode item)
-                                                        #== RedeemerItemProof.pmodeData
-                                                    , pfromData (RedeemerItemProof.predeemerControl'itemIndex item)
-                                                        #== pfromData (pscriptSources'redeemerCount c)
-                                                    , pfromData (RedeemerItemProof.predeemerControl'itemCount item)
-                                                        #== pfromData (pscriptSources'redeemerTotalCount c)
-                                                    , RedeemerItemProof.phashControlV1 # itemControl #== pendingCbor
-                                                    ]
-                                                )
-                                                $ \currentMatches ->
-                                                  pif
-                                                    ( pfromData redeemerControlD
-                                                        #== pcon PDNothing
-                                                        #&& redeemerCommitment
-                                                        #/= NativeField.pemptyFieldCommitment
-                                                        #&& pendingCbor
-                                                        #/= pconstant ""
-                                                    )
-                                                    ( pmatch (RedeemerItemProof.pstepV1 # itemControl # itemWitness) $ \case
-                                                        PNothing -> pconstant False
-                                                        PJust result -> pmatch result $ \case
-                                                          RedeemerItemProof.PRedeemerItemProofInvalid ->
-                                                            currentMatches
-                                                              #&& prejectedSuccessorIsExact
-                                                              # pre
-                                                              # pfromData (poneStep'claimedSuccessor stepWitness)
-                                                              # pconstant "E_INVALID_FIELD_TYPE"
-                                                          RedeemerItemProof.PRedeemerItemProofAdvanced nextD ->
-                                                            plet (pfromData nextD) $ \next ->
-                                                              pmatch next $ \nextFields ->
-                                                                pif
-                                                                  ( pfromData (RedeemerItemProof.predeemerControl'stage nextFields)
-                                                                      #== RedeemerItemProof.pstageTerminal
-                                                                  )
-                                                                  ( pmatch (RedeemerItemProof.pfinalizeV1 # next) $ \case
-                                                                      PNothing -> pconstant False
-                                                                      PJust _ ->
-                                                                        plet (pfromData (pscriptSources'redeemerCount c) + 1) $ \nextCount ->
-                                                                          plet
-                                                                            ( pappendLeaf
-                                                                                # pfromData (pscriptSources'redeemerCount c)
-                                                                                # pfromData (pscriptSources'redeemerPeaks c)
-                                                                                # ( ScriptProof.predeemerItemLeafHash
-                                                                                      # pfromData (pscriptSources'redeemerCount c)
-                                                                                      # pfromData (RedeemerItemProof.predeemerControl'itemCommitment nextFields)
-                                                                                  )
-                                                                            )
-                                                                            $ \nextPeaks ->
-                                                                              currentMatches
-                                                                                #&& pscriptSourcesStageOneTerminalSuccessorIsExact
-                                                                                # pre
-                                                                                # witness
-                                                                                # control
-                                                                                # nextCount
-                                                                                # nextPeaks
-                                                                  )
-                                                                  ( currentMatches
-                                                                      #&& pscriptSourcesStageZeroPendingSuccessorIsExact
-                                                                      # pre
-                                                                      # witness
-                                                                      # control
-                                                                      # (RedeemerItemProof.phashControlV1 # next)
-                                                                  )
-                                                    )
-                                                    (pconstant False)
-                                      _ -> pconstant False
-                                  )
-                                  (pconstant False)
-
 pscriptSourcesSetStageAndReplayRemaining ::
   forall s.
   Term
@@ -14765,13 +14988,47 @@ pverifyScriptSourcesOutputProofFinalizeSemanticsV1 ::
   forall s.
   Term
     s
+    (PValidationMachineStateV1 :--> PValidationOneStepWitnessV1 :--> PByteString :--> PSignerSetProofV1 :--> PBool)
+pverifyScriptSourcesOutputProofFinalizeSemanticsV1 = phoistAcyclic $ plam $ \pre witness descriptor signer ->
+  pmatch witness $ \w ->
+    plet (pscriptSourcesStageZeroControlFromWitness # pfromData (poneStep'workWitnessCbor w)) $ \control ->
+      pmatch control $ \c -> pmatch (pfromData $ pscriptSources'outputProof c) $ \case
+        PDNothing -> perror
+        PDJust proof ->
+          pif
+            (LedgerOutputProof.pfactsCompleteV1 # pfromData proof)
+            (pscriptSourcesOutputProofTerminal # pre # witness # descriptor # signer)
+            ( pscriptSourcesEarlyControlIsBound
+                # pre
+                # witness
+                # control
+                # 5
+                #&& pfromData (pscriptSources'outputCursor c)
+                #< pfromData (pscriptSources'outputCount c)
+                #&& ( pmatch (LedgerOutputProof.pfactAttachV1 # pfromData proof # descriptor) $ \case
+                        PNothing -> pconstant False
+                        PJust next ->
+                          pscriptSourcesStageZeroSuccessorWorkIsExact
+                            # pre
+                            # witness
+                            # ( pencodeScriptSourcesOutputProofWitness
+                                  # (pscriptSourcesSetOutputProof # control # pcon (PDJust $ pdata next))
+                                  # next
+                              )
+                    )
+            )
+
+pscriptSourcesOutputProofTerminal ::
+  forall s.
+  Term
+    s
     ( PValidationMachineStateV1
         :--> PValidationOneStepWitnessV1
         :--> PByteString
         :--> PSignerSetProofV1
         :--> PBool
     )
-pverifyScriptSourcesOutputProofFinalizeSemanticsV1 = phoistAcyclic $
+pscriptSourcesOutputProofTerminal = phoistAcyclic $
   plam $
     \pre witness descriptorCbor signerProof ->
       pmatch witness $ \stepWitness ->
@@ -14795,7 +15052,13 @@ pverifyScriptSourcesOutputProofFinalizeSemanticsV1 = phoistAcyclic $
                           )
                           $ \currentMatches ->
                             pif
-                              (LedgerOutputProof.pdescriptorIsExactV1 # outputProof # descriptor)
+                              ( poutputProofFactsAreExact
+                                  # outputProof
+                                  # descriptorCbor
+                                  #&& LedgerOutputProof.pdescriptorIsExactV1
+                                  # outputProof
+                                  # descriptor
+                              )
                               ( pmatch
                                   ( LedgerOutput.pdecodeCanonicalAddressBytes
                                       # pfromData (OutputCommitment.poutputCommitment'address output)
@@ -16020,6 +16283,161 @@ pverifyScriptSourcesStageSevenObserverSemanticsV1 = phoistAcyclic $
                                                                 )
                                                   )
 
+pverifyScriptSourcesStageSevenObserverItemFactsV1 ::
+  forall s.
+  Term
+    s
+    ( PValidationMachineStateV1
+        :--> PValidationOneStepWitnessV1
+        :--> FieldDoor.PMachineFieldDoorV1
+        :--> PInteger
+        :--> PInteger
+        :--> NativeField.PFieldCarriageV1
+        :--> PByteString
+        :--> PInteger
+        :--> PBool
+    )
+pverifyScriptSourcesStageSevenObserverItemFactsV1 = phoistAcyclic $
+  plam $
+    \pre witness door fieldIndex itemIndex carriage claimedObserverHash claimedActiveCount ->
+      pmatch pre $ \preState ->
+        pmatch witness $ \stepWitness ->
+          plet
+            (pscriptSourcesStageZeroControlFromWitness # pfromData (poneStep'workWitnessCbor stepWitness))
+            $ \control ->
+              pmatch control $ \c ->
+                pmatch (pfromData $ pscriptSources'observerScan c) $ \observerScan ->
+                  pmatch
+                    ( NativeCompact.pverifyNativeTxProofSourceV1
+                        # pfromData (pmachineState'transactionId preState)
+                        # pfromData (pscriptSources'compactCbor c)
+                        # pfromData (pscriptSources'witnessSetCompactCbor c)
+                        # pfromData (pscriptSources'fieldPreimageLengthsCbor c)
+                    )
+                    $ \(PPair verified witnessSet) ->
+                      pmatch verified $ \verifiedSource ->
+                        pmatch (pverified'txCompact verifiedSource) $ \compact ->
+                          pmatch (pcompact'body compact) $ \body ->
+                            plet
+                              ( FieldDoor.popenMachineFieldItem
+                                  # door
+                                  # verified
+                                  # witnessSet
+                                  # 3
+                                  # pfromData (pobserverScan'seen observerScan)
+                                  # carriage
+                              )
+                              $ \item ->
+                                plet (FieldDoor.pmachineFieldItemCount # item) $ \itemCount ->
+                                  plet
+                                    ( pif
+                                        (pfromData (pobserverScan'totalCount observerScan) #== 0)
+                                        itemCount
+                                        (pfromData $ pobserverScan'totalCount observerScan)
+                                    )
+                                    $ \activeCount ->
+                                      plet (FieldDoor.pmachineFieldItemBytes # item) $ \observerHash ->
+                                        pand'List
+                                          [ pbodyCompact'requiredObserversHash body #/= NativeField.pemptyFieldCommitment
+                                          , pfromData (pscriptSources'stage c) #== 7
+                                          , pnot
+                                              # ( pscriptSourcesStageSevenObserverScanIsComplete
+                                                    # control
+                                                    # pbodyCompact'requiredObserversHash body
+                                                )
+                                          , activeCount #> 0
+                                          , activeCount #<= pmaxTxSizeDerivedItemCount
+                                          , fieldIndex #== 3
+                                          , itemIndex #== pfromData (pobserverScan'seen observerScan)
+                                          , itemCount #== activeCount
+                                          , FieldDoor.pmachineFieldItemLength # item #== 28
+                                          , claimedObserverHash #== observerHash
+                                          , claimedActiveCount #== activeCount
+                                          ]
+
+pverifyScriptSourcesStageSevenObserverBoundSemanticsV1 ::
+  forall s.
+  Term
+    s
+    ( PValidationMachineStateV1
+        :--> PValidationOneStepWitnessV1
+        :--> PByteString
+        :--> PInteger
+        :--> PBool
+    )
+pverifyScriptSourcesStageSevenObserverBoundSemanticsV1 = phoistAcyclic $
+  plam $ \pre witness observerHash activeCount ->
+    pmatch witness $ \stepWitness ->
+      plet
+        (pscriptSourcesStageZeroControlFromWitness # pfromData (poneStep'workWitnessCbor stepWitness))
+        $ \control ->
+          pmatch control $ \c ->
+            pmatch (pfromData $ pscriptSources'receiveScan c) $ \receiveScan ->
+              pmatch (pfromData $ pscriptSources'observerScan c) $ \observerScan ->
+                plet
+                  ( pand'List
+                      [ pscriptSourcesStageSevenControlIsBound # pre # witness # control
+                      , pfromData (pscriptSources'outputCursor c) #== 0
+                      , pfromData (preceiveScan'receiveCount receiveScan) #== 0
+                      , pfromData (preceiveScan'previousHash receiveScan) #== pconstant ""
+                      , pfromData (preceiveScan'candidateHash receiveScan) #== pconstant ""
+                      , plengthBS # observerHash #== 28
+                      , activeCount #> 0
+                      , pfromData (pobserverScan'seen observerScan) #< activeCount
+                      ]
+                  )
+                  $ \commonIsValid ->
+                    pif
+                      ( commonIsValid
+                          #&& pfromData (pobserverScan'seen observerScan)
+                          #> 0
+                          #&& pnot
+                          # ( pfromData (pobserverScan'previousHash observerScan)
+                                #< observerHash
+                            )
+                      )
+                      ( prejectedSuccessorIsExact
+                          # pre
+                          # pfromData (poneStep'claimedSuccessor stepWitness)
+                          # pconstant "E_INVALID_FIELD_TYPE"
+                      )
+                      ( plet
+                          ( pappendLeaf
+                              # pfromData (pscriptSources'purposeCount c)
+                              # pfromData (pscriptSources'purposePeaks c)
+                              # ( ScriptProof.ppurposeLeafHash
+                                    # 2
+                                    # pfromData (pobserverScan'seen observerScan)
+                                    # observerHash
+                                    # observerHash
+                                )
+                          )
+                          $ \nextPurposePeaks ->
+                            plet
+                              ( pcon $
+                                  PObserverPurposeScanControlV1
+                                    (pdata activeCount)
+                                    (pdata $ pfromData (pobserverScan'seen observerScan) + 1)
+                                    (pdata observerHash)
+                              )
+                              $ \nextObserverScan ->
+                                commonIsValid
+                                  #&& pscriptSourcesStageZeroSuccessorWorkIsExact
+                                  # pre
+                                  # witness
+                                  # ( pencodeScriptSourcesBaseControl
+                                        # ( pscriptSourcesStageSevenWithState
+                                              # control
+                                              # 7
+                                              # (pfromData (pscriptSources'purposeCount c) + 1)
+                                              # nextPurposePeaks
+                                              # pfromData (pscriptSources'outputCursor c)
+                                              # pfromData (pscriptSources'receiveScan c)
+                                              # nextObserverScan
+                                          )
+                                    )
+                      )
+
 pnextReceiveCandidate ::
   forall s.
   Term s (PReceivePurposeScanControlV1 :--> PByteString :--> PByteString)
@@ -16244,12 +16662,12 @@ pscriptSourcesStageSevenBranchV1 = phoistAcyclic $
                     _ -> 0
                 )
                 ( pmatch auxiliary $ \case
-                    PScriptPurposeScanWitness {} -> 2
+                    PScriptPurposeScanWitness{} -> 2
                     _ -> 0
                 )
             )
             ( pmatch auxiliary $ \case
-                PTransactionFieldChunkWitness {} -> 3
+                PTransactionFieldChunkWitness{} -> 3
                 _ -> 0
             )
 
@@ -16614,7 +17032,7 @@ pscriptSourcesStageEightBranchV1 = phoistAcyclic $ plam $ \control auxiliary ->
             _ -> 0
         )
         ( pmatch auxiliary $ \case
-            PScriptPurposeScanWitness {} -> 2
+            PScriptPurposeScanWitness{} -> 2
             _ -> 0
         )
 
@@ -19032,7 +19450,7 @@ pscriptSourcesStageTwelveRedeemerAuxiliaryIsFamily ::
   Term s (PValidationAuxiliaryWitnessV1 :--> PBool)
 pscriptSourcesStageTwelveRedeemerAuxiliaryIsFamily = phoistAcyclic $ plam $ \auxiliary ->
   pmatch auxiliary $ \case
-    PRedeemerScanBeginWitness {} -> pconstant True
+    PRedeemerScanBeginWitness{} -> pconstant True
     PRedeemerItemStepWitness redeemerControlD _ _ ->
       pmatch (pfromData redeemerControlD) $ \case
         PDNothing -> pconstant True
@@ -19140,6 +19558,385 @@ pverifyScriptSourcesStageTwelveSemanticsV1 = phoistAcyclic $
                       _ -> pconstant False
                   )
                   (pverifyScriptSourcesStageTwelveRedeemerSemanticsV1 # pre # witness # auxiliary)
+
+{- | Reconstruct the target's full auxiliary witness from its narrow
+@DescriptorStepClaim@.  The rewarding validator authenticates the expensive
+descriptor step; spending validators commit this exact auxiliary value into
+the dispute transition.
+-}
+pdescriptorClaimAuxiliary ::
+  forall s.
+  Term s (ScriptSourcesDescriptor.PDescriptorStepClaim :--> PValidationAuxiliaryWitnessV1)
+pdescriptorClaimAuxiliary = phoistAcyclic $ plam $ \claim ->
+  pmatch claim $ \c ->
+    plet
+      (ScriptSourcesDescriptor.pfullControl # pfromData (ScriptSourcesDescriptor.pdescriptorClaim'control c))
+      $ \control ->
+        plet
+          ( pcon $
+              RedeemerItemProof.PRedeemerItemProofWitnessV1
+                ( pdata $
+                    pif
+                      (pfromData $ ScriptSourcesDescriptor.pdescriptorClaim'openTail c)
+                      (pcon RedeemerItemProof.PRedeemerItemOpenTail)
+                      (pcon RedeemerItemProof.PRedeemerItemOpenHeader)
+                )
+                (pdata $ pcon $ PDJust $ ScriptSourcesDescriptor.pdescriptorClaim'chunkProof c)
+                (ScriptSourcesDescriptor.pdescriptorClaim'nextChunkProof c)
+          )
+          $ \itemWitness ->
+            pcon $
+              PRedeemerItemStepWitness
+                (pdata $ pcon PDNothing)
+                (pdata control)
+                (pdata itemWitness)
+
+-- | Rewarding-side authentication for one narrow descriptor header/tail step.
+pverifyDescriptorStepClaim ::
+  forall s.
+  Term
+    s
+    ( PValidationOneStepWitnessV1
+        :--> ScriptSourcesDescriptor.PDescriptorStepClaim
+        :--> PBool
+    )
+pverifyDescriptorStepClaim = phoistAcyclic $ plam $ \witness claim ->
+  pmatch witness $ \stepWitness ->
+    plet
+      (pscriptSourcesControlFromWitness # pfromData (poneStep'workWitnessCbor stepWitness))
+      $ \control ->
+        pmatch control $ \c ->
+          pmatch (pfromData $ pscriptSources'discovery c) $ \discovery ->
+            pmatch claim $ \claimFields ->
+              plet
+                ( ScriptSourcesDescriptor.pfullControl
+                    # pfromData (ScriptSourcesDescriptor.pdescriptorClaim'control claimFields)
+                )
+                $ \current ->
+                  plet
+                    ( ScriptSourcesDescriptor.pfullControl
+                        # pfromData (ScriptSourcesDescriptor.pdescriptorClaim'claimedNext claimFields)
+                    )
+                    $ \claimedNext ->
+                      pmatch current $ \currentFields ->
+                        pand'List
+                          [ pfromData (pscriptSources'stage c)
+                              #== 10
+                              #|| pfromData (pscriptSources'stage c)
+                              #== 12
+                          , pfromData (pscriptDiscovery'redeemerCursor discovery)
+                              #< pfromData (pscriptSources'redeemerCount c)
+                          , pfromData (pscriptDiscovery'redeemerItemControlHash discovery)
+                              #/= pconstant ""
+                          , pfromData (RedeemerItemProof.predeemerControl'itemIndex currentFields)
+                              #== pfromData (pscriptDiscovery'redeemerCursor discovery)
+                          , pfromData (RedeemerItemProof.predeemerControl'itemCount currentFields)
+                              #== pfromData (pscriptSources'redeemerCount c)
+                          , RedeemerItemProof.phashDescriptorControlV1
+                              # current
+                              #== pfromData (pscriptDiscovery'redeemerItemControlHash discovery)
+                          , RedeemerItemProof.pdescriptorStepV1
+                              # current
+                              # pfromData (ScriptSourcesDescriptor.pdescriptorClaim'openTail claimFields)
+                              # pfromData (ScriptSourcesDescriptor.pdescriptorClaim'chunkProof claimFields)
+                              # pfromData (ScriptSourcesDescriptor.pdescriptorClaim'nextChunkProof claimFields)
+                              #== pcon
+                                ( PJust $
+                                    pcon $
+                                      RedeemerItemProof.PRedeemerItemProofAdvanced
+                                        (pdata claimedNext)
+                                )
+                          ]
+
+{- | Spending-side stage-ten terminal-match transition.  Descriptor-step
+validity is supplied by the authenticated zero-yield.
+-}
+pverifyDescriptorMatch ::
+  forall s.
+  Term
+    s
+    ( PValidationMachineStateV1
+        :--> PValidationOneStepWitnessV1
+        :--> ScriptSourcesDescriptor.PDescriptorStepClaim
+        :--> PBool
+    )
+pverifyDescriptorMatch = phoistAcyclic $ plam $ \pre witness claim ->
+  pmatch witness $ \stepWitness ->
+    plet
+      (pscriptSourcesStageTenControlFromWitness # pfromData (poneStep'workWitnessCbor stepWitness))
+      $ \control ->
+        pmatch control $ \c ->
+          pmatch (pfromData $ pscriptSources'discovery c) $ \discovery ->
+            pmatch claim $ \claimFields ->
+              plet
+                ( ScriptSourcesDescriptor.pfullControl
+                    # pfromData (ScriptSourcesDescriptor.pdescriptorClaim'claimedNext claimFields)
+                )
+                $ \next ->
+                  pmatch next $ \nextFields ->
+                    plet
+                      ( pfromData (RedeemerItemProof.predeemerControl'stage nextFields)
+                          #== RedeemerItemProof.pstageTerminal
+                      )
+                      $ \terminal ->
+                        plet
+                          ( terminal
+                              #&& predeemerPointerMatchesPurposeV1
+                              # pfromData (pscriptDiscovery'currentPurposeKind discovery)
+                              # pfromData (pscriptDiscovery'currentPurposeIndex discovery)
+                              # pfromData (RedeemerItemProof.predeemerControl'purposeTag nextFields)
+                              # pfromData (RedeemerItemProof.predeemerControl'pointerIndex nextFields)
+                          )
+                          $ \matches ->
+                            plet
+                              ( ScriptProof.predeemerItemLeafHash
+                                  # pfromData (RedeemerItemProof.predeemerControl'itemIndex nextFields)
+                                  # pfromData (RedeemerItemProof.predeemerControl'itemCommitment nextFields)
+                              )
+                              $ \redeemerLeaf ->
+                                plet
+                                  ( ScriptProof.pexecutionLeafHash
+                                      # pfromData (pscriptDiscovery'matchedLanguageTag discovery)
+                                      # (pscriptSourcesCurrentPurposeLeaf # pcon discovery)
+                                      # pfromData (pscriptDiscovery'matchedSourceLeaf discovery)
+                                      # redeemerLeaf
+                                  )
+                                  $ \executionLeaf ->
+                                    plet
+                                      ( pappendLeaf
+                                          # pfromData (pscriptDiscovery'executionCount discovery)
+                                          # pfromData (pscriptDiscovery'executionPeaks discovery)
+                                          # executionLeaf
+                                      )
+                                      $ \executionPeaks ->
+                                        plet
+                                          ( pcon $
+                                              PScriptDiscoveryControlV1
+                                                (pdata $ pfromData (pscriptDiscovery'purposeCursor discovery) + 1)
+                                                (pscriptDiscovery'sourceCursor discovery)
+                                                (pscriptDiscovery'redeemerCursor discovery)
+                                                (pscriptDiscovery'currentPurposeKind discovery)
+                                                (pscriptDiscovery'currentPurposeIndex discovery)
+                                                (pscriptDiscovery'currentScriptHash discovery)
+                                                (pscriptDiscovery'currentSubject discovery)
+                                                (pscriptDiscovery'matchedSourceIndex discovery)
+                                                (pscriptDiscovery'matchedLanguageTag discovery)
+                                                (pscriptDiscovery'matchedSourceLeaf discovery)
+                                                (pscriptDiscovery'usedInlineBitmap discovery)
+                                                ( pdata $
+                                                    pscriptDiscoveryBitmapInsert
+                                                      # pfromData (pscriptDiscovery'usedRedeemerBitmap discovery)
+                                                      # pfromData (RedeemerItemProof.predeemerControl'itemIndex nextFields)
+                                                )
+                                                (pscriptDiscovery'redeemerItemControlHash discovery)
+                                                (pdata $ pfromData (pscriptDiscovery'executionCount discovery) + 1)
+                                                (pdata executionPeaks)
+                                          )
+                                          $ \advanced ->
+                                            pand'List
+                                              [ pscriptSourcesStageTenControlIsBound # pre # witness # control
+                                              , pfromData (pscriptDiscovery'redeemerCursor discovery)
+                                                  #< pfromData (pscriptSources'redeemerCount c)
+                                              , pfromData (pscriptDiscovery'redeemerItemControlHash discovery)
+                                                  #/= pconstant ""
+                                              , matches
+                                              , pscriptSourcesStageZeroSuccessorWorkIsExact
+                                                  # pre
+                                                  # witness
+                                                  # ( pencodeScriptSourcesDiscoveryWitness
+                                                        # control
+                                                        # 8
+                                                        # (pscriptSourcesResetDiscoveryCurrent # advanced)
+                                                    )
+                                              ]
+
+-- | Spending-side stage-ten mismatch/advance transition.
+pverifyDescriptorMismatch ::
+  forall s.
+  Term
+    s
+    ( PValidationMachineStateV1
+        :--> PValidationOneStepWitnessV1
+        :--> ScriptSourcesDescriptor.PDescriptorStepClaim
+        :--> PBool
+    )
+pverifyDescriptorMismatch = phoistAcyclic $ plam $ \pre witness claim ->
+  pmatch witness $ \stepWitness ->
+    plet
+      (pscriptSourcesStageTenControlFromWitness # pfromData (poneStep'workWitnessCbor stepWitness))
+      $ \control ->
+        pmatch control $ \c ->
+          pmatch (pfromData $ pscriptSources'discovery c) $ \discovery ->
+            pmatch claim $ \claimFields ->
+              plet
+                ( ScriptSourcesDescriptor.pfullControl
+                    # pfromData (ScriptSourcesDescriptor.pdescriptorClaim'claimedNext claimFields)
+                )
+                $ \next ->
+                  pmatch next $ \nextFields ->
+                    plet
+                      ( pfromData (RedeemerItemProof.predeemerControl'stage nextFields)
+                          #== RedeemerItemProof.pstageTerminal
+                      )
+                      $ \terminal ->
+                        plet
+                          ( terminal
+                              #&& predeemerPointerMatchesPurposeV1
+                              # pfromData (pscriptDiscovery'currentPurposeKind discovery)
+                              # pfromData (pscriptDiscovery'currentPurposeIndex discovery)
+                              # pfromData (RedeemerItemProof.predeemerControl'purposeTag nextFields)
+                              # pfromData (RedeemerItemProof.predeemerControl'pointerIndex nextFields)
+                          )
+                          $ \matches ->
+                            plet
+                              ( pif
+                                  terminal
+                                  ( pcon $
+                                      PScriptDiscoveryControlV1
+                                        (pscriptDiscovery'purposeCursor discovery)
+                                        (pscriptDiscovery'sourceCursor discovery)
+                                        (pdata $ pfromData (RedeemerItemProof.predeemerControl'itemIndex nextFields) + 1)
+                                        (pscriptDiscovery'currentPurposeKind discovery)
+                                        (pscriptDiscovery'currentPurposeIndex discovery)
+                                        (pscriptDiscovery'currentScriptHash discovery)
+                                        (pscriptDiscovery'currentSubject discovery)
+                                        (pscriptDiscovery'matchedSourceIndex discovery)
+                                        (pscriptDiscovery'matchedLanguageTag discovery)
+                                        (pscriptDiscovery'matchedSourceLeaf discovery)
+                                        (pscriptDiscovery'usedInlineBitmap discovery)
+                                        (pscriptDiscovery'usedRedeemerBitmap discovery)
+                                        (pdata $ pconstant "")
+                                        (pscriptDiscovery'executionCount discovery)
+                                        (pscriptDiscovery'executionPeaks discovery)
+                                  )
+                                  ( pcon $
+                                      PScriptDiscoveryControlV1
+                                        (pscriptDiscovery'purposeCursor discovery)
+                                        (pscriptDiscovery'sourceCursor discovery)
+                                        (pscriptDiscovery'redeemerCursor discovery)
+                                        (pscriptDiscovery'currentPurposeKind discovery)
+                                        (pscriptDiscovery'currentPurposeIndex discovery)
+                                        (pscriptDiscovery'currentScriptHash discovery)
+                                        (pscriptDiscovery'currentSubject discovery)
+                                        (pscriptDiscovery'matchedSourceIndex discovery)
+                                        (pscriptDiscovery'matchedLanguageTag discovery)
+                                        (pscriptDiscovery'matchedSourceLeaf discovery)
+                                        (pscriptDiscovery'usedInlineBitmap discovery)
+                                        (pscriptDiscovery'usedRedeemerBitmap discovery)
+                                        (pdata $ RedeemerItemProof.phashDescriptorControlV1 # next)
+                                        (pscriptDiscovery'executionCount discovery)
+                                        (pscriptDiscovery'executionPeaks discovery)
+                                  )
+                              )
+                              $ \after ->
+                                pand'List
+                                  [ pscriptSourcesStageTenControlIsBound # pre # witness # control
+                                  , pfromData (pscriptDiscovery'redeemerCursor discovery)
+                                      #< pfromData (pscriptSources'redeemerCount c)
+                                  , pfromData (pscriptDiscovery'redeemerItemControlHash discovery)
+                                      #/= pconstant ""
+                                  , pnot # matches
+                                  , pscriptSourcesStageZeroSuccessorWorkIsExact
+                                      # pre
+                                      # witness
+                                      # (pencodeScriptSourcesDiscoveryWitness # control # 10 # after)
+                                  ]
+
+-- | Spending-side stage-twelve used-redeemer audit transition.
+pverifyDescriptorUsed ::
+  forall s.
+  Term
+    s
+    ( PValidationMachineStateV1
+        :--> PValidationOneStepWitnessV1
+        :--> ScriptSourcesDescriptor.PDescriptorStepClaim
+        :--> PBool
+    )
+pverifyDescriptorUsed = phoistAcyclic $ plam $ \pre witness claim ->
+  pmatch witness $ \stepWitness ->
+    plet
+      (pscriptSourcesStageTwelveControlFromWitness # pfromData (poneStep'workWitnessCbor stepWitness))
+      $ \control ->
+        pmatch control $ \c ->
+          pmatch (pfromData $ pscriptSources'discovery c) $ \discovery ->
+            pmatch claim $ \claimFields ->
+              plet
+                ( ScriptSourcesDescriptor.pfullControl
+                    # pfromData (ScriptSourcesDescriptor.pdescriptorClaim'claimedNext claimFields)
+                )
+                $ \next ->
+                  pmatch next $ \nextFields ->
+                    plet
+                      ( pfromData (RedeemerItemProof.predeemerControl'stage nextFields)
+                          #== RedeemerItemProof.pstageTerminal
+                      )
+                      $ \terminal ->
+                        plet
+                          ( pif
+                              terminal
+                              ( pcon $
+                                  PScriptDiscoveryControlV1
+                                    (pscriptDiscovery'purposeCursor discovery)
+                                    (pscriptDiscovery'sourceCursor discovery)
+                                    (pdata $ pfromData (RedeemerItemProof.predeemerControl'itemIndex nextFields) + 1)
+                                    (pscriptDiscovery'currentPurposeKind discovery)
+                                    (pscriptDiscovery'currentPurposeIndex discovery)
+                                    (pscriptDiscovery'currentScriptHash discovery)
+                                    (pscriptDiscovery'currentSubject discovery)
+                                    (pscriptDiscovery'matchedSourceIndex discovery)
+                                    (pscriptDiscovery'matchedLanguageTag discovery)
+                                    (pscriptDiscovery'matchedSourceLeaf discovery)
+                                    (pscriptDiscovery'usedInlineBitmap discovery)
+                                    (pscriptDiscovery'usedRedeemerBitmap discovery)
+                                    (pdata $ pconstant "")
+                                    (pscriptDiscovery'executionCount discovery)
+                                    (pscriptDiscovery'executionPeaks discovery)
+                              )
+                              ( pcon $
+                                  PScriptDiscoveryControlV1
+                                    (pscriptDiscovery'purposeCursor discovery)
+                                    (pscriptDiscovery'sourceCursor discovery)
+                                    (pscriptDiscovery'redeemerCursor discovery)
+                                    (pscriptDiscovery'currentPurposeKind discovery)
+                                    (pscriptDiscovery'currentPurposeIndex discovery)
+                                    (pscriptDiscovery'currentScriptHash discovery)
+                                    (pscriptDiscovery'currentSubject discovery)
+                                    (pscriptDiscovery'matchedSourceIndex discovery)
+                                    (pscriptDiscovery'matchedLanguageTag discovery)
+                                    (pscriptDiscovery'matchedSourceLeaf discovery)
+                                    (pscriptDiscovery'usedInlineBitmap discovery)
+                                    (pscriptDiscovery'usedRedeemerBitmap discovery)
+                                    (pdata $ RedeemerItemProof.phashDescriptorControlV1 # next)
+                                    (pscriptDiscovery'executionCount discovery)
+                                    (pscriptDiscovery'executionPeaks discovery)
+                              )
+                          )
+                          $ \after ->
+                            pand'List
+                              [ pscriptSourcesStageTwelveControlIsBound # pre # witness # control
+                              , pfromData (pscriptDiscovery'redeemerCursor discovery)
+                                  #< pfromData (pscriptSources'redeemerCount c)
+                              , pfromData (pscriptDiscovery'redeemerItemControlHash discovery)
+                                  #/= pconstant ""
+                              , pif
+                                  ( terminal
+                                      #&& pnot
+                                      # ( pscriptDiscoveryBitmapHas
+                                            # pfromData (pscriptDiscovery'usedRedeemerBitmap discovery)
+                                            # pfromData (RedeemerItemProof.predeemerControl'itemIndex nextFields)
+                                        )
+                                  )
+                                  ( prejectedSuccessorIsExact
+                                      # pre
+                                      # pfromData (poneStep'claimedSuccessor stepWitness)
+                                      # pconstant "E_INVALID_FIELD_TYPE"
+                                  )
+                                  ( pscriptSourcesStageZeroSuccessorWorkIsExact
+                                      # pre
+                                      # witness
+                                      # (pencodeScriptSourcesDiscoveryWitness # control # 12 # after)
+                                  )
+                              ]
 
 -- | Aiken @script_sources_control_from_witness@.
 pscriptSourcesControlFromWitness ::
@@ -19418,17 +20215,17 @@ pscriptSourcesDiscoveryStageIsWellFormed = phoistAcyclic $ plam $ \control ->
                   )
               ]
           )
-  where
-    discoveryCurrentIsEmpty discovery =
-      pand'List
-        [ pfromData (pscriptDiscovery'currentPurposeKind discovery) #== -1
-        , pfromData (pscriptDiscovery'currentPurposeIndex discovery) #== -1
-        , pfromData (pscriptDiscovery'currentScriptHash discovery) #== pconstant ""
-        , pfromData (pscriptDiscovery'currentSubject discovery) #== pconstant ""
-        , pfromData (pscriptDiscovery'matchedSourceIndex discovery) #== -1
-        , pfromData (pscriptDiscovery'matchedLanguageTag discovery) #== -1
-        , pfromData (pscriptDiscovery'matchedSourceLeaf discovery) #== pconstant ""
-        ]
+ where
+  discoveryCurrentIsEmpty discovery =
+    pand'List
+      [ pfromData (pscriptDiscovery'currentPurposeKind discovery) #== -1
+      , pfromData (pscriptDiscovery'currentPurposeIndex discovery) #== -1
+      , pfromData (pscriptDiscovery'currentScriptHash discovery) #== pconstant ""
+      , pfromData (pscriptDiscovery'currentSubject discovery) #== pconstant ""
+      , pfromData (pscriptDiscovery'matchedSourceIndex discovery) #== -1
+      , pfromData (pscriptDiscovery'matchedLanguageTag discovery) #== -1
+      , pfromData (pscriptDiscovery'matchedSourceLeaf discovery) #== pconstant ""
+      ]
 
 -- | Aiken @script_sources_control_is_bound@.
 pscriptSourcesControlIsBound ::
@@ -20533,7 +21330,7 @@ pverifyLedgerDelta = phoistAcyclic $ plam $ \pre witness auxiliary ->
         pif
           (pledgerDeltaControlIsWellFormed # witness # control)
           ( pmatch auxiliary $ \case
-              PLedgerDeltaOperationWitness {} ->
+              PLedgerDeltaOperationWitness{} ->
                 pledgerDeltaOperationStep # pre # witness # auxiliary # control
               _ ->
                 pif
@@ -21429,10 +22226,10 @@ pnativeScriptsControlFromWitness = phoistAcyclic $ plam $ \workWitnessCbor ->
               (db 25 xs)
         )
         perror
-  where
-    di index xs = pdata $ pasInt # (pelemAt # index # xs)
-    db index xs = pdata $ pasByteStr # (pelemAt # index # xs)
-    dp index xs = pdata $ pdecodeFrontierPeakItems # (pasList # (pelemAt # index # xs))
+ where
+  di index xs = pdata $ pasInt # (pelemAt # index # xs)
+  db index xs = pdata $ pasByteStr # (pelemAt # index # xs)
+  dp index xs = pdata $ pdecodeFrontierPeakItems # (pasList # (pelemAt # index # xs))
 
 pnativeScriptsControlIsWellFormed :: forall s. Term s (PNativeScriptsControlV1 :--> PBool)
 pnativeScriptsControlIsWellFormed = phoistAcyclic $ plam $ \control -> pmatch control $ \c ->
@@ -23548,13 +24345,13 @@ pphaseSuccessorIsValid pre post = pmatch pre $ \p -> pmatch post $ \q ->
                     PCanonicalDecode -> postPhase #== pcon PCanonicalDecode #|| postPhase #== pcon PCompactBinding
                     PCompactBinding -> postPhase #== pcon PStaticLedgerRules
                     PStaticLedgerRules -> postPhase #== pcon PInputSets
-                    PInputSets -> postPhase #== pcon PSignatures
-                    PSignatures -> postPhase #== pcon PPhaseANativeScripts
-                    PPhaseANativeScripts -> postPhase #== pcon PPhaseAScriptPreconditions
+                    PInputSets -> postPhase #== pcon PInputSets #|| postPhase #== pcon PSignatures
+                    PSignatures -> postPhase #== pcon PSignatures #|| postPhase #== pcon PPhaseANativeScripts
+                    PPhaseANativeScripts -> postPhase #== pcon PPhaseANativeScripts #|| postPhase #== pcon PPhaseAScriptPreconditions #|| postPhase #== pcon PNativeScripts
                     PPhaseAScriptPreconditions -> postPhase #== pcon PPhaseAScriptPreconditions #|| postPhase #== pcon PResolveInputs
                     PResolveInputs -> postPhase #== pcon PResolveInputs #|| postPhase #== pcon PScriptSources
                     PScriptSources -> postPhase #== pcon PScriptSources #|| postPhase #== pcon PNativeScripts
-                    PNativeScripts -> postPhase #== pcon PNativeScripts #|| postPhase #== pcon PScriptIntegrity
+                    PNativeScripts -> postPhase #== pcon PPhaseANativeScripts #|| postPhase #== pcon PNativeScripts #|| postPhase #== pcon PScriptIntegrity
                     PScriptIntegrity -> postPhase #== pcon PScriptIntegrity #|| postPhase #== pcon PCek
                     PCek -> postPhase #== pcon PCek #|| postPhase #== pcon PValueAndMint
                     PValueAndMint -> postPhase #== pcon PValueAndMint #|| postPhase #== pcon PLedgerDelta
@@ -23586,7 +24383,7 @@ pstructuralTransitionIsValid ::
   forall (s :: S).
   Term s (PValidationMachineStateV1 :--> PValidationOneStepWitnessV1 :--> PBool)
 pstructuralTransitionIsValid = phoistAcyclic $ plam $ \pre witness ->
-  pmatch witness $ \PValidationOneStepWitnessV1 {poneStep'workWitnessCbor, poneStep'claimedSuccessor} ->
+  pmatch witness $ \PValidationOneStepWitnessV1{poneStep'workWitnessCbor, poneStep'claimedSuccessor} ->
     plet (pfromData poneStep'claimedSuccessor) $ \post ->
       pmatch pre $ \p -> pmatch post $ \q ->
         pand'List
@@ -23827,26 +24624,26 @@ pencodePhaseANativeScriptsScanWitness =
                 #>= 0
             )
             ( pconstant "\x9f"
-                <> (pencodeDefiniteBytes # compactCbor)
-                <> (pencodeDefiniteBytes # witnessSetCompactCbor)
-                <> (pencodeDefiniteBytes # fieldPreimageLengthsCbor)
-                <> (pencodeDefiniteBytes # contextCbor)
-                <> (pencodeDefiniteBytes # resolutionScheduleHash)
+                <> (pserialiseData # (pforgetData $ pdata compactCbor))
+                <> (pserialiseData # (pforgetData $ pdata witnessSetCompactCbor))
+                <> (pserialiseData # (pforgetData $ pdata fieldPreimageLengthsCbor))
+                <> (pserialiseData # (pforgetData $ pdata contextCbor))
+                <> (pserialiseData # (pforgetData $ pdata resolutionScheduleHash))
                 <> pcborInt stage
                 <> pcborInt scriptCount
                 <> pcborInt scriptSeen
                 <> pcborInt containsNonNativeScript
                 <> pcborInt itemLength
-                <> (pencodeDefiniteBytes # itemCommitment)
+                <> (pserialiseData # (pforgetData $ pdata itemCommitment))
                 <> pcborInt cursor
-                <> (pencodeDefiniteBytes # stackRoot)
+                <> (pserialiseData # (pforgetData $ pdata stackRoot))
                 <> pcborInt stackDepth
                 <> pcborInt nodeCount
                 <> pcborInt result
                 <> pcborInt signerCount
                 <> (pencodeDefiniteArrayHeader # 2)
                 <> (pencodeFrontier # signerPeaks)
-                <> (pencodeDefiniteBytes # continuationCbor)
+                <> (pserialiseData # (pforgetData $ pdata continuationCbor))
                 <> pconstant "\xff"
             )
             perror
@@ -24401,6 +25198,68 @@ pencodeOptionalResolveInputOutputProof ::
 pencodeOptionalResolveInputOutputProof = phoistAcyclic $ plam $ \pending -> pmatch pending $ \case
   PDNothing -> pencodeDefiniteBytes # pconstant "\x00"
   PDJust active -> pencodeDefiniteBytes # (pencodeResolveInputOutputProof # pfromData active)
+
+pencodeResolveInputsInitialWitness ::
+  forall s.
+  Term
+    s
+    ( PByteString
+        :--> PByteString
+        :--> PByteString
+        :--> PByteString
+        :--> PInteger
+        :--> PByteString
+        :--> PByteString
+        :--> PInteger
+        :--> PByteString
+        :--> PByteString
+        :--> PByteString
+    )
+pencodeResolveInputsInitialWitness =
+  phoistAcyclic $
+    plam $
+      \compactCbor
+       witnessSetCompactCbor
+       fieldPreimageLengthsCbor
+       contextCbor
+       cursor
+       accumulator
+       remainingScheduleHash
+       signerCount
+       signerFrontierCommitment
+       resolutionScheduleHash ->
+          pif
+            ( cursor
+                #>= 0
+                #&& plengthBS
+                # accumulator
+                #== 32
+                #&& plengthBS
+                # remainingScheduleHash
+                #== 32
+                #&& signerCount
+                #>= 0
+                #&& plengthBS
+                # signerFrontierCommitment
+                #== 32
+                #&& plengthBS
+                # resolutionScheduleHash
+                #== 32
+            )
+            ( pconstant "\x8b"
+                <> (pencodeDefiniteBytes # compactCbor)
+                <> (pencodeDefiniteBytes # witnessSetCompactCbor)
+                <> (pencodeDefiniteBytes # fieldPreimageLengthsCbor)
+                <> (pencodeDefiniteBytes # contextCbor)
+                <> pcborInt cursor
+                <> (pencodeDefiniteBytes # accumulator)
+                <> (pencodeDefiniteBytes # remainingScheduleHash)
+                <> pcborInt signerCount
+                <> (pencodeDefiniteBytes # signerFrontierCommitment)
+                <> (pencodeDefiniteBytes # pconstant "\x00")
+                <> (pencodeDefiniteBytes # resolutionScheduleHash)
+            )
+            perror
 
 pencodeResolveInputsWitness ::
   forall s.

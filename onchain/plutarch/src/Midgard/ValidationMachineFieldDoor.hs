@@ -15,6 +15,10 @@ module Midgard.ValidationMachineFieldDoor (
   PMachineFieldDoorV1 (..),
   PMachineFieldItemV1 (..),
   popenMachineFieldItem,
+  popenMachineFieldItemByCommitment,
+  popenMachineFixedFieldItem,
+  pmachineFixedFieldItemCount,
+  pmachineFixedFieldItemBytes,
   popenMachineFieldItemAt,
   pmachineFieldCount,
   pmachineFieldItemCount,
@@ -43,10 +47,15 @@ import Midgard.NativeTxFieldAccess (
   PFieldCarriageV1,
   PFieldViewV1,
   pauthenticatedWholeFieldView,
+  pauthenticatedWholeFieldViewByCommitment,
+  pauthenticatedWholeFixedFieldView,
+  pfieldFixedItemExtent,
   pfieldItemCount,
   pfieldItemExtent,
   pfieldItemHeaderAt,
   pfieldReadRange,
+  pwholeViewItemCount,
+  pwholeViewReadRange,
  )
 
 -- | Context needed by the three field-carriage tiers.
@@ -87,14 +96,15 @@ popenMachineFieldItem = phoistAcyclic $
   plam $ \door verified witnessSet fieldIndex itemIndex carriage -> P.do
     PMachineFieldDoorV1 {pmachineDoor'referenceInputs, pmachineDoor'certificatePolicyId} <-
       pmatch door
-    view <- plet $
-      pauthenticatedWholeFieldView
-        # verified
-        # witnessSet
-        # fieldIndex
-        # carriage
-        # pmachineDoor'referenceInputs
-        # pmachineDoor'certificatePolicyId
+    view <-
+      plet $
+        pauthenticatedWholeFieldView
+          # verified
+          # witnessSet
+          # fieldIndex
+          # carriage
+          # pmachineDoor'referenceInputs
+          # pmachineDoor'certificatePolicyId
     PPair itemOffset itemLength <- pmatch (pfieldItemExtent # view # itemIndex)
     pcon
       PMachineFieldItemV1
@@ -123,14 +133,15 @@ popenMachineFieldItemAt = phoistAcyclic $
   plam $ \door verified witnessSet fieldIndex itemIndex itemWrapperOffset carriage -> P.do
     PMachineFieldDoorV1 {pmachineDoor'referenceInputs, pmachineDoor'certificatePolicyId} <-
       pmatch door
-    view <- plet $
-      pauthenticatedWholeFieldView
-        # verified
-        # witnessSet
-        # fieldIndex
-        # carriage
-        # pmachineDoor'referenceInputs
-        # pmachineDoor'certificatePolicyId
+    view <-
+      plet $
+        pauthenticatedWholeFieldView
+          # verified
+          # witnessSet
+          # fieldIndex
+          # carriage
+          # pmachineDoor'referenceInputs
+          # pmachineDoor'certificatePolicyId
     PPair itemOffset itemLength <- pmatch (pfieldItemHeaderAt # view # itemWrapperOffset)
     pcon
       PMachineFieldItemV1
@@ -228,5 +239,82 @@ pmachineFieldItemBytesMatch ::
 pmachineFieldItemBytesMatch = phoistAcyclic $
   plam $ \item bytes ->
     pmatch item $ \PMachineFieldItemV1 {pmachineItem'itemLength} ->
-      plengthBS # bytes #== pmachineItem'itemLength
-        #&& pmachineFieldItemBytes # item #== bytes
+      plengthBS
+        # bytes
+        #== pmachineItem'itemLength
+        #&& pmachineFieldItemBytes
+        # item
+        #== bytes
+
+-- | Materialised fixed-stride field door.
+popenMachineFixedFieldItem ::
+  forall (s :: S).
+  Term
+    s
+    ( PMachineFieldDoorV1
+        :--> PVerifiedMidgardNativeTxCompact
+        :--> PNativeTxWitnessSetCompact
+        :--> PInteger
+        :--> PInteger
+        :--> PFieldCarriageV1
+        :--> PMachineFieldItemV1
+    )
+popenMachineFixedFieldItem = phoistAcyclic $
+  plam $ \door verified witnessSet fieldIndex itemIndex carriage -> P.do
+    PMachineFieldDoorV1 {pmachineDoor'referenceInputs, pmachineDoor'certificatePolicyId} <-
+      pmatch door
+    view <-
+      plet $
+        pauthenticatedWholeFixedFieldView
+          # verified
+          # witnessSet
+          # fieldIndex
+          # carriage
+          # pmachineDoor'referenceInputs
+          # pmachineDoor'certificatePolicyId
+    PPair itemOffset itemLength <- pmatch (pfieldFixedItemExtent # view # itemIndex)
+    pcon
+      PMachineFieldItemV1
+        { pmachineItem'view = view
+        , pmachineItem'fieldIndex = fieldIndex
+        , pmachineItem'itemIndex = itemIndex
+        , pmachineItem'itemOffset = itemOffset
+        , pmachineItem'itemLength = itemLength
+        }
+
+-- | Open a commitment already authenticated by the selected machine control.
+popenMachineFieldItemByCommitment ::
+  forall s.
+  Term
+    s
+    ( PMachineFieldDoorV1
+        :--> PByteString
+        :--> PByteString
+        :--> PInteger
+        :--> PInteger
+        :--> PFieldCarriageV1
+        :--> PMachineFieldItemV1
+    )
+popenMachineFieldItemByCommitment = phoistAcyclic $
+  plam $ \door txId commitment fieldIndex itemIndex carriage -> P.do
+    PMachineFieldDoorV1 {..} <- pmatch door
+    view <-
+      plet $
+        pauthenticatedWholeFieldViewByCommitment
+          # txId
+          # fieldIndex
+          # commitment
+          # carriage
+          # pmachineDoor'referenceInputs
+          # pmachineDoor'certificatePolicyId
+    PPair offset len <- pmatch $ pfieldItemExtent # view # itemIndex
+    pcon $ PMachineFieldItemV1 view fieldIndex itemIndex offset len
+
+pmachineFixedFieldItemCount :: forall s. Term s (PMachineFieldItemV1 :--> PInteger)
+pmachineFixedFieldItemCount = phoistAcyclic $ plam $ \item ->
+  pmatch item $ \PMachineFieldItemV1 {pmachineItem'view} -> pwholeViewItemCount # pmachineItem'view
+
+pmachineFixedFieldItemBytes :: forall s. Term s (PMachineFieldItemV1 :--> PByteString)
+pmachineFixedFieldItemBytes = phoistAcyclic $ plam $ \item ->
+  pmatch item $ \PMachineFieldItemV1 {pmachineItem'view, pmachineItem'itemOffset, pmachineItem'itemLength} ->
+    pwholeViewReadRange # pmachineItem'view # pmachineItem'itemOffset # pmachineItem'itemLength

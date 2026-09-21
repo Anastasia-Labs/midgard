@@ -11,6 +11,7 @@ one-step rule already has the complete canonical output bytes.
 -}
 module Midgard.LedgerOutputDescriptor (
     pbuildV1,
+    passemble,
     pledgerValueV1,
 ) where
 
@@ -21,6 +22,7 @@ import Plutarch.LedgerApi.Utils (PMaybeData (..))
 import Plutarch.Prelude
 
 import Midgard.BoundedItem qualified as BoundedItem
+import Midgard.CekData (PDataSummaryV1)
 import Midgard.FraudProofs.NativeTx.Codec (
     pcborInt,
     pencodeDefiniteBytes,
@@ -202,49 +204,55 @@ pbuildV1 = phoistAcyclic $ plam $ \outputIndex outputCbor ->
                     PJust summaries ->
                         pmatch summaries $ \(PPair cardanoTxOut remainingSummaries) ->
                             pmatch remainingSummaries $ \(PPair midgardTxOut cardanoSpendDatum) ->
-                                pmatch output $ \outputFields ->
-                                    pmatch (pfromData $ ptxOutput'value outputFields) $ \valueFields ->
-                                        plet
-                                            ( pfoldAssets
-                                                # pto (pfromData $ pvalue'assets valueFields)
-                                                # pconstant ""
-                                                # pcon (PAssetFoldV1 0 pemptyFrontier 0 0)
-                                            )
-                                            $ \assets ->
-                                                plet (pfromData $ pvalue'lovelace valueFields) $ \lovelace ->
-                                                    plet (preferenceScriptFacts outputIndex output) $ \referenceFacts ->
-                                                        pmatch referenceFacts $ \reference ->
-                                                            pmatch assets $ \folded ->
-                                                                plet
-                                                                    ( pcon $
-                                                                        PLedgerOutputCommitmentV1
-                                                                            (pdata pledgerOutputCommitmentVersion)
-                                                                            (pdata outputIndex)
-                                                                            (pdata $ plengthBS # outputCbor)
-                                                                            (pdata $ poutputItemCommitment # outputIndex # outputCbor)
-                                                                            (pdata $ pencodeMidgardAddress # pfromData (ptxOutput'address outputFields))
-                                                                            (pdata lovelace)
-                                                                            (pdata $ passetFold'count folded)
-                                                                            ( pdata $
-                                                                                pfrontierCommitment
-                                                                                    # passetFold'count folded
-                                                                                    # passetFold'peaks folded
-                                                                            )
-                                                                            (pdata $ pcardanoValueSize lovelace assets)
-                                                                            (pdata $ preferenceFacts'language reference)
-                                                                            (pdata $ preferenceFacts'hash reference)
-                                                                            (pdata $ preferenceFacts'totalLength reference)
-                                                                            (pdata $ preferenceFacts'itemCommitment reference)
-                                                                            (pdata cardanoTxOut)
-                                                                            (pdata midgardTxOut)
-                                                                            (pdata cardanoSpendDatum)
-                                                                    )
-                                                                    $ \descriptor ->
-                                                                        pif
-                                                                            (pdescriptorIsWellFormed descriptor)
-                                                                            (pcon $ PJust descriptor)
-                                                                            (pcon PNothing)
+                                passemble # outputIndex # output # outputCbor # cardanoTxOut # midgardTxOut # cardanoSpendDatum
         )
+
+-- | Assemble after canonical decoding and independent semantic authentication.
+passemble :: forall s. Term s (PInteger :--> PMidgardTxOutput :--> PByteString :--> PDataSummaryV1 :--> PDataSummaryV1 :--> PDataSummaryV1 :--> PMaybe PLedgerOutputCommitmentV1)
+passemble = phoistAcyclic $ plam $ \outputIndex output outputCbor cardanoTxOut midgardTxOut cardanoSpendDatum ->
+  pif (outputIndex #< 0 #|| outputIndex #> 65_535) (pcon PNothing) $
+    pmatch output $ \outputFields ->
+        pmatch (pfromData $ ptxOutput'value outputFields) $ \valueFields ->
+            plet
+                ( pfoldAssets
+                    # pto (pfromData $ pvalue'assets valueFields)
+                    # pconstant ""
+                    # pcon (PAssetFoldV1 0 pemptyFrontier 0 0)
+                )
+                $ \assets ->
+                    plet (pfromData $ pvalue'lovelace valueFields) $ \lovelace ->
+                        plet (preferenceScriptFacts outputIndex output) $ \referenceFacts ->
+                            pmatch referenceFacts $ \reference ->
+                                pmatch assets $ \folded ->
+                                    plet
+                                        ( pcon $
+                                            PLedgerOutputCommitmentV1
+                                                (pdata pledgerOutputCommitmentVersion)
+                                                (pdata outputIndex)
+                                                (pdata $ plengthBS # outputCbor)
+                                                (pdata $ poutputItemCommitment # outputIndex # outputCbor)
+                                                (pdata $ pencodeMidgardAddress # pfromData (ptxOutput'address outputFields))
+                                                (pdata lovelace)
+                                                (pdata $ passetFold'count folded)
+                                                ( pdata $
+                                                    pfrontierCommitment
+                                                        # passetFold'count folded
+                                                        # passetFold'peaks folded
+                                                )
+                                                (pdata $ pcardanoValueSize lovelace assets)
+                                                (pdata $ preferenceFacts'language reference)
+                                                (pdata $ preferenceFacts'hash reference)
+                                                (pdata $ preferenceFacts'totalLength reference)
+                                                (pdata $ preferenceFacts'itemCommitment reference)
+                                                (pdata cardanoTxOut)
+                                                (pdata midgardTxOut)
+                                                (pdata cardanoSpendDatum)
+                                        )
+                                        $ \descriptor ->
+                                            pif
+                                                (pdescriptorIsWellFormed descriptor)
+                                                (pcon $ PJust descriptor)
+                                                (pcon PNothing)
 
 -- | The exact bytes one canonical output occupies in @utxos_root@.
 pledgerValueV1 :: forall s. Term s (PInteger :--> PByteString :--> PMaybe PByteString)

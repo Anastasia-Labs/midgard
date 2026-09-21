@@ -23,16 +23,16 @@ import Plutarch.LedgerApi.V3 (
 import Plutarch.Prelude
 
 import Midgard.ComputationThread (PStepDatum)
+import Midgard.NativeTxFieldAccess (PFieldCarriageV1)
+import Midgard.ScriptSourcesRedeemerBegin (pverifyBegin)
+import Midgard.ScriptSourcesStageOneFinishSemantics qualified as StageOneFinish
 import Midgard.ValidationMachine (
-  PValidationAuxiliaryWitnessV1 (PNoAuxiliaryWitness),
+  PValidationAuxiliaryWitnessV1 (PNoAuxiliaryWitness, PTransactionRedeemerItemBeginWitness),
   PValidationOneStepWitnessV1,
-  pvalidationAuxiliaryWitnessFromData,
-  pverifyScriptSourcesStageOneFinishRawSemanticsV1,
-  pverifyScriptSourcesStageOneRedeemerSemanticsV1,
  )
+import Midgard.ValidationMachineFieldDoor (PMachineFieldDoorV1 (..))
 import Midgard.ValidationSemantic (pcontinueWinning, pvalidationSemanticPreState)
 import Midgard.ValidationTrace (PValidationPhase (PScriptSources))
-import Midgard.ValidationMachineFieldDoor (PMachineFieldDoorV1 (..))
 import Midgard.Validators.FraudProofs.Step (pdispatch, pstep)
 
 data PScriptSourcesStageOneFinishActionV1 (s :: S)
@@ -49,12 +49,13 @@ data PScriptSourcesStageOneRedeemerActionV1 (s :: S)
       (Term s (PAsData PInteger))
       (Term s (PAsData PInteger))
       (Term s (PAsData PValidationOneStepWitnessV1))
-      (Term s (PAsData PValidationAuxiliaryWitnessV1))
+      (Term s (PAsData PFieldCarriageV1))
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PScriptSourcesStageOneRedeemerActionV1)
 
-pcontinueScriptSources :: forall s.
+pcontinueScriptSources ::
+  forall s.
   Term s (PAsData PScriptHash) ->
   Term s (PAsData PCurrencySymbol) ->
   Term s (PMaybeData PStepDatum) ->
@@ -69,42 +70,69 @@ pcontinueScriptSources :: forall s.
 pcontinueScriptSources awardScriptHash policyId datum inputIndex outputIndex transition auxiliaryData isValid ownOutRef txInfo =
   pcontinueWinning
     (pcon PScriptSources)
-    awardScriptHash policyId datum inputIndex outputIndex transition
-    auxiliaryData isValid ownOutRef txInfo
+    awardScriptHash
+    policyId
+    datum
+    inputIndex
+    outputIndex
+    transition
+    auxiliaryData
+    isValid
+    ownOutRef
+    txInfo
 
-scriptSourcesStageOneFinishSemanticV1Validator :: forall s.
+scriptSourcesStageOneFinishSemanticV1Validator ::
+  forall s.
   Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
 scriptSourcesStageOneFinishSemanticV1Validator = plam $ \awardScriptHash policyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
-  pdispatch @_ @PScriptSourcesStageOneFinishActionV1 policyId datum redeemer ownOutRef txInfo $
-    \action -> pmatch action $ \(PVerifyFinish inputIndex outputIndex transitionD) ->
-      plet (pfromData transitionD) $ \transition ->
-      plet (pcon PNoAuxiliaryWitness) $ \auxiliary ->
-        pcontinueScriptSources
-          awardScriptHash policyId datum
-          (pfromData inputIndex) (pfromData outputIndex) transition
-          (pforgetData $ pdata auxiliary)
-          (pverifyScriptSourcesStageOneFinishRawSemanticsV1 # pvalidationSemanticPreState datum # transition)
-          ownOutRef txInfo
+    pdispatch @_ @PScriptSourcesStageOneFinishActionV1 policyId datum redeemer ownOutRef txInfo $
+      \action -> pmatch action $ \(PVerifyFinish inputIndex outputIndex transitionD) ->
+        plet (pfromData transitionD) $ \transition ->
+          plet (pcon PNoAuxiliaryWitness) $ \auxiliary ->
+            pcontinueScriptSources
+              awardScriptHash
+              policyId
+              datum
+              (pfromData inputIndex)
+              (pfromData outputIndex)
+              transition
+              (pforgetData $ pdata auxiliary)
+              (StageOneFinish.pverify # pvalidationSemanticPreState datum # transition)
+              ownOutRef
+              txInfo
 
-scriptSourcesStageOneRedeemerSemanticV1Validator :: forall s.
-  Term s
-    ( PAsData PScriptHash :--> PAsData PCurrencySymbol
-        :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit
+scriptSourcesStageOneRedeemerSemanticV1Validator ::
+  forall s.
+  Term
+    s
+    ( PAsData PScriptHash
+        :--> PAsData PCurrencySymbol
+        :--> PAsData PCurrencySymbol
+        :--> PScriptContext
+        :--> PUnit
     )
 scriptSourcesStageOneRedeemerSemanticV1Validator = plam $ \awardScriptHash policyId certificatePolicyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
-  pdispatch @_ @PScriptSourcesStageOneRedeemerActionV1 policyId datum redeemer ownOutRef txInfo $
-    \action -> pmatch action $ \(PVerifyRedeemer inputIndex outputIndex transitionD auxiliaryD) ->
-      plet (pfromData transitionD) $ \transition ->
-      plet (pvalidationAuxiliaryWitnessFromData # pforgetData auxiliaryD) $ \auxiliary ->
-      pmatch txInfo $ \PTxInfo {ptxInfo'referenceInputs} ->
-      plet (pcon $ PMachineFieldDoorV1 (pfromData ptxInfo'referenceInputs) certificatePolicyId) $ \door ->
-        pcontinueScriptSources
-          awardScriptHash policyId datum
-          (pfromData inputIndex) (pfromData outputIndex) transition
-          (pforgetData auxiliaryD)
-          ( pverifyScriptSourcesStageOneRedeemerSemanticsV1
-              # pvalidationSemanticPreState datum # transition # auxiliary # door
-          )
-          ownOutRef txInfo
+    pdispatch @_ @PScriptSourcesStageOneRedeemerActionV1 policyId datum redeemer ownOutRef txInfo $
+      \action -> pmatch action $ \(PVerifyRedeemer inputIndex outputIndex transitionD carriageD) ->
+        plet (pfromData transitionD) $ \transition ->
+          plet (pcon $ PTransactionRedeemerItemBeginWitness carriageD) $ \auxiliary ->
+            pmatch txInfo $ \PTxInfo{ptxInfo'referenceInputs} ->
+              plet (pcon $ PMachineFieldDoorV1 (pfromData ptxInfo'referenceInputs) certificatePolicyId) $ \door ->
+                pcontinueScriptSources
+                  awardScriptHash
+                  policyId
+                  datum
+                  (pfromData inputIndex)
+                  (pfromData outputIndex)
+                  transition
+                  (pforgetData $ pdata auxiliary)
+                  ( pverifyBegin
+                      # pvalidationSemanticPreState datum
+                      # transition
+                      # pfromData carriageD
+                      # door
+                  )
+                  ownOutRef
+                  txInfo

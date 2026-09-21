@@ -285,7 +285,7 @@ applyMintRedeemer, availabilityMintRedeemer :: BuiltinData
 applyMintRedeemer =
   dataToBuiltinData (PD.Constr 1 [PD.I 0, PD.I 0, PD.I 1, PD.I 0, PD.I 1, PD.I 1])
 availabilityMintRedeemer =
-  dataToBuiltinData (PD.Constr 0 [PD.I 2, PD.I 0, PD.I 0, PD.I 1, PD.I 1, PD.I 0])
+  dataToBuiltinData (PD.Constr 0 [PD.I 0, PD.I 2, PD.I 0, PD.I 0, PD.I 1, PD.I 1, PD.I 0])
 
 tokenNameData :: TokenName -> PD.Data
 tokenNameData (TokenName bytes) = PD.B (fromBuiltin bytes)

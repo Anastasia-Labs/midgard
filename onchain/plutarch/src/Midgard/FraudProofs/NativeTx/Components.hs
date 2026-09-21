@@ -62,6 +62,7 @@ module Midgard.FraudProofs.NativeTx.Components (
   pencodeMidgardTxOutput,
   pdecodeMidgardTxOutputData,
   pdecodeMidgardTxOutputCbor,
+  pdecodeMidgardTxOutputNetworkIdCbor,
 
   -- * Witnesses
   pencodeMidgardAddressWitness,
@@ -124,7 +125,7 @@ type PAssetList = PBuiltinList (PBuiltinPair (PAsData PByteString) (PAsData PInt
 much better with one — several of the shape checks below are "reject unless the
 byte is exactly this".
 -}
-(#!=) :: forall (s :: S) (a :: S -> Type). PEq a => Term s a -> Term s a -> Term s PBool
+(#!=) :: forall (s :: S) (a :: S -> Type). (PEq a) => Term s a -> Term s a -> Term s PBool
 x #!= y = pnot # (x #== y)
 
 infix 4 #!=
@@ -167,12 +168,14 @@ pdropAssets = phoistAcyclic $
 -- | Aiken @components.expect_output_index@ — a @uint16@.
 pexpectOutputIndex :: forall (s :: S). Term s (PInteger :--> PInteger)
 pexpectOutputIndex = phoistAcyclic $
-  plam $ \index -> pif (0 #<= index #&& index #<= 65535) index perror
+  plam $
+    \index -> pif (0 #<= index #&& index #<= 65535) index perror
 
 -- | Aiken @components.expect_asset_name@ — at most 32 bytes.
 pexpectAssetName :: forall (s :: S). Term s (PByteString :--> PByteString)
 pexpectAssetName = phoistAcyclic $
-  plam $ \assetName -> pif (plengthBS # assetName #<= 32) assetName perror
+  plam $
+    \assetName -> pif (plengthBS # assetName #<= 32) assetName perror
 
 {- | Aiken @components.encode_fixed_output_index@.
 
@@ -427,12 +430,14 @@ pinned its width — checking it again would be dead weight on every asset.
 passetUnitFromDecodedPolicyAsset ::
   forall (s :: S). Term s (PByteString :--> PByteString :--> PByteString)
 passetUnitFromDecodedPolicyAsset = phoistAcyclic $
-  plam $ \policyId assetName -> policyId <> (pexpectAssetName # assetName)
+  plam $
+    \policyId assetName -> policyId <> (pexpectAssetName # assetName)
 
 -- | Aiken @components.asset_unit_policy_id@.
 passetUnitPolicyId :: forall (s :: S). Term s (PByteString :--> PByteString)
 passetUnitPolicyId = phoistAcyclic $
-  plam $ \unit -> psliceLen # (pexpectAssetUnit # unit) # 0 # 28
+  plam $
+    \unit -> psliceLen # (pexpectAssetUnit # unit) # 0 # 28
 
 -- | Aiken @components.asset_unit_name@.
 passetUnitName :: forall (s :: S). Term s (PByteString :--> PByteString)
@@ -791,7 +796,9 @@ pencodeMidgardVersionedScript ::
 pencodeMidgardVersionedScript = phoistAcyclic $
   plam $ \script -> P.do
     PMidgardVersionedScript
-      {pversionedScript'language, pversionedScript'scriptBytes} <-
+      { pversionedScript'language
+      , pversionedScript'scriptBytes
+      } <-
       pmatch script
     pconstant "\x82"
       <> pcborInt (pmidgardScriptLanguageToTag # pfromData pversionedScript'language)
@@ -838,7 +845,11 @@ pencodeMidgardTxOutput ::
 pencodeMidgardTxOutput = phoistAcyclic $
   plam $ \output -> P.do
     PMidgardTxOutput
-      {ptxOutput'address, ptxOutput'value, ptxOutput'datumCbor, ptxOutput'scriptRef} <-
+      { ptxOutput'address
+      , ptxOutput'value
+      , ptxOutput'datumCbor
+      , ptxOutput'scriptRef
+      } <-
       pmatch output
     required <-
       plet
@@ -1022,7 +1033,9 @@ pencodeMidgardAddressWitness ::
 pencodeMidgardAddressWitness = phoistAcyclic $
   plam $ \witness -> P.do
     PMidgardAddressWitness
-      {paddressWitness'verificationKey, paddressWitness'signature} <-
+      { paddressWitness'verificationKey
+      , paddressWitness'signature
+      } <-
       pmatch witness
     verificationKey <- plet (pfromData paddressWitness'verificationKey)
     signature <- plet (pfromData paddressWitness'signature)
@@ -1262,3 +1275,13 @@ pmkRedeemerWitness purpose index redeemerCbor memory steps =
               )
         }
     )
+
+{- | Read the canonical address prefix; later output entries belong to a
+separate canonicality fault and are intentionally not traversed here.
+-}
+pdecodeMidgardTxOutputNetworkIdCbor :: forall s. Term s (PByteString :--> PInteger)
+pdecodeMidgardTxOutputNetworkIdCbor = phoistAcyclic $ plam $ \output -> P.do
+  tag <- plet $ pbyteAt # output # 0
+  pif (tag #< 162 #|| tag #> 164) perror $ P.do
+    PPair _ address <- pmatch $ pdecodeMidgardAddressAt # output # (pexpectByte # output # 1 # 0)
+    pmatch address $ \PMidgardAddress {paddress'networkId} -> pfromData paddress'networkId

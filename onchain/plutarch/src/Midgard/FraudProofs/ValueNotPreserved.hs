@@ -67,11 +67,13 @@ data PClaimedImbalanceDirectionV1 (s :: S)
     deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
     deriving (PlutusType) via (DeriveAsDataStruct PClaimedImbalanceDirectionV1)
 
-data PStep01Args (s :: S) = PStep01Args
-    { pstep01Args'txInclusion :: Term s (PAsData PNativeTxInclusionArgs)
-    , pstep01Args'claimedAsset :: Term s (PAsData PClaimedAssetV1)
-    , pstep01Args'claimedDirection :: Term s (PAsData PClaimedImbalanceDirectionV1)
-    }
+data PStep01Args (s :: S)
+    = PStep01Args
+        { pstep01Args'txInclusion :: Term s (PAsData PNativeTxInclusionArgs)
+        , pstep01Args'claimedAsset :: Term s (PAsData PClaimedAssetV1)
+        , pstep01Args'claimedDirection :: Term s (PAsData PClaimedImbalanceDirectionV1)
+        }
+    | PLaunchUnion (Term s (PAsData PInteger)) (Term s (PAsData PInteger)) (Term s PData)
     deriving stock (Generic)
     deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
     deriving (PlutusType) via (DeriveAsDataStruct PStep01Args)

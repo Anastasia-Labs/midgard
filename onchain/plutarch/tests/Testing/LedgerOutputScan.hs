@@ -14,7 +14,11 @@ import Testing.Eval (passertEvalNoTrace)
 
 tests :: TestTree
 tests = testGroup "Midgard.LedgerOutputScan"
-  [ testCase "scans_required_fields_without_revealing_the_complete_output" $ passertEvalNoTrace scansRequiredFields
+  [ testCase "initial control matches target literal" $ passertEvalNoTrace $ pencodeControlV1 # pinitialControlV1 #== pinitialControlCborV1
+  , testCase "narrow stage groups match the generic scanner" $ passertEvalNoTrace narrowStages
+  , testCase "narrow groups refuse the wrong initial stage" $ passertEvalNoTrace $ pstepAssets # pinitialControlV1 # byteLength multiAssetOutput # multiAssetOutput # 0 #== pcon PNothing #&& pstepOptional # pinitialControlV1 # byteLength multiAssetOutput # multiAssetOutput # 0 #== pcon PNothing
+  , testCase "narrow headers reject invalid windows and totals" $ passertEvalNoTrace $ pstepHeaders # pinitialControlV1 # 1 # multiAssetOutput # 0 #== pcon PNothing #&& pstepHeaders # pinitialControlV1 # byteLength multiAssetOutput # multiAssetOutput # (-1) #== pcon PNothing
+  , testCase "scans_required_fields_without_revealing_the_complete_output" $ passertEvalNoTrace scansRequiredFields
   , testCase "derives_the_exact_cardano_value_size_for_multi_asset_output" $ passertEvalNoTrace derivesValueSize
   , testCase "advances_a_large_datum_only_to_authenticated_chunk_boundaries" $ passertEvalNoTrace advancesLargeDatum
   , testCase "rejects_trailing_bytes_at_the_terminal_edge" $ passertEvalNoTrace rejectsTrailingBytes
@@ -132,3 +136,20 @@ terminalControlCbor = bytes "970107192bf10402581d7811111111111111111111111111111
 
 bytes :: forall s. BS.ByteString -> Term s PByteString
 bytes = pconstant . Base16.decodeLenient
+
+
+narrowStages :: forall s. Term s PBool
+narrowStages =
+  plet (byteLength multiAssetOutput) $ \total ->
+    plet (expectJust $ pstepV1 # pinitialControlV1 # total # multiAssetOutput # 0) $ \value ->
+      plet (expectJust $ pstepV1 # value # total # multiAssetOutput # cursor value) $ \policy ->
+        plet (expectJust $ pstepV1 # policy # total # multiAssetOutput # cursor policy) $ \asset ->
+          plet (expectJust $ pstepV1 # asset # total # multiAssetOutput # cursor asset) $ \nextAsset ->
+            plet (expectJust $ pstepV1 # nextAsset # total # multiAssetOutput # cursor nextAsset) $ \optional ->
+              (pstepHeaders # pinitialControlV1 # total # multiAssetOutput # 0 #== pcon (PJust value))
+                #&& (pstepHeaders # value # total # multiAssetOutput # cursor value #== pcon (PJust policy))
+                #&& (pstepAssets # policy # total # multiAssetOutput # cursor policy #== pcon (PJust asset))
+                #&& (pstepAssets # asset # total # multiAssetOutput # cursor asset #== pcon (PJust nextAsset))
+                #&& (pstepAssets # nextAsset # total # multiAssetOutput # cursor nextAsset #== pcon (PJust optional))
+                #&& (pstepHeaders # policy # total # multiAssetOutput # cursor policy #== pcon PNothing)
+                #&& (pstepOptional # optional # total # multiAssetOutput # cursor optional #== pstepV1 # optional # total # multiAssetOutput # cursor optional)

@@ -16,6 +16,8 @@ module Testing.DepositValidator (tests, nonceFor, witnessScriptHash) where
 import Numeric (showHex)
 
 import Data.ByteString qualified as BS
+import Data.ByteString.Base16 qualified as Base16
+import Data.ByteString.Char8 qualified as BS8
 import PlutusCore.Data qualified as PD
 import PlutusLedgerApi.V1.Address (scriptHashAddress)
 import PlutusLedgerApi.V1.Interval (Extended (..), Interval (..), LowerBound (..), UpperBound (..))
@@ -31,7 +33,6 @@ import PlutusLedgerApi.V3 (
   ScriptInfo (MintingScript, SpendingScript),
   ScriptPurpose (Certifying, Minting, Rewarding),
   TxCert (TxCertRegStaking, TxCertUnRegStaking),
-  Credential (ScriptCredential),
   TxId (..),
   TxInInfo (..),
   TxOut (..),
@@ -47,8 +48,6 @@ import PlutusLedgerApi.V3 (
  )
 import PlutusLedgerApi.V3.MintValue (MintValue (UnsafeMintValue))
 import PlutusTx.AssocMap qualified as Map
-import Data.ByteString.Base16 qualified as Base16
-import Data.ByteString.Char8 qualified as BS8
 import PlutusTx.Builtins (
   BuiltinByteString,
   BuiltinData,
@@ -77,53 +76,73 @@ tests =
     [ testGroup
         "mint (mirrors the Aiken test blocks)"
         [ testCase "deposit_mint_accepts_exactly_ten_non_nft_assets_across_ada_and_multiple_policies" $
-            psucceeds $ runMint (validTo + eventWaitDuration) False
+            psucceeds $
+              runMint (validTo + eventWaitDuration) False
         , testCase "deposit_mint_rejects_eleven_non_nft_assets_across_ada_and_multiple_policies" $
-            pfails $ runMint (validTo + eventWaitDuration) True
+            pfails $
+              runMint (validTo + eventWaitDuration) True
         , testCase "deposit_mint_rejects_inclusion_time_minus_one" $
-            pfails $ runMint (validTo + eventWaitDuration - 1) False
+            pfails $
+              runMint (validTo + eventWaitDuration - 1) False
         , testCase "deposit_mint_rejects_inclusion_time_plus_one" $
-            pfails $ runMint (validTo + eventWaitDuration + 1) False
+            pfails $
+              runMint (validTo + eventWaitDuration + 1) False
         ]
     , testGroup
         "mint (additional)"
         [ testCase "rejects a nonce that is not the spent output reference" $
-            pfails $ runMintWith defaults {dNonce = Just (TokenName "deadbeef")}
+            pfails $
+              runMintWith defaults{dNonce = Just (TokenName "deadbeef")}
         , testCase "rejects an event id naming a different output reference" $
-            pfails $ runMintWith defaults {dEventId = Just (outRefN 7)}
+            pfails $
+              runMintWith defaults{dEventId = Just (outRefN 7)}
         , testCase "rejects a witness the datum records incorrectly" $
-            pfails $ runMintWith defaults {dDatumWitness = Just (ScriptHash "00")}
+            pfails $
+              runMintWith defaults{dDatumWitness = Just (ScriptHash "00")}
         , testCase "rejects an unregistered witness certificate" $
-            pfails $ runMintWith defaults {dRegister = False}
+            pfails $
+              runMintWith defaults{dRegister = False}
         , testCase "rejects a witness redeemer naming another policy" $
-            pfails $ runMintWith defaults {dWitnessTargetPolicy = Just auxiliaryPolicy}
+            pfails $
+              runMintWith defaults{dWitnessTargetPolicy = Just auxiliaryPolicy}
         , testCase "rejects an output at an address other than the deposit's" $
-            pfails $ runMintWith defaults {dOutputAddressPolicy = Just auxiliaryPolicy}
+            pfails $
+              runMintWith defaults{dOutputAddressPolicy = Just auxiliaryPolicy}
         , testCase "rejects a deposit UTxO carrying a reference script" $
-            pfails $ runMintWith defaults {dReferenceScript = True}
+            pfails $
+              runMintWith defaults{dReferenceScript = True}
         , testCase "rejects a mint quantity other than one" $
-            pfails $ runMintWith defaults {dMintQty = 2}
+            pfails $
+              runMintWith defaults{dMintQty = 2}
         ]
     , testGroup
         "spend"
         [ testCase "moves the funds to the reserve once settled" $
-            psucceeds $ runSpendWith spendDefaults
+            psucceeds $
+              runSpendWith spendDefaults
         , -- The whole point of the branch: funds may only leave after the L2
           -- ledger has accounted for them.
           testCase "rejects a deposit the settlement root does not contain" $
-            pfails $ runSpendWith spendDefaults {sWitnessKey = Just "not-this-deposit"}
+            pfails $
+              runSpendWith spendDefaults{sWitnessKey = Just "not-this-deposit"}
         , testCase "rejects a settlement root the proof does not reconstruct" $
-            pfails $ runSpendWith spendDefaults {sSettlementRoot = Just (BS.replicate 32 0xbb)}
+            pfails $
+              runSpendWith spendDefaults{sSettlementRoot = Just (BS.replicate 32 0xbb)}
         , testCase "rejects an output going anywhere but the reserve" $
-            pfails $ runSpendWith spendDefaults {sOutputToReserve = False}
+            pfails $
+              runSpendWith spendDefaults{sOutputToReserve = False}
         , testCase "rejects an output that keeps the deposit NFT" $
-            pfails $ runSpendWith spendDefaults {sBurnNft = False}
+            pfails $
+              runSpendWith spendDefaults{sBurnNft = False}
         , testCase "rejects an output carrying a datum" $
-            pfails $ runSpendWith spendDefaults {sOutputDatum = True}
+            pfails $
+              runSpendWith spendDefaults{sOutputDatum = True}
         , testCase "rejects an output carrying a reference script" $
-            pfails $ runSpendWith spendDefaults {sOutputRefScript = True}
+            pfails $
+              runSpendWith spendDefaults{sOutputRefScript = True}
         , testCase "rejects a mint redeemer that is not a burn" $
-            pfails $ runSpendWith spendDefaults {sBurnRedeemer = False}
+            pfails $
+              runSpendWith spendDefaults{sBurnRedeemer = False}
         ]
     ]
 
@@ -140,8 +159,8 @@ auxiliaryPolicy = repeatedByte 0x55
 
 repeatedByte :: Int -> CurrencySymbol
 repeatedByte b = currencySymbolFromHex (concat (replicate 28 h))
-  where
-    h = let x = showHex b "" in if length x == 1 then '0' : x else x
+ where
+  h = let x = showHex b "" in if length x == 1 then '0' : x else x
 
 nonceRef :: TxOutRef
 nonceRef =
@@ -183,8 +202,8 @@ witnessScriptHash (TokenName tn) =
     ( blake2b_224
         (toBuiltin (BS.singleton (fromIntegral plutusVersion)) <> witnessPrefix <> tn <> postfix)
     )
-  where
-    postfix = toBuiltin (BS.pack [0x00, 0x01])
+ where
+  postfix = toBuiltin (BS.pack [0x00, 0x01])
 
 {- | @env.user_events_witness_script_prefix@, 707 bytes.
 
@@ -215,7 +234,6 @@ witnessPrefix =
       , "b30010028a5eb8233001003980a0014cdc0240020028019012201e375a602000a601e6020008"
       , "8b200e180400098021baa0088a4d1365640084c1225820"
       ]
-
 
 --------------------------------------------------------------------------------
 -- Transaction assembly
@@ -252,89 +270,89 @@ defaults =
 
 runMint :: forall s. Integer -> Bool -> Term s PUnit
 runMint inclusionTime eleventh =
-  runMintWith defaults {dInclusionTime = inclusionTime, dEleventhAsset = eleventh}
+  runMintWith defaults{dInclusionTime = inclusionTime, dEleventhAsset = eleventh}
 
 runMintWith :: forall s. Deposit -> Term s PUnit
 runMintWith d =
   depositMintValidator
     # pdata (pconstant (ScriptHash (unCurrencySymbol hubOraclePolicy)))
     # pconstant ctx
-  where
-    usedNonce = maybe nonce id (dNonce d)
-    witnessHash = witnessScriptHash usedNonce
-    eventId = maybe nonceRef id (dEventId d)
-    datumWitness = maybe witnessHash id (dDatumWitness d)
-    outAddrPolicy = maybe depositPolicy id (dOutputAddressPolicy d)
-    witnessTarget = maybe depositPolicy id (dWitnessTargetPolicy d)
+ where
+  usedNonce = maybe nonce id (dNonce d)
+  witnessHash = witnessScriptHash usedNonce
+  eventId = maybe nonceRef id (dEventId d)
+  datumWitness = maybe witnessHash id (dDatumWitness d)
+  outAddrPolicy = maybe depositPolicy id (dOutputAddressPolicy d)
+  witnessTarget = maybe depositPolicy id (dWitnessTargetPolicy d)
 
-    depositValue =
-      foldr
-        (\(p, n) v -> v <> singleton p (TokenName n) 1)
-        (mkAdaValue 3_000_000)
-        ( [(assetPolicyA, n) | n <- ["\x01", "\x02", "\x03", "\x04", "\x05"]]
-            <> [(assetPolicyB, n) | n <- ["\x11", "\x12", "\x13", "\x14"]]
-            <> [(assetPolicyB, "\x15") | dEleventhAsset d]
-        )
-        <> singleton depositPolicy usedNonce 1
+  depositValue =
+    foldr
+      (\(p, n) v -> v <> singleton p (TokenName n) 1)
+      (mkAdaValue 3_000_000)
+      ( [(assetPolicyA, n) | n <- ["\x01", "\x02", "\x03", "\x04", "\x05"]]
+          <> [(assetPolicyB, n) | n <- ["\x11", "\x12", "\x13", "\x14"]]
+          <> [(assetPolicyB, "\x15") | dEleventhAsset d]
+      )
+      <> singleton depositPolicy usedNonce 1
 
-    depositDatum =
-      dataToBuiltinData $
-        PD.Constr
-          0
-          [ PD.Constr -- DepositEvent { id, info }
-              0
-              [ builtinDataToData (toBuiltinData eventId)
-              , PD.Constr 0 [addrData auxiliaryPolicy, PD.I 0, PD.Constr 1 []]
-              ]
-          , PD.I (dInclusionTime d)
-          , PD.B (fromBuiltin (unScriptHash datumWitness))
+  depositDatum =
+    dataToBuiltinData $
+      PD.Constr
+        0
+        [ PD.Constr -- DepositEvent { id, info }
+            0
+            [ builtinDataToData (toBuiltinData eventId)
+            , PD.Constr 0 [addrData auxiliaryPolicy, PD.I 0, PD.Constr 1 []]
+            ]
+        , PD.I (dInclusionTime d)
+        , PD.B (fromBuiltin (unScriptHash datumWitness))
+        ]
+   where
+    unScriptHash (ScriptHash b) = b
+
+  witnessCert =
+    (if dRegister d then TxCertRegStaking else TxCertUnRegStaking)
+      (ScriptCredential witnessHash)
+      Nothing
+
+  -- @witness.MintOrBurn { target_policy }@ — constructor 0.
+  witnessRedeemer =
+    dataToBuiltinData
+      (PD.Constr 0 [PD.B (fromBuiltin (unCurrencySymbol witnessTarget))])
+
+  -- @user_events.AuthenticateEvent@ — constructor 0.
+  mintRedeemer = dataToBuiltinData (PD.Constr 0 [PD.I 0, PD.I 0, PD.I 0, PD.I 0])
+
+  base = buildScriptContext mempty
+  txInfo =
+    (scriptContextTxInfo base)
+      { txInfoInputs =
+          [ TxInInfo
+              nonceRef
+              ( TxOut
+                  (scriptHashAddress (ScriptHash (unCurrencySymbol auxiliaryPolicy)))
+                  (mkAdaValue 2_000_000)
+                  NoOutputDatum
+                  Nothing
+              )
           ]
-      where
-        unScriptHash (ScriptHash b) = b
-
-    witnessCert =
-      (if dRegister d then TxCertRegStaking else TxCertUnRegStaking)
-        (ScriptCredential witnessHash)
-        Nothing
-
-    -- @witness.MintOrBurn { target_policy }@ — constructor 0.
-    witnessRedeemer =
-      dataToBuiltinData
-        (PD.Constr 0 [PD.B (fromBuiltin (unCurrencySymbol witnessTarget))])
-
-    -- @user_events.AuthenticateEvent@ — constructor 0.
-    mintRedeemer = dataToBuiltinData (PD.Constr 0 [PD.I 0, PD.I 0, PD.I 0, PD.I 0])
-
-    base = buildScriptContext mempty
-    txInfo =
-      (scriptContextTxInfo base)
-        { txInfoInputs =
-            [ TxInInfo
-                nonceRef
-                ( TxOut
-                    (scriptHashAddress (ScriptHash (unCurrencySymbol auxiliaryPolicy)))
-                    (mkAdaValue 2_000_000)
-                    NoOutputDatum
-                    Nothing
-                )
-            ]
-        , txInfoReferenceInputs = [hubRefIn]
-        , txInfoOutputs =
-            [ TxOut
-                (scriptHashAddress (ScriptHash (unCurrencySymbol outAddrPolicy)))
-                depositValue
-                (OutputDatum (Datum depositDatum))
-                (if dReferenceScript d then Just (ScriptHash "ab") else Nothing)
-            ]
-        , txInfoMint = toMint (singleton depositPolicy usedNonce (dMintQty d))
-        , txInfoValidRange =
-            Interval
-              (LowerBound (Finite (POSIXTime 1_000)) True)
-              (UpperBound (Finite (POSIXTime validTo)) True)
-        , txInfoRedeemers =
-            Map.unsafeFromList [(Certifying 0 witnessCert, Redeemer witnessRedeemer)]
-        }
-    ctx = ScriptContext txInfo (Redeemer mintRedeemer) (MintingScript depositPolicy)
+      , txInfoReferenceInputs = [hubRefIn]
+      , txInfoOutputs =
+          [ TxOut
+              (scriptHashAddress (ScriptHash (unCurrencySymbol outAddrPolicy)))
+              depositValue
+              (OutputDatum (Datum depositDatum))
+              (if dReferenceScript d then Just (ScriptHash "ab") else Nothing)
+          ]
+      , txInfoMint = toMint (singleton depositPolicy usedNonce (dMintQty d))
+      , txInfoValidRange =
+          Interval
+            (LowerBound (Finite (POSIXTime 1_000)) True)
+            (UpperBound (Finite (POSIXTime validTo)) True)
+      , txInfoRedeemers =
+          Map.unsafeFromList [(Certifying 0 witnessCert, Redeemer witnessRedeemer)]
+      }
+  ctx = ScriptContext txInfo (Redeemer mintRedeemer) (MintingScript depositPolicy)
 
 toMint :: Value -> MintValue
 toMint = UnsafeMintValue . getValue
@@ -373,8 +391,8 @@ hubDatum =
           <> replicate 5 (addrData auxiliaryPolicy)
           <> [auxPolicyData]
       )
-  where
-    auxPolicyData = PD.B (fromBuiltin (unCurrencySymbol auxiliaryPolicy))
+ where
+  auxPolicyData = PD.B (fromBuiltin (unCurrencySymbol auxiliaryPolicy))
 
 --------------------------------------------------------------------------------
 -- Spend fixtures
@@ -394,7 +412,7 @@ emptyMerkleRoot =
 
 phasValidatorHash :: BS.ByteString
 phasValidatorHash =
-  either (error "bad hex") id (Base16.decode (BS8.pack "1fc59ff54da02f2535d64b40b647a8826c8b3d914d7ba5257f5b2721"))
+  either (error "bad hex") id (Base16.decode (BS8.pack "819adf9eaaed4aa11f717414e99c80b45d416481824321c3474bcb5e"))
 
 {- | @commit_counted_root@ for the deposits domain (tag 3), recomputed here.
 
@@ -459,131 +477,131 @@ runSpendWith sp =
   depositSpendValidator
     # pdata (pconstant (ScriptHash (unCurrencySymbol hubOraclePolicy)))
     # pconstant ctx
-  where
-    depositUtxoValue = mkAdaValue 3_000_000 <> singleton depositPolicy nonce 1
-    outputValue =
-      if sBurnNft sp
-        then mkAdaValue 3_000_000
-        else mkAdaValue 3_000_000 <> singleton depositPolicy nonce 1
+ where
+  depositUtxoValue = mkAdaValue 3_000_000 <> singleton depositPolicy nonce 1
+  outputValue =
+    if sBurnNft sp
+      then mkAdaValue 3_000_000
+      else mkAdaValue 3_000_000 <> singleton depositPolicy nonce 1
 
-    depositDatum =
-      dataToBuiltinData $
-        PD.Constr
-          0
-          [PD.Constr 0 [spentEventId, spentEventInfo], PD.I 0, PD.B "witness"]
-
-    depositIn =
-      TxInInfo
-        (outRefN 0)
-        ( TxOut
-            (scriptHashAddress (ScriptHash (unCurrencySymbol depositPolicy)))
-            depositUtxoValue
-            (OutputDatum (Datum depositDatum))
-            Nothing
-        )
-
-    settlementRoot = maybe depositsCountedRoot id (sSettlementRoot sp)
-
-    settlementDatum =
-      dataToBuiltinData $
-        PD.Constr
-          0
-          [ PD.B settlementRoot -- deposits_root
-          , PD.B emptyMerkleRoot
-          , PD.B emptyMerkleRoot
-          , PD.B emptyMerkleRoot
-          , PD.Constr 1 [] -- no resolution claim
-          ]
-
-    settlementRefIn =
-      TxInInfo
-        (outRefN 8)
-        ( TxOut
-            (scriptHashAddress (ScriptHash (unCurrencySymbol settlementPolicy)))
-            (mkAdaValue 2_000_000 <> singleton settlementPolicy (TokenName "s") 1)
-            (OutputDatum (Datum settlementDatum))
-            Nothing
-        )
-
-    witnessKey = maybe (serialisedOf spentEventId) id (sWitnessKey sp)
-    witnessValue = serialisedOf spentEventInfo
-
-    -- @RootMembershipProof@; the phas withdrawal must echo its arguments.
-    membershipProof =
+  depositDatum =
+    dataToBuiltinData $
       PD.Constr
         0
-        [ PD.Constr 3 [] -- DepositsRootDomain
-        , PD.B settlementRoot
-        , PD.B phasRoot
-        , PD.I depositCount
-        , PD.B witnessKey
+        [PD.Constr 0 [spentEventId, spentEventInfo], PD.I 0, PD.B "witness"]
+
+  depositIn =
+    TxInInfo
+      (outRefN 0)
+      ( TxOut
+          (scriptHashAddress (ScriptHash (unCurrencySymbol depositPolicy)))
+          depositUtxoValue
+          (OutputDatum (Datum depositDatum))
+          Nothing
+      )
+
+  settlementRoot = maybe depositsCountedRoot id (sSettlementRoot sp)
+
+  settlementDatum =
+    dataToBuiltinData $
+      PD.Constr
+        0
+        [ PD.B settlementRoot -- deposits_root
+        , PD.B emptyMerkleRoot
+        , PD.B emptyMerkleRoot
+        , PD.B emptyMerkleRoot
+        , PD.Constr 1 [] -- no resolution claim
+        ]
+
+  settlementRefIn =
+    TxInInfo
+      (outRefN 8)
+      ( TxOut
+          (scriptHashAddress (ScriptHash (unCurrencySymbol settlementPolicy)))
+          (mkAdaValue 2_000_000 <> singleton settlementPolicy (TokenName "s") 1)
+          (OutputDatum (Datum settlementDatum))
+          Nothing
+      )
+
+  witnessKey = maybe (serialisedOf spentEventId) id (sWitnessKey sp)
+  witnessValue = serialisedOf spentEventInfo
+
+  -- @RootMembershipProof@; the phas withdrawal must echo its arguments.
+  membershipProof =
+    PD.Constr
+      0
+      [ PD.Constr 3 [] -- DepositsRootDomain
+      , PD.B settlementRoot
+      , PD.B phasRoot
+      , PD.I depositCount
+      , PD.B witnessKey
+      , PD.B witnessValue
+      , PD.List [PD.B "step"]
+      ]
+
+  phasRedeemer =
+    dataToBuiltinData $
+      PD.List
+        [ PD.B phasRoot
+        , PD.B (serialisedOf spentEventId)
         , PD.B witnessValue
         , PD.List [PD.B "step"]
         ]
 
-    phasRedeemer =
-      dataToBuiltinData $
-        PD.List
-          [ PD.B phasRoot
-          , PD.B (serialisedOf spentEventId)
-          , PD.B witnessValue
-          , PD.List [PD.B "step"]
+  burnRedeemer =
+    if sBurnRedeemer sp
+      then -- @BurnEventNFT { nonce_asset_name, .. }@ — constructor 1.
+        dataToBuiltinData (PD.Constr 1 [PD.B (unTokenName nonce), PD.I 0])
+      else dataToBuiltinData (PD.Constr 0 [PD.I 0, PD.I 0, PD.I 0, PD.I 0])
+   where
+    unTokenName (TokenName b) = fromBuiltin b
+
+  spendRedeemer =
+    dataToBuiltinData $
+      PD.Constr
+        0
+        [ PD.I 0 -- input_index
+        , PD.I 0 -- output_index
+        , PD.I 0 -- hub_ref_input_index
+        , PD.I 1 -- settlement_ref_input_index
+        , PD.I 0 -- mint_redeemer_index
+        , membershipProof
+        , PD.I 1
+        ]
+
+  base = buildScriptContext mempty
+  txInfo =
+    (scriptContextTxInfo base)
+      { txInfoInputs = [depositIn]
+      , txInfoReferenceInputs = [hubSpendRefIn, settlementRefIn]
+      , txInfoOutputs =
+          [ TxOut
+              ( scriptHashAddress
+                  ( ScriptHash
+                      ( unCurrencySymbol
+                          (if sOutputToReserve sp then reservePolicy else auxiliaryPolicy)
+                      )
+                  )
+              )
+              outputValue
+              (if sOutputDatum sp then OutputDatum (Datum (dataToBuiltinData (PD.I 1))) else NoOutputDatum)
+              (if sOutputRefScript sp then Just (ScriptHash "ab") else Nothing)
           ]
-
-    burnRedeemer =
-      if sBurnRedeemer sp
-        then -- @BurnEventNFT { nonce_asset_name, .. }@ — constructor 1.
-          dataToBuiltinData (PD.Constr 1 [PD.B (unTokenName nonce), PD.I 0])
-        else dataToBuiltinData (PD.Constr 0 [PD.I 0, PD.I 0, PD.I 0, PD.I 0])
-      where
-        unTokenName (TokenName b) = fromBuiltin b
-
-    spendRedeemer =
-      dataToBuiltinData $
-        PD.Constr
-          0
-          [ PD.I 0 -- input_index
-          , PD.I 0 -- output_index
-          , PD.I 0 -- hub_ref_input_index
-          , PD.I 1 -- settlement_ref_input_index
-          , PD.I 0 -- mint_redeemer_index
-          , membershipProof
-          , PD.I 1
-          ]
-
-    base = buildScriptContext mempty
-    txInfo =
-      (scriptContextTxInfo base)
-        { txInfoInputs = [depositIn]
-        , txInfoReferenceInputs = [hubSpendRefIn, settlementRefIn]
-        , txInfoOutputs =
-            [ TxOut
-                ( scriptHashAddress
-                    ( ScriptHash
-                        ( unCurrencySymbol
-                            (if sOutputToReserve sp then reservePolicy else auxiliaryPolicy)
-                        )
-                    )
-                )
-                outputValue
-                (if sOutputDatum sp then OutputDatum (Datum (dataToBuiltinData (PD.I 1))) else NoOutputDatum)
-                (if sOutputRefScript sp then Just (ScriptHash "ab") else Nothing)
+      , txInfoMint = toMint (singleton depositPolicy nonce (-1))
+      , txInfoRedeemers =
+          Map.unsafeFromList
+            [ (Minting depositPolicy, Redeemer burnRedeemer)
+            ,
+              ( Rewarding (ScriptCredential (ScriptHash (toBuiltin phasValidatorHash)))
+              , Redeemer phasRedeemer
+              )
             ]
-        , txInfoMint = toMint (singleton depositPolicy nonce (-1))
-        , txInfoRedeemers =
-            Map.unsafeFromList
-              [ (Minting depositPolicy, Redeemer burnRedeemer)
-              ,
-                ( Rewarding (ScriptCredential (ScriptHash (toBuiltin phasValidatorHash)))
-                , Redeemer phasRedeemer
-                )
-              ]
-        }
-    ctx =
-      ScriptContext
-        txInfo
-        (Redeemer spendRedeemer)
-        (SpendingScript (outRefN 0) (Just (Datum depositDatum)))
+      }
+  ctx =
+    ScriptContext
+      txInfo
+      (Redeemer spendRedeemer)
+      (SpendingScript (outRefN 0) (Just (Datum depositDatum)))
 
 {- | The hub oracle as the spend path reads it: @deposit@ (0), @settlement@ (10)
 and @reserve_addr@ (address 11) all matter here.
@@ -616,5 +634,5 @@ spendHubDatum =
           <> [addrData auxiliaryPolicy]
           <> [auxPolicyData]
       )
-  where
-    auxPolicyData = PD.B (fromBuiltin (unCurrencySymbol auxiliaryPolicy))
+ where
+  auxPolicyData = PD.B (fromBuiltin (unCurrencySymbol auxiliaryPolicy))

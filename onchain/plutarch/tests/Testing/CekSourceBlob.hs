@@ -46,6 +46,7 @@ import Test.Tasty.HUnit
 import Plutarch.LedgerApi.Utils (PMaybeData (..))
 import Plutarch.Prelude
 
+import Aiken.Cbor (pdeserialise)
 import Midgard.Blake2b256Trace qualified as Trace
 import Midgard.CekBlobFrontier (
   PCekBlobFrontierV1 (..),
@@ -58,11 +59,14 @@ import Midgard.CekSourceBlob (
   PCekSourceBlobControlV1 (..),
   PCekSourceBlobSpanV1 (..),
   pcontrolIsWellFormed,
+  pcontrolData,
+  pcontrolFromDataV1,
   pdecodeControlV1,
   pencodeControlV1,
   pfinalizeV1,
   pinitialControlV1,
   pnextSourceSpanV1,
+  pprevalidatedNextSourceSpan,
   pstepV1,
  )
 import Testing.BoundedItem (blake2b256)
@@ -327,7 +331,13 @@ encodingTests =
 
 roundTrips ::
   forall (s :: S). (forall (s' :: S). Term s' PCekSourceBlobControlV1) -> Term s PBool
-roundTrips control = (pdecodeControlV1 #$ pencodeControlV1 # control) #== control
+roundTrips control =
+  plet (pcontrolData # control) $ \wireData ->
+    (pcontrolFromDataV1 # wireData #== control)
+      #&& (pdecodeControlV1 #$ pencodeControlV1 # control) #== control
+      #&& pmatch (pdeserialise # (pencodeControlV1 # control)) (\case
+        PNothing -> pconstant False
+        PJust decoded -> wireData #== decoded)
 
 psuffixIs :: forall (s :: S). Term s PByteString -> BS.ByteString -> Term s PBool
 psuffixIs bytes suffix =
@@ -420,7 +430,7 @@ spanIs ::
   forall (s :: S).
   Term s PCekSourceBlobControlV1 -> (Integer, Integer) -> Term s PBool
 spanIs control (start, len) =
-  pmatch (pnextSourceSpanV1 # control) $ \case
+  pmatch (pprevalidatedNextSourceSpan # (pcontrolFromDataV1 # (pcontrolData # control))) $ \case
     PNothing -> pconstant @PBool False
     PJust span ->
       pmatch span $ \(PCekSourceBlobSpanV1 gotStart gotLength) ->

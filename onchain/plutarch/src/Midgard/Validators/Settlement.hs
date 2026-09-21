@@ -120,7 +120,7 @@ settlementMintValidator = plam $ \hubOracle ctx -> P.do
                   # hubOracle
                   # pfromData pspawn'hubRefInputIndex
             -- The state queue's merge redeemer, decoded positionally: tag 6 is
-            -- MergeToConfirmedStateV1 and it has exactly 18 fields.
+            -- MergeToConfirmedStateV1 and it has exactly 19 fields.
             mergeDecoded <-
               plet $
                 pasConstr
@@ -135,12 +135,12 @@ settlementMintValidator = plam $ \hubOracle ctx -> P.do
             fieldAt <- plet $ plam (\n -> pelemAt @PBuiltinList # n # mergeFields)
             pand'List
               [ (pmatch mergeDecoded $ \(PBuiltinPair pairFirst _) -> pairFirst) #== 6
-              , plength # mergeFields #== 18
+              , plength # mergeFields #== 19
               , -- The settlement's id is the merged block's header-hash key.
-                pasByteStr # (fieldAt # 0) #== pto (pfromData pspawn'settlementId)
+                pasByteStr # (fieldAt # 1) #== pto (pfromData pspawn'settlementId)
               , -- The optional settlement-redeemer index must be present; see
                 -- the module note on why absence would let an empty block pass.
-                plet (pasConstr #$ fieldAt # 3) $ \optionPair ->
+                plet (pasConstr #$ fieldAt # 4) $ \optionPair ->
                   pand'List
                     [ (pmatch optionPair $ \(PBuiltinPair pairFirst _) -> pairFirst) #== 0
                     , plength # (pmatch optionPair $ \(PBuiltinPair _ pairSecond) -> pairSecond) #== 1
@@ -160,11 +160,11 @@ settlementMintValidator = plam $ \hubOracle ctx -> P.do
                     ( pdata
                         ( pcon
                             ( PSettlementDatum
-                                { psettlement'depositsRoot = pdata (pasByteStr #$ fieldAt # 7)
-                                , psettlement'withdrawalsRoot = pdata (pasByteStr #$ fieldAt # 4)
+                                { psettlement'depositsRoot = pdata (pasByteStr #$ fieldAt # 8)
+                                , psettlement'withdrawalsRoot = pdata (pasByteStr #$ fieldAt # 5)
                                 , psettlement'forcedTransactionsRoot =
-                                    pdata (pasByteStr #$ fieldAt # 5)
-                                , psettlement'transactionsRoot = pdata (pasByteStr #$ fieldAt # 6)
+                                    pdata (pasByteStr #$ fieldAt # 6)
+                                , psettlement'transactionsRoot = pdata (pasByteStr #$ fieldAt # 7)
                                 , psettlement'resolutionClaim = pcon PDNothing
                                 }
                             )

@@ -36,6 +36,7 @@ module Midgard.ValidationMerkle (
   pappendLeaf,
   pbuildFrontier,
   pverifyMembership,
+  pverifyMembershipFromWellFormed,
 ) where
 
 import GHC.Generics (Generic)
@@ -132,7 +133,7 @@ pencodePeaks = phoistAcyclic $
     pelimList
       ( \peak rest ->
           pmatch (pfromData peak) $
-            \PFrontierPeak {pfrontierPeak'height, pfrontierPeak'hash} ->
+            \PFrontierPeak{pfrontierPeak'height, pfrontierPeak'hash} ->
               pconstant "\x82"
                 <> (pserialiseData # pforgetData pfrontierPeak'height)
                 <> (pencodeDefiniteBytes # pfromData pfrontierPeak'hash)
@@ -179,12 +180,16 @@ pexpectedPeaksAreWellFormed = phoistAcyclic $
           ( pelimList
               ( \peak rest ->
                   pmatch (pfromData peak) $
-                    \PFrontierPeak {pfrontierPeak'height, pfrontierPeak'hash} ->
+                    \PFrontierPeak{pfrontierPeak'height, pfrontierPeak'hash} ->
                       pfromData pfrontierPeak'height
                         #== height
-                        #&& plengthBS # pfromData pfrontierPeak'hash
+                        #&& plengthBS
+                        # pfromData pfrontierPeak'hash
                         #== 32
-                        #&& self # (pdiv # remainingCount # 2) # (height + 1) # rest
+                        #&& self
+                        # (pdiv # remainingCount # 2)
+                        # (height + 1)
+                        # rest
               )
               (pconstant False)
               peaks
@@ -208,7 +213,10 @@ pfrontierIsWellFormed = phoistAcyclic $
       #<= count
       #&& count
       #<= pmaximumLeafCount
-      #&& pexpectedPeaksAreWellFormed # count # 0 # peaks
+      #&& pexpectedPeaksAreWellFormed
+      # count
+      # 0
+      # peaks
 
 {- | Aiken @validation_merkle_v1.frontier_commitment@.
 
@@ -260,7 +268,7 @@ pappendCarry = phoistAcyclic $
       ( pelimList
           ( \left rest ->
               pmatch (pfromData left) $
-                \PFrontierPeak {pfrontierPeak'height, pfrontierPeak'hash} ->
+                \PFrontierPeak{pfrontierPeak'height, pfrontierPeak'hash} ->
                   pif
                     (pfromData pfrontierPeak'height #== height)
                     ( self
@@ -296,9 +304,12 @@ pappendLeaf = phoistAcyclic $
     pif
       ( count
           #< pmaximumLeafCount
-          #&& plengthBS # leafHash
+          #&& plengthBS
+          # leafHash
           #== 32
-          #&& pfrontierIsWellFormed # count # peaks
+          #&& pfrontierIsWellFormed
+          # count
+          # peaks
       )
       ( plet (pappendCarry # count # 0 # leafHash # peaks) $ \next ->
           pif (pfrontierIsWellFormed # (count + 1) # next) next perror
@@ -319,10 +330,11 @@ pappendAll = phoistAcyclic $
   pfix $ \self -> plam $ \leaves count peaks ->
     pelimList
       ( \leaf rest ->
-          self
-            # rest
-            # (count + 1)
-            # (pappendLeaf # count # peaks # pfromData leaf)
+          -- Only leaves are external: this fold carries its own valid peaks.
+          pif
+            (count #< pmaximumLeafCount #&& plengthBS # pfromData leaf #== 32)
+            (self # rest # (count + 1) # (pappendCarry # count # 0 # pfromData leaf # peaks))
+            perror
       )
       (pcon (PBuiltFrontier count peaks))
       leaves
@@ -332,7 +344,8 @@ pbuildFrontier ::
   forall (s :: S).
   Term s (PBuiltinList (PAsData PByteString) :--> PBuiltFrontier)
 pbuildFrontier = phoistAcyclic $
-  plam $ \leaves -> pappendAll # leaves # 0 # pemptyFrontier
+  plam $
+    \leaves -> pappendAll # leaves # 0 # pemptyFrontier
 
 {- | Aiken @validation_merkle_v1.power_of_two@.
 
@@ -401,7 +414,7 @@ ppeakHashAt = phoistAcyclic $
     pelimList
       ( \peak rest ->
           pmatch (pfromData peak) $
-            \PFrontierPeak {pfrontierPeak'height, pfrontierPeak'hash} ->
+            \PFrontierPeak{pfrontierPeak'height, pfrontierPeak'hash} ->
               pif
                 (pfromData pfrontierPeak'height #== expectedHeight)
                 (pfromData pfrontierPeak'hash)
@@ -415,6 +428,11 @@ ppeakHashAt = phoistAcyclic $
 Walks a leaf up to its peak. The low bit of the running index says which side
 the node is on, and therefore which order the pair hashes in — getting that
 backwards would let a proof for one position pass at its mirror.
+
+The caller has already checked the leaf width, this fold checks every sibling
+width, and each parent is a Blake2b-256 result. Hashing the branch directly
+therefore preserves 'phashBranch' rejection behavior without repeating both
+width checks at every level.
 -}
 pfoldMembershipPath ::
   forall (s :: S).
@@ -435,8 +453,8 @@ pfoldMembershipPath = phoistAcyclic $
               ( plet
                   ( pif
                       (pmod # localIndex # 2 #== 0)
-                      (phashBranch # current # sib)
-                      (phashBranch # sib # current)
+                      (pblake2b_256 # (pbranchDomain <> current <> sib))
+                      (pblake2b_256 # (pbranchDomain <> sib <> current))
                   )
                   $ \parent -> self # (pdiv # localIndex # 2) # parent # rest
               )
@@ -472,19 +490,53 @@ pverifyMembership ::
     )
 pverifyMembership = phoistAcyclic $
   plam $ \count peaks leafIndex leafHash siblings ->
+    pfrontierIsWellFormed
+      # count
+      # peaks
+      #&& pverifyMembershipFromWellFormed
+      # count
+      # peaks
+      # leafIndex
+      # leafHash
+      # siblings
+
+{- | Membership verification when the same frontier was already authenticated.
+
+This is the inner half of 'pverifyMembership'. Callers may use it only after
+checking 'pfrontierIsWellFormed' for the exact same count and peaks. It avoids
+revalidating an immutable frontier for every item in a bounded batch.
+-}
+pverifyMembershipFromWellFormed ::
+  forall (s :: S).
+  Term
+    s
+    ( PInteger
+        :--> PBuiltinList (PAsData PFrontierPeak)
+        :--> PInteger
+        :--> PByteString
+        :--> PBuiltinList (PAsData PByteString)
+        :--> PBool
+    )
+pverifyMembershipFromWellFormed = phoistAcyclic $
+  plam $ \count peaks leafIndex leafHash siblings ->
     pif
       ( pand'List
-          [ pfrontierIsWellFormed # count # peaks
-          , 0 #<= leafIndex
+          [ 0 #<= leafIndex
           , leafIndex #< count
           , plengthBS # leafHash #== 32
           ]
       )
       ( pmatch (plocatePeak # count # leafIndex # (phighestBit # count # 0) # 0) $
-          \PPeakLocation {ppeakLocation'height, ppeakLocation'localIndex} ->
-            plength # siblings
+          \PPeakLocation{ppeakLocation'height, ppeakLocation'localIndex} ->
+            plength
+              # siblings
               #== ppeakLocation'height
-              #&& pfoldMembershipPath # ppeakLocation'localIndex # leafHash # siblings
-              #== ppeakHashAt # peaks # ppeakLocation'height
+              #&& pfoldMembershipPath
+              # ppeakLocation'localIndex
+              # leafHash
+              # siblings
+              #== ppeakHashAt
+              # peaks
+              # ppeakLocation'height
       )
       (pconstant False)

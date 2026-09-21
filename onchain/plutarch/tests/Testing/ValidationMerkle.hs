@@ -172,6 +172,8 @@ tests =
                 | k <- [0 .. 8]
                 , let (n, ps) = buildFrontier (map leaf [1 .. k])
                 ]
+        , testCase "batch construction rejects an invalid external leaf" $
+            pfails $ pbuildFrontier # leavesT [leaf 1, BS.replicate 31 0x01]
         , testCase "appending one leaf agrees with the reference, for 0..8 leaves" $
             holds $
               pall'

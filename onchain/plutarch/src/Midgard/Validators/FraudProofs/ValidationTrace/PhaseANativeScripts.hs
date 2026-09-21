@@ -17,21 +17,21 @@ module Midgard.Validators.FraudProofs.ValidationTrace.PhaseANativeScripts (
 import GHC.Generics (Generic)
 import Generics.SOP qualified as SOP
 
-import Plutarch.LedgerApi.V3 (PCurrencySymbol, PScriptContext, PScriptHash, PTxInfo (..))
+import Plutarch.LedgerApi.V3 (PCurrencySymbol, PScriptContext, PScriptHash)
 import Plutarch.Prelude
 
-import Midgard.NativeTxFieldAccess (PFieldCarriageV1)
+import Midgard.PhaseANativeItem qualified as Item
+import Midgard.PhaseANativeItemYield (PPhaseANativeItemActionV1 (..), nativeRole, foreignRole)
+import Midgard.StateQueueYield qualified as Yield
 import Midgard.NativeScriptScan (PNativeScriptFrameV1)
 import Midgard.ValidationMachine (
   PValidationAuxiliaryWitnessV1 (..),
   PValidationOneStepWitnessV1,
   pverifyPhaseANativeAdvanceSemanticsV1,
   pverifyPhaseANativeFrameSemanticsV1,
-  pverifyPhaseANativeItemSemanticsV1,
  )
 import Midgard.ValidationSemantic (pcontinueWinning, pvalidationSemanticPreState)
 import Midgard.ValidationTrace (PValidationPhase (PPhaseANativeScripts))
-import Midgard.ValidationMachineFieldDoor (PMachineFieldDoorV1 (..))
 import Midgard.Validators.FraudProofs.Step (pdispatch, pstep)
 import Midgard.Validators.FraudProofs.ValidationTrace.Preparation (
   pprepareSelectedValidator,
@@ -46,19 +46,6 @@ data PPhaseANativeAdvanceActionV1 (s :: S)
   deriving stock (Generic)
   deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
   deriving (PlutusType) via (DeriveAsDataStruct PPhaseANativeAdvanceActionV1)
-
-data PPhaseANativeItemActionV1 (s :: S)
-  = PVerifyItem
-      { pitem'inputIndex :: Term s (PAsData PInteger)
-      , pitem'outputIndex :: Term s (PAsData PInteger)
-      , pitem'transition :: Term s (PAsData PValidationOneStepWitnessV1)
-      , pitem'fieldIndex :: Term s (PAsData PInteger)
-      , pitem'itemIndex :: Term s (PAsData PInteger)
-      , pitem'carriage :: Term s (PAsData PFieldCarriageV1)
-      }
-  deriving stock (Generic)
-  deriving anyclass (SOP.Generic, PIsData, PEq, PShow)
-  deriving (PlutusType) via (DeriveAsDataStruct PPhaseANativeItemActionV1)
 
 data PPhaseANativeFrameActionV1 (s :: S)
   = PVerifyFrame
@@ -102,25 +89,27 @@ phaseANativeItemSemanticV1Validator :: forall s.
     ( PAsData PScriptHash :--> PAsData PCurrencySymbol
         :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit
     )
-phaseANativeItemSemanticV1Validator = plam $ \awardScriptHash policyId certificatePolicyId ctx ->
+phaseANativeItemSemanticV1Validator = plam $ \awardScriptHash policyId referenceScriptAuthPolicyId ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
   pdispatch @_ @PPhaseANativeItemActionV1 policyId datum redeemer ownOutRef txInfo $
-    \action -> pmatch action $ \(PVerifyItem inputIndex outputIndex transitionD fieldIndexD itemIndexD carriageD) ->
+    \action -> pmatch action $ \(PVerifyItem inputIndex outputIndex transitionD fieldIndexD itemIndexD carriageD yieldIndexD yieldKindD) ->
       plet (pfromData transitionD) $ \transition ->
       plet (pcon $ PTransactionFieldChunkWitness fieldIndexD itemIndexD carriageD) $ \auxiliary ->
-      pmatch txInfo $ \PTxInfo {ptxInfo'referenceInputs} ->
-      plet (pcon $ PMachineFieldDoorV1 (pfromData ptxInfo'referenceInputs) certificatePolicyId) $ \door ->
+      plet (pfromData yieldKindD) $ \kind ->
+      pif (kind #== 0 #|| kind #== 1)
+        (plet (Yield.prequireAuthenticatedZeroYield # txInfo # pfromData referenceScriptAuthPolicyId
+          # pif (kind #== 0) nativeRole foreignRole # pfromData yieldIndexD) $ \_ ->
         pcontinueWinning
           (pcon PPhaseANativeScripts)
           awardScriptHash policyId datum
           (pfromData inputIndex) (pfromData outputIndex) transition
           (pforgetData $ pdata auxiliary)
-          ( pverifyPhaseANativeItemSemanticsV1
+          ( Item.pdispatch
               # pvalidationSemanticPreState datum
-              # transition # door # pfromData fieldIndexD # pfromData itemIndexD
-              # pfromData carriageD
+              # transition # pfromData fieldIndexD # pfromData itemIndexD
           )
-          ownOutRef txInfo
+          ownOutRef txInfo)
+        perror
 
 phaseANativeFrameSemanticV1Validator :: forall s.
   Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)

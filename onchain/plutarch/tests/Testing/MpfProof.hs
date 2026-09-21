@@ -19,10 +19,8 @@ aborting the script. That is only true if the well-formedness conjunctions are
 out of range, and the recursion below them has no base case for a negative step
 budget. Several cases here would abort under a strict `pand'List`.
 
-**The two MPF libraries disagree.** `plutarch-onchain-lib`'s @pexcluding@ and
-the Aiken library's @do_excluding@ compute different roots whenever a step
-carries @skip > 0@. The port reproduces Aiken's arithmetic and owns the proof
-types because the upstream neighbour wire encoding also differs from Aiken.
+Compressed-path tests pin the target Aiken repair with independent host roots.
+The port owns its proof types because the upstream neighbour ABI differs.
 -}
 module Testing.MpfProof (tests) where
 
@@ -300,7 +298,7 @@ rootTransitionTests =
         ]
 
 --------------------------------------------------------------------------------
--- The divergence between the two MPF libraries
+-- Canonical compressed-prefix exclusion arithmetic
 --------------------------------------------------------------------------------
 
 aikenArithmeticTests :: TestTree
@@ -310,7 +308,7 @@ aikenArithmeticTests =
         [ testCase "the port's terminal fork matches Aiken's arithmetic" $
             holds $
                 (pdoExcluding # pconstant queryPath # 0 # pto skippingTerminalFork)
-                    #== pconstant (combine (BS.pack [fromIntegral differentBranch] <> "\xab") nullHash)
+                    #== pconstant (combine (BS.pack [fromIntegral (nibble queryPath 0), fromIntegral skippingForkNibble] <> "\xab") nullHash)
         , testCase "skipping proofs pass the well-formedness gate" $
             holds $
                 pall'

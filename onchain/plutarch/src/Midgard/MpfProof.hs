@@ -20,29 +20,12 @@ recursion below it has no base case for a negative step budget. Aiken's
 @and { }@ short-circuits, so the port uses @#&&@ and not @pand'List@ — see the
 strictness note in the README.
 
-=== A divergence between the two MPF libraries
+=== Canonical compressed paths
 
-__This module does not use @plutarch-onchain-lib@'s @pexcluding@, and that is
-deliberate.__ The Plutarch and Aiken MPF libraries compute @excluding@
-differently, in two places, both reachable only when a proof step carries
-@skip > 0@:
-
-1. __Terminal @Fork@.__ Aiken reconstructs @combine(nibble : prefix, root)@ and
-   drops the skipped path nibbles entirely. The Plutarch library prepends
-   @nibbles(path, cursor, cursor + skip)@ first.
-2. __Non-terminal @Leaf@.__ Aiken takes the neighbour's nibble at @cursor@; the
-   Plutarch library takes it at @next_cursor - 1@, which is @cursor + skip@.
-
-The Aiken library is also internally inconsistent about the second: its
-@do_including@ uses @next_cursor - 1@ where its @do_excluding@ uses @cursor@,
-and @mpf-proof-v1.ak@ copies both faithfully.
-
-Since this port exists to /replace/ the Aiken tree, 'pdoExcluding' below
-reproduces Aiken's arithmetic exactly. Using the library function would silently
-change which non-membership proofs are accepted, which is a consensus change and
-not a port. The two are pinned against each other in
-@Testing.MpfProof@. Midgard also owns the proof data types so the nested
-@Neighbor@ keeps Aiken's @Constr 0@ wire representation.
+Terminal forks retain the skipped path before the surviving neighbour. A
+non-terminal leaf branches at @next_cursor - 1@ in both inclusion and exclusion.
+These are the canonical rules in the target Aiken implementation; the older
+port deliberately mirrored the pre-repair Aiken arithmetic.
 -}
 module Midgard.MpfProof (
     -- * Bounds
@@ -59,6 +42,8 @@ module Midgard.MpfProof (
     pinsertRoot,
     pupdateRoot,
     pdeleteRoot,
+    pdeleteRootPairedFold,
+    pinsertRootPairedFold,
 
     -- * The Aiken-faithful walk
     pdoExcluding,
@@ -70,6 +55,7 @@ import Plutarch.Builtin.Crypto (pblake2b_256)
 import Plutarch.Core.Internal.Builtins (pconsBS')
 import Plutarch.MerkleTree.Helpers (pcombine, pnibble, pnibbles, psuffix)
 import Plutarch.MerkleTree.Merkling (pmerkle_16, pnull_hash, psparse_merkle_16)
+import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
 
 import Midgard.Env qualified as Env
@@ -223,9 +209,7 @@ pmembershipProofIsWellFormed = phoistAcyclic $
 The same walk with the two terminal cases pulled out: a proof may /end/ on a
 @Fork@ or a @Leaf@, and when it does there is no recursion to guard.
 
-Note the one asymmetry Aiken has and the port keeps: the terminal @Leaf@ case
-compares @nibble(path, next_cursor - 1)@ against @nibble(key, next_cursor - 1)@,
-while the non-terminal one compares it against @nibble(key, cursor)@.
+Both leaf folds select the neighbour at @next_cursor - 1@ after a skip.
 -}
 pnonMembershipProofIsWellFormed ::
     forall (s :: S).
@@ -298,7 +282,7 @@ pnonMembershipProofIsWellFormed = phoistAcyclic $
                                                 ( \_ _ ->
                                                     here
                                                         #&& (pnibble # path # (nextCursor - 1))
-                                                        #/== (pnibble # key # cursor)
+                                                        #/== (pnibble # key # (nextCursor - 1))
                                                         #&& self
                                                         # path
                                                         # nextCursor
@@ -355,14 +339,7 @@ infix 4 #/==
 -- The Aiken-faithful walk
 --------------------------------------------------------------------------------
 
-{- | Aiken @mpf_proof_v1.do_excluding@, and the reason this module exists
-separately from @plutarch-onchain-lib@.
-
-Two of its cases differ from that library's @pexcluding@ whenever a step carries
-@skip > 0@; both are called out in the module header. Reproducing Aiken's
-arithmetic here is what makes the port a replacement rather than a change of
-consensus.
--}
+-- | Aiken @mpf_proof_v1.do_excluding@, preserving canonical compressed paths.
 pdoExcluding ::
     forall (s :: S).
     Term s (PByteString :--> PInteger :--> PBuiltinList (PAsData PProofStep) :--> PByteString)
@@ -391,10 +368,10 @@ pdoExcluding = phoistAcyclic $
                                             # (self # path # nextCursor # steps)
                                             # neighbor
                                 )
-                                -- Aiken drops the skipped nibbles here; the Plutarch library
-                                -- prepends them. This line is divergence (1).
                                 ( pwithNeighbor neighbor $ \nibbleValue prefix root ->
-                                    pcombine # (pconsBS' # nibbleValue # prefix) # root
+                                    pcombine
+                                        # ((pnibbles # path # cursor # (cursor + pfromData pproofStep'skip)) <> (pconsBS' # nibbleValue # prefix))
+                                        # root
                                 )
                                 steps
                     PLeaf{pproofStep'skip, pproofStep'key, pproofStep'value} ->
@@ -410,10 +387,7 @@ pdoExcluding = phoistAcyclic $
                                             #$ pcon
                                                 ( PNeighbor
                                                     { pneighbor'prefix = pdata (psuffix # key # nextCursor)
-                                                    , -- Aiken reads the nibble at `cursor`, the
-                                                      -- Plutarch library at `next_cursor - 1`.
-                                                      -- This line is divergence (2).
-                                                      pneighbor'nibble = pdata (pnibble # key # cursor)
+                                                    , pneighbor'nibble = pdata (pnibble # key # (nextCursor - 1))
                                                     , pneighbor'root = pproofStep'value
                                                     }
                                                 )
@@ -658,14 +632,9 @@ plibraryRoot root =
 
 {- | Aiken @mpf_proof_v1.insert_root@.
 
-A new root only after a total non-membership check has made the library's
-partial @insert@ precondition true.
-
-Written as the check plus @including@ rather than as a call to @mpf.insert@:
-that function re-asserts @excluding(key, proof) == root@, which 'pdoesNotHave'
-has already established under Aiken's arithmetic. Routing through the Plutarch
-library's @pinsert@ would re-check it under the /other/ arithmetic and could
-abort where Aiken succeeds.
+Authenticate non-membership, then derive the successor with this module's
+canonical inclusion fold. This avoids redundant verification and preserves
+Midgard's Aiken-compatible proof representation.
 -}
 pinsertRoot ::
     forall (s :: S).
@@ -706,3 +675,111 @@ pdeleteRoot = phoistAcyclic $
             (phasV1 # root # key # value # proof)
             (pcon (PJust (pdoExcluding # (pblake2b_256 # key) # 0 # pto proof)))
             (pcon PNothing)
+
+{- | Target @delete_root_paired_fold@: validate each step once while deriving
+both roots, preserving compressed terminal neighbours.
+-}
+pdeleteRootPairedFold :: forall s. Term s (PByteString :--> PByteString :--> PByteString :--> PProof :--> PMaybe PByteString)
+pdeleteRootPairedFold = phoistAcyclic $ plam $ \root key value proof ->
+    pif
+        (plengthBS # root #== pdigestByteCount)
+        ( pmatch (pdoIncludingExcludingPairStrict # (pblake2b_256 # key) # (pblake2b_256 # value) # 0 # pto proof # pmaximumProofStepCount) $ \case
+            PNothing -> pcon PNothing
+            PJust pair -> pmatch pair $ \(PPair predecessor successor) -> pif (predecessor #== root) (pcon $ PJust successor) (pcon PNothing)
+        )
+        (pcon PNothing)
+
+-- | Target @insert_root_paired_fold@ uses the same strict pair of roots as
+-- deletion, with exclusion as predecessor and inclusion as successor.
+pinsertRootPairedFold :: forall s. Term s (PByteString :--> PByteString :--> PByteString :--> PProof :--> PMaybe PByteString)
+pinsertRootPairedFold = phoistAcyclic $ plam $ \root key value proof ->
+    pif (plengthBS # root #== pdigestByteCount)
+      (pmatch (pdoIncludingExcludingPairStrict # (pblake2b_256 # key) # (pblake2b_256 # value) # 0 # pto proof # pmaximumProofStepCount) $ \case
+        PNothing -> pcon PNothing
+        PJust pair -> pmatch pair $ \(PPair successor predecessor) -> pif (predecessor #== plibraryRoot root) (pcon $ PJust successor) (pcon PNothing))
+      (pcon PNothing)
+
+pdoIncludingExcludingPairStrict :: forall s. Term s (PByteString :--> PByteString :--> PInteger :--> PBuiltinList (PAsData PProofStep) :--> PInteger :--> PMaybe (PPair PByteString PByteString))
+pdoIncludingExcludingPairStrict = phoistAcyclic $ pfix $ \self -> plam $ \path oldHash cursor proof remaining ->
+    pelimList
+        ( \step steps -> pmatch (pfromData step) $ \case
+            PBranch skipD neighborsD -> P.do
+                skip <- plet $ pfromData skipD
+                neighbors <- plet $ pfromData neighborsD
+                let next = cursor + 1 + skip
+                pif
+                    (pcommonStepIsWellFormed # cursor # skip # remaining #&& plengthBS # neighbors #== 128)
+                    ( pmatch (self # path # oldHash # next # steps # (remaining - 1)) $ \case
+                        PNothing -> pcon PNothing
+                        PJust pair -> pmatch pair $ \(PPair pre post) ->
+                            pcon $
+                                PJust $
+                                    pcon $
+                                        PPair
+                                            (pdoBranch # path # cursor # next # pre # neighbors)
+                                            (pdoBranch # path # cursor # next # post # neighbors)
+                    )
+                    (pcon PNothing)
+            PFork skipD neighborD -> P.do
+                skip <- plet $ pfromData skipD
+                neighbor <- plet $ pfromData neighborD
+                let next = cursor + 1 + skip
+                pif
+                    (pcommonStepIsWellFormed # cursor # skip # remaining #&& pneighborIsWellFormed # neighbor #&& pforkNibbleDiffers path next neighbor)
+                    ( pif
+                        (pnull # steps)
+                        ( pcon $
+                            PJust $
+                                pcon $
+                                    PPair
+                                        (pdoFork # path # cursor # next # (pcombine # (psuffix # path # next) # oldHash) # neighbor)
+                                        (pdoExcluding # path # cursor # proof)
+                        )
+                        ( pmatch (self # path # oldHash # next # steps # (remaining - 1)) $ \case
+                            PNothing -> pcon PNothing
+                            PJust pair -> pmatch pair $ \(PPair pre post) ->
+                                pcon $
+                                    PJust $
+                                        pcon $
+                                            PPair
+                                                (pdoFork # path # cursor # next # pre # neighbor)
+                                                (pdoFork # path # cursor # next # post # neighbor)
+                        )
+                    )
+                    (pcon PNothing)
+            PLeaf skipD keyD valueD -> P.do
+                skip <- plet $ pfromData skipD
+                key <- plet $ pfromData keyD
+                value <- plet $ pfromData valueD
+                let next = cursor + 1 + skip
+                    neighbor = pcon $ PNeighbor (pdata $ pnibble # key # (next - 1)) (pdata $ psuffix # key # next) valueD
+                pif
+                    (pcommonStepIsWellFormed # cursor # skip # remaining #&& pleafWidthsAreRight key value #&& pnibble # path # (next - 1) #/== pnibble # key # (next - 1))
+                    ( pif
+                        (pnull # steps)
+                        ( pcon $
+                            PJust $
+                                pcon $
+                                    PPair
+                                        (pdoFork # path # cursor # next # (pcombine # (psuffix # path # next) # oldHash) # neighbor)
+                                        (pcombine # (psuffix # key # cursor) # value)
+                        )
+                        ( pmatch (self # path # oldHash # next # steps # (remaining - 1)) $ \case
+                            PNothing -> pcon PNothing
+                            PJust pair -> pmatch pair $ \(PPair pre post) ->
+                                pcon $
+                                    PJust $
+                                        pcon $
+                                            PPair
+                                                (pdoFork # path # cursor # next # pre # neighbor)
+                                                (pdoFork # path # cursor # next # post # neighbor)
+                        )
+                    )
+                    (pcon PNothing)
+        )
+        ( pif
+            (cursor #>= 0 #&& cursor #<= ppathNibbleCount)
+            (pcon $ PJust $ pcon $ PPair (pcombine # (psuffix # path # cursor) # oldHash) pnull_hash)
+            (pcon PNothing)
+        )
+        proof

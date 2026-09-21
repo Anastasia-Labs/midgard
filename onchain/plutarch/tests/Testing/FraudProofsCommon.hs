@@ -55,8 +55,8 @@ import PlutusLedgerApi.V3 (
   TxOut (..),
   TxOutRef (..),
  )
-import PlutusTx.Builtins qualified as Builtins
 import PlutusTx.Builtins (dataToBuiltinData, fromBuiltin, toBuiltin)
+import PlutusTx.Builtins qualified as Builtins
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -81,9 +81,9 @@ import Midgard.FraudProofs.ChunkedInclusion (
   pdelegatedChunkMembership,
  )
 import Midgard.FraudProofs.Common (
+  PMembershipCarriage (..),
   PNativeTxInclusionArgs (..),
   PNativeTxInclusionCarriage (..),
-  PMembershipCarriage (..),
   PNonMembershipCarriage (..),
   PPublishedChunkInclusionArgs (..),
   pcancel,
@@ -95,9 +95,9 @@ import Midgard.FraudProofs.Common (
   ppassNativeTxToNextStepCarried,
   pvalidateOutputToFraudProver,
   pverifyCommittedTransactionsLeafInStateQueueNode,
+  pverifyMembershipCarried,
   pverifyNativeTxInStateQueueNode,
   pverifyNativeTxInStateQueueNodeWith,
-  pverifyMembershipCarried,
   pverifyNonMembershipCarried,
  )
 import Midgard.FraudProofs.NativeTx.Types (PVerifiedMidgardNativeTxCompact (..))
@@ -168,7 +168,8 @@ wireFormatTests =
         pencodes
           ( pcon
               ( PPublishedChunkNonMembership
-                  {ppublishedNonMembership'carriage = pdata (chunkCarriageT [3, 4])}
+                  { ppublishedNonMembership'carriage = pdata (chunkCarriageT [3, 4])
+                  }
               )
           )
           (PD.Constr 1 [PD.Constr 0 [PD.List [PD.I 3, PD.I 4]]])
@@ -188,7 +189,8 @@ wireFormatTests =
         pencodes
           ( pcon
               ( PPublishedChunkMembership
-                  {ppublishedMembership'carriage = pdata (chunkCarriageT [3, 4])}
+                  { ppublishedMembership'carriage = pdata (chunkCarriageT [3, 4])
+                  }
               )
           )
           (PD.Constr 1 [PD.Constr 0 [PD.List [PD.I 3, PD.I 4]]])
@@ -267,26 +269,41 @@ payoutTo cred =
 membershipTests :: [TestTree]
 membershipTests =
   [ testCase "accepts a redeemer-carried member attested by phas" $
-      passertEval $ runMembership redeemerCarriedMembership [phasEntry phasRoot presentKey leafValue emptyProof]
+      passertEval $
+        runMembership redeemerCarriedMembership [phasEntry phasRoot presentKey leafValue emptyProof]
   , testCase "aborts when the phas redeemer names another root" $
-      pfails $ runMembership redeemerCarriedMembership [phasEntry otherRoot presentKey leafValue emptyProof]
+      pfails $
+        runMembership redeemerCarriedMembership [phasEntry otherRoot presentKey leafValue emptyProof]
   , testCase "aborts when the phas redeemer names another key" $
-      pfails $ runMembership redeemerCarriedMembership [phasEntry phasRoot absentKey leafValue emptyProof]
+      pfails $
+        runMembership redeemerCarriedMembership [phasEntry phasRoot absentKey leafValue emptyProof]
   , testCase "aborts when the phas redeemer names another value" $
-      pfails $ runMembership redeemerCarriedMembership [phasEntry phasRoot presentKey otherLeafValue emptyProof]
+      pfails $
+        runMembership redeemerCarriedMembership [phasEntry phasRoot presentKey otherLeafValue emptyProof]
   , testCase "aborts when no phas withdrawal is present" $
-      pfails $ runMembership redeemerCarriedMembership []
+      pfails $
+        runMembership redeemerCarriedMembership []
   , testCase "accepts a published-chunk member attested by the chunked verifier" $
-      passertEval $ runMembership publishedMembership [chunkEntry membershipClaimData]
+      passertEval $
+        runMembership publishedMembership [chunkEntry membershipClaimData]
   , testCase "returns False when the published member names another root" $
-      passertEval $ pnot #$ runMembership publishedMembership
-        [chunkEntry (claimData 0 otherRoot presentKey (blake2b256 leafValue) [5, 6])]
+      passertEval $
+        pnot
+          #$ runMembership
+            publishedMembership
+            [chunkEntry (claimData 0 otherRoot presentKey (blake2b256 leafValue) [5, 6])]
   , testCase "returns False when the published member is an absence claim" $
-      passertEval $ pnot #$ runMembership publishedMembership
-        [chunkEntry (claimData 1 phasRoot presentKey (blake2b256 leafValue) [5, 6])]
+      passertEval $
+        pnot
+          #$ runMembership
+            publishedMembership
+            [chunkEntry (claimData 1 phasRoot presentKey (blake2b256 leafValue) [5, 6])]
   , testCase "returns False when the published member names other chunks" $
-      passertEval $ pnot #$ runMembership publishedMembership
-        [chunkEntry (claimData 0 phasRoot presentKey (blake2b256 leafValue) [7])]
+      passertEval $
+        pnot
+          #$ runMembership
+            publishedMembership
+            [chunkEntry (claimData 0 phasRoot presentKey (blake2b256 leafValue) [7])]
   ]
 
 redeemerCarriedMembership :: forall s. Term s PMembershipCarriage
@@ -300,7 +317,7 @@ redeemerCarriedMembership =
 
 publishedMembership :: forall s. Term s PMembershipCarriage
 publishedMembership =
-  pcon (PPublishedChunkMembership {ppublishedMembership'carriage = pdata (chunkCarriageT [5, 6])})
+  pcon (PPublishedChunkMembership{ppublishedMembership'carriage = pdata (chunkCarriageT [5, 6])})
 
 membershipClaimData :: PD.Data
 membershipClaimData = claimData 0 phasRoot presentKey (blake2b256 leafValue) [5, 6]
@@ -326,13 +343,17 @@ runMembership carriage rs =
 nonMembershipTests :: [TestTree]
 nonMembershipTests =
   [ testCase "accepts a redeemer-carried absence attested by pexcludes" $
-      passertEval $ runNonMembership redeemerCarried [pexcludesEntry phasRoot absentKey]
+      passertEval $
+        runNonMembership redeemerCarried [pexcludesEntry phasRoot absentKey]
   , testCase "aborts when the pexcludes redeemer names another root" $
-      pfails $ runNonMembership redeemerCarried [pexcludesEntry otherRoot absentKey]
+      pfails $
+        runNonMembership redeemerCarried [pexcludesEntry otherRoot absentKey]
   , testCase "aborts when the pexcludes redeemer names another key" $
-      pfails $ runNonMembership redeemerCarried [pexcludesEntry phasRoot presentKey]
+      pfails $
+        runNonMembership redeemerCarried [pexcludesEntry phasRoot presentKey]
   , testCase "aborts when no pexcludes withdrawal is present" $
-      pfails $ runNonMembership redeemerCarried []
+      pfails $
+        runNonMembership redeemerCarried []
   , -- The phas hash is not the pexcludes hash: an absence claim may not be
     -- backed by a membership attestation.
     testCase "aborts when only a phas withdrawal is present" $
@@ -374,7 +395,7 @@ redeemerCarried =
 
 publishedNonMembership :: forall s. Term s PNonMembershipCarriage
 publishedNonMembership =
-  pcon (PPublishedChunkNonMembership {ppublishedNonMembership'carriage = pdata (chunkCarriageT [5, 6])})
+  pcon (PPublishedChunkNonMembership{ppublishedNonMembership'carriage = pdata (chunkCarriageT [5, 6])})
 
 nonMembershipClaimData :: PD.Data
 nonMembershipClaimData = claimData 1 phasRoot absentKey absentValueHash [5, 6]
@@ -399,44 +420,55 @@ runNonMembership carriage rs =
 cancelTests :: [TestTree]
 cancelTests =
   [ testCase "accepts an authentic cancellation" $
-      passertEval $ runCancel defaultCancel
+      passertEval $
+        runCancel defaultCancel
   , -- The burn is the computation thread policy's business; what this checks is
     -- that the policy ran on the cancellation branch for this exact token.
     testCase "aborts when the mint redeemer is Success rather than BurnForCancellation" $
-      pfails $ runCancel defaultCancel {cMintRedeemer = PD.Constr 1 [PD.B threadName]}
+      pfails $
+        runCancel defaultCancel{cMintRedeemer = PD.Constr 1 [PD.B threadName]}
   , testCase "aborts when the mint redeemer is Init" $
-      pfails $ runCancel defaultCancel {cMintRedeemer = PD.Constr 0 [PD.I 0]}
+      pfails $
+        runCancel defaultCancel{cMintRedeemer = PD.Constr 0 [PD.I 0]}
   , testCase "aborts when the burned asset name is another thread's" $
-      pfails $ runCancel defaultCancel {cMintRedeemer = PD.Constr 2 [PD.B otherThreadName]}
+      pfails $
+        runCancel defaultCancel{cMintRedeemer = PD.Constr 2 [PD.B otherThreadName]}
   , testCase "aborts when the mint redeemer belongs to another policy" $
-      pfails $ runCancel defaultCancel {cMintPurpose = Minting otherPolicy}
+      pfails $
+        runCancel defaultCancel{cMintPurpose = Minting otherPolicy}
   , testCase "aborts when the spent input is not the one being validated" $
-      pfails $ runCancel defaultCancel {cInputRef = outRefN 9}
+      pfails $
+        runCancel defaultCancel{cInputRef = outRefN 9}
   , testCase "aborts when the input carries a token of another policy" $
       pfails $
         runCancel
-          defaultCancel {cInputValue = adaValue 2_000_000 <> singleton otherPolicy (TokenName (toBuiltin threadName)) 1}
+          defaultCancel{cInputValue = adaValue 2_000_000 <> singleton otherPolicy (TokenName (toBuiltin threadName)) 1}
   , -- One extra token and `get_single_asset_from_value_apart_from_ada` no
     -- longer has a single answer.
     testCase "aborts when the input carries an extra token" $
       pfails $
         runCancel
-          defaultCancel {cInputValue = threadInputValue <> singleton otherPolicy (TokenName "x") 1}
+          defaultCancel{cInputValue = threadInputValue <> singleton otherPolicy (TokenName "x") 1}
   , testCase "aborts when the input carries two of the thread token" $
       pfails $
         runCancel
           defaultCancel
-            {cInputValue = adaValue 2_000_000 <> singleton ctPolicy (TokenName (toBuiltin threadName)) 2}
+            { cInputValue = adaValue 2_000_000 <> singleton ctPolicy (TokenName (toBuiltin threadName)) 2
+            }
   , testCase "aborts when the fraud prover did not sign" $
-      pfails $ runCancel defaultCancel {cSigners = [otherProver]}
+      pfails $
+        runCancel defaultCancel{cSigners = [otherProver]}
   , testCase "aborts when nobody signed" $
-      pfails $ runCancel defaultCancel {cSigners = []}
+      pfails $
+        runCancel defaultCancel{cSigners = []}
   , -- Another signature alongside the prover's is not a problem; the prover's
     -- absence is.
     testCase "accepts an additional unrelated signature" $
-      passertEval $ runCancel defaultCancel {cSigners = [otherProver, prover]}
+      passertEval $
+        runCancel defaultCancel{cSigners = [otherProver, prover]}
   , testCase "aborts when the step datum is absent" $
-      pfails $ runCancel defaultCancel {cDatum = Nothing}
+      pfails $
+        runCancel defaultCancel{cDatum = Nothing}
   ]
 
 data Cancel = Cancel
@@ -478,7 +510,8 @@ runCancel c =
 continueTests :: [TestTree]
 continueTests =
   [ testCase "accepts a well-formed step transition" $
-      passertEval $ runContinue defaultStep (\_ _ _ _ _ _ -> pconstant True)
+      passertEval $
+        runContinue defaultStep (\_ _ _ _ _ _ -> pconstant True)
   , -- The six values handed to the family are the whole interface; a
     -- transposition here would misroute every family at once.
     testCase "hands the family the input script, token name, prover and both states" $
@@ -497,7 +530,7 @@ continueTests =
               ]
   , testCase "passes a Some input state through unchanged" $
       passertEval $
-        runContinue defaultStep {sInputState = Just inputState} $
+        runContinue defaultStep{sInputState = Just inputState} $
           \_ _ _ mInputState _ _ ->
             pmatch mInputState $ \case
               PDJust d -> pfromData d #== pconstant @PData inputState
@@ -505,43 +538,55 @@ continueTests =
   , -- `continue` returns the family's verdict directly rather than turning a
     -- False into an abort, so a family may reject without erroring.
     testCase "returns the family's False verdict rather than aborting" $
-      passertEval $ pnot #$ runContinue defaultStep (\_ _ _ _ _ _ -> pconstant False)
+      passertEval $
+        pnot #$ runContinue defaultStep (\_ _ _ _ _ _ -> pconstant False)
   , testCase "aborts when the spent input is not the one being validated" $
-      pfails $ runContinue defaultStep {sInputRef = outRefN 9} accept
+      pfails $
+        runContinue defaultStep{sInputRef = outRefN 9} accept
   , testCase "aborts when the input sits at a key-hash address" $
-      pfails $ runContinue defaultStep {sInputAtScript = False} accept
+      pfails $
+        runContinue defaultStep{sInputAtScript = False} accept
   , testCase "aborts when the input carries a token of another policy" $
-      pfails $ runContinue defaultStep {sInputValue = otherPolicyValue} accept
+      pfails $
+        runContinue defaultStep{sInputValue = otherPolicyValue} accept
   , testCase "aborts when the input carries an extra token" $
       pfails $
-        runContinue defaultStep {sInputValue = threadInputValue <> singleton otherPolicy (TokenName "x") 1} accept
+        runContinue defaultStep{sInputValue = threadInputValue <> singleton otherPolicy (TokenName "x") 1} accept
   , testCase "aborts when the output sits at a key-hash address" $
-      pfails $ runContinue defaultStep {sOutputAtScript = False} accept
+      pfails $
+        runContinue defaultStep{sOutputAtScript = False} accept
   , -- Carrying the same token forward is what prevents double satisfaction:
     -- two threads cannot both be advanced by one output.
     testCase "aborts when the output carries another thread's token" $
-      pfails $ runContinue defaultStep {sOutputValue = otherThreadValue} accept
+      pfails $
+        runContinue defaultStep{sOutputValue = otherThreadValue} accept
   , testCase "aborts when the output carries a token of another policy" $
-      pfails $ runContinue defaultStep {sOutputValue = otherPolicyValue} accept
+      pfails $
+        runContinue defaultStep{sOutputValue = otherPolicyValue} accept
   , testCase "aborts when the output carries an extra token alongside the thread's" $
       pfails $
-        runContinue defaultStep {sOutputValue = threadInputValue <> singleton otherPolicy (TokenName "x") 1} accept
+        runContinue defaultStep{sOutputValue = threadInputValue <> singleton otherPolicy (TokenName "x") 1} accept
   , testCase "aborts when the output carries two of the thread token" $
       pfails $
         runContinue
           defaultStep
-            {sOutputValue = adaValue 2_000_000 <> singleton ctPolicy (TokenName (toBuiltin threadName)) 2}
+            { sOutputValue = adaValue 2_000_000 <> singleton ctPolicy (TokenName (toBuiltin threadName)) 2
+            }
           accept
   , testCase "aborts when the output datum is a hash rather than inline" $
-      pfails $ runContinue defaultStep {sOutputDatumInline = False} accept
+      pfails $
+        runContinue defaultStep{sOutputDatumInline = False} accept
   , testCase "aborts when the output carries a reference script" $
-      pfails $ runContinue defaultStep {sOutputReferenceScript = True} accept
+      pfails $
+        runContinue defaultStep{sOutputReferenceScript = True} accept
   , -- The prover is who gets paid; letting it change mid-thread would let a
     -- thread be stolen at any step.
     testCase "aborts when the output datum names another fraud prover" $
-      pfails $ runContinue defaultStep {sOutputProver = otherProver} accept
+      pfails $
+        runContinue defaultStep{sOutputProver = otherProver} accept
   , testCase "aborts when the output datum carries no state" $
-      pfails $ runContinue defaultStep {sOutputState = Nothing} accept
+      pfails $
+        runContinue defaultStep{sOutputState = Nothing} accept
   ]
 
 accept ::
@@ -633,13 +678,13 @@ stepOutputOf s =
         else OutputDatumHash datumHashPlaceholder
     )
     (if sOutputReferenceScript s then Just (ScriptHash (toBuiltin otherScript)) else Nothing)
-  where
-    datum =
-      PD.Constr
-        0
-        [ PD.B (sOutputProver s)
-        , maybe (PD.Constr 1 []) (\d -> PD.Constr 0 [d]) (sOutputState s)
-        ]
+ where
+  datum =
+    PD.Constr
+      0
+      [ PD.B (sOutputProver s)
+      , maybe (PD.Constr 1 []) (\d -> PD.Constr 0 [d]) (sOutputState s)
+      ]
 
 --------------------------------------------------------------------------------
 -- finalize
@@ -648,7 +693,8 @@ stepOutputOf s =
 finalizeTests :: [TestTree]
 finalizeTests =
   [ testCase "accepts a well-formed finalisation" $
-      passertEval $ runFinalize defaultFinal (\_ _ _ _ -> pconstant True)
+      passertEval $
+        runFinalize defaultFinal (\_ _ _ _ -> pconstant True)
   , testCase "hands the family the input script, token name and prover" $
       passertEval $
         runFinalize defaultFinal $ \inScript assetName fraudProver _ ->
@@ -658,50 +704,62 @@ finalizeTests =
             , fraudProver #== pdata (pconstant (PubKeyHash (toBuiltin prover)))
             ]
   , testCase "returns the family's False verdict rather than aborting" $
-      passertEval $ pnot #$ runFinalize defaultFinal (\_ _ _ _ -> pconstant False)
+      passertEval $
+        pnot #$ runFinalize defaultFinal (\_ _ _ _ -> pconstant False)
   , -- Convictions are permanent records parked at an always-fails script.
     testCase "aborts when the conviction is parked at another address" $
-      pfails $ runFinalize defaultFinal {fOutputAddress = otherAddress} acceptFinal
+      pfails $
+        runFinalize defaultFinal{fOutputAddress = otherAddress} acceptFinal
   , testCase "aborts when the fraud proof token is of another policy" $
-      pfails $ runFinalize defaultFinal {fOutputValue = fraudProofValueOf otherPolicy threadName} acceptFinal
+      pfails $
+        runFinalize defaultFinal{fOutputValue = fraudProofValueOf otherPolicy threadName} acceptFinal
   , -- The conviction must name the very thread it ends.
     testCase "aborts when the fraud proof token names another thread" $
-      pfails $ runFinalize defaultFinal {fOutputValue = fraudProofValueOf fpPolicy otherThreadName} acceptFinal
+      pfails $
+        runFinalize defaultFinal{fOutputValue = fraudProofValueOf fpPolicy otherThreadName} acceptFinal
   , testCase "aborts when the conviction carries an extra token" $
       pfails $
         runFinalize
           defaultFinal
-            {fOutputValue = fraudProofValueOf fpPolicy threadName <> singleton otherPolicy (TokenName "x") 1}
+            { fOutputValue = fraudProofValueOf fpPolicy threadName <> singleton otherPolicy (TokenName "x") 1
+            }
           acceptFinal
   , testCase "aborts when the conviction datum carries extra state" $
       pfails $
-        runFinalize defaultFinal {fOutputDatum = PD.Constr 0 [PD.B prover, PD.I 1]} acceptFinal
+        runFinalize defaultFinal{fOutputDatum = PD.Constr 0 [PD.B prover, PD.I 1]} acceptFinal
   , testCase "aborts when the conviction datum names another prover" $
-      pfails $ runFinalize defaultFinal {fOutputDatum = PD.Constr 0 [PD.B otherProver]} acceptFinal
+      pfails $
+        runFinalize defaultFinal{fOutputDatum = PD.Constr 0 [PD.B otherProver]} acceptFinal
   , -- The regression pin for the datum's encoding: a bare CBOR list is not a
     -- Constr 0, and the comparison is on the encoded bytes.
     testCase "aborts when the conviction datum is a bare list rather than Constr 0" $
-      pfails $ runFinalize defaultFinal {fOutputDatum = PD.List [PD.B prover]} acceptFinal
+      pfails $
+        runFinalize defaultFinal{fOutputDatum = PD.List [PD.B prover]} acceptFinal
   , testCase "aborts when the conviction datum is under another constructor" $
-      pfails $ runFinalize defaultFinal {fOutputDatum = PD.Constr 1 [PD.B prover]} acceptFinal
+      pfails $
+        runFinalize defaultFinal{fOutputDatum = PD.Constr 1 [PD.B prover]} acceptFinal
   , testCase "aborts when the conviction datum is a hash rather than inline" $
-      pfails $ runFinalize defaultFinal {fInlineDatum = False} acceptFinal
+      pfails $
+        runFinalize defaultFinal{fInlineDatum = False} acceptFinal
   , testCase "aborts when the conviction carries a reference script" $
-      pfails $ runFinalize defaultFinal {fReferenceScript = True} acceptFinal
+      pfails $
+        runFinalize defaultFinal{fReferenceScript = True} acceptFinal
   , -- Minting the conviction is what burns the thread token, so the policy must
     -- have run and must have named this thread.
     testCase "aborts when the fraud proof mint redeemer names another thread" $
       pfails $
-        runFinalize defaultFinal {fMintRedeemer = PD.Constr 0 [PD.B otherThreadName, PD.I 0]} acceptFinal
+        runFinalize defaultFinal{fMintRedeemer = PD.Constr 0 [PD.B otherThreadName, PD.I 0]} acceptFinal
   , testCase "aborts when the mint redeemer belongs to another policy" $
-      pfails $ runFinalize defaultFinal {fMintPurpose = Minting otherPolicy} acceptFinal
+      pfails $
+        runFinalize defaultFinal{fMintPurpose = Minting otherPolicy} acceptFinal
   , testCase "aborts when the input carries an extra token" $
       pfails $
         runFinalize
-          defaultFinal {fInputValue = threadInputValue <> singleton otherPolicy (TokenName "x") 1}
+          defaultFinal{fInputValue = threadInputValue <> singleton otherPolicy (TokenName "x") 1}
           acceptFinal
   , testCase "aborts when the spent input is not the one being validated" $
-      pfails $ runFinalize defaultFinal {fInputRef = outRefN 9} acceptFinal
+      pfails $
+        runFinalize defaultFinal{fInputRef = outRefN 9} acceptFinal
   ]
 
 acceptFinal ::
@@ -763,16 +821,16 @@ runFinalize f k =
     (outputsT [output])
     (redeemersT [(fMintPurpose f, Redeemer (dataToBuiltinData (fMintRedeemer f)))])
     k
-  where
-    output =
-      TxOut
-        (fOutputAddress f)
-        (fOutputValue f)
-        ( if fInlineDatum f
-            then OutputDatum (Datum (dataToBuiltinData (fOutputDatum f)))
-            else OutputDatumHash datumHashPlaceholder
-        )
-        (if fReferenceScript f then Just (ScriptHash (toBuiltin otherScript)) else Nothing)
+ where
+  output =
+    TxOut
+      (fOutputAddress f)
+      (fOutputValue f)
+      ( if fInlineDatum f
+          then OutputDatum (Datum (dataToBuiltinData (fOutputDatum f)))
+          else OutputDatumHash datumHashPlaceholder
+      )
+      (if fReferenceScript f then Just (ScriptHash (toBuiltin otherScript)) else Nothing)
 
 fraudProofValueOf :: CurrencySymbol -> BS.ByteString -> Value
 fraudProofValueOf policy name =
@@ -790,42 +848,55 @@ opening itself, and never of the transaction codec.
 leafTests :: [TestTree]
 leafTests =
   [ testCase "accepts an authenticated committed leaf" $
-      passertEval $ runLeaf defaultEvidence
+      passertEval $
+        runLeaf defaultEvidence
   , testCase "hands back the challenged header" $
       passertEval $
         runLeafWith defaultEvidence $ \header ->
-          pmatch (pfromData header) $ \PHeaderV1 {pheader'l2TransactionCount} ->
+          pmatch (pfromData header) $ \PHeaderV1{pheader'l2TransactionCount} ->
             pfromData pheader'l2TransactionCount #== pconstant l2Count
   , -- The hub oracle is where the state queue policy comes from; a UTxO under
     -- another policy is not the hub.
     testCase "aborts when the hub oracle reference is substituted" $
-      pfails $ runLeaf defaultEvidence {eHubRefPolicy = otherPolicy}
+      pfails $
+        runLeaf defaultEvidence{eHubRefPolicy = otherPolicy}
   , testCase "aborts when the hub names another state queue policy" $
-      pfails $ runLeaf defaultEvidence {eHubStateQueue = otherPolicy}
+      pfails $
+        runLeaf defaultEvidence{eHubStateQueue = otherPolicy}
   , testCase "aborts when the queue node is under another policy" $
-      pfails $ runLeaf defaultEvidence {eNodePolicy = otherPolicy}
+      pfails $
+        runLeaf defaultEvidence{eNodePolicy = otherPolicy}
   , -- A thread opened against block A may not be advanced with evidence from
     -- block B, which is exactly this check.
     testCase "aborts when the queue node is a different block from the thread's" $
-      pfails $ runLeaf defaultEvidence {eNodeHeaderHash = otherHeaderHash}
+      pfails $
+        runLeaf defaultEvidence{eNodeHeaderHash = otherHeaderHash}
   , testCase "aborts when the thread token names a different block" $
-      pfails $ runLeaf defaultEvidence {eThreadName = otherThreadName}
+      pfails $
+        runLeaf defaultEvidence{eThreadName = otherThreadName}
   , -- Only the genuine raw root re-commits to the header's counted value under
     -- this block's transaction count.
     testCase "aborts when the prover supplies a forged raw root" $
-      pfails $ runLeaf defaultEvidence {ePhasRoot = otherRoot}
+      pfails $
+        runLeaf defaultEvidence{ePhasRoot = otherRoot}
   , testCase "aborts when the header commits the raw root uncounted" $
-      pfails $ runLeaf defaultEvidence {eCommittedRoot = Just phasRoot}
+      pfails $
+        runLeaf defaultEvidence{eCommittedRoot = Just phasRoot}
   , testCase "aborts when the header's transaction count is not the committed one" $
-      pfails $ runLeaf defaultEvidence {eHeaderCount = Just (l2Count + 1)}
+      pfails $
+        runLeaf defaultEvidence{eHeaderCount = Just (l2Count + 1)}
   , testCase "aborts when the phas withdrawal is absent" $
-      pfails $ runLeaf defaultEvidence {eWithdrawal = Nothing}
+      pfails $
+        runLeaf defaultEvidence{eWithdrawal = Nothing}
   , testCase "aborts when the phas withdrawal opens another root" $
-      pfails $ runLeaf defaultEvidence {eWithdrawal = Just (otherRoot, presentKey, leafValue)}
+      pfails $
+        runLeaf defaultEvidence{eWithdrawal = Just (otherRoot, presentKey, leafValue)}
   , testCase "aborts when the phas withdrawal opens another key" $
-      pfails $ runLeaf defaultEvidence {eWithdrawal = Just (phasRoot, absentKey, leafValue)}
+      pfails $
+        runLeaf defaultEvidence{eWithdrawal = Just (phasRoot, absentKey, leafValue)}
   , testCase "aborts when the phas withdrawal opens another value" $
-      pfails $ runLeaf defaultEvidence {eWithdrawal = Just (phasRoot, presentKey, otherLeafValue)}
+      pfails $
+        runLeaf defaultEvidence{eWithdrawal = Just (phasRoot, presentKey, otherLeafValue)}
   , -- The whole point of this primitive: the leaf value need not be a
     -- well-formed native transaction, and the key need not be its id.
     testCase "accepts a leaf whose value is not a native transaction" $
@@ -867,14 +938,15 @@ runLeafWith e k =
 nativeTxTests :: [TestTree]
 nativeTxTests =
   [ testCase "accepts an authenticated native transaction" $
-      passertEval $ runNativeTx nativeEvidence
+      passertEval $
+        runNativeTx nativeEvidence
   , testCase "hands back the decoded compact transaction" $
       passertEval $
         runNativeTxWith nativeEvidence $ \verifiedId _header view ->
           pand'List
             [ verifiedId #== pconstant nativeTxId
             , pmatch view $
-                \PVerifiedMidgardNativeTxCompact {pverified'version} -> pverified'version #== 1
+                \PVerifiedMidgardNativeTxCompact{pverified'version} -> pverified'version #== 1
             ]
   , -- The codec precondition: the value opened must be an exact canonical
     -- L2TransactionSourceV1 whose embedded id and proof source agree with the
@@ -924,17 +996,22 @@ nativeTxTests =
   , -- The rest of the chain is shared with the codec-free twin, so one case
     -- each is enough to show it is wired the same way.
     testCase "aborts when the hub oracle reference is substituted" $
-      pfails $ runNativeTx nativeEvidence {eHubRefPolicy = otherPolicy}
+      pfails $
+        runNativeTx nativeEvidence{eHubRefPolicy = otherPolicy}
   , testCase "aborts when the queue node is a different block" $
-      pfails $ runNativeTx nativeEvidence {eNodeHeaderHash = otherHeaderHash}
+      pfails $
+        runNativeTx nativeEvidence{eNodeHeaderHash = otherHeaderHash}
   , testCase "aborts when the prover supplies a forged raw root" $
-      pfails $ runNativeTx nativeEvidence {ePhasRoot = otherRoot}
+      pfails $
+        runNativeTx nativeEvidence{ePhasRoot = otherRoot}
   , testCase "aborts when the phas withdrawal is absent" $
-      pfails $ runNativeTx nativeEvidence {eWithdrawal = Nothing}
+      pfails $
+        runNativeTx nativeEvidence{eWithdrawal = Nothing}
   , -- The published-chunk arm authenticates the identical commitment and only
     -- moves where the proof's bytes travelled.
     testCase "the published-chunk arm accepts the same evidence" $
-      passertEval $ runNativeTxChunked nativeEvidence
+      passertEval $
+        runNativeTxChunked nativeEvidence
   , -- Unlike `verify_non_membership_carried`, which hands its verdict back, the
     -- opening here sits under an `expect`: a claim that does not match aborts.
     testCase "the published-chunk arm aborts on a claim for another root" $
@@ -948,9 +1025,11 @@ nativeTxTests =
           nativeEvidence
           (claimData 1 phasRoot nativeTxId (blake2b256 sourceCbor) [5, 6])
   , testCase "the published-chunk arm still enforces the codec precondition" $
-      pfails $ runNativeTxChunked nativeEvidence {eLeafValue = "not a transaction"}
+      pfails $
+        runNativeTxChunked nativeEvidence{eLeafValue = "not a transaction"}
   , testCase "the published-chunk arm still enforces the counted root" $
-      pfails $ runNativeTxChunked nativeEvidence {ePhasRoot = otherRoot}
+      pfails $
+        runNativeTxChunked nativeEvidence{ePhasRoot = otherRoot}
   ]
 
 runNativeTx :: forall s. Evidence -> Term s PBool
@@ -1017,29 +1096,39 @@ written against one arm therefore behaves identically on the other.
 passTests :: [TestTree]
 passTests =
   [ testCase "accepts a first step over a redeemer-carried opening" $
-      passertEval $ runPass defaultArgs defaultStep alwaysPass
+      passertEval $
+        runPass defaultArgs defaultStep alwaysPass
   , testCase "the redeemer-carried arm hands the family the thread and the evidence" $
-      passertEval $ runPass defaultArgs defaultStep passAssertions
+      passertEval $
+        runPass defaultArgs defaultStep passAssertions
   , -- `expect validation(...)` aborts in Aiken; a family that merely returns
     -- False must not be silently downgraded to a False here.
     testCase "aborts rather than returning False when the family rejects" $
-      pfails $ runPass defaultArgs defaultStep alwaysFail
+      pfails $
+        runPass defaultArgs defaultStep alwaysFail
   , testCase "aborts when the step transition itself is malformed" $
-      pfails $ runPass defaultArgs defaultStep {sOutputProver = otherProver} alwaysPass
+      pfails $
+        runPass defaultArgs defaultStep{sOutputProver = otherProver} alwaysPass
   , testCase "aborts when the evidence names a forged root" $
-      pfails $ runPass defaultArgs {aPhasRoot = otherRoot} defaultStep alwaysPass
+      pfails $
+        runPass defaultArgs{aPhasRoot = otherRoot} defaultStep alwaysPass
   , testCase "aborts when the evidence names another transaction" $
-      pfails $ runPass defaultArgs {aTxId = otherNativeTxId} defaultStep alwaysPass
+      pfails $
+        runPass defaultArgs{aTxId = otherNativeTxId} defaultStep alwaysPass
   , -- Both arms of the carriage reach the same validation call with the same
     -- evidence, which is the property the `_with` split exists to provide.
     testCase "the carried dispatcher routes a redeemer arm to the direct helper" $
-      passertEval $ runPassCarried redeemerCarriage alwaysPass
+      passertEval $
+        runPassCarried redeemerCarriage alwaysPass
   , testCase "accepts a first step over a published-chunk opening" $
-      passertEval $ runPassCarried publishedCarriage alwaysPass
+      passertEval $
+        runPassCarried publishedCarriage alwaysPass
   , testCase "the published-chunk arm hands the family the very same values" $
-      passertEval $ runPassCarried publishedCarriage passAssertions
+      passertEval $
+        runPassCarried publishedCarriage passAssertions
   , testCase "aborts when the family rejects on the published-chunk arm" $
-      pfails $ runPassCarried publishedCarriage alwaysFail
+      pfails $
+        runPassCarried publishedCarriage alwaysFail
   , -- The codec-free twin shares the transition and the authentication and
     -- differs only in what reaches the family.
     testCase "the committed-leaf twin hands the family the raw key and value" $
@@ -1047,9 +1136,11 @@ passTests =
         runPassLeaf leafValue $ \_ _ _ _ _ _ _ key value ->
           pand'List [key #== pconstant presentKey, value #== pconstant leafValue]
   , testCase "the committed-leaf twin accepts a value that is not a transaction" $
-      passertEval $ runPassLeaf "not a transaction" (\_ _ _ _ _ _ _ _ _ -> pconstant True)
+      passertEval $
+        runPassLeaf "not a transaction" (\_ _ _ _ _ _ _ _ _ -> pconstant True)
   , testCase "the committed-leaf twin still aborts on a forged root" $
-      pfails $ runPassLeafWith (leafArgs leafValue) {aPhasRoot = otherRoot} leafValue alwaysLeafPass
+      pfails $
+        runPassLeafWith (leafArgs leafValue){aPhasRoot = otherRoot} leafValue alwaysLeafPass
   ]
 
 alwaysPass :: forall s. NativeValidation s
@@ -1101,10 +1192,10 @@ passAssertions inScript assetName fraudProver mInputState outScript outState hea
         PDNothing -> pconstant True
         PDJust _ -> pconstant False
     , pmatch (pfromData header) $
-        \PHeaderV1 {pheader'l2TransactionCount} ->
+        \PHeaderV1{pheader'l2TransactionCount} ->
           pfromData pheader'l2TransactionCount #== pconstant l2Count
     , pmatch view $
-        \PVerifiedMidgardNativeTxCompact {pverified'txId} -> pverified'txId #== pconstant nativeTxId
+        \PVerifiedMidgardNativeTxCompact{pverified'txId} -> pverified'txId #== pconstant nativeTxId
     ]
 
 {- | Both the direct @phas@ withdrawal and the chunked verifier's claim are
@@ -1229,24 +1320,24 @@ otherAddress = scriptHashAddress (ScriptHash (toBuiltin otherScript))
 
 -- | @env.plutarch_phas_validator_hash@, copied independently from @env/default.ak@.
 phasHash :: BS.ByteString
-phasHash = unhexed "1fc59ff54da02f2535d64b40b647a8826c8b3d914d7ba5257f5b2721"
+phasHash = unhexed "819adf9eaaed4aa11f717414e99c80b45d416481824321c3474bcb5e"
 
 -- | @env.plutarch_pexcludes_validator_hash@.
 pexcludesHash :: BS.ByteString
-pexcludesHash = unhexed "03adaadf3154dafde48eea40030cecf5690b07c495f4c74029e4ab6a"
+pexcludesHash = unhexed "1fa3e7c2ce50fbc74b00aeb6b7254eb3b824c64fb1855c29bdc36c34"
 
 -- | @env.mpf_chunked_verify_validator_hash@.
 chunkedVerifyHash :: BS.ByteString
-chunkedVerifyHash = unhexed "dfd0e01fe351bd1d6f75a1ba728d06fb8b11d56bc3bf9ee98e025040"
+chunkedVerifyHash = unhexed "ea8d998a1396392158fa85afb0d202df7bd6d6ede7d3fbc05f55acd6"
 
 unhexed :: String -> BS.ByteString
 unhexed = BS.pack . go
-  where
-    go (a : b : rest) = fromIntegral (digit a * 16 + digit b) : go rest
-    go [] = []
-    go _ = error "unhexed: odd length"
-    digit :: Char -> Integer
-    digit c = maybe (error "unhexed: bad digit") id (lookup c (zip "0123456789abcdef" [0 ..]))
+ where
+  go (a : b : rest) = fromIntegral (digit a * 16 + digit b) : go rest
+  go [] = []
+  go _ = error "unhexed: odd length"
+  digit :: Char -> Integer
+  digit c = maybe (error "unhexed: bad digit") id (lookup c (zip "0123456789abcdef" [0 ..]))
 
 -- | @env.empty_merkle_tree_root@.
 emptyMerkleTreeRoot :: BS.ByteString
@@ -1269,8 +1360,9 @@ ownRef = outRefN 0
 outRefN :: Integer -> TxOutRef
 outRefN = TxOutRef (TxId (toBuiltin (BS.replicate 32 0x01)))
 
--- | A well-formed datum hash, so the non-inline cases fail on the datum's
--- /form/ rather than on a malformed fixture.
+{- | A well-formed datum hash, so the non-inline cases fail on the datum's
+/form/ rather than on a malformed fixture.
+-}
 datumHashPlaceholder :: DatumHash
 datumHashPlaceholder = DatumHash (toBuiltin (BS.replicate 32 0x77))
 
@@ -1330,13 +1422,13 @@ cborInt :: Integer -> BS.ByteString
 cborInt n
   | n >= 0 = major 0 n
   | otherwise = major 1 (-1 - n)
-  where
-    major base v
-      | v <= 23 = BS.pack [fromIntegral (base * 32 + v)]
-      | v <= 255 = BS.pack [fromIntegral (base * 32 + 24), fromIntegral v]
-      | v <= 65535 = BS.pack [fromIntegral (base * 32 + 25)] <> be 2 v
-      | otherwise = BS.pack [fromIntegral (base * 32 + 26)] <> be 4 v
-    be w v = BS.pack [fromIntegral (v `div` (256 ^ i) `mod` 256) | i <- [w - 1, w - 2 .. 0 :: Integer]]
+ where
+  major base v
+    | v <= 23 = BS.pack [fromIntegral (base * 32 + v)]
+    | v <= 255 = BS.pack [fromIntegral (base * 32 + 24), fromIntegral v]
+    | v <= 65535 = BS.pack [fromIntegral (base * 32 + 25)] <> be 2 v
+    | otherwise = BS.pack [fromIntegral (base * 32 + 26)] <> be 4 v
+  be w v = BS.pack [fromIntegral (v `div` (256 ^ i) `mod` 256) | i <- [w - 1, w - 2 .. 0 :: Integer]]
 
 defBytes32 :: BS.ByteString -> BS.ByteString
 defBytes32 h = "\x58\x20" <> h
@@ -1443,9 +1535,10 @@ data Evidence = Evidence
   { eHubPolicy :: CurrencySymbol
   -- ^ The hub the /step/ was parameterised with — the identity it demands.
   , eHubRefPolicy :: CurrencySymbol
-  -- ^ The hub the reference input actually carries. Separate from 'eHubPolicy'
-  -- so that a substituted oracle is a real substitution rather than a
-  -- self-consistent relabelling of both sides at once.
+  {- ^ The hub the reference input actually carries. Separate from 'eHubPolicy'
+  so that a substituted oracle is a real substitution rather than a
+  self-consistent relabelling of both sides at once.
+  -}
   , eHubStateQueue :: CurrencySymbol
   , eNodePolicy :: CurrencySymbol
   , eNodeHeaderHash :: BS.ByteString
@@ -1519,9 +1612,9 @@ nodeRefIn e =
         (OutputDatum (Datum (dataToBuiltinData element)))
         Nothing
     )
-  where
-    element = PD.Constr 0 [PD.Constr 1 [node], PD.Constr 1 []]
-    node = PD.Constr 0 [headerDataOf e, PD.B ""]
+ where
+  element = PD.Constr 0 [PD.Constr 1 [node], PD.Constr 1 []]
+  node = PD.Constr 0 [headerDataOf e, PD.B ""]
 
 headerDataOf :: Evidence -> PD.Data
 headerDataOf e =
@@ -1554,10 +1647,10 @@ headerDataOf e =
       , PD.I 1
       ]
     )
-  where
-    count = maybe l2Count id (eHeaderCount e)
-    committedRoot =
-      maybe (commitCountedRoot transactionsDomain phasRoot l2Count) id (eCommittedRoot e)
+ where
+  count = maybe l2Count id (eHeaderCount e)
+  committedRoot =
+    maybe (commitCountedRoot transactionsDomain phasRoot l2Count) id (eCommittedRoot e)
 
 hubDatum :: CurrencySymbol -> PD.Data
 hubDatum stateQueue =
@@ -1573,9 +1666,9 @@ hubDatum stateQueue =
         <> replicate 13 addressData
         <> [PD.B (cs (policyFor 0x4f))]
     )
-  where
-    cs = fromBuiltin . unCurrencySymbol
-    addressData = PD.Constr 0 [PD.Constr 1 [PD.B (cs (policyFor 0x42))], PD.Constr 1 []]
+ where
+  cs = fromBuiltin . unCurrencySymbol
+  addressData = PD.Constr 0 [PD.Constr 1 [PD.B (cs (policyFor 0x42))], PD.Constr 1 []]
 
 --------------------------------------------------------------------------------
 -- Argument fixtures
@@ -1663,7 +1756,8 @@ chunkCarriageT :: forall s. [Integer] -> Term s PPublishedProofCarriage
 chunkCarriageT chunks =
   pcon
     ( PPublishedProofCarriage
-        {pcarriage'orderedChunkReferenceInputIndices = pdata (pconstant chunks)}
+        { pcarriage'orderedChunkReferenceInputIndices = pdata (pconstant chunks)
+        }
     )
 
 --------------------------------------------------------------------------------

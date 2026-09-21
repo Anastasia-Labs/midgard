@@ -27,7 +27,7 @@ import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
 
 import Midgard.FraudProofs.Common (
-  PNativeTxInclusionCarriage,
+  pcontinue,
   pfinalize,
   ppassNativeTxToNextStepCarried,
  )
@@ -46,10 +46,11 @@ import Midgard.FraudProofs.FieldOpening (
   pscriptWitnessesFieldIndex,
   pspendInputsFieldIndex,
  )
-import Midgard.FraudProofs.MinFee (PStep02Args (..), PStep02State (..))
+import Midgard.FraudProofs.MinFee
 import Midgard.FraudProofs.NativeTx.Compact (
   pminFeeLovelaceV1,
   pnativeTxCanonicalSizeV1,
+  pverifyNativeTxCompactCborV1,
  )
 import Midgard.FraudProofs.NativeTx.Types (
   PNativeTxBodyCompact (..),
@@ -57,8 +58,11 @@ import Midgard.FraudProofs.NativeTx.Types (
   PNativeTxFieldPreimageLengthsV1 (..),
   PVerifiedMidgardNativeTxCompact (..),
  )
-import Midgard.LedgerState (PHeaderV1 (..))
-import Midgard.NativeTxFieldAccess (pfieldTotalLength)
+import Midgard.FraudProofs.ProofThreadSubstrate qualified as Subject
+import Midgard.LedgerState (PForcedInclusionTxV1 (..), PHeaderV1 (..), PNativeTxProofSourceV1 (..))
+import Midgard.NativeTxFieldAccess (pauthenticatedCommittedPreimage, pfieldTotalLength)
+import Midgard.RejectionReason (PRejectionReasonV1 (PFeeBelowMinimum))
+import Midgard.TransitionTrace (PRootMembershipProof (..))
 import Midgard.Validators.FraudProofs.Step (
   pdispatch,
   pexpectDatum,
@@ -66,6 +70,7 @@ import Midgard.Validators.FraudProofs.Step (
   pexpecting,
   pstep,
  )
+import Plutarch.Unsafe (punsafeCoerce)
 
 {- | The @Data@ encoding of a 'PNativeTxCompact', built by hand.
 
@@ -185,47 +190,81 @@ minFeeStep01Validator ::
 minFeeStep01Validator = plam $
   \step02ValidatorScriptHash computationThreadTokenPolicyId hubOracle ctx ->
     pstep ctx $ \datum redeemer ownOutRef txInfo ->
-      pdispatch @_ @PNativeTxInclusionCarriage computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
-        \carriage -> P.do
-          PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <-
-            pmatch txInfo
-          ppassNativeTxToNextStepCarried
-            computationThreadTokenPolicyId
-            hubOracle
-            datum
-            carriage
-            ownOutRef
-            (pfromData ptxInfo'inputs)
-            (pfromData ptxInfo'referenceInputs)
-            (pfromData ptxInfo'outputs)
-            (pto (pto (pfromData ptxInfo'redeemers)))
-            $ \_ownScriptHash
-               _threadTokenAssetName
-               _fraudProver
-               _mInputStateData
-               outputScriptHash
-               outputStateData
-               header
-               badTxId
-               badTxView -> P.do
-                PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch badTxView
-                PNativeTxCompact {pcompact'body, pcompact'validityCode} <- pmatch pverified'txCompact
-                PNativeTxBodyCompact {pbodyCompact'fee} <- pmatch pcompact'body
-                PHeaderV1 {pheader'minFeeA, pheader'minFeeB} <- pmatch (pfromData header)
-                expected <-
-                  plet $
-                    pcon
-                      ( PStep02State
-                          { pstep02State'badTx = pnativeTxCompactToData # pverified'txCompact
-                          , pstep02State'badTxBodyFee = pdata pbodyCompact'fee
-                          , pstep02State'badTxId = pdata badTxId
-                          , pstep02State'minFeeA = pheader'minFeeA
-                          , pstep02State'minFeeB = pheader'minFeeB
-                          }
-                      )
-                pexpecting (pcompact'validityCode #== 0) $
-                  pexpecting (outputScriptHash #== step02ValidatorScriptHash) $
-                    pexpecting (outputStateData #== pforgetData (pdata expected)) (pconstant True)
+      pdispatch @_ @PStep01Args computationThreadTokenPolicyId datum redeemer ownOutRef txInfo $
+        \args -> P.do
+          PStep01Args source <- pmatch args
+          PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <- pmatch txInfo
+          pmatch (pfromData source) $ \case
+            PAcceptedSource carriage ->
+              ppassNativeTxToNextStepCarried
+                computationThreadTokenPolicyId
+                hubOracle
+                datum
+                (pfromData carriage)
+                ownOutRef
+                (pfromData ptxInfo'inputs)
+                (pfromData ptxInfo'referenceInputs)
+                (pfromData ptxInfo'outputs)
+                (pto (pto (pfromData ptxInfo'redeemers)))
+                $ \_ _ _ _inputState outputScriptHash outputStateData header _ verified ->
+                  outputScriptHash
+                    #== step02ValidatorScriptHash
+                    #&& outputStateData
+                    #== expectedState (Subject.pbindAcceptedSubject # verified) (pfromData header) verified
+            PForcedSource inputIndex outputIndex header membership direction ->
+              pcontinue
+                computationThreadTokenPolicyId
+                (pexpectDatum datum)
+                (pfromData inputIndex)
+                (pfromData outputIndex)
+                ownOutRef
+                (pfromData ptxInfo'inputs)
+                (pfromData ptxInfo'outputs)
+                $ \_ threadName _ _inputState outputScriptHash outputStateData -> P.do
+                  subject <-
+                    plet $
+                      Subject.pbindForcedSubjectToThread
+                        # pto (pfromData threadName)
+                        # pfromData header
+                        # pfromData membership
+                        # pfromData direction
+                  PRootMembershipProof {prootMembership'value} <- pmatch $ pfromData membership
+                  PForcedInclusionTxV1 {pforcedTx'txId, pforcedTx'source} <-
+                    pmatch $
+                      pfromData (punsafeCoerce prootMembership'value)
+                  PNativeTxProofSourceV1 {..} <- pmatch $ pfromData pforcedTx'source
+                  verified <-
+                    plet $
+                      pverifyNativeTxCompactCborV1
+                        # pfromData pforcedTx'txId
+                        # pfromData pnativeSource'compactCbor
+                  _ <- plet $ Subject.pbindExactRejectionReason # subject # pcon PFeeBelowMinimum
+                  PVerifiedMidgardNativeTxCompact {pverified'txId} <- pmatch verified
+                  Subject.PVerdictSubject {Subject.psubject'transactionId, Subject.psubject'direction} <- pmatch subject
+                  pfromData psubject'direction
+                    #== 1
+                    #&& pverified'txId
+                    #== pfromData psubject'transactionId
+                    #&& outputScriptHash
+                    #== step02ValidatorScriptHash
+                    #&& outputStateData
+                    #== expectedState subject (pfromData header) verified
+  where
+    expectedState subject header verified =
+      pmatch header $ \PHeaderV1 {pheader'minFeeA, pheader'minFeeB} ->
+        pmatch verified $ \PVerifiedMidgardNativeTxCompact {pverified'txCompact, pverified'txId} ->
+          pmatch pverified'txCompact $ \PNativeTxCompact {pcompact'body} ->
+            pmatch pcompact'body $ \PNativeTxBodyCompact {pbodyCompact'fee} ->
+              pforgetData $
+                pdata $
+                  pcon $
+                    PStep02State
+                      (pdata subject)
+                      (pnativeTxCompactToData # pverified'txCompact)
+                      (pdata pbodyCompact'fee)
+                      (pdata pverified'txId)
+                      pheader'minFeeA
+                      pheader'minFeeB
 
 {- | Aiken @validators/fraud-proofs/min-fee/step-02.ak@.
 
@@ -272,13 +311,26 @@ minFeeStep02Validator = plam $
             (pto (pto (pfromData ptxInfo'redeemers)))
             $ \_ownScriptHash _threadTokenAssetName _fraudProver mInputStateData -> P.do
               PStep02State
-                { pstep02State'badTx
+                { pstep02State'subject
+                , pstep02State'badTx
                 , pstep02State'badTxBodyFee
                 , pstep02State'badTxId
                 , pstep02State'minFeeA
                 , pstep02State'minFeeB
                 } <-
                 pmatch (pexpectStateAs @PStep02State mInputStateData)
+              subject <- plet $ pfromData pstep02State'subject
+              Subject.PVerdictSubject {Subject.psubject'direction, Subject.psubject'transactionId} <- pmatch subject
+              _ <-
+                plet $
+                  pif
+                    (Subject.psubjectIsCanonical # subject #&& psubject'transactionId #== pstep02State'badTxId)
+                    ( pif
+                        (pfromData psubject'direction #== 1)
+                        (plet (Subject.pbindExactRejectionReason # subject # pcon PFeeBelowMinimum) $ \_ -> pcon PUnit)
+                        (pcon PUnit)
+                    )
+                    perror
               compact <- plet $ pnativeTxCompactFromData # pstep02State'badTx
               PNativeTxCompact {pcompact'witnessSetHash} <- pmatch compact
               carriages <- plet $ pfromData pstep02Args'fieldCarriages
@@ -297,15 +349,36 @@ minFeeStep02Validator = plam $
                             (pfromData pstep02Args'witnessSet)
                         )
                       # pcon (PWitnessAnchor pstep02State'badTxId (pdata pcompact'witnessSetHash))
+                verified <-
+                  plet $
+                    pverifyNativeTxCompactCborV1
+                      # pfromData pstep02State'badTxId
+                      # pfromData pstep02Args'nativeTxCompactCbor
+                PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch verified
+                PNativeTxCompact {pcompact'witnessSetHash = verifiedWitnessHash} <- pmatch pverified'txCompact
+                _ <- plet $ pif (verifiedWitnessHash #== pcompact'witnessSetHash) (pcon PUnit) perror
                 let fieldLength handle index carriageIndex =
-                      pfieldTotalLength
-                        # ( panchoredFieldView
-                              # handle
-                              # index
-                              # pfromData (pelemAt # carriageIndex # carriages)
-                              # pfromData ptxInfo'referenceInputs
-                              # fieldPreimageCertificatePolicyId
-                          )
+                      pif
+                        (pfromData psubject'direction #== 1)
+                        ( plengthBS
+                            # ( pauthenticatedCommittedPreimage
+                                  # verified
+                                  # pfromData pstep02Args'witnessSet
+                                  # index
+                                  # pfromData (pelemAt # carriageIndex # carriages)
+                                  # pfromData ptxInfo'referenceInputs
+                                  # fieldPreimageCertificatePolicyId
+                              )
+                        )
+                        ( pfieldTotalLength
+                            # ( panchoredFieldView
+                                  # handle
+                                  # index
+                                  # pfromData (pelemAt # carriageIndex # carriages)
+                                  # pfromData ptxInfo'referenceInputs
+                                  # fieldPreimageCertificatePolicyId
+                              )
+                        )
                 lengths <-
                   plet $
                     pcon
@@ -322,10 +395,13 @@ minFeeStep02Validator = plam $
                           }
                       )
                 pexpecting
-                  ( pfromData pstep02State'badTxBodyFee
-                      #< pminFeeLovelaceV1
-                        # pfromData pstep02State'minFeeA
-                        # pfromData pstep02State'minFeeB
-                        # (pnativeTxCanonicalSizeV1 # compact # lengths)
+                  ( Subject.pterminalContradiction
+                      # subject
+                      # ( pfromData pstep02State'badTxBodyFee
+                            #< pminFeeLovelaceV1
+                            # pfromData pstep02State'minFeeA
+                            # pfromData pstep02State'minFeeB
+                            # (pnativeTxCanonicalSizeV1 # compact # lengths)
+                        )
                   )
                   (pconstant True)

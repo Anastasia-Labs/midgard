@@ -4,26 +4,36 @@ module Midgard.Validators.FraudProofs.MintAuthorization (
   mintAuthorizationStep03Validator,
   mintAuthorizationStep04Validator,
   mintAuthorizationStep05Validator,
+  mintAuthorizationEvaluateValidator,
+  mintAuthorizationWitnessScanValidator,
 ) where
 
-import Plutarch.Builtin.Crypto (pblake2b_224)
+import GHC.Generics (Generic)
+import Generics.SOP qualified as SOP
+import Plutarch.Builtin.Crypto (pblake2b_224, pblake2b_256)
+import Plutarch.Core.Utils ((#/=))
 import Plutarch.LedgerApi.V3 (PAddress, PCurrencySymbol, PScriptContext, PScriptHash, PTxInfo (..))
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude
+import Plutarch.Repr.Scott (DeriveAsScottRec (..))
+import Plutarch.Unsafe (punsafeCoerce)
 
 import Midgard.FraudProofCatalogue (pidByteCount)
 import Midgard.FraudProofs.Common (pcontinue, pfinalize, ppassNativeTxToNextStepCarried)
 import Midgard.FraudProofs.FieldOpening (
+  PFieldOpeningV1,
   PNativeTxAnchorV1 (..),
   paddressWitnessesFieldIndex,
   pfoldOpenedField,
   pmintFieldIndex,
+  popenedCommittedPreimage,
   popenedFieldView,
   popenedFieldWalk,
   preferenceInputsFieldIndex,
   pscriptWitnessesFieldIndex,
  )
 import Midgard.FraudProofs.MintAuthorization (
+  PClaimEvidence (..),
   PStep01Args (..),
   PStep02Args (..),
   PStep02State (..),
@@ -41,6 +51,7 @@ import Midgard.FraudProofs.MintAuthorization.Engine (
   pevaluateNativeScriptV1,
   ppolicyIdOfMintItemV1,
  )
+import Midgard.FraudProofs.MintAuthorizationScan qualified as Machines
 import Midgard.FraudProofs.NativeScriptDecoding.Engine (pverifyCommittedPreStateV1)
 import Midgard.FraudProofs.NativeTx.Components (
   pdecodeMidgardAddressWitnessCbor,
@@ -56,13 +67,14 @@ import Midgard.FraudProofs.NativeTx.Types (
   PNativeTxCompact (..),
   PVerifiedMidgardNativeTxCompact (..),
  )
+import Midgard.FraudProofs.StructuredDataCarriage qualified as Carriage
 import Midgard.LedgerOutputCommitment (
   PLedgerOutputCommitmentV1 (..),
   pdecodeLedgerOutputCommitment,
  )
 import Midgard.LedgerState (PEventKey (..))
 import Midgard.MpfProof (phasV1)
-import Midgard.NativeTxFieldAccess (pfieldItemAt, pfieldItemCount)
+import Midgard.NativeTxFieldAccess (pdecodeFieldArrayHeader, pfieldCommitment, pfieldItemAt, pfieldItemCount)
 import Midgard.NativeTxMachineWalk (pspendInputAt)
 import Midgard.ScriptProof (pversionedScriptHash)
 import Midgard.Validators.FraudProofs.Step (pdispatch, pexpectDatum, pexpectStateAs, pexpecting, pstateIsAbsent, pstep)
@@ -73,8 +85,8 @@ mintAuthorizationStep01Validator ::
 mintAuthorizationStep01Validator = plam $ \step02ScriptHash computationThreadPolicy hubOracle ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
     pdispatch @_ @PStep01Args computationThreadPolicy datum redeemer ownOutRef txInfo $ \args -> P.do
-      PStep01Args {pstep01Args'carriage} <- pmatch args
-      PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <- pmatch txInfo
+      PStep01Args{pstep01Args'carriage} <- pmatch args
+      PTxInfo{ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs, ptxInfo'redeemers} <- pmatch txInfo
       ppassNativeTxToNextStepCarried
         computationThreadPolicy
         hubOracle
@@ -86,9 +98,9 @@ mintAuthorizationStep01Validator = plam $ \step02ScriptHash computationThreadPol
         (pfromData ptxInfo'outputs)
         (pto $ pto $ pfromData ptxInfo'redeemers)
         $ \_ownScriptHash _threadName _prover inputState outputScriptHash outputStateData _header badTxId badTxView -> P.do
-          PVerifiedMidgardNativeTxCompact {pverified'txCompact} <- pmatch badTxView
-          PNativeTxCompact {pcompact'body, pcompact'witnessSetHash, pcompact'validityCode} <- pmatch pverified'txCompact
-          PNativeTxBodyCompact {pbodyCompact'validityIntervalStart, pbodyCompact'validityIntervalEnd} <- pmatch pcompact'body
+          PVerifiedMidgardNativeTxCompact{pverified'txCompact} <- pmatch badTxView
+          PNativeTxCompact{pcompact'body, pcompact'witnessSetHash, pcompact'validityCode} <- pmatch pverified'txCompact
+          PNativeTxBodyCompact{pbodyCompact'validityIntervalStart, pbodyCompact'validityIntervalEnd} <- pmatch pcompact'body
           expectedState <-
             plet $
               pcon $
@@ -102,90 +114,67 @@ mintAuthorizationStep01Validator = plam $ \step02ScriptHash computationThreadPol
               pexpecting (outputScriptHash #== step02ScriptHash) $
                 pexpecting (outputStateData #== pforgetData (pdata expectedState)) (pconstant True)
 
-mintAuthorizationStep02Validator ::
-  forall s.
-  Term
-    s
-    ( PAsData PScriptHash
-        :--> PAsData PCurrencySymbol
-        :--> PAsData PCurrencySymbol
-        :--> PScriptContext
-        :--> PUnit
-    )
-mintAuthorizationStep02Validator = plam $ \step03ScriptHash computationThreadPolicy certificatePolicy ctx ->
-  pstep ctx $ \datum redeemer ownOutRef txInfo ->
-    pdispatch @_ @PStep02Args computationThreadPolicy datum redeemer ownOutRef txInfo $ \args -> P.do
-      PStep02Args
-        { pstep02Args'inputIndex
-        , pstep02Args'outputIndex
-        , pstep02Args'header
-        , pstep02Args'eventToStepMembership
-        , pstep02Args'transitionStepMembership
-        , pstep02Args'policyIndex
-        , pstep02Args'direction
-        , pstep02Args'mintOpening
-        } <-
-        pmatch args
-      PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
+data PPreparedMintArgs s
+  = PPreparedMintArgs
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PInteger))
+      (Term s (PAsData PFieldOpeningV1))
+      (Term s (PMaybe PClaimEvidence))
+  deriving stock (Generic)
+  deriving anyclass (SOP.Generic)
+  deriving (PlutusType) via (DeriveAsScottRec PPreparedMintArgs)
+
+mintAuthorizationStep02Validator :: forall s. Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
+mintAuthorizationStep02Validator = plam $ \nextHash threadPolicy certificatePolicy ctx ->
+  pstep ctx $ \datum redeemer ownRef tx ->
+    pdispatch @_ @PStep02Args threadPolicy datum redeemer ownRef tx $ \args -> P.do
+      PTxInfo{ptxInfo'inputs, ptxInfo'outputs, ptxInfo'referenceInputs} <- pmatch tx
+      PPreparedMintArgs inputIndex outputIndex opening claim <- pmatch $ pmatch args $ \case
+        PStep02Args i o header event transition policy direction mint ->
+          pcon $ PPreparedMintArgs i o mint $ pcon $ PJust $ pcon $ PClaimEvidence header event transition policy direction
+        PPublishedArgs i o evidence mint ->
+          pcon $ PPreparedMintArgs i o mint $ pcon $ PJust $ punsafeCoerce @PClaimEvidence $ Carriage.presolve # evidence # pfromData ptxInfo'referenceInputs
+        PAdvanceMintScan i o mint -> pcon $ PPreparedMintArgs i o mint $ pcon PNothing
       pcontinue
-        computationThreadPolicy
+        threadPolicy
         (pexpectDatum datum)
-        (pfromData pstep02Args'inputIndex)
-        (pfromData pstep02Args'outputIndex)
-        ownOutRef
+        (pfromData inputIndex)
+        (pfromData outputIndex)
+        ownRef
         (pfromData ptxInfo'inputs)
         (pfromData ptxInfo'outputs)
-        $ \_ownScriptHash threadName _prover inputState outputScriptHash outputStateData -> P.do
-          PStep02State
-            { pstep02State'badTxId
-            , pstep02State'badTxWitnessSetHash
-            , pstep02State'validityIntervalStart
-            , pstep02State'validityIntervalEnd
-            } <-
-            pmatch $ pexpectStateAs @PStep02State inputState
-          header <- plet $ pfromData pstep02Args'header
-          threadNameBytes <- plet $ pto $ pfromData threadName
-          eventKey <- plet $ pcon $ PL2TransactionEventKey pstep02State'badTxId
-          priorLedgerRoot <-
-            plet $
-              pverifyCommittedPreStateV1
-                # header
-                # eventKey
-                # pfromData pstep02Args'eventToStepMembership
-                # pfromData pstep02Args'transitionStepMembership
-          mintView <-
-            plet $
-              popenedFieldView
-                # pfromData pstep02Args'mintOpening
-                # pcon (PBodyAnchor {pbodyAnchor'txId = pstep02State'badTxId})
-                # pmintFieldIndex
-                # pfromData ptxInfo'referenceInputs
-                # certificatePolicy
-          policyIndex <- plet $ pfromData pstep02Args'policyIndex
-          direction <- plet $ pfromData pstep02Args'direction
-          policyId <- plet $ ppolicyIdOfMintItemV1 #$ pfieldItemAt # mintView # policyIndex
-          expectedState <-
-            plet $
-              pcon $
-                PStep03State
-                  (pdata policyId)
-                  (pdata direction)
-                  pstep02State'badTxId
-                  pstep02State'badTxWitnessSetHash
-                  pstep02State'validityIntervalStart
-                  pstep02State'validityIntervalEnd
-                  (pdata priorLedgerRoot)
-          pexpecting
-            ( (pblake2b_224 #$ pserialiseData # pforgetData pstep02Args'header)
-                #== psliceBS
-                # pidByteCount
-                # (plengthBS # threadNameBytes - pidByteCount)
-                # threadNameBytes
-            )
-            $ pexpecting (policyIndex #>= 0 #&& policyIndex #< pfieldItemCount # mintView)
-            $ pexpecting (direction #== pdirectionScriptAbsent #|| direction #== pdirectionScriptUnsatisfied)
-            $ pexpecting (outputScriptHash #== step03ScriptHash)
-            $ pexpecting (outputStateData #== pforgetData (pdata expectedState)) (pconstant True)
+        $ \ownHash name _ prior outputHash outputState -> P.do
+          state <- plet $ pexpectStateAs @PStep02State prior
+          txId <- plet $ pmatch state $ \case
+            PStep02State{pstep02State'badTxId} -> pstep02State'badTxId
+            PMintScanState{pmintState'badTxId} -> pmintState'badTxId
+          bytes <- plet $ popenedCommittedPreimage # pfromData opening # pcon (PBodyAnchor txId) # pmintFieldIndex # pfromData ptxInfo'referenceInputs # certificatePolicy
+          frozen <- plet $ pmatch claim $ \case
+            PNothing -> pmatch state $ \case scan@PMintScanState{} -> pcon scan; _ -> perror
+            PJust evidence -> P.do
+              PStep02State badId witness start end <- pmatch state
+              PClaimEvidence header event transition policy direction <- pmatch evidence
+              priorRoot <- plet $ pverifyCommittedPreStateV1 # pfromData header # pcon (PL2TransactionEventKey badId) # pfromData event # pfromData transition
+              pexpecting (pblake2b_224 # (pserialiseData # pforgetData header) #== psliceBS # pidByteCount # (plengthBS # pto (pfromData name) - pidByteCount) # pto (pfromData name)) $
+                pexpecting (pfromData direction #== pdirectionScriptAbsent #|| pfromData direction #== pdirectionScriptUnsatisfied) $
+                  pcon $
+                    PMintScanState badId witness start end (pdata priorRoot) policy direction (pdata $ pfieldCommitment # bytes) (pdata $ Machines.pinitialMint # bytes # pfromData policy)
+          scan@PMintScanState{pmintState'badTxId, pmintState'witnessSetHash, pmintState'validityStart, pmintState'validityEnd, pmintState'priorLedgerRoot, pmintState'policyIndex, pmintState'direction, pmintState'fieldHash, pmintState'control} <- pmatch frozen
+          pexpecting (pfieldCommitment # bytes #== pfromData pmintState'fieldHash) $ P.do
+            next <- plet $ Machines.padvanceMint # pfromData pmintState'control # bytes # pfromData pmintState'policyIndex # 32
+            Machines.PMintControl{Machines.pmint'policyId, Machines.pmint'itemIndex, Machines.pmint'itemCount} <- pmatch next
+            pif
+              (Machines.pmintComplete # next # (plengthBS # bytes))
+              (outputHash #== nextHash #&& outputState #== pforgetData (pdata $ pcon $ PStep03State pmint'policyId pmintState'direction pmintState'badTxId pmintState'witnessSetHash pmintState'validityStart pmintState'validityEnd pmintState'priorLedgerRoot))
+              ( next
+                  #/= pfromData pmintState'control
+                  #&& pfromData pmint'itemIndex
+                  #< pfromData pmint'itemCount
+                  #&& outputHash
+                  #== ownHash
+                  #&& outputState
+                  #== pforgetData (pdata $ pcon scan{pmintState'control = pdata next})
+              )
 
 mintAuthorizationStep03Validator ::
   forall s.
@@ -193,17 +182,19 @@ mintAuthorizationStep03Validator ::
     s
     ( PAsData PScriptHash
         :--> PAsData PScriptHash
+        :--> PAsData PScriptHash
+        :--> PAsData PScriptHash
         :--> PAsData PCurrencySymbol
         :--> PAsData PCurrencySymbol
         :--> PScriptContext
         :--> PUnit
     )
-mintAuthorizationStep03Validator = plam $ \step04ScriptHash step05ScriptHash computationThreadPolicy certificatePolicy ctx ->
+mintAuthorizationStep03Validator = plam $ \step04ScriptHash step05ScriptHash evaluateHash witnessScanHash computationThreadPolicy certificatePolicy ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
     pdispatch @_ @PStep03Args computationThreadPolicy datum redeemer ownOutRef txInfo $ \args ->
       pmatch args $ \case
         PWitnessAbsence inputIndexD outputIndexD openingD -> P.do
-          PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
+          PTxInfo{ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
           pcontinue
             computationThreadPolicy
             (pexpectDatum datum)
@@ -258,7 +249,7 @@ mintAuthorizationStep03Validator = plam $ \step04ScriptHash step05ScriptHash com
                   pexpecting (outputScriptHash #== step04ScriptHash) $
                     pexpecting (outputStateData #== pforgetData (pdata expectedState)) (pconstant True)
         PEvaluateUnsatisfied inputIndexD outputIndexD scriptBytesD openingD -> P.do
-          PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
+          PTxInfo{ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
           pcontinue
             computationThreadPolicy
             (pexpectDatum datum)
@@ -332,6 +323,77 @@ mintAuthorizationStep03Validator = plam $ \step04ScriptHash step05ScriptHash com
                           )
                           (pconstant True)
                   _ -> perror
+        PStartAbsence inputIndex outputIndex indices opening -> P.do
+          PTxInfo{ptxInfo'inputs, ptxInfo'outputs, ptxInfo'referenceInputs} <- pmatch txInfo
+          pcontinue
+            computationThreadPolicy
+            (pexpectDatum datum)
+            (pfromData inputIndex)
+            (pfromData outputIndex)
+            ownOutRef
+            (pfromData ptxInfo'inputs)
+            (pfromData ptxInfo'outputs)
+            $ \_ _ _ prior outputHash outputState -> P.do
+              PStep03State policy direction txId witness _ _ root <- pmatch $ pexpectStateAs @PStep03State prior
+              parts <- plet $ Machines.pchunks # pfromData indices # pfromData ptxInfo'referenceInputs
+              bytes <- plet $ Machines.ppayload # parts
+              let len = plengthBS # bytes
+              pexpecting (pfromData direction #== pdirectionScriptAbsent #&& len #> 0 #&& len #<= 32768) $
+                pexpecting (bytes #== popenedCommittedPreimage # pfromData opening # pcon (PWitnessAnchor txId witness) # pscriptWitnessesFieldIndex # pfromData ptxInfo'referenceInputs # certificatePolicy) $ P.do
+                  PPair cursor count <- pmatch $ pdecodeFieldArrayHeader # bytes
+                  let expected =
+                        pcon $
+                          Machines.PWitnessScanState
+                            policy
+                            txId
+                            root
+                            (pdata len)
+                            (pdata $ pmap # plam (\part -> pdata $ pblake2b_256 # pfromData part) # parts)
+                            (pdata cursor)
+                            (pdata 0)
+                            (pdata count)
+                  outputHash #== witnessScanHash #&& outputState #== pforgetData (pdata expected)
+        PStartUnsatisfied scriptLength inputIndex outputIndex indices opening -> P.do
+          PTxInfo{ptxInfo'inputs, ptxInfo'outputs, ptxInfo'referenceInputs} <- pmatch txInfo
+          pcontinue
+            computationThreadPolicy
+            (pexpectDatum datum)
+            (pfromData inputIndex)
+            (pfromData outputIndex)
+            ownOutRef
+            (pfromData ptxInfo'inputs)
+            (pfromData ptxInfo'outputs)
+            $ \_ _ _ prior outputHash outputState -> P.do
+              PStep03State policy direction txId witness start end _ <- pmatch $ pexpectStateAs @PStep03State prior
+              parts <- plet $ Machines.prawChunks # pfromData indices # pfromData ptxInfo'referenceInputs
+              raw <- plet $ Machines.ppayload # parts
+              let len = pfromData scriptLength
+                  rawLength = plengthBS # raw
+                  script = psliceBS # 0 # len # raw
+                  signerBytes = psliceBS # len # (rawLength - len) # raw
+              pexpecting (pfromData direction #== pdirectionScriptUnsatisfied #&& len #> 0 #&& len #<= 32768 #&& rawLength #> len #&& rawLength - len #<= 32768) $
+                pexpecting (pversionedScriptHash # pcon (PMidgardVersionedScript (pdata $ pcon PNativeCardanoScript) (pdata script)) #== pfromData policy) $
+                  pexpecting (signerBytes #== popenedCommittedPreimage # pfromData opening # pcon (PWitnessAnchor txId witness) # paddressWitnessesFieldIndex # pfromData ptxInfo'referenceInputs # certificatePolicy) $ P.do
+                    PPair headerLength count <- pmatch $ pdecodeFieldArrayHeader # signerBytes
+                    let expected =
+                          pcon $
+                            Machines.PEvaluateState
+                              policy
+                              scriptLength
+                              (pdata rawLength)
+                              (pdata $ len + headerLength)
+                              (pdata count)
+                              (pdata 0)
+                              (pdata $ pmap # plam (\part -> pdata $ pblake2b_256 # pfromData part) # parts)
+                              (pdata pnil)
+                              start
+                              end
+                              (pdata 0)
+                              (pdata 0)
+                              (pdata $ pconstant "")
+                              (pdata 0)
+                              (pdata (-1))
+                    plengthBS # signerBytes #== headerLength + 103 * count #&& outputHash #== evaluateHash #&& outputState #== pforgetData (pdata expected)
 
 mintAuthorizationStep04Validator ::
   forall s.
@@ -348,7 +410,7 @@ mintAuthorizationStep04Validator = plam $ \step05ScriptHash computationThreadPol
     pdispatch @_ @PStep04Args computationThreadPolicy datum redeemer ownOutRef txInfo $ \args ->
       pmatch args $ \case
         PResolveNext inputIndexD outputIndexD openingD descriptorCborD proofD -> P.do
-          PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
+          PTxInfo{ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
           pcontinue
             computationThreadPolicy
             (pexpectDatum datum)
@@ -369,7 +431,7 @@ mintAuthorizationStep04Validator = plam $ \step05ScriptHash computationThreadPol
                 plet $
                   popenedFieldView
                     # pfromData openingD
-                    # pcon (PBodyAnchor {pbodyAnchor'txId = pstep04State'badTxId})
+                    # pcon (PBodyAnchor{pbodyAnchor'txId = pstep04State'badTxId})
                     # preferenceInputsFieldIndex
                     # pfromData ptxInfo'referenceInputs
                     # certificatePolicy
@@ -399,7 +461,7 @@ mintAuthorizationStep04Validator = plam $ \step05ScriptHash computationThreadPol
                 $ pexpecting (outputScriptHash #== ownScriptHash)
                 $ pexpecting (outputStateData #== pforgetData (pdata expectedState)) (pconstant True)
         PAdvanceComplete inputIndexD outputIndexD openingD -> P.do
-          PTxInfo {ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
+          PTxInfo{ptxInfo'inputs, ptxInfo'referenceInputs, ptxInfo'outputs} <- pmatch txInfo
           pcontinue
             computationThreadPolicy
             (pexpectDatum datum)
@@ -419,7 +481,7 @@ mintAuthorizationStep04Validator = plam $ \step05ScriptHash computationThreadPol
                 plet $
                   popenedFieldView
                     # pfromData openingD
-                    # pcon (PBodyAnchor {pbodyAnchor'txId = pstep04State'badTxId})
+                    # pcon (PBodyAnchor{pbodyAnchor'txId = pstep04State'badTxId})
                     # preferenceInputsFieldIndex
                     # pfromData ptxInfo'referenceInputs
                     # certificatePolicy
@@ -443,8 +505,8 @@ mintAuthorizationStep05Validator ::
 mintAuthorizationStep05Validator = plam $ \fraudProofPolicy fraudProofAddress computationThreadPolicy ctx ->
   pstep ctx $ \datum redeemer ownOutRef txInfo ->
     pdispatch @_ @PStep05Args computationThreadPolicy datum redeemer ownOutRef txInfo $ \args -> P.do
-      PStep05Args {pstep05Args'inputIndex, pstep05Args'outputIndex, pstep05Args'fraudProofMintRedeemerIndex} <- pmatch args
-      PTxInfo {ptxInfo'inputs, ptxInfo'outputs, ptxInfo'redeemers} <- pmatch txInfo
+      PStep05Args{pstep05Args'inputIndex, pstep05Args'outputIndex, pstep05Args'fraudProofMintRedeemerIndex} <- pmatch args
+      PTxInfo{ptxInfo'inputs, ptxInfo'outputs, ptxInfo'redeemers} <- pmatch txInfo
       pfinalize
         computationThreadPolicy
         fraudProofPolicy
@@ -458,7 +520,7 @@ mintAuthorizationStep05Validator = plam $ \fraudProofPolicy fraudProofAddress co
         (pfromData ptxInfo'outputs)
         (pto $ pto $ pfromData ptxInfo'redeemers)
         $ \_ownScriptHash _threadName _prover inputState -> P.do
-          PStep05State {pstep05State'direction} <- pmatch $ pexpectStateAs @PStep05State inputState
+          PStep05State{pstep05State'direction} <- pmatch $ pexpectStateAs @PStep05State inputState
           pexpecting
             ( pfromData pstep05State'direction
                 #== pdirectionScriptAbsent
@@ -466,3 +528,61 @@ mintAuthorizationStep05Validator = plam $ \fraudProofPolicy fraudProofAddress co
                 #== pdirectionScriptUnsatisfied
             )
             (pconstant True)
+
+mintAuthorizationEvaluateValidator :: forall s. Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
+mintAuthorizationEvaluateValidator = plam $ \nextHash threadPolicy ctx ->
+  pstep ctx $ \datum redeemer ownRef tx ->
+    pdispatch @_ @Machines.PEvaluateAction threadPolicy datum redeemer ownRef tx $ \action -> P.do
+      PTxInfo{ptxInfo'inputs, ptxInfo'outputs, ptxInfo'referenceInputs} <- pmatch tx
+      PPair i o <- pmatch $ pmatch action $ \case
+        Machines.PEvaluateAdvance i o _ _ -> pcon $ PPair i o
+        Machines.PEvaluateFinalize i o -> pcon $ PPair i o
+      pcontinue threadPolicy (pexpectDatum datum) (pfromData i) (pfromData o) ownRef (pfromData ptxInfo'inputs) (pfromData ptxInfo'outputs) $ \ownHash _ _ prior outputHash outputState -> P.do
+        state <- plet $ pexpectStateAs @Machines.PEvaluateState prior
+        pmatch action $ \case
+          Machines.PEvaluateAdvance _ _ indices operations -> P.do
+            bytes <- plet $ Machines.pauthenticatePayload # state # (Machines.prawChunks # pfromData indices # pfromData ptxInfo'referenceInputs)
+            next <- plet $ Machines.padvanceEvaluation # state # bytes # pfromData operations
+            outputHash #== ownHash #&& outputState #== pforgetData (pdata next)
+          Machines.PEvaluateFinalize _ _ -> pmatch state $ \s ->
+            Machines.pevaluate'signerIndex s
+              #== Machines.pevaluate'signerCount s
+              #&& Machines.pevaluate'cursor s
+              #== Machines.pevaluate'scriptLength s
+              #&& pfromData (Machines.pevaluate'stackRoot s)
+              #== pconstant ""
+              #&& pfromData (Machines.pevaluate'stackDepth s)
+              #== 0
+              #&& pfromData (Machines.pevaluate'result s)
+              #== 0
+              #&& outputHash
+              #== nextHash
+              #&& outputState
+              #== pforgetData (pdata $ pcon $ PStep05State (Machines.pevaluate'policyId s) (pdata 1))
+
+mintAuthorizationWitnessScanValidator :: forall s. Term s (PAsData PScriptHash :--> PAsData PCurrencySymbol :--> PScriptContext :--> PUnit)
+mintAuthorizationWitnessScanValidator = plam $ \nextHash threadPolicy ctx ->
+  pstep ctx $ \datum redeemer ownRef tx ->
+    pdispatch @_ @Machines.PWitnessScanAction threadPolicy datum redeemer ownRef tx $ \action -> P.do
+      PTxInfo{ptxInfo'inputs, ptxInfo'outputs, ptxInfo'referenceInputs} <- pmatch tx
+      PPair i o <- pmatch $ pmatch action $ \case
+        Machines.PWitnessAdvance i o _ -> pcon $ PPair i o
+        Machines.PWitnessFinalize i o -> pcon $ PPair i o
+      pcontinue threadPolicy (pexpectDatum datum) (pfromData i) (pfromData o) ownRef (pfromData ptxInfo'inputs) (pfromData ptxInfo'outputs) $ \ownHash _ _ prior outputHash outputState -> P.do
+        state <- plet $ pexpectStateAs @Machines.PWitnessScanState prior
+        s <- pmatch state
+        pmatch action $ \case
+          Machines.PWitnessAdvance _ _ indices ->
+            pexpecting (pfromData (Machines.pwitness'itemIndex s) #< pfromData (Machines.pwitness'itemCount s)) $ P.do
+              bytes <- plet $ Machines.pauthenticateWitness # state # (Machines.pchunks # pfromData indices # pfromData ptxInfo'referenceInputs)
+              next <- plet $ Machines.padvanceWitness # state # bytes # 16
+              outputHash #== ownHash #&& outputState #== pforgetData (pdata next)
+          Machines.PWitnessFinalize _ _ ->
+            Machines.pwitness'itemIndex s
+              #== Machines.pwitness'itemCount s
+              #&& Machines.pwitness'cursor s
+              #== Machines.pwitness'fieldLength s
+              #&& outputHash
+              #== nextHash
+              #&& outputState
+              #== pforgetData (pdata $ pcon $ PStep04State (Machines.pwitness'policyId s) (Machines.pwitness'badTxId s) (Machines.pwitness'priorLedgerRoot s) (pdata 0))

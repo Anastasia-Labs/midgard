@@ -25,161 +25,161 @@ witness-set violations, and 'txScriptSpend' spends 'tx3''s script-locked output
 without witnessing the script.
 -}
 module Testing.FraudProofsFixture (
-    -- * Contexts
-    spendContext,
-    asMinting,
-    asRewarding,
+  -- * Contexts
+  spendContext,
+  asMinting,
+  asRewarding,
 
-    -- * The thread
-    stepDatum,
-    threadInput,
-    threadInputWithName,
-    stepOutput,
-    stepOutputWithName,
-    convictionOutput,
-    fraudProofMintEntry,
-    cancelRedeemer,
-    cancelMintEntry,
+  -- * The thread
+  stepDatum,
+  threadInput,
+  threadInputWithName,
+  stepOutput,
+  stepOutputWithName,
+  convictionOutput,
+  fraudProofMintEntry,
+  cancelRedeemer,
+  cancelMintEntry,
 
-    -- * Redeemer payloads
-    inclusionArgs,
-    bareInclusionArgs,
-    bodyOpening,
-    witnessOpening,
-    phasEntry,
-    pexcludesEntry,
-    pexcludesEntryWith,
-    emptyProof,
-    redeemerCarriedNonMembership,
+  -- * Redeemer payloads
+  inclusionArgs,
+  bareInclusionArgs,
+  bodyOpening,
+  witnessOpening,
+  phasEntry,
+  pexcludesEntry,
+  pexcludesEntryWith,
+  emptyProof,
+  redeemerCarriedNonMembership,
 
-    -- * The block's evidence
-    referenceInputs,
-    referenceInputsWithTransactionsRoot,
-    referenceInputsWithTransactionsRootAndMinFee,
-    referenceInputsWithBlockSlot,
-    referenceInputsWithWithdrawalsRoot,
-    referenceInputsWithDepositsRoot,
-    referenceInputsWithForcedTransactionsRoot,
-    referenceInputsWithUtxosRoots,
-    referenceInputsWithTransactionAndUtxosRoots,
-    headerTransactionsRoot,
-    commitCountedRoot,
-    transactionsDomain,
-    withdrawalsDomain,
-    depositsDomain,
-    forcedTransactionsDomain,
-    l2Count,
+  -- * The block's evidence
+  referenceInputs,
+  referenceInputsWithTransactionsRoot,
+  referenceInputsWithTransactionsRootAndMinFee,
+  referenceInputsWithBlockSlot,
+  referenceInputsWithWithdrawalsRoot,
+  referenceInputsWithDepositsRoot,
+  referenceInputsWithForcedTransactionsRoot,
+  referenceInputsWithUtxosRoots,
+  referenceInputsWithTransactionAndUtxosRoots,
+  headerTransactionsRoot,
+  commitCountedRoot,
+  transactionsDomain,
+  withdrawalsDomain,
+  depositsDomain,
+  forcedTransactionsDomain,
+  l2Count,
 
-    -- * The block's one withdrawal event
-    withdrawalId,
-    withdrawalKeyBytes,
-    withdrawalInfoData,
-    withdrawalValueBytes,
-    withdrawalsPhasRoot,
-    headerWithdrawalsRoot,
-    withdrawalCount,
-    singleEntryPhasRoot,
-    membershipProof,
+  -- * The block's one withdrawal event
+  withdrawalId,
+  withdrawalKeyBytes,
+  withdrawalInfoData,
+  withdrawalValueBytes,
+  withdrawalsPhasRoot,
+  headerWithdrawalsRoot,
+  withdrawalCount,
+  singleEntryPhasRoot,
+  membershipProof,
 
-    -- * The transactions
-    Tx (..),
-    spendInputsOf,
-    tx1,
-    tx2,
-    tx3,
-    txEmpty,
-    txUnsigned,
-    txBadSig,
-    txScriptSpend,
-    tx1Id,
-    tx2Id,
-    tx3Id,
-    txEmptyId,
-    txUnsignedId,
-    txBadSigId,
-    txScriptSpendId,
-    tx1Cbor,
-    tx2Cbor,
-    tx3Cbor,
-    txEmptyCbor,
-    txUnsignedCbor,
-    txBadSigCbor,
-    txScriptSpendCbor,
-    spendInputsPreimage,
-    referenceInputsPreimage,
-    outputsPreimage,
-    outputCollectionPreimage,
-    outputItem,
-    midgardOutputCbor,
-    scriptAddressBytes,
-    pubKeyAddressBytes,
-    requiredSignersPreimage,
-    addressWitnessesPreimage,
-    scriptWitnessesPreimage,
-    scriptWitnessCollectionPreimage,
-    versionedScriptItem,
-    versionedScriptHashOf,
-    nativeScriptBytes,
-    otherNativeScriptBytes,
-    lockedScriptHash,
-    witnessSetCborOf,
-    witnessSetCborFrom,
-    witnessSetHashesOf,
-    witnessSetHashOf,
-    witnessOpeningRaw,
-    compactWith,
-    compactWithValidity,
-    compactOf,
-    txIdOf,
-    sourceCborFor,
-    sourceCborOf,
-    sourceCborWithValidity,
-    fieldPreimageLengthsCborOf,
-    Witness (..),
-    verKeyFor,
-    keyHashFor,
-    signWith,
-    sharedInputRef,
-    otherInputRef,
-    inputData,
-    encodedInput,
+  -- * The transactions
+  Tx (..),
+  spendInputsOf,
+  tx1,
+  tx2,
+  tx3,
+  txEmpty,
+  txUnsigned,
+  txBadSig,
+  txScriptSpend,
+  tx1Id,
+  tx2Id,
+  tx3Id,
+  txEmptyId,
+  txUnsignedId,
+  txBadSigId,
+  txScriptSpendId,
+  tx1Cbor,
+  tx2Cbor,
+  tx3Cbor,
+  txEmptyCbor,
+  txUnsignedCbor,
+  txBadSigCbor,
+  txScriptSpendCbor,
+  spendInputsPreimage,
+  referenceInputsPreimage,
+  outputsPreimage,
+  outputCollectionPreimage,
+  outputItem,
+  midgardOutputCbor,
+  scriptAddressBytes,
+  pubKeyAddressBytes,
+  requiredSignersPreimage,
+  addressWitnessesPreimage,
+  scriptWitnessesPreimage,
+  scriptWitnessCollectionPreimage,
+  versionedScriptItem,
+  versionedScriptHashOf,
+  nativeScriptBytes,
+  otherNativeScriptBytes,
+  lockedScriptHash,
+  witnessSetCborOf,
+  witnessSetCborFrom,
+  witnessSetHashesOf,
+  witnessSetHashOf,
+  witnessOpeningRaw,
+  compactWith,
+  compactWithValidity,
+  compactOf,
+  txIdOf,
+  sourceCborFor,
+  sourceCborOf,
+  sourceCborWithValidity,
+  fieldPreimageLengthsCborOf,
+  Witness (..),
+  verKeyFor,
+  keyHashFor,
+  signWith,
+  sharedInputRef,
+  otherInputRef,
+  inputData,
+  encodedInput,
 
-    -- * Reference encoders
-    arrayHeader,
-    wrapItem,
-    cborInt,
-    defBytes32,
-    hash32,
-    blake2b256,
-    blake2b224,
-    serialise,
+  -- * Reference encoders
+  arrayHeader,
+  wrapItem,
+  cborInt,
+  defBytes32,
+  hash32,
+  blake2b256,
+  blake2b224,
+  serialise,
 
-    -- * Identities
-    policyFor,
-    ctPolicy,
-    fpPolicy,
-    hubPolicy,
-    hubOracleHash,
-    stateQueuePolicy,
-    certificatePolicy,
-    stepScript,
-    nextScript,
-    otherScript,
-    fpSpendScript,
-    prover,
-    threadName,
-    otherThreadName,
-    phasRoot,
-    otherRoot,
-    prevUtxosRoot,
-    fraudProofAddress,
-    otherAddress,
-    phasHash,
-    pexcludesHash,
-    unCS,
-    adaValue,
-    ownRef,
-    outRefN,
+  -- * Identities
+  policyFor,
+  ctPolicy,
+  fpPolicy,
+  hubPolicy,
+  hubOracleHash,
+  stateQueuePolicy,
+  certificatePolicy,
+  stepScript,
+  nextScript,
+  otherScript,
+  fpSpendScript,
+  prover,
+  threadName,
+  otherThreadName,
+  phasRoot,
+  otherRoot,
+  prevUtxosRoot,
+  fraudProofAddress,
+  otherAddress,
+  phasHash,
+  pexcludesHash,
+  unCS,
+  adaValue,
+  ownRef,
+  outRefN,
 ) where
 
 import Cardano.Crypto.DSIGN.Class qualified as DSIGN
@@ -190,28 +190,28 @@ import PlutusCore.Data qualified as PD
 import PlutusLedgerApi.V1.Address (scriptHashAddress)
 import PlutusLedgerApi.V1.Interval (always)
 import PlutusLedgerApi.V1.Value (
-    CurrencySymbol (..),
-    TokenName (..),
-    Value,
-    getValue,
-    singleton,
+  CurrencySymbol (..),
+  TokenName (..),
+  Value,
+  getValue,
+  singleton,
  )
 import PlutusLedgerApi.V3 (
-    Address,
-    Credential (..),
-    Datum (..),
-    OutputDatum (..),
-    PubKeyHash (..),
-    Redeemer (..),
-    ScriptContext (..),
-    ScriptHash (..),
-    ScriptInfo (..),
-    ScriptPurpose (..),
-    TxId (..),
-    TxInInfo (..),
-    TxInfo (..),
-    TxOut (..),
-    TxOutRef (..),
+  Address,
+  Credential (..),
+  Datum (..),
+  OutputDatum (..),
+  PubKeyHash (..),
+  Redeemer (..),
+  ScriptContext (..),
+  ScriptHash (..),
+  ScriptInfo (..),
+  ScriptPurpose (..),
+  TxId (..),
+  TxInInfo (..),
+  TxInfo (..),
+  TxOut (..),
+  TxOutRef (..),
  )
 import PlutusLedgerApi.V3.MintValue (MintValue (UnsafeMintValue))
 import PlutusTx.AssocMap qualified as AssocMap
@@ -223,55 +223,55 @@ import PlutusTx.Builtins qualified as Builtins
 --------------------------------------------------------------------------------
 
 spendContext ::
-    PD.Data ->
-    PD.Data ->
-    [TxInInfo] ->
-    [TxOut] ->
-    [TxInInfo] ->
-    [(ScriptPurpose, Redeemer)] ->
-    Value ->
-    ScriptContext
+  PD.Data ->
+  PD.Data ->
+  [TxInInfo] ->
+  [TxOut] ->
+  [TxInInfo] ->
+  [(ScriptPurpose, Redeemer)] ->
+  Value ->
+  ScriptContext
 spendContext datum redeemer inputs outputs refInputs redeemers mint =
-    ScriptContext
-        ( emptyTxInfo
-            { txInfoInputs = inputs
-            , txInfoOutputs = outputs
-            , txInfoReferenceInputs = refInputs
-            , txInfoRedeemers = AssocMap.unsafeFromList redeemers
-            , txInfoMint = UnsafeMintValue (getValue mint)
-            , txInfoSignatories = [PubKeyHash (toBuiltin prover)]
-            }
-        )
-        (Redeemer (dataToBuiltinData redeemer))
-        (SpendingScript ownRef (Just (Datum (dataToBuiltinData datum))))
+  ScriptContext
+    ( emptyTxInfo
+        { txInfoInputs = inputs
+        , txInfoOutputs = outputs
+        , txInfoReferenceInputs = refInputs
+        , txInfoRedeemers = AssocMap.unsafeFromList redeemers
+        , txInfoMint = UnsafeMintValue (getValue mint)
+        , txInfoSignatories = [PubKeyHash (toBuiltin prover)]
+        }
+    )
+    (Redeemer (dataToBuiltinData redeemer))
+    (SpendingScript ownRef (Just (Datum (dataToBuiltinData datum))))
 
 asMinting :: ScriptContext -> ScriptContext
 asMinting (ScriptContext txInfo r _) = ScriptContext txInfo r (MintingScript ctPolicy)
 
 asRewarding :: ScriptContext -> ScriptContext
 asRewarding (ScriptContext txInfo r _) =
-    ScriptContext txInfo r (RewardingScript (ScriptCredential (ScriptHash (toBuiltin stepScript))))
+  ScriptContext txInfo r (RewardingScript (ScriptCredential (ScriptHash (toBuiltin stepScript))))
 
 emptyTxInfo :: TxInfo
 emptyTxInfo =
-    TxInfo
-        { txInfoInputs = []
-        , txInfoReferenceInputs = []
-        , txInfoOutputs = []
-        , txInfoFee = 0
-        , txInfoMint = UnsafeMintValue AssocMap.empty
-        , txInfoTxCerts = []
-        , txInfoWdrl = AssocMap.empty
-        , txInfoValidRange = always
-        , txInfoSignatories = []
-        , txInfoRedeemers = AssocMap.empty
-        , txInfoData = AssocMap.empty
-        , txInfoId = TxId (toBuiltin (BS.replicate 32 0x00))
-        , txInfoVotes = AssocMap.empty
-        , txInfoProposalProcedures = []
-        , txInfoCurrentTreasuryAmount = Nothing
-        , txInfoTreasuryDonation = Nothing
-        }
+  TxInfo
+    { txInfoInputs = []
+    , txInfoReferenceInputs = []
+    , txInfoOutputs = []
+    , txInfoFee = 0
+    , txInfoMint = UnsafeMintValue AssocMap.empty
+    , txInfoTxCerts = []
+    , txInfoWdrl = AssocMap.empty
+    , txInfoValidRange = always
+    , txInfoSignatories = []
+    , txInfoRedeemers = AssocMap.empty
+    , txInfoData = AssocMap.empty
+    , txInfoId = TxId (toBuiltin (BS.replicate 32 0x00))
+    , txInfoVotes = AssocMap.empty
+    , txInfoProposalProcedures = []
+    , txInfoCurrentTreasuryAmount = Nothing
+    , txInfoTreasuryDonation = Nothing
+    }
 
 --------------------------------------------------------------------------------
 -- The thread
@@ -280,48 +280,48 @@ emptyTxInfo =
 -- | @ct.StepDatum@ — the prover, and the step's own state.
 stepDatum :: Maybe PD.Data -> PD.Data
 stepDatum mState =
-    PD.Constr 0 [PD.B prover, maybe (PD.Constr 1 []) (\d -> PD.Constr 0 [d]) mState]
+  PD.Constr 0 [PD.B prover, maybe (PD.Constr 1 []) (\d -> PD.Constr 0 [d]) mState]
 
 threadInput :: TxInInfo
 threadInput = threadInputWithName threadName
 
 threadInputWithName :: BS.ByteString -> TxInInfo
 threadInputWithName assetName =
-    TxInInfo
-        ownRef
-        ( TxOut
-            (scriptHashAddress (ScriptHash (toBuiltin stepScript)))
-            (adaValue 2_000_000 <> singleton ctPolicy (TokenName (toBuiltin assetName)) 1)
-            NoOutputDatum
-            Nothing
-        )
+  TxInInfo
+    ownRef
+    ( TxOut
+        (scriptHashAddress (ScriptHash (toBuiltin stepScript)))
+        (adaValue 2_000_000 <> singleton ctPolicy (TokenName (toBuiltin assetName)) 1)
+        NoOutputDatum
+        Nothing
+    )
 
 stepOutput :: BS.ByteString -> Maybe PD.Data -> TxOut
 stepOutput script mState = stepOutputWithName script mState threadName
 
 stepOutputWithName :: BS.ByteString -> Maybe PD.Data -> BS.ByteString -> TxOut
 stepOutputWithName script mState assetName =
-    TxOut
-        (scriptHashAddress (ScriptHash (toBuiltin script)))
-        (adaValue 2_000_000 <> singleton ctPolicy (TokenName (toBuiltin assetName)) 1)
-        (OutputDatum (Datum (dataToBuiltinData (stepDatum mState))))
-        Nothing
+  TxOut
+    (scriptHashAddress (ScriptHash (toBuiltin script)))
+    (adaValue 2_000_000 <> singleton ctPolicy (TokenName (toBuiltin assetName)) 1)
+    (OutputDatum (Datum (dataToBuiltinData (stepDatum mState))))
+    Nothing
 
 {- | The conviction: the thread's own asset name minted under the fraud-proof
 policy, parked at the always-fails address with the prover's name in its datum.
 -}
 convictionOutput :: Address -> BS.ByteString -> TxOut
 convictionOutput address name =
-    TxOut
-        address
-        (adaValue 2_000_000 <> singleton fpPolicy (TokenName (toBuiltin name)) 1)
-        (OutputDatum (Datum (dataToBuiltinData (PD.Constr 0 [PD.B prover]))))
-        Nothing
+  TxOut
+    address
+    (adaValue 2_000_000 <> singleton fpPolicy (TokenName (toBuiltin name)) 1)
+    (OutputDatum (Datum (dataToBuiltinData (PD.Constr 0 [PD.B prover]))))
+    Nothing
 
 -- | @fraud_proof.MintRedeemer@, which names the thread the conviction belongs to.
 fraudProofMintEntry :: BS.ByteString -> (ScriptPurpose, Redeemer)
 fraudProofMintEntry name =
-    (Minting fpPolicy, Redeemer (dataToBuiltinData (PD.Constr 0 [PD.B name])))
+  (Minting fpPolicy, Redeemer (dataToBuiltinData (PD.Constr 0 [PD.B name])))
 
 -- | @ct.Cancel@ — an input index and the index of the burning mint redeemer.
 cancelRedeemer :: PD.Data
@@ -332,7 +332,7 @@ another thread is how a cancel fails: the token burnt has to be this thread's.
 -}
 cancelMintEntry :: BS.ByteString -> (ScriptPurpose, Redeemer)
 cancelMintEntry name =
-    (Minting ctPolicy, Redeemer (dataToBuiltinData (PD.Constr 2 [PD.B name])))
+  (Minting ctPolicy, Redeemer (dataToBuiltinData (PD.Constr 2 [PD.B name])))
 
 --------------------------------------------------------------------------------
 -- Redeemer payloads
@@ -350,18 +350,18 @@ types, so a step of one shape cannot be driven with the other's payload.
 -}
 bareInclusionArgs :: BS.ByteString -> BS.ByteString -> BS.ByteString -> PD.Data
 bareInclusionArgs txId cbor root =
-    PD.Constr
-        0
-        [ PD.I 0 -- input index
-        , PD.I 0 -- output index
-        , PD.I 0 -- hub reference input index
-        , PD.I 1 -- state queue node reference input index
-        , PD.B txId
-        , PD.B cbor
-        , PD.B root
-        , emptyProof
-        , PD.I 0 -- phas withdrawal redeemer index
-        ]
+  PD.Constr
+    0
+    [ PD.I 0 -- input index
+    , PD.I 0 -- output index
+    , PD.I 0 -- hub reference input index
+    , PD.I 1 -- state queue node reference input index
+    , PD.B txId
+    , PD.B cbor
+    , PD.B root
+    , emptyProof
+    , PD.I 0 -- phas withdrawal redeemer index
+    ]
 
 {- | @field_opening_v1.BodyFieldOpening@ — the compact bytes and a tier-1
 carriage holding the whole preimage.
@@ -383,17 +383,17 @@ off a transaction — which is how a test builds a witness set no fixture
 transaction commits.
 -}
 witnessOpeningRaw ::
-    BS.ByteString ->
-    (BS.ByteString, BS.ByteString, BS.ByteString) ->
-    BS.ByteString ->
-    PD.Data
+  BS.ByteString ->
+  (BS.ByteString, BS.ByteString, BS.ByteString) ->
+  BS.ByteString ->
+  PD.Data
 witnessOpeningRaw cbor (addr, script, redeemer) preimage =
-    PD.Constr
-        1
-        [ PD.B cbor
-        , PD.Constr 0 [PD.B addr, PD.B script, PD.B redeemer]
-        , PD.Constr 0 [PD.B preimage]
-        ]
+  PD.Constr
+    1
+    [ PD.B cbor
+    , PD.Constr 0 [PD.B addr, PD.B script, PD.B redeemer]
+    , PD.Constr 0 [PD.B preimage]
+    ]
 
 {- | @common.NonMembershipCarriage@'s redeemer-carried arm: the proof itself, and
 the index of the @pexcludes@ withdrawal that walks it.
@@ -408,16 +408,16 @@ pexcludesEntry root key = pexcludesEntryWith root key emptyProof
 -- | The same, with the proof under the caller's control.
 pexcludesEntryWith :: BS.ByteString -> BS.ByteString -> PD.Data -> (ScriptPurpose, Redeemer)
 pexcludesEntryWith root key proof =
-    ( Rewarding (ScriptCredential (ScriptHash (toBuiltin pexcludesHash)))
-    , Redeemer (dataToBuiltinData (PD.List [PD.B root, PD.B key, proof]))
-    )
+  ( Rewarding (ScriptCredential (ScriptHash (toBuiltin pexcludesHash)))
+  , Redeemer (dataToBuiltinData (PD.List [PD.B root, PD.B key, proof]))
+  )
 
 -- | The @phas@ withdrawal the redeemer-carried route delegates its walk to.
 phasEntry :: BS.ByteString -> BS.ByteString -> BS.ByteString -> (ScriptPurpose, Redeemer)
 phasEntry root key value =
-    ( Rewarding (ScriptCredential (ScriptHash (toBuiltin phasHash)))
-    , Redeemer (dataToBuiltinData (PD.List [PD.B root, PD.B key, PD.B value, emptyProof]))
-    )
+  ( Rewarding (ScriptCredential (ScriptHash (toBuiltin phasHash)))
+  , Redeemer (dataToBuiltinData (PD.List [PD.B root, PD.B key, PD.B value, emptyProof]))
+  )
 
 emptyProof :: PD.Data
 emptyProof = PD.List []
@@ -431,66 +431,66 @@ referenceInputs = referenceInputsWithTransactionsRoot headerTransactionsRoot
 
 referenceInputsWithTransactionsRoot :: BS.ByteString -> [TxInInfo]
 referenceInputsWithTransactionsRoot transactionsRoot =
-    [hubRefIn, nodeRefInWithHeaderData $ headerDataWithRoots transactionsRoot headerWithdrawalsRoot withdrawalCount (hash32 0x04) 0 (hash32 0x06) 0]
+  [hubRefIn, nodeRefInWithHeaderData $ headerDataWithRoots transactionsRoot headerWithdrawalsRoot withdrawalCount (hash32 0x04) 0 (hash32 0x06) 0]
 
 referenceInputsWithTransactionsRootAndMinFee :: BS.ByteString -> Integer -> Integer -> [TxInInfo]
 referenceInputsWithTransactionsRootAndMinFee transactionsRoot minFeeA minFeeB =
-    [hubRefIn, nodeRefInWithHeaderData $ replaceFeeSchedule base]
-  where
-    base = headerDataWithRoots transactionsRoot headerWithdrawalsRoot withdrawalCount (hash32 0x04) 0 (hash32 0x06) 0
-    replaceFeeSchedule (PD.Constr tag fields) =
-        PD.Constr tag (take 20 fields <> [PD.I minFeeA, PD.I minFeeB] <> drop 22 fields)
-    replaceFeeSchedule _ = error "headerDataWithRoots returned an unexpected shape"
+  [hubRefIn, nodeRefInWithHeaderData $ replaceFeeSchedule base]
+ where
+  base = headerDataWithRoots transactionsRoot headerWithdrawalsRoot withdrawalCount (hash32 0x04) 0 (hash32 0x06) 0
+  replaceFeeSchedule (PD.Constr tag fields) =
+    PD.Constr tag (take 20 fields <> [PD.I minFeeA, PD.I minFeeB] <> drop 22 fields)
+  replaceFeeSchedule _ = error "headerDataWithRoots returned an unexpected shape"
 
 referenceInputsWithBlockSlot :: Integer -> [TxInInfo]
 referenceInputsWithBlockSlot blockSlot =
-    [hubRefIn, nodeRefInWithHeaderData $ replaceBlockSlot base]
-  where
-    base = headerDataWithRoots headerTransactionsRoot headerWithdrawalsRoot withdrawalCount (hash32 0x04) 0 (hash32 0x06) 0
-    replaceBlockSlot (PD.Constr tag fields) =
-        PD.Constr tag (take 18 fields <> [PD.I blockSlot] <> drop 19 fields)
-    replaceBlockSlot _ = error "headerDataWithRoots returned an unexpected shape"
+  [hubRefIn, nodeRefInWithHeaderData $ replaceBlockSlot base]
+ where
+  base = headerDataWithRoots headerTransactionsRoot headerWithdrawalsRoot withdrawalCount (hash32 0x04) 0 (hash32 0x06) 0
+  replaceBlockSlot (PD.Constr tag fields) =
+    PD.Constr tag (take 18 fields <> [PD.I blockSlot] <> drop 19 fields)
+  replaceBlockSlot _ = error "headerDataWithRoots returned an unexpected shape"
 
 referenceInputsWithWithdrawalsRoot :: BS.ByteString -> Integer -> [TxInInfo]
 referenceInputsWithWithdrawalsRoot withdrawalsRoot count =
-    [hubRefIn, nodeRefInWithHeaderData $ headerDataWithRoots headerTransactionsRoot withdrawalsRoot count (hash32 0x04) 0 (hash32 0x06) 0]
+  [hubRefIn, nodeRefInWithHeaderData $ headerDataWithRoots headerTransactionsRoot withdrawalsRoot count (hash32 0x04) 0 (hash32 0x06) 0]
 
 referenceInputsWithDepositsRoot :: BS.ByteString -> Integer -> [TxInInfo]
 referenceInputsWithDepositsRoot depositsRoot count =
-    [hubRefIn, nodeRefInWithHeaderData $ headerDataWithRoots headerTransactionsRoot headerWithdrawalsRoot withdrawalCount (hash32 0x04) 0 depositsRoot count]
+  [hubRefIn, nodeRefInWithHeaderData $ headerDataWithRoots headerTransactionsRoot headerWithdrawalsRoot withdrawalCount (hash32 0x04) 0 depositsRoot count]
 
 referenceInputsWithForcedTransactionsRoot :: BS.ByteString -> Integer -> [TxInInfo]
 referenceInputsWithForcedTransactionsRoot forcedRoot count =
-    [hubRefIn, nodeRefInWithHeaderData $ headerDataWithRoots headerTransactionsRoot headerWithdrawalsRoot withdrawalCount forcedRoot count (hash32 0x06) 0]
+  [hubRefIn, nodeRefInWithHeaderData $ headerDataWithRoots headerTransactionsRoot headerWithdrawalsRoot withdrawalCount forcedRoot count (hash32 0x06) 0]
 
 referenceInputsWithUtxosRoots :: BS.ByteString -> BS.ByteString -> [TxInInfo]
 referenceInputsWithUtxosRoots previousRoot currentRoot =
-    [hubRefIn, nodeRefInWithHeaderData $ replaceLedgerRoots base]
-  where
-    base = headerDataWithRoots headerTransactionsRoot headerWithdrawalsRoot withdrawalCount (hash32 0x04) 0 (hash32 0x06) 0
-    replaceLedgerRoots (PD.Constr tag (_ : _ : fields)) = PD.Constr tag (PD.B previousRoot : PD.B currentRoot : fields)
-    replaceLedgerRoots _ = error "headerDataWithRoots returned an unexpected shape"
+  [hubRefIn, nodeRefInWithHeaderData $ replaceLedgerRoots base]
+ where
+  base = headerDataWithRoots headerTransactionsRoot headerWithdrawalsRoot withdrawalCount (hash32 0x04) 0 (hash32 0x06) 0
+  replaceLedgerRoots (PD.Constr tag (_ : _ : fields)) = PD.Constr tag (PD.B previousRoot : PD.B currentRoot : fields)
+  replaceLedgerRoots _ = error "headerDataWithRoots returned an unexpected shape"
 
 referenceInputsWithTransactionAndUtxosRoots :: BS.ByteString -> BS.ByteString -> BS.ByteString -> [TxInInfo]
 referenceInputsWithTransactionAndUtxosRoots transactionsRoot previousRoot currentRoot =
-    [hubRefIn, nodeRefInWithHeaderData $ replaceLedgerRoots base]
-  where
-    base = headerDataWithRoots transactionsRoot headerWithdrawalsRoot withdrawalCount (hash32 0x04) 0 (hash32 0x06) 0
-    replaceLedgerRoots (PD.Constr tag (_ : _ : fields)) = PD.Constr tag (PD.B previousRoot : PD.B currentRoot : fields)
-    replaceLedgerRoots _ = error "headerDataWithRoots returned an unexpected shape"
+  [hubRefIn, nodeRefInWithHeaderData $ replaceLedgerRoots base]
+ where
+  base = headerDataWithRoots transactionsRoot headerWithdrawalsRoot withdrawalCount (hash32 0x04) 0 (hash32 0x06) 0
+  replaceLedgerRoots (PD.Constr tag (_ : _ : fields)) = PD.Constr tag (PD.B previousRoot : PD.B currentRoot : fields)
+  replaceLedgerRoots _ = error "headerDataWithRoots returned an unexpected shape"
 
 hubRefIn :: TxInInfo
 hubRefIn =
-    TxInInfo
-        (outRefN 1)
-        ( TxOut
-            (scriptHashAddress (ScriptHash (unCurrencySymbol hubPolicy)))
-            ( adaValue 2_000_000
-                <> singleton hubPolicy (TokenName (toBuiltin ("MIDGARD_HUB_ORACLE" :: BS.ByteString))) 1
-            )
-            (OutputDatum (Datum (dataToBuiltinData hubDatum)))
-            Nothing
+  TxInInfo
+    (outRefN 1)
+    ( TxOut
+        (scriptHashAddress (ScriptHash (unCurrencySymbol hubPolicy)))
+        ( adaValue 2_000_000
+            <> singleton hubPolicy (TokenName (toBuiltin ("MIDGARD_HUB_ORACLE" :: BS.ByteString))) 1
         )
+        (OutputDatum (Datum (dataToBuiltinData hubDatum)))
+        Nothing
+    )
 
 {- | The hub oracle's datum: twelve policy ids, thirteen addresses and one more
 policy. Only the state-queue policy — slot 4 — is read here, and it is read
@@ -498,32 +498,32 @@ positionally, so the surrounding shape has to be right for the read to land.
 -}
 hubDatum :: PD.Data
 hubDatum =
-    PD.Constr
-        0
-        ( map (PD.B . unCS . policyFor) [0x41, 0x42, 0x43, 0x44]
-            <> [PD.B (unCS stateQueuePolicy)]
-            <> [PD.B (unCS (policyFor (0x45 + i))) | i <- [0 .. 6]]
-            <> replicate 13 addressData
-            <> [PD.B (unCS (policyFor 0x4f))]
-        )
-  where
-    addressData = PD.Constr 0 [PD.Constr 1 [PD.B (unCS (policyFor 0x42))], PD.Constr 1 []]
+  PD.Constr
+    0
+    ( map (PD.B . unCS . policyFor) [0x41, 0x42, 0x43, 0x44]
+        <> [PD.B (unCS stateQueuePolicy)]
+        <> [PD.B (unCS (policyFor (0x45 + i))) | i <- [0 .. 6]]
+        <> replicate 13 addressData
+        <> [PD.B (unCS (policyFor 0x4f))]
+    )
+ where
+  addressData = PD.Constr 0 [PD.Constr 1 [PD.B (unCS (policyFor 0x42))], PD.Constr 1 []]
 
 nodeRefInWithHeaderData :: PD.Data -> TxInInfo
 nodeRefInWithHeaderData headerData =
-    TxInInfo
-        (outRefN 2)
-        ( TxOut
-            (scriptHashAddress (ScriptHash (unCurrencySymbol stateQueuePolicy)))
-            ( adaValue 2_000_000
-                <> singleton stateQueuePolicy (TokenName (toBuiltin ("MBLC" <> headerHash))) 1
-            )
-            (OutputDatum (Datum (dataToBuiltinData element)))
-            Nothing
+  TxInInfo
+    (outRefN 2)
+    ( TxOut
+        (scriptHashAddress (ScriptHash (unCurrencySymbol stateQueuePolicy)))
+        ( adaValue 2_000_000
+            <> singleton stateQueuePolicy (TokenName (toBuiltin ("MBLC" <> headerHash))) 1
         )
-  where
-    element = PD.Constr 0 [PD.Constr 1 [node], PD.Constr 1 []]
-    node = PD.Constr 0 [headerData, PD.B ""]
+        (OutputDatum (Datum (dataToBuiltinData element)))
+        Nothing
+    )
+ where
+  element = PD.Constr 0 [PD.Constr 1 [node], PD.Constr 1 []]
+  node = PD.Constr 0 [headerData, PD.B ""]
 
 {- | @ledger_state.HeaderV1@. Slot 4 is @transactions_root@ and slot 11 is
 @l2_transaction_count@; the two are read together, because the root the header
@@ -531,34 +531,34 @@ commits is the counted commitment over the raw one.
 -}
 headerDataWithRoots :: BS.ByteString -> BS.ByteString -> Integer -> BS.ByteString -> Integer -> BS.ByteString -> Integer -> PD.Data
 headerDataWithRoots transactionsRoot withdrawalsRoot withdrawalsCount forcedRoot forcedCount depositsRoot depositsCount =
-    PD.Constr
-        0
-        [ PD.B (hash32 0x01)
-        , PD.B (hash32 0x02)
-        , PD.B withdrawalsRoot
-        , PD.B forcedRoot
-        , PD.B transactionsRoot
-        , PD.B depositsRoot
-        , PD.B (hash32 0x07)
-        , PD.B (hash32 0x08)
-        , PD.B (hash32 0x09)
-        , PD.I withdrawalsCount
-        , PD.I forcedCount
-        , PD.I l2Count
-        , PD.I depositsCount
-        , PD.I 0
-        , PD.I 0
-        , PD.I 0
-        , PD.I 100
-        , PD.I 200
-        , PD.I 0
-        , PD.I 0
-        , PD.I 0
-        , PD.I 0
-        , PD.B (BS.replicate 28 0x02)
-        , PD.B prover
-        , PD.I 1
-        ]
+  PD.Constr
+    0
+    [ PD.B (hash32 0x01)
+    , PD.B (hash32 0x02)
+    , PD.B withdrawalsRoot
+    , PD.B forcedRoot
+    , PD.B transactionsRoot
+    , PD.B depositsRoot
+    , PD.B (hash32 0x07)
+    , PD.B (hash32 0x08)
+    , PD.B (hash32 0x09)
+    , PD.I withdrawalsCount
+    , PD.I forcedCount
+    , PD.I l2Count
+    , PD.I depositsCount
+    , PD.I 0
+    , PD.I 0
+    , PD.I 0
+    , PD.I 100
+    , PD.I 200
+    , PD.I 0
+    , PD.I 0
+    , PD.I 0
+    , PD.I 0
+    , PD.B (BS.replicate 28 0x02)
+    , PD.B prover
+    , PD.I 1
+    ]
 
 headerTransactionsRoot :: BS.ByteString
 headerTransactionsRoot = commitCountedRoot transactionsDomain phasRoot l2Count
@@ -568,12 +568,12 @@ change on either side fails a test.
 -}
 commitCountedRoot :: Integer -> BS.ByteString -> Integer -> BS.ByteString
 commitCountedRoot domainTag root count =
-    blake2b256
-        ( "MidgardRootCountV1"
-            <> serialise (PD.Constr domainTag [])
-            <> root
-            <> serialise (PD.I count)
-        )
+  blake2b256
+    ( "MidgardRootCountV1"
+        <> serialise (PD.Constr domainTag [])
+        <> root
+        <> serialise (PD.I count)
+    )
 
 -- | @TransactionsV1RootDomain@ is the third constructor of @RootDomain@.
 transactionsDomain :: Integer
@@ -615,19 +615,19 @@ a different entry than the one the step decodes.
 -}
 withdrawalInfoData :: (BS.ByteString, Integer) -> PD.Data -> PD.Data
 withdrawalInfoData (txId, index) validity =
-    PD.Constr
+  PD.Constr
+    0
+    [ PD.Constr
         0
-        [ PD.Constr
-            0
-            [ PD.Constr 0 [PD.B txId, PD.I index] -- l2_outref
-            , PD.B prover -- l2_owner
-            , PD.Map [] -- l2_value
-            , PD.Constr 0 [PD.Constr 1 [PD.B fpSpendScript], PD.Constr 1 []] -- l1_address
-            , PD.Constr 0 [] -- l1_datum: NoDatum
-            ]
-        , PD.B "" -- signature
-        , validity
+        [ PD.Constr 0 [PD.B txId, PD.I index] -- l2_outref
+        , PD.B prover -- l2_owner
+        , PD.Map [] -- l2_value
+        , PD.Constr 0 [PD.Constr 1 [PD.B fpSpendScript], PD.Constr 1 []] -- l1_address
+        , PD.Constr 0 [] -- l1_datum: NoDatum
         ]
+    , PD.B "" -- signature
+    , validity
+    ]
 
 -- | The event the block actually commits: valid, and naming 'sharedInputRef'.
 withdrawalValueBytes :: BS.ByteString
@@ -642,7 +642,7 @@ port so that a change to either side fails a test.
 -}
 singleEntryPhasRoot :: BS.ByteString -> BS.ByteString -> BS.ByteString
 singleEntryPhasRoot keyBytes valueBytes =
-    blake2b256 (BS.cons 0xff (blake2b256 keyBytes <> blake2b256 valueBytes))
+  blake2b256 (BS.cons 0xff (blake2b256 keyBytes <> blake2b256 valueBytes))
 
 withdrawalsPhasRoot :: BS.ByteString
 withdrawalsPhasRoot = singleEntryPhasRoot withdrawalKeyBytes withdrawalValueBytes
@@ -653,7 +653,7 @@ withdrawalCount = 1
 -- | Slot 2 of the header: the counted commitment over 'withdrawalsPhasRoot'.
 headerWithdrawalsRoot :: BS.ByteString
 headerWithdrawalsRoot =
-    commitCountedRoot withdrawalsDomain withdrawalsPhasRoot withdrawalCount
+  commitCountedRoot withdrawalsDomain withdrawalsPhasRoot withdrawalCount
 
 {- | @transition_trace.RootMembershipProof@ — seven fields, in declaration order.
 
@@ -662,18 +662,18 @@ separately; the step serialises them itself rather than trusting the witness's
 own idea of its encoding.
 -}
 membershipProof ::
-    Integer -> BS.ByteString -> BS.ByteString -> Integer -> PD.Data -> PD.Data -> PD.Data
+  Integer -> BS.ByteString -> BS.ByteString -> Integer -> PD.Data -> PD.Data -> PD.Data
 membershipProof domain root phasRoot' count key value =
-    PD.Constr
-        0
-        [ PD.Constr domain []
-        , PD.B root
-        , PD.B phasRoot'
-        , PD.I count
-        , key
-        , value
-        , PD.List [] -- the proof: empty, since the tree holds one entry
-        ]
+  PD.Constr
+    0
+    [ PD.Constr domain []
+    , PD.B root
+    , PD.B phasRoot'
+    , PD.I count
+    , key
+    , value
+    , PD.List [] -- the proof: empty, since the tree holds one entry
+    ]
 
 l2Count :: Integer
 l2Count = 17
@@ -704,29 +704,29 @@ encodedInput = spendInputItem
 -- | Two conflicting transactions: same spend inputs, different fee.
 tx1, tx2, tx3 :: Tx
 tx1 =
-    Tx
-        { tFee = 1_000_000
-        , tSpendInputs = [sharedInputRef]
-        , tReferenceInputs = [sharedInputRef]
-        , tOutputCount = 2
-        , tRequiredSigners = [0]
-        , tWitnesses = [Witness 0 True]
-        , tScripts = []
-        , tValidityStart = 0
-        , tValidityEnd = 65536
-        }
+  Tx
+    { tFee = 1_000_000
+    , tSpendInputs = [sharedInputRef]
+    , tReferenceInputs = [sharedInputRef]
+    , tOutputCount = 2
+    , tRequiredSigners = [0]
+    , tWitnesses = [Witness 0 True]
+    , tScripts = []
+    , tValidityStart = 0
+    , tValidityEnd = 65536
+    }
 tx2 =
-    Tx
-        { tFee = 2_000_000
-        , tSpendInputs = [sharedInputRef]
-        , tReferenceInputs = [sharedInputRef]
-        , tOutputCount = 2
-        , tRequiredSigners = [0]
-        , tWitnesses = [Witness 0 True]
-        , tScripts = []
-        , tValidityStart = 0
-        , tValidityEnd = 65536
-        }
+  Tx
+    { tFee = 2_000_000
+    , tSpendInputs = [sharedInputRef]
+    , tReferenceInputs = [sharedInputRef]
+    , tOutputCount = 2
+    , tRequiredSigners = [0]
+    , tWitnesses = [Witness 0 True]
+    , tScripts = []
+    , tValidityStart = 0
+    , tValidityEnd = 65536
+    }
 
 {- | An honest third transaction of the same block, spending something else.
 
@@ -737,32 +737,32 @@ a step that read the wrong slot indistinguishable from one that read the right
 one. This is the fixture that tells them apart.
 -}
 tx3 =
-    Tx
-        { tFee = 3_000_000
-        , tSpendInputs = [otherInputRef]
-        , tReferenceInputs = [sharedInputRef]
-        , tOutputCount = 3
-        , tRequiredSigners = [0]
-        , tWitnesses = [Witness 0 True]
-        , tScripts = []
-        , tValidityStart = 0
-        , tValidityEnd = 65536
-        }
+  Tx
+    { tFee = 3_000_000
+    , tSpendInputs = [otherInputRef]
+    , tReferenceInputs = [sharedInputRef]
+    , tOutputCount = 3
+    , tRequiredSigners = [0]
+    , tWitnesses = [Witness 0 True]
+    , tScripts = []
+    , tValidityStart = 0
+    , tValidityEnd = 65536
+    }
 
 -- | A transaction that spends nothing — the zero-input violation.
 txEmpty :: Tx
 txEmpty =
-    Tx
-        { tFee = 4_000_000
-        , tSpendInputs = []
-        , tReferenceInputs = []
-        , tOutputCount = 0
-        , tRequiredSigners = []
-        , tWitnesses = []
-        , tScripts = []
-        , tValidityStart = 0
-        , tValidityEnd = 65536
-        }
+  Tx
+    { tFee = 4_000_000
+    , tSpendInputs = []
+    , tReferenceInputs = []
+    , tOutputCount = 0
+    , tRequiredSigners = []
+    , tWitnesses = []
+    , tScripts = []
+    , tValidityStart = 0
+    , tValidityEnd = 65536
+    }
 
 {- | A transaction requiring signer 1 and witnessed only by signer 0 — the
 missing-signature violation.
@@ -786,34 +786,34 @@ pointing at nothing would make step-03 unreachable and steps 04–06 untestable.
 -}
 txScriptSpend :: Tx
 txScriptSpend =
-    Tx
-        { tFee = 7_000_000
-        , tSpendInputs = [(tx3Id, 0)]
-        , tReferenceInputs = []
-        , tOutputCount = 1
-        , tRequiredSigners = [0]
-        , tWitnesses = [Witness 0 True]
-        , tScripts = []
-        , tValidityStart = 0
-        , tValidityEnd = 65536
-        }
+  Tx
+    { tFee = 7_000_000
+    , tSpendInputs = [(tx3Id, 0)]
+    , tReferenceInputs = []
+    , tOutputCount = 1
+    , tRequiredSigners = [0]
+    , tWitnesses = [Witness 0 True]
+    , tScripts = []
+    , tValidityStart = 0
+    , tValidityEnd = 65536
+    }
 
 data Tx = Tx
-    { tFee :: Integer
-    , tSpendInputs :: [(BS.ByteString, Integer)]
-    , tReferenceInputs :: [(BS.ByteString, Integer)]
-    , tOutputCount :: Int
-    , tRequiredSigners :: [Int]
-    -- ^ Signer indices whose key hashes field 4 commits.
-    , tWitnesses :: [Witness]
-    -- ^ Address witnesses field 7 commits.
-    , tScripts :: [(Integer, BS.ByteString)]
-    -- ^ Script witnesses field 6 commits, each a language tag and its bytes.
-    , tValidityStart :: Integer
-    -- ^ Inclusive lower bound, or @env.posix_time_none@ (@-1@) for unbounded.
-    , tValidityEnd :: Integer
-    -- ^ __Exclusive__ upper bound, or @-1@ for unbounded.
-    }
+  { tFee :: Integer
+  , tSpendInputs :: [(BS.ByteString, Integer)]
+  , tReferenceInputs :: [(BS.ByteString, Integer)]
+  , tOutputCount :: Int
+  , tRequiredSigners :: [Int]
+  -- ^ Signer indices whose key hashes field 4 commits.
+  , tWitnesses :: [Witness]
+  -- ^ Address witnesses field 7 commits.
+  , tScripts :: [(Integer, BS.ByteString)]
+  -- ^ Script witnesses field 6 commits, each a language tag and its bytes.
+  , tValidityStart :: Integer
+  -- ^ Inclusive lower bound, or @env.posix_time_none@ (@-1@) for unbounded.
+  , tValidityEnd :: Integer
+  -- ^ __Exclusive__ upper bound, or @-1@ for unbounded.
+  }
 
 spendInputsOf :: Tx -> [(BS.ByteString, Integer)]
 spendInputsOf = tSpendInputs
@@ -828,13 +828,13 @@ txBadSigId = txIdOf txBadSig
 txScriptSpendId = txIdOf txScriptSpend
 
 tx1Cbor
-    , tx2Cbor
-    , tx3Cbor
-    , txEmptyCbor
-    , txUnsignedCbor
-    , txBadSigCbor
-    , txScriptSpendCbor ::
-        BS.ByteString
+  , tx2Cbor
+  , tx3Cbor
+  , txEmptyCbor
+  , txUnsignedCbor
+  , txBadSigCbor
+  , txScriptSpendCbor ::
+    BS.ByteString
 tx1Cbor = compactOf tx1
 tx2Cbor = compactOf tx2
 tx3Cbor = compactOf tx3
@@ -843,51 +843,53 @@ txUnsignedCbor = compactOf txUnsigned
 txBadSigCbor = compactOf txBadSig
 txScriptSpendCbor = compactOf txScriptSpend
 
--- | Exact canonical @Data(L2TransactionSourceV1)@ leaf committed by the
--- transactions trie.
+{- | Exact canonical @Data(L2TransactionSourceV1)@ leaf committed by the
+transactions trie.
+-}
 sourceCborFor :: BS.ByteString -> BS.ByteString -> BS.ByteString -> BS.ByteString -> BS.ByteString
 sourceCborFor txId compactCbor witnessSetCbor lengthsCbor =
-    serialise
-        ( PD.Constr
-            0
-            [ PD.B txId
-            , PD.Constr 0 [PD.B compactCbor, PD.B witnessSetCbor, PD.B lengthsCbor]
-            ]
-        )
+  serialise
+    ( PD.Constr
+        0
+        [ PD.B txId
+        , PD.Constr 0 [PD.B compactCbor, PD.B witnessSetCbor, PD.B lengthsCbor]
+        ]
+    )
 
 sourceCborOf :: Tx -> BS.ByteString
 sourceCborOf tx = sourceCborWithValidity tx 1
 
 sourceCborWithValidity :: Tx -> Integer -> BS.ByteString
 sourceCborWithValidity tx validityCode =
-    sourceCborFor
-        (txIdOf tx)
-        (compactWithValidity tx witnessHash validityCode)
-        witnessCbor
-        (fieldPreimageLengthsCborOf tx)
-  where
-    witnessCbor = witnessSetCborOf tx
-    witnessHash = blake2b256 witnessCbor
+  sourceCborFor
+    (txIdOf tx)
+    (compactWithValidity tx witnessHash validityCode)
+    witnessCbor
+    (fieldPreimageLengthsCborOf tx)
+ where
+  witnessCbor = witnessSetCborOf tx
+  witnessHash = blake2b256 witnessCbor
 
--- | Canonical wire order: script-witness length precedes address-witness
--- length, even though the record fields are declared in the opposite order.
+{- | Canonical wire order: script-witness length precedes address-witness
+length, even though the record fields are declared in the opposite order.
+-}
 fieldPreimageLengthsCborOf :: Tx -> BS.ByteString
 fieldPreimageLengthsCborOf tx =
-    "\x89"
-        <> BS.concat
-            ( map
-                cborInt
-                [ fromIntegral (BS.length (spendInputsPreimage tx))
-                , fromIntegral (BS.length (referenceInputsPreimage tx))
-                , fromIntegral (BS.length (outputsPreimage tx))
-                , 1
-                , fromIntegral (BS.length (requiredSignersPreimage tx))
-                , 1
-                , fromIntegral (BS.length (scriptWitnessesPreimage tx))
-                , fromIntegral (BS.length (addressWitnessesPreimage tx))
-                , 1
-                ]
-            )
+  "\x89"
+    <> BS.concat
+      ( map
+          cborInt
+          [ fromIntegral (BS.length (spendInputsPreimage tx))
+          , fromIntegral (BS.length (referenceInputsPreimage tx))
+          , fromIntegral (BS.length (outputsPreimage tx))
+          , 1
+          , fromIntegral (BS.length (requiredSignersPreimage tx))
+          , 1
+          , fromIntegral (BS.length (scriptWitnessesPreimage tx))
+          , fromIntegral (BS.length (addressWitnessesPreimage tx))
+          , 1
+          ]
+      )
 
 --------------------------------------------------------------------------------
 -- Reference encoders (§2.5, §3, §5.1, §5.3)
@@ -905,7 +907,7 @@ referenceInputsPreimage tx = inputCollectionPreimage (tReferenceInputs tx)
 
 inputCollectionPreimage :: [(BS.ByteString, Integer)] -> BS.ByteString
 inputCollectionPreimage refs =
-    arrayHeader (length refs) <> BS.concat [wrapItem (spendInputItem r) | r <- refs]
+  arrayHeader (length refs) <> BS.concat [wrapItem (spendInputItem r) | r <- refs]
 
 {- | §5.3 field 2 is variable-width, so its items differ in size on purpose: the
 count a step reads has to come from the §5.1 walk rather than from arithmetic.
@@ -915,7 +917,7 @@ outputsPreimage tx = outputCollectionPreimage (tOutputCount tx)
 
 outputCollectionPreimage :: Int -> BS.ByteString
 outputCollectionPreimage n =
-    arrayHeader n <> BS.concat [wrapItem (outputItem i) | i <- [0 .. n - 1]]
+  arrayHeader n <> BS.concat [wrapItem (outputItem i) | i <- [0 .. n - 1]]
 
 {- | The output at slot @i@ of every fixture transaction.
 
@@ -932,10 +934,10 @@ item rather than at its head.
 outputItem :: Int -> BS.ByteString
 outputItem 0 = midgardOutputCbor (scriptAddressBytes lockedScriptHash) 2_000_000 Nothing
 outputItem i =
-    midgardOutputCbor
-        (pubKeyAddressBytes (keyHashFor i))
-        (fromIntegral (2_000_000 + i))
-        (Just (BS.replicate (4 * i) (fromIntegral (0xc0 + i))))
+  midgardOutputCbor
+    (pubKeyAddressBytes (keyHashFor i))
+    (fromIntegral (2_000_000 + i))
+    (Just (BS.replicate (4 * i) (fromIntegral (0xc0 + i))))
 
 {- | @components.encode_midgard_tx_output@ for the two shapes this fixture uses:
 a CBOR map keyed @0@ address, @1@ value and optionally @2@ datum, with absent
@@ -946,12 +948,12 @@ The value is ada-only, so its asset map is the empty @a0@.
 -}
 midgardOutputCbor :: BS.ByteString -> Integer -> Maybe BS.ByteString -> BS.ByteString
 midgardOutputCbor addressBytes lovelace mDatum =
-    case mDatum of
-        Nothing -> "\xa2" <> required
-        Just datumCbor -> "\xa3" <> required <> "\x02" <> wrapItem datumCbor
-  where
-    required =
-        "\x00" <> wrapItem addressBytes <> "\x01" <> ("\x82" <> cborInt lovelace <> "\xa0")
+  case mDatum of
+    Nothing -> "\xa2" <> required
+    Just datumCbor -> "\xa3" <> required <> "\x02" <> wrapItem datumCbor
+ where
+  required =
+    "\x00" <> wrapItem addressBytes <> "\x01" <> ("\x82" <> cborInt lovelace <> "\xa0")
 
 {- | @components.encode_midgard_address@ for a script-locked address with no
 stake credential: type 7, network 0, unprotected, so the header byte is
@@ -966,44 +968,44 @@ pubKeyAddressBytes = BS.cons 0x60
 
 spendInputItem :: (BS.ByteString, Integer) -> BS.ByteString
 spendInputItem (txId, index) =
-    BS.concat
-        [ "\x82"
-        , defBytes32 txId
-        , "\x19"
-        , BS.pack [fromIntegral (index `div` 256), fromIntegral index]
-        ]
+  BS.concat
+    [ "\x82"
+    , defBytes32 txId
+    , "\x19"
+    , BS.pack [fromIntegral (index `div` 256), fromIntegral index]
+    ]
 
 arrayHeader :: Int -> BS.ByteString
 arrayHeader n
-    | n <= 23 = BS.pack [fromIntegral (0x80 + n)]
-    | n <= 255 = BS.pack [0x98, fromIntegral n]
-    | otherwise = BS.pack [0x99, fromIntegral (n `div` 256), fromIntegral n]
+  | n <= 23 = BS.pack [fromIntegral (0x80 + n)]
+  | n <= 255 = BS.pack [0x98, fromIntegral n]
+  | otherwise = BS.pack [0x99, fromIntegral (n `div` 256), fromIntegral n]
 
 wrapItem :: BS.ByteString -> BS.ByteString
 wrapItem bytes
-    | n <= 23 = BS.cons (fromIntegral (0x40 + n)) bytes
-    | otherwise = BS.pack [0x58, fromIntegral n] <> bytes
-  where
-    n = BS.length bytes
+  | n <= 23 = BS.cons (fromIntegral (0x40 + n)) bytes
+  | otherwise = BS.pack [0x58, fromIntegral n] <> bytes
+ where
+  n = BS.length bytes
 
 -- | The compact body: twelve entries, the six field commitments among them.
 compactBody :: Tx -> BS.ByteString
 compactBody tx =
-    BS.concat
-        [ "\x8c"
-        , defBytes32 (blake2b256 (spendInputsPreimage tx))
-        , defBytes32 (blake2b256 (referenceInputsPreimage tx))
-        , defBytes32 (blake2b256 (outputsPreimage tx))
-        , cborInt (tFee tx)
-        , cborInt (tValidityStart tx)
-        , cborInt (tValidityEnd tx)
-        , defBytes32 (hash32 0x04)
-        , defBytes32 (blake2b256 (requiredSignersPreimage tx))
-        , defBytes32 (hash32 0x06)
-        , defBytes32 (hash32 0x07)
-        , defBytes32 (hash32 0x08)
-        , cborInt 1
-        ]
+  BS.concat
+    [ "\x8c"
+    , defBytes32 (blake2b256 (spendInputsPreimage tx))
+    , defBytes32 (blake2b256 (referenceInputsPreimage tx))
+    , defBytes32 (blake2b256 (outputsPreimage tx))
+    , cborInt (tFee tx)
+    , cborInt (tValidityStart tx)
+    , cborInt (tValidityEnd tx)
+    , defBytes32 (hash32 0x04)
+    , defBytes32 (blake2b256 (requiredSignersPreimage tx))
+    , defBytes32 (hash32 0x06)
+    , defBytes32 (hash32 0x07)
+    , defBytes32 (hash32 0x08)
+    , cborInt 1
+    ]
 
 compactOf :: Tx -> BS.ByteString
 compactOf tx = compactWith tx (witnessSetHashOf tx)
@@ -1028,7 +1030,7 @@ the code sits outside it.
 -}
 compactWithValidity :: Tx -> BS.ByteString -> Integer -> BS.ByteString
 compactWithValidity tx wsHash validityCode =
-    BS.concat ["\x84", cborInt 1, compactBody tx, defBytes32 wsHash, cborInt validityCode]
+  BS.concat ["\x84", cborInt 1, compactBody tx, defBytes32 wsHash, cborInt validityCode]
 
 {- | §2.5's witness set: three collection hashes, @0x83@.
 
@@ -1043,14 +1045,14 @@ witnessSetCborOf = witnessSetCborFrom . witnessSetHashesOf
 -- | The three collection hashes §2.5 commits, in order: address, script, redeemer.
 witnessSetHashesOf :: Tx -> (BS.ByteString, BS.ByteString, BS.ByteString)
 witnessSetHashesOf tx =
-    ( blake2b256 (addressWitnessesPreimage tx)
-    , blake2b256 (scriptWitnessesPreimage tx)
-    , hash32 0x13
-    )
+  ( blake2b256 (addressWitnessesPreimage tx)
+  , blake2b256 (scriptWitnessesPreimage tx)
+  , hash32 0x13
+  )
 
 witnessSetCborFrom :: (BS.ByteString, BS.ByteString, BS.ByteString) -> BS.ByteString
 witnessSetCborFrom (addr, script, redeemer) =
-    BS.concat ["\x83", defBytes32 addr, defBytes32 script, defBytes32 redeemer]
+  BS.concat ["\x83", defBytes32 addr, defBytes32 script, defBytes32 redeemer]
 
 witnessSetHashOf :: Tx -> BS.ByteString
 witnessSetHashOf = blake2b256 . witnessSetCborOf
@@ -1064,20 +1066,20 @@ constructible at all.
 -}
 addressWitnessesPreimage :: Tx -> BS.ByteString
 addressWitnessesPreimage tx =
-    arrayHeader (length (tWitnesses tx))
-        <> BS.concat [wrapItem (addressWitnessItem tx w) | w <- tWitnesses tx]
+  arrayHeader (length (tWitnesses tx))
+    <> BS.concat [wrapItem (addressWitnessItem tx w) | w <- tWitnesses tx]
 
 addressWitnessItem :: Tx -> Witness -> BS.ByteString
 addressWitnessItem tx w =
-    BS.concat
-        [ "\x82"
-        , defBytes32 (verKeyFor (wKeyIndex w))
-        , "\x58\x40" <> signature
-        ]
-  where
-    signature
-        | wValid w = signWith (wKeyIndex w) (txIdOf tx)
-        | otherwise = signWith (wKeyIndex w) "not this transaction"
+  BS.concat
+    [ "\x82"
+    , defBytes32 (verKeyFor (wKeyIndex w))
+    , "\x58\x40" <> signature
+    ]
+ where
+  signature
+    | wValid w = signWith (wKeyIndex w) (txIdOf tx)
+    | otherwise = signWith (wKeyIndex w) "not this transaction"
 
 {- | §5.3 field 6: the script witnesses, variable-width because scripts are.
 
@@ -1090,8 +1092,8 @@ scriptWitnessesPreimage = scriptWitnessCollectionPreimage . tScripts
 
 scriptWitnessCollectionPreimage :: [(Integer, BS.ByteString)] -> BS.ByteString
 scriptWitnessCollectionPreimage scripts =
-    arrayHeader (length scripts)
-        <> BS.concat [wrapItem (versionedScriptItem tag bytes) | (tag, bytes) <- scripts]
+  arrayHeader (length scripts)
+    <> BS.concat [wrapItem (versionedScriptItem tag bytes) | (tag, bytes) <- scripts]
 
 -- | One @MidgardVersionedScript@'s canonical bytes.
 versionedScriptItem :: Integer -> BS.ByteString -> BS.ByteString
@@ -1125,7 +1127,7 @@ lockedScriptHash = versionedScriptHashOf 0 nativeScriptBytes
 
 -- | An address witness: whose key, and whether its signature actually verifies.
 data Witness = Witness {wKeyIndex :: Int, wValid :: Bool}
-    deriving stock (Eq, Show)
+  deriving stock (Eq, Show)
 
 signKeyFor :: Int -> DSIGN.SignKeyDSIGN Ed25519DSIGN
 signKeyFor i = DSIGN.genKeyDSIGN (mkSeedFromBytes (BS.replicate 32 (fromIntegral i)))
@@ -1150,8 +1152,8 @@ missing-signature family is about that gap.
 -}
 requiredSignersPreimage :: Tx -> BS.ByteString
 requiredSignersPreimage tx =
-    arrayHeader (length (tRequiredSigners tx))
-        <> BS.concat [wrapItem (keyHashFor i) | i <- tRequiredSigners tx]
+  arrayHeader (length (tRequiredSigners tx))
+    <> BS.concat [wrapItem (keyHashFor i) | i <- tRequiredSigners tx]
 
 -- | §3: the id preimage is the /body/ alone, under the version byte.
 txIdOf :: Tx -> BS.ByteString
@@ -1159,15 +1161,15 @@ txIdOf tx = blake2b256 ("MidgardNativeTxBodyV1" <> cborInt 1 <> compactBody tx)
 
 cborInt :: Integer -> BS.ByteString
 cborInt n
-    | n >= 0 = major 0 n
-    | otherwise = major 1 (-1 - n)
-  where
-    major base v
-        | v <= 23 = BS.pack [fromIntegral (base * 32 + v)]
-        | v <= 255 = BS.pack [fromIntegral (base * 32 + 24), fromIntegral v]
-        | v <= 65535 = BS.pack [fromIntegral (base * 32 + 25)] <> be 2 v
-        | otherwise = BS.pack [fromIntegral (base * 32 + 26)] <> be 4 v
-    be w v = BS.pack [fromIntegral (v `div` (256 ^ i) `mod` 256) | i <- [w - 1, w - 2 .. 0 :: Integer]]
+  | n >= 0 = major 0 n
+  | otherwise = major 1 (-1 - n)
+ where
+  major base v
+    | v <= 23 = BS.pack [fromIntegral (base * 32 + v)]
+    | v <= 255 = BS.pack [fromIntegral (base * 32 + 24), fromIntegral v]
+    | v <= 65535 = BS.pack [fromIntegral (base * 32 + 25)] <> be 2 v
+    | otherwise = BS.pack [fromIntegral (base * 32 + 26)] <> be 4 v
+  be w v = BS.pack [fromIntegral (v `div` (256 ^ i) `mod` 256) | i <- [w - 1, w - 2 .. 0 :: Integer]]
 
 defBytes32 :: BS.ByteString -> BS.ByteString
 defBytes32 h = "\x58\x20" <> h
@@ -1232,20 +1234,20 @@ otherAddress = scriptHashAddress (ScriptHash (toBuiltin otherScript))
 
 -- | @env.plutarch_phas_validator_hash@, copied independently from @env/default.ak@.
 phasHash :: BS.ByteString
-phasHash = unhexed "1fc59ff54da02f2535d64b40b647a8826c8b3d914d7ba5257f5b2721"
+phasHash = unhexed "819adf9eaaed4aa11f717414e99c80b45d416481824321c3474bcb5e"
 
 -- | @env.plutarch_pexcludes_validator_hash@.
 pexcludesHash :: BS.ByteString
-pexcludesHash = unhexed "03adaadf3154dafde48eea40030cecf5690b07c495f4c74029e4ab6a"
+pexcludesHash = unhexed "1fa3e7c2ce50fbc74b00aeb6b7254eb3b824c64fb1855c29bdc36c34"
 
 unhexed :: String -> BS.ByteString
 unhexed = BS.pack . go
-  where
-    go (a : b : rest) = fromIntegral (digit a * 16 + digit b) : go rest
-    go _ = []
-    digit c
-        | c >= '0' && c <= '9' = fromEnum c - fromEnum '0'
-        | otherwise = fromEnum c - fromEnum 'a' + 10 :: Int
+ where
+  go (a : b : rest) = fromIntegral (digit a * 16 + digit b) : go rest
+  go _ = []
+  digit c
+    | c >= '0' && c <= '9' = fromEnum c - fromEnum '0'
+    | otherwise = fromEnum c - fromEnum 'a' + 10 :: Int
 
 unCS :: CurrencySymbol -> BS.ByteString
 unCS = fromBuiltin . unCurrencySymbol

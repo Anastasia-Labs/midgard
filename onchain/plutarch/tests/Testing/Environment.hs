@@ -11,7 +11,11 @@ tests :: TestTree
 tests =
   testGroup
     "Compiled Aiken environment"
-    [ testCase "economic constants match the selected source environment" $
+    [ testCase "delegation hashes match the target Aiken environment" $
+        passertEval $
+          (pplutarchPexcludesValidatorHash #== phexByteStr "1fa3e7c2ce50fbc74b00aeb6b7254eb3b824c64fb1855c29bdc36c34")
+            #&& (pmpfChunkedVerifyValidatorHash #== phexByteStr "ea8d998a1396392158fa85afb0d202df7bd6d6ede7d3fbc05f55acd6")
+    , testCase "economic constants match the selected source environment" $
         passertEval $
           let expected :: (Integer, Integer, Integer, Integer)
               expected = case environmentName of

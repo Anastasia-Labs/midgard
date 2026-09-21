@@ -59,6 +59,9 @@ import Midgard.Validators.FraudProofs.InvalidSignature (
   invalidSignatureStep02Validator,
  )
 import Midgard.Validators.FraudProofs.MissingSignature (
+  missingSignatureForcedSignerValidator,
+  missingSignatureForcedStepValidator,
+  missingSignatureForcedWitnessValidator,
   missingSignatureStep01Validator,
   missingSignatureStep02Validator,
   missingSignatureStep03Validator,
@@ -78,6 +81,7 @@ tests =
     "Signature Fraud Proof Tests"
     [ testGroup "the fixture" fixtureTests
     , testGroup "missing-signature" missingTests
+    , testGroup "missing-signature forced rejection" missingForcedTests
     , testGroup "invalid-signature" invalidTests
     , testGroup "the witness-set anchor" anchorTests
     ]
@@ -128,9 +132,11 @@ missingTests =
   [ testGroup
       "step-01"
       [ testCase "binds the transaction and writes both halves of the anchor" $
-          psucceeds $ missing01 (mContext01 defaultMissing01)
+          psucceeds $
+            missing01 (mContext01 defaultMissing01)
       , testCase "rejects an output at a script that is not step-02's" $
-          pfails $ missing01 (mContext01 defaultMissing01 {m1OutputScript = otherScript})
+          pfails $
+            missing01 (mContext01 defaultMissing01 {m1OutputScript = otherScript})
       , -- The half that matters: a state naming any other witness-set hash is
         -- not the one step-01 read off the block-committed structure.
         testCase "rejects a state naming another witness-set hash" $
@@ -138,42 +144,53 @@ missingTests =
             missing01
               ( mContext01
                   defaultMissing01
-                    {m1OutputState = Just (mState02 txUnsignedId (witnessSetHashOf tx1))}
+                    { m1OutputState = Just (mState02 txUnsignedId (witnessSetHashOf tx1))
+                    }
               )
       , testCase "rejects a state carrying only the transaction id" $
           pfails $
             missing01
               (mContext01 defaultMissing01 {m1OutputState = Just (PD.Constr 0 [PD.B txUnsignedId])})
       , testCase "rejects a raw root the header does not commit" $
-          pfails $ missing01 (mContext01 defaultMissing01 {m1PhasRoot = otherRoot})
+          pfails $
+            missing01 (mContext01 defaultMissing01 {m1PhasRoot = otherRoot})
       , testCase "rejects a transaction marked invalid" $
-          pfails $ missing01 (mContext01 defaultMissing01 {m1SourceCbor = sourceCborOf txUnsigned})
+          pfails $
+            missing01 (mContext01 defaultMissing01 {m1SourceCbor = sourceCborOf txUnsigned})
       , testCase "a cancel burning the thread token succeeds" $
-          psucceeds $ missing01 (cancelContext True)
+          psucceeds $
+            missing01 (cancelContext True)
       , testCase "a cancel that does not burn the thread token fails" $
-          pfails $ missing01 (cancelContext False)
+          pfails $
+            missing01 (cancelContext False)
       , testCase "a minting purpose fails" $
-          pfails $ missing01 (asMinting (mContext01 defaultMissing01))
+          pfails $
+            missing01 (asMinting (mContext01 defaultMissing01))
       ]
   , testGroup
       "step-02"
       [ testCase "reads the required signer's hash out of field 4" $
-          psucceeds $ missing02 (mContext02 defaultMissing02)
+          psucceeds $
+            missing02 (mContext02 defaultMissing02)
       , testCase "rejects an opening of a transaction the thread did not anchor" $
-          pfails $ missing02 (mContext02 defaultMissing02 {m2OpeningCbor = tx1Cbor})
+          pfails $
+            missing02 (mContext02 defaultMissing02 {m2OpeningCbor = tx1Cbor})
       , testCase "rejects an index past the end of the collection" $
-          pfails $ missing02 (mContext02 defaultMissing02 {m2SignerIndex = 1})
+          pfails $
+            missing02 (mContext02 defaultMissing02 {m2SignerIndex = 1})
       , testCase "rejects a preimage the transaction does not commit" $
           pfails $
             missing02 (mContext02 defaultMissing02 {m2Preimage = Just (requiredSignersPreimage tx1)})
       , testCase "rejects an output at a script that is not step-03's" $
-          pfails $ missing02 (mContext02 defaultMissing02 {m2OutputScript = otherScript})
+          pfails $
+            missing02 (mContext02 defaultMissing02 {m2OutputScript = otherScript})
       , testCase "rejects a state naming another signer's hash" $
           pfails $
             missing02
               ( mContext02
                   defaultMissing02
-                    {m2OutputState = Just (mState03 (keyHashFor 0) txUnsignedId unsignedWsHash)}
+                    { m2OutputState = Just (mState03 (keyHashFor 0) txUnsignedId unsignedWsHash)
+                    }
               )
       , -- Both halves of the anchor have to survive every step: step-04 needs
         -- the hash and cannot re-derive it.
@@ -182,35 +199,43 @@ missingTests =
             missing02
               ( mContext02
                   defaultMissing02
-                    {m2OutputState = Just (PD.Constr 0 [PD.B (keyHashFor 1), PD.B txUnsignedId])}
+                    { m2OutputState = Just (PD.Constr 0 [PD.B (keyHashFor 1), PD.B txUnsignedId])
+                    }
               )
       ]
   , testGroup
       "step-03"
       [ testCase "accepts the key that hashes to the carried signer hash" $
-          psucceeds $ missing03 (mContext03 defaultMissing03)
+          psucceeds $
+            missing03 (mContext03 defaultMissing03)
       , -- The bridge's only guard. Field 4 holds 28-byte hashes and field 7
         -- holds 32-byte keys, so without this the prover picks the key freely.
         testCase "rejects a key that hashes to something else" $
-          pfails $ missing03 (mContext03 defaultMissing03 {m3Vkey = verKeyFor 0})
+          pfails $
+            missing03 (mContext03 defaultMissing03 {m3Vkey = verKeyFor 0})
       , testCase "rejects a key that is not a key at all" $
-          pfails $ missing03 (mContext03 defaultMissing03 {m3Vkey = BS.replicate 32 0x00})
+          pfails $
+            missing03 (mContext03 defaultMissing03 {m3Vkey = BS.replicate 32 0x00})
       , testCase "rejects an output at a script that is not step-04's" $
-          pfails $ missing03 (mContext03 defaultMissing03 {m3OutputScript = otherScript})
+          pfails $
+            missing03 (mContext03 defaultMissing03 {m3OutputScript = otherScript})
       , testCase "rejects a state that drops the witness-set hash" $
           pfails $
             missing03
               ( mContext03
                   defaultMissing03
-                    {m3OutputState = Just (PD.Constr 0 [PD.B (verKeyFor 1), PD.B txUnsignedId])}
+                    { m3OutputState = Just (PD.Constr 0 [PD.B (verKeyFor 1), PD.B txUnsignedId])
+                    }
               )
       ]
   , testGroup
       "step-04"
       [ testCase "convicts when no witness carries the required key" $
-          psucceeds $ missing04 (mContext04 defaultMissing04)
+          psucceeds $
+            missing04 (mContext04 defaultMissing04)
       , testCase "scans exactly one bounded non-terminal batch" $
-          psucceeds $ missing04 (scanContext batched40 "" Nothing expectedBatched40CheckpointHash)
+          psucceeds $
+            missing04 (scanContext batched40 "" Nothing expectedBatched40CheckpointHash)
       , testCase "resumes from the committed checkpoint and finalizes the suffix" $
           psucceeds $
             missing04
@@ -220,9 +245,11 @@ missingTests =
                   (Just $ witnessCheckpointWire batched40 32)
               )
       , testCase "rejects finalize while more than one batch remains" $
-          pfails $ missing04 (finalizeBatchedContext batched40 "" Nothing)
+          pfails $
+            missing04 (finalizeBatchedContext batched40 "" Nothing)
       , testCase "rejects scan when the terminal batch is already reachable" $
-          pfails $ missing04 (scanContext batched32 "" Nothing expectedBatched32CheckpointHash)
+          pfails $
+            missing04 (scanContext batched32 "" Nothing expectedBatched32CheckpointHash)
       , testCase "rejects a checkpoint not committed by thread state" $
           pfails $
             missing04
@@ -232,9 +259,11 @@ missingTests =
                   (Just $ witnessCheckpointWire batched40 32)
               )
       , testCase "rejects a scan output that skips the derived checkpoint digest" $
-          pfails $ missing04 (scanContext batched40 "" Nothing (BS.replicate 32 0xee))
+          pfails $
+            missing04 (scanContext batched40 "" Nothing (BS.replicate 32 0xee))
       , testCase "rejects a required key found in a scan batch" $
-          pfails $ missing04 (scanContext batchedFound "" Nothing (witnessCheckpointHash batchedFound 32))
+          pfails $
+            missing04 (scanContext batchedFound "" Nothing (witnessCheckpointHash batchedFound 32))
       , -- Where a challenge against an honestly witnessed transaction dies.
         testCase "rejects a transaction whose required signer did witness it" $
           pfails $
@@ -250,14 +279,17 @@ missingTests =
                     }
               )
       , testCase "rejects an opening of a transaction the thread did not anchor" $
-          pfails $ missing04 (mContext04 defaultMissing04 {m4OpeningCbor = tx1Cbor})
+          pfails $
+            missing04 (mContext04 defaultMissing04 {m4OpeningCbor = tx1Cbor})
       , testCase "rejects a preimage the witness set does not commit" $
           pfails $
             missing04 (mContext04 defaultMissing04 {m4Preimage = Just (addressWitnessesPreimage tx3)})
       , testCase "rejects a conviction parked anywhere but the fraud-proof address" $
-          pfails $ missing04 (mContext04 defaultMissing04 {m4FraudProofAddress = otherAddress})
+          pfails $
+            missing04 (mContext04 defaultMissing04 {m4FraudProofAddress = otherAddress})
       , testCase "rejects a conviction under a name that is not the thread's" $
-          pfails $ missing04 (mContext04 defaultMissing04 {m4FraudProofName = otherThreadName})
+          pfails $
+            missing04 (mContext04 defaultMissing04 {m4FraudProofName = otherThreadName})
       ]
   ]
 
@@ -270,25 +302,41 @@ invalidTests =
   [ testGroup
       "step-01"
       [ testCase "binds the transaction and writes both halves of the anchor" $
-          psucceeds $ invalid01 (iContext01 defaultInvalid01)
+          psucceeds $
+            invalid01 (iContext01 defaultInvalid01)
       , testCase "rejects an output at a script that is not step-02's" $
-          pfails $ invalid01 (iContext01 defaultInvalid01 {i1OutputScript = otherScript})
+          pfails $
+            invalid01 (iContext01 defaultInvalid01 {i1OutputScript = otherScript})
       , testCase "rejects a state naming another witness-set hash" $
           pfails $
             invalid01
               ( iContext01
                   defaultInvalid01
-                    {i1OutputState = Just (mState02 txBadSigId (witnessSetHashOf tx1))}
+                    { i1OutputState = Just (iState02 txBadSigId (witnessSetHashOf tx1) Nothing)
+                    }
               )
       , testCase "rejects a raw root the header does not commit" $
-          pfails $ invalid01 (iContext01 defaultInvalid01 {i1PhasRoot = otherRoot})
+          pfails $
+            invalid01 (iContext01 defaultInvalid01 {i1PhasRoot = otherRoot})
+      , testCase "rejects an already initialized accepted thread" $
+          pfails $
+            invalid01 (iContext01 defaultInvalid01 {i1InputState = Just $ PD.I 0})
       , testCase "rejects a transaction marked invalid" $
-          pfails $ invalid01 (iContext01 defaultInvalid01 {i1SourceCbor = sourceCborOf txBadSig})
+          pfails $
+            invalid01 (iContext01 defaultInvalid01 {i1SourceCbor = sourceCborOf txBadSig})
+      ]
+  , testGroup
+      "forced binding"
+      [ testCase "binds forced acceptance" $ psucceeds $ runForcedInvalid01 0 (PD.Constr 0 []) 0 Nothing
+      , testCase "binds forced signature rejection" $ psucceeds $ runForcedInvalid01 1 (PD.Constr 1 [PD.Constr 7 [PD.I 0]]) 1 Nothing
+      , testCase "refuses prior forced state" $ pfails $ runForcedInvalid01 0 (PD.Constr 0 []) 0 (Just $ PD.I 0)
+      , testCase "refuses a substituted direction" $ pfails $ runForcedInvalid01 1 (PD.Constr 1 [PD.Constr 7 [PD.I 0]]) 0 Nothing
       ]
   , testGroup
       "step-02"
       [ testCase "convicts a witness whose signature does not verify" $
-          psucceeds $ invalid02 (iContext02 defaultInvalid02)
+          psucceeds $
+            invalid02 (iContext02 defaultInvalid02)
       , -- Where a challenge against an honest transaction dies: the message is
         -- the transaction's own id, and tx1's witness signed exactly that.
         testCase "rejects a witness whose signature does verify" $
@@ -303,17 +351,52 @@ invalidTests =
                     , i2Preimage = Just (addressWitnessesPreimage tx1)
                     }
               )
+      , testCase "convicts a false signature rejection of an honest witness" $
+          psucceeds $
+            invalid02 $
+              iContext02
+                defaultInvalid02
+                  { i2Reason = Just $ PD.Constr 7 [PD.I 0]
+                  , i2StateTxId = tx1Id
+                  , i2StateWsHash = witnessSetHashOf tx1
+                  , i2OpeningCbor = tx1Cbor
+                  , i2WitnessSetOf = tx1
+                  }
+      , testCase "refuses an honest invalid-signature rejection" $
+          pfails $
+            invalid02 $
+              iContext02 defaultInvalid02 {i2Reason = Just $ PD.Constr 7 [PD.I 0]}
+      , testCase "convicts a rejection naming an absent witness" $
+          psucceeds $
+            invalid02 $
+              iContext02 defaultInvalid02 {i2Reason = Just $ PD.Constr 7 [PD.I 1], i2WitnessIndex = 1}
+      , testCase "convicts a rejection naming a negative witness" $
+          psucceeds $
+            invalid02 $
+              iContext02 defaultInvalid02 {i2Reason = Just $ PD.Constr 7 [PD.I (-1)], i2WitnessIndex = -1}
+      , testCase "refuses substituting the rejected witness coordinate" $
+          pfails $
+            invalid02 $
+              iContext02 defaultInvalid02 {i2Reason = Just $ PD.Constr 7 [PD.I 2], i2WitnessIndex = 1}
+      , testCase "refuses a foreign rejection reason" $
+          pfails $
+            invalid02 $
+              iContext02 defaultInvalid02 {i2Reason = Just $ PD.Constr 2 [], i2WitnessIndex = 1}
       , testCase "rejects an opening of a transaction the thread did not anchor" $
-          pfails $ invalid02 (iContext02 defaultInvalid02 {i2OpeningCbor = tx1Cbor})
+          pfails $
+            invalid02 (iContext02 defaultInvalid02 {i2OpeningCbor = tx1Cbor})
       , testCase "rejects an index past the end of the collection" $
-          pfails $ invalid02 (iContext02 defaultInvalid02 {i2WitnessIndex = 1})
+          pfails $
+            invalid02 (iContext02 defaultInvalid02 {i2WitnessIndex = 1})
       , testCase "rejects a preimage the witness set does not commit" $
           pfails $
             invalid02 (iContext02 defaultInvalid02 {i2Preimage = Just (addressWitnessesPreimage tx1)})
       , testCase "rejects a conviction parked anywhere but the fraud-proof address" $
-          pfails $ invalid02 (iContext02 defaultInvalid02 {i2FraudProofAddress = otherAddress})
+          pfails $
+            invalid02 (iContext02 defaultInvalid02 {i2FraudProofAddress = otherAddress})
       , testCase "rejects a conviction under a name that is not the thread's" $
-          pfails $ invalid02 (iContext02 defaultInvalid02 {i2FraudProofName = otherThreadName})
+          pfails $
+            invalid02 (iContext02 defaultInvalid02 {i2FraudProofName = otherThreadName})
       ]
   ]
 
@@ -405,6 +488,7 @@ unsignedWsHash = witnessSetHashOf txUnsigned
 missing01, missing02, missing03, missing04 :: forall s. ScriptContext -> Term s PUnit
 missing01 ctx =
   missingSignatureStep01Validator
+    # pdata (pconstant (ScriptHash (toBuiltin nextScript)))
     # pdata (pconstant (ScriptHash (toBuiltin nextScript)))
     # pdata (pconstant ctPolicy)
     # pdata (pconstant hubOracleHash)
@@ -678,14 +762,15 @@ invalid01 ctx =
     # pconstant ctx
 invalid02 ctx =
   invalidSignatureStep02Validator
+    # pdata (pconstant ctPolicy)
     # pdata (pconstant fpPolicy)
     # pdata (pconstant fraudProofAddress)
-    # pdata (pconstant ctPolicy)
     # pdata (pconstant certificatePolicy)
     # pconstant ctx
 
 data Invalid01 = Invalid01
-  { i1OutputScript :: BS.ByteString
+  { i1InputState :: Maybe PD.Data
+  , i1OutputScript :: BS.ByteString
   , i1OutputState :: Maybe PD.Data
   , i1PhasRoot :: BS.ByteString
   , i1SourceCbor :: BS.ByteString
@@ -694,8 +779,9 @@ data Invalid01 = Invalid01
 defaultInvalid01 :: Invalid01
 defaultInvalid01 =
   Invalid01
-    { i1OutputScript = nextScript
-    , i1OutputState = Just (mState02 txBadSigId (witnessSetHashOf txBadSig))
+    { i1InputState = Nothing
+    , i1OutputScript = nextScript
+    , i1OutputState = Just (iState02 txBadSigId (witnessSetHashOf txBadSig) Nothing)
     , i1PhasRoot = phasRoot
     , i1SourceCbor = badSigAcceptedSourceCbor
     }
@@ -703,8 +789,8 @@ defaultInvalid01 =
 iContext01 :: Invalid01 -> ScriptContext
 iContext01 s =
   spendContext
-    (stepDatum Nothing)
-    (PD.Constr 1 [inclusionArgs txBadSigId (i1SourceCbor s) (i1PhasRoot s)])
+    (stepDatum $ i1InputState s)
+    (PD.Constr 1 [PD.Constr 0 [PD.Constr 0 [inclusionArgs txBadSigId (i1SourceCbor s) (i1PhasRoot s)]]])
     [threadInput]
     [stepOutput (i1OutputScript s) (i1OutputState s)]
     referenceInputs
@@ -712,7 +798,8 @@ iContext01 s =
     mempty
 
 data Invalid02 = Invalid02
-  { i2StateTxId :: BS.ByteString
+  { i2Reason :: Maybe PD.Data
+  , i2StateTxId :: BS.ByteString
   , i2StateWsHash :: BS.ByteString
   , i2OpeningCbor :: BS.ByteString
   , i2WitnessSetOf :: Tx
@@ -725,7 +812,8 @@ data Invalid02 = Invalid02
 defaultInvalid02 :: Invalid02
 defaultInvalid02 =
   Invalid02
-    { i2StateTxId = txBadSigId
+    { i2Reason = Nothing
+    , i2StateTxId = txBadSigId
     , i2StateWsHash = witnessSetHashOf txBadSig
     , i2OpeningCbor = badSigAcceptedCbor
     , i2WitnessSetOf = txBadSig
@@ -738,7 +826,7 @@ defaultInvalid02 =
 iContext02 :: Invalid02 -> ScriptContext
 iContext02 s =
   spendContext
-    (stepDatum (Just (mState02 (i2StateTxId s) (i2StateWsHash s))))
+    (stepDatum (Just (iState02 (i2StateTxId s) (i2StateWsHash s) (i2Reason s))))
     ( PD.Constr
         1
         [ PD.Constr
@@ -758,3 +846,182 @@ iContext02 s =
     (singleton fpPolicy (TokenName (toBuiltin (i2FraudProofName s))) 1)
   where
     preimage = maybe (addressWitnessesPreimage (i2WitnessSetOf s)) id (i2Preimage s)
+
+iState02 :: BS.ByteString -> BS.ByteString -> Maybe PD.Data -> PD.Data
+iState02 txId witnessHash reason = PD.Constr 0 [subject, PD.B witnessHash]
+  where
+    subject = PD.Constr 0 [PD.I 1, PD.I direction, PD.I direction, PD.B txId, PD.B key, maybe (PD.Constr 1 []) (\r -> PD.Constr 0 [r]) reason]
+    direction = maybe 0 (const 1) reason
+    key = maybe "" (const "key") reason
+
+forcedKey :: PD.Data
+forcedKey = PD.Constr 0 [PD.B $ BS.replicate 32 0x77, PD.I 0]
+
+runForcedInvalid01 :: forall s. Integer -> PD.Data -> Integer -> Maybe PD.Data -> Term s PUnit
+runForcedInvalid01 validity verdict direction inputState =
+  invalid01 $
+    spendContext
+      (stepDatum inputState)
+      (PD.Constr 1 [PD.Constr 0 [PD.Constr 1 [PD.I 0, PD.I 0, header, membership, PD.I direction]]])
+      [threadInputWithName name]
+      [stepOutputWithName nextScript (Just state) name]
+      []
+      []
+      mempty
+  where
+    tx = txBadSig
+    txId = txIdOf tx
+    source =
+      PD.Constr
+        0
+        [ PD.B $ compactWithValidity tx (witnessSetHashOf tx) validity
+        , PD.B $ witnessSetCborOf tx
+        , PD.B $ fieldPreimageLengthsCborOf tx
+        ]
+    leaf = PD.Constr 0 [PD.B txId, source, verdict]
+    rawRoot = singleEntryPhasRoot (serialise forcedKey) (serialise leaf)
+    root = commitCountedRoot 1 rawRoot 1
+    membership = membershipProof 1 root rawRoot 1 forcedKey leaf
+    header =
+      PD.Constr 0 $
+        [PD.B "", PD.B "", PD.B "", PD.B root]
+          ++ replicate 5 (PD.B "")
+          ++ [PD.I 0, PD.I 1]
+          ++ replicate 11 (PD.I 0)
+          ++ [PD.B "", PD.B "", PD.I 1]
+    name = BS.pack [0, 0, 0, 5] <> blake2b224 (serialise header)
+    reason = case verdict of
+      PD.Constr 1 [r] -> Just r
+      _ -> Nothing
+    subject = PD.Constr 0 [PD.I 1, PD.I direction, PD.I 1, PD.B txId, PD.B $ serialise forcedKey, maybe (PD.Constr 1 []) (\r -> PD.Constr 0 [r]) reason]
+    state = PD.Constr 0 [subject, PD.B $ witnessSetHashOf tx]
+
+-- Independent Data fixtures for the marker dispatch and forced signer route.
+missingForcedKey, missingForcedReason, missingForcedProof, missingForcedHeader :: PD.Data
+missingForcedKey = inputData sharedInputRef
+missingForcedReason = PD.Constr 8 [PD.I 0]
+missingForcedProof = membershipProof 1 root rawRoot 1 missingForcedKey leaf
+  where
+    leaf = PD.Constr 0 [PD.B tx1Id, PD.Constr 0 [PD.B tx1Cbor, PD.B $ witnessSetCborOf tx1, PD.B $ fieldPreimageLengthsCborOf tx1], PD.Constr 1 [missingForcedReason]]
+    rawRoot = singleEntryPhasRoot (serialise missingForcedKey) (serialise leaf)
+    root = commitCountedRoot 1 rawRoot 1
+missingForcedHeader =
+  PD.Constr 0 $
+    [PD.B "", PD.B "", PD.B "", root, PD.B "", PD.B "", PD.B "", PD.B "", PD.B ""]
+      ++ [PD.I 0, PD.I 1, PD.I 0, PD.I 0, PD.I 0, PD.I 0]
+      ++ replicate 7 (PD.I 0)
+      ++ [PD.B "", PD.B "", PD.I 1]
+  where
+    root = case missingForcedProof of
+      PD.Constr 0 (_ : r : _) -> r
+      _ -> error "membership fixture"
+
+missingSignerState :: Integer -> PD.Data
+missingSignerState index = PD.Constr 0 [PD.B tx1Id, PD.B $ witnessSetHashOf tx1, PD.B $ serialise missingForcedKey, PD.I index]
+
+missingWitnessState :: Integer -> Maybe BS.ByteString -> PD.Data
+missingWitnessState index selected = PD.Constr 0 [PD.B tx1Id, PD.B $ witnessSetHashOf tx1, PD.B $ serialise missingForcedKey, PD.I index, maybe (PD.Constr 1 []) (\h -> PD.Constr 0 [PD.B h]) selected]
+
+missingField :: Int -> PD.Data -> PD.Data -> PD.Data
+missingField index replacement (PD.Constr tag fields) = PD.Constr tag [if n == index then replacement else value | (n, value) <- zip [0 ..] fields]
+missingField _ _ _ = error "constructor fixture"
+
+runMissingDispatch :: Maybe PD.Data -> BS.ByteString -> PD.Data -> Term s PUnit
+runMissingDispatch state outputHash outputState =
+  missing01 $
+    spendContext
+      (stepDatum state)
+      (PD.Constr 2 [PD.I 0, PD.I 0])
+      [threadInput]
+      [stepOutput outputHash $ Just outputState]
+      []
+      []
+      mempty
+
+runMissingForced :: Integer -> Maybe PD.Data -> PD.Data -> PD.Data -> BS.ByteString -> PD.Data -> Term s PUnit
+runMissingForced direction state header proof outputHash expected =
+  missingSignatureForcedStepValidator
+    # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
+    # pdata (pconstant ctPolicy)
+    # pconstant context
+  where
+    name = BS.pack [0, 0, 0, 5] <> blake2b224 (serialise missingForcedHeader)
+    context =
+      spendContext
+        (stepDatum state)
+        (PD.Constr 1 [PD.Constr 0 [PD.I 0, PD.I 0, header, proof, PD.I direction]])
+        [threadInputWithName name]
+        [stepOutputWithName outputHash (Just expected) name]
+        []
+        []
+        mempty
+
+runMissingSigner :: Integer -> PD.Data -> Term s PUnit
+runMissingSigner index expected =
+  missingSignatureForcedSignerValidator
+    # pdata (pconstant $ ScriptHash $ toBuiltin nextScript)
+    # pdata (pconstant ctPolicy)
+    # pdata (pconstant certificatePolicy)
+    # pconstant context
+  where
+    context =
+      spendContext
+        (stepDatum $ Just $ missingSignerState index)
+        (PD.Constr 1 [PD.Constr 0 [PD.I 0, PD.I 0, bodyOpening tx1Cbor (requiredSignersPreimage tx1)]])
+        [threadInput]
+        [stepOutput nextScript $ Just expected]
+        []
+        []
+        mempty
+
+runMissingWitness :: PD.Data -> Maybe PD.Data -> Integer -> Term s PUnit
+runMissingWitness state opening index =
+  missingSignatureForcedWitnessValidator
+    # pdata (pconstant ctPolicy)
+    # pdata (pconstant fpPolicy)
+    # pdata (pconstant fraudProofAddress)
+    # pdata (pconstant certificatePolicy)
+    # pconstant context
+  where
+    context =
+      spendContext
+        (stepDatum $ Just state)
+        (PD.Constr 1 [PD.Constr 0 [PD.I 0, PD.I 0, PD.I 0, maybe (PD.Constr 1 []) (\o -> PD.Constr 0 [o]) opening, PD.I index]])
+        [threadInput]
+        [convictionOutput fraudProofAddress threadName]
+        []
+        [fraudProofMintEntry threadName]
+        (singleton fpPolicy (TokenName $ toBuiltin threadName) 1)
+
+missingHonestOpening :: PD.Data
+missingHonestOpening = witnessOpening tx1Cbor tx1 (addressWitnessesPreimage tx1)
+
+missingForcedTests :: [TestTree]
+missingForcedTests =
+  [ testCase "dispatch writes exactly the integer handoff marker" $ psucceeds $ runMissingDispatch Nothing nextScript (PD.I 1)
+  , testCase "dispatch refuses a prior thread state" $ pfails $ runMissingDispatch (Just $ PD.I 1) nextScript (PD.I 1)
+  , testCase "dispatch refuses a wrapped marker" $ pfails $ runMissingDispatch Nothing nextScript (PD.Constr 0 [PD.I 1])
+  , testCase "dispatch refuses successor substitution" $ pfails $ runMissingDispatch Nothing otherScript (PD.I 1)
+  , testCase "forced binding authenticates the rejected leaf and signer coordinate" $ psucceeds $ runMissingForced 1 (Just $ PD.I 1) missingForcedHeader missingForcedProof nextScript (missingSignerState 0)
+  , testCase "forced binding refuses acceptance direction" $ pfails $ runMissingForced 0 (Just $ PD.I 1) missingForcedHeader missingForcedProof nextScript (missingSignerState 0)
+  , testCase "forced binding refuses missing marker" $ pfails $ runMissingForced 1 Nothing missingForcedHeader missingForcedProof nextScript (missingSignerState 0)
+  , testCase "forced binding refuses another marker" $ pfails $ runMissingForced 1 (Just $ PD.I 2) missingForcedHeader missingForcedProof nextScript (missingSignerState 0)
+  , testCase "forced binding refuses a substituted header" $ pfails $ runMissingForced 1 (Just $ PD.I 1) (missingField 3 (PD.B $ hash32 0xff) missingForcedHeader) missingForcedProof nextScript (missingSignerState 0)
+  , testCase "forced binding refuses a substituted order key" $ pfails $ runMissingForced 1 (Just $ PD.I 1) missingForcedHeader (missingField 4 (inputData otherInputRef) missingForcedProof) nextScript (missingSignerState 0)
+  , testCase "forced binding refuses substituted counted domain" $ pfails $ runMissingForced 1 (Just $ PD.I 1) missingForcedHeader (missingField 0 (PD.Constr 0 []) missingForcedProof) nextScript (missingSignerState 0)
+  , testCase "forced binding refuses changed witness hash in output" $ pfails $ runMissingForced 1 (Just $ PD.I 1) missingForcedHeader missingForcedProof nextScript (missingField 1 (PD.B $ hash32 0xff) $ missingSignerState 0)
+  , testCase "signer opens the exact required hash" $ psucceeds $ runMissingSigner 0 (missingWitnessState 0 $ Just $ blake2b224 $ verKeyFor 0)
+  , testCase "signer carries absent positive coordinate" $ psucceeds $ runMissingSigner 1 (missingWitnessState 1 Nothing)
+  , testCase "signer carries absent negative coordinate" $ psucceeds $ runMissingSigner (-1) (missingWitnessState (-1) Nothing)
+  , testCase "signer refuses omitted valid hash" $ pfails $ runMissingSigner 0 (missingWitnessState 0 Nothing)
+  , testCase "signer refuses substituted source key" $ pfails $ runMissingSigner 0 (missingField 2 (PD.B "foreign") $ missingWitnessState 0 $ Just $ blake2b224 $ verKeyFor 0)
+  , testCase "witness convicts an unsigned claim with the valid committed signature" $ psucceeds $ runMissingWitness (missingWitnessState 0 $ Just $ blake2b224 $ verKeyFor 0) (Just missingHonestOpening) 0
+  , testCase "witness refuses a different required signer" $ pfails $ runMissingWitness (missingWitnessState 0 $ Just $ blake2b224 $ verKeyFor 1) (Just missingHonestOpening) 0
+  , testCase "witness refuses a missing opening at a selected signer" $ pfails $ runMissingWitness (missingWitnessState 0 $ Just $ blake2b224 $ verKeyFor 0) Nothing 0
+  , testCase "witness refuses an out-of-range witness" $ pfails $ runMissingWitness (missingWitnessState 0 $ Just $ blake2b224 $ verKeyFor 0) (Just missingHonestOpening) 1
+  , testCase "witness convicts an impossible coordinate without surplus evidence" $ psucceeds $ runMissingWitness (missingWitnessState 1 Nothing) Nothing 0
+  , testCase "witness refuses an opening for an impossible coordinate" $ pfails $ runMissingWitness (missingWitnessState 1 Nothing) (Just missingHonestOpening) 0
+  , testCase "witness refuses a nonzero index for an impossible coordinate" $ pfails $ runMissingWitness (missingWitnessState 1 Nothing) Nothing 1
+  , testCase "witness refuses an empty-witness-set substitution" $ pfails $ runMissingWitness (missingWitnessState 0 $ Just $ blake2b224 $ verKeyFor 0) (Just $ witnessOpening tx1Cbor txEmpty (addressWitnessesPreimage txEmpty)) 0
+  , testCase "witness refuses an authenticated invalid signature" $ pfails $ runMissingWitness (missingField 0 (PD.B txBadSigId) $ missingField 1 (PD.B $ witnessSetHashOf txBadSig) $ missingWitnessState 0 $ Just $ blake2b224 $ verKeyFor 0) (Just $ witnessOpening txBadSigCbor txBadSig (addressWitnessesPreimage txBadSig)) 0
+  ]

@@ -52,6 +52,7 @@ import Midgard.CekConstant (
   pconstantPayloadMemorySizeV1,
   pconstantPayloadV1,
   pconstantRootV1,
+  pconstantSemanticProjection,
   pconstantTypeIsKnownV1,
   pconstantTypeV1,
   pdataMemorySizeV1,
@@ -80,6 +81,10 @@ tests =
     , typeCheckingTests
     , memoryTests
     , agreementTests
+    , testCase "compact projection rejects a payload of the wrong type" $
+        pfails $ pconstantSemanticProjection # witness (typeCbor [0]) (ser (PD.B "wrong"))
+    , testCase "compact projection retains the source payload admission cap" $
+        pfails $ pconstantSemanticProjection # witness (typeCbor [1]) (ser (PD.B (BS.replicate 9216 0xab)))
     , semanticRootTests
     ]
 
@@ -426,11 +431,13 @@ agreementTests =
     "the direct and semantic roots agree"
     [ testCase name $
         passertEval $
-          pconstantRootV1 # witness (typeCbor tags) (ser value)
-            #== psemanticConstantRootV1
-              # pconstant (typeCbor tags)
-              # (psemanticDataSummaryV1 # pconstant value)
-              # pconstant (semanticMemorySize tags value)
+          pmatch (pconstantSemanticProjection # witness (typeCbor tags) (ser value)) $ \(PPair summary memory) ->
+            pand'List
+              [ summary #== (psemanticDataSummaryV1 # pconstant value)
+              , memory #== pconstant (semanticMemorySize tags value)
+              , pconstantRootV1 # witness (typeCbor tags) (ser value)
+                  #== psemanticConstantRootV1 # pconstant (typeCbor tags) # summary # memory
+              ]
     | (name, tags, value) <-
         [ ("an integer", [0], PD.I 41)
         , ("a negative integer", [0], PD.I (-1000))

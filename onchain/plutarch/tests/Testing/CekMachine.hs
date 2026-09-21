@@ -8,6 +8,7 @@ import Data.Word (Word8)
 import Test.Tasty
 import Test.Tasty.HUnit
 
+import Plutarch.LedgerApi.Utils (PMaybeData (..))
 import Plutarch.Prelude
 import Plutarch.Unsafe (punsafeCoerce)
 
@@ -23,11 +24,17 @@ import Midgard.CekProof (
   phashApplicationTermV1,
  )
 import Midgard.CekProof qualified as Proof
-import Testing.Eval (passertEvalNoTrace, pfails)
+import Testing.Eval (passertEvalNoTrace, pfails, passertEvalNoTraceWithoutHoistChecks, pfailsNoTraceWithoutHoistChecks)
 
 tests :: TestTree
 tests = testGroup "Midgard.CekMachine"
-  [ testCase "canonical_machine_mode_and_error_tags_match_typescript" $
+  [ testGroup "authenticated map nodes"
+      [ testCase "checks the exact map conversion successor" $ passertEvalNoTraceWithoutHoistChecks $ authenticatedMapNodes 0
+      , testCase "refuses a substituted authenticated budget" $ passertEvalNoTraceWithoutHoistChecks $ pnot # authenticatedMapNodes 1
+      , testCase "rejects a mismatched material node" $ pfailsNoTraceWithoutHoistChecks $ authenticatedMapNodes 2
+      , testCase "rejects another builtin family" $ pfailsNoTraceWithoutHoistChecks $ authenticatedMapNodes 3
+      ]
+  , testCase "canonical_machine_mode_and_error_tags_match_typescript" $
       passertEvalNoTrace canonicalMachineModeAndErrorTagsMatchTypescript
   , testCase "offchain_core_step_data_abi_vector" $
       passertEvalNoTrace offchainCoreStepDataAbiVector
@@ -567,3 +574,22 @@ hash byte = pconstant $ BS.replicate 32 byte
 
 hex :: BS.ByteString -> BS.ByteString
 hex = Base16.decodeLenient
+
+
+authenticatedMapNodes :: forall s. Int -> Term s PBool
+authenticatedMapNodes variant =
+  plet (constantValue "9f05060808ff" "80") $ \source ->
+  plet (constantValue "9f08ff" "a0") $ \result ->
+  plet (pcon $ Data.PListDataNode (pdata 0) (pdata Data.pemptyDataListRootV1) (pdata 1) (pdata 4)) $ \listNode ->
+  plet (pcon $ Data.PMapDataNode (pdata 0) (pdata Data.pemptyDataPairRootV1) (pdata 1) (pdata 4)) $ \mapNode ->
+  plet (pcon $ PMapConversionStartWitnessV1
+    (pdata $ if variant == 2 then mapNode else listNode) (pdata $ pcon PDNothing) (pdata $ pcon PDNothing)
+    (pdata mapNode) (pdata $ pcon PDNothing) (pdata $ pcon PDNothing)) $ \material ->
+  plet (pcon $ PMapConversionControlV1 (pdata 38) (pdata $ Builtin.presultRootV1 # result)
+    (pdata Data.pemptyDataListRootV1) (pdata 0) (pdata 0) (pdata 0)
+    (pdata Data.pemptyDataPairRootV1) (pdata 0) (pdata 0) (pdata 0)
+    (pdata 111) (pdata 222)) $ \control ->
+  plet (machineState pmodeBuiltin (hash 1) (hash 2) (hash 3) 0 10 20) $ \pre ->
+  plet (pexactState pre pmodeSemanticBuiltin (phashMapConversionControlV1 # control) Proof.pemptyEnvironmentRootV1 (hash 3) 0 0 0) $ \post ->
+    pverifyAuthenticatedMapConversionNodes pre post (if variant == 3 then 37 else 38) (valueList [source]) result material
+      (pcon $ PBuiltinBudgetV1 (pdata $ if variant == 1 then 112 else 111) (pdata 222))

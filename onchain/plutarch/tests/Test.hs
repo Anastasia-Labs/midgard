@@ -11,8 +11,10 @@ import Plutarch.Prelude
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck as QC
-import Testing.Eval (passertEval)
+import Testing.CekContextValidators qualified as CekContextValidators
+import Testing.CekSelectionValidators qualified as CekSelectionValidators
 import Testing.Environment qualified as Environment
+import Testing.Eval (passertEval)
 import Testing.ExecutionFrontiers qualified as ExecutionFrontiers
 
 -- import Midgard.Utils (pand'List)
@@ -39,6 +41,9 @@ import Testing.CanonicalVersionTuple qualified as CanonicalVersionTuple
 import Testing.CekBlobFrontier qualified as CekBlobFrontier
 import Testing.CekBuiltin qualified as CekBuiltin
 import Testing.CekConstant qualified as CekConstant
+import Testing.CekCoreChain qualified as CekCoreChain
+import Testing.CekCoreGoldens qualified as CekCoreGoldens
+import Testing.CekCoreValidators qualified as CekCoreValidators
 import Testing.CekCost qualified as CekCost
 import Testing.CekData qualified as CekData
 import Testing.CekDataBytes qualified as CekDataBytes
@@ -47,6 +52,7 @@ import Testing.CekDataInteger qualified as CekDataInteger
 import Testing.CekDataScan qualified as CekDataScan
 import Testing.CekDataTraverse qualified as CekDataTraverse
 import Testing.CekMachine qualified as CekMachine
+import Testing.CekMaterialTraversal qualified as CekMaterialTraversal
 import Testing.CekProof qualified as CekProof
 import Testing.CekSourceBlob qualified as CekSourceBlob
 import Testing.CommonUtils qualified as CommonUtils
@@ -74,10 +80,16 @@ import Testing.FraudProofsCommittedFieldShape qualified as FraudProofsCommittedF
 import Testing.FraudProofsCommon qualified as FraudProofsCommon
 import Testing.FraudProofsCrossBlockDuplicateEvent qualified as FraudProofsCrossBlockDuplicateEvent
 import Testing.FraudProofsDaHashPreimage qualified as FraudProofsDaHashPreimage
+import Testing.FraudProofsDistinctAssetAccumulationLimit qualified as FraudProofsDistinctAssetAccumulationLimit
 import Testing.FraudProofsDoubleSpend qualified as FraudProofsDoubleSpend
 import Testing.FraudProofsDoubleWithdraw qualified as FraudProofsDoubleWithdraw
+import Testing.FraudProofsExecutionNativeScriptInvalid qualified as FraudProofsExecutionNativeScriptInvalid
+import Testing.FraudProofsExecutionNativeScriptInvalidAcceptedReconstruction qualified as FraudProofsExecutionNativeScriptInvalidAcceptedReconstruction
+import Testing.FraudProofsExecutionSourceScriptDecoding qualified as FraudProofsExecutionSourceScriptDecoding
 import Testing.FraudProofsFabricatedDeposit qualified as FraudProofsFabricatedDeposit
 import Testing.FraudProofsFabricatedWithdrawal qualified as FraudProofsFabricatedWithdrawal
+import Testing.FraudProofsFieldItemWidthIllegal qualified as FraudProofsFieldItemWidthIllegal
+import Testing.FraudProofsFieldPreimageLengthMismatch qualified as FraudProofsFieldPreimageLengthMismatch
 import Testing.FraudProofsInputNoIdx qualified as FraudProofsInputNoIdx
 import Testing.FraudProofsInputSetUniqueness qualified as FraudProofsInputSetUniqueness
 import Testing.FraudProofsInvalidRange qualified as FraudProofsInvalidRange
@@ -86,11 +98,15 @@ import Testing.FraudProofsMinAda qualified as FraudProofsMinAda
 import Testing.FraudProofsMinFee qualified as FraudProofsMinFee
 import Testing.FraudProofsMintAuthorizationEndpoints qualified as FraudProofsMintAuthorizationEndpoints
 import Testing.FraudProofsMintAuthorizationEngine qualified as FraudProofsMintAuthorizationEngine
+import Testing.FraudProofsMintAuthorizationScan qualified as FraudProofsMintAuthorizationScan
 import Testing.FraudProofsMintAuthorizationStep02 qualified as FraudProofsMintAuthorizationStep02
 import Testing.FraudProofsMintAuthorizationStep03 qualified as FraudProofsMintAuthorizationStep03
 import Testing.FraudProofsMintAuthorizationStep04 qualified as FraudProofsMintAuthorizationStep04
+import Testing.FraudProofsMintDeclaredAssetLimit qualified as FraudProofsMintDeclaredAssetLimit
 import Testing.FraudProofsMissingNativeScriptTx qualified as FraudProofsMissingNativeScriptTx
 import Testing.FraudProofsMissingNativeScriptUtxo qualified as FraudProofsMissingNativeScriptUtxo
+import Testing.FraudProofsMissingRedeemer qualified as FraudProofsMissingRedeemer
+import Testing.FraudProofsMissingScriptSource qualified as FraudProofsMissingScriptSource
 import Testing.FraudProofsNativeScriptDecodingAdvanceOrClose qualified as FraudProofsNativeScriptDecodingAdvanceOrClose
 import Testing.FraudProofsNativeScriptDecodingBindDescriptor qualified as FraudProofsNativeScriptDecodingBindDescriptor
 import Testing.FraudProofsNativeScriptDecodingEngine qualified as FraudProofsNativeScriptDecodingEngine
@@ -102,21 +118,36 @@ import Testing.FraudProofsNativeScriptInvalid qualified as FraudProofsNativeScri
 import Testing.FraudProofsNetworkId qualified as FraudProofsNetworkId
 import Testing.FraudProofsNoInput qualified as FraudProofsNoInput
 import Testing.FraudProofsNoReferenceInput qualified as FraudProofsNoReferenceInput
+import Testing.FraudProofsObserverOrderInvalid qualified as FraudProofsObserverOrderInvalid
+import Testing.FraudProofsObserversForbiddenOnUntaggedNetwork qualified as FraudProofsObserversForbiddenOnUntaggedNetwork
+import Testing.FraudProofsOutputReferenceScriptDecoding qualified as FraudProofsOutputReferenceScriptDecoding
+import Testing.FraudProofsProtectedOutputSignerMissing qualified as FraudProofsProtectedOutputSignerMissing
 import Testing.FraudProofsQ1xSpendInputCardinality qualified as FraudProofsQ1xSpendInputCardinality
+import Testing.FraudProofsReceivePurposeLanguage qualified as FraudProofsReceivePurposeLanguage
+import Testing.FraudProofsRedeemerCanonicity qualified as FraudProofsRedeemerCanonicity
+import Testing.FraudProofsResolvedOutputNonCanonical qualified as FraudProofsResolvedOutputNonCanonical
+import Testing.FraudProofsScriptIntegrityHashMismatch qualified as FraudProofsScriptIntegrityHashMismatch
+import Testing.FraudProofsScriptIntegrityHashMissing qualified as FraudProofsScriptIntegrityHashMissing
 import Testing.FraudProofsSignature qualified as FraudProofsSignature
+import Testing.FraudProofsSpendInputSignerMissing qualified as FraudProofsSpendInputSignerMissing
 import Testing.FraudProofsTransitionTrace qualified as FraudProofsTransitionTrace
+import Testing.FraudProofsUnusedRedeemer qualified as FraudProofsUnusedRedeemer
+import Testing.FraudProofsUnusedScriptWitness qualified as FraudProofsUnusedScriptWitness
 import Testing.FraudProofsValueNotPreserved qualified as FraudProofsValueNotPreserved
 import Testing.FraudProofsWithdrawalMistag qualified as FraudProofsWithdrawalMistag
 import Testing.FraudProofsWithdrawnInput qualified as FraudProofsWithdrawnInput
 import Testing.FraudProofsWithdrawnReferenceInput qualified as FraudProofsWithdrawnReferenceInput
+import Testing.FraudProofsWitnessScriptDecoding qualified as FraudProofsWitnessScriptDecoding
 import Testing.FraudProofsZeroInput qualified as FraudProofsZeroInput
 import Testing.HeaderValidity qualified as HeaderValidity
 import Testing.HubOracleValidator qualified as HubOracleValidator
 import Testing.IntraItemBytes qualified as IntraItemBytes
 import Testing.LedgerOutput qualified as LedgerOutput
+import Testing.LedgerOutputCarriers qualified as LedgerOutputCarriers
 import Testing.LedgerOutputCommitment qualified as LedgerOutputCommitment
 import Testing.LedgerOutputDescriptor qualified as LedgerOutputDescriptor
 import Testing.LedgerOutputProof qualified as LedgerOutputProof
+import Testing.LedgerOutputProofYield qualified as LedgerOutputProofYield
 import Testing.LedgerOutputScan qualified as LedgerOutputScan
 import Testing.LedgerOutputValue qualified as LedgerOutputValue
 import Testing.LedgerValueParity qualified as LedgerValueParity
@@ -126,8 +157,10 @@ import Testing.MerklePatriciaForestry qualified as MPF
 import Testing.MpfChunkedChallengeValidator qualified as MpfChunkedChallengeValidator
 import Testing.MpfChunkedProof qualified as MpfChunkedProof
 import Testing.MpfChunkedVerifyValidator qualified as MpfChunkedVerifyValidator
+import Testing.MpfParity qualified as MpfParity
 import Testing.MpfProof qualified as MpfProof
 import Testing.MpfProofFold qualified as MpfProofFold
+import Testing.NativeExecutionDescriptors qualified as NativeExecutionDescriptors
 import Testing.NativeScript qualified as NativeScript
 import Testing.NativeScriptScan qualified as NativeScriptScan
 import Testing.NativeTxC20Field6Maximum qualified as NativeTxC20Field6Maximum
@@ -146,24 +179,35 @@ import Testing.NativeTxMaximumProfiles qualified as NativeTxMaximumProfiles
 import Testing.NativeTxPreimages qualified as NativeTxPreimages
 import Testing.NativeTxScriptPushdown qualified as NativeTxScriptPushdown
 import Testing.NativeTxTransaction qualified as NativeTxTransaction
+import Testing.OperationalYields qualified as OperationalYields
 import Testing.OperatorDirectory qualified as OperatorDirectory
 import Testing.PayoutValidator qualified as PayoutValidator
+import Testing.PhaseANativeBounds qualified as PhaseANativeBounds
+import Testing.PhaseANativeValidators qualified as PhaseANativeValidators
+import Testing.ProofThreadSubstrate qualified as ProofThreadSubstrate
 import Testing.RedeemerItemProof qualified as RedeemerItemProof
 import Testing.RegisteredOperatorsValidator qualified as RegisteredOperators
 import Testing.RejectionReason qualified as RejectionReason
 import Testing.ReserveValidator qualified as ReserveValidator
+import Testing.ResolveInputsSemantics qualified as ResolveInputsSemantics
 import Testing.RetiredOperatorsValidator qualified as RetiredOperators
 import Testing.SchedulerValidator qualified as SchedulerValidator
 import Testing.ScriptContext qualified as ScriptContext
 import Testing.ScriptLanguageViews qualified as ScriptLanguageViews
 import Testing.ScriptProof qualified as ScriptProof
+import Testing.ScriptSourcesMiddleSemantics qualified as ScriptSourcesMiddleSemantics
+import Testing.ScriptSourcesOutputSemantics qualified as ScriptSourcesOutputSemantics
 import Testing.ScriptSourcesRedeemerNormalization qualified as ScriptSourcesRedeemerNormalization
 import Testing.SettlementValidator qualified as SettlementValidator
+import Testing.SharedItemSemantics qualified as SharedItemSemantics
 import Testing.StateQueueLib qualified as StateQueueLib
 import Testing.StateQueueValidator qualified as StateQueueValidator
+import Testing.StructuredDataCarriage qualified as StructuredDataCarriage
 import Testing.TraceProofs qualified as TraceProofs
+import Testing.TransactionOutputNonCanonical qualified as TransactionOutputNonCanonical
 import Testing.TransactionRootV1Golden qualified as TransactionRootV1Golden
 import Testing.TransitionTraceAiken qualified as TransitionTraceAiken
+import Testing.TransitionTraceCarriage qualified as TransitionTraceCarriage
 import Testing.TransitionTraceProof qualified as TransitionTraceProof
 import Testing.TxOrderMaterial qualified as TxOrderMaterial
 import Testing.TxOrderV1Abi qualified as TxOrderV1Abi
@@ -173,6 +217,7 @@ import Testing.ValidationDispute qualified as ValidationDispute
 import Testing.ValidationInstructionEvidenceBounds qualified as ValidationInstructionEvidenceBounds
 import Testing.ValidationMachine qualified as ValidationMachine
 import Testing.ValidationMachineFieldDoor qualified as ValidationMachineFieldDoor
+import Testing.ValidationMachineWitness qualified as ValidationMachineWitness
 import Testing.ValidationMerkle qualified as ValidationMerkle
 import Testing.ValidationOneStepCrossLanguage qualified as ValidationOneStepCrossLanguage
 import Testing.ValidationResolution qualified as ValidationResolution
@@ -188,6 +233,8 @@ import Testing.ValidationTraceScriptSourcesStageZero qualified as ValidationTrac
 import Testing.ValidationTraceSignatures qualified as ValidationTraceSignatures
 import Testing.ValidationTraceStaticLedgerRules qualified as ValidationTraceStaticLedgerRules
 import Testing.ValidationTraceValueAndMintSplit qualified as ValidationTraceValueAndMintSplit
+import Testing.ValueAssetFoldValidators qualified as ValueAssetFoldValidators
+import Testing.ValueUnion qualified as ValueUnion
 import Testing.WithdrawalValidator qualified as WithdrawalValidator
 import Testing.WitnessValidator qualified as WitnessValidator
 
@@ -214,8 +261,20 @@ genFourBytearrays = vectorOf 4 genByteString
 -- | Runs the Plutarch test suite.
 main :: IO ()
 main = do
+    nativeValidators <- PhaseANativeValidators.tests
+    nativeBounds <- PhaseANativeBounds.tests
+    nativeDescriptors <- NativeExecutionDescriptors.tests
+    resolveInputs <- ResolveInputsSemantics.tests
+    middleSemantics <- ScriptSourcesMiddleSemantics.tests
+    outputSemantics <- ScriptSourcesOutputSemantics.tests
+    sharedItemSemantics <- SharedItemSemantics.tests
+    contextValidators <- CekContextValidators.tests
+    selectionValidators <- CekSelectionValidators.tests
+    coreValidators <- CekCoreValidators.tests
+    coreGoldens <- CekCoreGoldens.tests
     splitVectors <- AikenSplitVectors.tests
-    defaultMain $ tests splitVectors
+    valueAssetFoldValidators <- ValueAssetFoldValidators.tests
+    defaultMain $ testGroup "Plutarch parity" [nativeValidators, nativeBounds, nativeDescriptors, resolveInputs, middleSemantics, outputSemantics, valueAssetFoldValidators, tests splitVectors coreValidators coreGoldens selectionValidators contextValidators sharedItemSemantics]
 
 -- | Checks that the four-leaf Merkle helper reconstructs the expected root.
 merkle_4_test :: Property
@@ -288,8 +347,8 @@ examplesNibble =
         ]
 
 -- | Aggregates the helper, crypto, trie, and membership tests.
-tests :: TestTree -> TestTree
-tests splitVectors =
+tests :: TestTree -> TestTree -> TestTree -> TestTree -> TestTree -> TestTree -> TestTree
+tests splitVectors coreValidators coreGoldens selectionValidators contextValidators sharedItemSemantics =
     testGroup
         "Helper Tests"
         [ testGroup
@@ -328,6 +387,9 @@ tests splitVectors =
         , LinkedListTests.tests
         , DesignPatterns.tests
         , OperatorDirectory.tests
+        , OperationalYields.tests
+        , StructuredDataCarriage.tests
+        , ProofThreadSubstrate.tests
         , RetiredOperators.tests
         , RegisteredOperators.tests
         , ActiveOperators.tests
@@ -364,6 +426,7 @@ tests splitVectors =
         , TxOrderV1Abi.tests
         , ValidationMerkle.tests
         , ValidationResolution.tests
+        , ValidationMachineWitness.tests
         , ValidationMachine.tests
         , ValidationMachineFieldDoor.tests
         , RejectionReason.tests
@@ -379,6 +442,8 @@ tests splitVectors =
         , LedgerValueParity.tests
         , LedgerOutputScan.tests
         , LedgerOutputProof.tests
+        , LedgerOutputProofYield.tests
+        , LedgerOutputCarriers.tests
         , RedeemerItemProof.tests
         , NativeScript.tests
         , NativeScriptScan.tests
@@ -394,7 +459,14 @@ tests splitVectors =
         , Blake2b256Trace.tests
         , Blake2b224Trace.tests
         , CekBlobFrontier.tests
+        , coreValidators
+        , coreGoldens
+        , selectionValidators
+        , contextValidators
+        , sharedItemSemantics
         , CekBuiltin.tests
+        , CekCoreChain.tests
+        , CekMaterialTraversal.tests
         , CekMachine.tests
         , CekSourceBlob.tests
         , CekConstant.tests
@@ -419,6 +491,7 @@ tests splitVectors =
         , NativeTxPreimages.tests
         , NativeTxTransaction.tests
         , IntraItemBytes.tests
+        , MpfParity.tests
         , MpfProof.tests
         , MpfProofFold.tests
         , MpfChunkedVerifyValidator.tests
@@ -430,7 +503,28 @@ tests splitVectors =
         , FraudProofsCrossBlockDuplicateEvent.tests
         , FraudProofsFabricatedDeposit.tests
         , FraudProofsFabricatedWithdrawal.tests
+        , FraudProofsFieldItemWidthIllegal.tests
+        , FraudProofsFieldPreimageLengthMismatch.tests
         , FraudProofsNetworkId.tests
+        , FraudProofsObserversForbiddenOnUntaggedNetwork.tests
+        , FraudProofsObserverOrderInvalid.tests
+        , FraudProofsProtectedOutputSignerMissing.tests
+        , FraudProofsResolvedOutputNonCanonical.tests
+        , FraudProofsSpendInputSignerMissing.tests
+        , FraudProofsRedeemerCanonicity.tests
+        , FraudProofsDistinctAssetAccumulationLimit.tests
+        , FraudProofsExecutionNativeScriptInvalid.tests
+        , FraudProofsExecutionNativeScriptInvalidAcceptedReconstruction.tests
+        , FraudProofsExecutionSourceScriptDecoding.tests
+        , FraudProofsMissingRedeemer.tests
+        , FraudProofsUnusedRedeemer.tests
+        , FraudProofsUnusedScriptWitness.tests
+        , FraudProofsMissingScriptSource.tests
+        , FraudProofsScriptIntegrityHashMissing.tests
+        , FraudProofsReceivePurposeLanguage.tests
+        , FraudProofsScriptIntegrityHashMismatch.tests
+        , ValueUnion.tests
+        , TransactionOutputNonCanonical.tests
         , FraudProofsMinAda.tests
         , FieldOpening.tests
         , FraudProofsDoubleSpend.tests
@@ -445,6 +539,8 @@ tests splitVectors =
         , FraudProofsWithdrawalMistag.tests
         , FraudProofsMintAuthorizationEngine.tests
         , FraudProofsMintAuthorizationEndpoints.tests
+        , FraudProofsMintAuthorizationScan.tests
+        , FraudProofsMintDeclaredAssetLimit.tests
         , FraudProofsMintAuthorizationStep02.tests
         , FraudProofsMintAuthorizationStep03.tests
         , FraudProofsMintAuthorizationStep04.tests
@@ -456,6 +552,8 @@ tests splitVectors =
         , FraudProofsNativeScriptDecodingStep01.tests
         , FraudProofsNativeScriptDecodingStep02.tests
         , FraudProofsNativeScriptDecodingStep04.tests
+        , FraudProofsWitnessScriptDecoding.tests
+        , FraudProofsOutputReferenceScriptDecoding.tests
         , FraudProofsQ1xSpendInputCardinality.tests
         , FraudProofsWithdrawnReferenceInput.tests
         , FraudProofsWithdrawnInput.tests
@@ -469,6 +567,7 @@ tests splitVectors =
         , TransactionRootV1Golden.tests
         , TransitionTraceAiken.tests
         , TransitionTraceProof.tests
+        , TransitionTraceCarriage.tests
         , FraudProofsTransitionTrace.tests
         , ValidationTrace.tests
         , ValidationTraceCanonicalDecode.tests

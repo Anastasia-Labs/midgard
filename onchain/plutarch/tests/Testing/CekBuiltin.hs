@@ -10,6 +10,7 @@ import Test.Tasty.HUnit
 
 import Plutarch.Prelude
 
+import Midgard.CekBuiltin qualified as Split
 import Midgard.CekBuiltin (
   PBlsExpressionWitnessV1 (..),
   PRuntimeValueWitnessV1 (..),
@@ -20,12 +21,10 @@ import Midgard.CekBuiltin (
   pdirectBuiltinBudgetV1,
   pdirectBuiltinFailureBudgetV1,
   pisValidUtf8V1,
-  pverifyDirectBuiltinV1,
   pverifyDirectBuiltinFailureV1,
   pverifyDirectBlsFinalRootsV1,
   pverifyDirectBlsFinalV1,
   pverifySemanticBuiltinFailureV1,
-  pverifySemanticBuiltinV1,
   pruntimeArgumentsRootV1,
   pverifyBuiltinTypeFailureV1,
  )
@@ -58,86 +57,111 @@ import Midgard.CekProof (
   pemptyEnvironmentRootV1,
   pemptySequenceRootV1,
  )
-import Testing.Eval (passertEvalNoTrace, pfails)
+import Testing.Eval (passertEvalNoTraceWithoutHoistChecks, pfailsNoTraceWithoutHoistChecks)
 
 tests :: TestTree
 tests =
   testGroup
     "Midgard.CekBuiltin"
-    [ testCase "add_integer_direct_step_is_authenticated" $
-        passertEvalNoTrace addIntegerDirectStepIsAuthenticated
+    [ testGroup "physical semantic hops"
+        [ testCase "BLS roots bind ten leaves and reject root substitution" $ passertEvalNoTraceWithoutHoistChecks $
+            Split.pverifyBlsExpressionRoots # fiveExpression # fiveExpression # fiveExpressionRoot # fiveExpressionRoot
+              #&& pnot # (Split.pverifyBlsExpressionRoots # fiveExpression # fiveExpression # pconstant "wrong" # fiveExpressionRoot)
+        , testCase "BLS root hop refuses twelve leaves" $ passertEvalNoTraceWithoutHoistChecks $
+            pnot # (Split.pverifyBlsExpressionRoots # sixExpression # sixExpression # sixExpressionRoot # sixExpressionRoot)
+        , testCase "authenticated BLS final verifies ten leaves" $ passertEvalNoTraceWithoutHoistChecks $
+            Split.pverifyAuthenticatedBlsFinal # fiveExpression # fiveExpression # constant "9f04ff" "d87a80"
+        , testCase "authenticated BLS final refuses wrong result" $ passertEvalNoTraceWithoutHoistChecks $
+            pnot # (Split.pverifyAuthenticatedBlsFinal # blsLeaf # blsLeaf # constant "9f04ff" "d87980")
+        , testCase "direct scalar hop refuses structured tags" $ passertEvalNoTraceWithoutHoistChecks $
+            pnot # (Split.pverifyDirectScalarSemantics # 40 # values [integer "01"] # constant "9f08ff" "01")
+        , testCase "direct structured hop refuses scalar tags" $ passertEvalNoTraceWithoutHoistChecks $
+            pnot # (Split.pverifyDirectStructuredSemantics # 0 # values [integer "01",integer "01"] # integer "02")
+        , testCase "failure budget trusts authenticated failure without re-execution" $ passertEvalNoTraceWithoutHoistChecks $
+            plet (values [integer "01",integer "01"]) $ \args -> Split.pauthenticatedBuiltinFailureBudget # 4 # args #== pdirectBuiltinBudgetV1 # 4 # args
+        , testCase "uncharged authenticated failure has zero budget" $ passertEvalNoTraceWithoutHoistChecks $
+            Split.pauthenticatedBuiltinFailureBudget # 3 # values [integer "01",integer "00"] #== zeroBudget
+        , testCase "runtime type hop accepts integers and refuses bytes" $ passertEvalNoTraceWithoutHoistChecks $
+            Split.pbuiltinArgumentsAreWellTypedV1 # 0 # runtimeValues [runtimeConstant "9f00ff" "01",runtimeConstant "9f00ff" "02"]
+              #&& pnot # (Split.pbuiltinArgumentsAreWellTypedV1 # 0 # runtimeValues [runtimeConstant "9f01ff" "40",runtimeConstant "9f00ff" "02"])
+        , testCase "compacting preserves opaque and Miller-loop values" $ passertEvalNoTraceWithoutHoistChecks $
+            Split.pcompactSemanticValue # blsValue blsLeafRoot #== blsValue blsLeafRoot
+              #&& Split.pcompactSemanticValue # pcon (POpaqueValue $ pdata $ pconstant "opaque") #== pcon (POpaqueValue $ pdata $ pconstant "opaque")
+        ]
+    , testCase "add_integer_direct_step_is_authenticated" $
+        passertEvalNoTraceWithoutHoistChecks addIntegerDirectStepIsAuthenticated
     , testCase "add_integer_direct_budget_matches_reference_cek" $
-        passertEvalNoTrace addIntegerDirectBudgetMatchesReferenceCek
+        passertEvalNoTraceWithoutHoistChecks addIntegerDirectBudgetMatchesReferenceCek
     , testCase "empty_trace_message_uses_the_reference_zero_size_quirk" $
-        passertEvalNoTrace emptyTraceMessageUsesReferenceZeroSizeQuirk
+        passertEvalNoTraceWithoutHoistChecks emptyTraceMessageUsesReferenceZeroSizeQuirk
     , testCase "append_bytearray_direct_step_is_authenticated" $
-        passertEvalNoTrace appendBytearrayDirectStepIsAuthenticated
+        passertEvalNoTraceWithoutHoistChecks appendBytearrayDirectStepIsAuthenticated
     , testCase "if_then_else_selects_an_opaque_value_without_interpreting_it" $
-        passertEvalNoTrace ifThenElseSelectsOpaqueValue
+        passertEvalNoTraceWithoutHoistChecks ifThenElseSelectsOpaqueValue
     , testCase "list_head_preserves_the_authenticated_element_type" $
-        passertEvalNoTrace listHeadPreservesElementType
+        passertEvalNoTraceWithoutHoistChecks listHeadPreservesElementType
     , testCase "i_data_and_un_i_data_round_trip_semantically" $
-        passertEvalNoTrace iDataRoundTrip
+        passertEvalNoTraceWithoutHoistChecks iDataRoundTrip
     , testCase "valid_ecdsa_public_key_with_invalid_signature_returns_false" $
-        passertEvalNoTrace validEcdsaKeyWithInvalidSignatureReturnsFalse
+        passertEvalNoTraceWithoutHoistChecks validEcdsaKeyWithInvalidSignatureReturnsFalse
     , testCase "miller_loop_expression_and_final_verify_are_authenticated" $
-        passertEvalNoTrace millerLoopExpressionAndFinalVerifyAreAuthenticated
+        passertEvalNoTraceWithoutHoistChecks millerLoopExpressionAndFinalVerifyAreAuthenticated
     , testCase "six_leaf_miller_loop_proof_fits_the_l1_execution_reserve" $
-        passertEvalNoTrace sixLeafMillerLoopProofFitsReserve
+        passertEvalNoTraceWithoutHoistChecks sixLeafMillerLoopProofFitsReserve
     , testCase "ten_leaf_miller_loop_proof_fits_the_l1_execution_reserve" $
-        passertEvalNoTrace tenLeafMillerLoopProofFitsReserve
+        passertEvalNoTraceWithoutHoistChecks tenLeafMillerLoopProofFitsReserve
     , testCase "ten_leaf_root_bound_final_proof_fits_the_l1_execution_reserve" $
-        passertEvalNoTrace tenLeafRootBoundProofFitsReserve
+        passertEvalNoTraceWithoutHoistChecks tenLeafRootBoundProofFitsReserve
     , testCase "twelve_leaf_miller_loop_proof_exceeding_the_reserve_fails_closed" $
-        pfails twelveLeafMillerLoopProofFailsClosed
+        pfailsNoTraceWithoutHoistChecks twelveLeafMillerLoopProofFailsClosed
     , testCase "unsupported_direct_builtin_stays_closed" $
-        passertEvalNoTrace unsupportedDirectBuiltinStaysClosed
+        passertEvalNoTraceWithoutHoistChecks unsupportedDirectBuiltinStaysClosed
     , testCase "wrong_builtin_result_fails_closed" $
-        passertEvalNoTrace wrongBuiltinResultFailsClosed
+        passertEvalNoTraceWithoutHoistChecks wrongBuiltinResultFailsClosed
     , testCase "builtin_closure_type_failure_is_authenticated_without_charging" $
-        passertEvalNoTrace builtinClosureTypeFailureIsAuthenticated
+        passertEvalNoTraceWithoutHoistChecks builtinClosureTypeFailureIsAuthenticated
     , testCase "mk_cons_rejects_an_incongruent_element_type" $
-        passertEvalNoTrace mkConsRejectsIncongruentElementType
+        passertEvalNoTraceWithoutHoistChecks mkConsRejectsIncongruentElementType
     , testCase "arbitrary_control_branch_values_are_not_type_failures" $
-        passertEvalNoTrace arbitraryControlBranchesAreNotTypeFailures
+        passertEvalNoTraceWithoutHoistChecks arbitraryControlBranchesAreNotTypeFailures
     , testCase "division_by_zero_failure_is_authenticated_without_charging" $
-        passertEvalNoTrace divisionByZeroFailureIsFree
+        passertEvalNoTraceWithoutHoistChecks divisionByZeroFailureIsFree
     , testCase "quotient_by_zero_failure_charges_before_the_operation_fails" $
-        passertEvalNoTrace quotientByZeroFailureIsPaid
+        passertEvalNoTraceWithoutHoistChecks quotientByZeroFailureIsPaid
     , testCase "invalid_utf8_failure_is_authenticated_without_decoding" $
-        passertEvalNoTrace invalidUtf8FailureIsAuthenticated
+        passertEvalNoTraceWithoutHoistChecks invalidUtf8FailureIsAuthenticated
     , testCase "integer_to_bytes_size_failure_charges_the_pinned_builtin_cost" $
-        passertEvalNoTrace integerToBytesSizeFailureIsPaid
+        passertEvalNoTraceWithoutHoistChecks integerToBytesSizeFailureIsPaid
     , testCase "malformed_ecdsa_public_key_failure_is_paid_and_authenticated" $
-        passertEvalNoTrace malformedEcdsaFailureIsPaid
+        passertEvalNoTraceWithoutHoistChecks malformedEcdsaFailureIsPaid
     , testCase "malformed_schnorr_x_coordinate_failure_is_paid_and_authenticated" $
-        passertEvalNoTrace malformedSchnorrFailureIsPaid
+        passertEvalNoTraceWithoutHoistChecks malformedSchnorrFailureIsPaid
     , testCase "non_residue_ecdsa_x_coordinate_has_a_bounded_failure_proof" $
-        passertEvalNoTrace nonResidueEcdsaFailureIsAuthenticated
+        passertEvalNoTraceWithoutHoistChecks nonResidueEcdsaFailureIsAuthenticated
     , testCase "malformed_bls_g1_compression_header_failure_is_paid" $
-        passertEvalNoTrace malformedBlsG1HeaderIsPaid
+        passertEvalNoTraceWithoutHoistChecks malformedBlsG1HeaderIsPaid
     , testCase "malformed_bls_g2_compression_header_failure_is_paid" $
-        passertEvalNoTrace malformedBlsG2HeaderIsPaid
+        passertEvalNoTraceWithoutHoistChecks malformedBlsG2HeaderIsPaid
     , testCase "off_curve_bls_g1_encoding_has_a_bounded_paid_failure_proof" $
-        passertEvalNoTrace offCurveBlsG1IsPaid
+        passertEvalNoTraceWithoutHoistChecks offCurveBlsG1IsPaid
     , testCase "canonical_bls_infinity_encoding_is_not_a_failure" $
-        passertEvalNoTrace canonicalBlsInfinityIsNotFailure
+        passertEvalNoTraceWithoutHoistChecks canonicalBlsInfinityIsNotFailure
     , testCase "semantic_choose_data_inspects_a_large_context_root_locally" $
-        passertEvalNoTrace semanticChooseDataInspectsLargeContextRoot
+        passertEvalNoTraceWithoutHoistChecks semanticChooseDataInspectsLargeContextRoot
     , testCase "semantic_unconstr_data_returns_the_exact_large_typed_pair" $
-        passertEvalNoTrace semanticUnconstrDataReturnsExactLargeTypedPair
+        passertEvalNoTraceWithoutHoistChecks semanticUnconstrDataReturnsExactLargeTypedPair
     , testCase "semantic_fst_pair_extracts_the_constructor_without_the_large_field" $
-        passertEvalNoTrace semanticFstPairExtractsConstructor
+        passertEvalNoTraceWithoutHoistChecks semanticFstPairExtractsConstructor
     , testCase "semantic_head_list_extracts_a_9000_byte_data_child_by_root" $
-        passertEvalNoTrace semanticHeadListExtractsLargeChild
+        passertEvalNoTraceWithoutHoistChecks semanticHeadListExtractsLargeChild
     , testCase "semantic_wrong_data_variant_failure_is_authenticated_locally" $
-        passertEvalNoTrace semanticWrongDataVariantFailureIsAuthenticated
+        passertEvalNoTraceWithoutHoistChecks semanticWrongDataVariantFailureIsAuthenticated
     ]
 
 addIntegerDirectStepIsAuthenticated :: forall (s :: S). Term s PBool
 addIntegerDirectStepIsAuthenticated =
   plet (values [integer "1829", integer "01"]) $ \arguments ->
-    pverifyDirectBuiltinV1
+    verifyDirectWithSplitParity
       # 0
       # (builtinRoot 0 arguments)
       # arguments
@@ -146,7 +170,7 @@ addIntegerDirectStepIsAuthenticated =
 addIntegerDirectBudgetMatchesReferenceCek :: forall (s :: S). Term s PBool
 addIntegerDirectBudgetMatchesReferenceCek =
   plet (values [integer "01", integer "1880"]) $ \arguments ->
-    pverifyDirectBuiltinV1
+    verifyDirectWithSplitParity
       # 0
       # (builtinRoot 0 arguments)
       # arguments
@@ -166,27 +190,27 @@ emptyTraceMessageUsesReferenceZeroSizeQuirk =
 appendBytearrayDirectStepIsAuthenticated :: forall (s :: S). Term s PBool
 appendBytearrayDirectStepIsAuthenticated =
   plet (values [bytes "42aabb", bytes "41cc"]) $ \arguments ->
-    pverifyDirectBuiltinV1 # 10 # builtinRoot 10 arguments # arguments # bytes "43aabbcc"
+    verifyDirectWithSplitParity # 10 # builtinRoot 10 arguments # arguments # bytes "43aabbcc"
 
 ifThenElseSelectsOpaqueValue :: forall (s :: S). Term s PBool
 ifThenElseSelectsOpaqueValue =
   plet (pcon $ POpaqueValue $ pdata $ pconstant $ BS.replicate 32 0x11) $ \selected ->
   plet (pcon $ POpaqueValue $ pdata $ pconstant $ BS.replicate 32 0x22) $ \rejected ->
   plet (values [constant "9f04ff" "d87a80", selected, rejected]) $ \arguments ->
-    pverifyDirectBuiltinV1 # 26 # builtinRoot 26 arguments # arguments # selected
+    verifyDirectWithSplitParity # 26 # builtinRoot 26 arguments # arguments # selected
 
 listHeadPreservesElementType :: forall (s :: S). Term s PBool
 listHeadPreservesElementType =
   plet (values [constant "9f0500ff" "9f0102ff"]) $ \arguments ->
-    pverifyDirectBuiltinV1 # 33 # builtinRoot 33 arguments # arguments # integer "01"
+    verifyDirectWithSplitParity # 33 # builtinRoot 33 arguments # arguments # integer "01"
 
 iDataRoundTrip :: forall (s :: S). Term s PBool
 iDataRoundTrip =
   plet (values [integer "182a"]) $ \toDataArguments ->
   plet (constant "9f08ff" "182a") $ \dataValue ->
   plet (values [dataValue]) $ \fromDataArguments ->
-    pverifyDirectBuiltinV1 # 40 # builtinRoot 40 toDataArguments # toDataArguments # dataValue
-      #&& pverifyDirectBuiltinV1 # 45 # builtinRoot 45 fromDataArguments # fromDataArguments # integer "182a"
+    verifyDirectWithSplitParity # 40 # builtinRoot 40 toDataArguments # toDataArguments # dataValue
+      #&& verifyDirectWithSplitParity # 45 # builtinRoot 45 fromDataArguments # fromDataArguments # integer "182a"
 
 validEcdsaKeyWithInvalidSignatureReturnsFalse :: forall (s :: S). Term s PBool
 validEcdsaKeyWithInvalidSignatureReturnsFalse =
@@ -198,7 +222,7 @@ validEcdsaKeyWithInvalidSignatureReturnsFalse =
         ]
     )
     $ \arguments ->
-      pverifyDirectBuiltinV1
+      verifyDirectWithSplitParity
         # 52
         # builtinRoot 52 arguments
         # arguments
@@ -209,7 +233,7 @@ millerLoopExpressionAndFinalVerifyAreAuthenticated =
   plet blsLeafRoot $ \expressionRoot ->
   plet (values [constantValue g1Witness, constantValue g2Witness]) $ \millerArguments ->
   plet (values [blsValue expressionRoot, blsValue expressionRoot]) $ \finalArguments ->
-    pverifyDirectBuiltinV1 # 68 # builtinRoot 68 millerArguments # millerArguments # blsValue expressionRoot
+    verifyDirectWithSplitParity # 68 # builtinRoot 68 millerArguments # millerArguments # blsValue expressionRoot
       #&& pverifyDirectBlsFinalV1 # builtinRoot 70 finalArguments # blsLeaf # blsLeaf # constant "9f04ff" "d87a80"
 
 sixLeafMillerLoopProofFitsReserve :: forall (s :: S). Term s PBool
@@ -240,12 +264,12 @@ twelveLeafMillerLoopProofFailsClosed =
 
 unsupportedDirectBuiltinStaysClosed :: forall (s :: S). Term s PBool
 unsupportedDirectBuiltinStaysClosed =
-  pnot #$ pverifyDirectBuiltinV1 # 70 # builtinRoot 70 pnil # pnil # constant "9f04ff" "d87980"
+  pnot #$ verifyDirectWithSplitParity # 70 # builtinRoot 70 pnil # pnil # constant "9f04ff" "d87980"
 
 wrongBuiltinResultFailsClosed :: forall (s :: S). Term s PBool
 wrongBuiltinResultFailsClosed =
   plet (values [integer "1829", integer "01"]) $ \arguments ->
-    pnot #$ pverifyDirectBuiltinV1 # 0 # builtinRoot 0 arguments # arguments # integer "182b"
+    pnot #$ verifyDirectWithSplitParity # 0 # builtinRoot 0 arguments # arguments # integer "182b"
 
 builtinClosureTypeFailureIsAuthenticated :: forall (s :: S). Term s PBool
 builtinClosureTypeFailureIsAuthenticated =
@@ -345,7 +369,7 @@ semanticChooseDataInspectsLargeContextRoot :: forall (s :: S). Term s PBool
 semanticChooseDataInspectsLargeContextRoot = withLargeSemanticConstructor $ \source node _ fieldsNode _ ->
   plet (integer "00") $ \selected ->
   plet (values [source, selected, integer "01", integer "02", integer "03", integer "04"]) $ \arguments ->
-    pverifySemanticBuiltinV1
+    verifySemanticWithSplitParity
       # 36
       # builtinRoot 36 arguments
       # arguments
@@ -369,7 +393,7 @@ semanticUnconstrDataReturnsExactLargeTypedPair = withLargeSemanticConstructor $ 
       plet (summaryMemory constructor - 4 + sequenceMemory fields) $ \resultMemory ->
       plet (semanticValue "9f06000508ff" resultPayload resultMemory) $ \result ->
       plet (values [source]) $ \arguments ->
-        pverifySemanticBuiltinV1
+        verifySemanticWithSplitParity
           # 42
           # builtinRoot 42 arguments
           # arguments
@@ -441,7 +465,7 @@ semanticFstPairExtractsConstructor = withLargeSemanticConstructor $ \_ _ _ _ fie
                           plet (semanticValue "9f06000508ff" payload sourceMemory) $ \source ->
                           plet (semanticValue "9f00ff" constructor (summaryMemory constructor - 4)) $ \result ->
                           plet (values [source]) $ \arguments ->
-                            pverifySemanticBuiltinV1
+                            verifySemanticWithSplitParity
                               # 29
                               # builtinRoot 29 arguments
                               # arguments
@@ -469,7 +493,7 @@ semanticHeadListExtractsLargeChild = withLargeSemanticConstructor $ \_ _ childNo
           plet (semanticValue "9f0508ff" listPayload (sequenceMemory fields)) $ \source ->
           plet (semanticValue "9f08ff" child (summaryMemory child)) $ \result ->
           plet (values [source]) $ \arguments ->
-            pverifySemanticBuiltinV1
+            verifySemanticWithSplitParity
               # 33
               # builtinRoot 33 arguments
               # arguments
@@ -495,6 +519,8 @@ semanticWrongDataVariantFailureIsAuthenticated =
           # builtinRoot 42 arguments
           # arguments
           # semanticWitness [node] []
+          #&& Split.pverifySemanticFailureMaterial # 42 # arguments # semanticWitness [node] []
+          #&& pnot # (Split.pverifySemanticFailureMaterial # 43 # arguments # semanticWitness [node] [])
 
 withLargeSemanticConstructor ::
   forall (s :: S) (r :: S -> Type).
@@ -691,3 +717,32 @@ runtimeBuiltinRoot tag arguments =
 
 hexOf :: BS.ByteString -> BS.ByteString
 hexOf = Base16.decodeLenient
+
+
+-- Fixed-target Aiken's aggregate oracle also checks each new physical semantic
+-- operation against the already-authenticated aggregate result.
+verifyDirectWithSplitParity :: forall s. Term s (PInteger :--> PByteString :--> PBuiltinList (PAsData PValueWitnessV1) :--> PValueWitnessV1 :--> PBool)
+verifyDirectWithSplitParity = phoistAcyclic $ plam $ \tag root arguments result ->
+  plet (Split.pverifyDirectBuiltinV1 # tag # root # arguments # result) $ \aggregate ->
+  plet (pif (tag #>= 29 #&& tag #<= 69 #&& pnot # (tag #== 52 #|| tag #== 53))
+    (Split.pverifyDirectStructuredSemantics # tag # arguments # result)
+    (Split.pverifyDirectScalarSemantics # tag # arguments # result)) $ \semantics ->
+      pif (((root #== builtinRoot tag arguments) #&& semantics) #== aggregate) aggregate perror
+
+verifySemanticWithSplitParity :: forall s. Term s (PInteger :--> PByteString :--> PBuiltinList (PAsData PValueWitnessV1) :--> PValueWitnessV1 :--> PSemanticBuiltinWitnessV1 :--> PBool)
+verifySemanticWithSplitParity = phoistAcyclic $ plam $ \tag root arguments result material ->
+  plet (Split.pverifySemanticBuiltinV1 # tag # root # arguments # result # material) $ \aggregate ->
+  plet (pmap # plam (\arg -> pdata $ Split.pcompactSemanticValue # pfromData arg) # arguments) $ \compactArguments ->
+  plet (Split.pcompactSemanticValue # result) $ \compactResult ->
+  plet (pif (tag #== 29 #|| tag #== 30)
+    (pif (plength # arguments #== 1) (Split.pverifySemanticPairV1 tag (pfromData $ phead # arguments) result material) perror) $
+    pif (tag #== 31 #|| tag #== 32 #|| tag #== 35) (Split.pverifySemanticListConstruct # tag # arguments # result # material) $
+    pif (tag #== 33 #|| tag #== 34) (Split.pverifySemanticListSelect # tag # arguments # result # material) $
+    pif (tag #== 36) (Split.pverifySemanticChooseDataV1 arguments result material) $
+    pif (tag #== 37 #|| tag #== 42) (Split.pverifySemanticDataConstruct # tag # arguments # result # material) $
+    pif (tag #>= 47 #&& tag #<= 51) (Split.pverifySemanticDataMisc # tag # arguments # result # material)
+      (Split.pverifySemanticDataScalar # tag # arguments # result # material)) $ \semantics ->
+  pif (pargumentsRootV1 # arguments #== pargumentsRootV1 # compactArguments
+    #&& Split.presultRootV1 # result #== Split.presultRootV1 # compactResult
+    #&& Split.pverifySemanticBuiltinV1 # tag # root # compactArguments # compactResult # material #== aggregate
+    #&& (((root #== builtinRoot tag arguments) #&& semantics) #== aggregate)) aggregate perror

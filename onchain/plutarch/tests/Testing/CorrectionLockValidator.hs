@@ -254,14 +254,15 @@ correctRedeemer = dataToBuiltinData $ PD.Constr 0 [PD.I 0]
 initRedeemer = dataToBuiltinData $ PD.Constr 0 [PD.I 0]
 
 timeoutRedeemer :: Bool -> BuiltinData
-timeoutRedeemer terminal = dataToBuiltinData $ PD.Constr 4 [PD.B target, timeoutRemoval terminal]
+timeoutRedeemer terminal = dataToBuiltinData $ PD.Constr 4 [PD.I 0, PD.B target, timeoutRemoval terminal]
 
 fraudRedeemer :: Bool -> BuiltinData
 fraudRedeemer terminal =
   dataToBuiltinData $
     PD.Constr
       3
-      [ keyData operatorKey
+      [ PD.I 0
+      , keyData operatorKey
       , PD.B target
       , PD.Constr 2 [PD.I 0, PD.I 0]
       , PD.I 1
@@ -272,7 +273,7 @@ fraudRedeemer terminal =
 
 availabilityRedeemer :: TokenName -> Bool -> BuiltinData
 availabilityRedeemer assetName terminal =
-  dataToBuiltinData $ PD.Constr 5 [PD.B target, tokenData assetName, timeoutRemoval terminal]
+  dataToBuiltinData $ PD.Constr 5 [PD.I 0, PD.B target, tokenData assetName, timeoutRemoval terminal]
 
 timeoutRemoval :: Bool -> PD.Data
 timeoutRemoval terminal =

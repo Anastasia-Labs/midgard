@@ -326,12 +326,12 @@ hubRefIn =
 removeFraudulentHeader :: BS.ByteString -> BuiltinData
 removeFraudulentHeader operator =
   dataToBuiltinData
-    (PD.Constr 3 [PD.B operator, PD.B "", PD.I 0, PD.I 0, PD.I 0])
+    (PD.Constr 3 [PD.I 0, PD.B operator, PD.B "", PD.I 0, PD.I 0, PD.I 0])
 
 -- | @CommitBlockHeader@ is constructor 2 — the wrong branch.
 commitBlockHeader :: BuiltinData
 commitBlockHeader =
-  dataToBuiltinData (PD.Constr 2 [PD.I 0, PD.I 0, PD.B "bb", PD.I 0, PD.I 0, PD.I 0])
+  dataToBuiltinData (PD.Constr 2 [PD.I 0, PD.I 0, PD.I 0, PD.B "bb", PD.I 0, PD.I 0, PD.I 0, PD.Constr 1 [], PD.Constr 1 []])
 
 badStateReason :: forall s. Term s (PAsData PSlashingReason)
 badStateReason = pdata (pcon (PSlashOperatorForBadState (pdata 0)))
