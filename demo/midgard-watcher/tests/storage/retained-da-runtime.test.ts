@@ -557,6 +557,7 @@ describe("production retained-DA runtime V1", () => {
           queuedJobCount: 0,
           oldestQueuedAtMs: null,
         }),
+        retainedDaTransportStatus: () => ({ state: "idle", failure: null }),
         nowMs: () => BigInt(wall),
         monotonicNowMs: () => monotonic,
       });
@@ -969,6 +970,50 @@ describe("retained-DA runtime owner", () => {
     } finally {
       await owner.close();
     }
+  });
+
+  it("reports the shared transport as idle until the first launch, open while shared, closed after owner close", async () => {
+    const fake = transportFactory();
+    const owner = createWatcherRetainedDaRuntimeOwner({
+      deploymentIdentity: deploymentIdentity(),
+      unsafeTransportFactoryForTest: fake.factory,
+    });
+    try {
+      expect(owner.transportStatus()).toEqual({ state: "idle", failure: null });
+      const runtime = await owner.createRuntime(rawConfig());
+      expect(owner.transportStatus()).toEqual({ state: "open", failure: null });
+      await runtime.close();
+      expect(owner.transportStatus()).toEqual({ state: "open", failure: null });
+    } finally {
+      await owner.close();
+    }
+    expect(owner.transportStatus()).toEqual({ state: "closed", failure: null });
+  });
+
+  it("reports a sticky dial failure with its message so operations status can surface it", async () => {
+    const factory = vi.fn(async (): Promise<WatcherPublicDaLibp2pTransport> => {
+      throw new Error("dial failed: connection refused");
+    });
+    const owner = createWatcherRetainedDaRuntimeOwner({
+      deploymentIdentity: deploymentIdentity(),
+      unsafeTransportFactoryForTest: factory,
+    });
+    try {
+      await expect(owner.createRuntime(rawConfig())).rejects.toThrow(
+        "dial failed: connection refused",
+      );
+      expect(owner.transportStatus()).toEqual({
+        state: "failed",
+        failure: "dial failed: connection refused",
+      });
+      await expect(owner.createRuntime(rawConfig())).rejects.toThrow(
+        "dial failed: connection refused",
+      );
+      expect(factory).toHaveBeenCalledTimes(1);
+    } finally {
+      await owner.close();
+    }
+    expect(owner.transportStatus()).toEqual({ state: "closed", failure: null });
   });
 
   it("rejects configuration and deployment substitution without replacing the shared transport", async () => {

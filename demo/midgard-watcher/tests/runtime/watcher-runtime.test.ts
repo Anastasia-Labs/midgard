@@ -77,6 +77,7 @@ vi.mock("../../src/fault-proofs/fault-proof-application.js", async (load) => {
     createWatcherFaultProofApplication: () => ({
       installedCategories: actual.WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
       assertStartupReady: async () => ({ ready: true }),
+      retainedDaTransportStatus: () => ({ state: "idle", failure: null }),
     }),
   };
 });

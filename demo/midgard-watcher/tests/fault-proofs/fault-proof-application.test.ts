@@ -478,6 +478,10 @@ describe("watcher production fault-proof application V1", () => {
         FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
       );
       expect(transport.factory).not.toHaveBeenCalled();
+      expect(application.retainedDaTransportStatus()).toEqual({
+        state: "idle",
+        failure: null,
+      });
       expect(deps.resolveSigner).not.toHaveBeenCalled();
       expect(deps.createLeaseCoordinator).not.toHaveBeenCalled();
       await expect(
@@ -490,6 +494,10 @@ describe("watcher production fault-proof application V1", () => {
       await application.close();
       await application.close();
       expect(transport.stop).not.toHaveBeenCalled();
+      expect(application.retainedDaTransportStatus()).toEqual({
+        state: "closed",
+        failure: null,
+      });
       await expect(
         application.assertStartupReady(invocation(configPath, "doubleSpend")),
       ).rejects.toThrow("watcher fault-proof application is closed");

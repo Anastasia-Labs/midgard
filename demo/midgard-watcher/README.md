@@ -40,6 +40,18 @@ Startup requires admitted proof runners, recovered workflows, an accepting
 supervisor, and safe proof deadlines before emitting `productionReady: true`.
 That field describes this runtime's readiness checks, not public-testnet launch
 approval. Invalid arguments exit 64; runtime failures fail closed with exit 70.
+
+Two surfaces report readiness and they prove different things. The
+fault-proof application's startup readiness binds the verified deployment and
+resolves every installed family's published reference scripts through the
+registry roster; it reads no secret, acquires no lease and opens no retained-DA
+transport, so it is safe to run repeatedly and proves only that the deployment
+is bound and the scripts exist. Operations status (`readiness`,
+`readinessReasons`) is the live signal: it reports the supervisor phase,
+recovery, launch scope, proof deadlines, L1 source freshness, active alerts,
+and the shared retained-DA transport, which is dialed on the first workflow
+launch and reported as `retained_da_transport_failed` if that dial fails.
+Dependency health belongs to the live surface, not to startup readiness.
 See [launch readiness](../../docs/public_testnet_readiness.md) and the
 [challenger runbook](../../docs/fault-proofs/challenger-runbook.md) for acceptance
 and operating boundaries.

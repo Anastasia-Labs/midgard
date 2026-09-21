@@ -101,6 +101,7 @@ import {
   createWatcherWorkflowRuntimeLoader,
   readAdmittedWatcherRuntimeConfig,
   type WatcherRetainedDaRuntimeOptions,
+  type WatcherRetainedDaTransportStatus,
   type WatcherWorkflowInfrastructure,
 } from "../storage/retained-da-runtime.js";
 import {
@@ -260,6 +261,8 @@ export type WatcherFaultProofApplication = Readonly<{
   assertStartupReady(
     invocation: WorkflowAdapterReadinessInput,
   ): Promise<WatcherFaultProofStartupReadiness>;
+  /** Live state of the shared retained-DA transport, for operations status. */
+  retainedDaTransportStatus(): WatcherRetainedDaTransportStatus;
   verifyCompleted(
     input: WatcherCompletedFaultProofInput,
   ): Promise<WatcherCompletedFaultProofVerification>;
@@ -1246,6 +1249,7 @@ function createApplication({
     installedCategories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
     runners,
     applicationRegistry,
+    retainedDaTransportStatus: retainedDaOwner.transportStatus,
     decisionUsesLocalEventHistory: (decisionDigest) =>
       validationCaptures.has(decisionDigest),
     retainDecisionAuthorities: (decisionDigest) => {

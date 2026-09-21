@@ -43,6 +43,7 @@ describe("production operations observability V1", () => {
         installedCategoryCount: 54,
         requiredCategoryCount: 54,
       }),
+      retainedDaTransportStatus: () => ({ state: "idle", failure: null }),
       durableProofQueueStatus: () => ({
         queuedJobCount: 1,
         oldestQueuedAtMs: queuedAt,
@@ -128,6 +129,7 @@ describe("production operations observability V1", () => {
         installedCategoryCount: 32,
         requiredCategoryCount: 32,
       }),
+      retainedDaTransportStatus: () => ({ state: "idle", failure: null }),
       durableProofQueueStatus: () => ({
         queuedJobCount: 1,
         oldestQueuedAtMs: "97000",
@@ -294,6 +296,7 @@ describe("production operations observability V1", () => {
         installedCategoryCount: 31,
         requiredCategoryCount: 32,
       }),
+      retainedDaTransportStatus: () => ({ state: "idle", failure: null }),
       durableProofQueueStatus: () => ({
         queuedJobCount: 1,
         oldestQueuedAtMs: "99000",
@@ -304,6 +307,7 @@ describe("production operations observability V1", () => {
     expect(observability.api.status()).toMatchObject({
       readiness: "not_ready",
       readinessReasons: ["launch_scope_incomplete", "l1_source_unavailable"],
+      retainedDaTransport: { state: "idle", failure: null },
     });
     expect(() =>
       observability.api.diagnostics({ kind: "alert", limit: 101 }),
@@ -345,6 +349,7 @@ describe("production operations observability V1", () => {
           installedCategoryCount: 32,
           requiredCategoryCount: 32,
         }),
+        retainedDaTransportStatus: () => ({ state: "idle", failure: null }),
         durableProofQueueStatus: () => ({
           queuedJobCount: 2,
           oldestQueuedAtMs: "99000",
@@ -352,5 +357,53 @@ describe("production operations observability V1", () => {
         nowMs: () => 100_000n,
       }).api.metrics(),
     ).toThrow("differs from supervisor");
+  });
+
+  it("reports a failed retained-DA transport dial as a readiness reason, and an undialed transport as healthy", () => {
+    const build = (
+      transport: Parameters<
+        typeof createWatcherOperationsObservability
+      >[0]["retainedDaTransportStatus"],
+    ) =>
+      createWatcherOperationsObservability({
+        deploymentFingerprint: "11".repeat(32),
+        supervisor: supervisor().runtime,
+        launchScopeStatus: () => ({
+          installedCategoryCount: 32,
+          requiredCategoryCount: 32,
+        }),
+        durableProofQueueStatus: () => ({
+          queuedJobCount: 0,
+          oldestQueuedAtMs: null,
+        }),
+        retainedDaTransportStatus: transport,
+        nowMs: () => 100_000n,
+      });
+    const freshL1Source = {
+      sourceIdentityDigest: "22".repeat(32),
+      sourceMode: "local_node",
+      status: "consistent",
+      blockHash: "33".repeat(32),
+      blockNo: "50",
+      slot: "500",
+      observedAtMs: "100000",
+    } as const;
+    const failure = "dial failed: connection refused";
+    const failed = build(() => ({ state: "failed", failure }));
+    failed.sink.recordL1Source(freshL1Source);
+    expect(failed.api.status()).toMatchObject({
+      readiness: "not_ready",
+      readinessReasons: ["retained_da_transport_failed"],
+      retainedDaTransport: { state: "failed", failure },
+    });
+    for (const state of ["idle", "opening", "open"] as const) {
+      const healthy = build(() => ({ state, failure: null }));
+      healthy.sink.recordL1Source(freshL1Source);
+      expect(healthy.api.status()).toMatchObject({
+        readiness: "ready",
+        readinessReasons: [],
+        retainedDaTransport: { state, failure: null },
+      });
+    }
   });
 });

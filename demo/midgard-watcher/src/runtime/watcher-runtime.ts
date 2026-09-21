@@ -670,6 +670,8 @@ export const createWatcherRuntime = async (input: {
         requiredCategoryCount: FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
       }),
       durableProofQueueStatus: faultProofSupervisor.durableQueueStatus,
+      retainedDaTransportStatus:
+        faultProofApplication.retainedDaTransportStatus,
     });
     retainedDaOperationsBinding = bindWatcherRetainedDaOperations({
       deploymentIdentity,

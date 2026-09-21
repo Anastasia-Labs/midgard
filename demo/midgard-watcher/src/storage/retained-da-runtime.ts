@@ -131,8 +131,20 @@ export type WatcherRetainedDaRuntimeOptions = Readonly<{
   ) => Promise<WatcherPublicDaLibp2pTransport>;
 }>;
 
+/**
+ * Where the owner's one shared transport stands. `idle` means no workflow has
+ * needed it yet, which is healthy: the transport is dialed on the first
+ * launch, never by readiness. `failed` is sticky for the owner's lifetime and
+ * carries the dial failure, so operations status can report it.
+ */
+export type WatcherRetainedDaTransportStatus = Readonly<{
+  state: "idle" | "opening" | "open" | "failed" | "closed";
+  failure: string | null;
+}>;
+
 export type WatcherRetainedDaRuntimeOwner = Readonly<{
   createRuntime(watcherConfig: unknown): Promise<WatcherRetainedDaRuntime>;
+  transportStatus(): WatcherRetainedDaTransportStatus;
   close(): Promise<void>;
 }>;
 
@@ -222,7 +234,12 @@ export const createWatcherRetainedDaRuntimeOwner = (
   let transport: Promise<WatcherPublicDaLibp2pTransport> | undefined;
   let permits: RetainedDaRequestPermits | undefined;
   let closePromise: Promise<void> | undefined;
+  let transportState: WatcherRetainedDaTransportStatus = Object.freeze({
+    state: "idle",
+    failure: null,
+  });
   const owner: WatcherRetainedDaRuntimeOwner = Object.freeze({
+    transportStatus: () => transportState,
     createRuntime: async (watcherConfig: unknown) => {
       controller.signal.throwIfAborted();
       const config = parseWatcherConfig(watcherConfig);
@@ -242,10 +259,34 @@ export const createWatcherRetainedDaRuntimeOwner = (
           if (transport === undefined) {
             configuration = binding;
             permits = new RetainedDaRequestPermits(config.da.maxConcurrency);
+            transportState = Object.freeze({
+              state: "opening",
+              failure: null,
+            });
             transport = (
               admitted.unsafeTransportFactoryForTest ??
               createWatcherPublicDaLibp2pTransport
-            )(admitted.unsafeTransportOptionsForTest);
+            )(admitted.unsafeTransportOptionsForTest).then(
+              (started) => {
+                if (transportState.state === "opening") {
+                  transportState = Object.freeze({
+                    state: "open",
+                    failure: null,
+                  });
+                }
+                return started;
+              },
+              (error: unknown) => {
+                if (transportState.state === "opening") {
+                  transportState = Object.freeze({
+                    state: "failed",
+                    failure:
+                      error instanceof Error ? error.message : String(error),
+                  });
+                }
+                throw error;
+              },
+            );
           }
           const opened = await transport;
           controller.signal.throwIfAborted();
@@ -257,8 +298,11 @@ export const createWatcherRetainedDaRuntimeOwner = (
     close: () => {
       if (closePromise !== undefined) return closePromise;
       controller.abort(new Error("retained-DA runtime owner is closed"));
+      transportState = Object.freeze({ state: "closed", failure: null });
       closePromise = (async () => {
-        await (await transport)?.stop();
+        // A dial that failed left nothing to stop; close must not re-throw it.
+        const started = await transport?.catch(() => undefined);
+        await started?.stop();
       })();
       return closePromise;
     },

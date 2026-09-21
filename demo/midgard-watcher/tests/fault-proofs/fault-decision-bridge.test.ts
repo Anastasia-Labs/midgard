@@ -715,6 +715,7 @@ describe("production fault decision bridge", () => {
           queuedJobCount: 0,
           oldestQueuedAtMs: null,
         }),
+        retainedDaTransportStatus: () => ({ state: "idle", failure: null }),
         nowMs: () => wall,
         monotonicNowMs: () => monotonic,
       });

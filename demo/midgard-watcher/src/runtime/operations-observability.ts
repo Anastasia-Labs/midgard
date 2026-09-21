@@ -1,4 +1,5 @@
 import type { WatcherFaultProofSupervisor } from "../fault-proofs/fault-proof-supervisor.js";
+import type { WatcherRetainedDaTransportStatus } from "../storage/retained-da-runtime.js";
 
 export const WATCHER_OPERATIONS_OBSERVABILITY =
   "midgard-watcher-production-operations-observability-v1" as const;
@@ -146,8 +147,10 @@ export type WatcherOperationsStatus = Readonly<{
     | "deadline_unsafe"
     | "l1_source_unavailable"
     | "l1_source_stale"
+    | "retained_da_transport_failed"
     | "active_alert"
   )[];
+  retainedDaTransport: WatcherRetainedDaTransportStatus;
   launchScope: Readonly<{
     installedCategoryCount: string;
     requiredCategoryCount: string;
@@ -283,6 +286,8 @@ export const createWatcherOperationsObservability = (input: {
     queuedJobCount: number;
     oldestQueuedAtMs: string | null;
   }>;
+  /** Live state of the application's shared retained-DA transport. */
+  readonly retainedDaTransportStatus: () => WatcherRetainedDaTransportStatus;
   readonly nowMs?: () => bigint;
   readonly monotonicNowMs?: () => number;
   readonly l1FreshnessMaximumAgeMs?: number;
@@ -529,6 +534,9 @@ export const createWatcherOperationsObservability = (input: {
     if (latestL1Sources.size === 0) reasons.push("l1_source_unavailable");
     else if (sources.stale > 0 || sources.disagreement > 0)
       reasons.push("l1_source_stale");
+    const retainedDaTransport = input.retainedDaTransportStatus();
+    if (retainedDaTransport.state === "failed")
+      reasons.push("retained_da_transport_failed");
     if (alerts.length > 0) reasons.push("active_alert");
     const liveness =
       supervisor.phase === "closed"
@@ -545,6 +553,7 @@ export const createWatcherOperationsObservability = (input: {
       liveness,
       readiness: reasons.length === 0 ? "ready" : "not_ready",
       readinessReasons: Object.freeze(reasons),
+      retainedDaTransport,
       launchScope: scope,
       supervisor,
       activeAlerts: alerts,
