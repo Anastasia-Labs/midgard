@@ -1,7 +1,9 @@
 # Installed validation trace dispute workflow
 
 `validationTraceDispute` is the sole interactive fault-proof family. The
-watcher installs it alongside the other catalogue families: `WATCHER_MISSING_WORKFLOW_CATEGORIES` is empty
+watcher installs it alongside the other catalogue families through its record in the
+[family application registry](../../demo/midgard-fault-proofs/src/workflow/family-application-registry.ts):
+`WATCHER_MISSING_WORKFLOW_CATEGORIES`, the catalogue's complement of the registry, is empty
 and every `PlutusExecutionFailed` rejection routes to this family.
 
 The family uses shared dispute machinery with a manifest-bound workflow,
@@ -50,8 +52,9 @@ half the turns. The requirement is that the watcher always has an action on its
 turn, including claiming the timeout when the operator stalls, and that it
 correctly waits when the turn is not its own.
 
-`assertStartupReady` asserts that move-completeness. The cursor is derived
-exclusively from on-chain state — turn indicator (`awaiting_operator` /
+The dispute cursor asserts that move-completeness on every turn
+(`assertStartupReady` only proves the family's published reference scripts
+were found). The cursor is derived exclusively from on-chain state — turn indicator (`awaiting_operator` /
 `awaiting_challenger`), bisection depth, resolution and semantic sub-chain
 positions including the ledger-output-proof span-attach, fact-attach, step and
 terminal-finalize positions, enter-timeout, `timeout_claimable`, award, and

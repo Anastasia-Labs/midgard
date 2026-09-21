@@ -3,7 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  applyFamilyApplicationRecord,
   FAMILY_APPLICATION_REGISTRY,
+  type FamilyApplicationRecord,
+  type FamilyApplicationWorkflowIdentity,
   type ResolvedProverSigner,
   type StateQueueMutationLeaseCoordinator,
   TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES,
@@ -23,6 +26,7 @@ import {
   WATCHER_FAULT_PROOF_STARTUP_READINESS,
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   WATCHER_MISSING_WORKFLOW_CATEGORIES,
+  WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES,
   type WatcherFaultProofApplicationDependencies,
   type WatcherFaultProofInfrastructureAuthority,
 } from "../../src/fault-proofs/fault-proof-application.js";
@@ -467,13 +471,15 @@ describe("watcher production fault-proof application V1", () => {
         );
       }
 
-      // Each readiness preflight keeps an isolated Lucid instance; all leases
-      // share one DA transport until explicit application shutdown.
+      // Each readiness preflight keeps an isolated Lucid instance. Readiness
+      // binds the deployment and resolves the roster only: it opens no
+      // retained-DA transport, reads no secret and acquires no lease.
       expect(deps.makeLucid).toHaveBeenCalledTimes(
         FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
       );
-      expect(transport.factory).toHaveBeenCalledTimes(1);
-      expect(transport.stop).not.toHaveBeenCalled();
+      expect(transport.factory).not.toHaveBeenCalled();
+      expect(deps.resolveSigner).not.toHaveBeenCalled();
+      expect(deps.createLeaseCoordinator).not.toHaveBeenCalled();
       await expect(
         application.runOrResume(
           hostileStructuralExecutionInvocation(configPath, "doubleSpend"),
@@ -483,10 +489,10 @@ describe("watcher production fault-proof application V1", () => {
       );
       await application.close();
       await application.close();
-      expect(transport.stop).toHaveBeenCalledTimes(1);
+      expect(transport.stop).not.toHaveBeenCalled();
       await expect(
         application.assertStartupReady(invocation(configPath, "doubleSpend")),
-      ).rejects.toThrow("owner is closed");
+      ).rejects.toThrow("watcher fault-proof application is closed");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -549,9 +555,7 @@ describe("watcher production fault-proof application V1", () => {
       for (const contractName of stepContractNames) {
         expect(contractName).toMatch(/^fraudProofNativeScriptDecoding/u);
       }
-      expect(transport.stop).not.toHaveBeenCalled();
       await application.close();
-      expect(transport.stop).toHaveBeenCalledTimes(1);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -604,24 +608,6 @@ describe("watcher production fault-proof application V1", () => {
     const configPath = join(directory, "watcher.json");
     await writeFile(configPath, JSON.stringify(rawConfig()));
     try {
-      const noSecrets = unsafeCreateWatcherFaultProofApplicationForTest(
-        {
-          deploymentIdentity: AUTHORITY.result,
-          historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
-          infrastructure: infrastructure(),
-          unsafeTransportFactoryForTest: transportFactory().factory,
-        },
-        dependencies(),
-        {},
-      );
-      await expect(
-        noSecrets.assertStartupReady(
-          invocation(configPath, "doubleSpend", {
-            deploymentFingerprint: DEPLOYMENT,
-          }),
-        ),
-      ).rejects.toThrow("watcher prover wallet secret source is empty");
-
       const admitted = unsafeCreateWatcherFaultProofApplicationForTest(
         {
           deploymentIdentity: AUTHORITY.result,
@@ -654,6 +640,199 @@ describe("watcher production fault-proof application V1", () => {
         ),
       ).rejects.toThrow("differs from verified watcher authority");
     } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("derives the predecessor-authority set from the records' requirements", () => {
+    // The five families of #668 that prove against the predecessor block. The
+    // decision-time check refuses a fault decision for any of them that
+    // arrives without its replay context, in the same set the shared
+    // application loop enforces at load time.
+    expect([...WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES].sort()).toEqual(
+      [
+        "nonExistentInput",
+        "noReferenceInput",
+        "nativeScriptDecoding",
+        "mintAuthorization",
+        "withdrawalMistag",
+      ].sort(),
+    );
+    for (const category of WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES) {
+      expect(FAMILY_APPLICATION_REGISTRY[category].requires).toContain(
+        "replayContext",
+      );
+    }
+  });
+
+  it("reads no secret on the readiness path, and refuses secret substitution only when acting", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "midgard-readiness-secrets-"),
+    );
+    const configPath = join(directory, "watcher.json");
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        ...rawConfig(),
+        proverWallet: {
+          keySource: { kind: "file", path: "/etc/midgard/prover.key" },
+        },
+      }),
+    );
+    const deps = dependencies();
+    const readText = vi.mocked(deps.readText).getMockImplementation()!;
+    vi.mocked(deps.readText).mockImplementation(async (path) => {
+      if (
+        path === "/etc/midgard/prover.key" ||
+        path === "/etc/midgard/admin.key"
+      )
+        throw new Error(`secret ${path} was read`);
+      return await readText(path);
+    });
+    const application = unsafeCreateWatcherFaultProofApplicationForTest(
+      {
+        deploymentIdentity: AUTHORITY.result,
+        historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
+        infrastructure: {
+          ...infrastructure(),
+          midgardNodeAdminKeySource: {
+            kind: "file",
+            path: "/etc/midgard/admin.key",
+          },
+        },
+        unsafeTransportFactoryForTest: transportFactory().factory,
+      },
+      deps,
+      {},
+    );
+    try {
+      const readiness = await application.assertStartupReady(
+        invocation(configPath, "doubleSpend"),
+      );
+      expect(readiness.ready).toBe(true);
+      expect(Object.keys(readiness.referenceScriptOutRefs)).toEqual(
+        Object.keys(FAMILY_APPLICATION_REGISTRY.doubleSpend.roster),
+      );
+      expect(deps.resolveSigner).not.toHaveBeenCalled();
+      expect(deps.createLeaseCoordinator).not.toHaveBeenCalled();
+      expect(
+        vi
+          .mocked(deps.readText)
+          .mock.calls.map(([path]) => path)
+          .filter((path) => path.endsWith(".key")),
+      ).toEqual([]);
+
+      // The acting path reads both secrets and fails closed when one is missing.
+      await expect(
+        application.unsafeLoadRuntimeForTest({
+          runtimeConfigPath: configPath,
+          invocation: hostileStructuralExecutionInvocation(
+            configPath,
+            "doubleSpend",
+          ),
+        }),
+      ).rejects.toThrow("secret /etc/midgard/prover.key was read");
+    } finally {
+      await application.close();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("supplies a family exactly the common infrastructure the watcher holds, so a record requiring a replay context the classifier never captured refuses with the shared error", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "midgard-requires-"));
+    const configPath = join(directory, "watcher.json");
+    await writeFile(configPath, JSON.stringify(rawConfig()));
+    const deps = dependencies();
+    const application = unsafeCreateWatcherFaultProofApplicationForTest(
+      {
+        deploymentIdentity: AUTHORITY.result,
+        historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
+        infrastructure: infrastructure(),
+        unsafeTransportFactoryForTest: transportFactory().factory,
+      },
+      deps,
+      {
+        MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
+        MIDGARD_NODE_ADMIN_KEY: "admin-key",
+      },
+    );
+    const applied = async <
+      Category extends keyof typeof FAMILY_APPLICATION_REGISTRY,
+    >(
+      category: Category,
+      stubConstruction = false,
+    ) => {
+      const execution = hostileStructuralExecutionInvocation(
+        configPath,
+        category,
+      );
+      const loaded = await application.unsafeLoadRuntimeForTest({
+        runtimeConfigPath: configPath,
+        invocation: execution,
+      });
+      const resolvedBefore = vi.mocked(deps.resolveReferenceScript).mock.calls
+        .length;
+      // The registry record decides what it needs; the watcher only supplies.
+      // A refusing family is applied through its real record. For the family
+      // that is admitted, construction is stubbed so the test crosses the
+      // requirement gate and the roster resolution, and nothing
+      // family-internal.
+      // The registry erases each entry's config type (TS7056), so the record
+      // is re-widened here exactly as the runtime's factory table does.
+      const entry = FAMILY_APPLICATION_REGISTRY[category];
+      const record = (stubConstruction
+        ? {
+            ...entry,
+            bindConfig: () => undefined,
+            constructWorkflow: async () => ({
+              binding: {
+                deploymentFingerprint: DEPLOYMENT,
+                definition: { category, headerHash: HEADER },
+              },
+              decisionDigest: execution.decisionDigest,
+            }),
+            execute: async () => undefined,
+          }
+        : entry) as unknown as FamilyApplicationRecord<
+        Category,
+        unknown,
+        FamilyApplicationWorkflowIdentity<Category>
+      >;
+      try {
+        return await applyFamilyApplicationRecord({
+          record,
+          infrastructure: loaded.infrastructure,
+          resolveReferenceScript: loaded.resolveReferenceScript,
+          invocation: {
+            deploymentFingerprint: DEPLOYMENT,
+            category,
+            headerHash: HEADER,
+          },
+        });
+      } finally {
+        await loaded.close();
+        vi.mocked(deps.resolveReferenceScript).mock.calls.splice(
+          resolvedBefore,
+        );
+      }
+    };
+    try {
+      for (const category of WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES) {
+        await expect(applied(category)).rejects.toThrow(
+          `${category} application requires replayContext, which the host did not supply`,
+        );
+      }
+      expect(deps.resolveReferenceScript).not.toHaveBeenCalled();
+
+      // A family that requires only what the watcher always supplies (the
+      // historical authority, the validation-challenge port) is applied:
+      // the resolver is asked for exactly its roster.
+      const { referenceScriptOutRefs } = await applied("minAda", true);
+      expect(Object.keys(referenceScriptOutRefs)).toEqual(
+        Object.keys(FAMILY_APPLICATION_REGISTRY.minAda.roster),
+      );
+    } finally {
+      await application.close();
       await rm(directory, { recursive: true, force: true });
     }
   });

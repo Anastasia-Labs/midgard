@@ -13,8 +13,11 @@ contracts deployed or that every acceptance suite passed on this revision.
 Category IDs come from `FRAUD_PROOF_CATALOGUE_CATEGORY_IDS` in
 [`catalogue.ts`](../../demo/midgard-sdk/src/fraud-proof/catalogue.ts).
 `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` is presentation order; do not derive IDs
-from array position. Installation comes from `WATCHER_INSTALLED_WORKFLOW_CATEGORIES`
-in the [watcher application](../../demo/midgard-watcher/src/fault-proofs/fault-proof-application.ts).
+from array position. Installation comes from the
+[family application registry](../../demo/midgard-fault-proofs/src/workflow/family-application-registry.ts):
+its keys are the installed set, and the
+[watcher application](../../demo/midgard-watcher/src/fault-proofs/fault-proof-application.ts)
+derives `WATCHER_INSTALLED_WORKFLOW_CATEGORIES` from them in catalogue order.
 The documentation facts check compares this table to both sources.
 
 | ID         | Category                              | Watcher installed |

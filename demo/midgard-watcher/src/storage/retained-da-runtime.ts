@@ -314,6 +314,46 @@ const admitRuntimeOptions = (
   });
 };
 
+/**
+ * Reads the watcher runtime configuration an invocation names. The path must
+ * be canonical and absolute and the invocation must name the verified
+ * deployment; the workflow loader and the startup-readiness path both admit
+ * their configuration through here, so they refuse in the same words.
+ */
+export const readAdmittedWatcherRuntimeConfig = async ({
+  runtimeConfigPath,
+  deploymentFingerprint,
+  deploymentIdentity,
+}: {
+  readonly runtimeConfigPath: string;
+  readonly deploymentFingerprint: string;
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+}): Promise<WatcherConfig> => {
+  assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
+  if (
+    !isAbsolute(runtimeConfigPath) ||
+    runtimeConfigPath.trim() !== runtimeConfigPath
+  ) {
+    throw new Error(
+      "production workflow runtime config path must be canonical and absolute",
+    );
+  }
+  const canonicalRuntimeConfigPath = await realpath(runtimeConfigPath);
+  if (canonicalRuntimeConfigPath !== runtimeConfigPath) {
+    throw new Error(
+      "production workflow runtime config path must not traverse a symlink or non-canonical segment",
+    );
+  }
+  if (deploymentFingerprint !== deploymentIdentity.manifestId) {
+    throw new Error(
+      "production workflow invocation deployment differs from verified watcher authority",
+    );
+  }
+  return parseWatcherConfigJson(
+    await readFile(canonicalRuntimeConfigPath, "utf8"),
+  );
+};
+
 /** What the watcher builds for one invocation and every family draws from. */
 export type WatcherWorkflowInfrastructure = Readonly<{
   infrastructure: FamilyCommonInfrastructure;
@@ -622,31 +662,11 @@ export const createWatcherWorkflowRuntimeLoader = (
     throw new Error("retained-DA owner belongs to another deployment identity");
   }
   return async ({ runtimeConfigPath, invocation }) => {
-    if (
-      !isAbsolute(runtimeConfigPath) ||
-      runtimeConfigPath.trim() !== runtimeConfigPath
-    ) {
-      throw new Error(
-        "production workflow runtime config path must be canonical and absolute",
-      );
-    }
-    const canonicalRuntimeConfigPath = await realpath(runtimeConfigPath);
-    if (canonicalRuntimeConfigPath !== runtimeConfigPath) {
-      throw new Error(
-        "production workflow runtime config path must not traverse a symlink or non-canonical segment",
-      );
-    }
-    if (
-      invocation.deploymentFingerprint !==
-      admittedRuntimeOptions.deploymentIdentity.manifestId
-    ) {
-      throw new Error(
-        "production workflow invocation deployment differs from verified watcher authority",
-      );
-    }
-    const watcherConfig = parseWatcherConfigJson(
-      await readFile(canonicalRuntimeConfigPath, "utf8"),
-    );
+    const watcherConfig = await readAdmittedWatcherRuntimeConfig({
+      runtimeConfigPath,
+      deploymentFingerprint: invocation.deploymentFingerprint,
+      deploymentIdentity: admittedRuntimeOptions.deploymentIdentity,
+    });
     const retainedDa =
       runtimeOwner === undefined
         ? await createRuntimeFromAdmittedConfig(

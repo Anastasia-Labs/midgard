@@ -147,11 +147,13 @@ the L1 order authenticates the immutable submission and the operator's
 
 - [CLI](src/cli.ts) and [command lifecycle](src/runtime/scaffold.ts).
 - [Runtime composition](src/runtime/watcher-runtime.ts).
-- [Installed proof categories](src/fault-proofs/fault-proof-application.ts):
-  `WATCHER_INSTALLED_WORKFLOW_CATEGORIES` is the executable installation scope.
-  It lists all 55 source catalogue categories;
-  `WATCHER_MISSING_WORKFLOW_CATEGORIES` is empty. Installation is source
-  scope only, not live acceptance.
+- [Installed proof categories](../midgard-fault-proofs/src/workflow/family-application-registry.ts):
+  the family application registry's keys are the installed set. The
+  [watcher application](src/fault-proofs/fault-proof-application.ts) derives
+  `WATCHER_INSTALLED_WORKFLOW_CATEGORIES` from them in catalogue order and
+  names no family itself; `WATCHER_MISSING_WORKFLOW_CATEGORIES` is the
+  catalogue's complement of the registry, currently empty. Installation is
+  source scope only, not live acceptance.
 - [Catalogue status](../../docs/fault-proofs/catalogue-status.md): source
   inventory, deployment identity, and acceptance boundaries.
 - [Automatic watcher journeys](../../docs/fault-proofs/automatic-watcher-journeys.md):

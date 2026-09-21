@@ -44,10 +44,13 @@ family, rather than a manually maintained "newest families" list.
 
 `WORKFLOW_RUNNER_FACTORIES` in
 [`workflow/runtime.ts`](../../demo/midgard-fault-proofs/src/workflow/runtime.ts)
-provides manifest-bound runner factories. The
+provides manifest-bound runner factories, one per record of the
+[family application registry](../../demo/midgard-fault-proofs/src/workflow/family-application-registry.ts),
+whose keys are the installed set. The
 [watcher application](../../demo/midgard-watcher/src/fault-proofs/fault-proof-application.ts)
-composes installations and exposes `WATCHER_INSTALLED_WORKFLOW_CATEGORIES` and
-`WATCHER_MISSING_WORKFLOW_CATEGORIES`; the latter is currently empty.
+installs every registered family through one loop and derives
+`WATCHER_INSTALLED_WORKFLOW_CATEGORIES` and `WATCHER_MISSING_WORKFLOW_CATEGORIES`
+from the registry's keys; the latter is currently empty.
 
 The static adapter registry remains unready until an application supplies an
 admitted runner. Runtime startup checks proof readiness, durable recovery,

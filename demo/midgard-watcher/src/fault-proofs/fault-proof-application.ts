@@ -50,6 +50,7 @@ import {
   type WorkflowAdapterRunner,
   type WorkflowAdapterRunnerInput,
   type WorkflowApplicationRegistry,
+  type WorkflowRuntimeLoader,
 } from "@al-ft/midgard-fault-proofs";
 import {
   CrossBlockDuplicateEventStep02DatumSchema,
@@ -59,6 +60,7 @@ import {
   type AuthenticatedStateQueueHeaderObservation,
   CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+  type FraudProofCatalogueCategoryName,
   Header,
 } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
@@ -97,6 +99,7 @@ import type { WatcherReplayTranscriptStore } from "../storage/replay-transcript-
 import {
   createWatcherRetainedDaRuntimeOwner,
   createWatcherWorkflowRuntimeLoader,
+  readAdmittedWatcherRuntimeConfig,
   type WatcherRetainedDaRuntimeOptions,
   type WatcherWorkflowInfrastructure,
 } from "../storage/retained-da-runtime.js";
@@ -121,84 +124,54 @@ export type WatcherHistoricalNativeScriptHistoryOverlay = Readonly<{
   }>[];
 }>;
 
-export const WATCHER_INSTALLED_WORKFLOW_CATEGORIES = Object.freeze([
-  "doubleSpend",
-  "nonExistentInput",
-  "nonExistentInputNoIndex",
-  "invalidRange",
-  "transitionTrace",
-  "zeroInput",
-  "validationTraceDispute",
-  "daHashPreimage",
-  "noReferenceInput",
-  "referenceInputNoIdx",
-  "invalidSignature",
-  "fabricatedDeposit",
-  "fabricatedWithdrawal",
-  "nativeScriptDecoding",
-  "missingSignature",
-  "missingNativeScriptTx",
-  "withdrawnReferenceInput",
-  "canonicalDecodability",
-  "committedFieldShape",
-  "minFee",
-  "withdrawalMistag",
-  "doubleWithdraw",
-  "crossBlockDuplicateEvent",
-  "l2TxMistag",
-  "withdrawnInput",
-  "valueNotPreserved",
-  "inputSetUniqueness",
-  "mintAuthorization",
-  "networkId",
-  "missingNativeScriptUtxo",
-  "nativeScriptInvalid",
-  "minAda",
-  "fieldPreimageLengthMismatch",
-  "fieldItemWidthIllegal",
-  "witnessScriptDecoding",
-  "scriptIntegrityHashMissing",
-  "transactionOutputNonCanonical",
-  "resolvedOutputNonCanonical",
-  "mintDeclaredAssetLimit",
-  "spendInputSignerMissing",
-  "protectedOutputSignerMissing",
-  "observersForbiddenOnUntaggedNetwork",
-  "observerOrderInvalid",
-  "redeemerCanonicity",
-  "outputReferenceScriptDecoding",
-  "executionSourceScriptDecoding",
-  "receivePurposeLanguage",
-  "unusedScriptWitness",
-  "missingScriptSource",
-  "missingRedeemer",
-  "unusedRedeemer",
-  "executionNativeScriptInvalid",
-  "scriptIntegrityHashMismatch",
-  "distinctAssetAccumulationLimit",
-  "mintItemNonCanonical",
-] as const);
-
+/**
+ * The installed set is the family application registry's keys, read in the
+ * catalogue's presentation order so that every launch-scope comparison in the
+ * watcher (classifier, supervisor, decision bridge) sees the one order the SDK
+ * catalogue defines. Nothing here names a family.
+ */
 export type WatcherInstalledWorkflowCategory =
-  (typeof WATCHER_INSTALLED_WORKFLOW_CATEGORIES)[number];
+  keyof typeof FAMILY_APPLICATION_REGISTRY;
 
-export const WATCHER_MISSING_WORKFLOW_CATEGORIES = Object.freeze([] as const);
+const registeredWorkflowCategories: ReadonlySet<string> = new Set(
+  Object.keys(FAMILY_APPLICATION_REGISTRY),
+);
 
-const watcherWorkflowCoverage = new Set<string>([
-  ...WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-  ...WATCHER_MISSING_WORKFLOW_CATEGORIES,
-]);
+export const WATCHER_INSTALLED_WORKFLOW_CATEGORIES: readonly WatcherInstalledWorkflowCategory[] =
+  Object.freeze(
+    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.filter((category) =>
+      registeredWorkflowCategories.has(category),
+    ),
+  );
+
+/** Catalogue categories the registry does not carry: empty since #673. */
+export const WATCHER_MISSING_WORKFLOW_CATEGORIES: readonly FraudProofCatalogueCategoryName[] =
+  Object.freeze(
+    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.filter(
+      (category) => !registeredWorkflowCategories.has(category),
+    ),
+  );
+
 if (
-  watcherWorkflowCoverage.size !==
-    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length ||
-  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.some(
-    (category) => !watcherWorkflowCoverage.has(category),
-  )
+  registeredWorkflowCategories.size !==
+  WATCHER_INSTALLED_WORKFLOW_CATEGORIES.length
 ) {
   throw new Error(
-    "watcher production workflow coverage does not partition the catalogue",
+    "family application registry names a category outside the fraud-proof catalogue",
   );
 }
+
+/**
+ * The families whose record requires the predecessor replay context. The same
+ * flag the shared application loop enforces at load time drives the watcher's
+ * decision-time check, so the two cannot disagree.
+ */
+export const WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES: readonly WatcherInstalledWorkflowCategory[] =
+  Object.freeze(
+    WATCHER_INSTALLED_WORKFLOW_CATEGORIES.filter((category) =>
+      FAMILY_APPLICATION_REGISTRY[category].requires.includes("replayContext"),
+    ),
+  );
 
 export type WatcherFaultProofInfrastructureAuthority = Readonly<{
   manifestPath: string;
@@ -639,48 +612,48 @@ const readSecret = async ({
 };
 
 /**
- * The watcher's one loader body. It builds what every family draws from and
- * the resolver a family's roster is resolved through; the family's record
- * then binds its own manifest-bound config from these inside the shared
- * runtime, so nothing here is per family. Which optional parts a family needs
- * is the record's `requires`, refused by the shared application loop.
+ * What binds the invocation to the verified deployment and reaches its
+ * published scripts: the admitted local-node authority, the manifest,
+ * blueprint and deployment info, a Lucid instance over Kupo/Ogmios and the
+ * resolver a family's roster is resolved through. It reads no secret, so the
+ * startup-readiness path can prove the deployment's published scripts were
+ * found without holding the prover wallet or the node admin key. The
+ * invocation's deployment fingerprint is checked by the runtime-config reader
+ * both callers admit their configuration through.
  */
-const buildCommonInfrastructure = async ({
+type WatcherDeploymentBinding = Readonly<{
+  manifest: unknown;
+  blueprintJson: string;
+  deploymentInfo: unknown;
+  localL1Source: Extract<
+    WatcherConfig["l1"]["source"],
+    { sourceMode: "local_node" }
+  >;
+  kupoHttpUrl: string;
+  ogmiosUrl: string;
+  lucid: LucidEvolution;
+  resolveReferenceScript: WatcherWorkflowInfrastructure["resolveReferenceScript"];
+}>;
+
+const bindWatcherDeploymentAuthority = async ({
   watcherConfig,
-  invocation,
   infrastructure,
-  deploymentIdentity,
-  historicalNativeScriptAuthority,
-  replayContexts,
-  validationChallenge,
   dependencies,
-  environment,
 }: {
   readonly watcherConfig: WatcherConfig;
-  readonly invocation: WorkflowAdapterReadinessInput;
   readonly infrastructure: WatcherFaultProofInfrastructureAuthority;
-  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
-  readonly historicalNativeScriptAuthority: WatcherHistoricalNativeScriptAuthority;
-  readonly replayContexts: ReadonlyMap<string, CompleteCanonicalReplayContext>;
-  readonly validationChallenge: FamilyValidationChallengePort;
   readonly dependencies: WatcherFaultProofApplicationDependencies;
-  readonly environment: NodeJS.ProcessEnv;
-}): Promise<WatcherWorkflowInfrastructure> => {
-  const { category } = invocation;
-  if (invocation.deploymentFingerprint !== deploymentIdentity.manifestId) {
-    throw new Error(
-      "watcher production workflow invocation differs from deployment authority",
-    );
-  }
-  if (watcherConfig.l1.source.sourceMode !== "local_node") {
+}): Promise<WatcherDeploymentBinding> => {
+  const localL1Source = watcherConfig.l1.source;
+  if (localL1Source.sourceMode !== "local_node") {
     throw new Error(
       "watcher production workflows require the admitted local-node L1 source",
     );
   }
-  const kupo = watcherConfig.l1.source.queryServices.find(
+  const kupo = localL1Source.queryServices.find(
     (service) => service.kind === "kupo",
   );
-  const ogmios = watcherConfig.l1.source.queryServices.find(
+  const ogmios = localL1Source.queryServices.find(
     (service) => service.kind === "ogmios",
   );
   if (kupo === undefined || ogmios === undefined) {
@@ -691,28 +664,10 @@ const buildCommonInfrastructure = async ({
     requireCanonicalFile(infrastructure.blueprintPath, dependencies),
     requireCanonicalFile(infrastructure.deploymentInfoPath, dependencies),
   ]);
-  const [
-    manifestJson,
-    blueprintJson,
-    deploymentInfoJson,
-    proverSecret,
-    adminKey,
-  ] = await Promise.all([
+  const [manifestJson, blueprintJson, deploymentInfoJson] = await Promise.all([
     dependencies.readText(manifestPath),
     dependencies.readText(blueprintPath),
     dependencies.readText(deploymentInfoPath),
-    readSecret({
-      source: watcherConfig.proverWallet.keySource,
-      dependencies,
-      environment,
-      label: "watcher prover wallet",
-    }),
-    readSecret({
-      source: infrastructure.midgardNodeAdminKeySource,
-      dependencies,
-      environment,
-      label: "Midgard node admin",
-    }),
   ]);
   let manifest: unknown;
   let deploymentInfoValue: unknown;
@@ -743,6 +698,73 @@ const buildCommonInfrastructure = async ({
     kupoHttpUrl: kupo.endpoint,
     ogmiosUrl: ogmios.endpoint,
   });
+  return Object.freeze({
+    manifest,
+    blueprintJson,
+    deploymentInfo: deploymentInfoValue,
+    localL1Source,
+    kupoHttpUrl: kupo.endpoint,
+    ogmiosUrl: ogmios.endpoint,
+    lucid,
+    resolveReferenceScript: async ({ contractName }) =>
+      await dependencies.resolveReferenceScript({
+        lucid,
+        deploymentInfo,
+        contractName,
+      }),
+  });
+};
+
+/**
+ * The watcher's one loader body for an acting invocation. On top of the
+ * deployment binding it reads the prover wallet and the node admin key,
+ * selects the (possibly funding-restricted) signer and hands over the optional
+ * parts a family may require; the family's record then binds its own
+ * manifest-bound config from these inside the shared runtime, so nothing here
+ * is per family. Which optional parts a family needs is the record's
+ * `requires`, refused by the shared application loop.
+ */
+const buildCommonInfrastructure = async ({
+  watcherConfig,
+  invocation,
+  infrastructure,
+  deploymentIdentity,
+  historicalNativeScriptAuthority,
+  replayContexts,
+  validationChallenge,
+  dependencies,
+  environment,
+}: {
+  readonly watcherConfig: WatcherConfig;
+  readonly invocation: WorkflowAdapterReadinessInput;
+  readonly infrastructure: WatcherFaultProofInfrastructureAuthority;
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  readonly historicalNativeScriptAuthority: WatcherHistoricalNativeScriptAuthority;
+  readonly replayContexts: ReadonlyMap<string, CompleteCanonicalReplayContext>;
+  readonly validationChallenge: FamilyValidationChallengePort;
+  readonly dependencies: WatcherFaultProofApplicationDependencies;
+  readonly environment: NodeJS.ProcessEnv;
+}): Promise<WatcherWorkflowInfrastructure> => {
+  const { category } = invocation;
+  const [binding, proverSecret, adminKey] = await Promise.all([
+    bindWatcherDeploymentAuthority({
+      watcherConfig,
+      infrastructure,
+      dependencies,
+    }),
+    readSecret({
+      source: watcherConfig.proverWallet.keySource,
+      dependencies,
+      environment,
+      label: "watcher prover wallet",
+    }),
+    readSecret({
+      source: infrastructure.midgardNodeAdminKeySource,
+      dependencies,
+      environment,
+      label: "Midgard node admin",
+    }),
+  ]);
   const resolvedSigner = dependencies.resolveSigner({
     network: watcherConfig.targetNetwork,
     secret: proverSecret,
@@ -760,26 +782,26 @@ const buildCommonInfrastructure = async ({
           signer: resolvedSigner,
           permit: executionInvocation.fundingReservationPermit,
         });
-  signer.selectWallet(lucid);
+  signer.selectWallet(binding.lucid);
   return Object.freeze({
     infrastructure: Object.freeze({
-      manifest,
-      blueprintJson,
-      deploymentInfo: deploymentInfoValue,
+      manifest: binding.manifest,
+      blueprintJson: binding.blueprintJson,
+      deploymentInfo: binding.deploymentInfo,
       headerHash: invocation.headerHash,
       ...(decisionDigest === undefined ? {} : { decisionDigest }),
-      lucid,
+      lucid: binding.lucid,
       signer,
       source: Object.freeze({
         sourceId: [
           "watcher-fault-proof",
           category,
           deploymentIdentity.manifestId,
-          watcherConfig.l1.source.authorityNodeId,
-          watcherConfig.l1.source.chainSync.genesisIdentitySha256,
+          binding.localL1Source.authorityNodeId,
+          binding.localL1Source.chainSync.genesisIdentitySha256,
         ].join("/"),
-        kupoHttpUrl: kupo.endpoint,
-        ogmiosUrl: ogmios.endpoint,
+        kupoHttpUrl: binding.kupoHttpUrl,
+        ogmiosUrl: binding.ogmiosUrl,
         timeoutMs: watcherConfig.l1.requestTimeoutMs,
       }),
       stateQueueMutationLeaseCoordinator: dependencies.createLeaseCoordinator({
@@ -796,12 +818,7 @@ const buildCommonInfrastructure = async ({
       ...(replayContext === undefined ? {} : { replayContext }),
       validationChallenge,
     }),
-    resolveReferenceScript: async ({ contractName }) =>
-      await dependencies.resolveReferenceScript({
-        lucid,
-        deploymentInfo,
-        contractName,
-      }),
+    resolveReferenceScript: binding.resolveReferenceScript,
   });
 };
 
@@ -859,17 +876,40 @@ const predecessorObservationForClassifier = ({
   });
 };
 
-const createApplication = ({
-  options,
-  dependencies,
-  environment,
-  allowExecution,
-}: {
+type ApplicationConstruction = {
   readonly options: WatcherFaultProofApplicationConstructionOptions;
   readonly dependencies: WatcherFaultProofApplicationDependencies;
   readonly environment: NodeJS.ProcessEnv;
   readonly allowExecution: boolean;
-}): WatcherFaultProofApplication => {
+};
+
+/** A non-executing test application that also exposes its runtime loader. */
+type WatcherFaultProofApplicationWithLoaderForTest =
+  WatcherFaultProofApplication &
+    Readonly<{ unsafeLoadRuntimeForTest: WorkflowRuntimeLoader }>;
+
+function createApplication(
+  input: ApplicationConstruction &
+    Readonly<{ unsafeExposeRuntimeLoaderForTest: true }>,
+): WatcherFaultProofApplicationWithLoaderForTest;
+function createApplication(
+  input: ApplicationConstruction,
+): WatcherFaultProofApplication;
+function createApplication({
+  options,
+  dependencies,
+  environment,
+  allowExecution,
+  unsafeExposeRuntimeLoaderForTest = false,
+}: ApplicationConstruction &
+  Readonly<{
+    unsafeExposeRuntimeLoaderForTest?: boolean;
+  }>): WatcherFaultProofApplication {
+  if (unsafeExposeRuntimeLoaderForTest && allowExecution) {
+    throw new Error(
+      "watcher runtime loader is exposed only to a non-executing test application",
+    );
+  }
   const deploymentIdentity = options.deploymentIdentity;
   assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
   const deploymentAuthority = options.deploymentAuthority;
@@ -1193,7 +1233,7 @@ const createApplication = ({
     })();
     return classifierPromise;
   };
-  const application: WatcherFaultProofApplication = Object.freeze({
+  const methods: WatcherFaultProofApplication = {
     close: async () => {
       admittedApplications.delete(application);
       authorityGeneration += 1;
@@ -1296,8 +1336,9 @@ const createApplication = ({
         const replayContext = headerDecisionReplayContext(decision);
         if (
           decision.decision === "fault_detected" &&
-          (decision.category === "nonExistentInput" ||
-            decision.category === "noReferenceInput") &&
+          WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES.includes(
+            decision.category,
+          ) &&
           replayContext === undefined
         ) {
           throw new Error(
@@ -1380,6 +1421,9 @@ const createApplication = ({
       return completedDecision;
     },
     assertStartupReady: async (invocation) => {
+      if (!admittedApplications.has(application)) {
+        throw new Error("watcher fault-proof application is closed");
+      }
       if (
         !WATCHER_INSTALLED_WORKFLOW_CATEGORIES.includes(
           invocation.category as WatcherInstalledWorkflowCategory,
@@ -1390,30 +1434,34 @@ const createApplication = ({
         );
       }
       const category = invocation.category as WatcherInstalledWorkflowCategory;
-      const loaded = await loadRuntime({
+      // Readiness binds the deployment and resolves the family's whole roster,
+      // then stops: it binds no config, constructs no workflow and reads no
+      // secret, so it can neither act nor need the optional infrastructure an
+      // acting invocation must hold. The prover wallet and node admin key are
+      // proven present by the trusted-head startup phase, not here.
+      const watcherConfig = await readAdmittedWatcherRuntimeConfig({
         runtimeConfigPath: invocation.runtimeConfigPath,
-        invocation,
+        deploymentFingerprint: invocation.deploymentFingerprint,
+        deploymentIdentity,
       });
-      try {
-        // Readiness resolves the family's whole roster and stops: it binds no
-        // config and constructs no workflow, so it can neither act nor need
-        // the optional infrastructure an acting invocation must hold.
-        const { referenceScriptOutRefs } =
-          await resolveFamilyApplicationReferences({
-            record: FAMILY_APPLICATION_REGISTRY[category],
-            resolveReferenceScript: loaded.resolveReferenceScript,
-          });
-        return Object.freeze({
-          schemaVersion: WATCHER_FAULT_PROOF_STARTUP_READINESS,
-          ready: true,
-          category,
-          deploymentFingerprint: deploymentIdentity.manifestId,
-          headerHash: invocation.headerHash,
-          referenceScriptOutRefs,
+      const { resolveReferenceScript } = await bindWatcherDeploymentAuthority({
+        watcherConfig,
+        infrastructure,
+        dependencies,
+      });
+      const { referenceScriptOutRefs } =
+        await resolveFamilyApplicationReferences({
+          record: FAMILY_APPLICATION_REGISTRY[category],
+          resolveReferenceScript,
         });
-      } finally {
-        await loaded.close();
-      }
+      return Object.freeze({
+        schemaVersion: WATCHER_FAULT_PROOF_STARTUP_READINESS,
+        ready: true,
+        category,
+        deploymentFingerprint: deploymentIdentity.manifestId,
+        headerHash: invocation.headerHash,
+        referenceScriptOutRefs,
+      });
     },
     verifyCompleted: async (input) => {
       if (!admittedApplications.has(application))
@@ -1519,10 +1567,15 @@ const createApplication = ({
         applicationRegistry,
       });
     },
-  });
+  };
+  const application: WatcherFaultProofApplication = Object.freeze(
+    unsafeExposeRuntimeLoaderForTest
+      ? { ...methods, unsafeLoadRuntimeForTest: loadRuntime }
+      : methods,
+  );
   admittedApplications.add(application);
   return application;
-};
+}
 
 export const createWatcherFaultProofApplication = (
   options: WatcherFaultProofApplicationOptions,
@@ -1573,15 +1626,20 @@ export const createWatcherFaultProofReadinessApplication = (
   });
 };
 
-/** Narrow test-only dependency seam. It cannot execute transactions. */
+/**
+ * Narrow test-only dependency seam. It cannot execute transactions, and it
+ * exposes the one runtime loader its runners load through so a test can prove
+ * what the watcher supplies to a family without holding an actuation permit.
+ */
 export const unsafeCreateWatcherFaultProofApplicationForTest = (
   options: WatcherFaultProofApplicationConstructionOptions,
   dependencies: WatcherFaultProofApplicationDependencies,
   environment: NodeJS.ProcessEnv = {},
-): WatcherFaultProofApplication =>
+): WatcherFaultProofApplicationWithLoaderForTest =>
   createApplication({
     options,
     dependencies,
     environment,
     allowExecution: false,
+    unsafeExposeRuntimeLoaderForTest: true,
   });
