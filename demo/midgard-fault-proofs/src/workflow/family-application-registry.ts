@@ -438,6 +438,18 @@ const optionalReplayContext = (
     : {};
 
 /**
+ * The predecessor replay context whenever the host supplied one, for a family
+ * that replays the predecessor only when the classifier admitted one and
+ * proves from the challenged block alone otherwise.
+ */
+const suppliedReplayContext = (
+  infrastructure: FamilyCommonInfrastructure,
+): Readonly<{ replayContext?: CompleteCanonicalReplayContext }> =>
+  infrastructure.replayContext === undefined
+    ? {}
+    : { replayContext: infrastructure.replayContext };
+
+/**
  * The historical native-script authority, or a refusal naming the family
  * without one. The shared loop refuses first; this is the guard `bindConfig`
  * keeps for a caller that reaches it another way.
@@ -1836,16 +1848,13 @@ const VALUE_NOT_PRESERVED_STEP_CONTRACT_NAMES = Object.freeze([
   "fraudProofValueNotPreservedStep04",
 ] as const);
 
-const VALUE_NOT_PRESERVED_REQUIREMENTS = Object.freeze([
-  "replayContext",
-] as const satisfies readonly FamilyApplicationRequirement[]);
-
 /**
  * Value-conservation has no `FamilyDefinition`: beside its four-step legacy
  * chain it publishes one union contract per conservation position, read from
  * the family's own position table so the roster cannot drift from the
- * contracts the union plan walks. It replays the predecessor, so it requires
- * the replay context, and follows its proof token with the state-queue
+ * contracts the union plan walks. It replays the predecessor when the
+ * classifier admitted one, so it binds the replay context the host supplies
+ * without requiring it, and follows its proof token with the state-queue
  * removal set.
  */
 export const VALUE_NOT_PRESERVED_FAMILY_APPLICATION_RECORD =
@@ -1869,14 +1878,11 @@ export const VALUE_NOT_PRESERVED_FAMILY_APPLICATION_RECORD =
       fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
       ...STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
     }),
-    requires: VALUE_NOT_PRESERVED_REQUIREMENTS,
+    requires: [],
     bindConfig: ({ infrastructure, references }) =>
       Object.freeze({
         ...commonBoundConfigFields(infrastructure),
-        ...optionalReplayContext(
-          VALUE_NOT_PRESERVED_REQUIREMENTS,
-          infrastructure,
-        ),
+        ...suppliedReplayContext(infrastructure),
         referenceScripts: Object.freeze({
           steps: resolvedSteps(references, 4),
           union: resolvedRoles(references, CONSERVATION_POSITIONS),

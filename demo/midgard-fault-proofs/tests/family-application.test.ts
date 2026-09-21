@@ -365,16 +365,13 @@ describe("shared family application loop", () => {
 });
 
 describe("record-derived runner", () => {
-  const loadRuntimeConfig = async (): Promise<never> => {
+  const loadRuntime = async (): Promise<never> => {
     throw new Error("unused");
   };
 
   it("admits a runner built from a record, and never the public constructor", () => {
     const f = fixture();
-    const runner = createFamilyApplicationWorkflowRunner(
-      f.record,
-      loadRuntimeConfig,
-    );
+    const runner = createFamilyApplicationWorkflowRunner(f.record, loadRuntime);
     expect(isAdmittedWorkflowRunner({ category, runner })).toBe(true);
     expect(isAdmittedWorkflowRunner({ category: "zeroInput", runner })).toBe(
       false,
@@ -383,10 +380,8 @@ describe("record-derived runner", () => {
       isAdmittedWorkflowRunner({
         category,
         runner: createManifestBoundWorkflowRunner({
-          category,
-          loadRuntimeConfig,
-          constructWorkflow: f.record.constructWorkflow,
-          execute: f.record.execute,
+          record: f.record,
+          loadRuntime,
         }),
       }),
     ).toBe(false);

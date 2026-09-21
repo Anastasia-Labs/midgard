@@ -740,6 +740,7 @@ export {
   type WatcherRetainedDaRuntime,
   type WatcherRetainedDaRuntimeOptions,
   type WatcherRetainedDaRuntimeOwner,
+  type WatcherWorkflowInfrastructure,
   type WatcherWorkflowInfrastructureBuilder,
 } from "./storage/retained-da-runtime.js";
 export {

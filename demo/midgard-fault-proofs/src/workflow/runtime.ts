@@ -15,9 +15,12 @@ import {
   type WorkflowAdapterRunnerInput,
 } from "./adapters.js";
 import {
-  assertManifestBoundWorkflowIdentity,
+  applyFamilyApplicationRecord,
+  type FamilyApplicationInvocation,
   type FamilyApplicationRecord,
   type FamilyApplicationWorkflowIdentity,
+  type FamilyCommonInfrastructure,
+  type FamilyReferenceScriptResolver,
 } from "./family-application.js";
 import {
   FAMILY_APPLICATION_REGISTRY,
@@ -26,13 +29,8 @@ import {
 import type { WorkflowFundingRequirements } from "./funding-requirements.js";
 import { bindWorkflowFundingReservationJournal } from "./funding-reservation-permit.js";
 import { DirectoryFraudProofWorkflowJournalStore } from "./journal.js";
-import {
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowTerminalVerifier,
-  resumeRecordedFraudProofWorkflow,
-} from "./orchestrator.js";
+import { resumeRecordedFraudProofWorkflow } from "./orchestrator.js";
 import { continuePendingWorkflow } from "./pending-continuation.js";
-import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
 import {
   createAdmittedWorkflowRunner,
   WORKFLOW_ADAPTER_RUNNER,
@@ -41,28 +39,27 @@ import {
 export const WORKFLOW_RUNTIME_CONFIG =
   "midgard-production-fraud-proof-runtime-config-v1" as const;
 
-export type LoadedWorkflowRuntime<Config> = {
+/**
+ * What a compiled host loads for one invocation: the common infrastructure
+ * every family draws from, the resolver that turns a roster entry into its
+ * published reference UTxO, and the public retained-DA transports. It is the
+ * same shape for all 55 families, so a host writes one loader. Proof evidence
+ * is forbidden here; the family's record lays its own config out of these.
+ */
+export type LoadedWorkflowRuntime = {
   readonly schemaVersion: typeof WORKFLOW_RUNTIME_CONFIG;
-  /** Infrastructure and credentials only. Proof evidence is forbidden here. */
-  readonly config: Config;
+  readonly infrastructure: FamilyCommonInfrastructure;
+  readonly resolveReferenceScript: FamilyReferenceScriptResolver;
   readonly retainedDaSources: readonly DaLibp2pRetainedDaSource[];
   /** Closes every transport/provider allocated while loading the runtime. */
   readonly close: () => Promise<void>;
 };
 
-export type WorkflowRuntimeConfigLoader<Config> = (input: {
+export type WorkflowRuntimeLoader = (input: {
   readonly runtimeConfigPath: string;
   /** Permit-free deployment identity/configuration; loading cannot actuate. */
   readonly invocation: WorkflowAdapterReadinessInput;
-}) => Promise<LoadedWorkflowRuntime<Config>>;
-
-type ManifestBoundWorkflowIdentity<
-  Category extends FraudProofCatalogueCategoryName,
-> = FamilyApplicationWorkflowIdentity<Category> & {
-  readonly adapter?: FraudProofFamilyWorkflowAdapter;
-  readonly terminalVerifier?: FraudProofWorkflowTerminalVerifier;
-  readonly releaseFinalityAuthority?: FraudProofReleaseFinalityAuthority;
-};
+}) => Promise<LoadedWorkflowRuntime>;
 
 const admitPublicDaSources = (
   sources: readonly DaLibp2pRetainedDaSource[],
@@ -79,39 +76,54 @@ const admitPublicDaSources = (
 };
 
 /**
- * Shared compiled runtime boundary. The loader may provide infrastructure,
- * credentials, and public-DA transports, but never prepared proof evidence.
- * The family constructor must independently bind its manifest, raw local L1
- * authority, signer, economics, finality, and exact reference-script roster.
+ * The loaded infrastructure is what the family binds its config from, so it
+ * must describe the invocation being run and no other: a host loader that
+ * ignored the invocation it was handed would otherwise bind a workflow to a
+ * header or decision the permit never admitted.
+ */
+const assertLoadedInfrastructureMatchesInvocation = (
+  infrastructure: FamilyCommonInfrastructure,
+  invocation: WorkflowAdapterRunnerInput,
+): void => {
+  const differing = (
+    [
+      ["headerHash", infrastructure.headerHash, invocation.headerHash],
+      [
+        "decisionDigest",
+        infrastructure.decisionDigest,
+        invocation.decisionDigest,
+      ],
+    ] as const
+  ).find(([, loaded, admitted]) => loaded !== admitted);
+  if (differing !== undefined) {
+    const [field, loaded, admitted] = differing;
+    throw new Error(
+      `production workflow runtime infrastructure differs from the invocation: ${field} loaded=${String(loaded)} admitted=${admitted}`,
+    );
+  }
+};
+
+/**
+ * Shared compiled runtime boundary. The loader provides infrastructure,
+ * credentials and public-DA transports, but never prepared proof evidence.
+ * The record then resolves its own roster, binds its own manifest-bound
+ * config and constructs its workflow through the shared application loop, so
+ * a family is applied to an invocation in exactly one place.
  */
 const createManifestBoundWorkflowRunOrResume =
   <
     Category extends FraudProofCatalogueCategoryName,
     Config,
-    Workflow extends ManifestBoundWorkflowIdentity<Category>,
+    Workflow extends FamilyApplicationWorkflowIdentity<Category>,
   >({
-    category,
-    loadRuntimeConfig,
-    constructWorkflow,
-    execute,
-    bindsDecisionDigest = false,
+    record,
+    loadRuntime,
   }: {
-    readonly category: Category;
-    readonly loadRuntimeConfig: WorkflowRuntimeConfigLoader<Config>;
-    readonly constructWorkflow: (config: Config) => Promise<Workflow>;
-    /**
-     * Whether the constructed workflow must carry the invocation's admitted
-     * decision digest. The families that check it today all check it here.
-     */
-    readonly bindsDecisionDigest?: boolean;
-    readonly execute: (input: {
-      readonly workflow: Workflow;
-      readonly sources: readonly RetainedDaPayloadSource[];
-      readonly journal: DirectoryFraudProofWorkflowJournalStore;
-      readonly mode: "run" | "resume";
-    }) => Promise<unknown>;
+    readonly record: FamilyApplicationRecord<Category, Config, Workflow>;
+    readonly loadRuntime: WorkflowRuntimeLoader;
   }): WorkflowAdapterRunner["runOrResume"] =>
   async (invocation: WorkflowAdapterRunnerInput) => {
+    const { category } = record;
     if (invocation.category !== category) {
       throw new Error(
         `production workflow runner category mismatch: expected=${category} actual=${invocation.category}`,
@@ -137,7 +149,7 @@ const createManifestBoundWorkflowRunOrResume =
       headerHash: invocation.headerHash,
       checkpoint: "runner_start",
     });
-    const loaded = await loadRuntimeConfig({
+    const loaded = await loadRuntime({
       runtimeConfigPath: invocation.runtimeConfigPath,
       invocation,
     });
@@ -153,20 +165,30 @@ const createManifestBoundWorkflowRunOrResume =
         );
       }
       const sources = admitPublicDaSources(loaded.retainedDaSources);
-      const workflow = await constructWorkflow(loaded.config);
-      assertManifestBoundWorkflowIdentity({
-        workflow,
-        category,
+      assertLoadedInfrastructureMatchesInvocation(
+        loaded.infrastructure,
+        invocation,
+      );
+      const reconciliationOnly = workflowJournalIsReconciliationOnly(journal);
+      const application: FamilyApplicationInvocation = {
         deploymentFingerprint: invocation.deploymentFingerprint,
+        category,
         headerHash: invocation.headerHash,
-        bindsDecisionDigest,
-        decisionDigest: invocation.decisionDigest,
+        ...(reconciliationOnly
+          ? { reconciliationAuthority: invocation.actuationPermit }
+          : {}),
+      };
+      const { workflow } = await applyFamilyApplicationRecord({
+        record,
+        infrastructure: loaded.infrastructure,
+        resolveReferenceScript: loaded.resolveReferenceScript,
+        invocation: application,
       });
       return await continuePendingWorkflow({
         invocation,
         journal,
         execute: (mode) => {
-          if (workflowJournalIsReconciliationOnly(journal)) {
+          if (reconciliationOnly) {
             if (
               workflow.adapter === undefined ||
               workflow.terminalVerifier === undefined ||
@@ -185,7 +207,7 @@ const createManifestBoundWorkflowRunOrResume =
               releaseFinalityAuthority: workflow.releaseFinalityAuthority,
             });
           }
-          return execute({ workflow, sources, journal, mode });
+          return record.execute({ workflow, sources, journal, mode });
         },
       });
     } finally {
@@ -202,7 +224,7 @@ const createManifestBoundWorkflowRunOrResume =
 export const createManifestBoundWorkflowRunner = <
   Category extends FraudProofCatalogueCategoryName,
   Config,
-  Workflow extends ManifestBoundWorkflowIdentity<Category>,
+  Workflow extends FamilyApplicationWorkflowIdentity<Category>,
 >(
   input: Parameters<
     typeof createManifestBoundWorkflowRunOrResume<Category, Config, Workflow>
@@ -224,53 +246,44 @@ const runnerFunding = (
 
 /**
  * Mints the admitted production runner for a family application record. The
- * record supplies the category, the construction and the launch route, so the
- * generic run-or-resume body above is the only place a manifest-bound family
- * is bound to an invocation. The public `createManifestBoundWorkflowRunner`
- * stays non-admissible: only this module can mint the registry identity.
+ * record supplies the category, the roster, the binding, the construction and
+ * the launch route; the host supplies one loader. The public
+ * `createManifestBoundWorkflowRunner` stays non-admissible: only this module
+ * can mint the registry identity.
  */
 export const createFamilyApplicationWorkflowRunner = <
   Category extends FraudProofCatalogueCategoryName,
   Config,
-  Workflow extends ManifestBoundWorkflowIdentity<Category>,
+  Workflow extends FamilyApplicationWorkflowIdentity<Category>,
 >(
   record: FamilyApplicationRecord<Category, Config, Workflow>,
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<Config>,
+  loadRuntime: WorkflowRuntimeLoader,
   fundingRequirements?: WorkflowFundingRequirements,
 ): WorkflowAdapterRunner =>
   createAdmittedWorkflowRunner({
     category: record.category,
     ...runnerFunding(fundingRequirements),
     runOrResume: createManifestBoundWorkflowRunOrResume({
-      category: record.category,
-      loadRuntimeConfig,
-      constructWorkflow: record.constructWorkflow,
-      execute: record.execute,
-      bindsDecisionDigest: record.bindsDecisionDigest,
+      record,
+      loadRuntime,
     }),
   });
 
 /**
- * The factory a compiled host applies to install one family: its runtime
- * loader and, when measured, its funding profile. The loader is taken at
- * `unknown` because the registry states every record at one erased shape, so
- * the table cannot relate a host's loaded config to the family's own config
- * type; that pairing is checked at runtime, where the record's
- * `constructWorkflow` receives the loaded config. A host that binds its
- * config through the record's own `bindConfig` regains the check by
- * construction.
+ * The factory a compiled host applies to install one family: the host's one
+ * shared runtime loader and, when measured, the family's funding profile.
  */
 export type FamilyWorkflowRunnerFactory = (
-  loadRuntimeConfig: WorkflowRuntimeConfigLoader<unknown>,
+  loadRuntime: WorkflowRuntimeLoader,
   fundingRequirements?: WorkflowFundingRequirements,
 ) => WorkflowAdapterRunner;
 
 /**
- * The runner-table row of a registry entry: the record supplies the
- * construction, the launch route and the digest binding, so the row is the
- * record applied to a compiled host's loader. The entry's `constructWorkflow`
- * is stated at `never` by the registry's erasure; the row widens it to the
- * loader's `unknown`, which is the same erasure seen from the other side.
+ * The runner-table row of a registry entry. The registry states every record
+ * at one erased config shape (`constructWorkflow` takes `never`), so the row
+ * restates it as a record whose config is unknown: the record's own
+ * `bindConfig` is the only producer of that config and its own
+ * `constructWorkflow` the only consumer, so no caller ever names it.
  */
 const familyApplicationWorkflowRunnerFactory = <
   Category extends FraudProofCatalogueCategoryName,
@@ -282,10 +295,10 @@ const familyApplicationWorkflowRunnerFactory = <
     unknown,
     FamilyApplicationWorkflowIdentity<Category>
   >;
-  return (loadRuntimeConfig, fundingRequirements) =>
+  return (loadRuntime, fundingRequirements) =>
     createFamilyApplicationWorkflowRunner(
       record,
-      loadRuntimeConfig,
+      loadRuntime,
       fundingRequirements,
     );
 };

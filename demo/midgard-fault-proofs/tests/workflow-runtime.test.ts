@@ -40,6 +40,7 @@ import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete
 import {
   applyFamilyApplicationRecord,
   defineFamilyApplication,
+  type FamilyApplicationWorkflowIdentity,
 } from "../src/workflow/family-application.js";
 import { FAMILY_APPLICATION_REGISTRY } from "../src/workflow/family-application-registry.js";
 import {
@@ -103,6 +104,10 @@ import {
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { runtimeFundingPolicyFixture } from "./helpers/runtime-funding-policy-fixture.js";
+import {
+  emptyRosterReferenceScriptResolver,
+  familyCommonInfrastructureForTest,
+} from "./support/family-common-infrastructure.js";
 
 const DEPLOYMENT = "d7".repeat(32);
 const RELEASE_FINALITY_POLICY = {
@@ -534,6 +539,42 @@ const retainedDaSource = (): DaLibp2pRetainedDaSource =>
         throw new Error("transport is not called by runtime-boundary test");
       },
     },
+  });
+
+const loadedRuntime = (
+  actuation: Readonly<{ headerHash: string; decisionDigest: string }>,
+  overrides: Partial<LoadedWorkflowRuntime> = {},
+): LoadedWorkflowRuntime => ({
+  schemaVersion: WORKFLOW_RUNTIME_CONFIG,
+  infrastructure: familyCommonInfrastructureForTest(actuation),
+  resolveReferenceScript: emptyRosterReferenceScriptResolver,
+  retainedDaSources: [retainedDaSource()],
+  close: async () => undefined,
+  ...overrides,
+});
+
+type DoubleSpendIdentity = FamilyApplicationWorkflowIdentity<"doubleSpend">;
+
+/** A doubleSpend record with an empty roster and no requirements. */
+const doubleSpendRecord = <Config, Workflow extends DoubleSpendIdentity>(
+  record: Partial<
+    Parameters<
+      typeof defineFamilyApplication<"doubleSpend", Config, Workflow>
+    >[0]
+  > &
+    Pick<
+      Parameters<
+        typeof defineFamilyApplication<"doubleSpend", Config, Workflow>
+      >[0],
+      "bindConfig" | "constructWorkflow" | "execute"
+    >,
+) =>
+  defineFamilyApplication<"doubleSpend", Config, Workflow>({
+    category: "doubleSpend",
+    roster: {},
+    requires: [],
+    bindsDecisionDigest: false,
+    ...record,
   });
 
 const prepareRuntimeFunding = (
@@ -1473,14 +1514,16 @@ describe("compiled manifest-bound production runtime V1", () => {
 
   it("does not admit the public generic constructor as a production family runner", () => {
     const generic = createManifestBoundWorkflowRunner({
-      category: "doubleSpend",
-      loadRuntimeConfig: async () => {
-        throw new Error("generic runner is not invoked during admission");
-      },
-      constructWorkflow: async () => {
-        throw new Error("generic runner is not invoked during admission");
-      },
-      execute: async () => {
+      record: doubleSpendRecord({
+        bindConfig: () => undefined,
+        constructWorkflow: async (): Promise<DoubleSpendIdentity> => {
+          throw new Error("generic runner is not invoked during admission");
+        },
+        execute: async () => {
+          throw new Error("generic runner is not invoked during admission");
+        },
+      }),
+      loadRuntime: async () => {
         throw new Error("generic runner is not invoked during admission");
       },
     });
@@ -1631,13 +1674,9 @@ describe("compiled manifest-bound production runtime V1", () => {
     const directory = await mkdtemp(join(tmpdir(), "midgard-runtime-v1-"));
     const journalDirectory = join(directory, "journal");
     const close = vi.fn(async () => undefined);
-    const loadRuntimeConfig = vi.fn(async () => ({
-      schemaVersion: WORKFLOW_RUNTIME_CONFIG,
-      config: { releaseConfig: "manifest-bound" },
-      retainedDaSources: [retainedDaSource()],
-      close,
-    }));
-    const constructWorkflow = vi.fn(async () => ({
+    const loadRuntime = vi.fn(async () => loadedRuntime(actuation, { close }));
+    const bindConfig = vi.fn(() => ({ releaseConfig: "manifest-bound" }));
+    const constructWorkflow = vi.fn(async (_config: unknown) => ({
       binding: {
         deploymentFingerprint: DEPLOYMENT,
         definition: {
@@ -1675,10 +1714,8 @@ describe("compiled manifest-bound production runtime V1", () => {
     });
     try {
       const runner = createManifestBoundWorkflowRunner({
-        category: "doubleSpend",
-        loadRuntimeConfig,
-        constructWorkflow,
-        execute,
+        record: doubleSpendRecord({ bindConfig, constructWorkflow, execute }),
+        loadRuntime,
       });
       expect(runner.runnerVersion).toBe(WORKFLOW_ADAPTER_RUNNER);
       const result = await runner.runOrResume({
@@ -1692,7 +1729,7 @@ describe("compiled manifest-bound production runtime V1", () => {
         journalDirectory,
         runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
       });
-      expect(loadRuntimeConfig).toHaveBeenCalledWith({
+      expect(loadRuntime).toHaveBeenCalledWith({
         runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
         invocation: expect.objectContaining({
           category: "doubleSpend",
@@ -1700,6 +1737,16 @@ describe("compiled manifest-bound production runtime V1", () => {
           headerHash: actuation.headerHash,
         }),
       });
+      // The config the record binds from the loaded infrastructure is what
+      // its constructor receives: the loader never hands a family its config.
+      expect(bindConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          infrastructure: expect.objectContaining({
+            headerHash: actuation.headerHash,
+          }),
+          references: {},
+        }),
+      );
       expect(constructWorkflow).toHaveBeenCalledWith({
         releaseConfig: "manifest-bound",
       });
@@ -1728,32 +1775,27 @@ describe("compiled manifest-bound production runtime V1", () => {
         },
       },
     };
-    const loadRuntimeConfig = vi.fn(async () => ({
-      schemaVersion: WORKFLOW_RUNTIME_CONFIG,
-      config: {},
-      retainedDaSources: sources,
-      close,
-    }));
+    const loadRuntime = vi.fn(async () =>
+      loadedRuntime(actuation, { retainedDaSources: sources, close }),
+    );
     const constructWorkflow = vi.fn(async () => workflow);
     const completed = { kind: "completed", workflowId: "existing-workflow" };
     const execute =
       vi.fn<
         Parameters<
-          typeof createManifestBoundWorkflowRunner<
-            "doubleSpend",
-            Record<string, never>,
-            typeof workflow
-          >
+          typeof doubleSpendRecord<Record<string, never>, typeof workflow>
         >[0]["execute"]
       >();
     execute.mockImplementation(async () =>
       execute.mock.calls.length < 3 ? { kind: "pending" } : completed,
     );
     const runner = createManifestBoundWorkflowRunner({
-      category: "doubleSpend",
-      loadRuntimeConfig,
-      constructWorkflow,
-      execute,
+      record: doubleSpendRecord({
+        bindConfig: () => ({}),
+        constructWorkflow,
+        execute,
+      }),
+      loadRuntime,
     });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
@@ -1790,7 +1832,7 @@ describe("compiled manifest-bound production runtime V1", () => {
         expect(input.workflow).toBe(workflow);
         expect(input.sources).toBe(sources);
       }
-      expect(loadRuntimeConfig).toHaveBeenCalledOnce();
+      expect(loadRuntime).toHaveBeenCalledOnce();
       expect(constructWorkflow).toHaveBeenCalledOnce();
       expect(close).toHaveBeenCalledOnce();
     } finally {
@@ -1804,23 +1846,21 @@ describe("compiled manifest-bound production runtime V1", () => {
     const sources = [retainedDaSource()];
     const execute = vi.fn(async () => ({ kind: "pending" }));
     const runner = createManifestBoundWorkflowRunner({
-      category: "doubleSpend",
-      loadRuntimeConfig: async () => ({
-        schemaVersion: WORKFLOW_RUNTIME_CONFIG,
-        config: {},
-        retainedDaSources: sources,
-        close,
-      }),
-      constructWorkflow: async () => ({
-        binding: {
-          deploymentFingerprint: DEPLOYMENT,
-          definition: {
-            category: "doubleSpend" as const,
-            headerHash: actuation.headerHash,
+      record: doubleSpendRecord({
+        bindConfig: () => ({}),
+        constructWorkflow: async () => ({
+          binding: {
+            deploymentFingerprint: DEPLOYMENT,
+            definition: {
+              category: "doubleSpend" as const,
+              headerHash: actuation.headerHash,
+            },
           },
-        },
+        }),
+        execute,
       }),
-      execute,
+      loadRuntime: async () =>
+        loadedRuntime(actuation, { retainedDaSources: sources, close }),
     });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
@@ -2109,18 +2149,20 @@ describe("compiled manifest-bound production runtime V1", () => {
   it("rejects a revoked decision permit before loading runtime infrastructure", async () => {
     const actuation = await admittedActuation();
     actuation.revoke("canonical rollback observed");
-    const loadRuntimeConfig = vi.fn(async () => {
+    const loadRuntime = vi.fn(async () => {
       throw new Error("revoked runner must not load infrastructure");
     });
     const runner = createManifestBoundWorkflowRunner({
-      category: "doubleSpend",
-      loadRuntimeConfig,
-      constructWorkflow: async () => {
-        throw new Error("revoked runner must not construct a workflow");
-      },
-      execute: async () => {
-        throw new Error("revoked runner must not execute");
-      },
+      record: doubleSpendRecord({
+        bindConfig: () => undefined,
+        constructWorkflow: async (): Promise<DoubleSpendIdentity> => {
+          throw new Error("revoked runner must not construct a workflow");
+        },
+        execute: async () => {
+          throw new Error("revoked runner must not execute");
+        },
+      }),
+      loadRuntime,
     });
     let rejected: unknown;
     try {
@@ -2150,7 +2192,7 @@ describe("compiled manifest-bound production runtime V1", () => {
         }),
       ),
     ).toBe(false);
-    expect(loadRuntimeConfig).not.toHaveBeenCalled();
+    expect(loadRuntime).not.toHaveBeenCalled();
   });
 
   it("checks the live permit at every shared workflow actuation boundary", async () => {
@@ -2268,7 +2310,6 @@ describe("compiled manifest-bound production runtime V1", () => {
    */
   describe("generic run-or-resume refusals", () => {
     type Actuation = Awaited<ReturnType<typeof admittedActuation>>;
-    type Loaded = LoadedWorkflowRuntime<undefined>;
     const identityOf = (
       actuation: Actuation,
       deploymentFingerprint: string = DEPLOYMENT,
@@ -2296,24 +2337,41 @@ describe("compiled manifest-bound production runtime V1", () => {
       loaded,
       deploymentFingerprint,
       category,
+      record = {},
+      restrictToReconciliation = false,
     }: {
-      readonly loaded: (close: () => Promise<void>) => Loaded;
+      readonly loaded: (
+        actuation: Actuation,
+        close: () => Promise<void>,
+      ) => LoadedWorkflowRuntime;
       readonly deploymentFingerprint?: string;
       readonly category?: FraudProofCatalogueCategoryName;
+      readonly record?: Partial<
+        Pick<
+          Parameters<typeof doubleSpendRecord>[0],
+          "roster" | "requires" | "constructWorkflow"
+        >
+      >;
+      readonly restrictToReconciliation?: boolean;
     }) => {
       const actuation = await admittedActuation();
+      if (restrictToReconciliation)
+        actuation.restrictToReconciliation("runtime refusal test");
       const directory = await mkdtemp(
         join(tmpdir(), "midgard-runtime-refusal-"),
       );
       const execute = vi.fn(async () => ({ kind: "unexpected" }));
       const close = vi.fn(async () => undefined);
-      const loadRuntimeConfig = vi.fn(async () => loaded(close));
+      const loadRuntime = vi.fn(async () => loaded(actuation, close));
       const runner = createManifestBoundWorkflowRunner({
-        category: "doubleSpend",
-        loadRuntimeConfig,
-        constructWorkflow: async () =>
-          identityOf(actuation, deploymentFingerprint),
-        execute,
+        record: doubleSpendRecord({
+          bindConfig: () => undefined,
+          constructWorkflow: async () =>
+            identityOf(actuation, deploymentFingerprint),
+          execute,
+          ...record,
+        }),
+        loadRuntime,
       });
       const invocation = invocationOf(actuation, directory);
       const outcome = runner.runOrResume(
@@ -2321,35 +2379,33 @@ describe("compiled manifest-bound production runtime V1", () => {
       );
       await outcome.catch(() => undefined);
       await rm(directory, { recursive: true, force: true });
-      return { outcome, execute, close, loadRuntimeConfig };
+      return { outcome, execute, close, loadRuntime };
     };
     const publicLoaded =
-      (overrides: Partial<Loaded> = {}) =>
-      (close: () => Promise<void>): Loaded => ({
-        schemaVersion: WORKFLOW_RUNTIME_CONFIG,
-        config: undefined,
-        retainedDaSources: [retainedDaSource()],
-        close,
-        ...overrides,
-      });
+      (overrides: Partial<LoadedWorkflowRuntime> = {}) =>
+      (
+        actuation: Actuation,
+        close: () => Promise<void>,
+      ): LoadedWorkflowRuntime =>
+        loadedRuntime(actuation, { close, ...overrides });
 
     it("refuses another category before loading any runtime configuration", async () => {
-      const { outcome, loadRuntimeConfig, execute } =
-        await driveGenericRunOrResume({
-          loaded: publicLoaded(),
-          category: "zeroInput",
-        });
+      const { outcome, loadRuntime, execute } = await driveGenericRunOrResume({
+        loaded: publicLoaded(),
+        category: "zeroInput",
+      });
       await expect(outcome).rejects.toThrow(
         "production workflow runner category mismatch: expected=doubleSpend actual=zeroInput",
       );
-      expect(loadRuntimeConfig).not.toHaveBeenCalled();
+      expect(loadRuntime).not.toHaveBeenCalled();
       expect(execute).not.toHaveBeenCalled();
     });
 
     it("refuses a loaded runtime that omits its transport disposer", async () => {
       const { outcome, execute } = await driveGenericRunOrResume({
-        loaded: () => {
+        loaded: (actuation) => {
           const { close: _close, ...withoutDisposer } = publicLoaded()(
+            actuation,
             async () => undefined,
           );
           return withoutDisposer as never;
@@ -2409,6 +2465,75 @@ describe("compiled manifest-bound production runtime V1", () => {
       expect(execute).not.toHaveBeenCalled();
     });
 
+    it("refuses loaded infrastructure that names another header or decision, and disposes it", async () => {
+      for (const overrides of [
+        { headerHash: "ee".repeat(32) },
+        { decisionDigest: "ee".repeat(32) },
+        { decisionDigest: undefined },
+      ]) {
+        const { outcome, close, execute } = await driveGenericRunOrResume({
+          loaded: (actuation, close) =>
+            loadedRuntime(actuation, {
+              close,
+              infrastructure: familyCommonInfrastructureForTest(
+                actuation,
+                overrides,
+              ),
+            }),
+        });
+        await expect(outcome).rejects.toThrow(
+          "production workflow runtime infrastructure differs from the invocation",
+        );
+        expect(close).toHaveBeenCalledOnce();
+        expect(execute).not.toHaveBeenCalled();
+      }
+    });
+
+    it("applies the record inside the body: resolves its roster through the loaded resolver and refuses a missing requirement", async () => {
+      const resolveReferenceScript = vi.fn(async () => {
+        throw new Error("roster resolution reached the host resolver");
+      });
+      const missing = await driveGenericRunOrResume({
+        loaded: (actuation, close) =>
+          loadedRuntime(actuation, { close, resolveReferenceScript }),
+        record: { requires: ["replayContext"] },
+      });
+      await expect(missing.outcome).rejects.toThrow(
+        "doubleSpend application requires replayContext, which the host did not supply",
+      );
+      expect(resolveReferenceScript).not.toHaveBeenCalled();
+      expect(missing.close).toHaveBeenCalledOnce();
+
+      const rostered = await driveGenericRunOrResume({
+        loaded: (actuation, close) =>
+          loadedRuntime(actuation, { close, resolveReferenceScript }),
+        record: { roster: { step01: "fraudProofDoubleSpend" } },
+      });
+      await expect(rostered.outcome).rejects.toThrow(
+        "roster resolution reached the host resolver",
+      );
+      expect(resolveReferenceScript).toHaveBeenCalledWith({
+        category: "doubleSpend",
+        role: "step01",
+        contractName: "fraudProofDoubleSpend",
+      });
+      expect(rostered.close).toHaveBeenCalledOnce();
+      expect(rostered.execute).not.toHaveBeenCalled();
+    });
+
+    it("exempts the record's requirements under reconciliation-only authority and then demands the recovery surface", async () => {
+      const { outcome, close, execute } = await driveGenericRunOrResume({
+        loaded: publicLoaded(),
+        record: { requires: ["replayContext"] },
+        restrictToReconciliation: true,
+      });
+      await expect(outcome).rejects.toThrow(
+        "manifest-bound workflow omitted its existing adapter recovery surface",
+      );
+      expect(close).toHaveBeenCalledOnce();
+      expect(execute).not.toHaveBeenCalled();
+    });
+
     it("checks the constructed decision digest against the invocation only when the record binds it", async () => {
       const directory = await mkdtemp(
         join(tmpdir(), "midgard-runtime-digest-"),
@@ -2435,12 +2560,7 @@ describe("compiled manifest-bound production runtime V1", () => {
             execute,
             bindsDecisionDigest,
           }),
-          async () => ({
-            schemaVersion: WORKFLOW_RUNTIME_CONFIG,
-            config: undefined,
-            retainedDaSources: [retainedDaSource()],
-            close: async () => undefined,
-          }),
+          async () => loadedRuntime(actuation),
         );
         return await runner.runOrResume({
           mode: "run",

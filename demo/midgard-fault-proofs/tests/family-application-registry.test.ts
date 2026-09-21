@@ -270,8 +270,13 @@ const REPLAY_CONTEXT_FAMILIES = [
   "nativeScriptDecoding",
   "mintAuthorization",
   "withdrawalMistag",
-  "valueNotPreserved",
 ];
+
+/**
+ * Replays the predecessor only when the classifier admitted one: the context
+ * is bound when the host supplies it and never required.
+ */
+const OPTIONAL_REPLAY_CONTEXT_FAMILIES = ["valueNotPreserved"];
 
 /** The sole interactive family, and the only record reading the challenge port. */
 const VALIDATION_CHALLENGE_FAMILIES = ["validationTraceDispute"];
@@ -485,7 +490,10 @@ describe("family application records declare the infrastructure they read", () =
         "historicalNativeScriptAuthority",
       );
       const requiresChallenge = record.requires.includes("validationChallenge");
-      expect(sentinels.has("replayContext")).toBe(requiresReplay);
+      expect(sentinels.has("replayContext")).toBe(
+        requiresReplay ||
+          OPTIONAL_REPLAY_CONTEXT_FAMILIES.includes(record.category),
+      );
       expect(sentinels.has("validationChallenge")).toBe(requiresChallenge);
       if (requiresChallenge) {
         // The challenge is the port's answer for this header and the admitted

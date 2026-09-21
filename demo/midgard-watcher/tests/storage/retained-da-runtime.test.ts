@@ -10,9 +10,12 @@ import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-id
 import {
   createManifestBoundWorkflowRunner,
   DaLibp2pRetainedDaSource,
+  defineFamilyApplication,
+  type FamilyCommonInfrastructure,
   type RetainedDaFetchAttempt,
   type RetainedDaPayloadSourceResult,
   WORKFLOW_RUNTIME_CONFIG,
+  type WorkflowAdapterReadinessInput,
   type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
 import { describe, expect, it, vi } from "vitest";
@@ -42,6 +45,7 @@ import {
   createWatcherWorkflowRuntimeLoader,
   WATCHER_RETAINED_DA_RUNTIME,
   WatcherRetainedDaSourceWithL1Fallback,
+  type WatcherWorkflowInfrastructure,
 } from "../../src/storage/retained-da-runtime.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
 
@@ -58,6 +62,30 @@ type TestDoubleSpendWorkflow = Readonly<{
     }>;
   }>;
 }>;
+
+/** The infrastructure a test builder hands back for one invocation. */
+const builtInfrastructure = (
+  call: WorkflowAdapterReadinessInput,
+  overrides: Partial<FamilyCommonInfrastructure> = {},
+): WatcherWorkflowInfrastructure => ({
+  infrastructure: {
+    manifest: {},
+    blueprintJson: "{}",
+    deploymentInfo: {},
+    headerHash: call.headerHash,
+    ...("decisionDigest" in call
+      ? { decisionDigest: (call as WorkflowAdapterRunnerInput).decisionDigest }
+      : {}),
+    lucid: {} as never,
+    signer: {} as never,
+    source: {} as never,
+    stateQueueMutationLeaseCoordinator: {} as never,
+    ...overrides,
+  },
+  resolveReferenceScript: async () => {
+    throw new Error("an empty roster resolves no reference script");
+  },
+});
 
 const rawConfig = (multiaddr = `/dns4/da-a.example/tcp/443/p2p/${PEER_ID}`) =>
   ({
@@ -676,7 +704,8 @@ describe("production retained-DA runtime V1", () => {
       const loader = createWatcherWorkflowRuntimeLoader({
         deploymentIdentity: deploymentIdentity(),
         unsafeTransportFactoryForTest: fake.factory,
-        buildInfrastructureConfig: async () => ({ ok: true }),
+        buildInfrastructure: async ({ invocation: call }) =>
+          builtInfrastructure(call),
       });
       await expect(
         loader({
@@ -709,15 +738,15 @@ describe("production retained-DA runtime V1", () => {
     const configPath = join(directory, "watcher.json");
     await writeFile(configPath, JSON.stringify(rawConfig()));
     const fake = transportFactory();
-    const buildInfrastructureConfig = vi.fn(async ({ invocation: call }) => ({
-      category: call.category,
-      headerHash: call.headerHash,
-    }));
+    const built = builtInfrastructure(
+      invocation({ runtimeConfigPath: configPath }),
+    );
+    const buildInfrastructure = vi.fn(async () => built);
     try {
       const loader = createWatcherWorkflowRuntimeLoader({
         deploymentIdentity: deploymentIdentity(),
         unsafeTransportFactoryForTest: fake.factory,
-        buildInfrastructureConfig,
+        buildInfrastructure,
       });
       const call = invocation({ runtimeConfigPath: configPath });
       const loaded = await loader({
@@ -726,11 +755,12 @@ describe("production retained-DA runtime V1", () => {
       });
       expect(loaded.schemaVersion).toBe(WORKFLOW_RUNTIME_CONFIG);
       expect(loaded.retainedDaSources).toHaveLength(1);
-      expect(loaded.config).toEqual({
-        category: "doubleSpend",
-        headerHash: call.headerHash,
-      });
-      expect(buildInfrastructureConfig).toHaveBeenCalledWith(
+      // The loaded runtime carries exactly what the builder built: the
+      // common infrastructure and the resolver, nothing family-shaped.
+      expect(loaded.infrastructure).toBe(built.infrastructure);
+      expect(loaded.resolveReferenceScript).toBe(built.resolveReferenceScript);
+      expect(loaded).not.toHaveProperty("config");
+      expect(buildInfrastructure).toHaveBeenCalledWith(
         expect.objectContaining({ invocation: call }),
       );
       await loaded.close();
@@ -748,17 +778,28 @@ describe("production retained-DA runtime V1", () => {
     await writeFile(configPath, JSON.stringify(rawConfig()));
     const originalTransport = transportFactory();
     const substitutedTransport = transportFactory();
-    const originalBuilder = vi.fn(async () => ({ authority: "original" }));
-    const substitutedBuilder = vi.fn(async () => ({
-      authority: "substituted",
-    }));
+    const originalBuilder = vi.fn(
+      async ({
+        invocation: call,
+      }: {
+        invocation: WorkflowAdapterReadinessInput;
+      }) => builtInfrastructure(call, { manifest: { authority: "original" } }),
+    );
+    const substitutedBuilder = vi.fn(
+      async ({
+        invocation: call,
+      }: {
+        invocation: WorkflowAdapterReadinessInput;
+      }) =>
+        builtInfrastructure(call, { manifest: { authority: "substituted" } }),
+    );
     const substituteAuthority = makeWatcherDeploymentAuthorityFixture({
       blueprintHash: "33".repeat(32),
     });
     const mutableOptions = {
       deploymentIdentity: deploymentIdentity(),
       unsafeTransportFactoryForTest: originalTransport.factory,
-      buildInfrastructureConfig: originalBuilder,
+      buildInfrastructure: originalBuilder,
     };
     try {
       const loader = createWatcherWorkflowRuntimeLoader(mutableOptions);
@@ -769,10 +810,10 @@ describe("production retained-DA runtime V1", () => {
       mutableOptions.deploymentIdentity = substituteAuthority.result;
       mutableOptions.unsafeTransportFactoryForTest =
         substitutedTransport.factory;
-      mutableOptions.buildInfrastructureConfig = substitutedBuilder;
+      mutableOptions.buildInfrastructure = substitutedBuilder;
 
       const loaded = await pending;
-      expect(loaded.config).toEqual({ authority: "original" });
+      expect(loaded.infrastructure.manifest).toEqual({ authority: "original" });
       expect(originalBuilder).toHaveBeenCalledTimes(1);
       expect(substitutedBuilder).not.toHaveBeenCalled();
       expect(originalTransport.factory).toHaveBeenCalledTimes(1);
@@ -794,7 +835,8 @@ describe("production retained-DA runtime V1", () => {
       const loader = createWatcherWorkflowRuntimeLoader({
         deploymentIdentity: deploymentIdentity(),
         unsafeTransportFactoryForTest: substituted.factory,
-        buildInfrastructureConfig: async () => ({ ok: true }),
+        buildInfrastructure: async ({ invocation: call }) =>
+          builtInfrastructure(call),
       });
       await expect(
         loader({
@@ -808,7 +850,7 @@ describe("production retained-DA runtime V1", () => {
       const failingLoader = createWatcherWorkflowRuntimeLoader({
         deploymentIdentity: deploymentIdentity(),
         unsafeTransportFactoryForTest: failed.factory,
-        buildInfrastructureConfig: async () => {
+        buildInfrastructure: async () => {
           throw new Error("infrastructure refused");
         },
       });
@@ -836,28 +878,35 @@ describe("production retained-DA runtime V1", () => {
       const builder = vi.fn(
         async ({
           invocation: exactInvocation,
-        }): Promise<TestDoubleSpendWorkflow> => ({
-          binding: {
-            deploymentFingerprint: exactInvocation.deploymentFingerprint,
-            definition: {
-              category: "doubleSpend",
-              headerHash: exactInvocation.headerHash,
-            },
-          },
-        }),
+        }: {
+          invocation: WorkflowAdapterReadinessInput;
+        }) => builtInfrastructure(exactInvocation),
       );
       const runner = createManifestBoundWorkflowRunner({
-        category: "doubleSpend",
-        loadRuntimeConfig:
-          createWatcherWorkflowRuntimeLoader<TestDoubleSpendWorkflow>({
-            deploymentIdentity: deploymentIdentity(),
-            unsafeTransportFactoryForTest: transport.factory,
-            buildInfrastructureConfig: builder,
+        record: defineFamilyApplication({
+          category: "doubleSpend" as const,
+          roster: {},
+          requires: [],
+          bindConfig: ({ infrastructure }): TestDoubleSpendWorkflow => ({
+            binding: {
+              deploymentFingerprint: DEPLOYMENT,
+              definition: {
+                category: "doubleSpend",
+                headerHash: infrastructure.headerHash,
+              },
+            },
           }),
-        constructWorkflow: async (config) => config,
-        execute: async () => {
-          throw new Error("structural permit reached execution");
-        },
+          constructWorkflow: async (config) => config,
+          execute: async () => {
+            throw new Error("structural permit reached execution");
+          },
+          bindsDecisionDigest: false,
+        }),
+        loadRuntime: createWatcherWorkflowRuntimeLoader({
+          deploymentIdentity: deploymentIdentity(),
+          unsafeTransportFactoryForTest: transport.factory,
+          buildInfrastructure: builder,
+        }),
       });
       await expect(runner.runOrResume(call)).rejects.toThrow(
         "actuation permit was not admitted",
@@ -947,7 +996,8 @@ describe("retained-DA runtime owner", () => {
             network: "Custom",
           }).result,
           runtimeOwner: owner,
-          buildInfrastructureConfig: async () => ({}),
+          buildInfrastructure: async ({ invocation: call }) =>
+            builtInfrastructure(call),
         }),
       ).toThrow("owner belongs to another deployment identity");
       expect(fake.factory).toHaveBeenCalledTimes(1);

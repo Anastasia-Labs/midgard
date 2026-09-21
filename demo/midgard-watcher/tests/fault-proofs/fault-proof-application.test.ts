@@ -2,10 +2,11 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES } from "@al-ft/midgard-fault-proofs";
 import {
+  FAMILY_APPLICATION_REGISTRY,
   type ResolvedProverSigner,
   type StateQueueMutationLeaseCoordinator,
+  TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES,
   unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTest,
   type WorkflowAdapterReadinessInput,
   type WorkflowAdapterRunnerInput,
@@ -264,15 +265,6 @@ const dependencies = (): WatcherFaultProofApplicationDependencies => {
       } as UTxO;
     }),
     createLeaseCoordinator: vi.fn(() => lease),
-    constructWorkflow: vi.fn(async (tagged) => ({
-      binding: {
-        deploymentFingerprint: DEPLOYMENT,
-        definition: {
-          category: tagged.category,
-          headerHash: tagged.config.headerHash,
-        },
-      },
-    })),
   };
 };
 
@@ -395,12 +387,20 @@ describe("watcher production fault-proof application V1", () => {
         for (const rosterOutRef of rosterOutRefs) {
           expect(rosterOutRef).toMatch(/^[0-9a-f]{64}#\d+$/u);
         }
-        // One distinct deployment contract per rostered name, and the roster
+        // One distinct deployment contract per rostered role, and the roster
         // accounts for exactly the reference scripts this workflow resolved:
         // nothing loaded but unreported, nothing reported but never resolved.
         expect(new Set(rosterOutRefs).size).toBe(rosterOutRefs.length);
         expect(rosterOutRefs.map(contractNameForOutRef).sort()).toEqual(
           [...resolvedContractNames].sort(),
+        );
+        // Readiness reports one out-ref per role of the family's registry
+        // roster, and the resolver was asked for exactly that roster's
+        // contracts: the registry record is the single source of truth.
+        const { roster } = FAMILY_APPLICATION_REGISTRY[category];
+        expect(rosterKeys).toEqual(Object.keys(roster));
+        expect([...resolvedContractNames].sort()).toEqual(
+          Object.values(roster).sort(),
         );
         // Every family authenticates catalogue membership during init, including
         // the fabricated-event families whose later evidence comes from L1.
@@ -423,13 +423,14 @@ describe("watcher production fault-proof application V1", () => {
           ),
         ].sort((left, right) => left - right);
         if (category === "transitionTrace") {
-          // The workflow module exports its own reference roster; that export
-          // is the single source of truth for what startup must preflight.
-          expect(rosterKeys).toEqual(
-            TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES,
+          // The workflow module exports its own reference roster, an authority
+          // independent of the registry: the contracts readiness resolved are
+          // exactly the ones that module names.
+          expect([...resolvedContractNames].sort()).toEqual(
+            [...TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES].sort(),
           );
-          expect(stepOrdinals).toEqual([]);
-        } else if (category === "validationTraceDispute") {
+        }
+        if (category === "validationTraceDispute") {
           // The interactive dispute game names its scripts by role in the
           // game, not by a physical step ordinal.
           expect(stepOrdinals).toEqual([]);
@@ -697,7 +698,6 @@ it("verifies completion deployment metadata without resolving wallet or admin se
     expect(deps.makeLucid).not.toHaveBeenCalled();
     expect(deps.createLeaseCoordinator).not.toHaveBeenCalled();
     expect(deps.resolveReferenceScript).not.toHaveBeenCalled();
-    expect(deps.constructWorkflow).not.toHaveBeenCalled();
   } finally {
     await application.close();
   }

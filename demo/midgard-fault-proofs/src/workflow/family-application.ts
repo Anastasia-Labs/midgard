@@ -42,6 +42,11 @@ import type {
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import type { LinearFamilyCategory } from "./linear-family-spec.js";
 import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source.js";
+import type {
+  FraudProofFamilyWorkflowAdapter,
+  FraudProofWorkflowTerminalVerifier,
+} from "./orchestrator.js";
+import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
 
 export const FAMILY_APPLICATION_RECORD =
   "midgard-production-family-application-record-v1" as const;
@@ -102,7 +107,10 @@ export type FamilyCommonInfrastructure = Readonly<{
 
 /**
  * The identity every constructed workflow carries. `decisionDigest` is present
- * only on the families whose record sets `bindsDecisionDigest`.
+ * only on the families whose record sets `bindsDecisionDigest`. The three
+ * recovery members are what a reconciliation-only resume reads back an
+ * already-submitted chain through; the shared runtime refuses to reconcile a
+ * workflow that omits any of them.
  */
 export type FamilyApplicationWorkflowIdentity<
   Category extends FraudProofCatalogueCategoryName,
@@ -115,6 +123,9 @@ export type FamilyApplicationWorkflowIdentity<
     }>;
   }>;
   decisionDigest?: string;
+  adapter?: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier?: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority?: FraudProofReleaseFinalityAuthority;
 }>;
 
 /** Resolved published reference-script UTxOs, keyed by the record's roles. */
@@ -364,6 +375,17 @@ const assertFamilyApplicationRecordVersion = (
   }
 };
 
+/**
+ * The part of a record readiness reads: its minted version, its category and
+ * its roster. It names no config or workflow, so a registry entry, whose
+ * config is erased, is accepted as it is.
+ */
+export type FamilyApplicationRosterRecord = Readonly<{
+  recordVersion: typeof FAMILY_APPLICATION_RECORD;
+  category: FraudProofCatalogueCategoryName;
+  roster: Readonly<Record<string, string>>;
+}>;
+
 /** What a resolved roster yields, before any family config is bound. */
 export type ResolvedFamilyApplicationReferences = Readonly<{
   references: FamilyResolvedReferenceScripts;
@@ -380,15 +402,11 @@ export type ResolvedFamilyApplicationReferences = Readonly<{
  * family's requirements are therefore not exempted for readiness — readiness
  * never reaches the point where they would apply.
  */
-export const resolveFamilyApplicationReferences = async <
-  Category extends FraudProofCatalogueCategoryName,
-  Config,
-  Workflow extends FamilyApplicationWorkflowIdentity<Category>,
->({
+export const resolveFamilyApplicationReferences = async ({
   record,
   resolveReferenceScript,
 }: {
-  readonly record: FamilyApplicationRecord<Category, Config, Workflow>;
+  readonly record: FamilyApplicationRosterRecord;
   readonly resolveReferenceScript: FamilyReferenceScriptResolver;
 }): Promise<ResolvedFamilyApplicationReferences> => {
   assertFamilyApplicationRecordVersion(record);

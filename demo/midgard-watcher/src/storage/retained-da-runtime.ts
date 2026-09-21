@@ -8,12 +8,14 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 import {
   DaLibp2pRetainedDaSource,
+  type FamilyCommonInfrastructure,
+  type FamilyReferenceScriptResolver,
   type RetainedDaLibp2pRequest,
   type RetainedDaLibp2pTransport,
   type RetainedDaPayloadSource,
   WORKFLOW_RUNTIME_CONFIG,
   type WorkflowAdapterReadinessInput,
-  type WorkflowRuntimeConfigLoader,
+  type WorkflowRuntimeLoader,
 } from "@al-ft/midgard-fault-proofs";
 
 import { assertWatcherL1AvailabilityPayloadSource } from "../availability/published-payload.js";
@@ -312,10 +314,16 @@ const admitRuntimeOptions = (
   });
 };
 
-export type WatcherWorkflowInfrastructureBuilder<Config> = (input: {
+/** What the watcher builds for one invocation and every family draws from. */
+export type WatcherWorkflowInfrastructure = Readonly<{
+  infrastructure: FamilyCommonInfrastructure;
+  resolveReferenceScript: FamilyReferenceScriptResolver;
+}>;
+
+export type WatcherWorkflowInfrastructureBuilder = (input: {
   readonly watcherConfig: WatcherConfig;
   readonly invocation: WorkflowAdapterReadinessInput;
-}) => Promise<Config>;
+}) => Promise<WatcherWorkflowInfrastructure>;
 
 type AdmittedPeer = WatcherConfig["da"]["peers"][number];
 
@@ -569,29 +577,31 @@ export const createWatcherRetainedDaRuntime = async (
 };
 
 /**
- * Concrete shared-workflow loader for the watcher application.
+ * The watcher's one shared-workflow loader, the same for every family.
  *
  * `runtimeConfigPath` is the strict watcher configuration file. It may name
  * public network infrastructure and secret *sources*, never prepared proof
- * evidence. Family-specific capabilities (Lucid, signer, manifest-bound
- * reference UTxOs and mutation lease coordinator) are constructed by the
- * application callback after this loader has independently bound public DA to
- * the verified deployment. The shared runner owns and always invokes `close`.
+ * evidence. The common infrastructure (Lucid, signer, mutation lease
+ * coordinator, the optional parts a family may require) and the reference
+ * resolver are constructed by the application callback after this loader has
+ * independently bound public DA to the verified deployment; each family's
+ * record then resolves its own roster and binds its own config from them. The
+ * shared runner owns and always invokes `close`.
  */
-export const createWatcherWorkflowRuntimeLoader = <Config>(
+export const createWatcherWorkflowRuntimeLoader = (
   options: Omit<WatcherRetainedDaRuntimeOptions, "watcherConfig"> & {
-    readonly buildInfrastructureConfig: WatcherWorkflowInfrastructureBuilder<Config>;
+    readonly buildInfrastructure: WatcherWorkflowInfrastructureBuilder;
     readonly runtimeOwner?: WatcherRetainedDaRuntimeOwner;
   },
-): WorkflowRuntimeConfigLoader<Config> => {
+): WorkflowRuntimeLoader => {
   const {
-    buildInfrastructureConfig,
+    buildInfrastructure,
     runtimeOwner,
     deploymentIdentity,
     unsafeTransportFactoryForTest,
     unsafeTransportOptionsForTest,
   } = options;
-  if (typeof buildInfrastructureConfig !== "function") {
+  if (typeof buildInfrastructure !== "function") {
     throw new Error(
       "production workflow runtime omitted its infrastructure builder",
     );
@@ -645,12 +655,12 @@ export const createWatcherWorkflowRuntimeLoader = <Config>(
           )
         : await runtimeOwner.createRuntime(watcherConfig);
     try {
+      const { infrastructure, resolveReferenceScript } =
+        await buildInfrastructure({ watcherConfig, invocation });
       return {
         schemaVersion: WORKFLOW_RUNTIME_CONFIG,
-        config: await buildInfrastructureConfig({
-          watcherConfig,
-          invocation,
-        }),
+        infrastructure,
+        resolveReferenceScript,
         retainedDaSources: retainedDa.sources,
         close: retainedDa.close,
       };

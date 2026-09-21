@@ -32,6 +32,7 @@ import {
 } from "../src/workflow/complete-replay.js";
 import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.js";
 import { cursorFamilyObservation } from "../src/workflow/cursor-family-state.js";
+import { defineFamilyApplication } from "../src/workflow/family-application.js";
 import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
@@ -80,6 +81,10 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import {
+  emptyRosterReferenceScriptResolver,
+  familyCommonInfrastructureForTest,
+} from "./support/family-common-infrastructure.js";
 
 // These fixtures provide an authenticated workflow directly; keep their adapter
 // wiring local so the production constructor is assembled from its definition.
@@ -731,8 +736,26 @@ it.each([
       );
       const close = vi.fn(async () => undefined);
       const runner = createManifestBoundWorkflowRunner({
-        category,
-        loadRuntimeConfig: async ({ invocation }) => {
+        record: defineFamilyApplication({
+          category,
+          roster: {},
+          requires: [],
+          // The record binds the authorizing decision out of the loaded
+          // infrastructure; the wrong-decision mode binds the stale one.
+          bindConfig: ({ infrastructure }) => ({
+            decisionDigest:
+              mode === "wrong authorizing decision"
+                ? decision.decisionDigest
+                : infrastructure.decisionDigest!,
+          }),
+          constructWorkflow: async (config) => ({
+            ...workflow,
+            decisionDigest: config.decisionDigest,
+          }),
+          execute: executeManifestBoundFieldPreimageLengthWorkflow,
+          bindsDecisionDigest: false,
+        }),
+        loadRuntime: async ({ invocation }) => {
           if (
             !("decisionDigest" in invocation) ||
             typeof invocation.decisionDigest !== "string"
@@ -742,21 +765,15 @@ it.each([
             );
           return {
             schemaVersion: WORKFLOW_RUNTIME_CONFIG,
-            config: {
-              decisionDigest:
-                mode === "wrong authorizing decision"
-                  ? decision.decisionDigest
-                  : invocation.decisionDigest,
-            },
+            infrastructure: familyCommonInfrastructureForTest({
+              headerHash: invocation.headerHash,
+              decisionDigest: invocation.decisionDigest,
+            }),
+            resolveReferenceScript: emptyRosterReferenceScriptResolver,
             retainedDaSources: [publicSource],
             close,
           };
         },
-        constructWorkflow: async (config) => ({
-          ...workflow,
-          decisionDigest: config.decisionDigest,
-        }),
-        execute: executeManifestBoundFieldPreimageLengthWorkflow,
       });
       const run = runner.runOrResume({
         mode: "resume",

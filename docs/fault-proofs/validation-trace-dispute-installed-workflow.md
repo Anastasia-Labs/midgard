@@ -23,8 +23,9 @@ at a consumer:
 - `VALIDATION_TRACE_DISPUTE_REMOVAL_CONTRACT_NAMES` — the nine shared
   cursor-removal contracts.
 
-Eighteen roles in that order are what startup readiness admits and what
-`taggedReferenceOutRefs` flattens, so a roster change fails closed rather than
+Eighteen roles in that order form the family's registry roster; startup
+readiness resolves that roster through `resolveFamilyApplicationReferences` and
+reports one out-ref per role, so a roster change fails closed rather than
 silently re-pairing out-refs to roles. Startup also requires the manifest's
 `cekProgramMaterialSpend` entry. Prepare, semantic, stage, and yield references
 beyond the eighteen tagged roles are resolved from the deployment identity at
