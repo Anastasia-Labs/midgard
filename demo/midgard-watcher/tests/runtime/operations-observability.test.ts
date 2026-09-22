@@ -359,7 +359,7 @@ describe("production operations observability V1", () => {
     ).toThrow("differs from supervisor");
   });
 
-  it("reports a failed retained-DA transport dial as a readiness reason, and an undialed transport as healthy", () => {
+  it("reports a failed retained-DA transport start as a readiness reason, and an unstarted transport as healthy", () => {
     const build = (
       transport: Parameters<
         typeof createWatcherOperationsObservability

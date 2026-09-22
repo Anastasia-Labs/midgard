@@ -133,9 +133,13 @@ export type WatcherRetainedDaRuntimeOptions = Readonly<{
 
 /**
  * Where the owner's one shared transport stands. `idle` means no workflow has
- * needed it yet, which is healthy: the transport is dialed on the first
- * launch, never by readiness. `failed` is sticky for the owner's lifetime and
- * carries the dial failure, so operations status can report it.
+ * needed it yet, which is healthy: the transport starts on the first
+ * classification or launch, never by readiness. Starting builds the local
+ * libp2p node and contacts no peer; peers are dialed per request under a
+ * lease. A start failure is therefore local and deterministic, so `failed` is
+ * sticky for the owner's lifetime and carries the start failure. The
+ * classification that triggered it fails closed and ends the process, and a
+ * restart owns a fresh transport; no in-process retry is intended.
  */
 export type WatcherRetainedDaTransportStatus = Readonly<{
   state: "idle" | "opening" | "open" | "failed" | "closed";
@@ -300,7 +304,7 @@ export const createWatcherRetainedDaRuntimeOwner = (
       controller.abort(new Error("retained-DA runtime owner is closed"));
       transportState = Object.freeze({ state: "closed", failure: null });
       closePromise = (async () => {
-        // A dial that failed left nothing to stop; close must not re-throw it.
+        // A start that failed left nothing to stop; close must not re-throw it.
         const started = await transport?.catch(() => undefined);
         await started?.stop();
       })();

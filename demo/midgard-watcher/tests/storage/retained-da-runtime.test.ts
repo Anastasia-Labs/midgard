@@ -990,7 +990,7 @@ describe("retained-DA runtime owner", () => {
     expect(owner.transportStatus()).toEqual({ state: "closed", failure: null });
   });
 
-  it("reports a sticky dial failure with its message so operations status can surface it", async () => {
+  it("reports a sticky transport start failure with its message so operations status can surface it", async () => {
     const factory = vi.fn(async (): Promise<WatcherPublicDaLibp2pTransport> => {
       throw new Error("dial failed: connection refused");
     });

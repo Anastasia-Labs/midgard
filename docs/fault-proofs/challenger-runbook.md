@@ -69,6 +69,13 @@ HeaderV1 from authenticated L1 state, retrieves retained evidence through the
 public DA protocols, records the classifier decision, reserves funding, and
 runs or resumes the manifest-bound category workflow.
 
+Operations status reports `retained_da_transport_failed` when the shared
+retained-DA transport failed to start. That start builds the local libp2p node
+and contacts no peer, so the cause is local (dependencies, keys, descriptors,
+memory). The watcher fails closed on the classification that needed it and
+exits 70 with the error in its `failed_closed` record; fix the host cause and
+restart. There is no in-process retry to wait for.
+
 For diagnosis, the package readiness command may be inspected without
 submitting transactions:
 

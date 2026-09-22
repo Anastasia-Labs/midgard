@@ -49,8 +49,13 @@ transport, so it is safe to run repeatedly and proves only that the deployment
 is bound and the scripts exist. Operations status (`readiness`,
 `readinessReasons`) is the live signal: it reports the supervisor phase,
 recovery, launch scope, proof deadlines, L1 source freshness, active alerts,
-and the shared retained-DA transport, which is dialed on the first workflow
-launch and reported as `retained_da_transport_failed` if that dial fails.
+and the shared retained-DA transport, which starts on the first fault
+classification and is reported as `retained_da_transport_failed` if that start
+fails. Starting builds the local libp2p node without contacting a peer, so a
+failure is local; the classification that needed it fails closed, the process
+exits 70, and a restart owns a fresh transport. There is no in-process retry.
+Peers are dialed per retrieval request, and a retrieval failure for an attested
+header is answered by an availability challenge, not by the transport status.
 Dependency health belongs to the live surface, not to startup readiness.
 See [launch readiness](../../docs/public_testnet_readiness.md) and the
 [challenger runbook](../../docs/fault-proofs/challenger-runbook.md) for acceptance
