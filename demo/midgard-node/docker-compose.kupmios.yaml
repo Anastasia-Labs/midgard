@@ -49,7 +49,7 @@ services:
       midgard_net:
 
   cardano-node:
-    image: ghcr.io/intersectmbo/cardano-node:${CARDANO_NODE_IMAGE_TAG:-11.0.1}
+    image: ghcr.io/intersectmbo/cardano-node:${CARDANO_NODE_IMAGE_TAG:-11.1.0}
     entrypoint:
       - /bin/sh
       - /bootstrap/run-cardano-node.sh
@@ -76,7 +76,7 @@ services:
       midgard_net:
 
   cardano-node-ogmios:
-    image: cardanosolutions/ogmios:${OGMIOS_IMAGE_TAG:-latest}
+    image: cardanosolutions/ogmios:${OGMIOS_IMAGE_TAG:-v7.0.0@sha256:8892ef5f77b94f1c95427cf9f2b40e6235a32b27a8b1e378db02289f3991617f}
     entrypoint:
       - /bin/sh
       - /bootstrap/run-ogmios.sh

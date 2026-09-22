@@ -27,11 +27,12 @@ import { CML } from "@lucid-evolution/lucid";
  * function boundary would leave exactly the layer this ticket adds untested.
  *
  * **Fidelity notes, so a reader knows what this does and does not prove.**
- * - Transaction JSON follows Ogmios v6's schema (`redeemers` as an array of
+ * - Transaction JSON follows Ogmios' v6/v7 schema (`redeemers` as an array of
  *   `{redeemer, executionUnits, validator: {purpose, index}}`, `references` as
- *   `{transaction: {id}, index}`), which is what `l1-services/docker-compose.yml`
- *   pins at v6.11.0. `cbor` is deliberately absent: a default Ogmios omits it
- *   unless started with `--include-transaction-cbor`.
+ *   `{transaction: {id}, index}`); `l1-services/docker-compose.yml` pins
+ *   v7.0.0, which kept those shapes and only stopped emitting empty
+ *   `validityInterval`/`outputs` fields. `cbor` is deliberately absent: a
+ *   default Ogmios omits it unless started with `--include-transaction-cbor`.
  * - Kupo match records are the **v2.11.0** `Match` shape, which is what
  *   `l1-services/docker-compose.yml` now pins: `additionalProperties: false` over
  *   `transaction_index, transaction_id, output_index, address, value, datum_hash,

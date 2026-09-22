@@ -68,7 +68,7 @@ services:
       retries: 100
 
   ogmios:
-    image: cardanosolutions/ogmios:v6.11.0
+    image: cardanosolutions/ogmios:v7.0.0@sha256:8892ef5f77b94f1c95427cf9f2b40e6235a32b27a8b1e378db02289f3991617f
     command:
       - --host
       - "0.0.0.0"
