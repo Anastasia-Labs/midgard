@@ -8,6 +8,7 @@
     "esModuleInterop": true,
     "module": "NodeNext",
     "moduleResolution": "nodenext",
+    "customConditions": ["midgard-source"],
     "noEmitOnError": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
@@ -21,6 +22,6 @@
     "outDir": "dist",
     "baseUrl": "."
   },
-  "include": ["src", "tests"],
+  "include": ["src", "tests", "tsup.config.ts"],
   "exclude": ["node_modules", "dist"]
 }

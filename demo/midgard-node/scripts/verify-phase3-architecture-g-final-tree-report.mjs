@@ -73,7 +73,6 @@ export const PHASE3_FINAL_TREE_SUITES = Object.freeze(
         "tests/phase4-t1-recovery.test.ts",
         "tests/pipelined-commit-process-harness.test.ts",
         "tests/speculative-commit-planner.test.ts",
-        "tests/speculative-commit-safety-guard.test.ts",
         "tests/speculative-commit-worker-session.test.ts",
         "tests/speculative-mpf-lifecycle.test.ts",
         "--reporter=default",

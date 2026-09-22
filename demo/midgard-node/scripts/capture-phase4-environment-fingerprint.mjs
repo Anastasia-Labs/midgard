@@ -6,6 +6,8 @@ import { createHash } from "node:crypto";
 
 import {
   canonicalJsonSha256,
+  decodePhase4EnvironmentArtifactV1,
+  decodePhase4EnvironmentDocumentV1,
   PHASE4_ENVIRONMENT_ARTIFACT_SCHEMA,
   PHASE4_ENVIRONMENT_SCHEMA,
   PHASE4_RESOURCE_PROFILE,
@@ -107,11 +109,12 @@ const document = {
   clockOffsetMs,
 };
 
-const artifact = {
+decodePhase4EnvironmentDocumentV1(document);
+const artifact = decodePhase4EnvironmentArtifactV1({
   schemaVersion: PHASE4_ENVIRONMENT_ARTIFACT_SCHEMA,
   documentSha256: canonicalJsonSha256(document),
   document,
-};
+});
 
 fs.mkdirSync(path.dirname(path.resolve(outputPath)), { recursive: true });
 fs.writeFileSync(outputPath, `${JSON.stringify(artifact, null, 2)}\n`);

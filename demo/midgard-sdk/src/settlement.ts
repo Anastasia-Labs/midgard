@@ -1,4 +1,5 @@
 import { type Assets, assetsEqual } from "@al-ft/midgard-core/assets";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -19,7 +20,7 @@ import {
   FetchActiveOperatorParams,
   fetchActiveOperatorUTxOs,
   requireActiveOperatorUTxO,
-} from "@/active-operators.js";
+} from "./active-operators.js";
 import {
   AssetError,
   AuthenticatedValidator,
@@ -31,27 +32,23 @@ import {
   makeReturn,
   MerkleRootSchema,
   POSIXTimeSchema,
-  UnspecifiedNetworkError,
   VerificationKeyHashSchema,
-} from "@/common.js";
-import { fetchHubOracleUTxOProgram, HubOracleError } from "@/hub-oracle.js";
-import { AuthenticUTxO } from "@/internals.js";
-import {
-  MidgardTxValiditySchema,
-  WithdrawalValiditySchema,
-} from "@/ledger-state.js";
-import { getProtocolParameters } from "@/protocol-parameters.js";
+} from "./common.js";
+import { fetchHubOracleUTxOProgram, HubOracleError } from "./hub-oracle.js";
+import { AuthenticUTxO } from "./internals.js";
+import { WithdrawalValiditySchema } from "./ledger-state.js";
+import { OperatorVerdictSchema } from "./rejection-reason.js";
 import {
   FetchRetiredOperatorParams,
   fetchRetiredOperatorUTxOs,
   RetiredOperatorUTxO,
-} from "@/retired-operators.js";
-import { fetchSchedulerUTxOProgram, SchedulerError } from "@/scheduler.js";
+} from "./retired-operators.js";
+import { fetchSchedulerUTxOProgram, SchedulerError } from "./scheduler.js";
 import {
   EventSettlementMembershipProof,
   EventSettlementMembershipProofSchema,
-} from "@/transition-trace.js";
-import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
+} from "./transition-trace.js";
+import { completeTxWithLocalUPLCEvalProgram } from "./tx-completion.js";
 import {
   requireInputIndex,
   requireOwnMintPurpose,
@@ -59,11 +56,10 @@ import {
   requireReferenceInputIndex,
   requireSpendRedeemerIndex,
   requireUniqueOutputIndex,
-} from "@/tx-context-redeemer.js";
-import { outputDatumCborMatches } from "@/tx-output-utils.js";
-
+} from "./tx-context-redeemer.js";
+import { outputDatumCborMatches } from "./tx-output-utils.js";
 import { DepositUTxO, utxosToDepositUTxOs } from "./user-events/deposit.js";
-import { TxOrderUTxO, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
+import { TxOrderUTxOV1, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
 import {
   utxosToWithdrawalUTxOs,
   WithdrawalUTxO,
@@ -74,8 +70,9 @@ export const ResolutionClaimSchema = Data.Object({
   operator: VerificationKeyHashSchema,
 });
 export type ResolutionClaim = Data.Static<typeof ResolutionClaimSchema>;
-export const ResolutionClaim =
-  ResolutionClaimSchema as unknown as ResolutionClaim;
+export const ResolutionClaim = asDataType<ResolutionClaim>(
+  ResolutionClaimSchema,
+);
 
 export const SettlementDatumSchema = Data.Object({
   deposits_root: MerkleRootSchema,
@@ -85,8 +82,9 @@ export const SettlementDatumSchema = Data.Object({
   resolution_claim: Data.Nullable(ResolutionClaimSchema),
 });
 export type SettlementDatum = Data.Static<typeof SettlementDatumSchema>;
-export const SettlementDatum =
-  SettlementDatumSchema as unknown as SettlementDatum;
+export const SettlementDatum = asDataType<SettlementDatum>(
+  SettlementDatumSchema,
+);
 
 export const EventTypeSchema = Data.Enum([
   Data.Literal("Deposit"),
@@ -97,12 +95,12 @@ export const EventTypeSchema = Data.Enum([
   }),
   Data.Object({
     TxOrder: Data.Object({
-      validity_override: MidgardTxValiditySchema,
+      validity_override: OperatorVerdictSchema,
     }),
   }),
 ]);
 export type EventType = Data.Static<typeof EventTypeSchema>;
-export const EventType = EventTypeSchema as unknown as EventType;
+export const EventType = asDataType<EventType>(EventTypeSchema);
 
 export const SettlementSpendRedeemerSchema = Data.Enum([
   Data.Object({
@@ -140,8 +138,9 @@ export const SettlementSpendRedeemerSchema = Data.Enum([
 export type SettlementSpendRedeemer = Data.Static<
   typeof SettlementSpendRedeemerSchema
 >;
-export const SettlementSpendRedeemer =
-  SettlementSpendRedeemerSchema as unknown as SettlementSpendRedeemer;
+export const SettlementSpendRedeemer = asDataType<SettlementSpendRedeemer>(
+  SettlementSpendRedeemerSchema,
+);
 
 export const SettlementMintRedeemerSchema = Data.Enum([
   Data.Object({
@@ -163,8 +162,9 @@ export const SettlementMintRedeemerSchema = Data.Enum([
 export type SettlementMintRedeemer = Data.Static<
   typeof SettlementMintRedeemerSchema
 >;
-export const SettlementMintRedeemer =
-  SettlementMintRedeemerSchema as unknown as SettlementMintRedeemer;
+export const SettlementMintRedeemer = asDataType<SettlementMintRedeemer>(
+  SettlementMintRedeemerSchema,
+);
 
 export type AttachResolutionClaimParams = {
   settlementValidator: AuthenticatedValidator;
@@ -484,7 +484,7 @@ export const unsignedAttachResolutionClaimTxProgram = (
         composedTx,
         (e) =>
           new SettlementError({
-            message: `Failed to build the transaction: ${e}`,
+            message: `Failed to build the transaction: ${String(e)}`,
             cause: e,
           }),
       );
@@ -512,7 +512,7 @@ export const fetchUserEventRefUTxO = (
   userEventPolicyId: string,
   lucid: LucidEvolution,
 ): Effect.Effect<
-  DepositUTxO | WithdrawalUTxO | TxOrderUTxO,
+  DepositUTxO | WithdrawalUTxO | TxOrderUTxOV1,
   LucidError | DataCoercionError
 > =>
   Effect.gen(function* () {
@@ -603,11 +603,22 @@ export const incompleteDisproveResolutionClaimTxProgram = (
     }),
   );
 
+/**
+ * Bad-settlement slashing carries no fraud-prover payout.
+ *
+ * The 2026-08-11 owner ruling 7 (D4) routes the `fraud_prover_reward`
+ * exclusively through the once-per-header `RemoveFraudulentBlockHeader`
+ * transaction, so this route pays no reward and therefore needs no prover
+ * destination. The former `fraudProverAddress`/`fraudProverDatum` fields and
+ * the 60% bond remainder they were paid with are deleted, not relocated: F04
+ * §2.5 records that remainder rule as a non-authority that "must not be
+ * revived".
+ */
 export type RemoveOperatorBadSettlementParams = {
   slashedOperatorKey: string;
+  /** Exact release-manifest slashing fee; never infer it from a network label. */
+  slashingPenaltyLovelace: bigint;
   activeOperatorMintingPolicy: MintingPolicy;
-  fraudProverAddress: string;
-  fraudProverDatum: string;
   hubOracleValidator: AuthenticatedValidator;
   eventType: EventType;
   eventAddress: string;
@@ -661,7 +672,6 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
   | LucidError
   | HubOracleError
   | SettlementError
-  | UnspecifiedNetworkError
 > =>
   Effect.gen(function* () {
     const activeOperatorUTxOs: ActiveOperatorUTxO[] =
@@ -680,8 +690,6 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
       operatorInputUTxO,
       params.slashedOperatorKey,
     );
-    const bondAmount = (operatorInputUTxO.utxo.assets.lovelace * 60n) / 100n;
-
     const operatorNFT = yield* getOperatorNFT(
       operatorInputUTxO,
       params.activeOperatorParams.activeOperatorPolicyId,
@@ -693,15 +701,12 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
       hubOraclePolicyId: params.hubOracleValidator.policyId,
     });
 
-    const network = lucid.config().network;
-    if (!network) {
-      return yield* new UnspecifiedNetworkError({
-        message: "",
-        cause: "Cardano network not found",
+    if (params.slashingPenaltyLovelace <= 0n) {
+      return yield* new SettlementError({
+        message: "Bad-settlement slashing fee must be positive",
+        cause: params.slashingPenaltyLovelace,
       });
     }
-
-    const slashingPenalty = getProtocolParameters(network).slashing_penalty;
 
     const userEventRefUTxO = yield* fetchUserEventRefUTxO(
       params.eventType,
@@ -721,13 +726,8 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
         },
         mintRedeemerCBOR,
       )
-      .pay.ToAddressWithData(
-        params.fraudProverAddress,
-        { kind: "inline", value: params.fraudProverDatum },
-        { lovelace: bondAmount },
-      )
       .attach.MintingPolicy(params.activeOperatorMintingPolicy)
-      .setMinFee(slashingPenalty);
+      .setMinFee(params.slashingPenaltyLovelace);
     return buildsettlementTx;
   }).pipe(
     Effect.catchAllDefect((defect) => {
@@ -750,7 +750,6 @@ export const unsignedDisproveResolutionClaimTxProgram = (
   | LucidError
   | SettlementError
   | HubOracleError
-  | UnspecifiedNetworkError
 > =>
   Effect.gen(function* () {
     const disproveResolutionClaimTx =
@@ -768,7 +767,7 @@ export const unsignedDisproveResolutionClaimTxProgram = (
         composedTx,
         (e) =>
           new SettlementError({
-            message: `Failed to build the transaction: ${e}`,
+            message: `Failed to build the transaction: ${String(e)}`,
             cause: e,
           }),
       );
@@ -856,11 +855,13 @@ export const incompleteResolveSettlementProgram = (
       );
     }) satisfies BuildTxWithRedeemer;
 
-    const resolutionTime = Number(
-      params.settlementUTxO.datum.resolution_claim?.resolution_time ?? 0n,
-    );
+    const resolutionClaim = params.settlementUTxO.datum.resolution_claim;
+    if (resolutionClaim === null) {
+      throw new Error("Settlement resolution claim is required");
+    }
+    const resolutionTime = Number(resolutionClaim.resolution_time);
     const txLowerBound = resolutionTime + 1 * 60_000;
-    const txSigner = params.settlementUTxO.datum.resolution_claim?.operator!;
+    const txSigner = resolutionClaim.operator;
     const changeAmount = 1_000_000n;
 
     const settlementNFT = toUnit(
@@ -910,7 +911,7 @@ export const unsignedResolveSettlementTxProgram = (
         resolveSettlementTx,
         (e) =>
           new SettlementError({
-            message: `Failed to build the transaction: ${e}`,
+            message: `Failed to build the transaction: ${String(e)}`,
             cause: e,
           }),
       );

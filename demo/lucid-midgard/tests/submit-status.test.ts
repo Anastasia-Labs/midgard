@@ -5,6 +5,7 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -65,10 +66,14 @@ const makeProvider = (opts?: {
     network: "Preview",
     midgardNativeTxVersion: 1,
     currentSlot: 0n,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+    codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
     submissionLimits: {
-      maxSubmitTxCborBytes: opts?.maxSubmitTxCborBytes ?? 32768,
+      maxSubmitTxCborBytes:
+        opts?.maxSubmitTxCborBytes ??
+        MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
     },
     validation: {
       strictnessProfile: "phase1_midgard",
@@ -83,7 +88,11 @@ const makeProvider = (opts?: {
     strictnessProfile: "phase1_midgard",
     ...(opts?.omitProtocolParameterSubmitLimit === true
       ? {}
-      : { maxSubmitTxCborBytes: opts?.maxSubmitTxCborBytes ?? 32768 }),
+      : {
+          maxSubmitTxCborBytes:
+            opts?.maxSubmitTxCborBytes ??
+            MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
+        }),
   }),
   getCurrentSlot: async () => 0n,
   submitTx:
@@ -133,14 +142,18 @@ const makeSignedFixture = async () => {
 };
 
 describe("submit/status chaining", () => {
-  it("signs native body hashes and rebuilds witness hashes without changing tx id", async () => {
+  it("signs native body hashes and rejects a duplicate witness without changing tx id", async () => {
     const { completed, wallet, keyHash } = await makeSignedFixture();
     const signed = await completed.sign(wallet);
-    const signedAgain = await signed.sign(wallet);
 
     expect(signed.txIdHex).toBe(completed.txIdHex);
     expect(signed.txHex).not.toBe(completed.txHex);
-    expect(signedAgain.txHex).toBe(signed.txHex);
+    await expect(signed.sign(wallet)).rejects.toMatchObject({
+      name: "SigningError",
+      code: "SIGNING_ERROR",
+      message: "Duplicate vkey witness",
+      detail: keyHash.to_hex(),
+    });
     expect(signed.metadata.addrWitnessCount).toBe(1);
     expect(signed.metadata.signedBy).toEqual([keyHash.to_hex()]);
 

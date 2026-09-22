@@ -1,10 +1,8 @@
 import {
-  asArray,
-  asBigInt,
-  asMap,
-  decodeSingleCbor,
-  encodeCbor,
-} from "@al-ft/midgard-core/codec/cbor";
+  decodeMidgardRedeemerWitnessFieldPreimage,
+  MIDGARD_REDEEMER_PURPOSE_TAGS,
+} from "@al-ft/midgard-core/codec";
+import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { CML, Constr, Data } from "@lucid-evolution/lucid";
 
 import { txOutRefData } from "./tx-out-ref.js";
@@ -35,27 +33,13 @@ export const midgardRedeemerPointerKey = (
 
 const ensureSupportedTag = (tag: number, fieldName: string): void => {
   if (
-    tag !== MidgardRedeemerTag.Spend &&
-    tag !== MidgardRedeemerTag.Mint &&
-    tag !== MidgardRedeemerTag.Reward &&
-    tag !== MidgardRedeemerTag.Receiving
+    tag !== Number(MidgardRedeemerTag.Spend) &&
+    tag !== Number(MidgardRedeemerTag.Mint) &&
+    tag !== Number(MidgardRedeemerTag.Reward) &&
+    tag !== Number(MidgardRedeemerTag.Receiving)
   ) {
     throw new Error(`${fieldName} has unsupported redeemer tag ${tag}`);
   }
-};
-
-const decodeExUnits = (
-  value: unknown,
-  fieldName: string,
-): DecodedMidgardRedeemer["exUnits"] => {
-  const arr = asArray(value, fieldName);
-  if (arr.length !== 2) {
-    throw new Error(`${fieldName} must have exactly 2 elements`);
-  }
-  return {
-    memory: asBigInt(arr[0], `${fieldName}.memory`),
-    steps: asBigInt(arr[1], `${fieldName}.steps`),
-  };
 };
 
 const decodeRedeemerDataCborHex = (
@@ -74,65 +58,40 @@ const decodeRedeemerDataCborHex = (
   return dataCborHex;
 };
 
-const decodeRedeemerArray = (
-  value: unknown,
-  fieldName: string,
-): DecodedMidgardRedeemer => {
-  const arr = asArray(value, fieldName);
-  if (arr.length !== 4) {
-    throw new Error(`${fieldName} must have exactly 4 elements`);
-  }
-  const tag = Number(asBigInt(arr[0], `${fieldName}.tag`));
-  ensureSupportedTag(tag, `${fieldName}.tag`);
-  return {
-    tag,
-    index: asBigInt(arr[1], `${fieldName}.index`),
-    dataCborHex: decodeRedeemerDataCborHex(arr[2], `${fieldName}.data`),
-    exUnits: decodeExUnits(arr[3], `${fieldName}.ex_units`),
-  };
-};
-
-const decodeRedeemerMapEntry = (
-  key: unknown,
-  value: unknown,
-  fieldName: string,
-): DecodedMidgardRedeemer => {
-  const keyArr = asArray(key, `${fieldName}.key`);
-  if (keyArr.length !== 2) {
-    throw new Error(`${fieldName}.key must have exactly 2 elements`);
-  }
-  const tag = Number(asBigInt(keyArr[0], `${fieldName}.key.tag`));
-  ensureSupportedTag(tag, `${fieldName}.key.tag`);
-  const valArr = asArray(value, `${fieldName}.value`);
-  if (valArr.length !== 2) {
-    throw new Error(`${fieldName}.value must have exactly 2 elements`);
-  }
-  return {
-    tag,
-    index: asBigInt(keyArr[1], `${fieldName}.key.index`),
-    dataCborHex: decodeRedeemerDataCborHex(
-      valArr[0],
-      `${fieldName}.value.data`,
-    ),
-    exUnits: decodeExUnits(valArr[1], `${fieldName}.value.ex_units`),
-  };
-};
-
+/**
+ * §5.1/§5.3: field 8 is the enveloped list of `enc_8` items. The §5.3 decoder
+ * owns the wire grammar — the `84` head, the purpose-tag value set, minimal
+ * `index`/`ex_units` uints, and trailing bytes after the execution units all
+ * reject there — and this function only adapts the result into the shape the
+ * validation machine consumes, re-checking the narrower Midgard builder tag set
+ * and that the redeemer payload is Plutus `Data`.
+ *
+ * The retired counted scheme accepted two spellings here (a raw array of
+ * four-element arrays, or a CBOR map keyed by pointer). §6.1 admits one byte
+ * form per value, so both are gone.
+ */
 export const decodeMidgardRedeemers = (
   preimageCbor: Uint8Array,
-): readonly DecodedMidgardRedeemer[] => {
-  const decoded = decodeSingleCbor(preimageCbor);
-  if (Array.isArray(decoded)) {
-    return decoded.map((item, index) =>
-      decodeRedeemerArray(item, `redeemers[${index}]`),
-    );
-  }
-
-  const map = asMap(decoded, "redeemers");
-  return Array.from(map.entries(), ([key, value], index) =>
-    decodeRedeemerMapEntry(key, value, `redeemers[${index}]`),
+): readonly DecodedMidgardRedeemer[] =>
+  decodeMidgardRedeemerWitnessFieldPreimage(preimageCbor).map(
+    (witness, index) => {
+      const fieldName = `redeemers[${index}]`;
+      const tag = MIDGARD_REDEEMER_PURPOSE_TAGS[witness.purpose];
+      ensureSupportedTag(tag, `${fieldName}.tag`);
+      return {
+        tag,
+        index: witness.index,
+        dataCborHex: decodeRedeemerDataCborHex(
+          witness.redeemerCbor,
+          `${fieldName}.data`,
+        ),
+        exUnits: {
+          memory: witness.executionUnits.memory,
+          steps: witness.executionUnits.steps,
+        },
+      };
+    },
   );
-};
 
 export const findRedeemerByPointer = <T extends MidgardRedeemerPointer>(
   redeemers: readonly T[],

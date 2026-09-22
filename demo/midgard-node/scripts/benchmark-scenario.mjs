@@ -249,6 +249,7 @@ const writeBlockedReport = ({ scenarioName, scenario, env }) => {
     `${JSON.stringify(
       {
         benchmark: "midgard-l2-throughput",
+        version: 1,
         scenario: scenarioName,
         scenarioClass: scenario.scenarioClass,
         generatedAtIso: new Date().toISOString(),

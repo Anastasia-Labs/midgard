@@ -5,14 +5,14 @@ description: "The shared protocol primitives and the native transaction codec th
 
 `@al-ft/midgard-core` holds the **shared Midgard protocol primitives** and, most
 importantly, **owns the Midgard native transaction v1 codec** used by
-`midgard-node` and `lucid-midgard`. Downstream packages may keep compatibility
-re-export paths, but codec semantics are changed here first and verified through
+`midgard-node` and `lucid-midgard`. Downstream packages may re-export shared types, but codec semantics are changed here first and verified through
 shared conformance tests.
 
 <Callout type="info">
-This package is the single source of truth for how a Midgard native transaction
-is encoded, hashed, and validated. If you need the CBOR layout of a Midgard
-transaction body, output, value, address, script, or datum, it lives here.
+  This package is the single source of truth for how a Midgard native
+  transaction is structurally encoded and hashed. Ledger validity is checked by
+  `midgard-validation`. If you need the CBOR layout of a Midgard transaction
+  body, output, value, address, script, or datum, it lives here.
 </Callout>
 
 ## Package layout
@@ -24,36 +24,39 @@ formatting, and assets modules.
 
 ## Subpath exports
 
-These are the entries from the package `exports` map.
+Common subpaths are listed below. The package `exports` map also includes
+validation/proof primitives, DA payload and identity helpers, canonical JSON,
+consensus profiles, and retention utilities.
 
-| Import path | Module |
-|---|---|
-| `@al-ft/midgard-core` | Barrel, everything below re-exported |
-| `@al-ft/midgard-core/assets` | Asset-map arithmetic (`Assets`, `addAssets`, …) |
-| `@al-ft/midgard-core/hex` | Hex normalization and comparison |
-| `@al-ft/midgard-core/out-ref` | Output-reference normalization and labels |
-| `@al-ft/midgard-core/plutus-data-cbor` | Plutus data CBOR helpers |
-| `@al-ft/midgard-core/da-transport` | DA transport constants and limits |
-| `@al-ft/midgard-core/error-format` | Stable stringification of unknown errors |
-| `@al-ft/midgard-core/codec` | Native tx codec barrel |
-| `@al-ft/midgard-core/codec/cbor` | Low-level canonical CBOR reader/writer |
-| `@al-ft/midgard-core/codec/address` | Midgard address encode/decode |
-| `@al-ft/midgard-core/codec/datum` | Inline datum handling |
-| `@al-ft/midgard-core/codec/errors` | Codec error type and stable error codes |
-| `@al-ft/midgard-core/codec/hash` | Canonical Blake2b-256 32-byte hashing |
-| `@al-ft/midgard-core/codec/native` | Native tx canonical/compact types |
-| `@al-ft/midgard-core/codec/native-script` | Native script encode/decode |
-| `@al-ft/midgard-core/codec/output` | Transaction output encode/decode |
-| `@al-ft/midgard-core/codec/script-language-views` | Cost-model / language views |
-| `@al-ft/midgard-core/codec/value` | Multi-asset value encode/decode |
-| `@al-ft/midgard-core/codec/versioned-script` | Versioned script references |
+| Import path                                       | Module                                                 |
+| ------------------------------------------------- | ------------------------------------------------------ |
+| `@al-ft/midgard-core`                             | Barrel; see `src/index.ts` for its explicit re-exports |
+| `@al-ft/midgard-core/assets`                      | Asset-map arithmetic (`Assets`, `addAssets`, …)        |
+| `@al-ft/midgard-core/hex`                         | Hex normalization and comparison                       |
+| `@al-ft/midgard-core/out-ref`                     | Output-reference normalization and labels              |
+| `@al-ft/midgard-core/plutus-data-cbor`            | Plutus data CBOR helpers                               |
+| `@al-ft/midgard-core/da-transport`                | DA transport constants and limits                      |
+| `@al-ft/midgard-core/error-format`                | Stable stringification of unknown errors               |
+| `@al-ft/midgard-core/codec`                       | Native tx codec barrel                                 |
+| `@al-ft/midgard-core/codec/cbor`                  | Low-level canonical CBOR reader/writer                 |
+| `@al-ft/midgard-core/codec/address`               | Midgard address encode/decode                          |
+| `@al-ft/midgard-core/codec/datum`                 | Inline datum handling                                  |
+| `@al-ft/midgard-core/codec/errors`                | Codec error type and stable error codes                |
+| `@al-ft/midgard-core/codec/hash`                  | Canonical Blake2b-256 32-byte hashing                  |
+| `@al-ft/midgard-core/codec/native`                | Native tx canonical/compact types                      |
+| `@al-ft/midgard-core/codec/native-script`         | Native script encode/decode                            |
+| `@al-ft/midgard-core/codec/output`                | Transaction output encode/decode                       |
+| `@al-ft/midgard-core/codec/script-language-views` | Cost-model / language views                            |
+| `@al-ft/midgard-core/codec/value`                 | Multi-asset value encode/decode                        |
+| `@al-ft/midgard-core/codec/versioned-script`      | Versioned script references                            |
 
 ## Installation
 
 The package is part of the Midgard monorepo (`demo/midgard-core`) and depends on
-`@lucid-evolution/lucid`, `@noble/hashes`, and `cborg`.
+`@lucid-evolution/lucid`, `@noble/hashes`, `cborg`, and libp2p identity/crypto
+packages; see `package.json` for exact versions.
 
-```ts
+```ts twoslash
 import { addAssets } from "@al-ft/midgard-core/assets";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 ```

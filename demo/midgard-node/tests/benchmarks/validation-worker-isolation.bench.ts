@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import {
   deserializePhaseACandidate,
   type PhaseAResult,
@@ -18,21 +20,20 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  MempoolDB,
-  MempoolLedgerDB,
-  MigrationRunner,
-  TxAdmissionsDB,
-} from "@/database/index.js";
-import { FixedValidationWorkerPool } from "@/services/validation-pool.js";
-import { packPhaseAJob } from "@/workers/utils/validation-pool.js";
-
-import {
   ledgerEntry,
   makeNativeTx,
   makeOutput,
   makeQueued,
   outRefFromByte,
 } from "../../../midgard-validation/tests/validation-fixtures.js";
+import {
+  MempoolDB,
+  MempoolLedgerDB,
+  MigrationRunner,
+  TxAdmissionsDB,
+} from "../../src/database/index.js";
+import { FixedValidationWorkerPool } from "../../src/services/validation-pool.js";
+import { packPhaseAJob } from "../../src/workers/utils/validation-pool.js";
 import { provideDatabaseLayers } from "../utils.js";
 import {
   readPhase2ContainerIdentity,
@@ -71,6 +72,7 @@ const phaseAConfig = {
   minFeeB: 0n,
   concurrency: 1,
   strictnessProfile: "phase2_worker_isolation",
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
 } as const;
 
 const percentile = (samples: readonly number[], p: number): number => {
@@ -586,6 +588,8 @@ describe("Phase 2 validation-worker isolation benchmark", () => {
                   TxAdmissionsDB.tryInsert({
                     txId: queuedTx.txId,
                     txCanonicalCbor: queuedTx.txCbor,
+                    programMaterialSidecarCbor:
+                      encodeMidgardCekProgramMaterialSidecar([]),
                     submitSource: "native",
                   }),
                 { concurrency: 16 },

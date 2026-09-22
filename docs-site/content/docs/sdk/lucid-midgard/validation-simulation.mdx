@@ -33,14 +33,16 @@ built. `validateSafe(...)` and `validateProgram(...)` are the safe-result and la
 ## What each phase checks
 
 **Phase A** is stateless and per-transaction. It catches encoding, fee, input, output,
-script-witness, redeemer, datum, network, and auxiliary-data problems. Run after
-unsigned completion, it cannot check signatures. Run after signing, it verifies the
-required witnesses and the vkey signatures over the Midgard-native body hash.
+script-witness, redeemer, datum, network, and auxiliary-data problems. The same
+strict rules run during completion and explicit validation: unsigned transactions
+can fail required-witness checks. For a signed transaction, use
+`CompleteTx.validate(...)` after assembling witnesses over the native transaction id.
 
 **Phase B** is stateful. It needs the current slot, the UTxO pre-state for every spend
 and reference input, script-source resolution data, and a budget-enforcement setting.
-If a dependency is missing, simulation fails with a structured insufficient-pre-state
-error rather than guessing. Budget enforcement is on by default.
+Pass `localPreState` explicitly for Phase B; omitting it raises
+`BuilderInvariantError`. Missing ledger inputs within that pre-state produce shared
+validation rejections. Budget enforcement is on by default.
 
 ## The rules are shared, not reimplemented
 
@@ -54,15 +56,17 @@ Local validation preserves those node reject codes rather than translating them 
 library-specific ones.
 
 <Callout type="warn" title="Local validation cannot see the future">
-Inputs valid against a provider snapshot may be spent before the node validates. Phase B
-can still reject with `E_INPUT_NOT_FOUND` or `E_DOUBLE_SPEND`. Pre-state derived from
-`overrideUTxOs` or `presetWalletInputs` is explicitly non-authoritative: it is useful for
-simulation, but the node decides whether those inputs exist and are unspent.
+  Inputs valid against a provider snapshot may be spent before the node
+  validates. Phase B can still reject with `E_INPUT_NOT_FOUND` or
+  `E_DOUBLE_SPEND`. Pre-state derived from `overrideUTxOs` or
+  `presetWalletInputs` is explicitly non-authoritative: it is useful for
+  simulation, but the node decides whether those inputs exist and are unspent.
 </Callout>
 
 ## Determinism
 
-For a fixed provider snapshot, validation is deterministic. The debug metadata records
+For fixed transaction bytes, protocol facts, slot, and pre-state, validation is
+deterministic. A captured provider object does not freeze later query responses. The debug metadata records
 what the result depended on: the slot, the protocol parameters, the pre-state out-refs
 and output hashes, and the native transaction id and byte hash. Two runs against the
 same snapshot that disagree are a bug, not a race.

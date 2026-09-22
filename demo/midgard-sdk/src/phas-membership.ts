@@ -7,9 +7,13 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { scriptRewardAddress } from "@/cardano-addresses.js";
-import { LucidError, UnspecifiedNetworkError } from "@/errors.js";
-import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
+import { scriptRewardAddress } from "./cardano-addresses.js";
+import { LucidError, UnspecifiedNetworkError } from "./errors.js";
+import {
+  getUnappliedScript,
+  parseFaultProofBlueprint,
+} from "./fraud-proof/contracts/blueprint.js";
+import { completeTxWithLocalUPLCEvalProgram } from "./tx-completion.js";
 
 export const PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE =
   "phas.membership.withdraw";
@@ -18,6 +22,12 @@ export type PhasMembershipBlueprint = {
   readonly validators: readonly {
     readonly title: string;
     readonly compiledCode: string;
+    /**
+     * The blueprint's declared parameter list, carried so the loader can
+     * refuse to deploy `compiledCode` bare the moment the validator grows a
+     * parameter (#610). Absent means the validator declares none.
+     */
+    readonly parameters?: readonly unknown[];
   }[];
 };
 
@@ -56,6 +66,7 @@ export const parsePhasMembershipBlueprint = (
       const candidate = validator as {
         readonly title?: unknown;
         readonly compiledCode?: unknown;
+        readonly parameters?: unknown;
       };
       if (typeof candidate.title !== "string") {
         throw new Error(`validators[${index}].title must be a string`);
@@ -68,9 +79,20 @@ export const parsePhasMembershipBlueprint = (
           `validators[${index}].compiledCode must be a non-empty string`,
         );
       }
+      if (
+        candidate.parameters !== undefined &&
+        !Array.isArray(candidate.parameters)
+      ) {
+        throw new Error(
+          `validators[${index}].parameters must be an array when present`,
+        );
+      }
       return {
         title: candidate.title,
         compiledCode: candidate.compiledCode,
+        ...(candidate.parameters === undefined
+          ? {}
+          : { parameters: candidate.parameters as readonly unknown[] }),
       };
     }),
   };
@@ -78,20 +100,13 @@ export const parsePhasMembershipBlueprint = (
 
 export const phasMembershipWithdrawalScriptFromBlueprint = (
   blueprint: PhasMembershipBlueprint,
-): Script => {
-  const matches = blueprint.validators.filter(
-    ({ title }) => title === PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE,
-  );
-  if (matches.length !== 1) {
-    throw new Error(
-      `Expected exactly one ${PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE} validator in blueprint, found ${matches.length}`,
-    );
-  }
-  return {
-    type: "PlutusV3",
-    script: matches[0]!.compiledCode,
-  };
-};
+): Script => ({
+  type: "PlutusV3",
+  script: getUnappliedScript(
+    parseFaultProofBlueprint(blueprint),
+    PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE,
+  ),
+});
 
 export const phasMembershipRewardAddress = (
   network: Network,

@@ -40,6 +40,9 @@ export const protocolInfoToParameters = (
   networkId: knownNetworkId(info.network),
   maxSubmitTxCborBytes: info.submissionLimits.maxSubmitTxCborBytes,
   strictnessProfile: info.validation.strictnessProfile,
+  ...(info.deploymentMarker === undefined
+    ? {}
+    : { deploymentManifestId: info.deploymentMarker.manifestId }),
 });
 
 export const requireAddressQueryUtxos = (

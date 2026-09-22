@@ -51,7 +51,7 @@ export const PLUTUS_V3_CANONICAL_COST_MODEL_VIEW = freezeCostModelView([
   1964219, 24520, 3,
 ]);
 
-export const MIDGARD_V1_CANONICAL_COST_MODEL_VIEW = freezeCostModelView(
+export const MIDGARD_CANONICAL_COST_MODEL_VIEW = freezeCostModelView(
   PLUTUS_V3_CANONICAL_COST_MODEL_VIEW,
 );
 
@@ -60,7 +60,7 @@ export const SCRIPT_LANGUAGE_COST_MODEL_VIEWS = new Map<
   CanonicalCostModelView
 >([
   [ScriptLanguageTags.PlutusV3, PLUTUS_V3_CANONICAL_COST_MODEL_VIEW],
-  [ScriptLanguageTags.MidgardV1, MIDGARD_V1_CANONICAL_COST_MODEL_VIEW],
+  [ScriptLanguageTags.MidgardV1, MIDGARD_CANONICAL_COST_MODEL_VIEW],
 ]);
 
 export type SupportedScriptLanguageTag = {

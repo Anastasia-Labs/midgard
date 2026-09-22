@@ -7,12 +7,14 @@ import {
   computeMidgardNativeTxId,
   encodeCbor,
   encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
   materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import { CML } from "@lucid-evolution/lucid";
+import { commitCountedRootProgram, ROOT_DOMAINS } from "@al-ft/midgard-sdk";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -30,12 +32,10 @@ const EMPTY_CBOR_NULL = encodeCbor(null);
 const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
 
 const inputCbor = (txHash: string, outputIndex: bigint): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(txHash),
-      outputIndex,
-    ).to_cbor_bytes(),
-  );
+  encodeMidgardSpendInputItem({
+    txId: Buffer.from(txHash, "hex"),
+    outputIndex: Number(outputIndex),
+  });
 
 const makeNativeTx = (
   inputs: readonly Buffer[],
@@ -122,8 +122,6 @@ describe("prepare-double-spend", () => {
     expect(output.commitmentEncodings.nativeNode.transactionsRoot).toMatch(
       /^[0-9a-f]{64}$/,
     );
-    expect(output.compatibility.canUseSubmitStepCommands).toBe(true);
-    expect(output.compatibility.reasons).toEqual([]);
   });
 
   it("honors explicit tx pair selection", async () => {
@@ -144,6 +142,58 @@ describe("prepare-double-spend", () => {
     expect(output.tx1.nodeTxId).toBe(tx1Payload.nodeTxId);
     expect(output.tx2.nodeTxId).toBe(tx2Payload.nodeTxId);
     expect(output.tx2.doubleSpentInputIndex).toBe(1);
+  });
+
+  it("accepts the counted V1 transactions root committed by the block header", async () => {
+    const sharedInput = inputCbor(h32("53"), 1n);
+    const transactions = [
+      payloadFromInputs([sharedInput], 1n),
+      payloadFromInputs([sharedInput], 2n),
+    ];
+    const prepared = await prepareDoubleSpendFromTransactions({
+      headerHash: h28("bd"),
+      transactions,
+    });
+    const committedRoot = await Effect.runPromise(
+      commitCountedRootProgram({
+        domain: ROOT_DOMAINS.transactionsV1,
+        phasRoot: prepared.commitmentEncodings.nativeNode.transactionsRoot,
+        count: BigInt(prepared.txCount),
+      }),
+    );
+
+    const verified = await prepareDoubleSpendFromTransactions({
+      headerHash: h28("bd"),
+      transactions,
+      expectedTransactionsRoot: committedRoot,
+    });
+
+    expect(verified.commitmentEncodings.expectedTransactionsRoot).toEqual({
+      value: committedRoot,
+    });
+    expect(verified.commitmentEncodings.nativeNode.transactionsRoot).not.toBe(
+      committedRoot,
+    );
+    expect(verified.tx1.txInclusion.transactionsPhasRoot).toBe(
+      verified.commitmentEncodings.nativeNode.transactionsRoot,
+    );
+    expect(
+      verified.tx1.txInclusion.txMembershipProofCbor.length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("fails closed when the expected V1 transactions root differs", async () => {
+    const sharedInput = inputCbor(h32("54"), 1n);
+    await expect(
+      prepareDoubleSpendFromTransactions({
+        headerHash: h28("ba"),
+        expectedTransactionsRoot: h32("00"),
+        transactions: [
+          payloadFromInputs([sharedInput], 1n),
+          payloadFromInputs([sharedInput], 2n),
+        ],
+      }),
+    ).rejects.toThrow("Expected V1 transactions root");
   });
 
   it("rejects blocks without two distinct transactions spending the same input", async () => {
@@ -220,7 +270,6 @@ describe("prepare-double-spend", () => {
         outputIndex: 3n,
       });
       expect(output.files?.tx1InputsPath).toBe(join(dir, "tx1-inputs.json"));
-      expect(output.compatibility.canUseSubmitStepCommands).toBe(true);
     });
   });
 
@@ -243,7 +292,6 @@ describe("prepare-double-spend", () => {
         await readFile(join(dir, "block-transactions.json"), "utf8"),
       ) as unknown[];
       expect(payloads).toHaveLength(3);
-      expect(output.compatibility.canUseSubmitStepCommands).toBe(true);
     });
   });
 });

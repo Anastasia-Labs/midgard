@@ -1,25 +1,34 @@
 import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Metric } from "effect";
 
-import type * as AddressHistoryDB from "@/database/addressHistory.js";
+import { Database } from "../services/database.js";
+import { WriteBehind } from "../services/write-behind.js";
+import { ProcessedTx } from "../utils.js";
+import type * as AddressHistoryDB from "./addressHistory.js";
+import * as DepositsDB from "./deposits.js";
+import * as MempoolLedgerDB from "./mempoolLedger.js";
+import * as MempoolTxDeltasDB from "./mempoolTxDeltas.js";
 import {
   clearTable,
   DatabaseError,
   logDatabaseError,
   retrieveNumberOfEntries,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import * as Ledger from "@/database/utils/ledger.js";
-import * as Tx from "@/database/utils/tx.js";
-import { Database } from "@/services/database.js";
-import { WriteBehind } from "@/services/write-behind.js";
-import { ProcessedTx } from "@/utils.js";
-
-import * as DepositsDB from "./deposits.js";
-import * as MempoolLedgerDB from "./mempoolLedger.js";
-import * as MempoolTxDeltasDB from "./mempoolTxDeltas.js";
+} from "./utils/common.js";
+import * as Ledger from "./utils/ledger.js";
+import * as Tx from "./utils/tx.js";
 
 export const tableName = "mempool";
+
+/**
+ * Restores already-validated journal payloads after their state-queue block is
+ * removed. Ledger effects are deliberately not applied twice: they remained
+ * in the speculative mempool ledger across local block finalization.
+ */
+export const restoreJournalEntries = (
+  entries: readonly Tx.EntryWithTimeStamp[],
+): Effect.Effect<void, DatabaseError, Database> =>
+  Tx.insertEntries(tableName, [...entries]);
 
 const mempoolPersistTxRowsDurationTimer = Metric.timer(
   "mempool_persist_tx_rows_duration",

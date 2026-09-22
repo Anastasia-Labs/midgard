@@ -14,17 +14,27 @@ running and its node is reachable on `http://127.0.0.1:3000`.
 
 Funds enter Midgard through an L1 deposit. From `demo/midgard-node`, run
 `submit-deposit` with your wallet, then, once the deposit's inclusion time is
-due, project it into the L2 ledger:
+due, project it into the L2 ledger. Set `USER_L2_ADDRESS` to your receiving L2
+address and supply your funded user seed through `USER_SEED_PHRASE`; do not use
+an operator or reference-script wallet for this tutorial:
 
 ```sh
-node dist/index.js submit-deposit   # locks funds at the L1 deposit validator
+node dist/index.js submit-deposit \
+  --l2-address "$USER_L2_ADDRESS" \
+  --lovelace 10000000 \
+  --wallet-seed-phrase-env USER_SEED_PHRASE
 node dist/index.js project-deposits-once
 ```
 
-Projection is where the depositor is credited on L2. If the deposit does not
+Before building a spend, wait for the deposit block to be committed and merged;
+deposits are applied after transactions within a block, so local projection
+alone does not make a same-block spend valid. The
+[deposit/send/withdraw runbook](https://github.com/Anastasia-Labs/midgard/blob/main/demo/midgard-node/docs/DEPOSIT_SEND_AND_WITHDRAW.md)
+shows how to verify deposit settlement. If the deposit does not
 appear, its inclusion time is usually not due yet; see
 [Deposits &amp; Withdrawals](/docs/operators/node/deposits-withdrawals) for the
 timing rules and flags.
+
 </Step>
 
 <Step>
@@ -34,9 +44,10 @@ timing rules and flags.
 Create a provider against the node, attach `LucidMidgard`, and select the wallet
 that made the deposit:
 
-```ts
+```ts twoslash
 import { LucidMidgard, MidgardNodeProvider } from "@al-ft/lucid-midgard";
-
+declare const seedPhrase: string;
+// ---cut---
 const provider = await MidgardNodeProvider.create({
   endpoint: "http://127.0.0.1:3000",
 });
@@ -51,12 +62,17 @@ midgard.selectWallet.fromSeed(seedPhrase);
 
 The [Quickstart](/docs/sdk/lucid-midgard/quickstart) explains each of these
 calls, including the other wallet adapters.
+
 </Step>
 
 <Step>
 ### Build, sign, and submit the transfer
 
-```ts
+```ts twoslash
+import type { LucidMidgard } from "@al-ft/lucid-midgard";
+declare const midgard: LucidMidgard;
+declare const destination: string;
+// ---cut---
 const tx = await midgard
   .newTx()
   .pay.ToAddress(destination, { lovelace: 2_000_000n })
@@ -68,31 +84,33 @@ await submitted.awaitStatus({ until: "accepted" });
 ```
 
 `submit()` returns durable admission, not final validity: the transaction is
-queued, then validated and accepted into a block.
+queued, then validated into the mempool before a later commit.
+
 </Step>
 
 <Step>
 ### Watch it commit
 
-An accepted transaction is committed to L1 when the operator commits the block
-containing it. Poll the node until the status reaches `committed`:
+Poll the local node status while the operator processes the transaction:
 
 ```sh
 curl "http://127.0.0.1:3000/tx-status?tx_hash=<your-tx-hash>"
 ```
 
-When it reads `committed`, your transfer is part of a block whose header is on
-Cardano. See
+`committed` means the node has immutable transaction membership; it does not
+alone prove L1 confirmation or confirmed-ledger merge. Inspect the accompanying
+header/merge evidence and `confirmedLedgerFinalized` for those later boundaries. See
 [Submission &amp; Observability](/docs/sdk/lucid-midgard/submission-observability)
 for the full status lifecycle.
+
 </Step>
 
 </Steps>
 
 <Callout type="info" title="What you just exercised">
-This is the same path the protocol's acceptance run drives: deposit, projection,
-admission, validation, block commitment. The
-[validation engine](/docs/validation/overview) decided your transaction's
-admission, and the [operator's background fibers](/docs/operators/node/background-fibers)
-committed it.
+  This is the same path the protocol's acceptance run drives: deposit,
+  projection, admission, validation, block commitment. The [validation
+  engine](/docs/validation/overview) validated the admitted transaction, and the
+  [operator's background fibers](/docs/operators/node/background-fibers)
+  committed it.
 </Callout>

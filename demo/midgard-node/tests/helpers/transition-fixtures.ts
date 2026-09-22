@@ -1,10 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 
-export const h32 = (byte: number): string =>
-  byte.toString(16).padStart(2, "0").repeat(32);
-
-export const h28 = (byte: number): string =>
-  byte.toString(16).padStart(2, "0").repeat(28);
+export { h28, h32 };
 
 export const outputReference = (byte: number): SDK.OutputReference => ({
   transactionId: h32(byte),

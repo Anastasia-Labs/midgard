@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "midgard-input-set-uniqueness-wrongful-rejection-fit-ledger-v1",
+  "category": "inputSetUniqueness",
+  "categoryId": "0000001a",
+  "compiler": "aiken v1.1.23+5adf783",
+  "environment": "testnet",
+  "blueprintSha256": "78f5186cdf43ae171a92199a079063d933d5b44bdbe383d86d390c20aef68e57",
+  "limits": {
+    "signedTransactionBytes": 16384,
+    "publicationReserveBytes": 15872,
+    "memory": "16500000",
+    "cpu": "10000000000"
+  },
+  "referencePublications": [
+    {
+      "step": 1,
+      "scriptHash": "414f8857b3df0498491a171d69de848fca0f952975f397d071bb9371",
+      "signedBytes": 14632,
+      "reserveMarginBytes": 1240
+    },
+    {
+      "step": 2,
+      "scriptHash": "c246ba98b4dc5fc87a261788cf1100d4923212d3d479e242b73081b7",
+      "signedBytes": 8082,
+      "reserveMarginBytes": 7790
+    },
+    {
+      "step": 3,
+      "scriptHash": "2d928d574f0d441605a7dd66a3483de17c90fccfcdc5def4768997a2",
+      "signedBytes": 7522,
+      "reserveMarginBytes": 8350
+    },
+    {
+      "step": 4,
+      "scriptHash": "9e406c284e8d7dd6c01b3b1cce7662ef2028936c4f097d7b12efd69f",
+      "signedBytes": 9303,
+      "reserveMarginBytes": 6569
+    }
+  ],
+  "acceptedLifecycle": {
+    "transactions": 6,
+    "maxSignedBytes": 2123,
+    "maxMemory": "1380339",
+    "maxCpu": "464443376",
+    "coverage": "cancel-step02-restart-terminal-mint-removal"
+  },
+  "forcedMaximumLifecycle": {
+    "spendItems": 1,
+    "referenceItems": 819,
+    "referenceFieldBytes": 32763,
+    "batchSize": 128,
+    "observedCursors": [1, 129, 257, 385, 513, 641, 769, 820],
+    "transactions": 13,
+    "maxSignedBytes": 2060,
+    "maxMemory": "9135959",
+    "maxCpu": "2951086115",
+    "coverage": "complete-authenticated-scan-terminal-mint-leased-removal"
+  },
+  "minimumMargins": {
+    "publicationBytes": 1240,
+    "lifecycleBytes": 14261,
+    "memory": "7364041",
+    "cpu": "7048913885"
+  },
+  "ledgerDigest": "5549b742fb648bc6c06b846c5ce946967c10764368e9e8600e16ec3dbe5cc39b"
+}

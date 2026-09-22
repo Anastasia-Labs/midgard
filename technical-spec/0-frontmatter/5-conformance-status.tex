@@ -10,11 +10,24 @@ This document is a draft normative design target for Midgard protocol semantics.
 It is not, by itself, evidence that every described contract, proof family, offchain service, economic parameter, or recovery path is implemented, deployed, or production-ready.
 
 Conformance claims must identify a repository revision, generated validator blueprint and deployment fingerprint, protocol version and enabled feature set, and the tests or durable acceptance artifacts that support the claim.
-The current implementation and public-testnet readiness are tracked in \code{public\_testnet\_readiness.md}; the current fraud-proof coverage and binding audit is tracked in \code{docs/fault-proofs/}.
+The current implementation and public-testnet readiness are tracked in \code{docs/public\_testnet\_readiness.md}; the current fraud-proof coverage and binding audit is tracked in \code{docs/fault-proofs/}.
 Where those artifacts report a gap, the corresponding text in this document remains a design requirement rather than a current security guarantee.
 
 Unless a section explicitly says otherwise, the capitalized terms MUST, MUST NOT, REQUIRED, SHOULD, SHOULD NOT, and MAY are to be interpreted as described in BCP~14 (RFC~2119 and RFC~8174).
 
 Known launch-critical work includes complete and correctly bound proof coverage for every enabled ledger transition, permissionless DA retrieval and retention with an enforceable unavailable-data remedy, production challenge timing and economics, Cardano finality and rollback policy, and an implemented liveness path when block production stops.
+
+\paragraph{Source-review differences requiring resolution.}
+The relevant sections distinguish retained requirements from current behavior:
+\begin{itemize}
+  \item Transaction validity: POSIX interval wording, interval containment, and the implemented block-slot test are not interchangeable; see \cref{h:midgard-native-transaction-wire-format,rule:transaction-validity-range}.
+  \item Scheduler advancement: current permissionless catch-up differs from the original contiguous-shift and early-consent conditions; see \cref{h:scheduler}.
+  \item User-event witness authorization: current certificate-index checks differ from the original mutual redeemer-coupling description; see \cref{h:witness}.
+  \item Transaction-order settlement: the current spend-side burn-redeemer decoding does not match the mint wrapper; see \cref{h:transaction-order}.
+  \item Emergency liveness: the escape-hatch mechanism is specified but has no current validator; see \cref{h:escape-hatch}.
+  \item Double withdrawal: the current proof requires two payable leaves, whereas the earlier formula does not qualify their validity; see \cref{violation:DOUBLE-WITHDRAW}.
+  \item Hub initialization and slashing economics: policy-local checks and reward ownership differ from the earlier general descriptions; see \cref{h:midgard-hub-oracle,h:operator-directory}.
+\end{itemize}
+These are source-review observations, not results of a deployment or lifecycle test.
 
 \end{document}

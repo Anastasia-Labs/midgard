@@ -1,0 +1,559 @@
+import {
+  type AuthenticatedValidator,
+  type FaultProofContractChains,
+  fraudProofContractsToFirstSteps,
+  makeAuthenticatedValidator as makeSdkAuthenticatedValidator,
+  makeMintingPolicy,
+  makeSpendingValidator as makeSdkSpendingValidator,
+  makeWithdrawalValidator as makeSdkWithdrawalValidator,
+  type MidgardValidators,
+  type SpendingValidator as SdkSpendingValidator,
+} from "@al-ft/midgard-sdk";
+import { applyDoubleCborEncoding } from "@lucid-evolution/lucid";
+
+import { type Blueprint, getCompiledScript, network } from "./blueprints.js";
+
+type RepeatedValidatorTuple<
+  Length extends number,
+  Result extends readonly SdkSpendingValidator[] = readonly [],
+> = Result["length"] extends Length
+  ? Result
+  : RepeatedValidatorTuple<Length, readonly [...Result, SdkSpendingValidator]>;
+
+const repeatValidator = <const Length extends number>(
+  validator: SdkSpendingValidator,
+  length: Length,
+): RepeatedValidatorTuple<Length> =>
+  Array.from(
+    { length },
+    () => validator,
+  ) as unknown as RepeatedValidatorTuple<Length>;
+
+const scaffoldChain = <const Length extends number>(
+  firstStep: SdkSpendingValidator,
+  length: Length,
+) => ({
+  firstStep,
+  steps: repeatValidator(firstStep, length),
+});
+
+export const makeMintingValidator = makeMintingPolicy;
+
+export const makeSpendingValidator = (
+  spendingScriptCBOR: string,
+): SdkSpendingValidator =>
+  makeSdkSpendingValidator(network, spendingScriptCBOR);
+
+export const makeWithdrawalValidator = makeSdkWithdrawalValidator;
+
+export const makeAuthenticatedValidator = (
+  mintingScriptCBOR: string,
+  spendingScriptCBOR: string,
+): AuthenticatedValidator =>
+  makeSdkAuthenticatedValidator(network, mintingScriptCBOR, spendingScriptCBOR);
+
+/**
+ * A test-only, uniquely hashed `\context -> ()` Plutus V3 program. Unlike the
+ * optimized always-succeeds blueprint entries, it does not alias every other
+ * scaffold validator's address and policy id. That isolation matters when a
+ * topology loader filters UTxOs by both address and policy.
+ */
+export const makeIsolatedAlwaysSucceedsAuthenticatedValidator =
+  (): AuthenticatedValidator => {
+    // Flat UPLC 1.1.0 `lambda (con unit ())`, wrapped once as blueprint-style
+    // CBOR before Lucid adds the ledger-facing second CBOR layer.
+    const isolatedCompiledCode = "450101002499";
+    const script = applyDoubleCborEncoding(isolatedCompiledCode);
+    return makeAuthenticatedValidator(script, script);
+  };
+
+export const alwaysTitle = (
+  category: "midgard" | "fraud_proofs",
+  baseName: string,
+  purpose: "spend" | "mint" | "withdraw",
+): string =>
+  category === "midgard"
+    ? `${category}.${baseName}_${purpose}.else`
+    : `${category}.${baseName}.else`;
+
+export const alwaysScript = (
+  blueprint: Blueprint,
+  category: "midgard" | "fraud_proofs",
+  baseName: string,
+  purpose: "spend" | "mint" | "withdraw",
+): string =>
+  applyDoubleCborEncoding(
+    getCompiledScript(blueprint, alwaysTitle(category, baseName, purpose)),
+  );
+
+export const alwaysAuthenticated = (
+  blueprint: Blueprint,
+  baseName: string,
+): AuthenticatedValidator =>
+  makeAuthenticatedValidator(
+    alwaysScript(blueprint, "midgard", baseName, "mint"),
+    alwaysScript(blueprint, "midgard", baseName, "spend"),
+  );
+
+export const makeAlwaysSucceedsContracts = (
+  blueprint: Blueprint,
+): MidgardValidators => {
+  const reserve = {
+    ...makeSpendingValidator(
+      alwaysScript(blueprint, "midgard", "reserve", "spend"),
+    ),
+    ...makeWithdrawalValidator(
+      alwaysScript(blueprint, "midgard", "reserve", "withdraw"),
+    ),
+  };
+  const alwaysValidationTraceDispute = makeSpendingValidator(
+    alwaysScript(blueprint, "fraud_proofs", "transition_trace", "spend"),
+  );
+  const nonExistentInputFirstStep = makeSpendingValidator(
+    alwaysScript(blueprint, "fraud_proofs", "non_existent_input", "spend"),
+  );
+  const nonExistentInputNoIndexFirstStep = makeSpendingValidator(
+    alwaysScript(
+      blueprint,
+      "fraud_proofs",
+      "non_existent_input_no_index",
+      "spend",
+    ),
+  );
+  const invalidRangeFirstStep = makeSpendingValidator(
+    alwaysScript(blueprint, "fraud_proofs", "invalid_range", "spend"),
+  );
+  const transitionTraceFirstStep = makeSpendingValidator(
+    alwaysScript(blueprint, "fraud_proofs", "transition_trace", "spend"),
+  );
+  const zeroInputFirstStep = makeSpendingValidator(
+    alwaysScript(blueprint, "fraud_proofs", "zero_input", "spend"),
+  );
+  // The always-succeeds blueprint predates the appended production families.
+  // Its full chain registry deliberately aliases one scaffold validator at
+  // each canonical chain length. Focused emulator suites replace the selected
+  // chain with that family's real validators.
+  const appendedFamilyFallback = makeSpendingValidator(
+    alwaysScript(blueprint, "fraud_proofs", "double_spend", "spend"),
+  );
+  const fraudProofContracts: FaultProofContractChains = {
+    doubleSpend: scaffoldChain(appendedFamilyFallback, 4),
+    nonExistentInput: scaffoldChain(nonExistentInputFirstStep, 4),
+    nonExistentInputNoIndex: scaffoldChain(nonExistentInputNoIndexFirstStep, 4),
+    invalidRange: scaffoldChain(invalidRangeFirstStep, 2),
+    transitionTrace: {
+      ...scaffoldChain(transitionTraceFirstStep, 9),
+      route: transitionTraceFirstStep,
+      finals: repeatValidator(transitionTraceFirstStep, 8),
+      yields: {
+        l2Assembly: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        l2Scan: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        l2Value: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        depositReplay: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        depositAssembly: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        depositScan: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        depositValue: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        l2Open: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        l2Summaries: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        l2Replay: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        claimStructure: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        claimSource: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        claimEndpoints: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        depositProjection: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        depositSummaries: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+      },
+    },
+    zeroInput: scaffoldChain(zeroInputFirstStep, 2),
+    validationTraceDispute: {
+      ...scaffoldChain(alwaysValidationTraceDispute, 1),
+      yields: {
+        scriptSourcesStageTwoAdvance: reserve,
+        scriptSourcesStageThreeReplay: reserve,
+        scriptSourcesStageThreeFinish: reserve,
+        scriptSourcesStageFourBegin: reserve,
+        scriptSourcesStageFourFinish: reserve,
+        scriptSourcesStageSixBeginPolicy: reserve,
+        scriptSourcesStageSixFoldAsset: reserve,
+        scriptSourcesStageSixFinish: reserve,
+        scriptSourcesObserverItem: reserve,
+        scriptSourcesObserverBound: reserve,
+        scriptSourcesRedeemerDescriptor: reserve,
+        ledgerOutputProofStructure: reserve,
+        ledgerOutputProofValue: reserve,
+        ledgerOutputProofDatumFoldMap: reserve,
+        ledgerOutputProofDatumFinalizeFrame: reserve,
+        ledgerOutputProofDatumHeadScalar: reserve,
+        ledgerOutputProofDatumAttachInteger: reserve,
+        ledgerOutputProofDatumFoldList: reserve,
+        ledgerOutputProofDatumAdvanceInteger: reserve,
+        ledgerOutputProofReferenceScript: reserve,
+        ledgerOutputProofScriptHash: reserve,
+        ledgerOutputProofNativeScript: reserve,
+        ledgerOutputProofStructureAssets: reserve,
+        ledgerOutputProofStructureOptional: reserve,
+        ledgerOutputProofStructureFinish: reserve,
+        ledgerOutputProofDatumHeadSequence: reserve,
+        ledgerOutputProofDatumHeadMap: reserve,
+        ledgerOutputProofDatumHeadLargeConstructor: reserve,
+        ledgerOutputProofDatumAttachBytes: reserve,
+        ledgerOutputProofDatumAdvanceBytes: reserve,
+        ledgerOutputProofDatumFinish: reserve,
+        ledgerOutputProofDatumLargeConstructor: reserve,
+        ledgerOutputProofDatumLargeFields: reserve,
+        ledgerOutputProofDatumClose: reserve,
+        ledgerOutputProofSpan: reserve,
+        ledgerOutputProofScalarInteger: reserve,
+        ledgerOutputProofScalarBytes: reserve,
+        ledgerOutputDescriptorScanFacts: reserve,
+        ledgerOutputDescriptorReferenceScript: reserve,
+        ledgerOutputDescriptorDatumSummary: reserve,
+        ledgerOutputDescriptorValueSummary: reserve,
+        phaseANativeItemNative: reserve,
+        phaseANativeItemForeign: reserve,
+        cekMaterialProgramTask: reserve,
+        cekMaterialDataTask: reserve,
+        valueAndMintAssetFold: reserve,
+        cekSelectionAuthenticate: reserve,
+        cekSelectionSuccessor: reserve,
+        cekSelectionMaterialProgram: reserve,
+        cekSelectionMaterialData: reserve,
+      },
+      cekProgramMaterial: alwaysValidationTraceDispute,
+      cekMaterialTraversal: alwaysValidationTraceDispute,
+      cekContextStages: {
+        settle: alwaysValidationTraceDispute,
+        control: alwaysValidationTraceDispute,
+        reference: alwaysValidationTraceDispute,
+        spend: alwaysValidationTraceDispute,
+        output: alwaysValidationTraceDispute,
+        signer: alwaysValidationTraceDispute,
+        observerAuthenticate: alwaysValidationTraceDispute,
+        observerFold: alwaysValidationTraceDispute,
+        mintInit: alwaysValidationTraceDispute,
+        mintItem: alwaysValidationTraceDispute,
+        assemble: alwaysValidationTraceDispute,
+        txInfo: alwaysValidationTraceDispute,
+        seed: alwaysValidationTraceDispute,
+        finalizeAuthenticate: alwaysValidationTraceDispute,
+        finalizeSpend: alwaysValidationTraceDispute,
+        finalizeMint: alwaysValidationTraceDispute,
+        finalizeWithdraw: alwaysValidationTraceDispute,
+        finalizeObserve: alwaysValidationTraceDispute,
+        finalizeMidgard: alwaysValidationTraceDispute,
+        redeemerBegin: alwaysValidationTraceDispute,
+        redeemerSelectAuthenticate: alwaysValidationTraceDispute,
+        redeemerSelectInitialize: alwaysValidationTraceDispute,
+        redeemerSelectHash: alwaysValidationTraceDispute,
+        redeemerSelectFinish: alwaysValidationTraceDispute,
+        itemBind: alwaysValidationTraceDispute,
+        itemReturn: alwaysValidationTraceDispute,
+        itemSelectionHash: alwaysValidationTraceDispute,
+        itemDataHash: alwaysValidationTraceDispute,
+        itemFinalize: alwaysValidationTraceDispute,
+        itemSelectionContinue: alwaysValidationTraceDispute,
+        itemSelectionFinish: alwaysValidationTraceDispute,
+        itemDataContinue: alwaysValidationTraceDispute,
+        itemDataFinishDescriptor: alwaysValidationTraceDispute,
+        itemDataFinishValue: alwaysValidationTraceDispute,
+      },
+      cekContextItemStages: {
+        entry: alwaysValidationTraceDispute,
+        traversalNormalizer: alwaysValidationTraceDispute,
+        outerNormalizer: alwaysValidationTraceDispute,
+        sourceAuthenticator: alwaysValidationTraceDispute,
+        settlement: alwaysValidationTraceDispute,
+        executors: Array.from(
+          { length: 17 },
+          () => alwaysValidationTraceDispute,
+        ),
+      },
+      cekCoreStages: {
+        settle: alwaysValidationTraceDispute,
+        compute: alwaysValidationTraceDispute,
+        machine: alwaysValidationTraceDispute,
+        mapConversion: alwaysValidationTraceDispute,
+        directScalar: alwaysValidationTraceDispute,
+        directStructured: alwaysValidationTraceDispute,
+        directScalarBudget: alwaysValidationTraceDispute,
+        directStructuredBudget: alwaysValidationTraceDispute,
+        directScalarRoots: alwaysValidationTraceDispute,
+        directStructuredRoots: alwaysValidationTraceDispute,
+        semanticPair: alwaysValidationTraceDispute,
+        semanticListConstruct: alwaysValidationTraceDispute,
+        semanticListSelect: alwaysValidationTraceDispute,
+        semanticChoose: alwaysValidationTraceDispute,
+        semanticDataConstruct: alwaysValidationTraceDispute,
+        semanticDataScalar: alwaysValidationTraceDispute,
+        semanticDataMisc: alwaysValidationTraceDispute,
+        semanticBudget: alwaysValidationTraceDispute,
+        semanticRoots: alwaysValidationTraceDispute,
+        semanticResult: alwaysValidationTraceDispute,
+        mapStartNodes: alwaysValidationTraceDispute,
+        mapStartBudget: alwaysValidationTraceDispute,
+        mapStartRoots: alwaysValidationTraceDispute,
+        semanticFailureMaterial: alwaysValidationTraceDispute,
+        semanticFailureRoots: alwaysValidationTraceDispute,
+        blsFinal: alwaysValidationTraceDispute,
+        blsBudget: alwaysValidationTraceDispute,
+        blsRoots: alwaysValidationTraceDispute,
+        failureBudget: alwaysValidationTraceDispute,
+        failureKnown: alwaysValidationTraceDispute,
+        typeFailureKinds: alwaysValidationTraceDispute,
+        typeFailureRoots: alwaysValidationTraceDispute,
+      },
+      opener: alwaysValidationTraceDispute,
+      source: alwaysValidationTraceDispute,
+      game: alwaysValidationTraceDispute,
+      boundary: alwaysValidationTraceDispute,
+      timeout: alwaysValidationTraceDispute,
+      award: alwaysValidationTraceDispute,
+      proofItem: alwaysValidationTraceDispute,
+      canonicalDecodeItemStages: {
+        source: alwaysValidationTraceDispute,
+        observe: alwaysValidationTraceDispute,
+        proof: alwaysValidationTraceDispute,
+        settlement: alwaysValidationTraceDispute,
+      },
+      scriptSourcesStageOneRedeemerStages: {
+        envelope: alwaysValidationTraceDispute,
+        traversalNormalizer: alwaysValidationTraceDispute,
+        outerNormalizer: alwaysValidationTraceDispute,
+        sourceAuthenticator: alwaysValidationTraceDispute,
+        executors: Array.from(
+          { length: 19 },
+          () => alwaysValidationTraceDispute,
+        ),
+        foldMapExecutor: alwaysValidationTraceDispute,
+        finalizeFrameExecutor: alwaysValidationTraceDispute,
+        settlement: alwaysValidationTraceDispute,
+      },
+      prepareResolvers: repeatValidator(alwaysValidationTraceDispute, 14),
+      semanticResolvers: repeatValidator(alwaysValidationTraceDispute, 91),
+      resolvers: repeatValidator(alwaysValidationTraceDispute, 14),
+    },
+    daHashPreimage: scaffoldChain(zeroInputFirstStep, 2),
+    noReferenceInput: scaffoldChain(nonExistentInputFirstStep, 4),
+    referenceInputNoIdx: scaffoldChain(nonExistentInputNoIndexFirstStep, 4),
+    invalidSignature: scaffoldChain(invalidRangeFirstStep, 2),
+    fabricatedDeposit: scaffoldChain(appendedFamilyFallback, 4),
+    fabricatedWithdrawal: scaffoldChain(appendedFamilyFallback, 4),
+    nativeScriptDecoding: scaffoldChain(appendedFamilyFallback, 6),
+    missingSignature: {
+      ...scaffoldChain(appendedFamilyFallback, 4),
+      forcedStep: appendedFamilyFallback,
+      forcedSigner: appendedFamilyFallback,
+      forcedWitness: appendedFamilyFallback,
+    },
+    missingNativeScriptTx: scaffoldChain(appendedFamilyFallback, 8),
+    withdrawnReferenceInput: scaffoldChain(appendedFamilyFallback, 3),
+    canonicalDecodability: scaffoldChain(appendedFamilyFallback, 2),
+    committedFieldShape: scaffoldChain(appendedFamilyFallback, 2),
+    minFee: scaffoldChain(appendedFamilyFallback, 2),
+    withdrawalMistag: scaffoldChain(appendedFamilyFallback, 5),
+    doubleWithdraw: scaffoldChain(appendedFamilyFallback, 2),
+    crossBlockDuplicateEvent: scaffoldChain(appendedFamilyFallback, 2),
+    l2TxMistag: scaffoldChain(appendedFamilyFallback, 2),
+    withdrawnInput: scaffoldChain(appendedFamilyFallback, 3),
+    valueNotPreserved: {
+      ...scaffoldChain(appendedFamilyFallback, 4),
+      unionAcceptedSource: appendedFamilyFallback,
+      unionForcedSource: appendedFamilyFallback,
+      unionEvent: appendedFamilyFallback,
+      unionPreState: appendedFamilyFallback,
+      unionInputs: appendedFamilyFallback,
+      unionInputValue: appendedFamilyFallback,
+      unionAssets: appendedFamilyFallback,
+      unionFieldGrammar: appendedFamilyFallback,
+      unionOutputs: appendedFamilyFallback,
+      unionOutputScan: appendedFamilyFallback,
+      unionMint: appendedFamilyFallback,
+      unionUpdate: appendedFamilyFallback,
+      unionTerminal: appendedFamilyFallback,
+    },
+    inputSetUniqueness: scaffoldChain(appendedFamilyFallback, 4),
+    mintAuthorization: scaffoldChain(appendedFamilyFallback, 7),
+    networkId: {
+      ...scaffoldChain(appendedFamilyFallback, 2),
+      forcedStep: appendedFamilyFallback,
+      forcedScan: appendedFamilyFallback,
+    },
+    missingNativeScriptUtxo: scaffoldChain(appendedFamilyFallback, 7),
+    nativeScriptInvalid: scaffoldChain(appendedFamilyFallback, 5),
+    minAda: {
+      ...scaffoldChain(appendedFamilyFallback, 5),
+      yields: {
+        tx: {
+          withdrawalScriptCBOR: appendedFamilyFallback.spendingScriptCBOR,
+          withdrawalScript: appendedFamilyFallback.spendingScript,
+          withdrawalScriptHash: appendedFamilyFallback.spendingScriptHash,
+        },
+        utxo: {
+          withdrawalScriptCBOR: appendedFamilyFallback.spendingScriptCBOR,
+          withdrawalScript: appendedFamilyFallback.spendingScript,
+          withdrawalScriptHash: appendedFamilyFallback.spendingScriptHash,
+        },
+      },
+    },
+    fieldPreimageLengthMismatch: {
+      ...scaffoldChain(appendedFamilyFallback, 4),
+      acceptedStep02: appendedFamilyFallback,
+      forcedStep02: appendedFamilyFallback,
+    },
+    fieldItemWidthIllegal: scaffoldChain(appendedFamilyFallback, 3),
+    witnessScriptDecoding: scaffoldChain(appendedFamilyFallback, 4),
+    scriptIntegrityHashMissing: {
+      ...scaffoldChain(appendedFamilyFallback, 7),
+      scriptGrammar: appendedFamilyFallback,
+      scriptScan: appendedFamilyFallback,
+      redeemerGrammar: appendedFamilyFallback,
+    },
+    transactionOutputNonCanonical: scaffoldChain(appendedFamilyFallback, 4),
+    mintItemNonCanonical: scaffoldChain(appendedFamilyFallback, 4),
+    resolvedOutputNonCanonical: scaffoldChain(appendedFamilyFallback, 5),
+    mintDeclaredAssetLimit: scaffoldChain(appendedFamilyFallback, 4),
+    spendInputSignerMissing: scaffoldChain(appendedFamilyFallback, 5),
+    protectedOutputSignerMissing: scaffoldChain(appendedFamilyFallback, 5),
+    observersForbiddenOnUntaggedNetwork: scaffoldChain(
+      appendedFamilyFallback,
+      2,
+    ),
+    outputReferenceScriptDecoding: scaffoldChain(appendedFamilyFallback, 6),
+    executionSourceScriptDecoding: scaffoldChain(appendedFamilyFallback, 5),
+    executionNativeScriptInvalid: scaffoldChain(appendedFamilyFallback, 13),
+    observerOrderInvalid: scaffoldChain(appendedFamilyFallback, 4),
+    redeemerCanonicity: scaffoldChain(appendedFamilyFallback, 3),
+    receivePurposeLanguage: scaffoldChain(appendedFamilyFallback, 3),
+    unusedScriptWitness: scaffoldChain(appendedFamilyFallback, 6),
+    missingScriptSource: scaffoldChain(appendedFamilyFallback, 6),
+    missingRedeemer: scaffoldChain(appendedFamilyFallback, 7),
+    unusedRedeemer: scaffoldChain(appendedFamilyFallback, 9),
+    scriptIntegrityHashMismatch: scaffoldChain(appendedFamilyFallback, 5),
+    distinctAssetAccumulationLimit: scaffoldChain(appendedFamilyFallback, 6),
+  };
+  const fraudProofs = fraudProofContractsToFirstSteps(fraudProofContracts);
+  const fieldPreimage = makeSpendingValidator(
+    alwaysScript(blueprint, "midgard", "state_queue", "spend"),
+  );
+  // #579 ruling A: this always-succeeds spend+mint pair used to stand in for the
+  // retired `tx_field_receipt_v1` family. It now stands in for the §8.6
+  // field-preimage certificate, which is the role the emulator set actually has
+  // to fill — the tx-order mint is parameterized by the certificate policy id.
+  const fieldPreimageCertificateV1 = {
+    ...fieldPreimage,
+    ...makeMintingValidator(
+      alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+    ),
+  };
+
+  return {
+    referenceScriptAuth: makeMintingValidator(
+      alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+    ),
+    hubOracle: {
+      ...makeMintingValidator(
+        alwaysScript(blueprint, "midgard", "hub_oracle", "mint"),
+      ),
+      ...makeSpendingValidator(
+        alwaysScript(blueprint, "midgard", "hub_oracle", "mint"),
+      ),
+    },
+    daParamsGovernor: alwaysAuthenticated(blueprint, "state_queue"),
+    daAttestation: alwaysAuthenticated(blueprint, "state_queue"),
+    availabilityChallenge: {
+      ...alwaysAuthenticated(blueprint, "state_queue"),
+      yields: {
+        bond: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+        open: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+        settle: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+        close: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+        timeout: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+      },
+    },
+    correctionLock: makeSpendingValidator(
+      alwaysScript(blueprint, "midgard", "state_queue", "spend"),
+    ),
+    stateQueue: {
+      ...alwaysAuthenticated(blueprint, "state_queue"),
+      yields: {
+        commit: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+        unattestedTimeout: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+        unavailableTimeout: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+        fraudRemoval: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+        merge: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+      },
+    },
+    scheduler: alwaysAuthenticated(blueprint, "scheduler"),
+    registeredOperators: alwaysAuthenticated(blueprint, "registered_operators"),
+    activeOperators: alwaysAuthenticated(blueprint, "active_operators"),
+    retiredOperators: alwaysAuthenticated(blueprint, "retired_operators"),
+    escapeHatch: alwaysAuthenticated(blueprint, "escape_hatch"),
+    fraudProofCatalogue: alwaysAuthenticated(
+      blueprint,
+      "fraud_proof_catalogue",
+    ),
+    computationThread: fieldPreimageCertificateV1,
+    fraudProof: alwaysAuthenticated(blueprint, "fraud_proof"),
+    chunkedVerify: reserve,
+    pexcludes: reserve,
+    deposit: alwaysAuthenticated(blueprint, "deposit"),
+    withdrawal: alwaysAuthenticated(blueprint, "withdrawal"),
+    txOrder: alwaysAuthenticated(blueprint, "tx_order"),
+    fieldPreimageCertificate: fieldPreimageCertificateV1,
+    cekProgramMaterial: fieldPreimage,
+    settlement: alwaysAuthenticated(blueprint, "settlement"),
+    reserve,
+    payout: alwaysAuthenticated(blueprint, "payout"),
+    fraudProofContracts,
+    fraudProofs,
+  };
+};

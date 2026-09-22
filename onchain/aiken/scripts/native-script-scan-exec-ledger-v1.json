@@ -1,0 +1,208 @@
+{
+  "measurement": "native-script-scan-tag0-structural-predicate-exec-ledger",
+  "issue": "#633 (R5 item 9) — the step-0 ExUnits precondition decision 0005 amendment A3 attaches to giving `ledger_output_v1.parse_script_ref`'s tag-0 arm a structural predicate. Rows pinned here because the precondition FAILED and an owner-ruled wave item was dropped on the strength of them.",
+  "spec": "docs/midgard/decisions/0005-owner-rulings-2026-08-18.md §A3 (the ruling and its precondition), with docs/spec/midgard-tx.md §5.5 for the reference-script field and §6.2 for output canonicity; GOAL_SPEC §3.3 for the basis. The spec re-point for the dropped item is tracked on #633 and is not this lane's.",
+  "note": "Decision 0005 amendment A3 gates wave item 9 -- giving `ledger_output_v1.parse_script_ref`'s tag-0 arm a canonical native-script structural predicate -- on an R3-style ExUnits measurement of the `accepted_transaction_v1` arm's worst case, taken BEFORE any on-chain commitment. These rows are that measurement. It FAILED, the item dropped out of the #617 wave, and this ledger is what makes the failure re-checkable when the follow-up ruling is written.\n\n**The verdict, at the frozen basis.** `GOAL_SPEC_EXECUTION_BASIS_V1` is 13,200,000 memory units / 8,000,000,000 cpu units (`scripts/exec-ledger-within-basis-v1.mjs`; GOAL_SPEC §3.3 retires the 11,200,000 figure earlier benches derived from the stale Conway cap, and the lane's first commit message quoted the retired figure -- history is immutable, this file is the correction). Against it, the largest payload the arm can ever see -- 16,341 bytes, 5,447 nodes, the deep shape -- costs **1,076,978,099 memory units, 81.6x over**, with nothing else in the transaction. That deep figure is GATE-DERIVED from the measured deep curve rather than read off a live test: see `derivedRows` for the arithmetic, for the three independent direct readings it was checked against (it matches them to 0.0007%), and for why driving it in-tree is not affordable. The headline MEASURED worst case is its wide twin, `worst_case_wide_predicate`, live at 949,469,452 mem / 313,869,072,746 cpu -- **71.9x over on memory**, 39x on cpu -- which fails A3's precondition on its own, so the verdict never depended on the derived row. The basis is exhausted at **67 nodes** on the deep shape and **76** on the wide one. The 16,384-node bound the scan carries is a STAGED-machine bound precisely because one L1 transaction cannot carry that scan.\n\n**No cheaper faithful driver rescues it, and that is measured rather than argued.** `native_script_v1.inspect_native_script` -- the ready, total, re-encode-compare predicate A3 names as the alternative -- exhausts the same basis at about **100** nodes. A bare `cbor.deserialise` of the payload, which does no scanning at all and is therefore a floor under any one-shot driver anyone could write, exhausts it at about **250**. Two orders of magnitude short of 16,384 in every direction. Refuting this verdict needs a driver cheaper than reading the bytes.\n\n**What the rows are.** Eight curve points, four per shape, at 65 / 257 / 1,025 / 4,097 nodes; a builder-only baseline for each worst-case vector, so the predicate's marginal cost is a difference rather than a whole-test reading (both baselines are around 83-89 K mem, under 0.01% of either worst case, which is what the doubling-concatenation builder buys); five comparison-arm readings on the two independent drivers; and the reachable WIDE worst case, live in its own module. The reachable DEEP worst case is the one figure this ledger derives instead of measuring -- see `derivedRows` -- because driving it aborts the whole-tree check; its module keeps three cheap vector guards live, so the derivation still divides by a node count a running test pins. Every vector is built programmatically by `midgard/native_script_payload_vectors_v1`.\n\n**The derivations, and their cross-check.** The four node counts published above are two-point linear extrapolations recomputed by the verifier from the fresh readings, in exact integer arithmetic, never restated. They are not a fit anyone has to take on faith: extrapolating the deep 65-node and 4,097-node rows out to 5,447 nodes predicts 1,076,978,099 mem against the 1,076,971,016 the vector read when it was driven directly -- 0.0007% high, which is what licenses publishing the deep row as a derivation -- and the wide pair predicts 949,479,396 against a measured 949,469,452. Cost is linear in node count over an 84-fold range, at about 197,726 mem/node deep and 174,338 wide, so the crossing points are readings rather than guesses.\n\n**A reachability correction the ruling does not carry.** A3 quotes the §5.4 per-field bound of 32,768 bytes. That bound is NOT reachable here: `parse_script_ref` is private to `ledger_output_v1`, and every route to it passes `max_output_canonical_cbor_bytes` (16,384) first. Subtracting the 43-byte minimum output envelope (`native_script_payload_vectors_v1.tag0_payload_envelope_bytes` derives it part by part) gives 16,341 bytes as the largest tag-0 payload the arm can ever see, and that is what the worst cases are built to. The unreachable 32,768-byte case was attempted and is past the tooling frontier -- `deep_payload(32768)`, 10,922 nodes, aborts the evaluator with \"memory allocation failed\" under a 16 GiB address-space cap -- which is recorded here rather than run, because the verdict does not need it: the REACHABLE case is already 81x over.\n\n**The reach set, if it were wired anyway.** Measured by wiring the predicate into the tag-0 arm, building a scratch blueprint and diffing against c98cd0bf, then reverting: three validators move out of 444, not the two A3 predicts -- `fraud_proofs/transition_trace/accepted_transaction_v1`, `fraud_proofs/transition_trace/deposit_v1`, and `fraud_proofs/validation_trace/cek_context_step_semantic_v1`. The third is not named in the ruling and reaches the arm through `validation_machine_v1` -> `script_context_v1.tx_out_data_v1` -> `decode_canonical_output`; unlike `deposit_v1`, whose projected output is built with `script_ref: None` (`transition-trace/proof.ak:901`), that is a live runtime reach. It makes the budget verdict strictly worse. The branch as committed leaves `parse_script_ref` untouched and moves ZERO of the 444 validator hashes.\n\n**What these rows do NOT claim.** (1) That the predicate is wrong. It is a faithful one-shot of the staged machine's own scan -- same `token_at_v1`, same `frame_for_token_v1` / `apply_child_v1`, same bounds, same exact-consumption finalize -- and it is correct and tested (`native-script-scan-v1.test.ak`, the `one_shot_*` refusals). What fails is the budget, not the logic. (2) That a STAGED tag-0 predicate is infeasible. `ledger_output_proof_v1` already scans native scripts across many transactions; this ledger prices the ONE-SHOT arm, which is the only thing A3's item 9 asked for. (3) That the vectors are valid L2 transactions. They are the worst shapes the ARM admits, which is what bounds its cost. (4) That the builder-only baselines are subtracted by the gate: the verifier judges absolute rows and recomputes the node-count derivations; the ~83 K subtraction is arithmetic a reader does over rows this file pins.\n\n**Running this ledger, and the memory constraint that shaped it.** Host memory tracks the evaluator's RECURSION DEPTH; execution units track NODE COUNT. The two come apart at exactly the point that matters here: the deep worst case (5,446 nested containers) peaks around 12.6 GB of host memory over 38 s, while the wide one (one node smaller, stack depth 1) peaks around 0.6 GB over 7 s despite costing 88% as many execution units. Driving the deep vector inside the whole-tree `aiken check --env testnet`, which evaluates every module in one process, took that run to a 14.62 GB peak and aborted it with SIGABRT (\"memory allocation of 336 bytes failed\") against the 16 GiB guardrail cap -- even with `RAYON_NUM_THREADS=1`, and it would be red on any comparable CI runner. That is why the deep row is derived rather than live: with it absent the same run is green at a 10.97 GB peak over 2,174 tests, and the tree stays runnable. Everything still live here is affordable, and `run-focused-check.mjs` is called once per module because Aiken evaluates a module's selected tests in PARALLEL and the measurer puts every selector it is handed into one invocation. Setting `RAYON_NUM_THREADS=1` remains the safer way to run the full tree, but is no longer what keeps it under the cap.\n\nRegenerate with `MIDGARD_AIKEN_BIN=<fork> node scripts/verify-native-script-scan-exec-ledger-v1.mjs --update`, and move any reported number in the same commit. `--update` rewrites the raw mem/cpu rows and the recomputed derived integers; it does NOT rewrite `nodes`, `basisFit`, `infeasibility`, `ruling` or any `claim`, and it is not a bypass -- a row or selector that did not run, an `exceeds` row with no declared exception, or a fresh reading that contradicts a recorded `basisFit` fails in update mode too and the ledger is not rewritten. An `exceeds` row that starts fitting is the failure this ledger most wants to catch: it would mean wave item 9 is back. Provisional on the same footing as every other ledger in this directory; formal closure is Phase 7's, against the Phase-6 blueprint.",
+  "compiler": "Readings taken with the patched fork `aiken v1.1.23+2a78108` (md5 b3acfdf348235798cb6b921d0f87750a, /home/gumbo/playground/aiken/target/release/aiken), the same rev the other ledgers in this directory were taken under. Stock v1.1.22 is compile/blueprint only and never a reading source. Rows are env-independent: no module measured here reads `env`.",
+  "basis": {
+    "memoryUnits": 13200000,
+    "cpuUnits": 8000000000,
+    "source": "GOAL_SPEC §3.3 — 20% margin off the supported L1 floor MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits of 16,500,000 mem. Taken from GOAL_SPEC_EXECUTION_BASIS_V1 in scripts/exec-ledger-within-basis-v1.mjs, never from this file."
+  },
+  "derived": [
+    {
+      "claim": "the one-shot predicate, deep shape: where the §3.3 memory basis is exhausted",
+      "from": "curve_deep_00064",
+      "to": "curve_deep_04096",
+      "largestWithinBasisNodes": 66,
+      "basisExhaustedAtNodes": 67
+    },
+    {
+      "claim": "the one-shot predicate, wide shape: where the §3.3 memory basis is exhausted",
+      "from": "curve_wide_00064",
+      "to": "curve_wide_04096",
+      "largestWithinBasisNodes": 75,
+      "basisExhaustedAtNodes": 76
+    },
+    {
+      "claim": "native_script_v1.inspect_native_script, the alternative decision 0005 A3 names: where the §3.3 memory basis is exhausted",
+      "from": "cmp_inspect_wide_00064",
+      "to": "cmp_inspect_wide_01024",
+      "largestWithinBasisNodes": 99,
+      "basisExhaustedAtNodes": 100
+    },
+    {
+      "claim": "a bare cbor.deserialise of the payload, the floor under any one-shot driver: where the §3.3 memory basis is exhausted",
+      "from": "cmp_cbor_wide_00064",
+      "to": "cmp_cbor_wide_01024",
+      "largestWithinBasisNodes": 249,
+      "basisExhaustedAtNodes": 250
+    }
+  ],
+  "modules": [
+    {
+      "module": "midgard/native_script_scan_worst_case_v1.test",
+      "neutralisationNote": "Two selectors, both mutation-verified rather than assumed. (1) `curve_vectors_carry_the_node_counts_the_ledger_divides_by` is the shape guard: every `nodes` value in this module's rows is the divisor the derivations use, so shrinking a vector to make a row cheaper goes red here before it can be re-pinned. (2) `harness_predicates_refuse_a_malformed_payload` is the discrimination guard: a predicate that returned `True` for anything would price the same and mean nothing. It also records the one honest asymmetry between the arms -- `cbor.deserialise` ACCEPTS the malformed native script, because `82 07 00` is perfectly good CBOR, which is exactly why it is a lower bound on driver cost rather than a rival predicate.",
+      "neutralisation": [
+        "curve_vectors_carry_the_node_counts_the_ledger_divides_by",
+        "harness_predicates_refuse_a_malformed_payload"
+      ],
+      "rows": {
+        "curve_wide_00064": {
+          "nodes": 65,
+          "mem": 11367124,
+          "cpu": 3753059749,
+          "basisFit": "within"
+        },
+        "curve_wide_00256": {
+          "nodes": 257,
+          "mem": 44860169,
+          "cpu": 14824336848,
+          "basisFit": "exceeds",
+          "infeasibility": "a 257-node tag-0 payload in the flat wide shape -- 773 bytes, under 5% of the reachable cap -- already cannot be scanned by the one-shot predicate inside one L1 transaction.",
+          "ruling": "#633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+        },
+        "curve_wide_01024": {
+          "nodes": 1025,
+          "mem": 178754017,
+          "cpu": 59086555112,
+          "basisFit": "exceeds",
+          "infeasibility": "a 1,025-node wide payload costs 13.5x the memory basis; the curve is linear from here to the reachable cap and never comes back.",
+          "ruling": "#633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+        },
+        "curve_wide_04096": {
+          "nodes": 4097,
+          "mem": 714297561,
+          "cpu": 236126486176,
+          "basisFit": "exceeds",
+          "infeasibility": "a 4,097-node wide payload costs 54.1x the memory basis. It is a curve point rather than the worst case: `worst_case_wide_predicate` is.",
+          "ruling": "#633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+        },
+        "curve_deep_00064": {
+          "nodes": 65,
+          "mem": 12816639,
+          "cpu": 4280527975,
+          "basisFit": "within"
+        },
+        "curve_deep_00256": {
+          "nodes": 257,
+          "mem": 50789135,
+          "cpu": 16980647703,
+          "basisFit": "exceeds",
+          "infeasibility": "a 257-node tag-0 payload in the nested deep shape -- 771 bytes -- already cannot be scanned inside one L1 transaction, at 3.85x the memory basis.",
+          "ruling": "#633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+        },
+        "curve_deep_01024": {
+          "nodes": 1025,
+          "mem": 202647271,
+          "cpu": 67772184623,
+          "basisFit": "exceeds",
+          "infeasibility": "a 1,025-node deep payload costs 15.4x the memory basis.",
+          "ruling": "#633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+        },
+        "curve_deep_04096": {
+          "nodes": 4097,
+          "mem": 810047967,
+          "cpu": 270929390311,
+          "basisFit": "exceeds",
+          "infeasibility": "a 4,097-node deep payload costs 61.4x the memory basis. It is a curve point rather than the worst case: `worst_case_deep_predicate` is.",
+          "ruling": "#633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+        },
+        "worst_case_deep_builder_only": {
+          "nodes": 5447,
+          "mem": 82921,
+          "cpu": 21370615,
+          "basisFit": "within"
+        },
+        "worst_case_wide_builder_only": {
+          "nodes": 5446,
+          "mem": 88848,
+          "cpu": 23960224,
+          "basisFit": "within"
+        },
+        "cmp_inspect_wide_00064": {
+          "nodes": 65,
+          "mem": 8612097,
+          "cpu": 2797257614,
+          "basisFit": "within"
+        },
+        "cmp_inspect_wide_01024": {
+          "nodes": 1025,
+          "mem": 135301062,
+          "cpu": 43984524708,
+          "basisFit": "exceeds",
+          "infeasibility": "the alternative driver A3 names, `native_script_v1.inspect_native_script`, is over the basis at 1,025 nodes too. Swapping drivers does not rescue the item; it moves the crossing from 76 nodes to 100.",
+          "ruling": "#633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+        },
+        "cmp_inspect_deep_01024": {
+          "nodes": 1025,
+          "mem": 156991947,
+          "cpu": 48780329408,
+          "basisFit": "exceeds",
+          "infeasibility": "`inspect_native_script` on the deep shape at 1,025 nodes, over the basis by 11.9x. It is measured on both shapes for the same reason the predicate is: to show the crossing does not depend on which shape an operator picks.",
+          "ruling": "#633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+        },
+        "cmp_cbor_wide_00064": {
+          "nodes": 65,
+          "mem": 3476495,
+          "cpu": 876741793,
+          "basisFit": "within"
+        },
+        "cmp_cbor_wide_01024": {
+          "nodes": 1025,
+          "mem": 53943997,
+          "cpu": 13573549884,
+          "basisFit": "exceeds",
+          "infeasibility": "even a bare `cbor.deserialise` of a 1,025-node payload -- no scan at all, just getting the bytes into `Data` -- is 4.1x over the memory basis. This is the floor under any conceivable one-shot driver, and it is what closes the question rather than deferring it to a cleverer implementation.",
+          "ruling": "#633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+        }
+      }
+    },
+    {
+      "module": "midgard/native_script_scan_worst_case_deep_v1.test",
+      "neutralisationNote": "The deep worst case is alone in its module so that this invocation evaluates it without the wide one; its guards are what make the row a reading of the shape the note describes. `worst_case_deep_vector_is_the_reachable_maximum` pins 16,341 bytes / 5,447 nodes / stack depth 5,446 and that no further node fits; `worst_case_deep_shape_opens_one_frame_per_container` pins that the depth quoted is the SCAN's `stack_depth` and not the tree's height, on a two-container analogue; `worst_case_deep_predicate_refuses_a_malformed_payload` is the discrimination guard. The byte cap is derived from `ledger_output_v1.max_output_canonical_cbor_bytes`, so moving the whole-output cap reddens the first guard rather than silently re-pinning a smaller worst case.",
+      "neutralisation": [
+        "worst_case_deep_vector_is_the_reachable_maximum",
+        "worst_case_deep_shape_opens_one_frame_per_container",
+        "worst_case_deep_predicate_refuses_a_malformed_payload"
+      ],
+      "rows": {},
+      "retired": "`worst_case_deep_predicate` was a measured row here until the memory ruling; it is now the `derivedRows` entry of the same name. The three selectors below stay live and cheap, and they are what keeps the derivation honest: it divides by a node count, and they pin the node count, byte length and stack depth of the exact vector it is quoted about."
+    },
+    {
+      "module": "midgard/native_script_scan_worst_case_wide_v1.test",
+      "neutralisationNote": "`worst_case_wide_vector_is_the_reachable_maximum` pins the repair of a harness defect the adversarial review found: the wide vector was a hand-written 5,443 leaves, seven bytes short of the budget and therefore not the wide maximum. `max_wide_leaves` is derived now and the guard pins the derivation at 5,445 leaves / 5,446 nodes / 16,340 bytes, with the one leftover byte too small to buy another three-byte node. `worst_case_wide_shape_never_opens_a_second_frame` pins the other review correction: the shape's depth is 1 in the scan's own `stack_depth`, not the 2 the harness used to claim from the tree's height.",
+      "neutralisation": [
+        "worst_case_wide_vector_is_the_reachable_maximum",
+        "worst_case_wide_shape_never_opens_a_second_frame",
+        "worst_case_wide_predicate_refuses_a_malformed_payload"
+      ],
+      "rows": {
+        "worst_case_wide_predicate": {
+          "nodes": 5446,
+          "mem": 949469452,
+          "cpu": 313869072746,
+          "basisFit": "exceeds",
+          "infeasibility": "the same conclusion from the other end of the scan's stack: 5,446 nodes at stack depth 1 rather than 5,446, 71.9x the memory basis. Cost tracks node count and not depth, so no shape choice rescues the item.",
+          "ruling": "#633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+        }
+      }
+    }
+  ],
+  "derivedRows": [
+    {
+      "row": "worst_case_deep_predicate",
+      "claim": "the reachable DEEP worst case: the largest tag-0 payload `ledger_output_v1.decode_canonical_output` can ever admit, driven through the one-shot structural predicate",
+      "from": "curve_deep_00064",
+      "to": "curve_deep_04096",
+      "nodes": 5447,
+      "bytes": 16341,
+      "mem": 1076978099,
+      "basisFit": "exceeds",
+      "measurement": "DERIVED, not measured. Recomputed by the verifier from the fresh `curve_deep_00064` and `curve_deep_04096` readings on every run, never read out of this file. Cite it as gate-derived from the measured curve, never as a live measured row.",
+      "derivation": "**How the figure is obtained.** Exact-integer two-point linear extrapolation of `mem` against `nodes` from the two measured deep curve rows named in `from`/`to`, evaluated at the 5,447 nodes of `deep_payload(max_reachable_payload_bytes)`: 12,816,639 + (5447 - 65) * (810,047,967 - 12,816,639) / (4097 - 65) = 1,076,978,099 memory units, 81.6x the 13,200,000-unit basis. Both endpoints are live rows in `midgard/native_script_scan_worst_case_v1.test`, and the node counts the arithmetic divides by are pinned by that module's `curve_vectors_carry_the_node_counts_the_ledger_divides_by` selector and by `worst_case_deep_vector_is_the_reachable_maximum` in the deep module.\n\n**Direct readings it was checked against.** The vector WAS driven directly, three times, independently: by the implementer (recorded as 1.07 B mem / 359.50 B cpu in the commented-out block at commit 20e175f7), by the reviewer (restating those figures as the claim under review), and by this lane before the row was retired, which took it through `run-focused-check.mjs` and had the gate verify it green at exactly 1,076,971,016 mem / 360,206,747,738 cpu. The derived figure is 7,083 units above that direct reading -- **0.0007% high** -- and that cross-check is what licenses publishing it as a derivation. The memory figure agrees across all three to the precision the first two were recorded at. The cpu figures differ by about 0.2% (359.50 B recorded earlier against 360.21 B here), consistent with this lane threading explicit `node_bound`/`depth_bound` parameters through `one_shot_token_v1`/`one_shot_frame_v1` so that the bound-edge refusals became testable; nothing in the verdict turns on that 0.2%.\n\n**Reproducing the direct reading.** Restore `test worst_case_deep_predicate() { native_script_scan_v1.payload_structure_is_canonical_v1(vectors.deep_payload(vectors.max_reachable_payload_bytes)) }` in `native-script-scan-worst-case-deep-v1.test.ak` and select it ALONE -- outside the tree run, which is the only place it fits: `MIDGARD_AIKEN_BIN=<fork> node scripts/run-focused-check.mjs midgard/native_script_scan_worst_case_deep_v1.test worst_case_deep_predicate`, under `ulimit -v 16777216`. It peaks around 12.6 GB of host memory and takes about 38 s. Revert afterwards.\n\n**Why it is not live.** Host memory tracks the evaluator's recursion depth while execution units track node count, so this vector's 5,446 nested containers cost about 12.6 GB on the host, where its wide twin -- one node smaller, at stack depth 1 -- costs 0.6 GB. The whole-tree `aiken check` evaluates every module in one process: with this test live the full `--env testnet` run peaked at 14.62 GB and aborted with SIGABRT (\"memory allocation of 336 bytes failed\") against the 16 GiB guardrail cap, even under `RAYON_NUM_THREADS=1`, and would be red on any comparable CI runner; with it absent the same run is green at a 10.97 GB peak over 2,174 tests. Keeping the tree runnable was ruled to outrank keeping this one row measured, on the grounds that the verdict is over-determined without it: the live, measured wide worst case is 71.9x over by itself, and the bare `cbor.deserialise` floor exhausts the basis at 250 nodes.",
+      "infeasibility": "THE WORST CASE THE VERDICT IS QUOTED AS. The largest tag-0 payload `ledger_output_v1.decode_canonical_output` can ever admit -- 16,341 bytes, 5,447 nodes -- costs 81.6x the memory basis with nothing else in the transaction. Wiring the predicate into the tag-0 arm of `parse_script_ref` would make `accepted_transaction_v1`, `deposit_v1` and `cek_context_step_semantic_v1` unspendable against a payload an operator chooses freely. The verdict does not rest on this row alone: the live, measured `worst_case_wide_predicate` is 71.9x over by itself.",
+      "ruling": "#633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+    }
+  ]
+}

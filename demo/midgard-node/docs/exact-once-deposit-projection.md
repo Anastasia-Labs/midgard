@@ -1,6 +1,6 @@
 # Exact-Once Deposit Projection
 
-This document defines the production deposit-ingestion and projection model for
+This document describes the implemented deposit-ingestion and projection model for
 `demo/midgard-node`.
 
 ## Goals
@@ -25,31 +25,28 @@ Each deposit row carries:
 
 Allowed states:
 
-- `(awaiting, NULL)`: discovered from stable L1, not yet projected
+- `(awaiting, NULL)`: discovered from the provider-visible L1 set, not yet projected
 - `(projected, NULL)`: projected into `mempool_ledger` exactly once, not yet
   assigned to the first committed header that carried it
 - `(projected, H)`: projected exactly once and assigned to header `H`
 
-No other transitions are allowed.
+`consumed` is also a persisted status: spending a deposit-origin ledger row
+marks the deposit consumed so reconciliation cannot reinsert it. Matching-header
+abandonment can clear an assignment, and authenticated state-queue correction
+can reopen affected events. Assignment is conflict-checked, not permanently
+immutable across these explicit recovery paths.
 
-## Stable-L1 Discovery
+## Provider-visible discovery
 
-Deposit discovery is driven by a durable SQL cursor, not by in-memory refs.
+The fetcher reconciles the full currently visible deposit UTxO set, rather than
+advancing a stable-L1 SQL scan cursor. This avoids permanently missing an event
+whose indexer visibility lagged an earlier scan. The commit-time ingestion
+barrier adds an inclusion-time upper bound. `persistVisibleUserEventUTxOs`
+converts and inserts the visible events through the idempotent deposit adapter.
+The fetcher does not write `mempool_ledger`.
 
-The cursor stores:
-
-- the latest stable L1 view token used for scanning
-- the stable scan upper bound time
-- the last scanned deposit event id for auditability
-
-The fetcher is discovery-only:
-
-- resolve a stable L1 view
-- fetch deposits in `(previous_scan_upper_bound, current_stable_upper_bound]`
-- upsert them into `deposits_utxos` as `awaiting`
-- advance the cursor in the same SQL transaction
-
-The fetcher never writes `mempool_ledger`.
+This is provider-visible discovery, not an independent finalized-chain proof.
+Provider consistency and confirmation/recovery remain separate node boundaries.
 
 ## Exact-Once Projection
 
@@ -57,11 +54,17 @@ Projection is a separate SQL-driven step.
 
 The projector:
 
-- selects `awaiting` rows in canonical `(inclusion_time, event_id)` order
+- selects due `awaiting` rows in canonical `(inclusion_time, event_id)` order
 - inserts their ledger entries into `mempool_ledger`
 - sets `status='projected'`
 
-This happens in one serializable SQL transaction.
+The awaiting-row ledger reconciliation and status update share one SQL
+transaction. The projector does not explicitly request serializable isolation.
+It also reconciles missing ledger rows for still-`projected` deposits and rejects
+conflicting existing payloads. `consumed` deposits are excluded.
+
+Projected deposit rows are hidden from spendable UTxO queries until a confirmed
+header is assigned. Projection alone does not authorize a same-block spend.
 
 `mempool_ledger.source_event_id` is a foreign key to
 `deposits_utxos(event_id)` and has a partial unique index for deposit-origin
@@ -70,19 +73,16 @@ than once.
 
 ## Block Inclusion
 
-The deposit set for the next block is not chosen by a time window.
+The commit worker selects unassigned events due by the effective block end
+through `retrievePendingHeaderEntriesUpTo`. Selection is constrained by the
+commit-time ingestion barrier and speculative predecessor exclusions; it is not
+an unconditional selection of every unassigned projected row.
 
-It is exactly:
-
-- all rows in `deposits_utxos` where `status='projected'` and
-  `projected_header_hash IS NULL`
-
-That exact ordered set is used for:
-
-- overlaying deposit UTxOs into the ledger trie pre-state
-- computing `depositsRoot`
-- recording the pending-finalization journal membership
-- assigning `projected_header_hash` after confirmation
+The selected ordered set supplies deposit-root construction, the final deposit
+phase of the transition trace, and immutable pending-finalization membership.
+Deposits execute after withdrawals, forced transactions, and normal transactions.
+Confirmation processing assigns `projected_header_hash` and publishes newly
+spendable ledger rows to the validation cache.
 
 ## Pending Finalization
 
@@ -128,7 +128,6 @@ SQL is authoritative. Tries and process globals are caches.
 
 On startup:
 
-- validate the stable-L1 cursor view if present
 - reconcile any active pending-finalization journal
 - rebuild missing trie state from SQL-backed current state
 
@@ -137,9 +136,10 @@ deposit projection.
 
 ## Safety Invariants
 
-- `deposits_utxos.status IN ('awaiting', 'projected')`
+- `deposits_utxos.status IN ('awaiting', 'projected', 'consumed')`
 - `status='awaiting' => projected_header_hash IS NULL`
-- `projected_header_hash` is immutable once set
+- an existing header assignment cannot be overwritten by a different header;
+  clearing/reopening requires the matching recovery identity
 - deposit payload drift for the same `event_id` is a hard error
 - deposit-origin `mempool_ledger.source_event_id` is unique
 - only one active pending-finalization journal exists
@@ -155,3 +155,16 @@ Expose and alert on:
 - replay-prevention violations
 - journal abandonment
 - SQL/trie divergence
+
+## Implementation and checks
+
+- Discovery: `src/fibers/fetch-and-insert-deposit-utxos.ts` and
+  `src/fibers/user-event-ingestion.ts`.
+- Projection: `src/fibers/project-deposits-to-mempool-ledger.ts`.
+- Lifecycle and selection: `src/database/deposits.ts`,
+  `src/database/utils/projected-events.ts`, and `src/database/mempoolLedger.ts`.
+- Assignment and recovery: `src/fibers/block-confirmation.ts`,
+  `src/database/pendingBlockFinalizations.ts`, and the state-correction path.
+
+Use the deposit projection and pending-finalization scenarios in `tests/` for
+behavioral changes; reading this model is not crash/restart acceptance evidence.

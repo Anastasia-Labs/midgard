@@ -15,6 +15,19 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  computeMidgardNativeTxId,
+  EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
+  encodeCbor,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardTxOutput,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_NETWORK_ID_NONE,
+  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
+} from "@al-ft/midgard-core/codec";
+
+import {
   capturePhase1CorpusIdentity,
   createSecretScanningLog,
   scanSubmitRecords,
@@ -124,8 +137,44 @@ const runCliSetupFailure = ({ args, env, evidenceDirectory, phase }) => {
 };
 
 const corpusRow = ({ chain, index, input }) => {
-  const bytes = Buffer.from([chain, index]);
-  const txHash = (chain * 16 + index).toString(16).padStart(2, "0").repeat(32);
+  const transaction = materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
+    validity: "TxIsValid",
+    body: {
+      spendInputsPreimageCbor: EMPTY_CBOR_LIST,
+      referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
+      outputsPreimageCbor: encodeCbor(
+        [0x11, 0x22].map((fill) =>
+          encodeMidgardTxOutput({
+            address: Buffer.concat([
+              Buffer.from([0x60]),
+              Buffer.alloc(28, fill),
+            ]),
+            value: {
+              lovelace: BigInt(chain * 1_000 + index),
+              assets: new Map(),
+            },
+          }),
+        ),
+      ),
+      fee: BigInt(chain * 1_000 + index),
+      validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
+      validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+      requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
+      requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+      mintPreimageCbor: EMPTY_CBOR_LIST,
+      scriptIntegrityHash: EMPTY_NULL_ROOT,
+      auxiliaryDataHash: EMPTY_NULL_ROOT,
+      networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
+    },
+    witnessSet: {
+      addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    },
+  });
+  const bytes = encodeMidgardNativeTxCanonical(transaction);
+  const txHash = computeMidgardNativeTxId(transaction).toString("hex");
   return {
     txHash,
     canonicalCborHex: bytes.toString("hex"),
@@ -176,18 +225,59 @@ const makeCorpusPreflightFixture = async (directory) => {
   writeFileSync(indexPath, `${index.map(JSON.stringify).join("\n")}\n`);
   const manifest = {
     schemaVersion: "midgard-stress-corpus-manifest-v1",
+    targetRateTps: 1,
+    durationMs: 1_000,
+    warmupCount: 0,
+    cooldownCount: 0,
+    safetyFactor: 1,
+    assumedAcceptanceLatencyMs: 1,
     chainCount: 2,
     chainDepth: 1,
+    corpusShape: "chain",
+    corpusSliceIds: ["default"],
+    generatedAtIso: "2026-07-01T00:00:00.000Z",
+    generatorGitSha: "1".repeat(40),
+    lucidMidgardVersion: "fixture-v1",
+    feeParams: { minFeeA: "1", minFeeB: "1" },
+    network: "Preprod",
+    networkId: "0",
+    maxSubmitTxCborBytes: 16_384,
+    amountTemplate: {
+      lovelace: "2000000",
+      shape: "self-transfer-change-chain",
+    },
+    verification: {
+      rebuildSampleRate: 1,
+      rebuildSampleAlgorithm: "sha256-corpus-chain-id-order-v1",
+    },
+    fundingSummary: {
+      walletCount: 2,
+      perWalletFundingLovelace: "1",
+      totalFundingLovelace: "2",
+    },
+    walletSetIdentity: {
+      walletCount: 2,
+      fundingRowCount: 2,
+      uniqueFirstFundingOutrefCount: 2,
+      walletSetHashAlgorithm: "sha256-wallet-id-l2-address-lines-v1",
+      walletSetSha256: hash("d"),
+      fundingSetHashAlgorithm:
+        "sha256-wallet-id-outref-output-cbor-sha256-lines-v1",
+      fundingSetSha256: hash("e"),
+    },
     sliceSummary: [{ corpusSliceId: "default", walletCount: 2, rowCount: 2 }],
     files: {
       corpus: {
+        path: corpusPath,
         sha256: sha256File(corpusPath),
         rowCount: 2,
       },
       index: {
+        path: indexPath,
         sha256: sha256File(indexPath),
         rowCount: 2,
       },
+      shards: ["fixture-shard-0"],
     },
   };
   writeFileSync(manifestPath, `${JSON.stringify(manifest)}\n`);
@@ -335,7 +425,7 @@ const report = ({
       deployment: {
         path: "/artifacts/deployment.json",
         sha256: hash("8"),
-        schemaVersion: "midgard-contract-deployment-v2",
+        schemaVersion: "midgard-deployment-manifest-v1",
         manifestId: hash("a"),
       },
       ownerBinary: {
@@ -348,7 +438,7 @@ const report = ({
       phase1: {
         path: "/artifacts/phase1-binding.json",
         sha256: hash("d"),
-        schemaVersion: "midgard-phase1-live-corpus-binding-v2",
+        schemaVersion: "midgard-phase1-live-corpus-binding-v1",
         deploymentManifestId: hash("a"),
         nodeImageId: `sha256:${hash("9")}`,
         nodeContainerId: hash("5"),
@@ -370,9 +460,31 @@ const report = ({
         sourceTreeSha256: hash("4"),
         sourceIdentitySha256: hash("9"),
         phase1BindingSha256: hash("d"),
-        files: {},
-        selection: { indexEntryCount: 1 },
-        validation: {},
+        files: Object.fromEntries(
+          ["corpus", "index", "manifest"].map((name, index) => [
+            name,
+            {
+              path: `/artifacts/${name}`,
+              bytes: 1_024 + index,
+              mtimeMs: 1_700_000_000_000,
+              dev: "1",
+              ino: (index + 1).toString(),
+              sha256: hash(String(index + 1)),
+            },
+          ]),
+        ),
+        selection: {
+          corpusSliceId: "default",
+          corpusShape: "chain",
+          indexEntryCount: 1,
+          rowCount: logicalSubmitAttempts,
+          indexEntriesSha256: hash("7"),
+        },
+        validation: {
+          rowCount: logicalSubmitAttempts,
+          uniqueTxHashes: logicalSubmitAttempts,
+          uniqueSelectedInputs: logicalSubmitAttempts,
+        },
       },
       loadGeneratorIsolation: {
         path: "/artifacts/load-generator-isolation.json",
@@ -460,10 +572,19 @@ const report = ({
           indexPath: "/artifacts/corpus.index.ndjson",
           manifestPath: "/artifacts/corpus.manifest.json",
           sliceId: "default",
+          shape: "chain",
+          validation: {
+            rowCount: logicalSubmitAttempts,
+            uniqueTxHashes: logicalSubmitAttempts,
+            uniqueSelectedInputs: logicalSubmitAttempts,
+          },
           artifactIdentity: {
             corpusSha256: hash("1"),
             indexSha256: hash("2"),
             manifestSha256: hash("3"),
+            manifestExpectedCorpusSha256: hash("1"),
+            manifestExpectedIndexSha256: hash("2"),
+            manifestMatchesArtifacts: true,
           },
           preflight: {
             path: "/artifacts/corpus-preflight.json",
@@ -580,6 +701,43 @@ describe("Phase 3 Architecture G 24-hour soak verifier", () => {
     assert.equal(result.metrics.unplannedConfirmedLedgerFullScanDelta, 0);
     assert.equal(result.metrics.timeoutInsteadOfBackpressureDelta, 0);
     assert.ok(result.metrics.processMemoryGrowthRatio < 0.1);
+  });
+
+  it("rejects non-V1, missing, unknown, nested-unknown, and noncanonical shapes", () => {
+    const options = { allowTestOnlyDuration: true };
+    const cases = [
+      ["wrong schema", (value) => (value.schemaVersion = "legacy-v4")],
+      ["missing root key", (value) => delete value.configuredDurationSec],
+      ["unknown root key", (value) => (value.compatibilityMode = true)],
+      [
+        "unknown nested key",
+        (value) => (value.samples[1].metrics.legacyTimeoutCount = 0),
+      ],
+      [
+        "unknown deep key",
+        (value) =>
+          (value.workload.reportSummary.corpus.consumption.chains[0].offset = 0),
+      ],
+      ["fractional timestamp", (value) => (value.completedAtMs += 0.5)],
+      [
+        "noncanonical hash",
+        (value) => (value.workload.scriptSha256 = hash("A")),
+      ],
+      ["incompatible collection shape", (value) => (value.samples = {})],
+    ];
+    for (const [label, mutate] of cases) {
+      const value = report({
+        durationSec: 2,
+        intervalMs: 500,
+        testOnly: true,
+      });
+      mutate(value);
+      assert.equal(
+        evaluatePhase3ArchitectureGSoakReport(value, options).passed,
+        false,
+        `${label} unexpectedly passed`,
+      );
+    }
   });
 
   it("fails closed on every safety, liveness, cadence, and cap regression", () => {
@@ -879,6 +1037,50 @@ describe("Phase 3 submit-record streaming scanner", () => {
 });
 
 describe("Phase 3 retained driver-log secret scanner", () => {
+  it("emits the exact clean V1 result and fails closed on oversized lines", async () => {
+    const directory = mkdtempSync("/tmp/midgard-phase3-log-");
+    try {
+      const cleanPath = path.join(directory, "clean.log");
+      const cleanLog = createSecretScanningLog(cleanPath);
+      cleanLog.stream.end("diagnostic line\n");
+      const cleanArtifact = await cleanLog.complete();
+      assert.deepEqual(Object.keys(cleanArtifact), [
+        "path",
+        "sha256",
+        "bytes",
+        "secretScan",
+      ]);
+      assert.deepEqual(cleanArtifact.secretScan, {
+        schemaVersion: "midgard-secret-scanned-log-v1",
+        passed: true,
+        sensitiveLineCount: 0,
+        oversizedLineCount: 0,
+        retainedLineCount: 1,
+      });
+      assert.equal(cleanArtifact.path, cleanPath);
+      assert.equal(cleanArtifact.bytes, Buffer.byteLength("diagnostic line\n"));
+      assert.equal(cleanArtifact.sha256, sha256File(cleanPath));
+
+      const oversizedPath = path.join(directory, "oversized.log");
+      const oversizedLog = createSecretScanningLog(oversizedPath);
+      oversizedLog.stream.end(`${"x".repeat(64 * 1024 + 1)}\n`);
+      const oversizedArtifact = await oversizedLog.complete();
+      assert.deepEqual(oversizedArtifact.secretScan, {
+        schemaVersion: "midgard-secret-scanned-log-v1",
+        passed: false,
+        sensitiveLineCount: 1,
+        oversizedLineCount: 1,
+        retainedLineCount: 0,
+      });
+      assert.equal(
+        readFileSync(oversizedPath, "utf8"),
+        "[REDACTED secret-bearing driver output]\n",
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("redacts before retention and marks secret-bearing evidence failed", async () => {
     const directory = mkdtempSync("/tmp/midgard-phase3-log-");
     try {
@@ -999,7 +1201,7 @@ describe("Phase 3 soak full-corpus preflight", () => {
 
   it("rejects stale source, path/mtime drift, tampering, and reduced selection", async () => {
     for (const mutate of [
-      (fixture) => ({ expectedSourceIdentitySha256: hash("d") }),
+      (_fixture) => ({ expectedSourceIdentitySha256: hash("d") }),
       (fixture) => {
         writeFileSync(fixture.corpusIdentity.path, "tampered\n");
         return {};
@@ -1439,7 +1641,7 @@ describe("Phase 3 pre-lifecycle evidence and load-generator isolation", () => {
         running: true,
         status: "running",
         healthStatus: "healthy",
-        startedAt: "2026-07-14T12:00:00.000000000Z",
+        startedAt: "2026-07-14T12:00:00.000Z",
         restartCount: 0,
         engine: "architecture_g",
         healthcheckCommand: [
@@ -1490,6 +1692,25 @@ describe("Phase 3 pre-lifecycle evidence and load-generator isolation", () => {
       validatePhase3LoadGeneratorIsolationDocument(document),
       document,
     );
+    const exactSchemaCases = [
+      (value) => (value.schemaVersion = "legacy-v3"),
+      (value) => delete value.capturedAtMs,
+      (value) => (value.compatibilityMode = true),
+      (value) => (value.docker.client.legacyPath = "/usr/local/bin/docker"),
+      (value) => (value.loadGenerator.uid.login = 1000),
+      (value) =>
+        (value.nodeContainer.startedAt = "2026-07-14T12:00:00.000000000Z"),
+      (value) => (value.loadGenerator.cpusAllowedList = "00-3"),
+      (value) => (value.node = []),
+    ];
+    for (const mutate of exactSchemaCases) {
+      const value = structuredClone(document);
+      mutate(value);
+      assert.throws(
+        () => validatePhase3LoadGeneratorIsolationDocument(value),
+        /V1|invalid|noncanonical|binding/u,
+      );
+    }
     const directory = mkdtempSync("/tmp/midgard-phase3-isolation-");
     try {
       const outPath = path.join(directory, "isolation.json");

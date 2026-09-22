@@ -1,16 +1,17 @@
+import { outRefToCbor } from "@al-ft/lucid-midgard";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { CML, Data as LucidData } from "@lucid-evolution/lucid";
+import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
+import { Database } from "../services/database.js";
 import {
   clearTable,
   DatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import * as ProjectedEvents from "@/database/utils/projected-events.js";
-import * as UserEvents from "@/database/utils/user-events.js";
-import { Database } from "@/services/database.js";
+} from "./utils/common.js";
+import * as ProjectedEvents from "./utils/projected-events.js";
+import * as UserEvents from "./utils/user-events.js";
 
 export const tableName = "withdrawal_utxos";
 
@@ -521,6 +522,16 @@ export const clearProjectedHeaderAssignmentByEventIds = (
     projectedHeaderHash,
   );
 
+export const reopenAfterStateQueueCorrectionByEventIds = (
+  ids: readonly Buffer[],
+  removedHeaderHash: Buffer,
+) =>
+  ProjectedEvents.reopenAfterStateQueueCorrectionByEventIds(
+    projectedEventsTable,
+    ids,
+    removedHeaderHash,
+  );
+
 export const markFinalizedByEventIds = (
   ids: readonly Buffer[],
   projectedHeaderHash: Buffer,
@@ -587,12 +598,12 @@ export const toLedgerOutRef = (
         entry[Columns.L2_OUTREF].toString("hex"),
         SDK.OutputReference,
       );
-      return Buffer.from(
-        CML.TransactionInput.new(
-          CML.TransactionHash.from_hex(outRef.transactionId),
-          outRef.outputIndex,
-        ).to_cbor_bytes(),
-      );
+      // The ledger key is the §5.3 field-0/1 item encoding, matching on-chain
+      // `ledger_outref_key` — never CML's minimal-index TransactionInput CBOR.
+      return outRefToCbor({
+        txHash: outRef.transactionId,
+        outputIndex: Number(outRef.outputIndex),
+      });
     },
     catch: (cause) =>
       new DatabaseError({

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldRunGenesisOnStartup } from "@/commands/startup-policy.js";
+import { shouldRunGenesisOnStartup } from "../src/commands/startup-policy.js";
 
 describe("shouldRunGenesisOnStartup", () => {
   it("defaults to false even on testnet", () => {

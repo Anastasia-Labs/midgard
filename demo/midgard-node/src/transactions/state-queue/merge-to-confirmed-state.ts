@@ -28,7 +28,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Duration, Effect, Metric, Option, Ref } from "effect";
 
-import { jsonReplacer } from "@/commands/command-utils.js";
+import { jsonReplacer } from "../../commands/command-utils.js";
 import {
   BlocksDB,
   DepositsDB,
@@ -36,33 +36,40 @@ import {
   MutationJobsDB,
   PendingBlockFinalizationsDB,
   WithdrawalsDB,
-} from "@/database/index.js";
+} from "../../database/index.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Entry as LedgerEntry } from "@/database/utils/ledger.js";
-import { emitQueueStateMetrics } from "@/fibers/queue-metrics.js";
+} from "../../database/utils/common.js";
+import { Entry as LedgerEntry } from "../../database/utils/ledger.js";
+import { emitQueueStateMetrics } from "../../fibers/queue-metrics.js";
 import {
   registerSlotAwareDueWork,
   type SlotAwareDueWork,
-} from "@/fibers/slot-aware-due-work.js";
+} from "../../fibers/slot-aware-due-work.js";
 import {
   localOgmiosSubmitSlotEvidence,
   makeLocalOgmiosSubmitSlotSnapshotProvider,
   SUBMIT_SLOT_LENGTH_MS,
   type SubmitSlotSnapshot,
-} from "@/local-ledger-slot.js";
+} from "../../local-ledger-slot.js";
+import { synchronizeCommitMpfStoresFromConfirmedLedger } from "../../mpf/index.js";
 import {
   availableOperatorWalletUtxos,
   fetchOperatorWalletView,
-} from "@/operator-wallet-view.js";
-import { Database, Globals, NodeConfig } from "@/services/index.js";
+} from "../../operator-wallet-view.js";
+import type { NodeConfigDep } from "../../services/config.js";
+import { Database, Globals, NodeConfig } from "../../services/index.js";
+import {
+  assertNativeMpfHashHex,
+  type NativeMpfOwnerService,
+} from "../../services/mpf-native-owner/index.js";
+import { breakDownTx } from "../../utils.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
-} from "@/transactions/reference-scripts.js";
-import { slotAwareDueWorkFromSubmitTiming } from "@/transactions/submit-timing-due-work.js";
+} from "../reference-scripts.js";
+import { slotAwareDueWorkFromSubmitTiming } from "../submit-timing-due-work.js";
 import {
   BlockTxPayload,
   fetchFirstBlockTxs,
@@ -72,15 +79,11 @@ import {
   TxConfirmError,
   TxSignError,
   TxSubmitError,
-} from "@/transactions/utils.js";
-import { breakDownTx } from "@/utils.js";
-import { synchronizeCommitMpfStoresFromConfirmedLedger } from "@/workers/utils/mpf.js";
-
+} from "../utils.js";
 import {
-  applyConfirmedLedgerDelta,
-  decodeConfirmedLedgerDelta,
+  applyConfirmedLedgerDeltaChainTransaction,
+  type ConfirmedLedgerSnapshot,
   materializeConfirmedLedgerSnapshot,
-  replaceConfirmedLedgerWithEntries,
 } from "./confirmed-ledger-snapshot.js";
 import {
   classifyOldestQueuedBlockCandidateReadiness,
@@ -98,6 +101,129 @@ const mergeBlockCounter = Metric.counter("merge_block_count", {
   bigint: true,
   incremental: true,
 });
+
+type PersistentCommitMpfSynchronization = {
+  readonly ledgerEntryCount: number;
+  readonly ledgerRoot: string;
+  readonly transactionsRoot: string;
+};
+
+export type ConfirmedMergeMpfSynchronization =
+  | ({
+      readonly mode: "persistent_stores";
+    } & PersistentCommitMpfSynchronization)
+  | {
+      readonly mode: "architecture_g_owner";
+      readonly confirmedLedgerEntryCount: number;
+      readonly confirmedLedgerRoot: string;
+      readonly durableLedgerRoot: string;
+      readonly activeGenerations: number;
+    };
+
+export const finalizeConfirmedMergeTransaction = ({
+  headerHash,
+  snapshot,
+  projectedDepositEventIds,
+  projectedWithdrawalEventIds,
+  projectedForcedTransactionEventIds,
+}: {
+  readonly headerHash: Buffer;
+  readonly snapshot: ConfirmedLedgerSnapshot;
+  readonly projectedDepositEventIds: readonly Buffer[];
+  readonly projectedWithdrawalEventIds: readonly Buffer[];
+  readonly projectedForcedTransactionEventIds: readonly Buffer[];
+}): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* Effect.logInfo(
+          `🔸 Apply finalized confirmed-ledger V1 delta chain (deltas=${snapshot.deltaChain.length.toString()},root=${snapshot.root})...`,
+        );
+        yield* applyConfirmedLedgerDeltaChainTransaction(snapshot);
+        yield* Effect.logInfo("🔸 Clear block from BlocksDB...");
+        yield* BlocksDB.clearBlock(headerHash).pipe(
+          Effect.withSpan("clear-block-from-BlocksDB"),
+        );
+        yield* DepositsDB.markConsumedByEventIds(projectedDepositEventIds).pipe(
+          Effect.withSpan("mark-merged-deposits-consumed"),
+        );
+        yield* WithdrawalsDB.markFinalizedByEventIds(
+          projectedWithdrawalEventIds,
+          headerHash,
+        ).pipe(Effect.withSpan("mark-merged-withdrawals-finalized"));
+        yield* ForcedTransactionsDB.markFinalizedByEventIds(
+          projectedForcedTransactionEventIds,
+          headerHash,
+        ).pipe(Effect.withSpan("mark-merged-forced-transactions-finalized"));
+      }),
+    );
+  }).pipe(
+    sqlErrorToDatabaseError(
+      "confirmed_merge_finalization",
+      "Failed to finalize confirmed-state merge locally",
+    ),
+  );
+
+/**
+ * A confirmed-state merge advances the L1 queue head but does not change the
+ * latest committed L2 tail. Architecture G therefore retains the root already
+ * promoted by its single native owner and verifies that owner is live instead
+ * of reopening the owner's LevelDB path through MidgardMpf.
+ */
+export const synchronizeCommitMpfAfterConfirmedMerge = <E, R>({
+  mpfEngine,
+  nativeMpfOwner,
+  confirmedLedgerEntryCount,
+  confirmedLedgerRoot,
+  synchronizePersistentStores,
+}: {
+  readonly mpfEngine: NodeConfigDep["MPF_ENGINE"];
+  readonly nativeMpfOwner:
+    | Pick<NativeMpfOwnerService, "diagnostics">
+    | undefined;
+  readonly confirmedLedgerEntryCount: number;
+  readonly confirmedLedgerRoot: string;
+  readonly synchronizePersistentStores: Effect.Effect<
+    PersistentCommitMpfSynchronization,
+    E,
+    R
+  >;
+}): Effect.Effect<ConfirmedMergeMpfSynchronization, E | Error, R> => {
+  if (mpfEngine !== "architecture_g") {
+    return synchronizePersistentStores.pipe(
+      Effect.map((result) => ({
+        mode: "persistent_stores" as const,
+        ...result,
+      })),
+    );
+  }
+  return Effect.tryPromise({
+    try: async () => {
+      if (nativeMpfOwner === undefined) {
+        throw new Error(
+          "Architecture G native owner is not initialized during confirmed-state merge finalization",
+        );
+      }
+      const diagnostics = await nativeMpfOwner.diagnostics();
+      assertNativeMpfHashHex(
+        diagnostics.durableRoot,
+        "Architecture G durable root",
+      );
+      return {
+        mode: "architecture_g_owner" as const,
+        confirmedLedgerEntryCount,
+        confirmedLedgerRoot,
+        durableLedgerRoot: diagnostics.durableRoot,
+        activeGenerations: diagnostics.activeGenerations,
+      };
+    },
+    catch: (cause) =>
+      cause instanceof Error
+        ? cause
+        : new Error("Architecture G owner observation failed", { cause }),
+  });
+};
 
 export const MERGE_CONFIRMATION_PROVIDER_RETRIES = 12;
 
@@ -277,7 +403,7 @@ const isEmptyConfirmedStateLinkError = (error: unknown): boolean =>
 export const fetchCanonicalMergeCandidateReadiness = (
   lucid: LucidEvolution,
   fetchConfig: SDK.StateQueueFetchConfig,
-  contracts: SDK.MidgardValidators,
+  _contracts: SDK.MidgardValidators,
   nowUnixTime: number = Date.now(),
 ): Effect.Effect<
   CanonicalMergeCandidateReadiness,
@@ -343,8 +469,7 @@ export const fetchCanonicalMergeCandidateReadiness = (
       readiness: classifyOldestQueuedBlockCandidateReadiness({
         firstBlockOutRef: firstBlockOutRef(firstBlockUTxO),
         headerHash: recomputedHeaderHash,
-        currentDaAttestation: firstBlockNode.da_attestation,
-        requiredDaAttestation: contracts.daAttestation.policyId,
+        currentDaAvailability: firstBlockNode.da_attestation,
         validFromUnixTime: mergeMaturity.validFromUnixTime,
         readyAfterUnixTime: mergeMaturity.readyAfterUnixTime,
         nowUnixTime,
@@ -925,6 +1050,22 @@ export const buildAndSubmitMergeTx = (
         );
       }
       const hubOracleRefInput = hubOracleWitnessUtxos[0];
+      const correctionLockRefInput = yield* SDK.fetchCorrectionLockUTxOProgram(
+        lucid,
+        {
+          correctionLockAddress: contracts.correctionLock.spendingScriptAddress,
+          hubOraclePolicyId: contracts.hubOracle.policyId,
+        },
+      ).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SDK.StateQueueError({
+              message:
+                "Failed to fetch authenticated correction-lock witness for merge transaction",
+              cause,
+            }),
+        ),
+      );
 
       const resolvedReferenceScripts =
         options?.referenceScriptsAddress === undefined
@@ -940,6 +1081,10 @@ export const buildAndSubmitMergeTx = (
                 {
                   name: "state-queue minting",
                   script: contracts.stateQueue.mintingScript,
+                },
+                {
+                  name: "state-queue merge withdrawal",
+                  script: contracts.stateQueue.yields.merge.withdrawalScript,
                 },
                 {
                   name: "settlement minting",
@@ -965,6 +1110,10 @@ export const buildAndSubmitMergeTx = (
                 "settlement minting",
               ),
             };
+      const stateQueueMergeYieldRefInput = referenceScriptByName(
+        resolvedReferenceScripts,
+        "state-queue merge withdrawal",
+      );
 
       const operatorWalletView = yield* Effect.tryPromise({
         try: () => fetchOperatorWalletView(lucid),
@@ -982,18 +1131,19 @@ export const buildAndSubmitMergeTx = (
         `🔸 Using ${presetWalletInputs.length.toString()} preset operator wallet input(s) for merge tx (known_wallet_utxos=${operatorWalletView.knownUtxos.length.toString()}).`,
       );
 
-      const builtMerge =
-        yield* SDK.buildProductionMergeToConfirmedStateTxProgram({
-          lucid,
-          fetchConfig,
-          contracts,
-          confirmedUTxO,
-          firstBlockUTxO,
-          validFrom: mergeMaturity.validFromUnixTime,
-          presetWalletInputs,
-          hubOracleRefInput,
-          referenceScripts,
-        }).pipe(Effect.tapError(() => Metric.increment(mergeFailureCounter)));
+      const builtMerge = yield* SDK.buildMergeToConfirmedStateTxProgram({
+        lucid,
+        fetchConfig,
+        contracts,
+        confirmedUTxO,
+        firstBlockUTxO,
+        validFrom: mergeMaturity.validFromUnixTime,
+        presetWalletInputs,
+        hubOracleRefInput,
+        correctionLockRefInput,
+        stateQueueMergeYieldRefInput,
+        referenceScripts,
+      }).pipe(Effect.tapError(() => Metric.increment(mergeFailureCounter)));
       const txBuilder = builtMerge.tx;
 
       // Submit the transaction
@@ -1002,7 +1152,7 @@ export const buildAndSubmitMergeTx = (
        */
       const onSubmitFailure = (err: TxSubmitError) =>
         Effect.gen(function* () {
-          yield* Effect.logError(`Submit tx error: ${err}`);
+          yield* Effect.logError(`Submit tx error: ${err.message}`);
           yield* Effect.fail(
             new TxSubmitError({
               message: "failed to submit the merge tx",
@@ -1017,7 +1167,7 @@ export const buildAndSubmitMergeTx = (
       const onConfirmFailure = (err: TxConfirmError) =>
         Effect.gen(function* () {
           yield* Effect.logError(
-            `Confirm tx error: ${err}; refusing local merge finalization until L1 confirmation is verified`,
+            `Confirm tx error: ${err.message}; refusing local merge finalization until L1 confirmation is verified`,
           );
           yield* Effect.fail(
             new TxConfirmError({
@@ -1112,20 +1262,8 @@ export const buildAndSubmitMergeTx = (
             }),
           );
         }
-        const decodedLedgerDelta = yield* decodeConfirmedLedgerDelta(
-          finalizedJournal.value,
-        );
         const confirmedLedgerSnapshot =
-          decodedLedgerDelta === undefined
-            ? yield* materializeConfirmedLedgerSnapshot(finalizedJournal.value)
-            : {
-                entries: decodedLedgerDelta.produced,
-                root: finalizedJournal.value[
-                  PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT
-                ],
-                delta: decodedLedgerDelta,
-              };
-        const confirmedLedgerSnapshotEntries = confirmedLedgerSnapshot.entries;
+          yield* materializeConfirmedLedgerSnapshot(finalizedJournal.value);
         const confirmedLedgerSnapshotRoot = confirmedLedgerSnapshot.root;
         const expectedSnapshotRoot =
           finalizedJournal.value[
@@ -1158,80 +1296,47 @@ export const buildAndSubmitMergeTx = (
               projectedForcedTransactionEventIds.length,
             withdrawalEventCount: projectedWithdrawalEventIds.length,
             confirmedLedgerSnapshotRoot,
-            ...(confirmedLedgerSnapshot.delta === undefined
-              ? {
-                  confirmedLedgerSnapshotCount:
-                    confirmedLedgerSnapshotEntries.length,
-                }
-              : {
-                  ledgerDeltaSpentCount:
-                    confirmedLedgerSnapshot.delta.spent.length,
-                  ledgerDeltaProducedCount:
-                    confirmedLedgerSnapshot.delta.produced.length,
-                }),
+            ledgerDeltaSpentCount: confirmedLedgerSnapshot.delta.spent.length,
+            ledgerDeltaProducedCount:
+              confirmedLedgerSnapshot.delta.produced.length,
           },
         });
-        const sql = yield* SqlClient.SqlClient;
-        // - Replace from a legacy full snapshot or apply the finalized delta
-        // - Remove all the tx hashes of the merged block from BlocksDB
-        yield* sql
-          .withTransaction(
-            Effect.gen(function* () {
-              if (confirmedLedgerSnapshot.delta === undefined) {
-                yield* Effect.logInfo(
-                  `🔸 Replace confirmed ledger db from legacy finalized UTxO snapshot (entries=${confirmedLedgerSnapshotEntries.length.toString()},root=${confirmedLedgerSnapshotRoot})...`,
-                );
-                yield* replaceConfirmedLedgerWithEntries(
-                  confirmedLedgerSnapshotEntries,
-                );
-              } else {
-                yield* Effect.logInfo(
-                  `🔸 Apply finalized confirmed-ledger delta (spent=${confirmedLedgerSnapshot.delta.spent.length.toString()},produced=${confirmedLedgerSnapshot.delta.produced.length.toString()},root=${confirmedLedgerSnapshotRoot})...`,
-                );
-                yield* applyConfirmedLedgerDelta(confirmedLedgerSnapshot.delta);
-              }
-              yield* Effect.logInfo("🔸 Clear block from BlocksDB...");
-              yield* BlocksDB.clearBlock(headerHash).pipe(
-                Effect.withSpan("clear-block-from-BlocksDB"),
-              );
-              yield* DepositsDB.markConsumedByEventIds(
-                projectedDepositEventIds,
-              ).pipe(Effect.withSpan("mark-merged-deposits-consumed"));
-              yield* WithdrawalsDB.markFinalizedByEventIds(
-                projectedWithdrawalEventIds,
-                headerHash,
-              ).pipe(Effect.withSpan("mark-merged-withdrawals-finalized"));
-              yield* ForcedTransactionsDB.markFinalizedByEventIds(
-                projectedForcedTransactionEventIds,
-                headerHash,
-              ).pipe(
-                Effect.withSpan("mark-merged-forced-transactions-finalized"),
-              );
-            }),
-          )
-          .pipe(
-            sqlErrorToDatabaseError(
-              "confirmed_merge_finalization",
-              "Failed to finalize confirmed-state merge locally",
-            ),
-          );
-        const syncResult =
-          yield* synchronizeCommitMpfStoresFromConfirmedLedger.pipe(
-            Effect.mapError(
-              (error) =>
-                new DatabaseError({
-                  table: "confirmed_merge_finalization",
-                  message:
-                    "Failed to synchronize commit MPF stores after confirmed-state merge",
-                  cause: formatUnknownError(error),
-                }),
-            ),
-          );
-        yield* Effect.logInfo(
-          `🔸 Synchronized commit MPFs after merge local finalization (header=${headerHash.toString(
-            "hex",
-          )},ledger_entries=${syncResult.ledgerEntryCount.toString()},ledger_root=${syncResult.ledgerRoot}).`,
+        yield* finalizeConfirmedMergeTransaction({
+          headerHash,
+          snapshot: confirmedLedgerSnapshot,
+          projectedDepositEventIds,
+          projectedWithdrawalEventIds,
+          projectedForcedTransactionEventIds,
+        });
+        const syncResult = yield* synchronizeCommitMpfAfterConfirmedMerge({
+          mpfEngine: nodeConfig.MPF_ENGINE,
+          nativeMpfOwner: yield* Ref.get(globals.NATIVE_MPF_OWNER),
+          confirmedLedgerEntryCount: confirmedLedgerSnapshot.entries.length,
+          confirmedLedgerRoot: confirmedLedgerSnapshotRoot,
+          synchronizePersistentStores:
+            synchronizeCommitMpfStoresFromConfirmedLedger,
+        }).pipe(
+          Effect.mapError(
+            (error) =>
+              new DatabaseError({
+                table: "confirmed_merge_finalization",
+                message:
+                  "Failed to synchronize commit MPF stores after confirmed-state merge",
+                cause: formatUnknownError(error),
+              }),
+          ),
         );
+        yield* syncResult.mode === "architecture_g_owner"
+          ? Effect.logInfo(
+              `🔸 Retained Architecture G owner after merge local finalization (header=${headerHash.toString(
+                "hex",
+              )},confirmed_ledger_entries=${syncResult.confirmedLedgerEntryCount.toString()},confirmed_ledger_root=${syncResult.confirmedLedgerRoot},durable_tail_root=${syncResult.durableLedgerRoot},active_generations=${syncResult.activeGenerations.toString()}).`,
+            )
+          : Effect.logInfo(
+              `🔸 Synchronized commit MPFs after merge local finalization (header=${headerHash.toString(
+                "hex",
+              )},ledger_entries=${syncResult.ledgerEntryCount.toString()},ledger_root=${syncResult.ledgerRoot}).`,
+            );
         yield* MutationJobsDB.markCompleted(jobId);
       }).pipe(
         Effect.tapError((error) =>

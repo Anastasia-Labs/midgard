@@ -8,10 +8,7 @@ import {
 import { Effect } from "effect";
 
 import type { DaAttestationCandidateRecord } from "../domain.js";
-import {
-  classifyDaAttestationMarker,
-  formatUnexpectedDaAttestationMarker,
-} from "../l1/attestation-marker.js";
+import { classifyDaAttestationMarker } from "../l1/attestation-marker.js";
 import type { DaAttestationValidatorSet } from "../l1/deployment.js";
 import type { DaAttestationReferenceScripts } from "../l1/reference-scripts.js";
 import {
@@ -33,6 +30,7 @@ export type LucidDaAttestationSubmitterDeps = {
   readonly lucid: LucidEvolution;
   readonly contracts: DaAttestationValidatorSet;
   readonly referenceScripts: DaAttestationReferenceScripts;
+  readonly availabilityParameters: SDK.DaAvailabilityParameters;
   readonly signSubmit?: (tx: TxSignBuilder) => Promise<string>;
   readonly refreshFundingUtxos?: () => Promise<void>;
   readonly postSubmitVerificationRetryCount?: number;
@@ -62,6 +60,8 @@ export class LucidDaAttestationSubmitter
 
   async initAttestation(record: {
     readonly headerHash: string;
+    readonly availabilityCommitmentCbor: string;
+    readonly availabilityCommitmentDigest: string;
   }): Promise<AttestationSubmissionResult> {
     const target = await this.fetchUnattestedTarget(record.headerHash);
     if (target.status === "already_attested") {
@@ -69,6 +69,10 @@ export class LucidDaAttestationSubmitter
     }
     const daParams = await this.fetchDaParamsUtxo();
     await this.deps.refreshFundingUtxos();
+    const rescueBeneficiaryAddress = await this.deps.lucid.wallet().address();
+    const rescueBeneficiary = await Effect.runPromise(
+      SDK.addressDataFromBech32(rescueBeneficiaryAddress),
+    );
     const tx = await buildInitDaAttestationTx({
       lucid: this.deps.lucid,
       contracts: this.deps.contracts,
@@ -76,6 +80,12 @@ export class LucidDaAttestationSubmitter
       daParamsDatum: daParams.datum,
       target,
       referenceScripts: this.deps.referenceScripts,
+      rescueBeneficiary,
+      availabilityCommitment: SDK.parseDaAvailabilityCommitmentCbor(
+        record.availabilityCommitmentCbor,
+      ),
+      attestationOutputLovelace:
+        this.deps.availabilityParameters.da_bond_lovelace,
     });
     return { status: "submitted", txHash: await this.deps.signSubmit(tx) };
   }
@@ -119,13 +129,24 @@ export class LucidDaAttestationSubmitter
       return { status: "already_attested" };
     }
     const attestation = await this.fetchCandidateUtxo(candidate);
+    const daParams = await this.fetchDaParamsUtxo();
+    const hubOracleRefInput = await Effect.runPromise(
+      SDK.fetchHubOracleUTxOProgram(this.deps.lucid, {
+        hubOracleAddress: this.deps.contracts.hubOracle.spendingScriptAddress,
+        hubOraclePolicyId: this.deps.contracts.hubOracle.policyId,
+      }),
+    );
     await this.deps.refreshFundingUtxos();
     const tx = await buildApplyAttestationTx({
       lucid: this.deps.lucid,
       contracts: this.deps.contracts,
       target,
       attestationUtxo: attestation.utxo,
+      attestationDatum: attestation.datum,
+      daParamsUtxo: daParams.utxo,
+      daParamsDatum: daParams.datum,
       referenceScripts: this.deps.referenceScripts,
+      hubOracleRefInput: hubOracleRefInput.utxo,
     });
     const txHash = await this.deps.signSubmit(tx);
     await this.waitForApplied(record.headerHash);
@@ -165,16 +186,9 @@ export class LucidDaAttestationSubmitter
     const target = await this.findStateQueueHeader(headerHash);
     const marker = classifyDaAttestationMarker(
       target.stateQueueNode.da_attestation,
-      this.deps.contracts.daAttestation.policyId,
     );
     if (marker.kind === "already_attested_expected") {
       return { status: "already_attested" };
-    }
-    if (
-      marker.kind === "already_attested_foreign" ||
-      marker.kind === "invalid"
-    ) {
-      throw new Error(formatUnexpectedDaAttestationMarker(headerHash, marker));
     }
     return { ...target, status: "unattested" };
   }
@@ -214,18 +228,9 @@ export class LucidDaAttestationSubmitter
       const target = await this.findStateQueueHeader(headerHash);
       const marker = classifyDaAttestationMarker(
         target.stateQueueNode.da_attestation,
-        this.deps.contracts.daAttestation.policyId,
       );
       if (marker.kind === "already_attested_expected") {
         return;
-      }
-      if (
-        marker.kind === "already_attested_foreign" ||
-        marker.kind === "invalid"
-      ) {
-        throw new Error(
-          formatUnexpectedDaAttestationMarker(headerHash, marker),
-        );
       }
       if (attempt < retryCount) {
         await sleep(retryDelayMs);

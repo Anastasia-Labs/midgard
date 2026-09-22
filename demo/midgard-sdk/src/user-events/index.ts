@@ -1,3 +1,4 @@
+export * from "./contracts.js";
 export * from "./deposit.js";
 export type {
   UserEventExtraFields,

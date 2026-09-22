@@ -3,17 +3,21 @@ import {
   Data,
   type LucidEvolution,
   type UTxO,
+  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
   applyDaAttestationSignatureWitnesses,
+  availabilityResponseGeometry,
+  buildDaAvailabilityCommitment,
   castStateQueueNodeToData,
   type DaAttestationBuildError,
+  type DaAttestationBuildFailureReason,
   DaAttestationDatum,
-  DaAttestationSpendRedeemer,
   type DaAttestationReferenceScripts,
+  DaAttestationSpendRedeemer,
   type DaAttestationStateQueueTarget,
   daAttestationUnit,
   type DaAttestationUtxo,
@@ -38,6 +42,18 @@ import {
 const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);
 const signature = (byte: string): string => byte.repeat(64);
+const availabilityCommitment = (headerHash: string) =>
+  buildDaAvailabilityCommitment({
+    deploymentIdentity: h28("71"),
+    headerHash,
+    payload: Uint8Array.of(1),
+    bondOwner: h28("72"),
+    responseGeometry: availabilityResponseGeometry({
+      chunkByteLength: 4096,
+      trancheByteLength: 4 * 1024 * 1024,
+      maxTrancheCount: 16,
+    }),
+  });
 
 type RecordedPayment = {
   readonly address: string;
@@ -46,11 +62,20 @@ type RecordedPayment = {
 };
 
 type Recording = {
+  readonly withdrawals: {
+    readonly address: string;
+    readonly amount: bigint;
+    readonly redeemer: unknown;
+  }[];
   readonly reads: UTxO[][];
   readonly collects: { readonly inputs: UTxO[]; readonly redeemer: unknown }[];
   readonly mints: { readonly assets: Assets; readonly redeemer: unknown }[];
   readonly payments: RecordedPayment[];
   readonly signerKeys: string[];
+  readonly validityRanges: {
+    readonly validFrom: number;
+    readonly validTo: number;
+  }[];
 };
 
 const makeRecordingLucid = (): {
@@ -58,21 +83,42 @@ const makeRecordingLucid = (): {
   readonly record: Recording;
 } => {
   const record: Recording = {
+    withdrawals: [],
     reads: [],
     collects: [],
     mints: [],
     payments: [],
     signerKeys: [],
+    validityRanges: [],
   };
   const lucid = {
+    config: () => ({ network: "Custom" }),
     newTx: () => {
       const tx = {
+        validFrom: (validFrom: number) => {
+          record.validityRanges.push({ validFrom, validTo: Number.NaN });
+          return tx;
+        },
+        validTo: (validTo: number) => {
+          const latest = record.validityRanges.at(-1);
+          if (latest !== undefined) {
+            record.validityRanges[record.validityRanges.length - 1] = {
+              validFrom: latest.validFrom,
+              validTo,
+            };
+          }
+          return tx;
+        },
         readFrom: (inputs: UTxO[]) => {
           record.reads.push(inputs);
           return tx;
         },
         collectFrom: (inputs: UTxO[], redeemer: unknown) => {
           record.collects.push({ inputs, redeemer });
+          return tx;
+        },
+        withdraw: (address: string, amount: bigint, redeemer: unknown) => {
+          record.withdrawals.push({ address, amount, redeemer });
           return tx;
         },
         mintAssets: (assets: Assets, redeemer: unknown) => {
@@ -129,7 +175,29 @@ const makeFixture = () => {
   const contracts = {
     daAttestation: validator("aa", "addr_da_attestation"),
     stateQueue: validator("bb", "addr_state_queue"),
-  } as Pick<MidgardValidators, "daAttestation" | "stateQueue">;
+    availabilityChallenge: {
+      ...validator("cc", "addr_availability_challenge"),
+      yields: Object.fromEntries(
+        ["bond", "open", "settle", "close", "timeout"].map((arm) => [
+          arm,
+          {
+            withdrawalScript: {
+              type: "PlutusV3",
+              script: "49480100002221200101",
+            },
+            withdrawalScriptCBOR: "49480100002221200101",
+            withdrawalScriptHash: validatorToScriptHash({
+              type: "PlutusV3",
+              script: "49480100002221200101",
+            }),
+          },
+        ]),
+      ),
+    },
+  } as Pick<
+    MidgardValidators,
+    "availabilityChallenge" | "daAttestation" | "stateQueue"
+  >;
   const headerHash = h28("10");
   const stateQueueNode: StateQueueNode = {
     header: {
@@ -141,6 +209,10 @@ const makeFixture = () => {
       depositsRoot: h32("04"),
       startTime: 1n,
       endTime: 2n,
+      blockSlot: 0n,
+      expectedNetworkId: 0n,
+      minFeeA: 0n,
+      minFeeB: 0n,
       prevHeaderHash: h28("06"),
       operatorVkey: h28("07"),
       protocolVersion: 0n,
@@ -173,22 +245,29 @@ const makeFixture = () => {
     stateQueueNode,
     headerHash,
   };
+  // Q63 (F04 §4) floors both governed thresholds at two, so the fixture is a
+  // 2-of-2 committee over a 2-of-2 owner set. Both sets are sorted-unique.
   const daParamsDatum: DaParamsDatum = {
     committee: h32("11") + h32("22"),
     committee_signers_hash: h32("33"),
-    da_threshold: 1n,
-    owners: [],
-    update_threshold: 1n,
+    da_threshold: 2n,
+    owners: [h28("44"), h28("55")],
+    update_threshold: 2n,
   };
   const daParamsUtxo = makeUtxo(2, { lovelace: 2_000_000n });
   const attestationUnit = daAttestationUnit(
     contracts.daAttestation,
     headerHash,
   );
-  const attestationDatum = {
+  const attestationDatum: DaAttestationDatum = {
     header_hash: headerHash,
-    da_threshold: 1n,
+    availability_commitment: availabilityCommitment(headerHash),
+    da_threshold: 2n,
     committee_signers_hash: daParamsDatum.committee_signers_hash,
+    rescue_beneficiary: {
+      paymentCredential: { PublicKeyCredential: [h28("66")] },
+      stakeCredential: null,
+    },
     attested_signers: EMPTY_ATTESTED_SIGNER_BITMAP,
     attestation_count: 0n,
   };
@@ -202,6 +281,11 @@ const makeFixture = () => {
     datum: attestationDatum,
   };
   const referenceScripts: DaAttestationReferenceScripts = {
+    availabilityChallengeMinting: makeUtxo(8),
+    availabilityChallengeBondWithdrawal: {
+      ...makeUtxo(9),
+      scriptRef: contracts.availabilityChallenge.yields.bond.withdrawalScript,
+    },
     daAttestationMinting: makeUtxo(4),
     daAttestationSpending: makeUtxo(5),
     stateQueueMinting: makeUtxo(6),
@@ -216,20 +300,48 @@ const makeFixture = () => {
     attestation,
     attestationUnit,
     referenceScripts,
+    hubOracleRefInput: makeUtxo(9),
+    applyValidityRange: { validFrom: 1_000n, validTo: 2_000n },
   };
 };
+
+const outRefKey = (utxo: UTxO): string =>
+  `${utxo.txHash}#${utxo.outputIndex.toString()}`;
+
+/**
+ * The contract is *which* UTxOs the builder puts in the reference-input set,
+ * not the order of the `readFrom` calls that got them there: the ledger sorts
+ * reference inputs canonically before any validator sees them.
+ */
+const referenceSet = (record: Recording): readonly string[] =>
+  [...new Set(record.reads.flat().map(outRefKey))].sort();
+
+const collectedSet = (record: Recording): readonly string[] =>
+  [
+    ...new Set(record.collects.flatMap(({ inputs }) => inputs).map(outRefKey)),
+  ].sort();
+
+const expectedSet = (utxos: readonly UTxO[]): readonly string[] =>
+  [...new Set(utxos.map(outRefKey))].sort();
 
 const run = <A>(
   program: Effect.Effect<A, DaAttestationBuildError>,
 ): Promise<A> => Effect.runPromise(program);
 
-const expectBuildFailure = async <A>(
+/**
+ * A refusal is only evidence when it is *this* refusal: every negative below
+ * names the precondition it means to trip, so a fixture that happens to be
+ * malformed for some unrelated reason no longer satisfies the test.
+ */
+const expectBuildRefusal = async <A>(
   program: Effect.Effect<A, DaAttestationBuildError>,
+  reason: DaAttestationBuildFailureReason,
 ): Promise<void> => {
   const result = await Effect.runPromise(Effect.either(program));
   expect(result._tag).toBe("Left");
   if (result._tag === "Left") {
     expect(result.left._tag).toBe("DaAttestationBuildError");
+    expect(result.left.reason, result.left.message).toBe(reason);
   }
 };
 
@@ -268,29 +380,33 @@ describe("DA attestation witness helpers", () => {
   });
 
   it("rejects malformed, duplicate, already-attested, and out-of-committee witnesses", async () => {
-    await expectBuildFailure(
+    await expectBuildRefusal(
       encodeDaAttestationSignatureWitnesses([
         { signerIndex: 0, signatureHex: "aa" },
       ]),
+      "invalid_signature_hex",
     );
-    await expectBuildFailure(
+    await expectBuildRefusal(
       encodeDaAttestationSignatureWitnesses([
         { signerIndex: 0, signatureHex: signature("aa") },
         { signerIndex: 0, signatureHex: signature("bb") },
       ]),
+      "duplicate_signature_witness",
     );
-    await expectBuildFailure(
+    await expectBuildRefusal(
       applyDaAttestationSignatureWitnesses({
         attestedSignersHex: `80${"00".repeat(31)}`,
         witnesses: [{ signerIndex: 0, signatureHex: signature("aa") }],
       }),
+      "signer_already_attested",
     );
-    await expectBuildFailure(
+    await expectBuildRefusal(
       applyDaAttestationSignatureWitnesses({
         attestedSignersHex: EMPTY_ATTESTED_SIGNER_BITMAP,
         witnesses: [{ signerIndex: 2, signatureHex: signature("aa") }],
         committeeSize: 2,
       }),
+      "signer_outside_committee",
     );
   });
 });
@@ -307,17 +423,25 @@ describe("DA attestation SDK builders", () => {
         target: fixture.target,
         referenceScripts: fixture.referenceScripts,
         attestationOutputLovelace: 5_000_000n,
+        rescueBeneficiary: fixture.attestation.datum.rescue_beneficiary,
+        availabilityCommitment:
+          fixture.attestation.datum.availability_commitment,
       }),
     );
 
-    expect(record.reads).toEqual([
-      [
+    expect(referenceSet(record)).toEqual(
+      expectedSet([
         fixture.daParamsUtxo,
         fixture.target.stateQueueUtxo.utxo,
         fixture.referenceScripts.daAttestationMinting,
         fixture.referenceScripts.stateQueueMinting,
-      ],
-    ]);
+      ]),
+    );
+    // Exactness in both directions: the reference set must not silently pick up
+    // the spending-script references this transaction has no spend for.
+    expect(referenceSet(record)).not.toContain(
+      outRefKey(fixture.referenceScripts.daAttestationSpending),
+    );
     expect(record.mints[0]?.assets).toEqual({
       [fixture.attestationUnit]: 1n,
     });
@@ -348,22 +472,31 @@ describe("DA attestation SDK builders", () => {
         daParamsUtxo: fixture.daParamsUtxo,
         daParamsDatum: fixture.daParamsDatum,
         attestation: fixture.attestation,
-        witnesses: [{ signerIndex: 0, signatureHex: signature("aa") }],
+        // Both committee members sign, reaching the floor-compliant 2-of-2.
+        witnesses: [
+          { signerIndex: 0, signatureHex: signature("aa") },
+          { signerIndex: 1, signatureHex: signature("bb") },
+        ],
         referenceScripts: fixture.referenceScripts,
       }),
     );
 
-    expect(record.reads).toEqual([
-      [fixture.daParamsUtxo, fixture.referenceScripts.daAttestationSpending],
-    ]);
-    expect(record.collects[0]?.inputs).toEqual([fixture.attestation.utxo]);
+    expect(referenceSet(record)).toEqual(
+      expectedSet([
+        fixture.daParamsUtxo,
+        fixture.referenceScripts.daAttestationSpending,
+      ]),
+    );
+    expect(collectedSet(record)).toEqual(
+      expectedSet([fixture.attestation.utxo]),
+    );
     expect(record.payments[0]?.assets).toEqual(fixture.attestation.utxo.assets);
     const datum = Data.from(
       record.payments[0]!.datum.value,
       DaAttestationDatum,
     );
-    expect(datum.attested_signers).toBe(`80${"00".repeat(31)}`);
-    expect(datum.attestation_count).toBe(1n);
+    expect(datum.attested_signers).toBe(`c0${"00".repeat(31)}`);
+    expect(datum.attestation_count).toBe(2n);
     const redeemer = Data.from(
       (record.collects[0]!.redeemer as (ctx: unknown) => string)({
         outputs: record.payments.map((payment) => ({
@@ -377,7 +510,7 @@ describe("DA attestation SDK builders", () => {
     );
     expect(redeemer).toMatchObject({
       AddSignatures: {
-        signatures: `00${signature("aa")}`,
+        signatures: `00${signature("aa")}01${signature("bb")}`,
       },
     });
     expect(record.signerKeys).toHaveLength(0);
@@ -387,7 +520,7 @@ describe("DA attestation SDK builders", () => {
     const fixture = makeFixture();
     const { lucid } = makeRecordingLucid();
 
-    await expectBuildFailure(
+    await expectBuildRefusal(
       incompleteAddDaAttestationSignaturesTxProgram(lucid, fixture.contracts, {
         daParamsUtxo: fixture.daParamsUtxo,
         daParamsDatum: {
@@ -398,6 +531,7 @@ describe("DA attestation SDK builders", () => {
         witnesses: [{ signerIndex: 0, signatureHex: signature("aa") }],
         referenceScripts: fixture.referenceScripts,
       }),
+      "params_committee_hash_mismatch",
     );
   });
 
@@ -408,8 +542,8 @@ describe("DA attestation SDK builders", () => {
       ...fixture.attestation,
       datum: {
         ...fixture.attestation.datum,
-        attested_signers: `80${"00".repeat(31)}`,
-        attestation_count: 1n,
+        attested_signers: `c0${"00".repeat(31)}`,
+        attestation_count: 2n,
       },
     };
 
@@ -418,28 +552,50 @@ describe("DA attestation SDK builders", () => {
         lucid,
         fixture.contracts,
         {
+          hubOracleRefInput: fixture.hubOracleRefInput,
+          daParamsUtxo: fixture.daParamsUtxo,
+          daParamsDatum: fixture.daParamsDatum,
           target: fixture.target,
           attestation: thresholdAttestation,
           referenceScripts: fixture.referenceScripts,
+          validityRange: fixture.applyValidityRange,
         },
       ),
     );
 
-    expect(record.reads).toEqual([
-      [
+    expect(referenceSet(record)).toEqual(
+      expectedSet([
+        fixture.hubOracleRefInput,
+        fixture.daParamsUtxo,
+        fixture.referenceScripts.availabilityChallengeMinting,
+        fixture.referenceScripts.availabilityChallengeBondWithdrawal,
         fixture.referenceScripts.daAttestationMinting,
         fixture.referenceScripts.daAttestationSpending,
         fixture.referenceScripts.stateQueueMinting,
         fixture.referenceScripts.stateQueueSpending,
-      ],
-    ]);
-    expect(record.collects.map((entry) => entry.inputs)).toEqual([
-      [thresholdAttestation.utxo],
-      [fixture.target.stateQueueUtxo.utxo],
-    ]);
+      ]),
+    );
+    // The apply spends the attestation and the state-queue node and nothing
+    // else — the reference-only UTxOs must stay out of the input set.
+    expect(collectedSet(record)).toEqual(
+      expectedSet([
+        thresholdAttestation.utxo,
+        fixture.target.stateQueueUtxo.utxo,
+      ]),
+    );
     expect(record.mints[0]?.assets).toEqual({
       [fixture.attestationUnit]: -1n,
     });
+    expect(record.withdrawals).toEqual([
+      {
+        address: expect.stringMatching(/^stake_test/u),
+        amount: 0n,
+        redeemer: Data.void(),
+      },
+    ]);
+    expect(record.validityRanges).toEqual([
+      { validFrom: 1_000, validTo: 2_000 },
+    ]);
     expect(record.payments[0]?.address).toBe(
       fixture.contracts.stateQueue.spendingScriptAddress,
     );
@@ -459,45 +615,90 @@ describe("DA attestation SDK builders", () => {
       expect(stateQueueNode.header).toEqual(
         fixture.target.stateQueueNode.header,
       );
-      expect(stateQueueNode.da_attestation).toBe(
-        fixture.contracts.daAttestation.policyId,
-      );
+      expect(stateQueueNode.da_attestation).toMatchObject({
+        Attested: {
+          da_bond_asset_name: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        },
+      });
     }
+  });
+
+  it("refuses an apply with a substituted bond yield script", async () => {
+    const fixture = makeFixture();
+    const { lucid } = makeRecordingLucid();
+    await expectBuildRefusal(
+      incompleteApplyDaAttestationToStateQueueTxProgram(
+        lucid,
+        fixture.contracts,
+        {
+          hubOracleRefInput: fixture.hubOracleRefInput,
+          daParamsUtxo: fixture.daParamsUtxo,
+          daParamsDatum: fixture.daParamsDatum,
+          target: fixture.target,
+          attestation: {
+            ...fixture.attestation,
+            datum: {
+              ...fixture.attestation.datum,
+              attested_signers: `c0${"00".repeat(31)}`,
+              attestation_count: 2n,
+            },
+          },
+          referenceScripts: {
+            ...fixture.referenceScripts,
+            availabilityChallengeBondWithdrawal: makeUtxo(9),
+          },
+          validityRange: fixture.applyValidityRange,
+        },
+      ),
+      "missing_bond_yield_reference_script",
+    );
   });
 
   it("preflights apply header and threshold requirements", async () => {
     const fixture = makeFixture();
     const { lucid } = makeRecordingLucid();
 
-    await expectBuildFailure(
+    await expectBuildRefusal(
       incompleteApplyDaAttestationToStateQueueTxProgram(
         lucid,
         fixture.contracts,
         {
+          hubOracleRefInput: fixture.hubOracleRefInput,
+          daParamsUtxo: fixture.daParamsUtxo,
+          daParamsDatum: fixture.daParamsDatum,
           target: fixture.target,
           attestation: fixture.attestation,
           referenceScripts: fixture.referenceScripts,
+          validityRange: fixture.applyValidityRange,
         },
       ),
+      "threshold_not_reached",
     );
-    await expectBuildFailure(
+    await expectBuildRefusal(
       incompleteApplyDaAttestationToStateQueueTxProgram(
         lucid,
         fixture.contracts,
         {
+          hubOracleRefInput: fixture.hubOracleRefInput,
+          daParamsUtxo: fixture.daParamsUtxo,
+          daParamsDatum: fixture.daParamsDatum,
           target: fixture.target,
           attestation: {
             ...fixture.attestation,
+            // Threshold is satisfied, so the header-hash mismatch is the only
+            // reason this must be refused.
             datum: {
               ...fixture.attestation.datum,
               header_hash: h28("99"),
-              attested_signers: `80${"00".repeat(31)}`,
-              attestation_count: 1n,
+              attested_signers: `c0${"00".repeat(31)}`,
+              attestation_count: 2n,
             },
           },
           referenceScripts: fixture.referenceScripts,
+          validityRange: fixture.applyValidityRange,
         },
       ),
+      "attestation_header_mismatch",
     );
   });
 });

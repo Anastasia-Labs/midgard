@@ -5,21 +5,24 @@
 \section{Transaction order (L1)}
 \label{h:transaction-order}
 
+\paragraph{Implementation conformance.} The current mint entry point consumes \code{MintRedeemer\{event, material\_carriage\}}, including an empty carriage vector for burns. The spending entry point currently attempts to decode the selected policy redeemer directly as the inner \code{BurnEventNFT} event; \code{get\_redeemer\_at} returns the selected data without unwrapping it. This source-level ABI discrepancy requires reconciliation and a successful settlement-spend scenario before the lifecycle below can be claimed to conform.
+
+
 A user who wants to mitigate the risk of censorship by the current operator can submit an L2 transaction as an L1 transaction order.
 A transaction order is created by an L1 transaction that performs the following:
 \begin{enumerate}
     \item Spend an input \code{l1\_nonce}, which uniquely identifies this transaction order.
     \item Register a staking script credential to witness the transaction order.
-      The staking script is parametrized by \code{l1\_nonce}, and the credential's purpose is to disprove the existence of the transaction order whenever the credential is \emph{not} registered.
+      The staking script is parametrized by the Blake2b-256 hash of serialized \code{l1\_nonce}, and the credential's purpose is to disprove the existence of the transaction order whenever the credential is \emph{not} registered.
     \item Mint a transaction order token to verify the following datum:
         \begin{equation*}
         \T{TxOrderDatum} \coloneq \left\{
             \begin{array}{ll}
-                \T{event} : & \T{TxOrderEvent}, \\
+                \T{event} : & \T{TxOrderEventV1}, \\
                 \T{inclusion\_time} : & \T{PosixTime}, \\
                 \T{witness} : & \T{ScriptHash}, \\
                 \T{refund\_address}: & \T{Address}, \\
-                \T{refund\_datum}: & \T{Option(Data)}
+                \T{refund\_datum}: & \T{CardanoDatum}
             \end{array}
             \right\}
         \end{equation*}
@@ -32,9 +35,9 @@ According to Midgard's ledger rules:
     \item[Transaction order inclusion.] A block header must include transaction orders with inclusion times falling within the block header's event interval, and it must \emph{not} include any other transaction orders.
 \end{description}
 
-\notebox{The transaction order's \code{inclusion\_time} must be within its L2 transaction's time-validity interval.
-This is guaranteed optimistically via the \code{validity} field of the underlying \code{MidgardTx}.
-}
+The current due-event predicates also test overlap with the transaction validity interval.
+The original inclusion-only rule and this extra predicate must be reconciled together with the time-domain issue in \cref{h:deviations-from-cardano-transaction-types}.
+Neither the operator's later verdict nor a comment in a builder establishes that an order's inclusion time was inside its interval.
 
 Analogously to deposits and withdrawals, transaction orders will eventually be included in the state queue, as long as operators continue committing valid block headers.
 Furthermore, if any blocks are removed from the state queue, any new committed block must include the transaction orders that should have been included in the removed blocks.
@@ -47,23 +50,25 @@ The transaction order's \code{witness} staking credential must be deregistered w
 \subsection{Minting policy}
 \label{h:transaction-order-minting-policy}
 
-The \code{tx\_order} minting policy is statically parametrized on the \code{hub\_oracle} minting policy.
+The \code{tx\_order} minting policy is statically parametrized on the \code{hub\_oracle} and field-preimage certificate policies.
 It oversees correctness of datums, and registration/unregistration of events' corresponding witness staking scripts.
 
 \begin{description}
-  \item[Authenticate Order.] Properly record a new L2 transaction order order event on L1.
+  \item[Authenticate Order.] Properly record a new L2 transaction order event on L1.
     Conditions:
       \begin{enumerate}
         \item Let \code{l1\_nonce} be the output reference of a utxo on L1 that is spent in the order transaction.
         \item Let \code{l1\_id} be the Blake2b256 hash of serialized \code{l1\_nonce}.
         \item An NFT with own policy ID and asset name of \code{l1\_id} must be minted and included in the transaction order utxo.
         \item The witness staking script, instantiated with \code{l1\_id} must be registered in the transaction.
-        \item The redeemer used for registering the witness script must be equal to the \code{tx\_order} policy ID.
+        \item The redeemer used for registering the witness script must be \code{MintOrBurn} carrying the \code{tx\_order} policy ID.
         \item Let \code{tx\_order\_addr} be the address of the transaction order contract from Midgard's hub oracle.
         \item Transaction order utxo must be produced at \code{tx\_order\_addr}.
         \item The transaction order's \code{inclusion\_time} must be equal to transaction's time-validity upper bound plus \code{event\_wait\_duration} Midgard protocol parameter.
         \item The hash of the witness script must be correctly stored in the datum.
-        \item Validity of the order must be set to \code{TxIsValid}.
+        \item The order source, its transaction ID, and its proof-source commitment must agree.
+        \item Every nonempty field must authenticate through the ordered material-carriage vector; the vector must be exhausted exactly (see \cref{h:transaction-order-event}).
+        \item The order does not carry the operator verdict; the operator records a typed verdict in the later forced-inclusion leaf.
       \end{enumerate}
     \item[Burn Transaction Order NFT.] Oversee the conclusion of transaction order by requiring its NFTs to be burnt.
     Conditions:
@@ -72,7 +77,7 @@ It oversees correctness of datums, and registration/unregistration of events' co
         \item An NFT with own policy ID and asset name of \code{l1\_id} must be burnt.
         \item The witness staking script, instantiated with \code{l1\_id} must be unregistered in the transaction.
         \item The redeemer used for unregistrering the witness script must be correct.
-          Namely, it must be equal to the \code{tx\_order} policy ID.
+          Namely, it must be \code{MintOrBurn} carrying the \code{tx\_order} policy ID.
       \end{enumerate}
 \end{description}
 
@@ -87,13 +92,13 @@ It's responsible for validating conclusion of transaction orders, and sending ba
     Conditions:
     \begin{enumerate}
       \item Let \code{settlement} be the referenced settlement utxo.
-      \item Let \code{validity\_override} be the expected validity of the transaction order stored in transactions tree of \code{settlement}, provided via the redeemer.
-      \item The transaction order must be included in the transactions tree of \code{settlement} with its validity set to \code{validity\_override}.
+      \item Let \code{validity\_override} be the expected validity of the transaction order stored in the \code{forced\_transactions\_root} of \code{settlement}, provided via the redeemer.
+      \item The transaction order must be included under the counted \code{forced\_transactions\_root} of \code{settlement} with its typed verdict set to \code{validity\_override}.
       \item The \code{BurnEventNFT} endpoint of the transaction order minting script must be invoked with the corresponding \code{l1\_id} of the order utxo.
       \item Let \code{refund\_address} and \code{refund\_datum} be the refund information retrieved from the transaction order's datum.
       \item The min-ADA of the transaction order utxo must go to \code{refund\_address}.
       \item The datum attached to this output utxo must be the same as \code{refund\_datum}.
-      \item \todo{} No reference script must be attached to the output utxo.
+      \item No reference script must be attached to the output utxo.
     \end{enumerate}
 \end{description}
 

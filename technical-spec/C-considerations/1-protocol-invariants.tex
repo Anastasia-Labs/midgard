@@ -17,13 +17,13 @@ An invariant listed here is not a conformance claim; a deployment must demonstra
     Midgard enforces this invariant by using the linked list data structure in the state queue, which ensures that blocks are appended to the end of the queue and merged from the beginning of the queue.
     See \cref{h:state-queue}.
 
-  \item[Valid blocks.] Every valid block can eventually be merged to the confirmed state.
+  \item[Valid blocks.] Every valid block with available data can eventually be merged to the confirmed state under the deployment's stated operator, DA, and L1 liveness assumptions.
 
     If this invariant fails to hold, Midgard's confirmed state may become stuck because some valid block cannot be merged and cannot be removed from the state queue for fraud.
     This would be catastrophic because there would be no way to retrieve any funds from Midgard other than withdrawals that have already been confirmed by previous blocks but not yet paid out.
 
-    Midgard enforces this invariant by ensuring that the Merge to Confirmed State state queue redeemer always works for blocks that are mature with no unmerged predecessors left in the state queue.
-    Furthermore, Midgard ensures that onchain verification scripts for fraud proofs can never succeed when targeting valid blocks.
+    The merge branch requires the mature queue head and a DA state of \code{Attested} or \code{Published}, in addition to exact commitment and settlement binding. Liveness therefore also requires that the DA protocol can reach an eligible state and that the required L1 transactions can be submitted.
+    Fraud-proof soundness is a separate obligation: the deployed verification scripts must never accept a proof against a valid block.
     See \cref{h:state-queue} and \cref{h:fraud-proof-catalogue}.
 
   \item[Invalid blocks.] Every invalid block can be invalidated by an L1-verified fraud proof before its maturity period elapses, allowing it to be removed from the state queue.
@@ -40,26 +40,26 @@ An invariant listed here is not a conformance claim; a deployment must demonstra
     If this invariant fails to hold, Midgard may fail to attract enough active operators to ensure robust and continuous block production.
     If all active operators cease participating in the Midgard protocol and no newcomers can become active operators or obtain a shift, then Midgard block production would cease.
 
-    Midgard enforces this invariant by using the linked list data structures to assign shifts to all active operators in a round-robin fashion.
-    Furthermore, it uses another linked list to register new operators and ensures that they can always activate after a prescribed wait duration.
+    The operator directory and scheduler use linked list data structures to assign shifts to all active operators in a round-robin fashion.
+    Furthermore, it uses another linked list to register new operators and permits activation after a prescribed wait duration, subject to directory uniqueness and transaction validity. Eventual submission still depends on L1 liveness.
     See \cref{h:active-operators}, \cref{h:retired-operators}, and \cref{h:scheduler}.
 
-  \item[Operator bond.] No operator can retrieve their bond before the maturity period elapses for their most recent block, and every operator can do so afterward.
+  \item[Operator bond.] An operator cannot recover its bond before its recorded hold expires. After retirement and expiry, an unslashed operator must be able to recover the bond under the stated L1 liveness assumptions.
 
     If the first clause of this invariant fails to hold, then a dishonest operator can prevent themself from being slashed and the fraud prover from being rewarded when a fraud proof removes the operator's fraudulent block from the state queue.
     This would weaken Midgard's incentives by reducing risk for dishonest operators and eliminating the reward for honest watchers, so that only altruistic watchers and those directly hurt by the fraud would be incentivized to stop it.
 
     If the second clause of this invariant fails to hold, then people would hesitate to become operators due to the risk that their bond might get stuck in Midgard.
 
-    Midgard enforces this invariant through the operator directory, which tracks the maturity period of the latest block committed by each operator. It holds the operator bonds during these periods and allows them to be retrieved afterward.
+    Midgard enforces this invariant through the operator directory, which tracks bond holds extended by block commitments and settlement resolution claims. Recovery consumes a retired-operator node after its recorded unlock time; slashing can remove the bond before recovery.
     See \cref{h:operator-directory}.
 
   \item[Censorship protection.] If block production continues, operators cannot censor deposits, withdrawal orders, and transaction orders from being confirmed.
 
     If this invariant fails to hold, then some user funds may get stranded in Midgard because operators would prevent them from interacting with Midgard's state.
 
-    Midgard enforces this by assigning an inclusion time to every L1 user event (i.e.deposits, withdrawal orders, and transaction orders) and assigning an event interval to every block.
-    Any block can be removed as invalid if it does not include an L1 user event with an inclusion time that falls within the block's event interval.
+    The target censorship protection assigns an inclusion time to every L1 user event (i.e.deposits, withdrawal orders, and transaction orders) and assigning an event interval to every block.
+    A conformant deployment must provide an admissible omission proof to remove a block that does not include an L1 user event with an inclusion time that falls within the block's event interval.
     The event intervals are non-overlapping between blocks and have no gaps.
     This means that every L1 user event must eventually be included in a valid block unless block production halts.
 

@@ -18,13 +18,12 @@ pub fn get_datum(
   catalogue_script_hash: ScriptHash,
   catalogue_ref_input_index: Int,
 ) -> Datum {
-  expect Input { output: Output { datum: InlineDatum(datum_data), .. }, .. } =
-    reference_inputs
-      |> utils.get_authentic_input_with_nft_at(
-          catalogue_script_hash,
-          asset_name,
-          catalogue_ref_input_index,
-        )
+  expect Input { output: Output { datum: InlineDatum(datum_data), .. }, .. } = reference_inputs
+    |> utils.get_authentic_input_with_nft_at(
+        catalogue_script_hash,
+        asset_name,
+        catalogue_ref_input_index,
+      )
   expect datum: Datum = datum_data
   datum
 }

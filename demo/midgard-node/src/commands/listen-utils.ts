@@ -11,6 +11,7 @@ export const ADMIN_ROUTE_PATHS: ReadonlySet<string> = new Set([
   "/stateQueueMutationLease",
   "/logBlocksDB",
   "/logGlobals",
+  "/operator/status",
 ]);
 
 /**

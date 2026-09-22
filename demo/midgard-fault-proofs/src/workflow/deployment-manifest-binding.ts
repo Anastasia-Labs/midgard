@@ -1,0 +1,591 @@
+import { createHash } from "node:crypto";
+
+import {
+  type DeploymentManifest,
+  type DeploymentManifestCardanoProtocolParameters,
+  type DeploymentManifestContractEntry,
+  parseDeploymentManifestEconomics,
+  verifyFinalizedDeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import {
+  credentialToAddress,
+  type Network,
+  type Script,
+  type UTxO,
+  validatorToAddress,
+  validatorToScriptHash,
+} from "@lucid-evolution/lucid";
+
+import {
+  type ContractDeploymentInfo,
+  parseContractDeploymentInfo,
+  parseContractDeploymentReferenceScriptAuthPolicyId,
+} from "../inspect-contracts.js";
+import { resolveFaultProofDeploymentContracts } from "../runtime.js";
+import type {
+  FraudProofRawL1FamilyDefinition,
+  FraudProofRawL1TerminalDefinition,
+} from "./raw-l1-family-derivation.js";
+import type { FraudProofRawL1ComputationStepRole } from "./raw-l1-snapshot.js";
+import {
+  computeFraudProofReleaseEconomicsPolicyDigest,
+  FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
+  type VerifiedFraudProofReleaseEconomicsPolicy,
+} from "./release-economics-policy.js";
+import {
+  computeFraudProofReleaseFinalityPolicyDigest,
+  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  type FraudProofReleaseFinalityAuthority,
+  type VerifiedFraudProofReleaseFinalityPolicy,
+} from "./release-finality-policy.js";
+
+export const FRAUD_PROOF_WORKFLOW_DEPLOYMENT_BINDING =
+  "midgard-fraud-proof-workflow-deployment-binding-v1" as const;
+
+type LucidDataSchema =
+  FraudProofRawL1FamilyDefinition["computationThread"]["steps"][number]["datumSchema"];
+
+export type FraudProofWorkflowDeploymentBinding<
+  Category extends FraudProofCatalogueCategoryName,
+> = {
+  readonly bindingVersion: typeof FRAUD_PROOF_WORKFLOW_DEPLOYMENT_BINDING;
+  readonly deploymentFingerprint: string;
+  readonly blueprintHash: string;
+  readonly network: Network;
+  readonly blueprint: unknown;
+  /** Complete verified document consumed by transaction builders. */
+  readonly deploymentInfo: unknown;
+  readonly contractEntries: ContractDeploymentInfo;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+  readonly cardanoProtocolParameters: DeploymentManifestCardanoProtocolParameters;
+  readonly catalogue: {
+    readonly policyId: string;
+    readonly spendingScriptAddress: string;
+    readonly root: string;
+  };
+  readonly fieldPreimageCertificate: {
+    readonly policyId: string;
+    readonly mintingScript: Script;
+  } | null;
+  readonly referenceScriptsByContract: Readonly<
+    Record<
+      string,
+      {
+        readonly outRef: string;
+        readonly scriptHash: string;
+      }
+    >
+  >;
+  readonly definition: FraudProofRawL1FamilyDefinition & {
+    readonly category: Category;
+  };
+  readonly resolvedContracts: Awaited<
+    ReturnType<typeof resolveFaultProofDeploymentContracts>
+  >;
+};
+
+/** Closed authority view over the already verified finalized manifest. */
+export const releaseFinalityAuthorityFromDeploymentBinding = (
+  binding: FraudProofWorkflowDeploymentBinding<FraudProofCatalogueCategoryName>,
+): FraudProofReleaseFinalityAuthority => ({
+  authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+  verifyForWorkflow: async ({ deploymentFingerprint }) => {
+    if (deploymentFingerprint !== binding.deploymentFingerprint) {
+      throw new Error(
+        "workflow deployment fingerprint differs from the finalized manifest",
+      );
+    }
+    return binding.releaseFinality;
+  },
+});
+
+const HEX_28 = /^[0-9a-f]{56}$/u;
+
+export const assertManifestBoundWorkflowSigner = ({
+  network,
+  address,
+  paymentKeyHash,
+}: {
+  readonly network: Network;
+  readonly address: string;
+  readonly paymentKeyHash: string;
+}): void => {
+  if (!HEX_28.test(paymentKeyHash)) {
+    throw new Error("workflow signer payment credential is not 28-byte hex");
+  }
+  const expected = credentialToAddress(network, {
+    type: "Key",
+    hash: paymentKeyHash,
+  });
+  if (address !== expected) {
+    throw new Error(
+      "workflow signer address is not the manifest-network enterprise address for its payment credential",
+    );
+  }
+};
+
+export const requireManifestBoundReferenceScriptUtxo = ({
+  binding,
+  contractName,
+  utxo,
+}: {
+  readonly binding: Pick<
+    FraudProofWorkflowDeploymentBinding<FraudProofCatalogueCategoryName>,
+    "referenceScriptsByContract"
+  >;
+  readonly contractName: string;
+  readonly utxo: UTxO;
+}): UTxO => {
+  const expected = binding.referenceScriptsByContract[contractName];
+  if (expected === undefined) {
+    throw new Error(
+      `finalized manifest has no published reference-script identity for ${contractName}`,
+    );
+  }
+  const actualOutRef = `${utxo.txHash}#${utxo.outputIndex.toString()}`;
+  if (actualOutRef !== expected.outRef || utxo.scriptRef == null) {
+    throw new Error(
+      `${contractName} reference UTxO differs from finalized manifest identity`,
+    );
+  }
+  const actualHash = validatorToScriptHash(utxo.scriptRef);
+  if (actualHash !== expected.scriptHash) {
+    throw new Error(
+      `${contractName} reference UTxO script differs from finalized manifest identity`,
+    );
+  }
+  return utxo;
+};
+
+const isScript = (value: unknown): value is Script => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const candidate = value as Readonly<Record<string, unknown>>;
+  return (
+    typeof candidate.script === "string" &&
+    (candidate.type === "Native" ||
+      candidate.type === "PlutusV1" ||
+      candidate.type === "PlutusV2" ||
+      candidate.type === "PlutusV3")
+  );
+};
+
+const isFieldPreimageCertificateContract = (
+  value: unknown,
+): value is { readonly policyId: string; readonly mintingScript: Script } => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const candidate = value as Readonly<Record<string, unknown>>;
+  return (
+    typeof candidate.policyId === "string" && isScript(candidate.mintingScript)
+  );
+};
+
+const manifestContract = (
+  manifest: DeploymentManifest,
+  name: string,
+): DeploymentManifestContractEntry => {
+  const entry = manifest.contracts[name];
+  if (entry === undefined) {
+    throw new Error(`deployment manifest omitted ${name}`);
+  }
+  return entry;
+};
+
+const scriptOf = (entry: DeploymentManifestContractEntry): Script => ({
+  type: entry.contract.type,
+  script: entry.contract.cborHex,
+});
+
+const sameOutRef = (
+  left: DeploymentManifestContractEntry["refScriptUTxO"] | undefined,
+  right: DeploymentManifestContractEntry["refScriptUTxO"] | undefined,
+): boolean =>
+  left === right ||
+  (left !== null &&
+    left !== undefined &&
+    right !== null &&
+    right !== undefined &&
+    left.txHash === right.txHash &&
+    left.outputIndex === right.outputIndex);
+
+const assertDeploymentInfoMatchesManifest = ({
+  manifest,
+  deploymentInfo,
+}: {
+  readonly manifest: DeploymentManifest;
+  readonly deploymentInfo: ContractDeploymentInfo;
+}): void => {
+  const manifestNames = Object.keys(manifest.contracts).sort();
+  const infoNames = Object.keys(deploymentInfo).sort();
+  if (
+    manifestNames.length !== infoNames.length ||
+    manifestNames.some((name, index) => name !== infoNames[index])
+  ) {
+    throw new Error(
+      "contract deployment info does not enumerate the finalized manifest contracts",
+    );
+  }
+  for (const name of manifestNames) {
+    const expected = manifestContract(manifest, name);
+    const actual = deploymentInfo[name]!;
+    if (
+      actual.scriptHash !== expected.scriptHash ||
+      actual.contract?.type !== expected.contract.type ||
+      actual.contract.cborHex !== expected.contract.cborHex ||
+      !sameOutRef(actual.refScriptUTxO, expected.refScriptUTxO)
+    ) {
+      throw new Error(
+        `contract deployment info changed finalized manifest contract ${name}`,
+      );
+    }
+  }
+  const expectedCatalogue = manifestContract(
+    manifest,
+    "fraudProofCatalogueMint",
+  ).fraudProofCatalogue;
+  const actualCatalogue =
+    deploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue;
+  if (
+    expectedCatalogue === undefined ||
+    actualCatalogue === undefined ||
+    JSON.stringify(actualCatalogue) !== JSON.stringify(expectedCatalogue)
+  ) {
+    throw new Error(
+      "contract deployment info changed the finalized fraud-proof catalogue",
+    );
+  }
+};
+
+const freezeManifestDocument = <Value>(value: Value): Value => {
+  if (value !== null && typeof value === "object") {
+    for (const child of Object.values(value)) freezeManifestDocument(child);
+    Object.freeze(value);
+  }
+  return value;
+};
+
+const finalizedManifest = (value: unknown): DeploymentManifest =>
+  freezeManifestDocument(
+    structuredClone(verifyFinalizedDeploymentManifest(value)),
+  );
+
+const releasePolicies = (
+  manifest: DeploymentManifest,
+): {
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+} => {
+  const finalityPolicy = manifest.l1Finality;
+  const releaseFinality: VerifiedFraudProofReleaseFinalityPolicy = {
+    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+    deploymentIdentityDigest: manifest.manifestId,
+    blueprintHash: manifest.artifacts.blueprintHash,
+    policyDigest: computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
+    policy: finalityPolicy,
+  };
+  const compiled = parseDeploymentManifestEconomics(manifest.economics);
+  const economicsPolicy = {
+    profile: compiled.profile,
+    requiredBondLovelace: compiled.requiredBondLovelace.toString(),
+    slashingPenaltyLovelace: compiled.slashingPenaltyLovelace.toString(),
+    fraudProverRewardLovelace: compiled.fraudProverRewardLovelace.toString(),
+    inactivitySlashingPenaltyLovelace:
+      compiled.inactivitySlashingPenaltyLovelace.toString(),
+    proverCollateralFloorLovelace:
+      compiled.proverCollateralFloorLovelace.toString(),
+  };
+  const releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy = {
+    schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
+    deploymentIdentityDigest: manifest.manifestId,
+    blueprintHash: manifest.artifacts.blueprintHash,
+    policyDigest:
+      computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
+    policy: economicsPolicy,
+  };
+  return { releaseFinality, releaseEconomics };
+};
+
+/**
+ * Builds the family observation identity from one finalized deployment
+ * manifest and the exact blueprint bytes committed by that manifest. The same
+ * parsed blueprint/deployment-info pair is returned for transaction builders,
+ * preventing a caller-selected network or parallel contract identity.
+ */
+const bindFraudProofDeployment = async <
+  Category extends FraudProofCatalogueCategoryName,
+>({
+  manifest: manifestValue,
+  blueprintJson,
+  deploymentInfo: deploymentInfoValue,
+  category,
+  headerHash,
+  proverCredential,
+  stepDatumSchemas,
+}: {
+  readonly manifest: unknown;
+  readonly blueprintJson: string;
+  readonly deploymentInfo: unknown;
+  readonly category: Category;
+  readonly headerHash: string;
+  readonly proverCredential: string;
+  readonly stepDatumSchemas: readonly LucidDataSchema[] | null;
+}): Promise<FraudProofWorkflowDeploymentBinding<Category>> => {
+  const manifest = finalizedManifest(manifestValue);
+  const blueprintHash = createHash("sha256")
+    .update(blueprintJson)
+    .digest("hex");
+  if (blueprintHash !== manifest.artifacts.blueprintHash) {
+    throw new Error(
+      `blueprint SHA-256 does not match the finalized deployment manifest: expected=${manifest.artifacts.blueprintHash} actual=${blueprintHash}`,
+    );
+  }
+  let blueprint: unknown;
+  try {
+    blueprint = JSON.parse(blueprintJson) as unknown;
+  } catch {
+    throw new Error("deployment-manifest blueprint is not valid JSON");
+  }
+  const suppliedDocument: unknown = structuredClone(deploymentInfoValue);
+  assertDeploymentInfoMatchesManifest({
+    manifest,
+    deploymentInfo: parseContractDeploymentInfo(suppliedDocument),
+  });
+  if (
+    parseContractDeploymentReferenceScriptAuthPolicyId(
+      suppliedDocument,
+      "reference-script-auth minting",
+    ) !==
+    parseContractDeploymentReferenceScriptAuthPolicyId(
+      manifest,
+      "reference-script-auth minting",
+    )
+  ) {
+    throw new Error(
+      "contract deployment info changed the finalized reference-script authority",
+    );
+  }
+  if (
+    typeof suppliedDocument === "object" &&
+    suppliedDocument !== null &&
+    "economics" in suppliedDocument &&
+    JSON.stringify(
+      parseDeploymentManifestEconomics(suppliedDocument.economics),
+    ) !== JSON.stringify(parseDeploymentManifestEconomics(manifest.economics))
+  ) {
+    throw new Error(
+      "contract deployment info changed the finalized manifest economics",
+    );
+  }
+  // Builders consume the complete verified release, including its economics
+  // and reference authority, rather than a parallel contract-only document.
+  const deploymentDocument = manifest;
+  const deploymentInfo = parseContractDeploymentInfo(deploymentDocument);
+  const resolvedContracts = await resolveFaultProofDeploymentContracts({
+    blueprint,
+    deploymentInfo: deploymentDocument,
+    network: manifest.network,
+    categoryName: category,
+    requireStateQueueMint: true,
+    requireFraudProofSpend: true,
+  });
+  const chain = resolvedContracts.contracts[category];
+  if (
+    chain === undefined ||
+    (stepDatumSchemas !== null &&
+      chain.steps.length !== stepDatumSchemas.length)
+  ) {
+    throw new Error(
+      `${category} deployment binding expected ${stepDatumSchemas?.length.toString() ?? "published"} computation steps`,
+    );
+  }
+  const categoryIdentity = manifestContract(manifest, "fraudProofCatalogueMint")
+    .fraudProofCatalogue?.categories[category];
+  if (
+    categoryIdentity === undefined ||
+    categoryIdentity.categoryId !== resolvedContracts.category.categoryId ||
+    categoryIdentity.scriptHash !== chain.firstStep.spendingScriptHash
+  ) {
+    throw new Error(`${category} deployment catalogue identity changed`);
+  }
+  if (!HEX_28.test(headerHash) || !HEX_28.test(proverCredential)) {
+    throw new Error(
+      "workflow header and prover credential must be canonical 28-byte hex",
+    );
+  }
+  const stateQueueSpend = manifestContract(manifest, "stateQueueSpend");
+  const stateQueueMint = manifestContract(manifest, "stateQueueMint");
+  const fraudProofSpend = manifestContract(manifest, "fraudProofSpend");
+  const fraudProofMint = manifestContract(manifest, "fraudProofMint");
+  const catalogueSpend = manifestContract(manifest, "fraudProofCatalogueSpend");
+  const activeSpend = manifestContract(manifest, "activeOperatorsSpend");
+  const activeMint = manifestContract(manifest, "activeOperatorsMint");
+  const retiredSpend = manifestContract(manifest, "retiredOperatorsSpend");
+  const retiredMint = manifestContract(manifest, "retiredOperatorsMint");
+  const schedulerSpend = manifestContract(manifest, "schedulerSpend");
+  const policies = releasePolicies(manifest);
+  const fieldPreimageCertificateCandidate =
+    "fieldPreimageCertificate" in resolvedContracts.contracts
+      ? resolvedContracts.contracts.fieldPreimageCertificate
+      : undefined;
+  if (
+    fieldPreimageCertificateCandidate !== undefined &&
+    !isFieldPreimageCertificateContract(fieldPreimageCertificateCandidate)
+  ) {
+    throw new Error(
+      "resolved field-preimage certificate contract has an invalid shape",
+    );
+  }
+  const fieldPreimageCertificate = fieldPreimageCertificateCandidate;
+  if (fieldPreimageCertificate !== undefined) {
+    const deployed = manifestContract(manifest, "fieldPreimageCertificateMint");
+    if (
+      fieldPreimageCertificate.policyId !== deployed.scriptHash ||
+      validatorToScriptHash(fieldPreimageCertificate.mintingScript) !==
+        deployed.scriptHash
+    ) {
+      throw new Error(
+        "field-preimage certificate policy differs from the finalized manifest",
+      );
+    }
+  }
+  return {
+    bindingVersion: FRAUD_PROOF_WORKFLOW_DEPLOYMENT_BINDING,
+    deploymentFingerprint: manifest.manifestId,
+    blueprintHash: manifest.artifacts.blueprintHash,
+    network: manifest.network,
+    blueprint,
+    deploymentInfo: deploymentDocument,
+    contractEntries: deploymentInfo,
+    ...policies,
+    cardanoProtocolParameters: manifest.cardanoProtocolParameters.snapshot,
+    catalogue: {
+      policyId: resolvedContracts.fraudProofCataloguePolicyId,
+      spendingScriptAddress: validatorToAddress(
+        manifest.network,
+        scriptOf(catalogueSpend),
+      ),
+      root: manifestContract(manifest, "fraudProofCatalogueMint")
+        .fraudProofCatalogue!.root,
+    },
+    fieldPreimageCertificate:
+      fieldPreimageCertificate === undefined
+        ? null
+        : {
+            policyId: fieldPreimageCertificate.policyId,
+            mintingScript: fieldPreimageCertificate.mintingScript,
+          },
+    referenceScriptsByContract: Object.freeze(
+      Object.fromEntries(
+        Object.entries(manifest.contracts).flatMap(([name, entry]) =>
+          entry.refScriptUTxO === null
+            ? []
+            : [
+                [
+                  name,
+                  {
+                    outRef: `${entry.refScriptUTxO.txHash}#${entry.refScriptUTxO.outputIndex.toString()}`,
+                    scriptHash: entry.scriptHash,
+                  },
+                ] as const,
+              ],
+        ),
+      ),
+    ),
+    definition: {
+      category,
+      categoryId: categoryIdentity.categoryId,
+      headerHash,
+      proverCredential,
+      stateQueue: {
+        policyId: stateQueueMint.scriptHash,
+        address: validatorToAddress(
+          manifest.network,
+          scriptOf(stateQueueSpend),
+        ),
+      },
+      computationThread: {
+        policyId: resolvedContracts.contracts.computationThread.policyId,
+        steps: chain.steps.map((step, index) => ({
+          role: `computation_thread_step_${(index + 1).toString().padStart(2, "0")}` as FraudProofRawL1ComputationStepRole,
+          address: step.spendingScriptAddress,
+          datumSchema: stepDatumSchemas?.[index],
+        })),
+      },
+      proofToken: {
+        policyId: fraudProofMint.scriptHash,
+        address: validatorToAddress(
+          manifest.network,
+          scriptOf(fraudProofSpend),
+        ),
+      },
+      operatorDirectory: {
+        activePolicyId: activeMint.scriptHash,
+        activeAddress: validatorToAddress(
+          manifest.network,
+          scriptOf(activeSpend),
+        ),
+        retiredPolicyId: retiredMint.scriptHash,
+        retiredAddress: validatorToAddress(
+          manifest.network,
+          scriptOf(retiredSpend),
+        ),
+      },
+      schedulerAddress: validatorToAddress(
+        manifest.network,
+        scriptOf(schedulerSpend),
+      ),
+    },
+    resolvedContracts,
+  };
+};
+
+/** Full executable binding retains the exact per-step datum schema contract. */
+export const bindFraudProofWorkflowDeployment = <
+  Category extends FraudProofCatalogueCategoryName,
+>(
+  input: Omit<
+    Parameters<typeof bindFraudProofDeployment<Category>>[0],
+    "stepDatumSchemas"
+  > & {
+    readonly stepDatumSchemas: readonly LucidDataSchema[];
+  },
+): Promise<FraudProofWorkflowDeploymentBinding<Category>> =>
+  bindFraudProofDeployment(input);
+
+export type FraudProofTerminalDeploymentBinding = Pick<
+  FraudProofWorkflowDeploymentBinding<FraudProofCatalogueCategoryName>,
+  "deploymentFingerprint" | "releaseFinality" | "releaseEconomics"
+> & { readonly definition: FraudProofRawL1TerminalDefinition };
+
+/** Completion reads have no live-thread decoder or transaction capability. */
+export const bindFraudProofTerminalDeployment = async (
+  input: Omit<
+    Parameters<typeof bindFraudProofDeployment>[0],
+    "stepDatumSchemas"
+  >,
+): Promise<FraudProofTerminalDeploymentBinding> => {
+  const binding = await bindFraudProofDeployment({
+    ...input,
+    stepDatumSchemas: null,
+  });
+  return {
+    deploymentFingerprint: binding.deploymentFingerprint,
+    releaseFinality: binding.releaseFinality,
+    releaseEconomics: binding.releaseEconomics,
+    definition: {
+      ...binding.definition,
+      computationThread: {
+        policyId: binding.definition.computationThread.policyId,
+        steps: binding.definition.computationThread.steps.map(
+          ({ role, address }) => ({ role, address }),
+        ),
+      },
+    },
+  };
+};

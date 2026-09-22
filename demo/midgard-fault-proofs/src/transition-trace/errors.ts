@@ -1,4 +1,6 @@
 export type TransitionTraceChallengerErrorCode =
+  | "authenticatedSourceLeafDefect"
+  | "authenticatedCommittedFieldDefect"
   | "malformedPayload"
   | "nonCanonicalPayload"
   | "wrongPayloadVersion"

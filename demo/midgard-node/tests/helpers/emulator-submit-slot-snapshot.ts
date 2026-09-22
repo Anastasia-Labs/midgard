@@ -1,4 +1,4 @@
-import type { SubmitSlotSnapshot } from "@/local-ledger-slot.js";
+import type { SubmitSlotSnapshot } from "../../src/local-ledger-slot.js";
 
 const EMULATOR_SLOT_LENGTH_MS = 1_000;
 

@@ -22,6 +22,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -39,6 +40,16 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
+import {
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessSpendingValidatorCarriage,
+} from "./witness-reference-scripts.js";
+import {
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
+} from "./workflow/transaction-boundary.js";
 
 export type SubmitInvalidRangeStep02CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -67,8 +78,7 @@ export type SubmitInvalidRangeStep02Result = {
   readonly fraudProofUnit: string;
   readonly fraudProofAddress: string;
   readonly secondStepAddress: string;
-  readonly blockValidFrom: bigint;
-  readonly blockValidTo: bigint;
+  readonly blockSlot: bigint;
   readonly normalizedValidityRange: NormalizedTimeRange;
   readonly violationReason: NonNullable<
     ReturnType<typeof invalidRangeViolationReason>
@@ -238,13 +248,16 @@ const makeComputationThreadSuccessRedeemer = ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-export const submitInvalidRangeStep02 = async ({
+export const submitInvalidRangeStep02V1 = async ({
   lucid,
   blueprint,
   deploymentInfo,
   network,
   signer,
   threadOutRef,
+  referenceScriptUtxo,
+  witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -253,6 +266,11 @@ export const submitInvalidRangeStep02 = async ({
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
+  /** The mandatory published step-02 reference script. */
+  readonly referenceScriptUtxo?: UTxO;
+  /** Required published witness reference scripts for this transaction. */
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInvalidRangeStep02Result> => {
   const { invalidRangeCategory, contracts } =
@@ -284,8 +302,7 @@ export const submitInvalidRangeStep02 = async ({
   });
   const inputDatum = requireStep02Datum({ threadUtxo, signer });
   const violationReason = invalidRangeViolationReason({
-    blockValidFrom: inputDatum.data.block_valid_from,
-    blockValidTo: inputDatum.data.block_valid_to,
+    blockSlot: inputDatum.data.block_slot,
     normalizedRange: inputDatum.data.bad_tx_normalized_validity_range,
   });
   if (violationReason === null) {
@@ -310,8 +327,28 @@ export const submitInvalidRangeStep02 = async ({
   };
   let spendLayout: InvalidRangeStep02SpendLayout | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
+    script: contracts.invalidRange.steps[1].spendingScript,
+    referenceUtxo: referenceScriptUtxo,
+    label: "invalid-range step 02 validator",
+  });
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
+    script: contracts.computationThread.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.computationThreadMint,
+    label: "invalid-range step 02 computation-thread mint",
+  });
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
+    script: contracts.fraudProof.mintingScript,
+    referenceUtxo: witnessReferenceScripts?.fraudProofMint,
+    label: "invalid-range step 02 fraud-proof mint",
+  });
+  const referenceInputs = [
+    ...stepScriptCarriage.referenceInputs,
+    ...computationThreadMintCarriage.referenceInputs,
+    ...fraudProofMintCarriage.referenceInputs,
+  ];
 
-  const tx = lucid
+  const withInputs = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom(
@@ -350,10 +387,16 @@ export const submitInvalidRangeStep02 = async ({
       { kind: "inline", value: fraudProofDatum },
       fraudProofAssets,
     )
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(contracts.invalidRange.steps[1].spendingScript)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+    .addSignerKey(signer.paymentKeyHash);
+  // `readFrom([])` is an error rather than a no-op, so the branch is on
+  // whether any witness published a reference script at all.
+  const chained =
+    referenceInputs.length === 0
+      ? withInputs
+      : withInputs.readFrom(referenceInputs);
+  const tx = fraudProofMintCarriage.attach(
+    computationThreadMintCarriage.attach(stepScriptCarriage.attach(chained)),
+  );
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (
@@ -369,7 +412,36 @@ export const submitInvalidRangeStep02 = async ({
     computationThreadMintRedeemerIndex,
   };
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof invalid-range step-02",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.invalidRange.steps[1].spendingScript,
+        },
+        {
+          role: "V1 fraud-proof computation-thread minting",
+          utxo: witnessReferenceScripts?.computationThreadMint,
+          expectedScript: contracts.computationThread.mintingScript,
+        },
+        {
+          role: "V1 fraud-proof token minting",
+          utxo: witnessReferenceScripts?.fraudProofMint,
+          expectedScript: contracts.fraudProof.mintingScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `invalid-range step 02 provider returned ${txHash}, expected ${expectedTxHash}`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }
@@ -390,8 +462,7 @@ export const submitInvalidRangeStep02 = async ({
     fraudProofUnit,
     fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
     secondStepAddress: contracts.invalidRange.steps[1].spendingScriptAddress,
-    blockValidFrom: inputDatum.data.block_valid_from,
-    blockValidTo: inputDatum.data.block_valid_to,
+    blockSlot: inputDatum.data.block_slot,
     normalizedValidityRange: inputDatum.data.bad_tx_normalized_validity_range,
     violationReason,
     inputIndex: Number(resolvedLayout.inputIndex),
@@ -409,13 +480,16 @@ export const submitInvalidRangeStep02 = async ({
 export const submitInvalidRangeStep02FromFiles = async (
   config: SubmitInvalidRangeStep02CliConfig,
 ): Promise<SubmitInvalidRangeStep02Result> => {
+  rejectRetiredUnauthenticatedSubmissionRoute({
+    command: "submit-invalid-range-step-02",
+  });
   const [blueprint, deploymentInfo, lucid] = await Promise.all([
     readJsonFile(config.blueprintPath),
     readJsonFile(config.deploymentInfoPath),
     makeLucidForSubmit(config),
   ]);
   const signer = resolveProverSigner(config);
-  return await submitInvalidRangeStep02({
+  return await submitInvalidRangeStep02V1({
     lucid,
     blueprint,
     deploymentInfo,

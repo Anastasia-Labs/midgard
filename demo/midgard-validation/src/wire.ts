@@ -80,10 +80,12 @@ type WireLedgerTx = {
   readonly requiresPlutusEvaluation: boolean;
 };
 
-export type WirePhaseACandidate = {
+export type WirePhaseACandidateV1 = {
   readonly ledgerTx: WireLedgerTx;
   readonly submission: {
+    readonly sourceKind: "normal" | "forced";
     readonly txCbor: Bytes;
+    readonly programMaterialSidecarCbor: Bytes | null;
     readonly arrivalSeq: bigint;
     readonly createdAt: Date;
   };
@@ -93,6 +95,7 @@ export type WirePhaseACandidate = {
     readonly produced: readonly WireLedgerEntry[];
   };
   readonly derived: {
+    readonly expectedNetworkId: bigint;
     readonly outputSum: MidgardValue;
     readonly mintDelta: MidgardValueDelta;
     readonly witnessKeyHashHexes: readonly string[];
@@ -119,6 +122,7 @@ const phaseACandidateWireIsExhaustive: Exclude<
 void phaseACandidateWireIsExhaustive;
 
 type DerivedWireFields =
+  | "expectedNetworkId"
   | "outputSum"
   | "mintDelta"
   | "witnessKeyHashHexes"
@@ -248,7 +252,7 @@ const deserializeLedgerEntry = (entry: WireLedgerEntry): LedgerEntry => ({
 
 export const serializePhaseACandidate = (
   candidate: PhaseAValidatedTx,
-): WirePhaseACandidate => {
+): WirePhaseACandidateV1 => {
   const tx = candidate.ledgerTx;
   return {
     ledgerTx: {
@@ -296,7 +300,12 @@ export const serializePhaseACandidate = (
       requiresPlutusEvaluation: tx.requiresPlutusEvaluation,
     },
     submission: {
+      sourceKind: candidate.submission.sourceKind,
       txCbor: bytesView(candidate.submission.txCbor),
+      programMaterialSidecarCbor:
+        candidate.submission.programMaterialSidecarCbor === null
+          ? null
+          : bytesView(candidate.submission.programMaterialSidecarCbor),
       arrivalSeq: candidate.submission.arrivalSeq,
       createdAt: candidate.submission.createdAt,
     },
@@ -306,6 +315,7 @@ export const serializePhaseACandidate = (
       produced: candidate.graph.produced.map(serializeLedgerEntry),
     },
     derived: {
+      expectedNetworkId: candidate.derived.expectedNetworkId,
       outputSum: candidate.derived.outputSum,
       mintDelta: candidate.derived.mintDelta,
       witnessKeyHashHexes: candidate.derived.witnessKeyHashHexes,
@@ -317,11 +327,11 @@ export const serializePhaseACandidate = (
       requiresLocalScriptDiscovery:
         candidate.derived.requiresLocalScriptDiscovery,
     },
-  } satisfies WirePhaseACandidate;
+  } satisfies WirePhaseACandidateV1;
 };
 
 export const deserializePhaseACandidate = (
-  candidate: WirePhaseACandidate,
+  candidate: WirePhaseACandidateV1,
 ): PhaseAValidatedTx => ({
   ledgerTx: {
     txId: bufferView(candidate.ledgerTx.txId),
@@ -370,7 +380,12 @@ export const deserializePhaseACandidate = (
     requiresPlutusEvaluation: candidate.ledgerTx.requiresPlutusEvaluation,
   },
   submission: {
+    sourceKind: candidate.submission.sourceKind,
     txCbor: bufferView(candidate.submission.txCbor),
+    programMaterialSidecarCbor:
+      candidate.submission.programMaterialSidecarCbor === null
+        ? null
+        : bufferView(candidate.submission.programMaterialSidecarCbor),
     arrivalSeq: candidate.submission.arrivalSeq,
     createdAt: candidate.submission.createdAt,
   },
@@ -380,6 +395,7 @@ export const deserializePhaseACandidate = (
     produced: candidate.graph.produced.map(deserializeLedgerEntry),
   },
   derived: {
+    expectedNetworkId: candidate.derived.expectedNetworkId,
     outputSum: candidate.derived.outputSum,
     mintDelta: candidate.derived.mintDelta,
     witnessKeyHashHexes: candidate.derived.witnessKeyHashHexes,

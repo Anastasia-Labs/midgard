@@ -5,13 +5,13 @@ import {
   parseNetworkArgument,
   parseSeedPhraseArgument,
   resolveNetwork,
-} from "@/commands/address-from-seed.js";
-import { formatJson } from "@/commands/command-utils.js";
+} from "../src/commands/address-from-seed.js";
+import { formatJson } from "../src/commands/command-utils.js";
 import {
   fetchKupmiosAddressUtxos,
   lucidUtxoToL1Utxo,
   resolveKupmiosConfig,
-} from "@/commands/l1-utxos.js";
+} from "../src/commands/l1-utxos.js";
 
 const VALID_ADDRESS =
   "addr_test1qzyem8ex0v9v76q0u52x3t2xmj5rkhjd9rsd44kx3klsut4qga2669x30zsng46mhfrrk4ngylfnnlda7rkfvxq5fywqvurkrs";

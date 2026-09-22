@@ -3,12 +3,12 @@ import { describe, expect, it } from "vitest";
 
 import { OnChainLifecycleCoordinator } from "../src/coordinator/on-chain.js";
 import type { DaAttestationCandidateRecord } from "../src/domain.js";
+import { deriveExpectedDaAvailabilityCommitment } from "../src/peer/signatures.js";
 import { loadDaSigner, validateDaSignerMembership } from "../src/signer.js";
 import { JsonFileWatcherStore } from "../src/store.js";
 import { bytesToHex } from "../src/utils/hex.js";
 import { WatcherService } from "../src/watcher.js";
 import {
-  IDENTITY_TX_PROJECTOR,
   makeObservedNode,
   makePayloadFixture,
   minimalConfig,
@@ -91,7 +91,6 @@ describe("multi-node DA committee integration", () => {
           return "posted";
         },
       },
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
     await peerService.initialize();
     await expect(peerService.tick()).resolves.toMatchObject({
@@ -100,8 +99,23 @@ describe("multi-node DA committee integration", () => {
       skippedHeaders: 0,
       errors: [],
     });
+    const storedPayload = await peerStore.getDaPayload(headerHash);
+    const expectedCommitment = deriveExpectedDaAvailabilityCommitment({
+      authority: {
+        deploymentIdentity: peerConfig.hubOraclePolicyId,
+        bondOwnerCredential:
+          peerConfig.availabilityChallenge.bondOwnerCredential,
+        responseGeometry: peerConfig.availabilityChallenge.responseGeometry,
+      },
+      headerHash,
+      payloadCborHex: storedPayload!.payloadCborHex,
+    });
     await expect(
-      coordinatorStore.getDaSignature({ headerHash, signerIndex: 1 }),
+      coordinatorStore.getDaSignature({
+        headerHash,
+        availabilityCommitmentDigest: expectedCommitment.commitmentDigest,
+        signerIndex: 1,
+      }),
     ).resolves.toMatchObject({
       headerHash,
       signerIndex: 1,
@@ -161,7 +175,6 @@ describe("multi-node DA committee integration", () => {
       signer: coordinatorSigner,
       signerValidation: coordinatorValidation,
       coordinator,
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
     await coordinatorService.initialize();
     await expect(coordinatorService.tick()).resolves.toMatchObject({
@@ -184,7 +197,10 @@ describe("multi-node DA committee integration", () => {
   });
 });
 
-const submitted = (txHash: string) => ({ status: "submitted" as const, txHash });
+const submitted = (txHash: string) => ({
+  status: "submitted" as const,
+  txHash,
+});
 
 const candidateRecord = ({
   headerHash,

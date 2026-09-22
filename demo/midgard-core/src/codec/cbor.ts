@@ -175,6 +175,21 @@ export const readCborBytes = (
   };
 };
 
+export const readCborBytesHeader = (
+  bytes: Uint8Array,
+  offset: number,
+  fieldName = "bytes",
+): { readonly length: number; readonly nextOffset: number } => {
+  const header = readArgument(bytes, offset);
+  if (header.major !== 2) {
+    throw err(`${fieldName} must be a byte string`, `offset=${offset}`);
+  }
+  return {
+    length: ensureSafeLength(header.value, offset),
+    nextOffset: header.nextOffset,
+  };
+};
+
 export const readCborArrayHeader = (
   bytes: Uint8Array,
   offset: number,
@@ -327,13 +342,24 @@ export const assertCanonicalCbor = (
   }
 };
 
+/**
+ * `cborg` declares `decodeFirst` as returning `[any, Uint8Array]`. The decoded
+ * value is untrusted input that every caller validates, so it is laundered to
+ * `unknown` at this one boundary rather than letting `any` spread through the
+ * decoders.
+ */
+const decodeFirstUnknown = (
+  bytes: Uint8Array,
+): readonly [unknown, Uint8Array] =>
+  decodeFirst(bytes, DECODER_OPTIONS) as readonly [unknown, Uint8Array];
+
 export const decodeSingleCbor = (
   bytes: Uint8Array,
   options: CborReadOptions = {},
 ): unknown => {
   try {
     assertCanonicalCbor(bytes, "cbor", options);
-    const [value] = decodeFirst(bytes, DECODER_OPTIONS);
+    const [value] = decodeFirstUnknown(bytes);
     return value;
   } catch (e) {
     if (e instanceof MidgardTxCodecError) {

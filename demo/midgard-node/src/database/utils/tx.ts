@@ -1,12 +1,12 @@
 import { SqlClient, SqlError } from "@effect/sql";
 import { Effect } from "effect";
 
+import { Database } from "../../services/database.js";
 import {
   DatabaseError,
   logDatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+} from "./common.js";
 
 /**
  * Table adapter for transaction-by-id storage.

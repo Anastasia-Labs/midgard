@@ -15,7 +15,8 @@ export type LocalScriptEvalResult =
 
 export const encodeScriptContextCbor = (
   scriptContext: Constr<unknown>,
-): Uint8Array => fromHex(Data.to(scriptContext as any)) as Uint8Array;
+): Uint8Array =>
+  fromHex(Data.to(scriptContext as unknown as Data)) as Uint8Array;
 
 export const evaluateUplcWithContextCbor = (
   scriptBytes: Uint8Array,

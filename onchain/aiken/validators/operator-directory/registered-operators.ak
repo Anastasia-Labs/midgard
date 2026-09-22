@@ -100,7 +100,8 @@ validator mint(
         // 4. Linked list prepend outputs must exist at specified indices.
         expect Some(root_output) = outputs |> list.at(root_output_index)
         expect Some(registered_node_output) =
-          outputs |> list.at(registered_node_output_index)
+          outputs
+            |> list.at(registered_node_output_index)
 
         // 5. Prepending to the head of the linked list must be proper.
         //
@@ -135,7 +136,7 @@ validator mint(
 
           // 7. The Lovelace in the registered node must equal the
           //    `required_bond` Midgard parameter.
-          expect registered_node_lovelace >= env.required_bond
+          expect registered_node_lovelace == env.required_bond
 
           // 8. Let `activation_time` be equal to the sum of the Midgard
           //    `registration_duration` protocol parameter and the inclusive
@@ -299,10 +300,21 @@ validator mint(
         let Transaction { inputs, outputs, reference_inputs, mint, fee, .. } =
           self
 
-        // 1. `slashing_penalty` must be paid via the transaction fee. The rest
-        //    of the bond is assumed to be going to the signer's desired
-        //    destination.
-        expect fee >= env.slashing_penalty
+        // The proof node is read from `reference_inputs` and is not compared
+        // with the node being removed: the ledger requires a transaction's
+        // reference inputs to be disjoint from its inputs (for PlutusV3
+        // contexts from protocol version 11), so a node can never serve as
+        // its own proof and a lone honest registration cannot be slashed.
+        // 1. `slashing_penalty` must be paid via the transaction fee, which is
+        //    the pinned destination of the slashed bond (F04 §2.3).
+        //
+        //    Duplicate-registration slashing pays no `fraud_prover_reward`:
+        //    the 2026-08-11 owner ruling 7 (D4) routes the reward exclusively
+        //    through the bond-consuming arms of the state queue's
+        //    `RemoveFraudulentBlockHeader`, so no other endpoint may pay it.
+        //    Exactness of the remainder on this route is F04 §2.5's open
+        //    tranche-preservation item, owned by Q53.
+        expect fee == env.slashing_penalty
 
         // 2. Removal of the duplicate operator's node from the registered
         //    operator set must be valid.
@@ -322,7 +334,8 @@ validator mint(
 
         // 3. A reference input must exist at the specified index.
         expect Some(Input { output: duplicate_node_ref_utxo, .. }) =
-          reference_inputs |> list.at(duplicate_node_ref_input_index)
+          reference_inputs
+            |> list.at(duplicate_node_ref_input_index)
 
         // Depending on where the existing duplicate operator resides, it must
         // be shown that the referenced input is a member of an associated
@@ -419,7 +432,8 @@ fn remove_operator_and_get_node_info(
 ) -> Bool {
   // 1. Linked list output for removal must exist at specified index.
   expect Some(anchor_element_output) =
-    outputs |> list.at(anchor_element_output_index)
+    outputs
+      |> list.at(anchor_element_output_index)
 
   // 2. Removal of the operator node from the registered operator set must be
   //    valid.

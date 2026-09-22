@@ -3,18 +3,21 @@ title: "Removing Fraudulent Blocks"
 description: "Removing a proven-fraudulent block from the state queue, who may do it, when it is allowed, and how to inspect a deployment before starting a proof."
 ---
 
-Once a computation thread has succeeded and minted a `fraud_proof` token, the offending
-block is removed from the state queue and its operator is slashed.
+After a computation thread succeeds and mints a `fraud_proof` token, a separate
+correction workflow must remove the offending block and apply the required
+slashing/reward transitions. Minting the proof does not perform removal.
 
 ## When removal is allowed
 
-Removal requires a `fraud_proof` token for the target block. In practice the watcher who
-drove the proof holds it. The block must still be **in the state queue**: a block that
+Removal requires a `fraud_proof` token for the target block. The token sits in the permanent, unspendable fraud-proof record and is
+authenticated as a reference input; it is not spent from the watcher's wallet. The block must still be **in the state queue**: a block that
 has already merged into confirmed state cannot be removed this way, which is why the
 challenge window exists.
 
-Removing a header also prunes its descendants, because every block committed after it
-built on a state root that is now void.
+Correction removes successors through separate confirmed transactions,
+refetching queue topology after each, then removes the target. Slashing can
+occur during descendant pruning; the protocol prevents applying the same
+operator slash repeatedly.
 
 ## Commands
 
@@ -27,17 +30,18 @@ built on a state root that is now void.
   Read-only. Run it before initializing a thread, not only when removing.
 
 <Callout type="error" title="Terminal on-chain action">
-Removal is the terminal, state-changing outcome of the fraud-proof process, and it
-settles on Cardano L1. It removes an on-chain header and slashes a bond. It does not
-delete any local node state.
+  Removal is the terminal, state-changing outcome of the fraud-proof process,
+  and it settles on Cardano L1. It removes an on-chain header and slashes a
+  bond. It does not delete any local node state.
 </Callout>
 
 <Callout type="warn" title="Removal needs the state-queue mutation lease">
-Removing a header mutates the state queue, which the node's own fibers also mutate. An
-external mutator must `acquire` the
-[state-queue mutation lease](/docs/operators/node/server-http-api), do its work, and
-`release` it. A busy lease returns `409`. Do not work around a busy lease; find the job
-holding it.
+  Removing a header mutates the state queue, which the node's own fibers also
+  mutate. For a non-tail target, the command requires `--await-confirmation` and
+  a live node lease coordinator; it acquires and manages the [state-queue
+  mutation lease](/docs/operators/node/server-http-api), and releases it after
+  successful completion. A busy lease returns `409`. Do not work around a busy
+  lease; find the job holding it.
 </Callout>
 
 ## Related

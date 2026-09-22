@@ -11,21 +11,21 @@ import {
 } from "@lucid-evolution/lucid";
 import { Data, Duration, Effect, Schedule } from "effect";
 
-import * as BlocksDB from "@/database/blocks.js";
-import { ImmutableDB } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
+import * as BlocksDB from "../database/blocks.js";
+import { ImmutableDB } from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
 import {
   SUBMIT_SLOT_LENGTH_MS,
   SUBMIT_SLOT_VALIDITY_BUFFER,
   type SubmitSlotSnapshot,
-} from "@/local-ledger-slot.js";
-import { Database } from "@/services/index.js";
+} from "../local-ledger-slot.js";
+import { Database } from "../services/index.js";
 import {
   type InlineWaitPolicy,
   planSubmitTiming,
   planSubmitTimingAfterInlineWait,
   type SubmitTimingPlan,
-} from "@/transactions/submit-timing.js";
+} from "./submit-timing.js";
 
 /**
  * Shared transaction signing, submission, confirmation, and recovery helpers.
@@ -38,7 +38,8 @@ const RETRY_ATTEMPTS = 1;
 
 const INIT_RETRY_AFTER_MILLIS = 2_000;
 
-const PAUSE_DURATION = "5 seconds";
+const TX_OUTPUT_VISIBILITY_TIMEOUT_MS = 30_000;
+const TX_OUTPUT_VISIBILITY_POLL_INTERVAL_MS = 1_000;
 const TX_CONFIRMATION_TIMEOUT_MS = 90_000;
 const TX_CONFIRMATION_RETRIES = 1;
 const TX_CONFIRMATION_POLL_INTERVAL_MS = 5_000;
@@ -394,6 +395,137 @@ export const awaitExactTransactionConfirmation = async (
 const outRefToKey = (txHash: string, outputIndex: number): string =>
   `${txHash}#${outputIndex.toString()}`;
 
+const outputDatumMatches = (
+  expected: Pick<UTxO, "datum" | "datumHash">,
+  actual: Pick<UTxO, "datum" | "datumHash">,
+): boolean => {
+  const hash = (datum: string) =>
+    CML.hash_plutus_data(CML.PlutusData.from_cbor_hex(datum)).to_hex();
+  if (expected.datum != null)
+    return (
+      actual.datum === expected.datum &&
+      (actual.datumHash == null || actual.datumHash === hash(expected.datum))
+    );
+  if (expected.datumHash != null)
+    return (
+      actual.datumHash === expected.datumHash &&
+      (actual.datum == null || hash(actual.datum) === expected.datumHash)
+    );
+  return actual.datum == null && actual.datumHash == null;
+};
+
+/**
+ * Confirmation and provider output visibility are separate dependencies. Only
+ * gate outputs the caller needs next: unrelated payments can already be spent.
+ * Query the provider, never the locally overridden wallet snapshot.
+ */
+const awaitRequiredOutputVisibility = (
+  lucid: LucidEvolution,
+  submission: SignSubmitContext,
+  indexes: readonly number[],
+  timeoutMs: number,
+  pollIntervalMs: number,
+): Effect.Effect<void, TxConfirmError> =>
+  Effect.gen(function* () {
+    if (indexes.length === 0) return;
+    const expected = yield* Effect.try({
+      try: () => {
+        const transaction = CML.Transaction.from_cbor_hex(
+          submission.signedTxCbor,
+        );
+        if (
+          CML.hash_transaction(transaction.body()).to_hex() !==
+          submission.txHash
+        )
+          throw new Error(
+            "Required outputs do not belong to the confirmed signed transaction",
+          );
+        const outputs = transaction.body().outputs();
+        return [...new Set(indexes)].map((outputIndex) => {
+          if (
+            !Number.isSafeInteger(outputIndex) ||
+            outputIndex < 0 ||
+            outputIndex >= outputs.len()
+          )
+            throw new Error(
+              `Required output index ${outputIndex} is outside the signed transaction`,
+            );
+          return {
+            ...coreToTxOutput(outputs.get(outputIndex)),
+            txHash: submission.txHash,
+            outputIndex,
+          };
+        });
+      },
+      catch: (cause) =>
+        new TxConfirmError({
+          message: "Invalid required outputs for confirmed transaction",
+          txHash: submission.txHash,
+          cause,
+        }),
+    });
+    const refs = expected.map(({ txHash, outputIndex }) => ({
+      txHash,
+      outputIndex,
+    }));
+    const ready = Effect.tryPromise({
+      try: async () => {
+        const visible = await lucid.utxosByOutRef(refs);
+        return expected.every((output) =>
+          visible.some(
+            (candidate) =>
+              candidate.txHash === output.txHash &&
+              candidate.outputIndex === output.outputIndex &&
+              candidate.address === output.address &&
+              Object.keys(candidate.assets).length ===
+                Object.keys(output.assets).length &&
+              Object.entries(output.assets).every(
+                ([unit, amount]) => candidate.assets[unit] === amount,
+              ) &&
+              outputDatumMatches(output, candidate) &&
+              candidate.scriptRef?.type === output.scriptRef?.type &&
+              candidate.scriptRef?.script === output.scriptRef?.script,
+          ),
+        );
+      },
+      catch: (cause) =>
+        new TxConfirmError({
+          message: "Failed to query required transaction outputs",
+          txHash: submission.txHash,
+          cause,
+        }),
+    }).pipe(
+      Effect.flatMap((visible) =>
+        visible
+          ? Effect.void
+          : Effect.fail(
+              new TxConfirmError({
+                message: "Required transaction outputs are not yet visible",
+                txHash: submission.txHash,
+                cause: refs
+                  .map(({ txHash, outputIndex }) =>
+                    outRefToKey(txHash, outputIndex),
+                  )
+                  .join(","),
+              }),
+            ),
+      ),
+    );
+    yield* ready.pipe(
+      Effect.retry(Schedule.spaced(Duration.millis(pollIntervalMs))),
+      Effect.timeoutFail({
+        duration: Duration.millis(timeoutMs),
+        onTimeout: () =>
+          new TxConfirmError({
+            message:
+              "Transaction confirmed but required outputs did not become visible before the provider deadline; reconcile the confirmed transaction before rebuilding",
+            txHash: submission.txHash,
+            cause: `timeout_ms=${timeoutMs},required_outputs=${refs.map(({ txHash, outputIndex }) => outRefToKey(txHash, outputIndex)).join(",")}`,
+          }),
+      }),
+    );
+  });
+
 /**
  * Reconciles Lucid's local wallet view after a confirmed transaction.
  *
@@ -463,6 +595,9 @@ export type BlockTxPayload = {
 };
 
 export type SubmitRecoveryInlineOptions = {
+  /** Signed output indexes needed by the next operation; unrelated outputs are not gated. */
+  readonly requiredOutputIndexes?: readonly number[];
+
   readonly label?: string;
   readonly sleep?: (milliseconds: number) => Effect.Effect<void, never>;
   readonly slotSnapshot?: () => Effect.Effect<SubmitSlotSnapshot, unknown>;
@@ -1197,7 +1332,7 @@ export function handleSignSubmit(
     );
   }).pipe(
     Effect.tapErrorTag("TxSignError", (e) =>
-      Effect.logError(`TxSignError: ${e}`),
+      Effect.logError(`TxSignError: ${e.message}`),
     ),
   );
 }
@@ -1210,6 +1345,8 @@ export const awaitSubmittedTransactionConfirmation = (
     | "confirmationTimeoutMs"
     | "confirmationRetries"
     | "confirmationPollIntervalMs"
+    | "requiredOutputIndexes"
+    | "label"
   > = {},
 ): Effect.Effect<string, TxConfirmError> =>
   Effect.gen(function* () {
@@ -1259,11 +1396,18 @@ export const awaitSubmittedTransactionConfirmation = (
     );
 
     yield* awaitWithTimeout;
+    yield* awaitRequiredOutputVisibility(
+      lucid,
+      submission,
+      options.requiredOutputIndexes ?? [],
+      Math.min(confirmationTimeoutMs, TX_OUTPUT_VISIBILITY_TIMEOUT_MS),
+      Math.min(
+        confirmationPollIntervalMs,
+        TX_OUTPUT_VISIBILITY_POLL_INTERVAL_MS,
+      ),
+    );
     yield* reconcileWalletUtxosFromSignedTx(lucid, submission);
     yield* Effect.logInfo(`🎉 Transaction confirmed: ${txHash}`);
-    yield* Effect.logInfo(`⌛ Pausing for ${PAUSE_DURATION}...`);
-    yield* Effect.sleep(PAUSE_DURATION);
-    yield* Effect.logInfo("✅ Pause ended.");
     return txHash;
   });
 
@@ -1319,7 +1463,7 @@ export function handleSignSubmitNoConfirmation(
     return submission.txHash;
   }).pipe(
     Effect.tapErrorTag("TxSignError", (e) =>
-      Effect.logError(`TxSignError: ${e}`),
+      Effect.logError(`TxSignError: ${e.message}`),
     ),
   );
 }

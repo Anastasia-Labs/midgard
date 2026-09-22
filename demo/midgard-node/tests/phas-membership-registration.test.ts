@@ -7,15 +7,17 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
+import { loadPhasMembershipWithdrawalScript } from "../src/phas-membership.js";
 import {
   type CapturedPhasMembershipRegistrationTransaction,
+  decodePhasMembershipRegistrationTransactionBodyEvidence,
+  decodePhasMembershipRewardRegistrationResult,
   ensurePhasMembershipRewardAccountRegisteredProgram,
   inspectPhasMembershipRegistrationTransaction,
   isPhasMembershipAlreadyRegisteredError,
   queryPhasMembershipRewardAccountRegisteredProgram,
-} from "@/transactions/phas-membership-registration.js";
-import { TxSubmitError } from "@/transactions/utils.js";
+} from "../src/transactions/phas-membership-registration.js";
+import { TxSubmitError } from "../src/transactions/utils.js";
 
 const phasIdentity = SDK.phasMembershipIdentity(
   "Preprod",
@@ -68,6 +70,57 @@ const capturedTransaction = (
 });
 
 describe("PHAS membership reward registration", () => {
+  it("decodes only exact canonical PHAS V1 evidence and results", () => {
+    const capture = capturedTransaction("aa".repeat(32));
+    const result = {
+      status: "registration_submitted",
+      rewardAddress: phasIdentity.rewardAddress,
+      scriptHash: phasIdentity.scriptHash,
+      txHash: capture.evidence.txHash,
+      transactionBody: capture.evidence,
+    } as const;
+    expect(
+      decodePhasMembershipRegistrationTransactionBodyEvidence(capture.evidence),
+    ).toEqual(capture.evidence);
+    expect(decodePhasMembershipRewardRegistrationResult(result)).toEqual(
+      result,
+    );
+
+    for (const mutation of [
+      { ...capture.evidence, schemaVersion: "legacy-phas-registration" },
+      { ...capture.evidence, unknown: true },
+      {
+        ...capture.evidence,
+        txHash: capture.evidence.txHash.toUpperCase(),
+      },
+      {
+        ...capture.evidence,
+        certificate: { ...capture.evidence.certificate, unknown: true },
+      },
+      {
+        schemaVersion: "midgard-phase4-t1-probe-v1",
+        txHash: capture.evidence.txHash,
+        cborSha256: capture.evidence.cborSha256,
+        cborSizeBytes: capture.evidence.cborSizeBytes,
+        certificate: capture.evidence.certificate,
+      },
+    ]) {
+      expect(() =>
+        decodePhasMembershipRegistrationTransactionBodyEvidence(mutation),
+      ).toThrow();
+    }
+    const { cborSha256: _cborSha256, ...missing } = capture.evidence;
+    expect(() =>
+      decodePhasMembershipRegistrationTransactionBodyEvidence(missing),
+    ).toThrow("fields");
+    expect(() =>
+      decodePhasMembershipRewardRegistrationResult({
+        ...result,
+        txHash: "bb".repeat(32),
+      }),
+    ).toThrow("not bound");
+  });
+
   it("uses typed Ogmios knownCredential data for the idempotent race", () => {
     expect(
       isPhasMembershipAlreadyRegisteredError(

@@ -22,7 +22,7 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
+import { loadPhasMembershipWithdrawalScript } from "../src/phas-membership.js";
 import {
   __reservePayoutTest,
   buildAbsorbConfirmedDepositToReserveTxProgram,
@@ -30,8 +30,7 @@ import {
   buildConcludePayoutTxProgram,
   buildInitializePayoutTxProgram,
   buildRefundInvalidWithdrawalTxProgram,
-} from "@/transactions/reserve-payout.js";
-
+} from "../src/transactions/reserve-payout.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import {
   findRedeemerDataCbor,

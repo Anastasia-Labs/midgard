@@ -26,6 +26,11 @@ export type MidgardValue = {
 const POLICY_ID_LENGTH = 28;
 const MAX_ASSET_NAME_LENGTH = 32;
 
+const compareCanonicalAssetNames = (
+  left: Uint8Array,
+  right: Uint8Array,
+): number => left.length - right.length || compareBytes(left, right);
+
 const fail = (message: string, detail?: string): never => {
   throw new MidgardTxCodecError(
     MidgardTxCodecErrorCodes.InvalidFieldType,
@@ -64,7 +69,9 @@ export const encodeMidgardValue = (value: MidgardValue): Buffer => {
       if (assetEntries.length === 0) {
         fail("Value policy asset map cannot be empty", policyHex);
       }
-      assetEntries.sort(([left], [right]) => compareBytes(left, right));
+      assetEntries.sort(([left], [right]) =>
+        compareCanonicalAssetNames(left, right),
+      );
       return [
         policy,
         encodeCborMapRaw(
@@ -140,10 +147,10 @@ export const decodeMidgardValue = (bytes: Uint8Array): MidgardValue => {
       }
       if (
         previousAssetName !== undefined &&
-        compareBytes(previousAssetName, assetName.value) >= 0
+        compareCanonicalAssetNames(previousAssetName, assetName.value) >= 0
       ) {
         fail(
-          "Value asset names must be sorted by raw bytes",
+          "Value asset names must be in canonical CBOR byte-string order",
           `policy=${policyHex}`,
         );
       }

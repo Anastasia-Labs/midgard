@@ -11,6 +11,7 @@ import {
   PHASE1_FORMAL_GENERATION_RESULT_SCHEMA,
   PHASE1_FORMAL_LIVE_SAMPLE_SIZE,
   PHASE1_FORMAL_SAMPLE_ALGORITHM,
+  parsePhase1FormalBindingDocument,
   sha256FileSync,
 } from "./phase1-formal-identity.mjs";
 
@@ -32,6 +33,16 @@ const absolute = (value, label) => {
   return path.resolve(value);
 };
 
+export const assertPhase1FormalBindingOutputAvailable = (value) => {
+  const outPath = absolute(value, "--out");
+  if (fs.existsSync(outPath)) {
+    throw new Error(
+      `Refusing to overwrite existing Phase 1 binding ${outPath}`,
+    );
+  }
+  return outPath;
+};
+
 const readJson = (filePath) => JSON.parse(fs.readFileSync(filePath, "utf8"));
 
 const sha256File = async (filePath) => {
@@ -43,12 +54,7 @@ const sha256File = async (filePath) => {
 };
 
 const main = async () => {
-  const outPath = absolute(valueFor("--out"), "--out");
-  if (fs.existsSync(outPath)) {
-    throw new Error(
-      `Refusing to overwrite existing Phase 1 binding ${outPath}`,
-    );
-  }
+  const outPath = assertPhase1FormalBindingOutputAvailable(valueFor("--out"));
   const generationResultPath = absolute(
     valueFor("--generation-result"),
     "--generation-result",
@@ -136,8 +142,9 @@ const main = async () => {
     },
     stressCorpusEnv,
   };
+  const canonicalDocument = parsePhase1FormalBindingDocument(document, outPath);
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, `${JSON.stringify(document, null, 2)}\n`, {
+  fs.writeFileSync(outPath, `${JSON.stringify(canonicalDocument, null, 2)}\n`, {
     mode: 0o600,
     flag: "wx",
   });
@@ -146,9 +153,14 @@ const main = async () => {
   );
 };
 
-main().catch((error) => {
-  process.stderr.write(
-    `${error instanceof Error ? error.message : String(error)}\n`,
-  );
-  process.exitCode = 1;
-});
+if (
+  process.argv[1] !== undefined &&
+  path.resolve(process.argv[1]) === scriptPath
+) {
+  main().catch((error) => {
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    process.exitCode = 1;
+  });
+}

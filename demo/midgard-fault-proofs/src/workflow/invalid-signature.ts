@@ -1,0 +1,909 @@
+import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
+import {
+  decodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
+} from "@al-ft/midgard-core";
+import {
+  encodeMidgardAddressWitnessCanonical,
+  FraudProofComputationThreadStepDatum,
+  INVALID_SIGNATURE_VIOLATION_ID,
+  invalidSignatureAddressWitnessesCommitment,
+  InvalidSignatureStep02Datum,
+  invalidSignatureWitnessSetCommitment,
+  MIDGARD_FIELD_INDEX,
+  type MidgardAddressWitness,
+  type NativeTxWitnessSetCompact,
+  verifyAddressWitness,
+} from "@al-ft/midgard-sdk";
+import type { LucidEvolution } from "@lucid-evolution/lucid";
+
+import { prepareInvalidSignatureFromCanonicalEvidence } from "../evidence/prepare-from-evidence.js";
+import {
+  type FaultProofFieldOpeningPlan,
+  planFaultProofFieldOpening,
+  resolveFaultProofFieldCarriagePublications,
+  resolveFaultProofFieldPreimageCertificate,
+} from "../field-opening.js";
+import {
+  admitInvalidSignatureForcedArtifact,
+  INVALID_SIGNATURE_FORCED_ARTIFACT,
+  prepareInvalidSignatureForcedArtifact,
+} from "../invalid-signature/artifact.js";
+import { submitInvalidSignatureStep01Forced } from "../invalid-signature/submit.js";
+import {
+  detectInvalidSignatureWrongfulRejections,
+  INVALID_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID,
+} from "../invalid-signature/wrongful-rejection.js";
+import {
+  type StateQueueMutationLease,
+  type StateQueueMutationLeaseCoordinator,
+  submitRemoveFraudulentBlock,
+} from "../remove-fraudulent-block.js";
+import {
+  type ResolvedProverSigner,
+  resolveInvalidSignatureDeploymentContracts,
+} from "../runtime.js";
+import { submitInit } from "../submit-init.js";
+import { submitInvalidSignatureStep01 } from "../submit-invalid-signature-step-01.js";
+import { submitInvalidSignatureStep02 } from "../submit-invalid-signature-step-02.js";
+import {
+  nativeTxFromCoreCompact,
+  parseSubmitStep01TxInclusion,
+} from "../submit-step-01.js";
+import type { CanonicalBlockClassification } from "./classification.js";
+import { INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
+import {
+  defineLinearFamily,
+  type LinearFamilyReferenceScripts,
+  type ManifestBoundLinearFamilyWorkflow,
+  type ManifestBoundLinearFamilyWorkflowConfig,
+} from "./family-definition.js";
+import type { FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
+import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
+import {
+  LINEAR_FAMILY_TRANSACTION_PORT,
+  type LinearFamilyTransactionPort,
+} from "./linear-family-adapter.js";
+import {
+  assembleManifestBoundFamilyWorkflow,
+  runOrResumeManifestBoundFamilyWorkflow,
+} from "./manifest-bound-family-assembly.js";
+import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
+import {
+  captureLocallyEvaluatedTransaction,
+  workflowTransactionInputOutRefs,
+  workflowTransactionReferenceInputOutRefs,
+} from "./transaction-boundary.js";
+
+export const INVALID_SIGNATURE_ARTIFACT =
+  "midgard-production-invalid-signature-artifact-v1" as const;
+
+export type InvalidSignatureArtifact = JournalJsonObject &
+  Readonly<{
+    schemaVersion: typeof INVALID_SIGNATURE_ARTIFACT;
+    headerHash: string;
+    detectionId: string;
+    position: number;
+    nativeTxId: string;
+    nativeTxCompactCbor: string;
+    l2TransactionSourceCbor: string;
+    transactionsPhasRoot: string;
+    txMembershipProofCbor: string;
+    witnessSet: Readonly<{
+      addr_tx_wits_hash: string;
+      script_tx_wits_hash: string;
+      redeemer_tx_wits_hash: string;
+    }>;
+    addressWitnesses: readonly Readonly<{
+      verification_key: string;
+      signature: string;
+    }>[];
+    badWitnessIndex: number;
+  }>;
+
+type AdmittedArtifact = Readonly<{
+  artifact: InvalidSignatureArtifact;
+  inclusion: ReturnType<typeof parseSubmitStep01TxInclusion>;
+  witnessSet: NativeTxWitnessSetCompact;
+  addressWitnesses: readonly MidgardAddressWitness[];
+  fieldPlan: FaultProofFieldOpeningPlan;
+}>;
+
+const HEX_28 = /^[0-9a-f]{56}$/u;
+const HEX_32 = /^[0-9a-f]{64}$/u;
+const HEX_64 = /^[0-9a-f]{128}$/u;
+const EVEN_HEX = /^(?:[0-9a-f]{2})+$/u;
+const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
+
+const record = (
+  value: unknown,
+  label: string,
+): Readonly<Record<string, unknown>> => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype ||
+    Reflect.ownKeys(value).length !== Object.keys(value).length
+  ) {
+    throw new Error(`${label} must be a plain string-keyed object`);
+  }
+  return value as Readonly<Record<string, unknown>>;
+};
+
+const exact = (
+  value: unknown,
+  keys: readonly string[],
+  label: string,
+): Readonly<Record<string, unknown>> => {
+  const parsed = record(value, label);
+  const actual = Object.keys(parsed).sort();
+  const expected = [...keys].sort();
+  if (
+    actual.length !== expected.length ||
+    actual.some((key, index) => key !== expected[index])
+  ) {
+    throw new Error(`${label} has missing or unknown fields`);
+  }
+  return parsed;
+};
+
+const hex = (value: unknown, pattern: RegExp, label: string): string => {
+  if (typeof value !== "string" || !pattern.test(value)) {
+    throw new Error(`${label} is not canonical lowercase hex`);
+  }
+  return value;
+};
+
+const safeNatural = (value: unknown, label: string): number => {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new Error(`${label} must be a non-negative safe integer`);
+  }
+  return value as number;
+};
+
+const parseWitnessSet = (value: unknown): NativeTxWitnessSetCompact => {
+  const parsed = exact(
+    value,
+    ["addr_tx_wits_hash", "script_tx_wits_hash", "redeemer_tx_wits_hash"],
+    "invalid-signature witness set",
+  );
+  return Object.freeze({
+    addr_tx_wits_hash: hex(
+      parsed.addr_tx_wits_hash,
+      HEX_32,
+      "address-witness hash",
+    ),
+    script_tx_wits_hash: hex(
+      parsed.script_tx_wits_hash,
+      HEX_32,
+      "script-witness hash",
+    ),
+    redeemer_tx_wits_hash: hex(
+      parsed.redeemer_tx_wits_hash,
+      HEX_32,
+      "redeemer-witness hash",
+    ),
+  });
+};
+
+const parseAddressWitnesses = (
+  value: unknown,
+): readonly MidgardAddressWitness[] => {
+  if (!Array.isArray(value)) {
+    throw new Error("invalid-signature address witnesses must be an array");
+  }
+  return Object.freeze(
+    value.map((item, index) => {
+      const parsed = exact(
+        item,
+        ["verification_key", "signature"],
+        `invalid-signature address witness ${index.toString()}`,
+      );
+      return Object.freeze({
+        verification_key: hex(
+          parsed.verification_key,
+          HEX_32,
+          `address witness ${index.toString()} verification key`,
+        ),
+        signature: hex(
+          parsed.signature,
+          HEX_64,
+          `address witness ${index.toString()} signature`,
+        ),
+      });
+    }),
+  );
+};
+
+const proofSteps = (
+  proof: ReturnType<typeof parseSubmitStep01TxInclusion>["txMembershipProof"],
+) =>
+  proof.map((step) => {
+    if ("Branch" in step) {
+      return {
+        type: "branch" as const,
+        skip: Number(step.Branch.skip),
+        neighbors: step.Branch.neighbors,
+      };
+    }
+    if ("Fork" in step) {
+      return {
+        type: "fork" as const,
+        skip: Number(step.Fork.skip),
+        neighbor: {
+          nibble: Number(step.Fork.neighbor.nibble),
+          prefix: step.Fork.neighbor.prefix,
+          root: step.Fork.neighbor.root,
+        },
+      };
+    }
+    return {
+      type: "leaf" as const,
+      skip: Number(step.Leaf.skip),
+      neighbor: { key: step.Leaf.key, value: step.Leaf.value },
+    };
+  });
+
+const witnessSetCbor = (witnessSet: NativeTxWitnessSetCompact): string =>
+  encodeMidgardNativeTxWitnessSetCompact({
+    addrTxWitsHash: Buffer.from(witnessSet.addr_tx_wits_hash, "hex"),
+    scriptTxWitsHash: Buffer.from(witnessSet.script_tx_wits_hash, "hex"),
+    redeemerTxWitsHash: Buffer.from(witnessSet.redeemer_tx_wits_hash, "hex"),
+  }).toString("hex");
+
+export const admitInvalidSignatureArtifact = (
+  value: unknown,
+  carriageOwner = "00".repeat(28),
+): AdmittedArtifact => {
+  if (!HEX_28.test(carriageOwner)) {
+    throw new Error("invalid-signature carriage owner is malformed");
+  }
+  const parsed = exact(
+    value,
+    [
+      "schemaVersion",
+      "headerHash",
+      "detectionId",
+      "position",
+      "nativeTxId",
+      "nativeTxCompactCbor",
+      "l2TransactionSourceCbor",
+      "transactionsPhasRoot",
+      "txMembershipProofCbor",
+      "witnessSet",
+      "addressWitnesses",
+      "badWitnessIndex",
+    ],
+    "invalid-signature artifact",
+  );
+  if (
+    parsed.schemaVersion !== INVALID_SIGNATURE_ARTIFACT ||
+    typeof parsed.detectionId !== "string" ||
+    parsed.detectionId.trim() !== parsed.detectionId
+  ) {
+    throw new Error("invalid-signature artifact identity changed");
+  }
+  const witnessSet = parseWitnessSet(parsed.witnessSet);
+  const addressWitnesses = parseAddressWitnesses(parsed.addressWitnesses);
+  const artifact = Object.freeze({
+    schemaVersion: INVALID_SIGNATURE_ARTIFACT,
+    headerHash: hex(parsed.headerHash, HEX_28, "artifact header hash"),
+    detectionId: parsed.detectionId,
+    position: safeNatural(parsed.position, "artifact position"),
+    nativeTxId: hex(parsed.nativeTxId, HEX_32, "artifact transaction id"),
+    nativeTxCompactCbor: hex(
+      parsed.nativeTxCompactCbor,
+      EVEN_HEX,
+      "artifact compact transaction",
+    ),
+    l2TransactionSourceCbor: hex(
+      parsed.l2TransactionSourceCbor,
+      EVEN_HEX,
+      "artifact transaction source",
+    ),
+    transactionsPhasRoot: hex(
+      parsed.transactionsPhasRoot,
+      HEX_32,
+      "artifact transactions PHAS root",
+    ),
+    txMembershipProofCbor: hex(
+      parsed.txMembershipProofCbor,
+      EVEN_HEX,
+      "artifact membership proof",
+    ),
+    witnessSet,
+    addressWitnesses,
+    badWitnessIndex: safeNatural(
+      parsed.badWitnessIndex,
+      "artifact bad witness index",
+    ),
+  }) satisfies InvalidSignatureArtifact;
+  const inclusion = parseSubmitStep01TxInclusion({
+    nativeTxId: artifact.nativeTxId,
+    nativeTx: nativeTxFromCoreCompact(
+      decodeMidgardNativeTxCompact(
+        Buffer.from(artifact.nativeTxCompactCbor, "hex"),
+      ),
+    ),
+    nativeTxCompactCbor: artifact.nativeTxCompactCbor,
+    l2TransactionSourceCbor: artifact.l2TransactionSourceCbor,
+    transactionsPhasRoot: artifact.transactionsPhasRoot,
+    txMembershipProofCbor: artifact.txMembershipProofCbor,
+  });
+  let openedRoot: Buffer | null;
+  try {
+    openedRoot = MpfProof.fromJSON(
+      Buffer.from(artifact.nativeTxId, "hex"),
+      Buffer.from(artifact.l2TransactionSourceCbor, "hex"),
+      proofSteps(inclusion.txMembershipProof),
+    ).verify(true);
+  } catch {
+    throw new Error("invalid-signature membership proof cannot be replayed");
+  }
+  if (
+    openedRoot === null ||
+    openedRoot.toString("hex") !== artifact.transactionsPhasRoot
+  ) {
+    throw new Error(
+      "invalid-signature membership proof does not open its PHAS root",
+    );
+  }
+  if (
+    invalidSignatureWitnessSetCommitment(witnessSet) !==
+      inclusion.nativeTx.witness_set_hash ||
+    invalidSignatureAddressWitnessesCommitment(addressWitnesses) !==
+      witnessSet.addr_tx_wits_hash
+  ) {
+    throw new Error(
+      "invalid-signature witness material does not open the committed transaction",
+    );
+  }
+  const badWitness = addressWitnesses[artifact.badWitnessIndex];
+  if (
+    badWitness === undefined ||
+    verifyAddressWitness({ txId: artifact.nativeTxId, witness: badWitness }) ||
+    artifact.detectionId !==
+      `${INVALID_SIGNATURE_VIOLATION_ID}:${artifact.position.toString()}:${artifact.badWitnessIndex.toString()}:${artifact.nativeTxId}:${badWitness.verification_key}`
+  ) {
+    throw new Error(
+      "invalid-signature artifact does not re-derive its selected violation",
+    );
+  }
+  const fieldPlan = planFaultProofFieldOpening({
+    anchorSourceKind: 0n,
+    fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
+    anchorTxId: artifact.nativeTxId,
+    nativeTxCompactCbor: artifact.nativeTxCompactCbor,
+    itemCbors: addressWitnesses.map(encodeMidgardAddressWitnessCanonical),
+    owner: carriageOwner,
+    publish: false,
+    witnessSet,
+    anchorWitnessSetHash: inclusion.nativeTx.witness_set_hash,
+    label: "invalid-signature artifact address witnesses",
+  });
+  return Object.freeze({
+    artifact,
+    inclusion,
+    witnessSet,
+    addressWitnesses,
+    fieldPlan,
+  });
+};
+
+const admitWorkflowArtifact = async (
+  artifact: JournalJsonObject,
+  owner: string,
+) => {
+  if (artifact.schemaVersion !== INVALID_SIGNATURE_FORCED_ARTIFACT)
+    return { ...admitInvalidSignatureArtifact(artifact, owner), forced: null };
+  const prepared = await admitInvalidSignatureForcedArtifact(artifact);
+  const { evidence } = prepared;
+  return {
+    forced: prepared,
+    artifact: {
+      headerHash: prepared.headerHash,
+      nativeTxCompactCbor: evidence.nativeTxCompactCbor,
+      badWitnessIndex: evidence.witnessIndex,
+      txMembershipProofCbor: "",
+    },
+    inclusion: null,
+    witnessSet: evidence.witnessSet,
+    addressWitnesses: evidence.addressWitnesses,
+    fieldPlan: planFaultProofFieldOpening({
+      anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
+      fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
+      anchorTxId: evidence.subject.transaction_id,
+      nativeTxCompactCbor: evidence.nativeTxCompactCbor,
+      itemCbors: evidence.addressWitnesses.map(
+        encodeMidgardAddressWitnessCanonical,
+      ),
+      owner,
+      witnessSet: evidence.witnessSet,
+      anchorWitnessSetHash: evidence.witnessSetHash,
+      label: "invalid-signature forced artifact",
+    }),
+  };
+};
+
+const selectedIdentity = (
+  classification: Extract<
+    CanonicalBlockClassification,
+    { readonly decision: "fault_detected" }
+  >,
+) => {
+  const fields = classification.selected.detectionId.split(":");
+  if (
+    classification.category !== "invalidSignature" ||
+    classification.selected.violationId !== INVALID_SIGNATURE_VIOLATION_ID ||
+    fields.length !== 5 ||
+    fields[0] !== INVALID_SIGNATURE_VIOLATION_ID ||
+    !NATURAL.test(fields[1] ?? "") ||
+    !NATURAL.test(fields[2] ?? "") ||
+    !HEX_32.test(fields[3] ?? "") ||
+    !HEX_32.test(fields[4] ?? "") ||
+    classification.selected.position !== BigInt(fields[1]!)
+  ) {
+    throw new Error("invalid-signature classification identity is malformed");
+  }
+  return Object.freeze({
+    transactionIndex: Number(fields[1]),
+    witnessIndex: Number(fields[2]),
+    txId: fields[3]!,
+    verificationKey: fields[4]!,
+  });
+};
+
+export const prepareInvalidSignatureArtifact = async ({
+  evidence,
+  classification,
+}: {
+  readonly evidence: Parameters<
+    typeof prepareInvalidSignatureFromCanonicalEvidence
+  >[0]["evidence"];
+  readonly classification: Extract<
+    CanonicalBlockClassification,
+    { readonly decision: "fault_detected" }
+  >;
+}): Promise<InvalidSignatureArtifact> => {
+  if (
+    classification.headerHash !== evidence.headerHash ||
+    classification.selected.position > BigInt(Number.MAX_SAFE_INTEGER)
+  ) {
+    throw new Error(
+      "invalid-signature classification differs from canonical evidence",
+    );
+  }
+  const selected = selectedIdentity(classification);
+  const prepared = await prepareInvalidSignatureFromCanonicalEvidence({
+    evidence,
+    txId: selected.txId,
+  });
+  if (
+    prepared.tx.badAddrTxWitIndex !== selected.witnessIndex ||
+    prepared.tx.badAddrTxWitVerificationKey !== selected.verificationKey
+  ) {
+    throw new Error(
+      "invalid-signature prepared evidence changed the selected witness",
+    );
+  }
+  const artifact = normalizeJournalJson({
+    schemaVersion: INVALID_SIGNATURE_ARTIFACT,
+    headerHash: prepared.headerHash,
+    detectionId: classification.selected.detectionId,
+    position: selected.transactionIndex,
+    nativeTxId: prepared.tx.nodeTxId,
+    nativeTxCompactCbor: prepared.tx.nativeTxCompactCbor,
+    l2TransactionSourceCbor: prepared.tx.txInclusion.l2TransactionSourceCbor,
+    transactionsPhasRoot: prepared.transactionsPhasRoot,
+    txMembershipProofCbor: prepared.tx.txInclusion.txMembershipProofCbor,
+    witnessSet: prepared.tx.badTxWitnessSetCompact,
+    addressWitnesses: prepared.tx.addrTxWitsPreimage,
+    badWitnessIndex: prepared.tx.badAddrTxWitIndex,
+  }) as InvalidSignatureArtifact;
+  admitInvalidSignatureArtifact(artifact);
+  return Object.freeze(artifact);
+};
+
+const WITNESS_ROLES = [
+  "computationThreadMint",
+  "fraudProofMint",
+  "phasMembershipWithdraw",
+  "chunkedVerifyWithdraw",
+] as const;
+
+export type InvalidSignatureWorkflowReferenceScripts =
+  LinearFamilyReferenceScripts<
+    "invalidSignature",
+    (typeof WITNESS_ROLES)[number],
+    true
+  >;
+
+type BoundConfig = Readonly<{
+  lucid: LucidEvolution;
+  blueprint: unknown;
+  deploymentInfo: unknown;
+  network: FraudProofWorkflowDeploymentBinding<"invalidSignature">["network"];
+  signer: ResolvedProverSigner;
+  headerHash: string;
+  referenceScripts: InvalidSignatureWorkflowReferenceScripts;
+  certificate: NonNullable<
+    FraudProofWorkflowDeploymentBinding<"invalidSignature">["fieldPreimageCertificate"]
+  >;
+  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
+  fraudProverRewardLovelace: bigint;
+}>;
+
+const actionInput = (
+  action: FraudProofWorkflowAction,
+): Readonly<Record<string, unknown>> => {
+  const input = record(action.input, "invalid-signature workflow action");
+  if (
+    input.schemaVersion !== "midgard-production-linear-family-action-v1" ||
+    input.category !== "invalidSignature" ||
+    typeof input.stage !== "string"
+  ) {
+    throw new Error("invalid-signature workflow action changed identity");
+  }
+  return input;
+};
+
+const stringField = (
+  input: Readonly<Record<string, unknown>>,
+  field: string,
+): string => {
+  const value = input[field];
+  if (typeof value !== "string") {
+    throw new Error(`invalid-signature workflow action omitted ${field}`);
+  }
+  return value;
+};
+
+const captureRemoval = async (
+  config: BoundConfig,
+  input: Readonly<Record<string, unknown>>,
+) => {
+  let mutationLease: StateQueueMutationLease | undefined;
+  const retainingCoordinator: StateQueueMutationLeaseCoordinator = {
+    acquire: async () => {
+      const acquired =
+        await config.stateQueueMutationLeaseCoordinator.acquire();
+      mutationLease = acquired;
+      return acquired;
+    },
+  };
+  const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
+  const fraudProofOutRef = stringField(input, "fraudProofOutRef");
+  const transaction = await captureLocallyEvaluatedTransaction(
+    async (boundary) => {
+      await submitRemoveFraudulentBlock({
+        lucid: config.lucid,
+        blueprint: config.blueprint,
+        deploymentInfo: config.deploymentInfo,
+        network: config.network,
+        signer: config.signer,
+        fraudCategory: "invalidSignature",
+        fraudulentHeaderHash: config.headerHash,
+        requireReferenceScripts: true,
+        stateQueueMutationLeaseCoordinator: retainingCoordinator,
+        fraudProverRewardLovelace: config.fraudProverRewardLovelace,
+        preSubmitBoundary: async (built) => {
+          if (
+            !workflowTransactionInputOutRefs(built.signed).includes(
+              nextRemovalOutRef,
+            ) ||
+            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
+              fraudProofOutRef,
+            )
+          ) {
+            throw new Error(
+              "invalid-signature removal changed its authenticated queue/proof inputs",
+            );
+          }
+          await boundary(built);
+        },
+      });
+    },
+  );
+  return Object.freeze({
+    transaction,
+    ...(mutationLease === undefined ? {} : { mutationLease }),
+  });
+};
+
+const resolveFieldCarriage = async (
+  config: BoundConfig,
+  admitted: Pick<AdmittedArtifact, "fieldPlan">,
+) => {
+  const publications = await resolveFaultProofFieldCarriagePublications({
+    lucid: config.lucid,
+    publisherAddress: config.signer.address,
+    planned: admitted.fieldPlan,
+  });
+  if (publications === undefined) {
+    throw new Error(
+      "invalid-signature field publications disappeared after authenticated prerequisite",
+    );
+  }
+  const certificate = await resolveFaultProofFieldPreimageCertificate({
+    lucid: config.lucid,
+    network: config.network,
+    planned: admitted.fieldPlan,
+    certificatePolicyId: config.certificate.policyId,
+  });
+  if (
+    admitted.fieldPlan.plan.tier === "Certified" &&
+    certificate === undefined
+  ) {
+    throw new Error(
+      "invalid-signature field certificate disappeared after authenticated prerequisite",
+    );
+  }
+  return Object.freeze({
+    publications,
+    certificates: certificate === undefined ? [] : [certificate],
+  });
+};
+
+const createTransactionPort = (
+  config: BoundConfig,
+): LinearFamilyTransactionPort<"invalidSignature"> => ({
+  portVersion: LINEAR_FAMILY_TRANSACTION_PORT,
+  category: "invalidSignature",
+  prepare: async ({ evidence, classification }) => {
+    if (
+      classification.selected.violationId ===
+      INVALID_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID
+    ) {
+      const detected = detectInvalidSignatureWrongfulRejections({
+        block: evidence,
+      })[0];
+      if (
+        classification.category !== "invalidSignature" ||
+        classification.headerHash !== evidence.headerHash ||
+        detected?.detectionId !== classification.selected.detectionId
+      )
+        throw new Error(
+          "invalid-signature forced classification changed authenticated evidence",
+        );
+      return await prepareInvalidSignatureForcedArtifact({ block: evidence });
+    }
+    return await prepareInvalidSignatureArtifact({ evidence, classification });
+  },
+  capture: async ({ action, artifact }) => {
+    const admitted = await admitWorkflowArtifact(
+      artifact,
+      config.signer.paymentKeyHash,
+    );
+    if (admitted.artifact.headerHash !== config.headerHash) {
+      throw new Error(
+        "invalid-signature artifact changed its manifest-bound header",
+      );
+    }
+    const input = actionInput(action);
+    if (input.stage === "init") {
+      return Object.freeze({
+        transaction: await captureLocallyEvaluatedTransaction(
+          async (preSubmitBoundary) => {
+            await submitInit({
+              lucid: config.lucid,
+              blueprint: config.blueprint,
+              deploymentInfo: config.deploymentInfo,
+              network: config.network,
+              signer: config.signer,
+              fraudCategory: "invalidSignature",
+              fraudulentBlockOutRef: stringField(
+                input,
+                "stateQueueBlockOutRef",
+              ),
+              fraudulentHeaderHash: config.headerHash,
+              witnessReferenceScripts: config.referenceScripts.witnesses,
+              preSubmitBoundary,
+              awaitConfirmation: false,
+            });
+          },
+        ),
+      });
+    }
+    if (input.stage === "step_01") {
+      if (admitted.forced !== null) {
+        const { contracts, invalidSignatureCategory } =
+          await resolveInvalidSignatureDeploymentContracts({
+            blueprint: config.blueprint,
+            deploymentInfo: config.deploymentInfo,
+            network: config.network,
+            requireFraudProofSpend: true,
+          });
+        const forced = admitted.forced;
+        return {
+          transaction: await captureLocallyEvaluatedTransaction(
+            async (preSubmitBoundary) => {
+              await submitInvalidSignatureStep01Forced({
+                lucid: config.lucid,
+                contracts: {
+                  steps: contracts.invalidSignature.steps.map(
+                    (step, index) => ({
+                      ...step,
+                      blueprintTitle: `fraud_proofs/invalid_signature/step_0${index + 1}.main.spend`,
+                      referenceOutRef: `${config.referenceScripts.steps[index]!.txHash}#${config.referenceScripts.steps[index]!.outputIndex}`,
+                    }),
+                  ) as never,
+                  computationThread: contracts.computationThread,
+                  fraudProof: contracts.fraudProof,
+                },
+                categoryId: invalidSignatureCategory.categoryId,
+                signer: config.signer,
+                threadOutRef: stringField(input, "threadOutRef"),
+                evidence: forced.evidence,
+                forcedSource: forced.forcedSource,
+                referenceScriptUtxo: config.referenceScripts.steps[0],
+                preSubmitBoundary,
+                awaitConfirmation: false,
+              });
+            },
+          ),
+        };
+      }
+      if (admitted.inclusion === null)
+        throw new Error("invalid-signature accepted inclusion absent");
+      const chunks = await resolveDirectFirstProofChunks({
+        action,
+        lucid: config.lucid,
+        address: config.signer.address,
+        proofCbor: admitted.artifact.txMembershipProofCbor,
+      });
+      return Object.freeze({
+        transaction: await captureLocallyEvaluatedTransaction(
+          async (preSubmitBoundary) => {
+            await submitInvalidSignatureStep01({
+              lucid: config.lucid,
+              blueprint: config.blueprint,
+              deploymentInfo: config.deploymentInfo,
+              network: config.network,
+              signer: config.signer,
+              threadOutRef: stringField(input, "threadOutRef"),
+              stateQueueBlockOutRef: stringField(
+                input,
+                "stateQueueBlockOutRef",
+              ),
+              txInclusion: admitted.inclusion!,
+              badTxWitnessSetCompact: admitted.witnessSet,
+              publishedProofChunks: chunks,
+              referenceScriptUtxo: config.referenceScripts.steps[0],
+              witnessReferenceScripts: config.referenceScripts.witnesses,
+              preSubmitBoundary,
+              awaitConfirmation: false,
+            });
+          },
+        ),
+      });
+    }
+    if (input.stage === "step_02") {
+      const carriage = await resolveFieldCarriage(config, admitted);
+      return Object.freeze({
+        transaction: await captureLocallyEvaluatedTransaction(
+          async (preSubmitBoundary) => {
+            await submitInvalidSignatureStep02({
+              lucid: config.lucid,
+              blueprint: config.blueprint,
+              deploymentInfo: config.deploymentInfo,
+              network: config.network,
+              signer: config.signer,
+              threadOutRef: stringField(input, "threadOutRef"),
+              addrTxWitsPreimage: admitted.addressWitnesses,
+              nativeTxCompactCbor: admitted.artifact.nativeTxCompactCbor,
+              witnessSetCompact: admitted.witnessSet,
+              badAddrTxWitIndex: BigInt(admitted.artifact.badWitnessIndex),
+              referenceScriptUtxo: config.referenceScripts.steps[1],
+              witnessReferenceScripts: config.referenceScripts.witnesses,
+              certificatePolicyId: config.certificate.policyId,
+              certificateUtxos: carriage.certificates,
+              existingPublicationUtxos: carriage.publications,
+              publishMissingCarriage: false,
+              preSubmitBoundary,
+              awaitConfirmation: false,
+            });
+          },
+        ),
+      });
+    }
+    if (input.stage === "remove") {
+      return await captureRemoval(config, input);
+    }
+    throw new Error(
+      `invalid-signature workflow action has unsupported stage ${String(input.stage)}`,
+    );
+  },
+});
+
+export type ManifestBoundInvalidSignatureWorkflowConfig =
+  ManifestBoundLinearFamilyWorkflowConfig<
+    "invalidSignature",
+    (typeof WITNESS_ROLES)[number],
+    true
+  >;
+
+export type ManifestBoundInvalidSignatureWorkflow =
+  ManifestBoundLinearFamilyWorkflow<"invalidSignature", true>;
+
+export const INVALID_SIGNATURE_FAMILY_DEFINITION = defineLinearFamily({
+  category: "invalidSignature",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    InvalidSignatureStep02Datum,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  replayer: () => INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "linear",
+    transactionPort: (context) =>
+      createTransactionPort({
+        lucid: context.lucid,
+        blueprint: context.binding.blueprint,
+        deploymentInfo: context.binding.deploymentInfo,
+        network: context.binding.network,
+        signer: context.signer,
+        headerHash: context.binding.definition.headerHash,
+        referenceScripts: context.references,
+        certificate: context.certificate,
+        stateQueueMutationLeaseCoordinator:
+          context.stateQueueMutationLeaseCoordinator,
+        fraudProverRewardLovelace: BigInt(
+          context.binding.releaseEconomics.policy.fraudProverRewardLovelace,
+        ),
+      }),
+  },
+  // Step-02 opens the address-witness field of the accepted or forced
+  // transaction.
+  fieldCarriage: [
+    {
+      requirementForAction: async (context, { action, artifact }) => {
+        const input = record(
+          action.input,
+          "invalid-signature field prerequisite action",
+        );
+        if (input.stage !== "step_02") return null;
+        const admitted = await admitWorkflowArtifact(
+          artifact,
+          context.signer.paymentKeyHash,
+        );
+        return {
+          planned: admitted.fieldPlan,
+          compactCbor: admitted.artifact.nativeTxCompactCbor,
+          witnessSetCompactCbor: witnessSetCbor(admitted.witnessSet),
+          certificate: {
+            policyId: context.certificate.policyId,
+            mintingScript: context.certificate.mintingScript,
+            referenceScriptUtxo:
+              context.references.fieldPreimageCertificateMint,
+          },
+        } satisfies FieldCarriageRequirement;
+      },
+    },
+  ],
+  proofChunk: async (context, { action, artifact }) => {
+    const input = record(
+      action.input,
+      "invalid-signature proof prerequisite action",
+    );
+    return input.stage === "step_01" &&
+      artifact.schemaVersion !== INVALID_SIGNATURE_FORCED_ARTIFACT
+      ? (await admitWorkflowArtifact(artifact, context.signer.paymentKeyHash))
+          .artifact.txMembershipProofCbor
+      : null;
+  },
+});
+
+export const createManifestBoundInvalidSignatureWorkflow = (
+  config: ManifestBoundInvalidSignatureWorkflowConfig,
+): Promise<ManifestBoundInvalidSignatureWorkflow> =>
+  assembleManifestBoundFamilyWorkflow(
+    INVALID_SIGNATURE_FAMILY_DEFINITION,
+    config,
+  );
+
+export const runOrResumeManifestBoundInvalidSignatureWorkflow =
+  runOrResumeManifestBoundFamilyWorkflow;

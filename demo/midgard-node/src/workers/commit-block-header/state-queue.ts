@@ -37,8 +37,15 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderLocal = (
   withdrawalsRoot: string,
   transitionCommitments: SDK.HeaderTransitionCommitments,
   endTime: bigint,
+  validationContext: Pick<
+    SDK.Header,
+    "blockSlot" | "expectedNetworkId" | "minFeeA" | "minFeeB"
+  >,
 ): Effect.Effect<
-  { readonly nodeDatum: SDK.LinkedListNodeView; readonly header: SDK.Header },
+  {
+    readonly nodeDatum: SDK.LinkedListNodeView;
+    readonly header: SDK.Header;
+  },
   | SDK.DataCoercionError
   | SDK.HeaderTransitionCommitmentsError
   | SDK.LucidError
@@ -54,6 +61,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderLocal = (
       withdrawalsRoot,
       transitionCommitments,
       endTime,
+      validationContext,
     ),
   );
 
@@ -93,6 +101,114 @@ export const fetchLatestCommittedBlockLocal = (
   fetchConfig: SDK.StateQueueFetchConfig,
 ): Effect.Effect<SDK.StateQueueUTxO, SDK.StateQueueError | SDK.LucidError> =>
   localizeSdkEffect(SDK.fetchLatestCommittedBlockProgram(lucid, fetchConfig));
+
+export type CommitAppendFenceReferences = {
+  readonly confirmedStateRefInput?: SDK.StateQueueUTxO["utxo"];
+  readonly headStateQueueNodeRefInput?: SDK.StateQueueUTxO["utxo"];
+};
+
+/**
+ * Resolves the exact singleton root/current-head reference inputs required by
+ * Q61's append fence. The full topology is refetched immediately before the
+ * transaction is built; if the expected tail changed, this attempt aborts and
+ * the caller rebuilds from canonical state instead of journaling a stale
+ * append.
+ */
+export const resolveCommitAppendFenceReferencesLocal = (
+  lucid: Parameters<typeof SDK.fetchSortedStateQueueUTxOsProgram>[0],
+  fetchConfig: SDK.StateQueueFetchConfig,
+  expectedTail: SDK.StateQueueUTxO,
+): Effect.Effect<
+  CommitAppendFenceReferences,
+  SDK.StateQueueError | SDK.LucidError | SDK.LinkedListError
+> =>
+  Effect.gen(function* () {
+    const ordered = yield* localizeSdkEffect<
+      SDK.StateQueueUTxO[],
+      SDK.LucidError | SDK.LinkedListError
+    >(SDK.fetchSortedStateQueueUTxOsProgram(lucid, fetchConfig));
+    // Appending to an expired unattested suffix only creates more work for
+    // permissionless correction. Check every pending node, including tails
+    // hidden behind an attested queue head, before any commit is signed.
+    for (const entry of ordered.slice(1)) {
+      const node = yield* localizeSdkEffect<
+        SDK.StateQueueNode,
+        SDK.DataCoercionError
+      >(SDK.getStateQueueNodeFromStateQueueDatum(entry.datum)).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SDK.StateQueueError({
+              message: "Failed to inspect pending DA attestation before commit",
+              cause,
+            }),
+        ),
+      );
+      if (
+        node.da_attestation === SDK.NO_DA_ATTESTATION &&
+        BigInt(Date.now()) >=
+          node.header.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS
+      ) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message:
+              "Commit paused until expired unattested suffix is corrected",
+            cause: `expired_out_ref=${stateQueueOutRef(entry)}`,
+          }),
+        );
+      }
+    }
+    const canonicalTail = ordered.at(-1);
+    if (canonicalTail === undefined) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message: "Canonical state queue is empty",
+          cause: "missing confirmed-state root",
+        }),
+      );
+    }
+    if (stateQueueOutRef(canonicalTail) !== stateQueueOutRef(expectedTail)) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Commit base is stale; aborting block build before creating a pending journal",
+          cause: `expected_tail=${stateQueueOutRef(expectedTail)},canonical_tail=${stateQueueOutRef(canonicalTail)}`,
+        }),
+      );
+    }
+    if (ordered.length === 1) {
+      if (canonicalTail.datum.key !== "Empty") {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message: "Canonical state queue is missing its root",
+            cause: `tail=${stateQueueOutRef(canonicalTail)}`,
+          }),
+        );
+      }
+      return {};
+    }
+
+    const root = ordered[0];
+    const head = ordered[1];
+    if (
+      root === undefined ||
+      head === undefined ||
+      root.datum.key !== "Empty" ||
+      canonicalTail.datum.key === "Empty"
+    ) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message: "Canonical state-queue topology is malformed",
+          cause: `nodes=${ordered.length.toString()}`,
+        }),
+      );
+    }
+    return {
+      confirmedStateRefInput: root.utxo,
+      ...(stateQueueOutRef(head) === stateQueueOutRef(canonicalTail)
+        ? {}
+        : { headStateQueueNodeRefInput: head.utxo }),
+    };
+  });
 
 /**
  * Revalidates a known state-queue tail through its unique NFT instead of

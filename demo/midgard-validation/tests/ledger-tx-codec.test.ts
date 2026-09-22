@@ -1,24 +1,28 @@
 import {
   computeHash32,
   computeScriptIntegrityHashForLanguages,
+  decodeSingleCbor,
   EMPTY_NULL_ROOT,
+  encodeCbor,
 } from "@al-ft/midgard-core/codec";
-import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { Constr } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
   decodeMidgardLedgerTxFromCanonicalCbor,
   encodeMidgardLedgerTxToCanonicalCbor,
+  projectMidgardRawEnvelopeForPhaseAV1,
 } from "../src/ledger-tx.js";
 import { MidgardRedeemerTag } from "../src/midgard-redeemers.js";
 import { plutusDataToCborHex } from "../src/plutus-data.js";
 import {
   encodeRecomputedNativeTx,
   hashScriptWitness,
+  makeMintPreimageCbor,
   makeNativeTx,
   makeOutput,
   makeRedeemersCbor,
+  nativeScriptWitness,
   outRefFromByte,
   plutusV3ScriptWitness,
 } from "./validation-fixtures.js";
@@ -27,6 +31,78 @@ const hexes = (values: readonly Buffer[]): string[] =>
   values.map((value) => value.toString("hex"));
 
 describe("Midgard ledger transaction codec", () => {
+  it("projects valid field-6 witnesses identically to canonical ledger decoding", () => {
+    const script = nativeScriptWitness({ type: "all", scripts: [] });
+    const fixture = makeNativeTx({ scriptWitnesses: [script] });
+    const projection = projectMidgardRawEnvelopeForPhaseAV1(fixture.txCbor);
+    const canonical = decodeMidgardLedgerTxFromCanonicalCbor(fixture.txCbor);
+    expect(projection.canonicalSubmittedTx?.ledgerTx).toEqual(canonical);
+    expect(projection.transactionId).toEqual(canonical.txId);
+    expect(projection.scriptWitnesses).toHaveLength(1);
+    expect(projection.scriptWitnesses[0]?.hash).toEqual(
+      canonical.scriptWitnesses[0]?.hash,
+    );
+    expect(projection.scriptWitnesses[0]?.scriptBytes).toEqual(
+      script.scriptBytes,
+    );
+  });
+
+  it("retains malformed field-6 only and rejects envelope, version, validity, body scalar, output, and non-field6 witness mutations", () => {
+    const base = makeNativeTx();
+    const malformedItem = Buffer.from("820043820700", "hex");
+    const malformedScript = encodeRecomputedNativeTx({
+      ...base.tx,
+      witnessSet: {
+        ...base.tx.witnessSet,
+        scriptTxWitsPreimageCbor: encodeCbor([malformedItem]),
+      },
+    });
+    const projection = projectMidgardRawEnvelopeForPhaseAV1(
+      malformedScript.txCbor,
+    );
+    expect(projection.canonicalSubmittedTx).toBeNull();
+    expect(projection.scriptWitnesses[0]?.languageTag).toBe(0);
+    expect(projection.scriptWitnesses[0]?.scriptBytes.toString("hex")).toBe(
+      "820700",
+    );
+    expect(projection.scriptWitnesses[0]?.versionedItemBytes).toEqual(
+      malformedItem,
+    );
+
+    const malformedOutput = encodeRecomputedNativeTx({
+      ...base.tx,
+      body: {
+        ...base.tx.body,
+        outputsPreimageCbor: Buffer.from("81ff", "hex"),
+      },
+    });
+    expect(() =>
+      projectMidgardRawEnvelopeForPhaseAV1(malformedOutput.txCbor),
+    ).toThrow(/ledger stage/u);
+
+    const envelope = decodeSingleCbor(malformedScript.txCbor) as unknown[];
+    const body = envelope[1] as unknown[];
+    const witnessSet = envelope[2] as unknown[];
+    const mutations = [
+      encodeCbor([2n, envelope[1], envelope[2], envelope[3]]),
+      encodeCbor([envelope[0], envelope[1], envelope[2], 2n]),
+      encodeCbor([
+        envelope[0],
+        [...body.slice(0, 3), -1n, ...body.slice(4)],
+        envelope[2],
+        envelope[3],
+      ]),
+      encodeCbor([
+        envelope[0],
+        envelope[1],
+        [Buffer.from("81ff", "hex"), witnessSet[1], witnessSet[2]],
+        envelope[3],
+      ]),
+      encodeCbor([...envelope, 0n]),
+    ];
+    for (const mutation of mutations)
+      expect(() => projectMidgardRawEnvelopeForPhaseAV1(mutation)).toThrow();
+  });
   it("round-trips canonical native transaction CBOR through the semantic ledger type", () => {
     const spent = outRefFromByte(0x31, 2n);
     const referenceInput = outRefFromByte(0x32, 3n);
@@ -92,7 +168,7 @@ describe("Midgard ledger transaction codec", () => {
     const policyId = Buffer.alloc(28, 0xa1);
     const mintedAsset = Buffer.from("alpha");
     const burnedAsset = Buffer.from("beta");
-    const mintPreimageCbor = encodeCbor(
+    const mintPreimageCbor = makeMintPreimageCbor(
       new Map([
         [
           policyId,

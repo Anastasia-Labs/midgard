@@ -1,0 +1,310 @@
+import { EMPTY_NULL_ROOT } from "@al-ft/midgard-core";
+import {
+  encodeMidgardFieldPreimage,
+  midgardFieldCommitment,
+} from "@al-ft/midgard-core";
+import {
+  acceptedVerdictSubject,
+  buildObserversForbiddenOnUntaggedNetworkFaultProofContracts,
+  forcedVerdictSubject,
+} from "@al-ft/midgard-sdk";
+import { describe, expect, it } from "vitest";
+
+import {
+  admitObserversForbiddenArtifact,
+  buildObserversForbiddenArtifact,
+  observersForbiddenArtifactDigest,
+} from "../src/observers-forbidden-on-untagged-network/artifact.js";
+import {
+  applyObserversForbiddenScripts,
+  OBSERVERS_FORBIDDEN_BLUEPRINT_TITLES,
+} from "../src/observers-forbidden-on-untagged-network/contracts.js";
+import {
+  classifyObserversForbiddenFinding,
+  MIDGARD_ABSENT_SCRIPT_INTEGRITY_HASH,
+  MIDGARD_UNTAGGED_NETWORK_ID,
+  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY,
+  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_ID,
+  observersForbiddenEvidenceCloses,
+  observersForbiddenFaultHolds,
+  prepareObserversForbiddenEvidence,
+} from "../src/observers-forbidden-on-untagged-network/family.js";
+import {
+  OBSERVERS_FORBIDDEN_VIOLATION_ID,
+  type ObserversForbiddenReplayDetection,
+  selectCanonicalObserversForbiddenDetection,
+} from "../src/observers-forbidden-on-untagged-network/replay.js";
+import { buildRegisteredChainFixture } from "./support/emulator/registered-chain.js";
+
+const transactionId = "01".repeat(32);
+const accepted = acceptedVerdictSubject(transactionId);
+const forced = forcedVerdictSubject({
+  transactionId,
+  sourceKey: { transactionId: "02".repeat(32), outputIndex: 0n },
+  rejectionReason: "ObserversForbiddenOnUntaggedNetwork",
+});
+/** A present integrity hash: Plutus evaluation is required. */
+const PRESENT_HASH = "ab".repeat(32);
+const ABSENT_HASH = MIDGARD_ABSENT_SCRIPT_INTEGRITY_HASH;
+const observerField = (count: number) =>
+  encodeMidgardFieldPreimage(
+    Array.from({ length: count }, (_, index) => Buffer.alloc(28, index + 1)),
+  );
+const evidence = (
+  subject: typeof accepted,
+  networkId: 0 | 1 | 255,
+  count: number,
+  scriptIntegrityHash: string = PRESENT_HASH,
+) => {
+  const field = observerField(count);
+  return prepareObserversForbiddenEvidence({
+    finding: { subject, networkId, scriptIntegrityHash },
+    observerFieldPreimage: field,
+    committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
+  });
+};
+
+describe("observersForbiddenOnUntaggedNetwork V1 semantics", () => {
+  it("freezes the authoritative family identity, network scalar, and absent hash", () => {
+    expect(OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY).toBe(
+      "observersForbiddenOnUntaggedNetwork",
+    );
+    expect(OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_ID).toBe(
+      "00000024",
+    );
+    expect(MIDGARD_UNTAGGED_NETWORK_ID).toBe(255);
+    expect(MIDGARD_ABSENT_SCRIPT_INTEGRITY_HASH).toBe(
+      EMPTY_NULL_ROOT.toString("hex"),
+    );
+  });
+
+  it("holds exactly on the phase-A observer arm: present hash, observers, scalar 255", () => {
+    const holds = (
+      count: number,
+      networkId: 0 | 1 | 255,
+      scriptIntegrityHash: string,
+    ) =>
+      observersForbiddenFaultHolds({
+        observerCount: count,
+        networkId,
+        scriptIntegrityHash,
+      });
+    expect(holds(1, 255, PRESENT_HASH)).toBe(true);
+    expect(holds(505, 255, PRESENT_HASH)).toBe(true);
+    // A zero hash never reaches the observer arm: either no Plutus
+    // evaluation is required, or ScriptIntegrityHashMissing fires first.
+    expect(holds(1, 255, ABSENT_HASH)).toBe(false);
+    expect(holds(0, 255, PRESENT_HASH)).toBe(false);
+    expect(holds(1, 0, PRESENT_HASH)).toBe(false);
+    expect(holds(1, 1, PRESENT_HASH)).toBe(false);
+  });
+
+  it("closes wrongful acceptance only for a non-empty observer set on the untagged scalar under a present hash", () => {
+    expect(observersForbiddenEvidenceCloses(evidence(accepted, 255, 1))).toBe(
+      true,
+    );
+    expect(observersForbiddenEvidenceCloses(evidence(accepted, 255, 0))).toBe(
+      false,
+    );
+    expect(observersForbiddenEvidenceCloses(evidence(accepted, 0, 1))).toBe(
+      false,
+    );
+    expect(
+      observersForbiddenEvidenceCloses(evidence(accepted, 255, 1, ABSENT_HASH)),
+    ).toBe(false);
+  });
+
+  it("closes every complete forced contradiction polarity", () => {
+    expect(observersForbiddenEvidenceCloses(evidence(forced, 255, 0))).toBe(
+      true,
+    );
+    expect(observersForbiddenEvidenceCloses(evidence(forced, 1, 1))).toBe(true);
+    expect(
+      observersForbiddenEvidenceCloses(evidence(forced, 255, 1, ABSENT_HASH)),
+    ).toBe(true);
+    expect(observersForbiddenEvidenceCloses(evidence(forced, 255, 1))).toBe(
+      false,
+    );
+  });
+
+  it("binds the exact typed reason and refuses accepted reason injection", () => {
+    const wrongReason = forcedVerdictSubject({
+      transactionId,
+      sourceKey: { transactionId: "02".repeat(32), outputIndex: 0n },
+      rejectionReason: { OutputNonCanonical: { output_index: 0n } },
+    });
+    expect(() =>
+      classifyObserversForbiddenFinding({
+        subject: wrongReason,
+        networkId: 255,
+        scriptIntegrityHash: PRESENT_HASH,
+      }),
+    ).toThrow(/typed rejection reason changed/u);
+    expect(() =>
+      classifyObserversForbiddenFinding({
+        subject: forcedVerdictSubject({
+          transactionId,
+          sourceKey: { transactionId: "02".repeat(32), outputIndex: 0n },
+          rejectionReason: "NetworkIdMismatch",
+        }),
+        networkId: 255,
+        scriptIntegrityHash: PRESENT_HASH,
+      }),
+    ).toThrow(/typed rejection reason changed/u);
+    expect(() =>
+      classifyObserversForbiddenFinding({
+        subject: { ...accepted, rejection_reason: "EmptyInputs" },
+        networkId: 255,
+        scriptIntegrityHash: PRESENT_HASH,
+      }),
+    ).toThrow(/not canonical|polarity changed/u);
+  });
+
+  it("refuses network, integrity-hash, commitment, and observer-width substitution", () => {
+    expect(() =>
+      classifyObserversForbiddenFinding({
+        subject: accepted,
+        networkId: 2 as 0,
+        scriptIntegrityHash: PRESENT_HASH,
+      }),
+    ).toThrow(/network scalar changed/u);
+    for (const malformedHash of ["", "ab".repeat(31), "AB".repeat(32)]) {
+      expect(() =>
+        classifyObserversForbiddenFinding({
+          subject: accepted,
+          networkId: 255,
+          scriptIntegrityHash: malformedHash,
+        }),
+      ).toThrow(/script integrity hash changed/u);
+    }
+    const field = observerField(1);
+    expect(() =>
+      prepareObserversForbiddenEvidence({
+        finding: {
+          subject: accepted,
+          networkId: 255,
+          scriptIntegrityHash: PRESENT_HASH,
+        },
+        observerFieldPreimage: field,
+        committedFieldHashHex: "ff".repeat(32),
+      }),
+    ).toThrow(/changed commitment/u);
+    const malformed = encodeMidgardFieldPreimage([Buffer.alloc(27)]);
+    expect(() =>
+      prepareObserversForbiddenEvidence({
+        finding: {
+          subject: accepted,
+          networkId: 255,
+          scriptIntegrityHash: PRESENT_HASH,
+        },
+        observerFieldPreimage: malformed,
+        committedFieldHashHex:
+          midgardFieldCommitment(malformed).toString("hex"),
+      }),
+    ).toThrow(/not a 28-byte hash/u);
+  });
+
+  it("selects all three carriage tiers deterministically", () => {
+    expect(evidence(accepted, 255, 0).carriage).toBe("Inline");
+    expect(evidence(accepted, 255, 478).carriage).toBe("RawUtxo");
+    const maximum = evidence(accepted, 255, 505);
+    expect(maximum.observerFieldPreimageCbor.length / 2).toBe(15_153);
+    expect(maximum.carriage).toBe("Certified");
+    expect(maximum.observerCount).toBe(505);
+  });
+
+  it("selects the earliest authenticated replay independent of traversal order", () => {
+    const detection = (
+      position: bigint,
+      detectionId: string,
+    ): ObserversForbiddenReplayDetection => ({
+      detectionId,
+      headerHash: "03".repeat(28),
+      violationId: OBSERVERS_FORBIDDEN_VIOLATION_ID,
+      position,
+      transactionId,
+      networkId: 255,
+      scriptIntegrityHash: PRESENT_HASH,
+      observerCount: 1,
+      source: "accepted",
+      direction: "wrongfulAcceptance",
+    });
+    expect(
+      selectCanonicalObserversForbiddenDetection([
+        detection(9n, "z"),
+        detection(2n, "b"),
+        detection(2n, "a"),
+      ]).detectionId,
+    ).toBe("a");
+  });
+
+  it("reconstructs its artifact and refuses network/hash/field substitution", () => {
+    const prepared = evidence(accepted, 255, 1);
+    const artifact = buildObserversForbiddenArtifact({
+      headerHash: "03".repeat(28),
+      detectionId: "accepted:0",
+      position: 0n,
+      evidence: prepared,
+      nativeTxCompactCbor: "80",
+      witnessSetCompactCbor: "80",
+      l2TransactionSourceCbor: "80",
+      transactionsPhasRoot: "04".repeat(32),
+      transactionMembershipCbor: "80",
+    });
+    expect(artifact.scriptIntegrityHash).toBe(PRESENT_HASH);
+    expect(admitObserversForbiddenArtifact(artifact).evidence).toEqual(
+      prepared,
+    );
+    expect(observersForbiddenArtifactDigest(artifact)).toMatch(
+      /^[0-9a-f]{64}$/u,
+    );
+    expect(() =>
+      admitObserversForbiddenArtifact({
+        ...artifact,
+        networkId: 1,
+      }),
+    ).toThrow(/source payload|artifact|field|network|closes/u);
+    // An honest native-only transaction: the artifact no longer closes.
+    expect(() =>
+      admitObserversForbiddenArtifact({
+        ...artifact,
+        scriptIntegrityHash: ABSENT_HASH,
+      }),
+    ).toThrow(/does not close contradiction/u);
+    expect(() =>
+      admitObserversForbiddenArtifact({
+        ...artifact,
+        scriptIntegrityHash: "ab".repeat(31),
+      }),
+    ).toThrow(/script integrity hash is not canonical hex/u);
+    const { scriptIntegrityHash: _dropped, ...withoutHash } = artifact;
+    expect(() => admitObserversForbiddenArtifact(withoutHash)).toThrow(
+      /shape\/version changed/u,
+    );
+    expect(() =>
+      admitObserversForbiddenArtifact({
+        ...artifact,
+        fieldPreimageCbor: `${artifact.fieldPreimageCbor.slice(0, -2)}ff`,
+      }),
+    ).toThrow(/commitment changed/u);
+  });
+});
+
+describe("observersForbiddenOnUntaggedNetwork registered-chain parity", () => {
+  it("applies the same chain the SDK registers for the same shared policies", async () => {
+    const fixture = await buildRegisteredChainFixture(
+      buildObserversForbiddenOnUntaggedNetworkFaultProofContracts,
+    );
+    const registered = fixture.contracts.observersForbiddenOnUntaggedNetwork;
+    const applied = applyObserversForbiddenScripts(fixture.applyParams);
+    expect(applied.map((step) => step.spendingScriptHash)).toStrictEqual(
+      registered.steps.map((step) => step.spendingScriptHash),
+    );
+    expect(registered.firstStep.spendingScriptHash).toBe(
+      applied[0].spendingScriptHash,
+    );
+    expect(applied.map((step) => step.blueprintTitle)).toStrictEqual([
+      ...OBSERVERS_FORBIDDEN_BLUEPRINT_TITLES,
+    ]);
+  });
+});

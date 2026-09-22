@@ -11,7 +11,7 @@ import {
   computeScriptIntegrityHashForLanguages,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  MIDGARD_V1_CANONICAL_COST_MODEL_VIEW,
+  MIDGARD_CANONICAL_COST_MODEL_VIEW,
   PLUTUS_V3_CANONICAL_COST_MODEL_VIEW,
   ScriptLanguageTags,
 } from "../src/index.js";
@@ -20,13 +20,14 @@ const REDEEMER_TX_WITS_HASH = Buffer.from(
   "509a422cbd3d2fdca7c6521277d3117b305aa7578bdcf1627df36382429743d1",
   "hex",
 );
+const AIKEN_REDEEMER_TX_WITS_HASH = Buffer.alloc(32, 0x11);
 
 describe("script language views", () => {
   it("freezes the initial protocol cost model views to Harmonic PlutusV3 today", () => {
     const harmonicV3 = toCostModelArrV3(defaultV3Costs);
 
     expect(PLUTUS_V3_CANONICAL_COST_MODEL_VIEW).toEqual(harmonicV3);
-    expect(MIDGARD_V1_CANONICAL_COST_MODEL_VIEW).toEqual(harmonicV3);
+    expect(MIDGARD_CANONICAL_COST_MODEL_VIEW).toEqual(harmonicV3);
   });
 
   it("uses EMPTY_NULL_ROOT for an empty required language set", () => {
@@ -52,6 +53,31 @@ describe("script language views", () => {
         "PlutusV3",
       ]).toString("hex"),
     ).toBe("907fec08d0de18a7da3449fa2b3a14d9898b8485e55f6112fcd184cffc9f93ff");
+  });
+
+  it("matches the exact Aiken vectors for every supported language bitmap", () => {
+    expect(
+      computeScriptIntegrityHashForLanguages(
+        AIKEN_REDEEMER_TX_WITS_HASH,
+        [],
+      ).toString("hex"),
+    ).toBe("01f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53");
+    expect(
+      computeScriptIntegrityHashForLanguages(AIKEN_REDEEMER_TX_WITS_HASH, [
+        "PlutusV3",
+      ]).toString("hex"),
+    ).toBe("d7239eb1bd8b7376dedfbf7e6201815b225c023d11c975cd99d25d5236b199a1");
+    expect(
+      computeScriptIntegrityHashForLanguages(AIKEN_REDEEMER_TX_WITS_HASH, [
+        "MidgardV1",
+      ]).toString("hex"),
+    ).toBe("71201d25ea11e4104eda108782a7d67b37b4ae97df6dc3258b06d9c98e58bbcb");
+    expect(
+      computeScriptIntegrityHashForLanguages(AIKEN_REDEEMER_TX_WITS_HASH, [
+        "MidgardV1",
+        "PlutusV3",
+      ]).toString("hex"),
+    ).toBe("6d49b4f24c60bec1cb34a2538278252059ec0601b7f675ef73fe2b48e24317d8");
   });
 
   it("changes when redeemer witness hash changes", () => {

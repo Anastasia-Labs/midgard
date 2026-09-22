@@ -4,9 +4,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   canonicalJsonSha256,
+  decodePhase4EnvironmentArtifactV1,
+  decodePhase4EnvironmentDocumentV1,
   PHASE4_ENVIRONMENT_ARTIFACT_SCHEMA,
   PHASE4_ENVIRONMENT_SCHEMA,
   PHASE4_RESOURCE_PROFILE,
@@ -35,6 +38,13 @@ const sha256Hex = (value) =>
 const gitSha = (value) =>
   typeof value === "string" && /^[0-9a-f]{40}$/u.test(value);
 
+const exactKeys = (value, expected) =>
+  typeof value === "object" &&
+  value !== null &&
+  !Array.isArray(value) &&
+  Object.keys(value).length === expected.length &&
+  expected.every((key) => Object.hasOwn(value, key));
+
 const selectedPrimaryStage = (report, reasons) => {
   const names = report?.summary?.primaryStageNames;
   if (!Array.isArray(names) || names.length !== 1) {
@@ -50,13 +60,62 @@ const selectedPrimaryStage = (report, reasons) => {
 };
 
 const validateEnvironmentFingerprint = (fingerprint, config, reasons) => {
-  const document = fingerprint?.document;
   if (
-    !sha256Hex(fingerprint?.sha256) ||
-    fingerprint?.artifactSchemaVersion !== PHASE4_ENVIRONMENT_ARTIFACT_SCHEMA ||
-    !sha256Hex(fingerprint?.documentSha256) ||
+    !exactKeys(fingerprint, [
+      "path",
+      "sha256",
+      "artifactSchemaVersion",
+      "documentSha256",
+      "document",
+    ])
+  ) {
+    reasons.push(
+      "Phase 4 environment fingerprint artifact is missing or invalid",
+    );
+    return;
+  }
+  let artifact;
+  let fileArtifact;
+  try {
+    artifact = decodePhase4EnvironmentArtifactV1({
+      schemaVersion: fingerprint.artifactSchemaVersion,
+      documentSha256: fingerprint.documentSha256,
+      document: fingerprint.document,
+    });
+    decodePhase4EnvironmentDocumentV1(fingerprint.document);
+    if (
+      typeof fingerprint.path !== "string" ||
+      !path.isAbsolute(fingerprint.path) ||
+      path.resolve(fingerprint.path) !== fingerprint.path
+    ) {
+      throw new Error("fingerprint path is not canonical absolute");
+    }
+    const stat = fs.lstatSync(fingerprint.path);
+    if (!stat.isFile() || stat.isSymbolicLink()) {
+      throw new Error("fingerprint artifact is not a regular file");
+    }
+    const bytes = fs.readFileSync(fingerprint.path);
+    if (
+      !sha256Hex(fingerprint.sha256) ||
+      fingerprint.sha256 !== sha256(bytes)
+    ) {
+      throw new Error("fingerprint bytes do not match their digest");
+    }
+    fileArtifact = decodePhase4EnvironmentArtifactV1(
+      JSON.parse(bytes.toString("utf8")),
+    );
+  } catch {
+    reasons.push(
+      "Phase 4 environment fingerprint artifact is missing or invalid",
+    );
+    return;
+  }
+  const document = artifact.document;
+  if (
+    !isDeepStrictEqual(fileArtifact, artifact) ||
+    fingerprint.artifactSchemaVersion !== PHASE4_ENVIRONMENT_ARTIFACT_SCHEMA ||
     fingerprint.documentSha256 !== canonicalJsonSha256(document) ||
-    document?.schemaVersion !== PHASE4_ENVIRONMENT_SCHEMA
+    document.schemaVersion !== PHASE4_ENVIRONMENT_SCHEMA
   ) {
     reasons.push(
       "Phase 4 environment fingerprint artifact is missing or invalid",
@@ -104,7 +163,7 @@ const validateEnvironmentFingerprint = (fingerprint, config, reasons) => {
 
 export const evaluatePhase4PipelinedReport = (report) => {
   const reasons = [];
-  if (report?.benchmark !== "midgard-l2-throughput" || report?.version !== 2) {
+  if (report?.benchmark !== "midgard-l2-throughput" || report?.version !== 1) {
     reasons.push("unexpected benchmark schema");
   }
   if (report?.scenario !== PHASE4_ONE_HOUR_SCENARIO) {

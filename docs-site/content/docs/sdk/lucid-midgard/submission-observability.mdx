@@ -20,17 +20,22 @@ declare const tx: CompleteTx;
 const signed = await tx.sign.withWallet().complete();
 const submitted = await signed.submit();
 
-await submitted.awaitStatus({ until: "accepted" });
+const outcome = await submitted.awaitStatus();
+if (outcome.kind === "rejected") {
+  throw new Error(outcome.code);
+}
 ```
 
 Three stages, in order. `sign.withWallet()` returns a partial-sign builder;
 `.complete()` assembles the submit-capable `CompleteTx`. Only then does `submit()`
-post the canonical CBOR.
+post the canonical proof-submission envelope, containing `transactionCbor` and
+`programMaterial`, with content type `application/vnd.midgard.v1+cbor`.
 
 <Callout type="warn" title="Admission is not acceptance">
-A `202` response means the transaction is **queued**, not accepted. `200` means it was
-a duplicate of one already admitted. Neither says the transaction is valid. Call
-`status()` or `awaitStatus()` before telling a user their transfer succeeded.
+  A `202` response means the transaction is **queued**, not accepted. `200`
+  means it was a duplicate of one already admitted. Neither says the transaction
+  is valid. Call `status()` or `awaitStatus()` before telling a user their
+  transfer succeeded.
 </Callout>
 
 ## The status lifecycle
@@ -38,19 +43,21 @@ a duplicate of one already admitted. Neither says the transaction is valid. Call
 `TxStatus` has eight kinds, reported by `GET /tx-status` and normalized in
 `src/builder/status.ts`:
 
-| Status | Meaning |
-| --- | --- |
-| `queued` | Durably admitted. Not yet validated. |
-| `validating` | Being validated by the node's Phase A / Phase B pipeline. |
-| `accepted` | Validated and admitted into the mempool ledger. |
-| `committed` | Included in a block header committed to L1. |
-| `pending_commit` | Selected for a block whose commitment is still in flight. |
-| `awaiting_local_recovery` | The node is reconciling local state and cannot answer authoritatively yet. |
-| `not_found` | The node has no record of this transaction id. |
-| `rejected` | Validation failed. Carries the node's `code` and a nullable `detail`. |
+| Status                    | Meaning                                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------------------------- |
+| `queued`                  | Durably admitted. Not yet validated.                                                              |
+| `validating`              | Being validated by the node's Phase A / Phase B pipeline.                                         |
+| `accepted`                | Validated and admitted into the mempool ledger.                                                   |
+| `committed`               | Present in the immutable local transaction table; L1 confirmation and merge are separate.         |
+| `pending_commit`          | Present in the processed mempool and absent from immutable state, without local pending recovery. |
+| `awaiting_local_recovery` | Present in the processed mempool while a local pending commitment requires reconciliation.        |
+| `not_found`               | The node has no record of this transaction id.                                                    |
+| `rejected`                | Validation failed. Carries the node's `code` and a nullable `detail`.                             |
 
 Only the `rejected` variant carries `code` and `detail`. The other kinds carry the
-transaction id alone.
+transaction id alone. The raw HTTP response can include header/merge and
+`confirmedLedgerFinalized` evidence which this client union does not retain.
+Do not use the client `committed` kind as proof of L1 finality.
 
 ## Awaiting a status
 
@@ -63,8 +70,11 @@ outcome that settles the question. Polling defaults to a 1 second interval and a
 import type { SubmittedTx } from "@al-ft/lucid-midgard";
 declare const submitted: SubmittedTx;
 // ---cut---
-// Resolve once the node has validated and accepted the transaction.
-await submitted.awaitStatus({ until: "accepted" });
+// Resolve on acceptance, local commitment, or rejection and inspect the result.
+const outcome = await submitted.awaitStatus();
+if (outcome.kind === "rejected") {
+  throw new Error(outcome.code);
+}
 
 // Or inspect the current status once, without polling.
 const current = await submitted.status();
@@ -74,10 +84,12 @@ if (current.kind === "rejected") {
 ```
 
 <Callout type="warn" title="A rejection is a value, not a thrown error">
-`awaitStatus` resolves with a `rejected` status; it does not throw. Branch on
-`status.kind` rather than relying on `try` / `catch`. Errors are thrown only when the
-provider itself misbehaves, for example a malformed response
-(`ProviderPayloadError`).
+  `awaitStatus` resolves with `rejected` only when that kind is in the target
+  set (as it is by default). Explicit `until: "accepted"` waits for exactly that
+  kind and can time out after rejection or after the transaction has already
+  committed. Branch on the returned kind. Polling can throw for timeout,
+  cancellation, invalid options, transport failures, or malformed provider
+  responses.
 </Callout>
 
 Each of `submit`, `status`, and `awaitStatus` has `Safe` and `Program` variants. The

@@ -1,20 +1,21 @@
 import { Duration, Effect, Metric, Queue, Ref, Schedule } from "effect";
 
-import { fetchAndInsertDepositUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-deposit-utxos.js";
-import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-tx-order-utxos.js";
-import { fetchAndInsertWithdrawalUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-withdrawal-utxos.js";
 import {
-  minimumBarrierWatermarkMs,
-  type UserEventBarrierWatermarks,
-} from "@/fibers/speculative-commit-state.js";
-import {
+  ContractDeploymentIdentity,
   Database,
   Globals,
   Lucid,
   MidgardContracts,
   NodeConfig,
   withL1ControlPlane,
-} from "@/services/index.js";
+} from "../services/index.js";
+import { fetchAndInsertDepositUTxOsForCommitBarrier } from "./fetch-and-insert-deposit-utxos.js";
+import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "./fetch-and-insert-tx-order-utxos.js";
+import { fetchAndInsertWithdrawalUTxOsForCommitBarrier } from "./fetch-and-insert-withdrawal-utxos.js";
+import {
+  minimumBarrierWatermarkMs,
+  type UserEventBarrierWatermarks,
+} from "./speculative-commit-state.js";
 
 const userEventBarrierRefreshDuration = Metric.timer(
   "user_event_barrier_refresh_duration_ms",
@@ -38,7 +39,12 @@ export const mergeBarrierWatermarks = (
 export const runUserEventBarrierRefresherPass: Effect.Effect<
   UserEventBarrierWatermarks,
   unknown,
-  Globals | MidgardContracts | Lucid | Database | NodeConfig
+  | Globals
+  | MidgardContracts
+  | ContractDeploymentIdentity
+  | Lucid
+  | Database
+  | NodeConfig
 > = Effect.gen(function* () {
   const globals = yield* Globals;
   const startedAtMs = Date.now();
@@ -84,7 +90,12 @@ export const userEventBarrierRefresherFiber = (
 ): Effect.Effect<
   void,
   never,
-  Globals | MidgardContracts | Lucid | Database | NodeConfig
+  | Globals
+  | MidgardContracts
+  | ContractDeploymentIdentity
+  | Lucid
+  | Database
+  | NodeConfig
 > =>
   Effect.gen(function* () {
     const globals = yield* Globals;

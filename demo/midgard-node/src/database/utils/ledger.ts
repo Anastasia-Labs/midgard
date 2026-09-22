@@ -2,12 +2,12 @@ import { SqlClient } from "@effect/sql";
 import { Address } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { Database } from "../../services/database.js";
 import {
   DatabaseError,
   logDatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+} from "./common.js";
 
 /**
  * Table adapter for ledger-style UTxO sets.

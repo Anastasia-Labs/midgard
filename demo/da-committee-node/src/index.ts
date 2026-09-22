@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { runDaZstdStartupSelfTest } from "@al-ft/midgard-core/da-compression";
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 
 import { createWatcherApiServer } from "./api/server.js";
+import { availabilityResponderFromConfig } from "./availability/factory.js";
 import { loadWatcherConfig } from "./config.js";
 import {
   l1SubmitterWalletPreflightFromConfig,
@@ -16,9 +18,9 @@ import {
   DaLibp2pNode,
   DaLibp2pPayloadSource,
   DaPeerRegistry,
-  loadDaLibp2pIdentity,
   StoreBackedDaAttestationProtocol,
 } from "./da/libp2p/index.js";
+import { availabilityRetentionSourceFromStore } from "./l1/availability-retention-source.js";
 import { daAttestationReaderFromConfig } from "./l1/da-attestation-reader.js";
 import { providerFromConfig } from "./l1/provider.js";
 import { l1SubmitterPreflightResultToJson } from "./l1/submitter.js";
@@ -31,7 +33,11 @@ import {
   validateDaSignerMembership,
 } from "./signer.js";
 import { openWatcherStore } from "./store/factory.js";
-import { WatcherService } from "./watcher.js";
+import { runRetentionCycle } from "./store/retention.js";
+import {
+  type WatcherRetentionReadinessSnapshot,
+  WatcherService,
+} from "./watcher.js";
 
 const main = async (): Promise<void> => {
   if (process.argv[2] === "l1-wallet-preflight") {
@@ -79,6 +85,11 @@ const main = async (): Promise<void> => {
     deploymentFingerprint: config.deploymentFingerprint,
     localPeerId: daIdentity.peerId,
     committeeValidation,
+    availabilityCommitmentAuthority: {
+      deploymentIdentity: config.midgardNodeDeployment.hubOraclePolicyId,
+      bondOwnerCredential: config.availabilityChallenge.bondOwnerCredential,
+      responseGeometry: config.availabilityChallenge.responseGeometry,
+    },
     store,
   });
   const requestHandlers = new Map([
@@ -91,7 +102,10 @@ const main = async (): Promise<void> => {
       deploymentFingerprint: config.deploymentFingerprint,
       store,
       limits: config.daTransport.limits,
-      registry: daPeerRegistry,
+      accessPolicy: {
+        kind: "manifest_roles",
+        registry: daPeerRegistry,
+      },
     }),
     ...createDaLibp2pAttestationRequestHandlers({
       deploymentFingerprint: config.deploymentFingerprint,
@@ -104,6 +118,13 @@ const main = async (): Promise<void> => {
     registry: daPeerRegistry,
     privateKeySource: config.libp2pPrivateKeySource,
     requestHandlers,
+    onGossipMessageError: (error) => {
+      process.stderr.write(
+        `rejected DA conflict evidence gossip: ${
+          error instanceof Error ? error.message : String(error)
+        }\n`,
+      );
+    },
   });
   const payloadSource = new DaLibp2pPayloadSource({
     deploymentFingerprint: config.deploymentFingerprint,
@@ -138,6 +159,12 @@ const main = async (): Promise<void> => {
           localPeerId: daIdentity.peerId,
           attestationExchange,
           signerValidation: committeeValidation,
+          availabilityCommitmentAuthority: {
+            deploymentIdentity: config.midgardNodeDeployment.hubOraclePolicyId,
+            bondOwnerCredential:
+              config.availabilityChallenge.bondOwnerCredential,
+            responseGeometry: config.availabilityChallenge.responseGeometry,
+          },
           store,
           requestTimeoutMs: config.peerRequestTimeoutMs,
         })
@@ -151,7 +178,12 @@ const main = async (): Promise<void> => {
           store,
           coordinator: onChainCoordinator,
           peerPoller,
-          daAttestationPolicyId: config.daAttestationPolicyId,
+          availabilityCommitmentAuthority: {
+            deploymentIdentity: config.midgardNodeDeployment.hubOraclePolicyId,
+            bondOwnerCredential:
+              config.availabilityChallenge.bondOwnerCredential,
+            responseGeometry: config.availabilityChallenge.responseGeometry,
+          },
           submitterId: config.l1SubmitterId,
         });
   const l1SubmitterPreflight = config.l1SubmissionEnabled
@@ -177,6 +209,12 @@ const main = async (): Promise<void> => {
           signer,
           signerIndex: config.signerIndex,
           signerValidation,
+          availabilityCommitmentAuthority: {
+            deploymentIdentity: config.midgardNodeDeployment.hubOraclePolicyId,
+            bondOwnerCredential:
+              config.availabilityChallenge.bondOwnerCredential,
+            responseGeometry: config.availabilityChallenge.responseGeometry,
+          },
           store,
           attestationExchange,
           requestTimeoutMs: config.peerRequestTimeoutMs,
@@ -196,16 +234,101 @@ const main = async (): Promise<void> => {
     coordinator,
     submitterReconciler,
     daChainReader,
+    daLibp2pNode,
+    daPeerRegistry,
   });
   await service.initialize();
+  const availabilityRuntime = config.l1SubmissionEnabled
+    ? await availabilityResponderFromConfig(config, store, provider)
+    : undefined;
   await daLibp2pNode.start();
+
+  const runAvailabilityResponse = async (): Promise<void> => {
+    if (availabilityRuntime === undefined) return;
+    const report = await availabilityRuntime.responder.tick();
+    if (report.status !== "idle") {
+      const stream =
+        report.status === "failed" || report.status === "unavailable"
+          ? process.stderr
+          : process.stdout;
+      stream.write(
+        `${JSON.stringify({ event: "availability_responder", ...report })}\n`,
+      );
+    }
+  };
+
+  let retentionReadiness: WatcherRetentionReadinessSnapshot = {
+    status: "not_checked",
+    scanned: 0,
+    retained: 0,
+    prunable: 0,
+    alerting: 0,
+  };
+  const runRetention = async (): Promise<void> => {
+    // The live responder authenticates deployment capability. Payload deletion
+    // still needs current, finalized terminal evidence for each header.
+    const nowMs = Date.now();
+    const options = {
+      nowMs,
+      retentionDays: config.daTransport.retentionDays,
+      deploymentFingerprint: config.deploymentFingerprint,
+      minimumFinalityDepth: config.finalityDepth,
+    };
+    try {
+      const availabilityChallengeAuthority =
+        availabilityRuntime === undefined
+          ? undefined
+          : await availabilityRetentionSourceFromStore(
+              config,
+              store,
+              provider,
+              nowMs,
+            );
+      const { deadlines, prune } = await runRetentionCycle(store, {
+        ...options,
+        availabilityChallengeAuthority,
+      });
+      retentionReadiness = {
+        status: deadlines.alerting > 0 ? "alerting" : "ok",
+        checkedAt: new Date(options.nowMs).toISOString(),
+        scanned: deadlines.scanned,
+        retained: deadlines.retained,
+        prunable: deadlines.prunable,
+        alerting: deadlines.alerting,
+      };
+      if (prune.prunedHeaderHashes.length > 0) {
+        process.stdout.write(
+          `${JSON.stringify({ event: "da_retention_pruned", ...prune })}\n`,
+        );
+      }
+      if (deadlines.alerting > 0) {
+        process.stderr.write(
+          `${JSON.stringify({ event: "da_retention_deadline_alert", report: deadlines })}\n`,
+        );
+      }
+    } catch (error) {
+      retentionReadiness = {
+        status: "failed",
+        checkedAt: new Date(options.nowMs).toISOString(),
+        scanned: 0,
+        retained: 0,
+        prunable: 0,
+        alerting: 0,
+        error: error instanceof Error ? error.message : String(error),
+      };
+      throw error;
+    }
+  };
 
   if (process.argv.includes("--once")) {
     try {
       const result = await service.tick();
+      await runAvailabilityResponse();
+      await runRetention();
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     } finally {
       await daLibp2pNode.stop();
+      availabilityRuntime?.close();
       await store.close?.();
     }
     return;
@@ -220,6 +343,7 @@ const main = async (): Promise<void> => {
       service.readinessSnapshot({
         localPeerId: daIdentity.peerId,
         l1SubmitterPreflight,
+        retention: retentionReadiness,
       }),
     manifest: config.deploymentManifest,
     peerReplayWindowMs: config.peerReplayWindowMs,
@@ -232,9 +356,19 @@ const main = async (): Promise<void> => {
     `midgard-watcher listening on http://${config.apiHost}:${config.apiPort.toString()}\n`,
   );
 
+  let tickInFlight = false;
   const runTick = async (): Promise<void> => {
+    if (tickInFlight) {
+      process.stderr.write(
+        `${JSON.stringify({ event: "watcher_tick_overlap_prevented" })}\n`,
+      );
+      return;
+    }
+    tickInFlight = true;
     try {
       const result = await service.tick();
+      await runAvailabilityResponse();
+      await runRetention();
       if (result.errors.length > 0) {
         process.stderr.write(`${JSON.stringify(result)}\n`);
       }
@@ -242,14 +376,19 @@ const main = async (): Promise<void> => {
       process.stderr.write(
         `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
       );
+    } finally {
+      tickInFlight = false;
     }
   };
   await runTick();
+  // runTick contains its own error boundary and overlap guard.
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises
   const interval = setInterval(runTick, config.pollIntervalMs);
   const shutdown = async (): Promise<void> => {
     clearInterval(interval);
     await api.close();
     await daLibp2pNode.stop();
+    availabilityRuntime?.close();
     await store.close?.();
   };
   process.once("SIGINT", () => {
@@ -291,12 +430,24 @@ Usage:
   midgard-watcher l1-wallet-preflight --json   print L1 submitter wallet readiness
   midgard-watcher                              run API and polling loop
 
-Required configuration follows docs/da-payload-attestation-watcher-plan.md.
+Required configuration follows demo/da-committee-node/docs/da-committee-node-architecture.md in the repository.
 L1 submission requires L1_SUBMITTER_KEY_SOURCE for a funded Cardano wallet.
 Supported CARDANO_PROVIDER_URLS forms:
-  fixture:/path/to/state-queue.json
   blockfrost:https://cardano-preview.blockfrost.io/api/v0#PROJECT_ID
   kupmios:http://kupo:1442|http://ogmios:1337
+  fixture:/path/to/state-queue.json (tests only; requires
+    CARDANO_L1_TEST_MODE=true)
+
+L1 source modes:
+  CARDANO_L1_SOURCE_MODE=local_node
+    requires CARDANO_LOCAL_NODE_AUTHORITY_ID and
+    CARDANO_LOCAL_NODE_CHAIN_SYNC_URL=chain-sync:<provider> and
+    CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH=/durable/path/cursor.jsonl;
+    CARDANO_PROVIDER_URLS are aligned query surfaces for that node and are not
+    counted as independent providers.
+  CARDANO_L1_SOURCE_MODE=external_providers
+    requires at least two CARDANO_PROVIDER_URLS and one distinct operational
+    identity per URL in CARDANO_EXTERNAL_PROVIDER_IDENTITIES.
 `);
 };
 
