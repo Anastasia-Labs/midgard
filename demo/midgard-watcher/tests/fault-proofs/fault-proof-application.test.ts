@@ -7,6 +7,7 @@ import {
   FAMILY_APPLICATION_REGISTRY,
   type FamilyApplicationRecord,
   type FamilyApplicationWorkflowIdentity,
+  PREDECESSOR_LEDGER_PROOF_CATEGORIES,
   type ResolvedProverSigner,
   type StateQueueMutationLeaseCoordinator,
   TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES,
@@ -652,25 +653,20 @@ describe("watcher production fault-proof application V1", () => {
     }
   });
 
-  it("derives the predecessor-authority set from the records' requirements", () => {
-    // The five families of #668 that prove against the predecessor block. The
-    // decision-time check refuses a fault decision for any of them that
-    // arrives without its replay context, in the same set the shared
-    // application loop enforces at load time.
+  it("derives the predecessor-ledger set from the classifier's replay requirement", () => {
+    // The four families whose proof opens prev_utxos_root: the same set the
+    // classifier reads when it decides `predecessor_context_unavailable`.
+    // The decision-time check re-checks that invariant; it is not the
+    // records' `requires.replayContext` set, which the loop enforces at load.
     expect([...WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES].sort()).toEqual(
-      [
-        "nonExistentInput",
-        "noReferenceInput",
-        "nativeScriptDecoding",
-        "mintAuthorization",
-        "withdrawalMistag",
-      ].sort(),
+      [...PREDECESSOR_LEDGER_PROOF_CATEGORIES].sort(),
     );
-    for (const category of WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES) {
-      expect(FAMILY_APPLICATION_REGISTRY[category].requires).toContain(
-        "replayContext",
-      );
-    }
+    expect([...WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES].sort()).toEqual([
+      "minAda",
+      "missingNativeScriptUtxo",
+      "noReferenceInput",
+      "nonExistentInput",
+    ]);
   });
 
   it("reads no secret on the readiness path, and refuses secret substitution only when acting", async () => {
@@ -825,7 +821,14 @@ describe("watcher production fault-proof application V1", () => {
       }
     };
     try {
-      for (const category of WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES) {
+      const replayContextFamilies =
+        WATCHER_INSTALLED_WORKFLOW_CATEGORIES.filter((category) =>
+          FAMILY_APPLICATION_REGISTRY[category].requires.includes(
+            "replayContext",
+          ),
+        );
+      expect(replayContextFamilies).toHaveLength(5);
+      for (const category of replayContextFamilies) {
         await expect(applied(category)).rejects.toThrow(
           `${category} application requires replayContext, which the host did not supply`,
         );

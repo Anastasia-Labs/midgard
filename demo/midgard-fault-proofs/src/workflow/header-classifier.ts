@@ -62,6 +62,11 @@ import {
   type FraudProofReleaseFinalityAuthority,
   validateVerifiedFraudProofReleaseFinalityPolicy,
 } from "./release-finality-policy.js";
+import {
+  HISTORICAL_CORPUS_REPLAY_CATEGORIES,
+  launchScopeRequires,
+  PREDECESSOR_LEDGER_PROOF_CATEGORIES,
+} from "./replay-requirements.js";
 
 export const HEADER_CLASSIFIER =
   "midgard-production-header-classifier-v1" as const;
@@ -327,14 +332,9 @@ export const createHeaderClassifier = async ({
     )
       throw new Error("cross-block settlement authority changed deployment");
   }
-  const requiresHistoricalReplay = replayer.launchScope.some((category) =>
-    [
-      "resolvedOutputNonCanonical",
-      "spendInputSignerMissing",
-      "executionNativeScriptInvalid",
-      "missingNativeScriptUtxo",
-      "transitionTrace",
-    ].includes(category),
+  const requiresHistoricalReplay = launchScopeRequires(
+    replayer.launchScope,
+    HISTORICAL_CORPUS_REPLAY_CATEGORIES,
   );
   if (requiresHistoricalReplay && historicalReplayAuthority === undefined) {
     throw new Error(
@@ -782,13 +782,9 @@ export const classifyHeader = async ({
     (authority.replayer.launchScope.includes("validationTraceDispute") &&
       routed.evidence.header.prevHeaderHash !== GENESIS_HEADER_HASH) ||
     (routed.evidence.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT &&
-      authority.replayer.launchScope.some((category) =>
-        [
-          "nonExistentInput",
-          "noReferenceInput",
-          "missingNativeScriptUtxo",
-          "minAda",
-        ].includes(category),
+      launchScopeRequires(
+        authority.replayer.launchScope,
+        PREDECESSOR_LEDGER_PROOF_CATEGORIES,
       ));
   if (
     admittedReplayContext === undefined &&
@@ -853,14 +849,9 @@ export const classifyHeader = async ({
     });
   }
   if (
-    classifier.launchScope.some((category) =>
-      [
-        "resolvedOutputNonCanonical",
-        "spendInputSignerMissing",
-        "executionNativeScriptInvalid",
-        "missingNativeScriptUtxo",
-        "transitionTrace",
-      ].includes(category),
+    launchScopeRequires(
+      classifier.launchScope,
+      HISTORICAL_CORPUS_REPLAY_CATEGORIES,
     )
   ) {
     const historicalAuthority = authority.historicalReplayAuthority;

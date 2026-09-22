@@ -3,6 +3,7 @@ import { isAbsolute } from "node:path";
 
 import {
   createTransitionTraceEventAuthority,
+  PREDECESSOR_LEDGER_PROOF_CATEGORIES,
   TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
   WORKFLOW_RUNNER_FACTORIES,
 } from "@al-ft/midgard-fault-proofs";
@@ -59,6 +60,7 @@ import {
 import {
   type AuthenticatedStateQueueHeaderObservation,
   CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
+  EMPTY_MERKLE_TREE_ROOT,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
   Header,
@@ -163,14 +165,19 @@ if (
 }
 
 /**
- * The families whose record requires the predecessor replay context. The same
- * flag the shared application loop enforces at load time drives the watcher's
- * decision-time check, so the two cannot disagree.
+ * The installed families whose proof opens the challenged header's
+ * `prev_utxos_root`. The classifier decides `unprovable` for them when it
+ * lacks the authenticated predecessor; the decision-time check re-checks that
+ * invariant on every fault decision it receives, reading the same set the
+ * classifier does. A record's `requires.replayContext` is a different fact
+ * and the shared application loop enforces it at load time.
  */
 export const WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES: readonly WatcherInstalledWorkflowCategory[] =
   Object.freeze(
     WATCHER_INSTALLED_WORKFLOW_CATEGORIES.filter((category) =>
-      FAMILY_APPLICATION_REGISTRY[category].requires.includes("replayContext"),
+      (
+        PREDECESSOR_LEDGER_PROOF_CATEGORIES as readonly FraudProofCatalogueCategoryName[]
+      ).includes(category),
     ),
   );
 
@@ -1338,15 +1345,19 @@ function createApplication({
           ...(input.retries === undefined ? {} : { retries: input.retries }),
         });
         const replayContext = headerDecisionReplayContext(decision);
+        // A header committing a non-empty previous ledger can only be proved
+        // against that ledger; the genesis-ledger header (empty root) has no
+        // predecessor and the classifier forbids one.
         if (
           decision.decision === "fault_detected" &&
           WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES.includes(
             decision.category,
           ) &&
-          replayContext === undefined
+          input.observation.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT &&
+          replayContext?.predecessor === undefined
         ) {
           throw new Error(
-            `${decision.category} classifier decision omitted predecessor authority`,
+            `${decision.category} classifier decision omitted the authenticated predecessor ledger`,
           );
         }
         if (

@@ -17,6 +17,7 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import {
   type AuthenticatedStateQueueHeaderObservation,
+  EMPTY_MERKLE_TREE_ROOT,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   Header,
   type Header as HeaderType,
@@ -42,10 +43,17 @@ import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-aut
 /**
  * The classifier module is the double here; everything watcher-side runs for
  * real: the application's `classifyHeader` entry, its decision-time
- * predecessor-authority check, the retention of a decision's replay context,
+ * predecessor-ledger check, the retention of a decision's replay context,
  * and the runtime loader that hands that context to the family record whose
  * `requires` names it. The double mirrors the real module's admission
  * discipline: a decision it did not issue has no replay context to read.
+ *
+ * Two facts are under test and they are not the same set. The decision-time
+ * check guards the four families whose proof opens `prev_utxos_root`: a
+ * fault decision for one of them on a header with a non-empty previous ledger
+ * must carry the authenticated predecessor. The records' `requires.replayContext`
+ * guards the five families whose artifact re-derives from the admitted
+ * context, and the shared application loop enforces that at load time.
  */
 const classifier = vi.hoisted(() => ({
   deploymentFingerprint: "",
@@ -183,6 +191,24 @@ const queueHeader: WatcherStateQueueHeaderObservation = Object.freeze({
 });
 admitted.headers.add(queueHeader);
 
+/** The genesis-ledger block: empty previous UTxO set, so no predecessor. */
+const genesisHeader: HeaderType = {
+  ...header,
+  prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
+};
+const GENESIS_HEADER_CBOR = Data.to(genesisHeader, Header);
+const GENESIS_HEADER_HASH = computeHash28(
+  Buffer.from(GENESIS_HEADER_CBOR, "hex"),
+).toString("hex");
+const genesisQueueHeader: WatcherStateQueueHeaderObservation = Object.freeze({
+  ...queueHeader,
+  headerHash: GENESIS_HEADER_HASH,
+  headerCborHex: GENESIS_HEADER_CBOR,
+  queueOutRef: `${"1a".repeat(32)}#0`,
+  observedTransactionHash: "1b".repeat(32),
+});
+admitted.headers.add(genesisQueueHeader);
+
 const queueObservation: WatcherAuthenticatedStateQueueObservation =
   Object.freeze({
     schemaVersion: "midgard-watcher-production-state-queue-observation-v1",
@@ -207,8 +233,12 @@ const queueObservation: WatcherAuthenticatedStateQueueObservation =
         headerHash: HEADER_HASH,
         outRef: queueHeader.queueOutRef,
       }),
+      Object.freeze({
+        headerHash: GENESIS_HEADER_HASH,
+        outRef: genesisQueueHeader.queueOutRef,
+      }),
     ]),
-    finalizedHeaders: Object.freeze([queueHeader]),
+    finalizedHeaders: Object.freeze([queueHeader, genesisQueueHeader]),
     finalizedCorrectionLock: null,
     correctionLockWitnesses: Object.freeze([]),
     observationDigest: OBSERVATION_DIGEST,
@@ -231,25 +261,32 @@ const observation: AuthenticatedStateQueueHeaderObservation = Object.freeze({
   headerHash: HEADER_HASH,
   header,
 });
+const genesisObservation: AuthenticatedStateQueueHeaderObservation =
+  Object.freeze({
+    ...observation,
+    headerHash: GENESIS_HEADER_HASH,
+    header: genesisHeader,
+  });
 
 const decisionDigestFor = (category: WatcherInstalledWorkflowCategory) =>
   `${FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[category]}${"0".repeat(56)}`;
 
 /**
  * A fault decision as the classifier module would seal it, optionally
- * carrying the predecessor replay context the module retains for live
- * decisions. The context's content is opaque to the watcher: the record's
- * `requires` gate and the loader only ask whether the host supplied one.
+ * carrying the replay context the module retains for live decisions. The
+ * watcher reads one field of it, `predecessor`, at decision time; the record's
+ * `requires` gate and the loader only ask whether the host supplied a context.
  */
 const issue = (
   category: WatcherInstalledWorkflowCategory,
   replayContext: CompleteCanonicalReplayContext | undefined,
+  headerHash: string = HEADER_HASH,
 ): HeaderDecision => {
   const decision: HeaderDecision = Object.freeze({
     schemaVersion: "midgard-production-header-decision-v1",
     classifierVersion: "midgard-production-header-classifier-v1",
     deploymentFingerprint: DEPLOYMENT,
-    headerHash: HEADER_HASH,
+    headerHash,
     authenticatedObservationDigest: OBSERVATION_DIGEST,
     payloadEnvelopeSha256: "26".repeat(32),
     payloadSha256: "27".repeat(32),
@@ -271,7 +308,14 @@ const issue = (
   return decision;
 };
 
-const PREDECESSOR_CONTEXT = Object.freeze({}) as CompleteCanonicalReplayContext;
+/** A context carrying the authenticated predecessor; its content is opaque here. */
+const PREDECESSOR_CONTEXT = Object.freeze({
+  predecessor: Object.freeze({}),
+}) as unknown as CompleteCanonicalReplayContext;
+/** A context the classifier attached for another reason (settlements, events). */
+const CONTEXT_WITHOUT_PREDECESSOR = Object.freeze(
+  {},
+) as CompleteCanonicalReplayContext;
 
 const rawConfig = () => ({
   schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
@@ -404,6 +448,14 @@ const transportFactory = () => {
 };
 
 const PREDECESSOR_FAMILIES = WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES;
+const REPLAY_CONTEXT_FAMILIES = WATCHER_INSTALLED_WORKFLOW_CATEGORIES.filter(
+  (category) =>
+    FAMILY_APPLICATION_REGISTRY[category].requires.includes("replayContext"),
+);
+/** Artifact re-derives from the context, but tolerates an absent predecessor. */
+const REPLAY_CONTEXT_ONLY_FAMILIES = REPLAY_CONTEXT_FAMILIES.filter(
+  (category) => !PREDECESSOR_FAMILIES.includes(category),
+);
 // The dispute family's decision path continues into transcript capture,
 // which the replay-capture tests exercise against a real event runtime.
 const OTHER_FAMILIES = WATCHER_INSTALLED_WORKFLOW_CATEGORIES.filter(
@@ -412,7 +464,7 @@ const OTHER_FAMILIES = WATCHER_INSTALLED_WORKFLOW_CATEGORIES.filter(
     category !== "validationTraceDispute",
 );
 
-describe("watcher decision-time predecessor authority", () => {
+describe("watcher decision-time predecessor ledger", () => {
   let directory: string;
   let configPath: string;
   let deps: WatcherFaultProofApplicationDependencies;
@@ -472,14 +524,20 @@ describe("watcher decision-time predecessor authority", () => {
     await rm(directory, { recursive: true, force: true });
   });
 
-  const classify = async (decision: HeaderDecision) => {
+  const classify = async (
+    decision: HeaderDecision,
+    subject: Readonly<{
+      observation: AuthenticatedStateQueueHeaderObservation;
+      header: WatcherStateQueueHeaderObservation;
+    }> = { observation, header: queueHeader },
+  ) => {
     classifier.respond = () => decision;
     try {
       return await application.classifyHeader({
         runtimeConfigPath: configPath,
-        observation,
+        observation: subject.observation,
         stateQueueObservation: queueObservation,
-        header: queueHeader,
+        header: subject.header,
         authenticatedObservationDigest: OBSERVATION_DIGEST,
       });
     } finally {
@@ -556,24 +614,41 @@ describe("watcher decision-time predecessor authority", () => {
     }
   };
 
+  const REFUSAL = (category: string) =>
+    `${category} classifier decision omitted the authenticated predecessor ledger`;
+
   it.each(PREDECESSOR_FAMILIES)(
-    "refuses a %s fault decision that omits predecessor authority, and retains nothing for its runner",
+    "refuses a %s fault decision that carries no replay context, and retains nothing for its runner",
     async (category) => {
       const callsBefore = classifier.calls;
       await expect(classify(issue(category, undefined))).rejects.toThrow(
-        `${category} classifier decision omitted predecessor authority`,
+        REFUSAL(category),
       );
       expect(classifier.calls).toBe(callsBefore + 1);
-      // The refused decision left no replay context behind: the family's
-      // record, applied for that decision digest, refuses at its own gate.
-      await expect(applyRecordFor(category)).rejects.toThrow(
-        `${category} application requires replayContext, which the host did not supply`,
-      );
+      // The refused decision left no replay context behind. Two of these
+      // families also require the context at load and refuse there; the
+      // other two are applied, which is why the decision-time check exists.
+      if (REPLAY_CONTEXT_FAMILIES.includes(category)) {
+        await expect(applyRecordFor(category)).rejects.toThrow(
+          `${category} application requires replayContext, which the host did not supply`,
+        );
+      } else {
+        await expect(applyRecordFor(category)).resolves.toBeDefined();
+      }
     },
   );
 
   it.each(PREDECESSOR_FAMILIES)(
-    "admits a %s fault decision with predecessor authority and hands the context to the family at load time",
+    "refuses a %s fault decision whose replay context lacks the predecessor",
+    async (category) => {
+      await expect(
+        classify(issue(category, CONTEXT_WITHOUT_PREDECESSOR)),
+      ).rejects.toThrow(REFUSAL(category));
+    },
+  );
+
+  it.each(PREDECESSOR_FAMILIES)(
+    "admits a %s fault decision with the predecessor and hands the context to the family at load time",
     async (category) => {
       const decision = issue(category, PREDECESSOR_CONTEXT);
       await expect(classify(decision)).resolves.toBe(decision);
@@ -588,7 +663,32 @@ describe("watcher decision-time predecessor authority", () => {
     },
   );
 
-  it("admits every other installed family's fault decision without predecessor authority", async () => {
+  it.each(PREDECESSOR_FAMILIES)(
+    "admits a %s fault decision on the genesis-ledger header without a predecessor",
+    async (category) => {
+      const decision = issue(category, undefined, GENESIS_HEADER_HASH);
+      await expect(
+        classify(decision, {
+          observation: genesisObservation,
+          header: genesisQueueHeader,
+        }),
+      ).resolves.toBe(decision);
+      application.retainDecisionAuthorities(null);
+    },
+  );
+
+  it.each(REPLAY_CONTEXT_ONLY_FAMILIES)(
+    "admits a %s fault decision without a context at decision time; its record refuses at load",
+    async (category) => {
+      const decision = issue(category, undefined);
+      await expect(classify(decision)).resolves.toBe(decision);
+      await expect(applyRecordFor(category)).rejects.toThrow(
+        `${category} application requires replayContext, which the host did not supply`,
+      );
+    },
+  );
+
+  it("admits every other installed family's fault decision without a replay context", async () => {
     expect(OTHER_FAMILIES).toHaveLength(
       WATCHER_INSTALLED_WORKFLOW_CATEGORIES.length -
         PREDECESSOR_FAMILIES.length -
