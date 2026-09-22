@@ -6,6 +6,7 @@ import {
   completeCanonicalReplayPredecessorEvidence,
 } from "../workflow/complete-replay.js";
 import {
+  journalJsonDigest,
   type JournalJsonObject,
   normalizeJournalJson,
 } from "../workflow/journal.js";
@@ -27,7 +28,7 @@ export const MINT_AUTHORIZATION_ARTIFACT =
   "midgard-mint-authorization-workflow-artifact-v1";
 
 /** Serialized material is only a preimage; replay rederives the entire claim. */
-export const admitMintAuthorizationWorkflowArtifact = async (
+const deriveMintAuthorizationWorkflowArtifact = async (
   value: JournalJsonObject,
 ) => {
   const record = exactJournalRecord(
@@ -101,6 +102,42 @@ export const admitMintAuthorizationWorkflowArtifact = async (
   if (prepared === undefined)
     throw new Error("mint authorization: artifact does not prove a fault");
   return prepared;
+};
+
+// Admission is a pure function of the artifact record, and a running workflow
+// admits the same artifact several times per cursor action (capture, both
+// field-carriage requirements, the proof chunk). Re-deriving the DA payload
+// and the claim scan each time dominated long native-policy workflows, so the
+// derivation is retained for the few artifacts one prover process works on.
+const ADMITTED_ARTIFACT_LIMIT = 4;
+const admittedArtifacts = new Map<
+  string,
+  ReturnType<typeof deriveMintAuthorizationWorkflowArtifact>
+>();
+
+export const admitMintAuthorizationWorkflowArtifact = (
+  value: JournalJsonObject,
+): ReturnType<typeof deriveMintAuthorizationWorkflowArtifact> => {
+  const key = journalJsonDigest(normalizeJournalJson(value));
+  const known = admittedArtifacts.get(key);
+  if (known !== undefined) {
+    admittedArtifacts.delete(key);
+    admittedArtifacts.set(key, known);
+    return known;
+  }
+  const derived = deriveMintAuthorizationWorkflowArtifact(value);
+  admittedArtifacts.set(key, derived);
+  derived.catch(() => {
+    // A failed admission is not retained: the next caller re-derives and
+    // observes the failure itself, as it would have without the cache.
+    if (admittedArtifacts.get(key) === derived) admittedArtifacts.delete(key);
+  });
+  while (admittedArtifacts.size > ADMITTED_ARTIFACT_LIMIT) {
+    const oldest = admittedArtifacts.keys().next().value;
+    if (oldest === undefined) break;
+    admittedArtifacts.delete(oldest);
+  }
+  return derived;
 };
 
 export const prepareMintAuthorizationWorkflowArtifact = async ({

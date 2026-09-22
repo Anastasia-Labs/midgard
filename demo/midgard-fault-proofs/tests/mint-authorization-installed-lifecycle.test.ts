@@ -192,7 +192,11 @@ describe("mintAuthorization installed cursor actuator", () => {
       const present =
         !name.startsWith("absent") && name !== "cancel-witness-scan";
       const scenario = { name, item: Buffer.alloc(0) };
-      const h = await makeMintAuthorizationEmulatorHarness();
+      // None of these lifecycles sits at the memory limit, so the faster
+      // Aiken/WASM evaluator is safe here; see the harness option's note.
+      const h = await makeMintAuthorizationEmulatorHarness({
+        useScalusEvaluator: false,
+      });
       const nativePayload =
         name === "maximum-native-signers"
           ? Buffer.from(

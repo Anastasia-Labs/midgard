@@ -242,12 +242,39 @@ const resolveSeedSigner = (
     addressType: "Enterprise",
     network,
   });
+  // `selectWallet.fromSeed` re-derives the whole BIP32 tree (PBKDF2 and four
+  // hardened derivations, tens of milliseconds) every time it is called, and
+  // every submit helper calls it. A wallet selected from this seed on a given
+  // Lucid instance is a pure function of (seed, provider), so once one exists
+  // and is still the instance's current wallet, reuse it. The only mutable
+  // state a fresh wallet would reset is the UTxO override pin, which is
+  // cleared explicitly so the observable behaviour is that of a new wallet.
+  const selected = new WeakMap<
+    LucidEvolution,
+    { readonly wallet: unknown; readonly provider: unknown }
+  >();
   return {
     source,
     address: wallet.address,
     paymentKeyHash: paymentKeyHashFromAddress(wallet.address),
-    selectWallet: (lucid) =>
-      lucid.selectWallet.fromSeed(seedPhrase, { addressType: "Enterprise" }),
+    selectWallet: (lucid) => {
+      const previous = selected.get(lucid);
+      const currentWallet = lucid.wallet();
+      if (
+        previous !== undefined &&
+        currentWallet !== undefined &&
+        previous.wallet === currentWallet &&
+        previous.provider === lucid.config().provider
+      ) {
+        lucid.clearUTxOOverride();
+        return;
+      }
+      lucid.selectWallet.fromSeed(seedPhrase, { addressType: "Enterprise" });
+      selected.set(lucid, {
+        wallet: lucid.wallet(),
+        provider: lucid.config().provider,
+      });
+    },
   };
 };
 

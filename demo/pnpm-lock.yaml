@@ -665,6 +665,9 @@ importers:
       '@harmoniclabs/crypto':
         specifier: ^0.3.0
         version: 0.3.0
+      '@lucid-evolution/uplc':
+        specifier: 0.2.23
+        version: 0.2.23
       '@noble/hashes':
         specifier: ^2.0.1
         version: 2.2.0

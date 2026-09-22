@@ -1,4 +1,4 @@
-import { encodeMidgardFieldPreimage } from "@al-ft/midgard-core";
+import { computeHash32, encodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import {
   MintAuthorizationEvaluateDatum,
   type MintAuthorizationEvaluateSpendRedeemer as EvaluateRedeemer,
@@ -29,7 +29,8 @@ import {
 } from "../workflow/transaction-boundary.js";
 import type { MintAuthorizationContracts } from "./contracts.js";
 import {
-  mintAuthorizationEvaluationBatches,
+  createMintAuthorizationEvaluationBatchIndex,
+  type MintAuthorizationEvaluationBatch,
   mintAuthorizationEvaluationPreimage,
 } from "./evaluate.js";
 import {
@@ -37,6 +38,48 @@ import {
   requireMintAuthorizationStepState,
   requireMintAuthorizationThreadUtxo,
 } from "./submit-common.js";
+
+// The batch derivation is a pure function of the retained policy bytes and the
+// authenticated initial state, but a workflow reaches this step once per
+// batch. Replaying the derivation from the start on each call made the
+// evaluator quadratic in policy size, so the index is kept across calls for the
+// few policies a prover process works on concurrently.
+const EVALUATION_BATCH_INDEX_LIMIT = 8;
+const evaluationBatchIndexes = new Map<
+  string,
+  ReturnType<typeof createMintAuthorizationEvaluationBatchIndex>
+>();
+const evaluationBatchIndex = ({
+  key,
+  initial,
+  bytes,
+  encodeState,
+}: {
+  readonly key: string;
+  readonly initial: MintAuthorizationEvaluateState;
+  readonly bytes: Buffer;
+  readonly encodeState: (state: MintAuthorizationEvaluateState) => string;
+}) => {
+  const known = evaluationBatchIndexes.get(key);
+  if (known !== undefined) {
+    // Refresh recency so the most recently used policies survive eviction.
+    evaluationBatchIndexes.delete(key);
+    evaluationBatchIndexes.set(key, known);
+    return known;
+  }
+  const created = createMintAuthorizationEvaluationBatchIndex(
+    initial,
+    bytes,
+    encodeState,
+  );
+  evaluationBatchIndexes.set(key, created);
+  while (evaluationBatchIndexes.size > EVALUATION_BATCH_INDEX_LIMIT) {
+    const oldest = evaluationBatchIndexes.keys().next().value;
+    if (oldest === undefined) break;
+    evaluationBatchIndexes.delete(oldest);
+  }
+  return created;
+};
 
 export const submitMintAuthorizationEvaluate = async ({
   lucid,
@@ -117,28 +160,19 @@ export const submitMintAuthorizationEvaluate = async ({
     { fraud_prover: signer.paymentKeyHash, data: state },
     MintAuthorizationEvaluateDatum,
   );
-  let batch:
-    | (ReturnType<typeof mintAuthorizationEvaluationBatches> extends Generator<
-        infer Batch
-      >
-        ? Batch
-        : never)
-    | undefined;
+  let batch: MintAuthorizationEvaluationBatch | undefined;
   if (!terminal) {
-    for (const candidate of mintAuthorizationEvaluationBatches(
+    const encodeState = (candidate: MintAuthorizationEvaluateState): string =>
+      Data.to(
+        { fraud_prover: signer.paymentKeyHash, data: candidate },
+        MintAuthorizationEvaluateDatum,
+      );
+    batch = evaluationBatchIndex({
+      key: `${computeHash32(bytes).toString("hex")}:${encodeState(initial)}`,
       initial,
       bytes,
-    )) {
-      if (
-        Data.to(
-          { fraud_prover: signer.paymentKeyHash, data: candidate.before },
-          MintAuthorizationEvaluateDatum,
-        ) === encodedState
-      ) {
-        batch = candidate;
-        break;
-      }
-    }
+      encodeState,
+    }).find(encodedState);
   }
   if (!terminal && batch === undefined)
     throw new Error(

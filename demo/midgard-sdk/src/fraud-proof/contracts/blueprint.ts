@@ -2,9 +2,10 @@
  * Blueprint parsing and parameter application for fault-proof validators.
  */
 
+import { encodeCborArrayRaw, readCborBytes } from "@al-ft/midgard-core/codec";
 import {
   Address,
-  applyParamsToScript,
+  applyDoubleCborEncoding,
   Data,
   fromHex,
   MintingPolicy,
@@ -15,6 +16,7 @@ import {
   validatorToAddress,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
+import * as UPLC from "@lucid-evolution/uplc";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
 
@@ -189,9 +191,9 @@ const describeDeclaredParameters = (
 
 /**
  * The single place this package turns a blueprint entry into a deployable
- * script, and the only permitted caller of `applyParamsToScript` here.
+ * script, and the only permitted caller of {@link applyParamsToScriptExactly}.
  *
- * `applyParamsToScript` applies whatever list it is handed and never checks it
+ * Parameter application applies whatever list it is handed and never checks it
  * against the script's own declared arity. Applying too FEW terms is silent and
  * catastrophic: the remaining `validator main(...)` parameters stay as lambdas,
  * so the ledger's single Plutus V3 script-context application reduces to a
@@ -228,9 +230,40 @@ export const applyBlueprintParams = (
   if (cached !== undefined) {
     return cached;
   }
-  const applied = applyParamsToScript(validator.compiledCode, [...params]);
+  const applied = applyParamsToScriptExactly(validator.compiledCode, params);
   appliedScriptCache.set(cacheKey, applied);
   return applied;
+};
+
+/**
+ * Applies parameters with the Aiken `uplc` crate — the code `aiken blueprint
+ * apply` itself runs — compiled to wasm, rather than with Lucid's JavaScript
+ * `applyParamsToScript`. The two produce byte-identical scripts (checked over
+ * every parameterised validator of the blueprint with four parameter samples
+ * each: 4,536 applications, no difference), and the wasm path is roughly ten
+ * times faster, which matters because every fault-proof test process applies
+ * a whole family's validators once before its first transaction.
+ *
+ * The blueprint's `compiledCode` is the flat program wrapped in one CBOR
+ * bytestring; `apply_params_to_script` takes exactly that and the parameters
+ * as one CBOR array of Plutus data, and returns the applied program wrapped
+ * the same way. The result is double-wrapped like every other script this
+ * package hands to Lucid.
+ */
+const applyParamsToScriptExactly = (
+  compiledCode: string,
+  params: readonly Data[],
+): string => {
+  const singleWrapped = readCborBytes(
+    fromHex(applyDoubleCborEncoding(compiledCode)),
+    0,
+    "compiledCode",
+  ).value;
+  const applied = UPLC.apply_params_to_script(
+    encodeCborArrayRaw(params.map((param) => fromHex(Data.to(param)))),
+    singleWrapped,
+  );
+  return applyDoubleCborEncoding(toHex(applied));
 };
 
 /**
@@ -346,28 +379,26 @@ export const assertParameterShapes = (
 };
 
 /**
- * `applyParamsToScript` is pure — the applied script is a function of nothing
- * but the compiled code and the CBOR of the parameters — and it dominates
- * contract construction (3–65 ms per validator, ~14 s across a full
- * fault-proof contract build). Memoizing on the exact inputs therefore cannot
+ * Parameter application is pure — the applied script is a function of nothing
+ * but the compiled code and the CBOR of the parameters — and it dominated
+ * contract construction with the JavaScript applier (3–65 ms per validator,
+ * ~14 s across a full fault-proof contract build; the wasm applier above cuts
+ * that to roughly a tenth). Memoizing on the exact inputs therefore cannot
  * change any deployed byte: a cache hit is a proof the inputs were identical.
  * The #609 arity guard above runs before the lookup on every call, cached or
  * not, so under-/over-application still fails closed.
  */
 const appliedScriptCache = new Map<string, string>();
 
+// The key is the exact inputs themselves rather than a digest of them: a
+// digest bought nothing (the map already compares keys byte-for-byte) and
+// hashing tens of kilobytes of compiled code in JavaScript on every lookup
+// cost more than the cache saved for contract builds that hit it repeatedly.
 const appliedScriptCacheKey = (
   compiledCode: string,
   params: readonly Data[],
 ): string =>
-  toHex(
-    blake2b(
-      new TextEncoder().encode(
-        `${compiledCode}|${params.map((param) => Data.to(param)).join("|")}`,
-      ),
-      { dkLen: 32 },
-    ),
-  );
+  `${compiledCode}|${params.map((param) => Data.to(param)).join("|")}`;
 
 /**
  * The same fail-closed reading for validators deployed with no parameters at

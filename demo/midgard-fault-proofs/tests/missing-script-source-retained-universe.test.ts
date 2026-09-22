@@ -33,7 +33,6 @@ import {
   outRefFromByte,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
-import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -373,7 +372,6 @@ describe("missingScriptSource retained ScriptSources universe", () => {
       });
       const harness = await makeFaultProofEmulatorHarness({
         contractOptions: { alwaysFraudProofCatalogue: true },
-        lucidOptions: { evaluator: createScalusEvaluator() },
       });
       const paymentCredential = getAddressDetails(
         harness.contracts.fraudProof.spendingScriptAddress,

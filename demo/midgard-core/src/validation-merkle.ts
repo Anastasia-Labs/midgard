@@ -269,6 +269,44 @@ export const buildMidgardValidationMerkleMembershipIndex = (
   };
 };
 
+type MemoizedMidgardValidationMerkleMembershipIndex = {
+  leaves: readonly Buffer[];
+  index: MidgardValidationMerkleMembershipIndex;
+};
+
+// Callers typically request memberships for many leaves of one leaf list in
+// a row (every asset of an output, every child of a CEK frame). Rebuilding
+// the peak levels per request made those loops quadratic in the leaf count,
+// so the precomputed index is memoized per leaf array. The cache is keyed by
+// array identity but re-validated byte-for-byte against the current contents,
+// so a mutated array refolds instead of serving a stale index.
+const membershipIndexes = new WeakMap<
+  readonly Uint8Array[],
+  MemoizedMidgardValidationMerkleMembershipIndex
+>();
+
+const memoizedMembershipIndex = (
+  leafHashes: readonly Uint8Array[],
+): MidgardValidationMerkleMembershipIndex => {
+  const known = membershipIndexes.get(leafHashes);
+  if (
+    known !== undefined &&
+    known.leaves.length === leafHashes.length &&
+    known.leaves.every((leaf, index) => {
+      const current = leafHashes[index]!;
+      return current.length === 32 && leaf.equals(current);
+    })
+  ) {
+    return known.index;
+  }
+  const leaves = leafHashes.map((leaf, index) =>
+    Buffer.from(ensureHash32(leaf, `validation_merkle.leaves[${index}]`)),
+  );
+  const index = buildMidgardValidationMerkleMembershipIndex(leaves);
+  membershipIndexes.set(leafHashes, { leaves, index });
+  return index;
+};
+
 export const buildMidgardValidationMerkleMembership = (
   leafHashes: readonly Uint8Array[],
   leafIndex: number,
@@ -280,34 +318,7 @@ export const buildMidgardValidationMerkleMembership = (
   ) {
     throw new Error("validation Merkle membership leaf index is out of range");
   }
-  const leaves = leafHashes.map((leaf, index) =>
-    ensureHash32(leaf, `validation_merkle.leaves[${index}]`),
-  );
-  const frontier = buildMidgardValidationMerkleFrontier(leaves);
-  const location = locatePeak(leaves.length, leafIndex);
-  let localIndex = leafIndex - location.start;
-  let level = leaves.slice(
-    location.start,
-    location.start + 2 ** location.height,
-  );
-  const siblings: Hash32[] = [];
-  while (level.length > 1) {
-    siblings.push(level[localIndex ^ 1]!);
-    const next: Hash32[] = [];
-    for (let index = 0; index < level.length; index += 2) {
-      next.push(
-        hashMidgardValidationMerkleBranch(level[index]!, level[index + 1]!),
-      );
-    }
-    localIndex = Math.floor(localIndex / 2);
-    level = next;
-  }
-  return {
-    frontier,
-    leafIndex,
-    leafHash: leaves[leafIndex]!,
-    siblings,
-  };
+  return memoizedMembershipIndex(leafHashes).membershipAt(leafIndex);
 };
 
 export const verifyMidgardValidationMerkleMembership = (

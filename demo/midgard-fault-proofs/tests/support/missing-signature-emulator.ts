@@ -154,12 +154,13 @@ export const buildMissingSignatureSubject = ({
 };
 
 export const makeMissingSignatureEmulatorHarness = async ({
-  useScalusEvaluator = true,
+  useScalusEvaluator = false,
 }: {
   /**
-   * Scalus avoids the Aiken/WASM arena leak on the multi-scan frontier. Small
-   * adversarial tests may opt out so the legacy shared refusal guard observes
-   * the emulator's canonical `failed script execution` submission error.
+   * The default Aiken/WASM evaluator is the faster of the two by a wide
+   * margin on the multi-scan frontier and, since `@lucid-evolution/uplc`
+   * 0.2.23, no longer leaks its arena per evaluation. Scalus remains
+   * available for measurements that want a second evaluator's reading.
    */
   readonly useScalusEvaluator?: boolean;
 } = {}) => {
@@ -168,10 +169,7 @@ export const makeMissingSignatureEmulatorHarness = async ({
       realMissingSignature: true,
       alwaysFraudProofCatalogue: true,
     },
-    // The default Aiken/WASM adapter grows one unreclaimable linear-memory
-    // arena per evaluation. The maximum 318-witness lifecycle necessarily
-    // evaluates ten step-04 transactions, so use the repository's production
-    // Scalus adapter for Lucid's preflight; Emulator still independently runs
+    // Lucid's preflight evaluator only; Emulator still independently runs
     // every submitted script through phase two.
     ...(useScalusEvaluator
       ? { lucidOptions: { evaluator: createScalusEvaluator() } }

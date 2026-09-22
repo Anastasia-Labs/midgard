@@ -415,9 +415,16 @@ export const makeMintAuthorizationEmulatorHarness = async ({
   useScalusEvaluator = true,
 }: {
   /**
-   * Scalus avoids the Aiken/WASM arena leak on multi-step lifecycles. Small
-   * adversarial tests may opt out so the legacy shared refusal guard observes
-   * the emulator's canonical `failed script execution` submission error.
+   * Scalus stays the default because two size-at-maximum cases
+   * (`mint-authorization-maximum-lifecycle`, direction B of
+   * `submit-init-emulator-mint-authorization-size-forced-carriage`) are
+   * calibrated against its budget reading: the Aiken/WASM evaluator reports
+   * the same spend roughly 3.5k memory units OVER `maxTxExMem`, so the two
+   * evaluators disagree at the limit and the disagreement is an open owner
+   * question, not something a harness default may paper over. Long
+   * lifecycles that are not at the memory limit opt into Aiken/WASM, which
+   * is 2–3× faster and, since `@lucid-evolution/uplc` 0.2.23, no longer
+   * leaks its arena per evaluation.
    */
   readonly useScalusEvaluator?: boolean;
 } = {}) => {

@@ -134,6 +134,17 @@ import {
   type SyntheticUserEventBlock,
 } from "../support/user-event-origin-fixture.js";
 
+// Vitest's structural `toEqual` walks byte arrays element by element through
+// its generic iterable-equality path, which costs seconds per megabyte on
+// archive objects. Compare bytes as bytes.
+const expectSameArchiveBytes = (
+  actual: Uint8Array | null,
+  expected: Uint8Array,
+): void => {
+  expect(actual).not.toBeNull();
+  expect(Buffer.compare(actual!, expected), "archive bytes differ").toBe(0);
+};
+
 const sha256 = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
 const h32 = (byte: string): string => byte.repeat(32);
@@ -1493,7 +1504,7 @@ describe("explicit local user-event semantic recovery (synthetic local blocks)",
       ]);
       expect(third.resumed.read().cursor).toEqual(successorBlock.point);
       for (const [digest, bytes] of originalObjects) {
-        expect(await durable.archive.read(digest)).toEqual(bytes);
+        expectSameArchiveBytes(await durable.archive.read(digest), bytes);
         expect(
           third.resumed.read().checkpoint!.requiredArchiveDigests,
         ).toContain(digest);
@@ -1612,7 +1623,7 @@ describe("explicit local user-event semantic recovery (synthetic local blocks)",
         "fresh semantic replay differs from the archived event fold",
       );
       for (const [digest, bytes] of originalObjects)
-        expect(await durable.archive.read(digest)).toEqual(bytes);
+        expectSameArchiveBytes(await durable.archive.read(digest), bytes);
     } finally {
       await fixture.close();
     }
@@ -1907,7 +1918,9 @@ describe("local user-event materialized history (synthetic local blocks)", () =>
       durable.interruptNextReadBack();
       releaseWrite();
       await expect(rotating).rejects.toThrow();
-      expect(publisher.read().store).toEqual(before.store);
+      expect(watcherCanonicalJson(publisher.read().store)).toBe(
+        watcherCanonicalJson(before.store),
+      );
       await expect(publisher.rotate(anchorPair)).rejects.toThrow(
         "trusted-head read-back differs",
       );
@@ -2098,7 +2111,7 @@ describe("local user-event materialized history (synthetic local blocks)", () =>
       });
       await freshHead.close();
       for (const [digest, bytes] of originalObjects)
-        expect(await durable.archive.read(digest)).toEqual(bytes);
+        expectSameArchiveBytes(await durable.archive.read(digest), bytes);
       const nextBlock = await fixture.makeBlock({
         parent: head,
         transactions: [],

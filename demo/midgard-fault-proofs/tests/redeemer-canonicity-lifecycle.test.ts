@@ -10,7 +10,6 @@ import {
   forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
-import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import { describe, expect, it } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
@@ -162,7 +161,6 @@ describe("redeemer-canonicity accepted lifecycle", () => {
         realRedeemerCanonicity: true,
         alwaysFraudProofCatalogue: true,
       },
-      lucidOptions: { evaluator: createScalusEvaluator() },
     });
     const contracts = familyContracts(harness);
     const category = harness.catalogue.categories.redeemerCanonicity;

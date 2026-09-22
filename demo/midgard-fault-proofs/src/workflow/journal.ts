@@ -351,12 +351,6 @@ const validateWorkflowId = (workflowId: string): void => {
   }
 };
 
-const sameIdentity = (
-  left: FraudProofWorkflowIdentity,
-  right: FraudProofWorkflowIdentity,
-): boolean =>
-  computeFraudProofWorkflowId(left) === computeFraudProofWorkflowId(right);
-
 const requireRecord = (
   value: unknown,
   label: string,
@@ -411,20 +405,42 @@ const requireOptionalExactKeys = (
   return record;
 };
 
-export const validateFraudProofWorkflowJournal = ({
+/**
+ * The journal validator as a left fold: `push` accepts the next entry or
+ * throws, carrying the same protocol state (open intents, confirmed hashes,
+ * attempt counters) between calls that the whole-journal validator threads
+ * through its loop. Pushing entries 0..n one at a time is exactly validating
+ * the n+1-entry journal; the stores lean on that to validate each append
+ * against retained state instead of refolding the whole history, which is
+ * what made a long-running workflow's appends quadratic.
+ *
+ * A fold that has thrown is poisoned: the failed entry may have mutated part
+ * of the state before the check that rejected it. Discard it and refold from
+ * the durable entries.
+ */
+export type FraudProofWorkflowJournalFold = Readonly<{
+  /** Number of entries accepted so far, which is also the next sequence. */
+  readonly length: number;
+  push(entry: FraudProofWorkflowJournalEntry): void;
+}>;
+
+export const createFraudProofWorkflowJournalFold = ({
   workflowId,
-  entries,
   expectedIdentity,
 }: {
   readonly workflowId: string;
-  readonly entries: readonly FraudProofWorkflowJournalEntry[];
   readonly expectedIdentity?: FraudProofWorkflowIdentity;
-}): readonly FraudProofWorkflowJournalEntry[] => {
+}): FraudProofWorkflowJournalFold => {
   validateWorkflowId(workflowId);
-  const normalizedExpected =
-    expectedIdentity === undefined
-      ? undefined
-      : normalizeFraudProofWorkflowIdentity(expectedIdentity);
+  // Every accepted entry's identity derives `workflowId` (checked below), so
+  // an entry matches the requested identity exactly when the requested
+  // identity derives the same id. Hashing it once here replaces a pair of
+  // identity hashes per entry.
+  const expectedIdentityMatches =
+    expectedIdentity === undefined ||
+    computeFraudProofWorkflowId(
+      normalizeFraudProofWorkflowIdentity(expectedIdentity),
+    ) === workflowId;
   const latestPreflightByAction = new Map<
     string,
     Extract<
@@ -459,7 +475,11 @@ export const validateFraudProofWorkflowJournal = ({
       throw new Error(`${field} must be a canonical transaction outRef`);
     }
   };
-  entries.forEach((entry, sequence) => {
+  let length = 0;
+  const step = (
+    entry: FraudProofWorkflowJournalEntry,
+    sequence: number,
+  ): void => {
     if (completed) {
       throw new Error("journal contains an event after terminal completion");
     }
@@ -520,10 +540,7 @@ export const validateFraudProofWorkflowJournal = ({
         `journal entry ${sequence.toString()} identity does not derive workflowId`,
       );
     }
-    if (
-      normalizedExpected !== undefined &&
-      !sameIdentity(entry.identity, normalizedExpected)
-    ) {
+    if (!expectedIdentityMatches) {
       throw new Error(
         `journal entry ${sequence.toString()} does not match requested workflow identity`,
       );
@@ -1031,45 +1048,109 @@ export const validateFraudProofWorkflowJournal = ({
     throw new Error(
       `journal entry ${sequence.toString()} has unknown event kind: ${String(eventRecord.kind)}`,
     );
+  };
+  return {
+    get length() {
+      return length;
+    },
+    push(entry) {
+      step(entry, length);
+      length += 1;
+    },
+  };
+};
+
+export const validateFraudProofWorkflowJournal = ({
+  workflowId,
+  entries,
+  expectedIdentity,
+}: {
+  readonly workflowId: string;
+  readonly entries: readonly FraudProofWorkflowJournalEntry[];
+  readonly expectedIdentity?: FraudProofWorkflowIdentity;
+}): readonly FraudProofWorkflowJournalEntry[] => {
+  const fold = createFraudProofWorkflowJournalFold({
+    workflowId,
+    expectedIdentity,
   });
+  for (const entry of entries) fold.push(entry);
   return entries;
+};
+
+/**
+ * A validated journal prefix together with the fold that accepted it, so the
+ * next append validates one entry against retained state.
+ */
+type ValidatedJournal = {
+  readonly entries: FraudProofWorkflowJournalEntry[];
+  readonly fold: FraudProofWorkflowJournalFold;
+};
+
+const foldJournal = (
+  workflowId: string,
+  entries: readonly FraudProofWorkflowJournalEntry[],
+): ValidatedJournal => {
+  const fold = createFraudProofWorkflowJournalFold({ workflowId });
+  for (const entry of entries) fold.push(entry);
+  return { entries: [...entries], fold };
+};
+
+/**
+ * Validates `entry` as the next entry of `journal`. Appending an entry whose
+ * identity does not derive the workflow id fails inside the fold, which is
+ * the same rejection the whole-journal validator reaches through its
+ * requested-identity check. The fold is poisoned when `push` throws, so the
+ * caller must drop the cached journal on failure.
+ */
+const pushValidated = (
+  journal: ValidatedJournal,
+  entry: FraudProofWorkflowJournalEntry,
+): void => {
+  journal.fold.push(entry);
+  journal.entries.push(entry);
 };
 
 /** In-memory store with optimistic sequence checks, useful for embedded use. */
 export class MemoryFraudProofWorkflowJournalStore
   implements FraudProofWorkflowJournalStore
 {
-  private readonly entriesByWorkflow = new Map<
-    string,
-    FraudProofWorkflowJournalEntry[]
-  >();
+  private readonly journalsByWorkflow = new Map<string, ValidatedJournal>();
 
   async load(
     workflowId: string,
   ): Promise<readonly FraudProofWorkflowJournalEntry[]> {
     validateWorkflowId(workflowId);
-    return [...(this.entriesByWorkflow.get(workflowId) ?? [])];
+    return [...(this.journalsByWorkflow.get(workflowId)?.entries ?? [])];
   }
 
   async append(
     entry: FraudProofWorkflowJournalEntry,
     expectedSequence: number,
   ): Promise<void> {
-    const current = this.entriesByWorkflow.get(entry.workflowId) ?? [];
+    const current = this.journalsByWorkflow.get(entry.workflowId);
+    const currentLength = current?.entries.length ?? 0;
     if (
-      current.length !== expectedSequence ||
+      currentLength !== expectedSequence ||
       entry.sequence !== expectedSequence
     ) {
       throw new ConcurrentFraudProofWorkflowWriteError(
-        `journal sequence changed: expected=${expectedSequence.toString()} actual=${current.length.toString()}`,
+        `journal sequence changed: expected=${expectedSequence.toString()} actual=${currentLength.toString()}`,
       );
     }
-    validateFraudProofWorkflowJournal({
-      workflowId: entry.workflowId,
-      entries: [...current, entry],
-      expectedIdentity: entry.identity,
-    });
-    this.entriesByWorkflow.set(entry.workflowId, [...current, entry]);
+    const journal = current ?? foldJournal(entry.workflowId, []);
+    try {
+      pushValidated(journal, entry);
+    } catch (error) {
+      // The fold is poisoned; rebuild from the entries that were accepted.
+      if (current !== undefined) {
+        this.journalsByWorkflow.set(
+          entry.workflowId,
+          foldJournal(entry.workflowId, current.entries),
+        );
+      }
+      throw error;
+    }
+    this.journalsByWorkflow.set(entry.workflowId, journal);
   }
 }
 
@@ -1084,14 +1165,30 @@ export class DirectoryFraudProofWorkflowJournalStore
 {
   constructor(private readonly rootDirectory: string) {}
 
+  /**
+   * The validated journal per workflow as this store last read it from disk,
+   * with the entry file names it covers. Entry files are immutable once
+   * linked into place (the append protocol below never rewrites one), so a
+   * later listing that still begins with exactly these names extends the
+   * cached prefix: only the newer files are read and folded. Any other
+   * listing, such as a directory that was removed and rebuilt, is refolded
+   * from scratch. Nothing here is trusted across the cache's own name check.
+   */
+  private readonly journalsByWorkflow = new Map<
+    string,
+    ValidatedJournal & { readonly entryNames: readonly string[] }
+  >();
+
   private workflowDirectory(workflowId: string): string {
     validateWorkflowId(workflowId);
     return join(this.rootDirectory, workflowId);
   }
 
-  async load(
+  private async loadValidated(
     workflowId: string,
-  ): Promise<readonly FraudProofWorkflowJournalEntry[]> {
+  ): Promise<
+    (ValidatedJournal & { readonly entryNames: readonly string[] }) | undefined
+  > {
     const directory = this.workflowDirectory(workflowId);
     let names: string[];
     try {
@@ -1103,15 +1200,26 @@ export class DirectoryFraudProofWorkflowJournalStore
         "code" in error &&
         error.code === "ENOENT"
       ) {
-        return [];
+        this.journalsByWorkflow.delete(workflowId);
+        return undefined;
       }
       throw error;
     }
     const entryNames = names
       .filter((name) => /^\d{8}\.json$/u.test(name))
       .sort();
-    const entries = await Promise.all(
-      entryNames.map(
+    const cached = this.journalsByWorkflow.get(workflowId);
+    const extendsCached =
+      cached !== undefined &&
+      cached.entryNames.length <= entryNames.length &&
+      cached.entryNames.every((name, index) => name === entryNames[index]);
+    const journal =
+      extendsCached && cached !== undefined
+        ? cached
+        : { ...foldJournal(workflowId, []), entryNames: [] as string[] };
+    const newNames = entryNames.slice(journal.entryNames.length);
+    const newEntries = await Promise.all(
+      newNames.map(
         async (name) =>
           JSON.parse(
             await readFile(join(directory, name), "utf8"),
@@ -1119,7 +1227,22 @@ export class DirectoryFraudProofWorkflowJournalStore
           ) as FraudProofWorkflowJournalEntry,
       ),
     );
-    return validateFraudProofWorkflowJournal({ workflowId, entries });
+    try {
+      for (const entry of newEntries) pushValidated(journal, entry);
+    } catch (error) {
+      this.journalsByWorkflow.delete(workflowId);
+      throw error;
+    }
+    const validated = { ...journal, entryNames };
+    this.journalsByWorkflow.set(workflowId, validated);
+    return validated;
+  }
+
+  async load(
+    workflowId: string,
+  ): Promise<readonly FraudProofWorkflowJournalEntry[]> {
+    const journal = await this.loadValidated(workflowId);
+    return journal === undefined ? [] : [...journal.entries];
   }
 
   async append(
@@ -1133,21 +1256,30 @@ export class DirectoryFraudProofWorkflowJournalStore
     }
     const directory = this.workflowDirectory(entry.workflowId);
     await mkdir(directory, { recursive: true });
-    const current = await this.load(entry.workflowId);
-    if (current.length !== expectedSequence) {
+    const current = await this.loadValidated(entry.workflowId);
+    if (current === undefined) {
+      throw new Error("journal directory vanished while appending");
+    }
+    if (current.entries.length !== expectedSequence) {
       throw new ConcurrentFraudProofWorkflowWriteError(
-        `journal sequence changed: expected=${expectedSequence.toString()} actual=${current.length.toString()}`,
+        `journal sequence changed: expected=${expectedSequence.toString()} actual=${current.entries.length.toString()}`,
       );
     }
-    validateFraudProofWorkflowJournal({
-      workflowId: entry.workflowId,
-      entries: [...current, entry],
-      expectedIdentity: entry.identity,
-    });
-    const finalPath = join(
-      directory,
-      `${expectedSequence.toString().padStart(8, "0")}.json`,
-    );
+    // Validate against the fold's retained state. The fold now carries the
+    // entry, so until the hard-link below has made it part of the on-disk
+    // history any failure must drop the cached journal rather than leave a
+    // fold ahead of the directory.
+    const finalName = `${expectedSequence.toString().padStart(8, "0")}.json`;
+    const commitCache = (): void => {
+      this.journalsByWorkflow.set(entry.workflowId, {
+        entries: [...current.entries, entry],
+        fold: current.fold,
+        entryNames: [...current.entryNames, finalName],
+      });
+    };
+    this.journalsByWorkflow.delete(entry.workflowId);
+    current.fold.push(entry);
+    const finalPath = join(directory, finalName);
     const temporaryPath = join(
       directory,
       `.${expectedSequence.toString().padStart(8, "0")}.${randomUUID()}.tmp`,
@@ -1175,6 +1307,7 @@ export class DirectoryFraudProofWorkflowJournalStore
       }
       throw error;
     }
+    commitCache();
     await unlink(temporaryPath);
     const directoryHandle = await open(directory, "r");
     try {

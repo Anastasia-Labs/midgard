@@ -181,3 +181,57 @@ export function* mintAuthorizationEvaluationBatches(
   if (state.result !== 0n)
     throw new Error("mint authorization native policy is satisfied");
 }
+
+export type MintAuthorizationEvaluationBatch =
+  ReturnType<typeof mintAuthorizationEvaluationBatches> extends Generator<
+    infer Batch
+  >
+    ? Batch
+    : never;
+
+/**
+ * Lazily indexes the canonical batch sequence by an encoding of each batch's
+ * `before` state, so a caller resuming from an authenticated on-chain state
+ * finds its batch without replaying the derivation from the start on every
+ * step. The generator only advances as far as the deepest state requested;
+ * repeated requests for earlier states are map lookups. An error thrown by the
+ * derivation poisons the index and propagates to every later lookup, exactly as
+ * a fresh replay would have thrown at the same point.
+ */
+export const createMintAuthorizationEvaluationBatchIndex = (
+  initial: MintAuthorizationEvaluateState,
+  raw: Buffer,
+  encodeState: (state: MintAuthorizationEvaluateState) => string,
+) => {
+  const batches = mintAuthorizationEvaluationBatches(initial, raw);
+  const byEncodedBefore = new Map<string, MintAuthorizationEvaluationBatch>();
+  let exhausted = false;
+  let failed = false;
+  let failure: unknown;
+  return {
+    find(encodedBefore: string): MintAuthorizationEvaluationBatch | undefined {
+      const known = byEncodedBefore.get(encodedBefore);
+      if (known !== undefined) return known;
+      if (failed) throw failure;
+      while (!exhausted) {
+        let next: IteratorResult<MintAuthorizationEvaluationBatch>;
+        try {
+          next = batches.next();
+        } catch (error) {
+          failed = true;
+          failure = error;
+          exhausted = true;
+          throw error;
+        }
+        if (next.done) {
+          exhausted = true;
+          break;
+        }
+        const key = encodeState(next.value.before);
+        if (!byEncodedBefore.has(key)) byEncodedBefore.set(key, next.value);
+        if (key === encodedBefore) return next.value;
+      }
+      return undefined;
+    },
+  };
+};

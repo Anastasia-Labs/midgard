@@ -45,7 +45,6 @@ import {
   Data,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -379,7 +378,6 @@ const newHarness = async () =>
       realSpendInputSignerMissing: true,
       alwaysFraudProofCatalogue: true,
     },
-    lucidOptions: { evaluator: createScalusEvaluator() },
   });
 
 /** Publishes the five applied steps and the certificate mint as plain

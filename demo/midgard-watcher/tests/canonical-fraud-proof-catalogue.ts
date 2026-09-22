@@ -12,28 +12,39 @@ import { validatorToScriptHash } from "@lucid-evolution/lucid";
 
 type ContractIdentity = Readonly<{ scriptHash: string }>;
 
+/** A definite-length CBOR byte string (major type 2) around short hex. */
+const cborBytes = (hex: string): string => {
+  const byteLength = hex.length / 2;
+  if (byteLength >= 24) throw new Error(`positional payload too long: ${hex}`);
+  return (0x40 + byteLength).toString(16) + hex;
+};
+
 /**
  * Deterministic synthetic Plutus bytes used by watcher deployment-authority
- * fixtures. The even-width normalization is required once the deployment
- * registry grows beyond 255 contracts.
+ * fixtures: the contract's one-based ordinal (even-width, so the registry may
+ * grow beyond 255 contracts) carried as an already double-CBOR-wrapped script.
+ *
+ * The wrapping is load-bearing for speed, not meaning. Lucid normalizes every
+ * script through `applyDoubleCborEncoding`, which speculatively CBOR-decodes
+ * the bytes twice to tell single from double wrapping. Handing it the bare
+ * ordinal made two of the 287 ordinals (`9f`, `bf`: truncated indefinite-length
+ * array and map heads) spin inside cbor-x for about twelve seconds each before
+ * failing, which is where the "40ms per contract" this fixture used to be
+ * blamed for actually lived. A well-formed double wrap decodes cleanly at both
+ * layers, so the whole registry hashes in a few milliseconds.
  */
 export const positionalContractScriptCbor = (contractName: string): string => {
   const index = DEPLOYMENT_MANIFEST_CONTRACT_NAMES.indexOf(
     contractName as (typeof DEPLOYMENT_MANIFEST_CONTRACT_NAMES)[number],
   );
   if (index < 0) throw new Error(`Unknown positional contract ${contractName}`);
-  return ordinalHex(index + 1);
+  return cborBytes(cborBytes(ordinalHex(index + 1)));
 };
 
 /**
- * Memoized because it is not cheap: `validatorToScriptHash` runs the script
- * through Lucid's double-CBOR normalization and the CML hasher, which costs
- * roughly 40ms per contract. The canonical registry now holds 287 of them, so
- * rebuilding a whole synthetic deployment cost about twelve seconds a call,
- * and the watcher authority fixtures build several per suite — enough to blow
- * a two-minute `beforeAll` budget on the fixture rather than the test. The
- * mapping is a pure function of the contract name, so one cache entry per name
- * is exact.
+ * Memoized because the watcher authority fixtures rebuild whole synthetic
+ * deployments several times per suite, and the mapping is a pure function of
+ * the contract name, so one cache entry per name is exact.
  */
 const positionalContractScriptHashes = new Map<string, string>();
 

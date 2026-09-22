@@ -68,6 +68,23 @@ const trieFromEntries = async (
     })),
   );
 
+// A committed root's trie is a pure function of its entries and is only ever
+// read (`prove`), so one trie serves every opening taken from the same root
+// object. Keying by the root object rather than by its hash keeps a root whose
+// entries do not open its hash failing exactly as it would have uncached.
+const triesByRoot = new WeakMap<KeyValuePhasRoot, Promise<Trie>>();
+
+const trieForRoot = (root: KeyValuePhasRoot): Promise<Trie> => {
+  const known = triesByRoot.get(root);
+  if (known !== undefined) return known;
+  const built = trieFromEntries(root.entries);
+  triesByRoot.set(root, built);
+  built.catch(() => {
+    if (triesByRoot.get(root) === built) triesByRoot.delete(root);
+  });
+  return built;
+};
+
 export const keyValuePhasRootWithCount = async (
   entries: readonly KeyValuePhasEntry[],
 ): Promise<KeyValuePhasRoot> => {
@@ -117,7 +134,7 @@ export const keyValuePhasProof = async (
       "Cannot build a PHAS membership proof for an empty tree.",
     );
   }
-  const trie = await trieFromEntries(root.entries);
+  const trie = await trieForRoot(root);
   const proof = await trie.prove(Buffer.from(key));
   const verifiedRoot = normalizeRoot(proof.verify(true));
   if (verifiedRoot !== root.root) {
@@ -156,7 +173,7 @@ export const keyValuePhasMembershipProofs = async (
         "Cannot build PHAS membership proof for an absent key/value.",
       );
   }
-  const trie = await trieFromEntries(root.entries);
+  const trie = await trieForRoot(root);
   const proofs: SDK.Proof[] = [];
   for (const opening of openings) {
     const proof = await trie.prove(Buffer.from(opening.key));
@@ -181,7 +198,7 @@ export const keyValuePhasNonMembershipProof = async (
       `Cannot build a PHAS non-membership proof for present key ${keyHex}.`,
     );
   }
-  const trie = await trieFromEntries(root.entries);
+  const trie = await trieForRoot(root);
   await trie.insert(Buffer.from(key), NON_MEMBERSHIP_DUMMY_VALUE);
   const proof = await trie.prove(Buffer.from(key));
   const verifiedRoot = normalizeRoot(proof.verify(false));
