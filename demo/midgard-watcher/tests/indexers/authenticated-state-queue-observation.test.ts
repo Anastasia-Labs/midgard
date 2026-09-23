@@ -282,6 +282,7 @@ const appendFixture = ({
   ).toString("hex");
   const nodeAssetHeaderHash = assetHeaderHash ?? computedHeaderHash;
   const stateQueueNode: SDK.StateQueueNode = {
+    proven_fraud: null,
     header: nodeHeader,
     da_attestation: daAvailability,
   };

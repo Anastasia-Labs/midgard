@@ -53,6 +53,7 @@
 //// than editing a shared parent-owned file.
 
 use aiken/builtin
+use aiken/interval
 use aiken/cbor
 use aiken/crypto.{ScriptHash}
 use aiken/merkle_patricia_forestry as mpf
@@ -432,6 +433,7 @@ pub fn continue_step_l1_tx_v1(
 ) -> Transaction {
   Transaction {
     ..placeholder,
+    validity_range: interval.between(21, 22),
     inputs: [fixture.ct_thread_input(asset_name)],
     outputs: [fixture.next_step_output(asset_name, output_state_data)],
     reference_inputs,

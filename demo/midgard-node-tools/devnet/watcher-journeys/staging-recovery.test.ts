@@ -107,7 +107,11 @@ const openStage = async () => {
       key: { Key: { key: block.headerHash } },
       next: "Empty",
       data: Data.castTo(
-        { header: block.header, da_attestation: daAttestation },
+        {
+          proven_fraud: null,
+          header: block.header,
+          da_attestation: daAttestation,
+        },
         SDK.StateQueueNode,
       ),
     }),

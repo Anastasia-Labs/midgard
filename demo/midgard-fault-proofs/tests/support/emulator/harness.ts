@@ -115,7 +115,11 @@ export const submitFabricatedFamilyInit = async ({
   signer,
   fraudulentBlockOutRef,
   witnessReferenceScripts,
+  onSigned,
 }: {
+  readonly onSigned?: (
+    signed: import("@lucid-evolution/lucid").TxSigned,
+  ) => void;
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
   readonly realBlueprint: Blueprint;
   readonly contracts: Pick<
@@ -297,6 +301,7 @@ export const submitFabricatedFamilyInit = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  onSigned?.(signed);
   const txHash = await signed.submit();
   await lucid.awaitTx(txHash);
 

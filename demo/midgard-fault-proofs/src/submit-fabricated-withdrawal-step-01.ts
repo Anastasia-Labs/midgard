@@ -62,6 +62,8 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { type FabricatedHistoryEnvironment } from "./fabricated-history-witness.js";
+import { fabricatedProofValidity } from "./fabricated-proof-validity.js";
 import { requireFabricatedReferenceScript } from "./fabricated-reference-script.js";
 import { parseHex, readJsonFile, requireRecord } from "./json-file.js";
 import {
@@ -106,6 +108,7 @@ export type FabricatedWithdrawalStepContract = {
  * parameterized.
  */
 export type FabricatedWithdrawalContracts = {
+  readonly history: FabricatedHistoryEnvironment;
   /** Steps 01..04, in order. */
   readonly steps: readonly [
     FabricatedWithdrawalStepContract,
@@ -190,10 +193,12 @@ export type FabricatedWithdrawalStep01Handoff = {
  * will produce.
  */
 export const deriveFabricatedWithdrawalStep01Handoff = async ({
+  stateQueuePolicyId,
   header,
   headerHash,
   inclusion,
 }: {
+  readonly stateQueuePolicyId: string;
   readonly header: Header;
   readonly headerHash: string;
   readonly inclusion: SubmitFabricatedWithdrawalInclusion;
@@ -244,6 +249,7 @@ export const deriveFabricatedWithdrawalStep01Handoff = async ({
   };
   const step02State = await Effect.runPromise(
     fabricatedWithdrawalStep02State({
+      stateQueuePolicy: stateQueuePolicyId,
       challengedHeaderHash: headerHash,
       headerStartTime: header.startTime,
       headerEndTime: header.endTime,
@@ -309,7 +315,9 @@ export const submitFabricatedWithdrawalStep01 = async ({
   referenceScriptUtxo,
   preSubmitBoundary,
   awaitConfirmation = true,
+  now = Date.now,
 }: {
+  readonly now?: () => number;
   readonly lucid: LucidEvolution;
   readonly contracts: FabricatedWithdrawalContracts;
   readonly network: Network;
@@ -377,11 +385,13 @@ export const submitFabricatedWithdrawalStep01 = async ({
   );
   const { committedWithdrawal, step02State } =
     await deriveFabricatedWithdrawalStep01Handoff({
+      stateQueuePolicyId: contracts.stateQueuePolicyId,
       header,
       headerHash: stateQueueHeaderHash,
       inclusion: withdrawalInclusion,
     });
 
+  const validity = fabricatedProofValidity(header.endTime, now());
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const referenceInputs = [hubOracleUtxo, stateQueueBlockUtxo];
@@ -459,7 +469,9 @@ export const submitFabricatedWithdrawalStep01 = async ({
       { kind: "inline", value: step02Datum },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash);
+    .addSignerKey(signer.paymentKeyHash)
+    .validFrom(validity.validFrom)
+    .validTo(validity.validTo);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {

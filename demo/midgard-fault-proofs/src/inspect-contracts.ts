@@ -1,5 +1,10 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+import {
+  type DeploymentManifestEventHistoryBounds,
+  parseDeploymentManifestEventHistoryBounds,
+  parseDeploymentManifestEventHistoryRetentionAddress,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
@@ -44,6 +49,8 @@ export type ContractDeploymentInfoEntry = {
     readonly cborHex: string;
   };
   readonly fraudProofCatalogue?: FraudProofCatalogueDeploymentInfo;
+  readonly eventHistoryBounds?: DeploymentManifestEventHistoryBounds;
+  readonly eventHistoryRetentionAddress?: string;
 };
 
 export type ContractDeploymentInfo = Readonly<
@@ -520,6 +527,26 @@ const trieRootHex = (trie: Trie): string => {
   return Buffer.from(hash).toString("hex");
 };
 
+/** Script reapplication below binds these declared integers to deployed hashes. */
+export const contractDeploymentHistoryBounds = (
+  info: ContractDeploymentInfo,
+  family: "fabricatedDeposit" | "fabricatedWithdrawal",
+) => {
+  const name =
+    family === "fabricatedDeposit"
+      ? "fraudProofFabricatedDeposit"
+      : "fraudProofFabricatedWithdrawal";
+  const bounds = parseDeploymentManifestEventHistoryBounds(
+    info[name]?.eventHistoryBounds,
+    `contracts.${name}.eventHistoryBounds`,
+  );
+  return {
+    inlineLimitBytes: BigInt(bounds.inlineLimitBytes),
+    maxPayloadBytes: BigInt(bounds.maxPayloadBytes),
+    maxPayloadNodes: BigInt(bounds.maxPayloadNodes),
+  };
+};
+
 export const parseContractDeploymentInfo = (
   value: unknown,
 ): ContractDeploymentInfo => {
@@ -541,6 +568,8 @@ export const parseContractDeploymentInfo = (
       readonly refScriptUTxO?: unknown;
       readonly contract?: unknown;
       readonly fraudProofCatalogue?: unknown;
+      readonly eventHistoryBounds?: unknown;
+      readonly eventHistoryRetentionAddress?: unknown;
     };
     entries[name] = {
       scriptHash: normalizeHex(
@@ -560,6 +589,22 @@ export const parseContractDeploymentInfo = (
             ),
           }
         : {}),
+      ...(candidate.eventHistoryRetentionAddress === undefined
+        ? {}
+        : {
+            eventHistoryRetentionAddress:
+              parseDeploymentManifestEventHistoryRetentionAddress(
+                candidate.eventHistoryRetentionAddress,
+              ),
+          }),
+      ...(candidate.eventHistoryBounds === undefined
+        ? {}
+        : {
+            eventHistoryBounds: parseDeploymentManifestEventHistoryBounds(
+              candidate.eventHistoryBounds,
+              `contracts.${name}.eventHistoryBounds`,
+            ),
+          }),
       ...(candidate.fraudProofCatalogue !== undefined
         ? {
             fraudProofCatalogue: parseFraudProofCatalogueDeploymentInfo(
@@ -1021,7 +1066,25 @@ export const inspectContracts = ({
     const deployedFraudProofCatalogue =
       parsedDeploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue;
 
+    const eventHistoryBounds = contractDeploymentHistoryBounds(
+      parsedDeploymentInfo,
+      "fabricatedDeposit",
+    );
+    const withdrawalBounds = contractDeploymentHistoryBounds(
+      parsedDeploymentInfo,
+      "fabricatedWithdrawal",
+    );
+    if (
+      eventHistoryBounds.inlineLimitBytes !==
+        withdrawalBounds.inlineLimitBytes ||
+      eventHistoryBounds.maxPayloadBytes !== withdrawalBounds.maxPayloadBytes ||
+      eventHistoryBounds.maxPayloadNodes !== withdrawalBounds.maxPayloadNodes
+    )
+      throw new Error(
+        "Full catalogue construction requires matching deposit and withdrawal history payload bounds",
+      );
     const contracts = yield* buildFaultProofContracts({
+      eventHistoryBounds,
       blueprint: parsedBlueprint,
       network,
       hubOraclePolicyId,
@@ -1032,6 +1095,20 @@ export const inspectContracts = ({
           "V1 fraud-proof min-ada step-02",
         ),
     });
+
+    for (const [category, entry] of [
+      ["fabricatedDeposit", "fraudProofFabricatedDeposit"],
+      ["fabricatedWithdrawal", "fraudProofFabricatedWithdrawal"],
+    ] as const) {
+      if (
+        contracts[category].history.retentionAddress !==
+        parsedDeploymentInfo[entry]?.eventHistoryRetentionAddress
+      ) {
+        throw new Error(
+          `${entry} history retention address does not match applied parameters`,
+        );
+      }
+    }
 
     expectScriptHash(
       "fraudProofMint.scriptHash",

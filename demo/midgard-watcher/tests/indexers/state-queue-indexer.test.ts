@@ -1379,6 +1379,7 @@ const recoveryAppendBundle = (
   const rootDatum = linkedRoot(confirmed, ConfirmedState, header.headerHash);
   const nodeDatum = linkedNode(
     {
+      proven_fraud: null,
       header: Data.from(header.headerCborHex, Header),
       da_attestation: "Unattested",
     },
@@ -1830,6 +1831,7 @@ const attachDaBundle = (input: {
   const oldNode = `${input.appendBlock.txHash}#1`;
   const attachedNodeDatum = linkedNode(
     {
+      proven_fraud: null,
       header: Data.from(input.header.headerCborHex, Header),
       da_attestation: {
         Attested: { da_bond_asset_name: h32("ab") },
@@ -2785,6 +2787,7 @@ describe("authenticated state-queue indexer", () => {
       headerBase.headerHash,
     );
     const nodeData: StateQueueNode = {
+      proven_fraud: null,
       header: Data.from(headerBase.headerCborHex, Header),
       da_attestation: "Unattested",
     };
@@ -3925,6 +3928,7 @@ describe("authenticated state-queue indexer", () => {
     );
     const firstDatum = linkedNode(
       {
+        proven_fraud: null,
         header: Data.from(first.headerCborHex, Header),
         da_attestation: "Unattested",
       },
@@ -3933,6 +3937,7 @@ describe("authenticated state-queue indexer", () => {
     );
     const secondDatum = linkedNode(
       {
+        proven_fraud: null,
         header: Data.from(second.headerCborHex, Header),
         da_attestation: "Unattested",
       },
@@ -4137,6 +4142,7 @@ describe("authenticated state-queue indexer", () => {
 
     const continuedFirstDatum = linkedNode(
       {
+        proven_fraud: null,
         header: Data.from(first.headerCborHex, Header),
         da_attestation: "Unattested",
       },

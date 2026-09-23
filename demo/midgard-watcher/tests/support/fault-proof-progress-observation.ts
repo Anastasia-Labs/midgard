@@ -26,7 +26,11 @@ export const progressObservation = (input: {
           headerHash: input.header.headerHash,
           headerCborHex: Data.to(input.header.header, Header),
           stateQueueNodeCborHex: Data.to(
-            { header: input.header.header, da_attestation: "Unattested" },
+            {
+              proven_fraud: null,
+              header: input.header.header,
+              da_attestation: "Unattested",
+            },
             StateQueueNode,
           ),
           linkedListDatumCborHex: "80",

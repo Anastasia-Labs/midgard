@@ -1,29 +1,7 @@
-/**
- * `fabricated-withdrawal` step-02 submitter (Goal task `Q40`, §9.1 output 8).
- *
- * Step 02 is the only step that reads L1, and both of its arms are authenticated
- * locally before submission rather than asserted:
- *
- * - `AbsentWithdrawalIdentity` requires the committed `WithdrawalId` to still be an
- *   **unspent** output reference. `authenticate_new_event` rule 4 requires a
- *   withdrawal event's id to be an outref the authenticating transaction spent, so a
- *   still-live outref positively proves no event with that identity was ever
- *   authenticated. A consumed outref is refused here, never silently downgraded
- *   into an absence claim.
- * - `PresentWithdrawalEvent` derives the withdrawal policy from the **authentic hub
- *   oracle datum** — its `withdrawal` field, not its `deposit` field, which
- *   registers a different event family — and the event NFT asset name from the
- *   committed identity via `out_ref_to_nonce`, then requires the referenced UTxO to
- *   carry exactly that unit and to hold a `WithdrawalOrderDatum` whose `event.id` is
- *   the committed identity.
- *
- * The verdict handed to step 03 carries a 32-byte commitment to the event datum
- * rather than the datum itself, because a withdrawal event datum embeds the
- * withdrawer-chosen `l2_value` map and `l1_datum`; step 03 re-opens the preimage
- * from its own redeemer, which also means the dispute survives the event NFT being
- * burned when the withdrawal settles or refunds.
- */
+/** Capture authenticated current history facts. Pointer references are discovered
+ * afresh; the retained payload and original funds survive later list mutations. */
 import {
+  FabricatedWithdrawalAuthenticContentOpening,
   type FabricatedWithdrawalEvidence,
   type FabricatedWithdrawalEvidenceVerdict,
   FabricatedWithdrawalStep02Datum,
@@ -31,29 +9,21 @@ import {
   type FabricatedWithdrawalStep02State,
   FabricatedWithdrawalStep03Datum,
   fabricatedWithdrawalStep03State,
-  HUB_ORACLE_ASSET_NAME,
-  HubOracleDatum,
-  OutputReference,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
-  withdrawalEventDatumCommitment,
-  withdrawalEventNonce,
-  WithdrawalOrderDatum,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
-  credentialToAddress,
   Data,
   type LucidEvolution,
   type Network,
-  scriptHashToCredential,
-  toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 
+import { fetchCurrentHistory } from "./fabricated-history-witness.js";
+import { fabricatedProofValidity } from "./fabricated-proof-validity.js";
 import { requireFabricatedReferenceScript } from "./fabricated-reference-script.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -61,7 +31,6 @@ import {
   makeLucidForSubmit,
   outRefLabel,
   parseOutRef,
-  requireSingletonUtxo,
   type ResolvedProverSigner,
   resolveProverSigner,
   type SubmitProviderConfig,
@@ -81,10 +50,10 @@ import {
   workflowReferenceScript,
 } from "./workflow/transaction-boundary.js";
 
-/** Which L1 witness the prover intends to submit. */
+/** Expected semantic arm. An old pointer hint is never used as L1 authority. */
 export type FabricatedWithdrawalEvidenceArm =
   | { readonly kind: "absent_identity" }
-  | { readonly kind: "present_event"; readonly eventOutRef: string };
+  | { readonly kind: "present_event"; readonly eventOutRef?: string };
 
 export const requireFabricatedWithdrawalStep02Datum = ({
   threadUtxo,
@@ -112,63 +81,6 @@ export const requireFabricatedWithdrawalStep02Datum = ({
   return datum.data;
 };
 
-/**
- * Authenticates the withdrawal event UTxO a `PresentWithdrawalEvent` witness points
- * at, against the hub oracle's withdrawal policy and the committed identity's nonce.
- */
-export const authenticateFabricatedWithdrawalEventUtxo = async ({
-  state,
-  hubOracleUtxo,
-  eventUtxo,
-}: {
-  readonly state: FabricatedWithdrawalStep02State;
-  readonly hubOracleUtxo: UTxO;
-  readonly eventUtxo: UTxO;
-}): Promise<{
-  readonly eventDatum: WithdrawalOrderDatum;
-  readonly eventDatumHash: string;
-  readonly withdrawalPolicyId: string;
-  readonly expectedEventAssetName: string;
-}> => {
-  if (hubOracleUtxo.datum === null || hubOracleUtxo.datum === undefined) {
-    throw new Error("Hub oracle UTxO has no inline datum.");
-  }
-  const hubDatum = Data.from(hubOracleUtxo.datum, HubOracleDatum);
-  const withdrawalPolicyId = hubDatum.withdrawal;
-  const expectedEventAssetName = await Effect.runPromise(
-    withdrawalEventNonce(state.committed_withdrawal_id),
-  );
-  const expectedUnit = toUnit(withdrawalPolicyId, expectedEventAssetName);
-  if ((eventUtxo.assets[expectedUnit] ?? 0n) !== 1n) {
-    throw new Error(
-      `Withdrawal event UTxO ${outRefLabel(eventUtxo)} does not carry the authentic withdrawal event NFT ${expectedUnit} for the committed identity.`,
-    );
-  }
-  if (eventUtxo.datum === null || eventUtxo.datum === undefined) {
-    throw new Error(
-      `Withdrawal event UTxO ${outRefLabel(eventUtxo)} has no inline withdrawal datum.`,
-    );
-  }
-  const eventDatum = Data.from(eventUtxo.datum, WithdrawalOrderDatum);
-  if (
-    Data.to(eventDatum.event.id, OutputReference) !==
-    Data.to(state.committed_withdrawal_id, OutputReference)
-  ) {
-    throw new Error(
-      `Withdrawal event UTxO ${outRefLabel(eventUtxo)} holds event id ${Data.to(eventDatum.event.id, OutputReference)}, not the committed identity ${Data.to(state.committed_withdrawal_id, OutputReference)}.`,
-    );
-  }
-  const eventDatumHash = await Effect.runPromise(
-    withdrawalEventDatumCommitment(eventDatum),
-  );
-  return {
-    eventDatum,
-    eventDatumHash,
-    withdrawalPolicyId,
-    expectedEventAssetName,
-  };
-};
-
 export type SubmitFabricatedWithdrawalStep02CliConfig = SubmitProviderConfig & {
   readonly walletSeedPhrase?: string;
   readonly walletSeedPhraseEnv?: string;
@@ -191,6 +103,8 @@ export type SubmitFabricatedWithdrawalStep02Result = {
   readonly secondStepAddress: string;
   readonly thirdStepAddress: string;
   readonly evidenceKind: FabricatedWithdrawalEvidenceArm["kind"];
+  readonly openingCbor: string | null;
+  readonly historyOutRef: string;
   readonly verdict: FabricatedWithdrawalEvidenceVerdict;
   readonly inputIndex: number;
   readonly outputIndex: number;
@@ -213,7 +127,12 @@ export const submitFabricatedWithdrawalStep02 = async ({
   referenceScriptUtxo,
   preSubmitBoundary,
   awaitConfirmation = true,
+  now = Date.now,
+  expectedOpeningCbor,
 }: {
+  readonly now?: () => number;
+  /** A journal opening must still match the fresh semantic facts before capture. */
+  readonly expectedOpeningCbor?: string | null;
   readonly lucid: LucidEvolution;
   readonly contracts: FabricatedWithdrawalContracts;
   readonly network: Network;
@@ -242,51 +161,50 @@ export const submitFabricatedWithdrawalStep02 = async ({
   });
   const state = requireFabricatedWithdrawalStep02Datum({ threadUtxo, signer });
 
-  let referenceInputs: readonly UTxO[];
-  let verdict: FabricatedWithdrawalEvidenceVerdict;
-  let hubOracleUtxo: UTxO | undefined;
-  let eventUtxo: UTxO | undefined;
-  let unspentUtxo: UTxO | undefined;
-
-  if (evidence.kind === "absent_identity") {
-    const committedOutRef = `${state.committed_withdrawal_id.transactionId}#${state.committed_withdrawal_id.outputIndex.toString()}`;
-    unspentUtxo = await fetchUtxoByOutRef({
-      lucid,
-      outRef: parseOutRef(committedOutRef, "committed withdrawal identity"),
-      label: `fabricated-withdrawal step-02 unspent committed identity ${committedOutRef}`,
-    });
-    referenceInputs = [unspentUtxo];
-    verdict = "WithdrawalIdentityAbsent";
-  } else {
-    [hubOracleUtxo, eventUtxo] = await Promise.all([
-      requireSingletonUtxo({
-        lucid,
-        address: credentialToAddress(
-          network,
-          scriptHashToCredential(contracts.hubOraclePolicyId),
-        ),
-        unit: toUnit(contracts.hubOraclePolicyId, HUB_ORACLE_ASSET_NAME),
-        label: "hub oracle",
-      }),
-      fetchUtxoByOutRef({
-        lucid,
-        outRef: parseOutRef(evidence.eventOutRef, "--event-out-ref"),
-        label: "fabricated-withdrawal step-02 withdrawal event UTxO",
-      }),
-    ]);
-    const authenticated = await authenticateFabricatedWithdrawalEventUtxo({
-      state,
-      hubOracleUtxo,
-      eventUtxo,
-    });
-    referenceInputs = [hubOracleUtxo, eventUtxo];
-    verdict = {
-      WithdrawalEventObserved: {
-        event_datum_hash: authenticated.eventDatumHash,
-        event_inclusion_time: authenticated.eventDatum.inclusion_time,
-      },
-    };
-  }
+  const current = await fetchCurrentHistory({
+    lucid,
+    network,
+    hubOraclePolicyId: contracts.hubOraclePolicyId,
+    history: contracts.history,
+    kind: "Withdrawal",
+    id: state.committed_withdrawal_id,
+  });
+  if (
+    current.stateQueuePolicyId !== state.state_queue_policy ||
+    current.stateQueuePolicyId !== contracts.stateQueuePolicyId
+  )
+    throw new Error("History hub changed the authenticated state queue policy");
+  const { witness, captured, hubOracleUtxo } = current;
+  const evidenceKind = captured ? "present_event" : "absent_identity";
+  const openingCbor = captured
+    ? Data.to(
+        {
+          RetainedEventData: {
+            payload: captured.payload,
+            original_assets: captured.originalAssets,
+          },
+        },
+        FabricatedWithdrawalAuthenticContentOpening,
+      )
+    : null;
+  if (
+    evidence.kind !== evidenceKind ||
+    (expectedOpeningCbor !== undefined && expectedOpeningCbor !== openingCbor)
+  )
+    throw new Error(
+      "History facts changed before capture; reprepare the proof artifact",
+    );
+  const verdict: FabricatedWithdrawalEvidenceVerdict = captured
+    ? { WithdrawalEventObserved: { commitment: captured.commitment } }
+    : "WithdrawalIdentityAbsent";
+  const referenceInputs = [
+    hubOracleUtxo,
+    witness.anchor.utxo,
+    ...(witness.kind === "Present" && witness.retainedDataUtxo
+      ? [witness.retainedDataUtxo]
+      : []),
+  ];
+  const validity = fabricatedProofValidity(state.header_end_time, now());
 
   const step03State = fabricatedWithdrawalStep03State(state, verdict);
   signer.selectWallet(lucid);
@@ -303,29 +221,35 @@ export const submitFabricatedWithdrawalStep02 = async ({
   let resolvedLayout: FabricatedWithdrawalStep02Layout | undefined;
   const redeemer = ((ctx) => {
     requireOwnSpendPurpose(ctx, threadUtxo, "fabricated-withdrawal step 02");
+    const hubIndex = requireReferenceInputIndex(
+      ctx,
+      hubOracleUtxo,
+      "history hub",
+    );
+    const historyIndex = requireReferenceInputIndex(
+      ctx,
+      witness.anchor.utxo,
+      "history anchor",
+    );
     const armEvidence: FabricatedWithdrawalEvidence =
-      evidence.kind === "absent_identity"
+      witness.kind === "Absent"
         ? {
             AbsentWithdrawalIdentity: {
-              unspent_ref_input_index: requireReferenceInputIndex(
-                ctx,
-                unspentUtxo!,
-                "fabricated-withdrawal step 02 unspent committed identity",
-              ),
+              hub_ref_input_index: hubIndex,
+              history_ref_input_index: historyIndex,
             },
           }
         : {
             PresentWithdrawalEvent: {
-              hub_ref_input_index: requireReferenceInputIndex(
-                ctx,
-                hubOracleUtxo!,
-                "fabricated-withdrawal step 02 hub oracle",
-              ),
-              event_ref_input_index: requireReferenceInputIndex(
-                ctx,
-                eventUtxo!,
-                "fabricated-withdrawal step 02 withdrawal event",
-              ),
+              hub_ref_input_index: hubIndex,
+              event_ref_input_index: historyIndex,
+              external_ref_input_index: witness.retainedDataUtxo
+                ? requireReferenceInputIndex(
+                    ctx,
+                    witness.retainedDataUtxo,
+                    "retained history data",
+                  )
+                : null,
             },
           };
     const layout: FabricatedWithdrawalStep02Layout = {
@@ -378,7 +302,9 @@ export const submitFabricatedWithdrawalStep02 = async ({
       { kind: "inline", value: step03Datum },
       threadAssets,
     )
-    .addSignerKey(signer.paymentKeyHash);
+    .addSignerKey(signer.paymentKeyHash)
+    .validFrom(validity.validFrom)
+    .validTo(validity.validTo);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
@@ -419,7 +345,9 @@ export const submitFabricatedWithdrawalStep02 = async ({
     computationThreadUnit: threadToken.unit,
     secondStepAddress: contracts.steps[1].spendingScriptAddress,
     thirdStepAddress: contracts.steps[2].spendingScriptAddress,
-    evidenceKind: evidence.kind,
+    evidenceKind,
+    openingCbor,
+    historyOutRef: outRefLabel(witness.anchor.utxo),
     verdict,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),

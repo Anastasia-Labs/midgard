@@ -15,6 +15,7 @@ import {
 } from "./runtime.js";
 import { type FabricatedDepositContracts } from "./submit-fabricated-deposit-step-01.js";
 import { type FabricatedWithdrawalContracts } from "./submit-fabricated-withdrawal-step-01.js";
+import type { FaultProofWitnessReferenceScripts } from "./witness-reference-scripts.js";
 
 /**
  * Deployment-info names of the four `fabricated-deposit` step scripts, in step
@@ -78,6 +79,9 @@ export const resolveFabricatedDepositCliContracts = async ({
 }): Promise<{
   readonly contracts: FabricatedDepositContracts;
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts & {
+    readonly stateQueueSpend: UTxO;
+  };
 }> => {
   const [blueprint, deploymentInfo] = await Promise.all([
     readJsonFile(config.blueprintPath),
@@ -99,6 +103,7 @@ export const resolveFabricatedDepositCliContracts = async ({
   }
   const contracts: FabricatedDepositContracts = {
     steps: chain.fabricatedDeposit.steps,
+    history: chain.fabricatedDeposit.history,
     computationThread: chain.computationThread,
     fraudProof: chain.fraudProof,
     hubOraclePolicyId: resolved.hubOraclePolicyId,
@@ -110,7 +115,27 @@ export const resolveFabricatedDepositCliContracts = async ({
     deploymentInfo: resolved.deploymentInfo,
     name: FABRICATED_DEPOSIT_STEP_DEPLOYMENT_NAMES[stepIndex],
   });
-  return { contracts, referenceScriptUtxo };
+  if (stepIndex !== 3) return { contracts, referenceScriptUtxo };
+  const [stateQueueSpend, computationThreadMint, fraudProofMint] =
+    await Promise.all(
+      ["stateQueueSpend", "computationThreadMint", "fraudProofMint"].map(
+        (name) =>
+          resolveStepReferenceScript({
+            config,
+            deploymentInfo: resolved.deploymentInfo,
+            name,
+          }),
+      ),
+    );
+  return {
+    contracts,
+    referenceScriptUtxo,
+    witnessReferenceScripts: {
+      stateQueueSpend: stateQueueSpend!,
+      computationThreadMint: computationThreadMint!,
+      fraudProofMint: fraudProofMint!,
+    },
+  };
 };
 
 export const resolveFabricatedWithdrawalCliContracts = async ({
@@ -122,6 +147,9 @@ export const resolveFabricatedWithdrawalCliContracts = async ({
 }): Promise<{
   readonly contracts: FabricatedWithdrawalContracts;
   readonly referenceScriptUtxo: UTxO;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts & {
+    readonly stateQueueSpend: UTxO;
+  };
 }> => {
   const [blueprint, deploymentInfo] = await Promise.all([
     readJsonFile(config.blueprintPath),
@@ -143,6 +171,7 @@ export const resolveFabricatedWithdrawalCliContracts = async ({
   }
   const contracts: FabricatedWithdrawalContracts = {
     steps: chain.fabricatedWithdrawal.steps,
+    history: chain.fabricatedWithdrawal.history,
     computationThread: chain.computationThread,
     fraudProof: chain.fraudProof,
     hubOraclePolicyId: resolved.hubOraclePolicyId,
@@ -154,5 +183,25 @@ export const resolveFabricatedWithdrawalCliContracts = async ({
     deploymentInfo: resolved.deploymentInfo,
     name: FABRICATED_WITHDRAWAL_STEP_DEPLOYMENT_NAMES[stepIndex],
   });
-  return { contracts, referenceScriptUtxo };
+  if (stepIndex !== 3) return { contracts, referenceScriptUtxo };
+  const [stateQueueSpend, computationThreadMint, fraudProofMint] =
+    await Promise.all(
+      ["stateQueueSpend", "computationThreadMint", "fraudProofMint"].map(
+        (name) =>
+          resolveStepReferenceScript({
+            config,
+            deploymentInfo: resolved.deploymentInfo,
+            name,
+          }),
+      ),
+    );
+  return {
+    contracts,
+    referenceScriptUtxo,
+    witnessReferenceScripts: {
+      stateQueueSpend: stateQueueSpend!,
+      computationThreadMint: computationThreadMint!,
+      fraudProofMint: fraudProofMint!,
+    },
+  };
 };

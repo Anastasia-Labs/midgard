@@ -38,6 +38,7 @@ vi.mock("@al-ft/midgard-sdk", async (original) => {
     fetchCorrectionLockUTxOProgram: () => Effect.succeed(seams.lock()),
     getStateQueueNodeFromStateQueueDatum: (datum: SDK.LinkedListNodeView) =>
       Effect.succeed({
+        proven_fraud: null,
         header: { endTime: 1n },
         da_attestation:
           datum.data === "attested"

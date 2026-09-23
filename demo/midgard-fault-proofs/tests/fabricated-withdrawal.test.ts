@@ -52,6 +52,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
+import { authenticateFabricatedHistoryWitness } from "../src/fabricated-history-witness.js";
 import {
   classifyFabricatedWithdrawalFault,
   fabricatedWithdrawalBlockEvidenceFromVerifiedPayload,
@@ -63,7 +64,6 @@ import {
   deriveFabricatedWithdrawalStep01Handoff,
   parseSubmitFabricatedWithdrawalInclusion,
 } from "../src/submit-fabricated-withdrawal-step-01.js";
-import { authenticateFabricatedWithdrawalEventUtxo } from "../src/submit-fabricated-withdrawal-step-02.js";
 import { deriveFabricatedWithdrawalStep03Handoff } from "../src/submit-fabricated-withdrawal-step-03.js";
 import { assertFabricatedWithdrawalStep04Finalizable } from "../src/submit-fabricated-withdrawal-step-04.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
@@ -129,8 +129,6 @@ const NONCE_AUTHENTIC_WITHDRAWAL_ID =
 
 const DATUM_AUTHENTIC_WITHDRAWAL_EVENT =
   "d8799fd8799fd8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ffd8799fd8799fd8799f58207e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e01ff581c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9ca1581c4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4ba14d6d6964676172642d746f6b656e182ad8799fd8799f581c2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2bffd87a80ffd87980ff9f5820adadadadadadadadadadadadadadadadadadadadadadadadadadadadadadadad5840bebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebeffd87980ffff0f581c57575757575757575757575757575757575757575757575757575757d8799fd8799f581c2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2bffd87a80ffd87980ff";
-const HASH_AUTHENTIC_WITHDRAWAL_EVENT_DATUM =
-  "b5e4fa1c72a874ec61778f2e29dc4cc326313b3bc581bc64738fd45f1d9a9a70";
 
 const FI_WITHDRAWALS_PHAS_ROOT =
   "7e6bcae06cc23954a14d0d2070b40be71abb631bc845a82640c4e8ad3bac7138";
@@ -151,15 +149,15 @@ const HEADER_END_TIME = 20n;
 const AUTHENTIC_INCLUSION_TIME = 15n;
 
 const FI_HEADER_HASH =
-  "735fcb9ab869fa81efc508ca11991963a774ae8024658d6de1889967";
+  "3644888b6b3bbab155df4b7b6572e33c50f78407422d4558d19418b4";
 const MM_HEADER_HASH =
-  "44201f07972dae5999a6a5f5b8659c0ac65fb96168f3035dd4728182";
+  "39e9477c2cde2da7f1830e232c2d3ece94d4e3760f4b46cc1477334a";
 
 /** `step_04.State` of each Aiken scenario, byte for byte. */
 const FI_STEP_04_STATE_CBOR =
-  "d8799f581c735fcb9ab869fa81efc508ca11991963a774ae8024658d6de18899670a14d8799f58203a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a00ffd87980ff";
+  "d8799f581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb581c3644888b6b3bbab155df4b7b6572e33c50f78407422d4558d19418b40a14d8799f58203a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a00ffd87980ff";
 const MM_STEP_04_STATE_CBOR =
-  "d8799f581c44201f07972dae5999a6a5f5b8659c0ac65fb96168f3035dd47281820a14d8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ffd87a9f58208e8f341a7ae7b42e43bf1b09b3e63c742979eb2ada627a417d7af04be1dbe2a35820283ad237b5850498ff2cc5e4c2017d6129a3d955265f5e3a889387776716d12f0fffff";
+  "d8799f581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb581c39e9477c2cde2da7f1830e232c2d3ece94d4e3760f4b46cc1477334a0a14d8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ffd87a9f58208e8f341a7ae7b42e43bf1b09b3e63c742979eb2ada627a417d7af04be1dbe2a35820283ad237b5850498ff2cc5e4c2017d6129a3d955265f5e3a889387776716d12f0fffff";
 
 const DA_PROVENANCE: SDK.EvidenceProvenance = {
   trustClass: "public_or_permissionless_da",
@@ -287,15 +285,51 @@ const l1Observation = (
   ...overrides,
 });
 
-const absentIdentityWitness = (
-  liveOutputReferences: readonly SDK.OutputReference[] = [
-    FABRICATED_WITHDRAWAL_ID,
-  ],
-): FabricatedWithdrawalL1Witness => ({
-  kind: "absent_identity",
+const historyEnvironment = {
+  inlineLimitBytes: 512n,
+  maxPayloadBytes: 5000n,
+  maxPayloadNodes: 512n,
+  retentionAddress: credentialToAddress("Preview", {
+    type: "Script",
+    hash: h28(0xee),
+  }),
+};
+const historyWitness = (anchor: UTxO): FabricatedWithdrawalL1Witness => ({
   observation: l1Observation(),
-  liveOutputReferences,
+  hubOraclePolicyId: h28(0x16),
+  hubOracleUtxo: hubOracleUtxoFixture(),
+  network: "Preview",
+  history: historyEnvironment,
+  anchor,
 });
+const rootHistoryUtxo = (): UTxO => ({
+  ...syntheticUtxo({
+    txIdByte: 0xa3,
+    outputIndex: 0,
+    datum: Data.to(
+      {
+        position: "Root",
+        next: null,
+        protected_until: 0n,
+        payload: "RootContent",
+      },
+      SDK.EventHistoryNode,
+    ),
+    assets: { [WITHDRAWAL_POLICY_ID]: 1n },
+  }),
+  address: credentialToAddress("Preview", {
+    type: "Script",
+    hash: WITHDRAWAL_POLICY_ID,
+  }),
+});
+const absentIdentityWitness = (
+  authenticated = true,
+): FabricatedWithdrawalL1Witness => {
+  const anchor = rootHistoryUtxo();
+  return historyWitness(
+    authenticated ? anchor : { ...anchor, assets: { lovelace: 5_000_000n } },
+  );
+};
 
 const presentEventWitness = ({
   observedEventAssetName = NONCE_AUTHENTIC_WITHDRAWAL_ID,
@@ -303,13 +337,13 @@ const presentEventWitness = ({
 }: {
   readonly observedEventAssetName?: string;
   readonly eventDatumCbor?: string;
-} = {}): FabricatedWithdrawalL1Witness => ({
-  kind: "present_event",
-  observation: l1Observation(),
-  withdrawalEventPolicyId: WITHDRAWAL_POLICY_ID,
-  observedEventAssetName,
-  eventDatumCbor,
-});
+} = {}): FabricatedWithdrawalL1Witness =>
+  historyWitness(
+    withdrawalEventUtxoFixture({
+      assetName: observedEventAssetName,
+      datum: Data.from(eventDatumCbor, SDK.WithdrawalOrderDatum),
+    }),
+  );
 
 const l1AddressOf = (byte: number): SDK.AddressData => ({
   paymentCredential: { PublicKeyCredential: [h28(byte)] as [string] },
@@ -348,13 +382,13 @@ const withdrawalEventDatum = ({
   refund_datum: "NoDatum",
 });
 
-/** The `serialise_data` bytes of a withdrawal event datum — what both steps hash. */
+/** Legacy content fixture encoded canonically before conversion to a history payload. */
 const eventDatumBytes = (datum: SDK.WithdrawalOrderDatum): string =>
   SDK.withdrawalEventDatumBytes(datum);
 
 // ## Step-02 UTxO fixtures
 //
-// `authenticateFabricatedWithdrawalEventUtxo` reads the withdrawal policy out of
+// The public history verifier reads the withdrawal policy out of
 // the **authentic hub oracle datum**, so the policy is never a caller's claim;
 // these literals exist to exercise exactly that read, with the deposit policy set
 // to a different value so reading the wrong field cannot pass.
@@ -415,16 +449,18 @@ const syntheticUtxo = ({
 
 const hubOracleUtxoFixture = (
   withdrawalScriptHash = WITHDRAWAL_POLICY_ID,
-): UTxO =>
-  syntheticUtxo({
+): UTxO => ({
+  ...syntheticUtxo({
     txIdByte: 0xa1,
     outputIndex: 0,
     datum: Data.to(
       hubOracleDatumWithWithdrawalPolicy(withdrawalScriptHash),
       SDK.HubOracleDatum,
     ),
-    assets: {},
-  });
+    assets: { [toUnit(h28(0x16), SDK.HUB_ORACLE_ASSET_NAME)]: 1n },
+  }),
+  address: credentialToAddress("Preview", { type: "Script", hash: h28(0x16) }),
+});
 
 const withdrawalEventUtxoFixture = ({
   policyId = WITHDRAWAL_POLICY_ID,
@@ -434,20 +470,92 @@ const withdrawalEventUtxoFixture = ({
   readonly policyId?: string;
   readonly assetName?: string;
   readonly datum?: SDK.WithdrawalOrderDatum;
-} = {}): UTxO =>
-  syntheticUtxo({
+} = {}): UTxO => ({
+  ...syntheticUtxo({
     txIdByte: 0xa2,
     outputIndex: 1,
-    datum: Data.to(datum, SDK.WithdrawalOrderDatum),
+    datum: Data.to(
+      {
+        position: { Key: [NONCE_AUTHENTIC_WITHDRAWAL_ID] },
+        next: null,
+        protected_until: 0n,
+        payload: {
+          Order: {
+            facts: {
+              event_id: datum.event.id,
+              inclusion_time: datum.inclusion_time,
+              location: { Inline: { payload: historyPayload(datum) } },
+              structural_lovelace: 2_000_000n,
+              structural_refund_key: h28(0x44),
+            },
+          },
+        },
+      },
+      SDK.EventHistoryNode,
+    ),
     assets: { [toUnit(policyId, assetName)]: 1n },
-  });
+  }),
+  address: credentialToAddress("Preview", {
+    type: "Script",
+    hash: WITHDRAWAL_POLICY_ID,
+  }),
+});
+
+/** Read-only public-output fixture. A nonce lookup must never authorize absence. */
+const historyLucid = (nodes: readonly UTxO[]): LucidEvolution =>
+  ({
+    utxosByOutRef: async () => {
+      throw new Error("Unexpected identity-nonce lookup");
+    },
+    utxosAtWithUnit: async (address: string, unit: string) => {
+      const hub = hubOracleUtxoFixture();
+      return hub.address === address && hub.assets[unit] === 1n ? [hub] : [];
+    },
+    utxosAt: async (address: string) =>
+      nodes.filter((u) => u.address === address),
+  }) as unknown as LucidEvolution;
 
 // ## Measured-state twins for the submit-side handoffs
 //
 // Built from the Aiken constants rather than from a local block, so the step-04
 // handoff bytes can be compared against the Aiken scenarios' exact CBOR.
 
+const historyAssets: SDK.Value = new Map([["", new Map([["", 3_000_000n]])]]);
+const historyPayload = (
+  datum: SDK.WithdrawalOrderDatum,
+): SDK.EventHistoryPayload => ({
+  WithdrawalPayload: {
+    event: datum.event,
+    refund_address: datum.refund_address,
+    refund_datum: datum.refund_datum,
+  },
+});
+const historyOpening = (
+  datum = withdrawalEventDatum(),
+  assets = historyAssets,
+) =>
+  Data.to(
+    {
+      RetainedEventData: {
+        payload: historyPayload(datum),
+        original_assets: assets,
+      },
+    },
+    SDK.FabricatedWithdrawalAuthenticContentOpening,
+  );
+const historyCommitment = SDK.eventHistoryCommitment(
+  "30".repeat(28),
+  "Withdrawal",
+  {
+    event_id: AUTHENTIC_WITHDRAWAL_ID,
+    inclusion_time: AUTHENTIC_INCLUSION_TIME,
+  },
+  historyPayload(withdrawalEventDatum()),
+  historyAssets,
+);
+
 const fiStep03State: SDK.FabricatedWithdrawalStep03State = {
+  state_queue_policy: "bb".repeat(28),
   challenged_header_hash: FI_HEADER_HASH,
   header_start_time: HEADER_START_TIME,
   header_end_time: HEADER_END_TIME,
@@ -457,6 +565,7 @@ const fiStep03State: SDK.FabricatedWithdrawalStep03State = {
 };
 
 const mmStep03State: SDK.FabricatedWithdrawalStep03State = {
+  state_queue_policy: "bb".repeat(28),
   challenged_header_hash: MM_HEADER_HASH,
   header_start_time: HEADER_START_TIME,
   header_end_time: HEADER_END_TIME,
@@ -464,8 +573,7 @@ const mmStep03State: SDK.FabricatedWithdrawalStep03State = {
   committed_withdrawal_content_hash: HASH_DIVERTED_WITHDRAWAL_CONTENT,
   verdict: {
     WithdrawalEventObserved: {
-      event_datum_hash: HASH_AUTHENTIC_WITHDRAWAL_EVENT_DATUM,
-      event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
+      commitment: historyCommitment,
     },
   },
 };
@@ -590,15 +698,20 @@ describe("fabricated-withdrawal production evidence authority", () => {
         hash: hubDatum.withdrawal,
       });
       expect(eventAddress).not.toBe(mintPolicyAddress);
+      expect(event.assets[eventUnit]).toBe(1n);
       let liveEventAddress = eventAddress;
       const queries: string[] = [];
       const authority = createFabricatedWithdrawalEvidenceAuthority({
+        history: historyEnvironment,
         lucid: {
-          utxosByOutRef: async () => [],
-          utxosAtWithUnit: async (address: string, unit: string) => {
+          utxosByOutRef: async () => {
+            throw new Error("Unexpected identity-nonce lookup");
+          },
+          utxosAtWithUnit: async (address: string, unit: string) =>
+            address === hubAddress && unit === hubUnit ? [hub] : [],
+          utxosAt: async (address: string) => {
             queries.push(address);
-            if (address === hubAddress && unit === hubUnit) return [hub];
-            return address === liveEventAddress && unit === eventUnit
+            return address === liveEventAddress
               ? [{ ...event, address: liveEventAddress }]
               : [];
           },
@@ -628,10 +741,10 @@ describe("fabricated-withdrawal production evidence authority", () => {
         h28(0x44),
       );
       expect(detections).toHaveLength(1);
-      expect(detections[0]!.artifact.authenticContent.eventDatumCbor).toBe(
-        eventDatumBytes(withdrawalEventDatum()),
+      expect(detections[0]!.artifact.authenticContent.openingCbor).toBe(
+        historyOpening(),
       );
-      expect(detections[0]!.artifact.authenticContent.eventDatumCbor).not.toBe(
+      expect(detections[0]!.artifact.authenticContent.openingCbor).not.toBe(
         event.datum,
       );
       await expect(
@@ -646,46 +759,27 @@ describe("fabricated-withdrawal production evidence authority", () => {
       liveEventAddress = mintPolicyAddress;
       await expect(
         authority.detect(ordinaryEvidence, h28(0x44)),
-      ).rejects.toThrow("event lookup requires exactly one current L1 output");
+      ).rejects.toThrow("no unique authenticated witness");
       await expect(authority.readmit(detections[0]!.artifact)).rejects.toThrow(
-        "event lookup requires exactly one current L1 output",
+        "no unique authenticated witness",
       );
       liveEventAddress = eventAddress;
       const altered = withdrawalEventDatum();
-      event.datum = Data.to(
-        {
-          ...altered,
-          event: {
-            ...altered.event,
-            info: {
-              ...altered.event.info,
-              body: { ...altered.event.info.body, l2_owner: h28(0xe3) },
-            },
-          },
-        },
-        SDK.WithdrawalOrderDatum,
-      );
+      altered.event.info.body.l2_owner = h28(0xe3);
+      event.datum = withdrawalEventUtxoFixture({ datum: altered }).datum;
       await expect(authority.readmit(detections[0]!.artifact)).rejects.toThrow(
-        "event artifact changed its authenticated L1 outref or datum",
+        "History facts changed before capture",
       );
     },
   );
 
-  it("roundtrips an authenticated live-identity fault through journal normalization", async () => {
+  it("roundtrips an authenticated list-absence fault through journal normalization", async () => {
     const fixture = await buildWithdrawalsBlockFixture({ leaves: [FI_LEAF] });
     const authority = createFabricatedWithdrawalEvidenceAuthority({
-      lucid: {
-        utxosByOutRef: async () => [
-          syntheticUtxo({
-            txIdByte: 0x3a,
-            outputIndex: 0,
-            datum: "d87980",
-            assets: {},
-          }),
-        ],
-      } as unknown as LucidEvolution,
+      history: historyEnvironment,
+      lucid: historyLucid([rootHistoryUtxo()]),
       network: "Preview",
-      hubOraclePolicyId: WITHDRAWAL_POLICY_ID,
+      hubOraclePolicyId: h28(0x16),
       minimumConfirmationDepth: 1,
     });
     const detections = await authority.detect(
@@ -696,7 +790,8 @@ describe("fabricated-withdrawal production evidence authority", () => {
     expect(detections[0]!.detection.violationId).toBe("fabricated-withdrawal");
     expect(detections[0]!.artifact.l1Evidence).toEqual({
       kind: "absent_identity",
-      unspentOutRef: `${FABRICATED_WITHDRAWAL_ID.transactionId}#0`,
+      historyOutRef: `${h32(0xa3)}#0`,
+      retainedDataOutRef: null,
     });
     const readmitted = await authority.readmit(
       JSON.parse(JSON.stringify(normalizeJournalJson(detections[0]!.artifact))),
@@ -768,6 +863,7 @@ describe("Q40 fabricated-withdrawal proof plan", () => {
     expect(plan.classification.verdict).toBe("WithdrawalIdentityAbsent");
     expect(plan.classification.fault).toBe("NonexistentWithdrawalIdentity");
     expect(plan.step02State).toEqual({
+      stateQueuePolicyId: h28(0x15),
       challengedHeaderHash: fixture.headerHash,
       headerStartTime: "10",
       headerEndTime: "20",
@@ -775,7 +871,7 @@ describe("Q40 fabricated-withdrawal proof plan", () => {
       committedWithdrawalContentHash: HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
     });
     // An absence proof has no retained content to open at step 03.
-    expect(plan.authenticContent.eventDatumCbor).toBeNull();
+    expect(plan.authenticContent.openingCbor).toBeNull();
     expect(
       plan.withdrawalInclusion.withdrawalMembershipProofCbor.length,
     ).toBeGreaterThan(0);
@@ -804,8 +900,7 @@ describe("Q40 fabricated-withdrawal proof plan", () => {
 
     expect(plan.classification.verdict).toEqual({
       WithdrawalEventObserved: {
-        event_datum_hash: HASH_AUTHENTIC_WITHDRAWAL_EVENT_DATUM,
-        event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
+        commitment: { ...historyCommitment, policy: WITHDRAWAL_POLICY_ID },
       },
     });
     expect(plan.classification.fault).toEqual({
@@ -818,9 +913,7 @@ describe("Q40 fabricated-withdrawal proof plan", () => {
     expect(plan.challengedLeaf.committedWithdrawalContentHash).toBe(
       HASH_DIVERTED_WITHDRAWAL_CONTENT,
     );
-    expect(plan.authenticContent.eventDatumCbor).toBe(
-      DATUM_AUTHENTIC_WITHDRAWAL_EVENT,
-    );
+    expect(plan.authenticContent.openingCbor).toBe(historyOpening());
   });
 
   it("refuses leaves that do not open the committed counted withdrawals_root, in the root or in the cardinality", async () => {
@@ -943,18 +1036,17 @@ describe("Q40 fabricated-withdrawal L1 witness authentication", () => {
     return plan.challengedLeaf;
   };
 
-  it("refuses an absence claim that rests on a consumed UTxO, and any witness that is not authenticated L1 security-grade evidence", async () => {
+  it("refuses an absence claim without an authenticated history token, and any witness that is not authenticated L1 security-grade evidence", async () => {
     const leaf = await leafOf(FI_LEAF, absentIdentityWitness());
-    // The committed identity is absent from the authenticated live set, so its
-    // absence cannot be established: no fallback, no downgrade.
+    // A gap-shaped datum without its list NFT cannot authenticate absence.
     await expect(
       classifyFabricatedWithdrawalFault({
         leaf,
         headerStartTime: HEADER_START_TIME,
         headerEndTime: HEADER_END_TIME,
-        witness: absentIdentityWitness([AUTHENTIC_WITHDRAWAL_ID]),
+        witness: absentIdentityWitness(false),
       }),
-    ).rejects.toMatchObject({ code: "consumed_live_utxo_fallback_refused" });
+    ).rejects.toMatchObject({ code: "history_witness_invalid" });
     await expect(
       classifyFabricatedWithdrawalFault({
         leaf,
@@ -972,7 +1064,7 @@ describe("Q40 fabricated-withdrawal L1 witness authentication", () => {
           }),
         },
       }),
-    ).rejects.toBeInstanceOf(SDK.CanonicalEvidenceRejection);
+    ).rejects.toMatchObject({ code: "history_witness_invalid" });
   });
 
   it("refuses a present-event witness that is not bound to the committed identity", async () => {
@@ -986,7 +1078,7 @@ describe("Q40 fabricated-withdrawal L1 witness authentication", () => {
         witness: presentEventWitness({ observedEventAssetName: h32(0x4d) }),
       }),
     ).rejects.toMatchObject({
-      code: "withdrawal_identity_observation_mismatch",
+      code: "history_witness_invalid",
     });
     // The retained datum names a different withdrawal identity.
     await expect(
@@ -1000,7 +1092,7 @@ describe("Q40 fabricated-withdrawal L1 witness authentication", () => {
           ),
         }),
       }),
-    ).rejects.toMatchObject({ code: "event_identity_mismatch" });
+    ).rejects.toMatchObject({ code: "history_witness_invalid" });
   });
 
   it("refuses to challenge the authentic block, whose header committed exactly the authentic order", async () => {
@@ -1061,7 +1153,7 @@ describe("Q40 fabricated-withdrawal L1 witness authentication", () => {
     });
   });
 
-  it("refuses an authentic event that was not due for the challenged block, on either side of the window", async () => {
+  it("proves an authentic event ineligible for the challenged block, on either side of the window", async () => {
     const leaf = await leafOf(MM_LEAF, presentEventWitness());
     for (const inclusionTime of [HEADER_START_TIME, HEADER_END_TIME + 1n]) {
       await expect(
@@ -1075,12 +1167,33 @@ describe("Q40 fabricated-withdrawal L1 witness authentication", () => {
             ),
           }),
         }),
-      ).rejects.toMatchObject({
-        name: "FabricatedWithdrawalRejectionV1",
-        code: "event_not_due_for_block",
+      ).resolves.toMatchObject({
+        fault: {
+          IneligibleWithdrawalEvent: { event_inclusion_time: inclusionTime },
+        },
       });
     }
   });
+});
+
+it("authenticates an equal-key filler as absence without counting its funds or using nonce liveness", async () => {
+  const anchor = withdrawalEventUtxoFixture();
+  const node = Data.from(anchor.datum!, SDK.EventHistoryNode);
+  const filler = {
+    ...anchor,
+    datum: Data.to(
+      { ...node, payload: { Filler: { refund_key: h28(0x44) } } },
+      SDK.EventHistoryNode,
+    ),
+  };
+  const result = await authenticateFabricatedHistoryWitness(
+    historyWitness(filler),
+    "Withdrawal",
+    AUTHENTIC_WITHDRAWAL_ID,
+  );
+  expect(result.witness.kind).toBe("Absent");
+  expect(result.captured).toBeUndefined();
+  expect(result.witness.anchor.utxo.assets.lovelace).toBe(5_000_000n);
 });
 
 describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
@@ -1099,6 +1212,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
       plan.withdrawalInclusion,
     );
     const handoff = await deriveFabricatedWithdrawalStep01Handoff({
+      stateQueuePolicyId: h28(0x15),
       header: fixture.header,
       headerHash: fixture.headerHash,
       inclusion,
@@ -1112,6 +1226,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
     );
     expect(handoff.committedWithdrawal.count).toBe(1n);
     expect(handoff.step02State).toEqual({
+      state_queue_policy: h28(0x15),
       challenged_header_hash: fixture.headerHash,
       header_start_time: HEADER_START_TIME,
       header_end_time: HEADER_END_TIME,
@@ -1121,6 +1236,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
 
     await expect(
       deriveFabricatedWithdrawalStep01Handoff({
+        stateQueuePolicyId: h28(0x15),
         header: fixture.header,
         headerHash: fixture.headerHash,
         inclusion: {
@@ -1134,6 +1250,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
     // membership check on chain hashes the `serialise_data` bytes.
     await expect(
       deriveFabricatedWithdrawalStep01Handoff({
+        stateQueuePolicyId: h28(0x15),
         header: fixture.header,
         headerHash: fixture.headerHash,
         inclusion: {
@@ -1154,46 +1271,60 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
   });
 
   it("authenticates the withdrawal event UTxO through the hub oracle's withdrawal policy, not its deposit policy", async () => {
-    const state: SDK.FabricatedWithdrawalStep02State = {
-      challenged_header_hash: MM_HEADER_HASH,
-      header_start_time: HEADER_START_TIME,
-      header_end_time: HEADER_END_TIME,
-      committed_withdrawal_id: AUTHENTIC_WITHDRAWAL_ID,
-      committed_withdrawal_content_hash: HASH_DIVERTED_WITHDRAWAL_CONTENT,
-    };
-    const authenticated = await authenticateFabricatedWithdrawalEventUtxo({
-      state,
-      hubOracleUtxo: hubOracleUtxoFixture(),
-      eventUtxo: withdrawalEventUtxoFixture(),
-    });
-    expect(authenticated.withdrawalPolicyId).toBe(WITHDRAWAL_POLICY_ID);
-    expect(authenticated.expectedEventAssetName).toBe(
+    const authenticate = (anchor: UTxO) =>
+      authenticateFabricatedHistoryWitness(
+        historyWitness(anchor),
+        "Withdrawal",
+        AUTHENTIC_WITHDRAWAL_ID,
+      );
+    const authenticated = await authenticate(withdrawalEventUtxoFixture());
+    await expect(
+      authenticateFabricatedHistoryWitness(
+        {
+          ...historyWitness(withdrawalEventUtxoFixture()),
+          hubOracleUtxo: {
+            ...hubOracleUtxoFixture(),
+            assets: { lovelace: 5_000_000n },
+          },
+        },
+        "Withdrawal",
+        AUTHENTIC_WITHDRAWAL_ID,
+      ),
+    ).rejects.toThrow("authentic inline hub oracle");
+    await expect(
+      authenticate({
+        ...withdrawalEventUtxoFixture(),
+        address: credentialToAddress("Preview", {
+          type: "Key",
+          hash: h28(0x44),
+        }),
+      }),
+    ).rejects.toThrow("Invalid authenticated history output shape");
+
+    expect(authenticated.deployment.policyId).toBe(WITHDRAWAL_POLICY_ID);
+    expect(authenticated.witness.anchor.key).toBe(
       NONCE_AUTHENTIC_WITHDRAWAL_ID,
     );
-    expect(authenticated.eventDatumHash).toBe(
-      HASH_AUTHENTIC_WITHDRAWAL_EVENT_DATUM,
-    );
+    expect(authenticated.captured?.commitment).toEqual({
+      ...historyCommitment,
+      policy: WITHDRAWAL_POLICY_ID,
+    });
+    expect(authenticated.captured?.originalAssets).toEqual(historyAssets);
 
     // The hub oracle's *deposit* policy is a different event family's policy, so
     // an event NFT minted under it is not an authentic withdrawal event even
     // though the asset name is the authentic nonce.
     await expect(
-      authenticateFabricatedWithdrawalEventUtxo({
-        state,
-        hubOracleUtxo: hubOracleUtxoFixture(),
-        eventUtxo: withdrawalEventUtxoFixture({ policyId: DEPOSIT_POLICY_ID }),
-      }),
-    ).rejects.toThrow(/does not carry the authentic withdrawal event NFT/u);
+      authenticate(withdrawalEventUtxoFixture({ policyId: DEPOSIT_POLICY_ID })),
+    ).rejects.toThrow(/no unique authenticated witness/u);
     // The authentic policy and nonce, but a datum for another identity.
     await expect(
-      authenticateFabricatedWithdrawalEventUtxo({
-        state,
-        hubOracleUtxo: hubOracleUtxoFixture(),
-        eventUtxo: withdrawalEventUtxoFixture({
+      authenticate(
+        withdrawalEventUtxoFixture({
           datum: withdrawalEventDatum({ id: FABRICATED_WITHDRAWAL_ID }),
         }),
-      }),
-    ).rejects.toThrow(/not the committed identity/u);
+      ),
+    ).rejects.toThrow(/identity differs/u);
   });
 
   it("opens step-02's retained commitment into the Aiken scenarios' exact step-04 handoffs, for both fidelity fabrications", async () => {
@@ -1208,7 +1339,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
 
     const present = await deriveFabricatedWithdrawalStep03Handoff({
       state: mmStep03State,
-      eventDatumCbor: DATUM_AUTHENTIC_WITHDRAWAL_EVENT,
+      openingCbor: historyOpening(),
     });
     expect(present.fault).toEqual({
       MismatchedWithdrawalContent: {
@@ -1229,7 +1360,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
         committed_withdrawal_content_hash:
           HASH_FORGED_SIGNATURE_WITHDRAWAL_CONTENT,
       },
-      eventDatumCbor: DATUM_AUTHENTIC_WITHDRAWAL_EVENT,
+      openingCbor: historyOpening(),
     });
     expect(forged.fault).toEqual({
       MismatchedWithdrawalContent: {
@@ -1250,7 +1381,9 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
     expect(rawLucidDatum).not.toBe(DATUM_AUTHENTIC_WITHDRAWAL_EVENT);
     const normalized = await deriveFabricatedWithdrawalStep03Handoff({
       state: mmStep03State,
-      eventDatumCbor: rawLucidDatum,
+      openingCbor: historyOpening(
+        Data.from(rawLucidDatum, SDK.WithdrawalOrderDatum),
+      ),
     });
     expect(normalized.fault).toEqual(present.fault);
   });
@@ -1260,22 +1393,23 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
     // dispute into the strictly stronger non-existence conviction.
     await expect(
       deriveFabricatedWithdrawalStep03Handoff({ state: mmStep03State }),
-    ).rejects.toThrow(/does not pair|non-existence conviction/u);
+    ).rejects.toThrow(/requires its retained payload and original Value/u);
     await expect(
       deriveFabricatedWithdrawalStep03Handoff({
         state: fiStep03State,
-        eventDatumCbor: DATUM_AUTHENTIC_WITHDRAWAL_EVENT,
+        openingCbor: historyOpening(),
       }),
-    ).rejects.toThrow(/does not pair with the L1 verdict/u);
+    ).rejects.toThrow(/absence admits no retained event opening/u);
     // Only the hash equality makes supplied bytes authentic.
     await expect(
       deriveFabricatedWithdrawalStep03Handoff({
         state: mmStep03State,
-        eventDatumCbor: eventDatumBytes(
-          withdrawalEventDatum({ inclusionTime: 16n }),
+        openingCbor: historyOpening(
+          withdrawalEventDatum(),
+          new Map([["", new Map([["", 3_000_001n]])]]),
         ),
       }),
-    ).rejects.toThrow(/not the commitment/u);
+    ).rejects.toThrow(/does not match the authenticated history commitment/u);
 
     const established = SDK.fabricatedWithdrawalStep04State(mmStep03State, {
       MismatchedWithdrawalContent: {

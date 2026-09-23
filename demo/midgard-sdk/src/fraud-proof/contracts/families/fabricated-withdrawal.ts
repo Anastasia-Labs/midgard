@@ -2,10 +2,14 @@ import { Data, Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
+  AddressData,
+  addressDataFromBech32,
   AuthenticatedValidator,
   MintingValidator,
   SpendingValidator,
 } from "../../../common.js";
+import { applyEventHistoryRetentionValidator } from "../../../user-events/history-data.js";
+import { type EventHistoryPayloadBounds } from "../../../user-events/history-payload.js";
 import {
   applyBlueprintParams,
   type FaultProofBlueprint,
@@ -33,6 +37,9 @@ export type FabricatedWithdrawalFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly fabricatedWithdrawal: FraudProofChain & {
+    readonly history: EventHistoryPayloadBounds & {
+      readonly retentionAddress: string;
+    };
     readonly steps: readonly [
       SpendingValidator,
       SpendingValidator,
@@ -43,7 +50,9 @@ export type FabricatedWithdrawalFaultProofContracts = {
 };
 
 export type BuildFabricatedWithdrawalFaultProofContractsParams =
-  BuildFaultProofContractsParams;
+  BuildFaultProofContractsParams & {
+    readonly eventHistoryBounds: EventHistoryPayloadBounds;
+  };
 
 export const buildFabricatedWithdrawalChain = ({
   blueprint,
@@ -52,7 +61,9 @@ export const buildFabricatedWithdrawalChain = ({
   computationThread,
   fraudProof,
   fraudProofTokenAddressData,
+  eventHistoryBounds,
 }: {
+  readonly eventHistoryBounds: EventHistoryPayloadBounds;
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
   readonly hubOraclePolicyId: string;
@@ -64,6 +75,27 @@ export const buildFabricatedWithdrawalChain = ({
   Error
 > =>
   Effect.gen(function* () {
+    const retention = yield* tryBuild(
+      "Failed to apply withdrawal history retention",
+      () =>
+        applyEventHistoryRetentionValidator(
+          blueprint,
+          network,
+          hubOraclePolicyId,
+          "Withdrawal",
+        ),
+    );
+    const retentionAddress = yield* addressDataFromBech32(retention.address);
+    if (
+      eventHistoryBounds.inlineLimitBytes <= 0n ||
+      eventHistoryBounds.maxPayloadBytes <
+        eventHistoryBounds.inlineLimitBytes ||
+      eventHistoryBounds.maxPayloadNodes <= 0n
+    ) {
+      return yield* Effect.fail(
+        new Error("History proofs require explicit measured payload bounds"),
+      );
+    }
     const step04 = yield* tryBuild(
       "Failed to build fabricated-withdrawal step 04",
       () =>
@@ -106,6 +138,10 @@ export const buildFabricatedWithdrawalChain = ({
               step03.spendingScriptHash,
               computationThread.policyId,
               hubOraclePolicyId,
+              Data.from(Data.to(retentionAddress, AddressData)),
+              eventHistoryBounds.inlineLimitBytes,
+              eventHistoryBounds.maxPayloadBytes,
+              eventHistoryBounds.maxPayloadNodes,
             ],
           ),
         ),
@@ -129,6 +165,7 @@ export const buildFabricatedWithdrawalChain = ({
     );
 
     return {
+      history: { ...eventHistoryBounds, retentionAddress: retention.address },
       firstStep: step01,
       steps: [step01, step02, step03, step04],
     };

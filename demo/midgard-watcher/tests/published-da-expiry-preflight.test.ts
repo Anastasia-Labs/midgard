@@ -69,6 +69,7 @@ const fixture = async () => {
       key: { Key: { key: headerHash } },
       next: "Empty",
       data: SDK.castStateQueueNodeToData({
+        proven_fraud: null,
         header,
         da_attestation: attested
           ? { Attested: { da_bond_asset_name: "ee".repeat(32) } }

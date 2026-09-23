@@ -115,6 +115,7 @@ export const buildStateQueueValidator = (
           minting.policyId,
           params.daAttestationPolicyId,
           params.availabilityChallengePolicyId,
+          params.fraudProofPolicyId,
         ]),
     );
     const buildYield = (

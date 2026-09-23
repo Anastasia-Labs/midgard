@@ -1382,6 +1382,7 @@ pub fn state_queue_reference_input_with_policy(
   nft_policy: ByteArray,
 ) -> Input {
   let node = state_queue.StateQueueNode {
+    proven_fraud: None,
     header: fixture.header,
     da_attestation: state_queue.no_da_attestation,
   }

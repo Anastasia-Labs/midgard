@@ -19,6 +19,8 @@ import {
   type DeploymentManifestJsonValue,
   normalizeDeploymentManifestJsonValue,
   parseDeploymentManifestEconomics,
+  parseDeploymentManifestEventHistoryBounds,
+  parseDeploymentManifestEventHistoryRetentionAddress,
   verifyDeploymentManifestFraudProofCatalogueIdentity,
   verifyDeploymentManifestIdentity,
   verifyFinalizedDeploymentManifest,
@@ -2005,12 +2007,31 @@ const validateContracts = (contracts: Record<string, unknown>): void => {
   for (const contractName of DEPLOYMENT_MANIFEST_CONTRACT_NAMES) {
     const field = `contracts.${contractName}`;
     const entry = requireObject(contracts[contractName], field);
+    const historyFamily =
+      contractName === "fraudProofFabricatedDeposit" ||
+      contractName === "fraudProofFabricatedWithdrawal";
     requireExactKeys(
       entry,
-      ["refScriptUTxO", "contract", "scriptHash"],
+      [
+        "refScriptUTxO",
+        "contract",
+        "scriptHash",
+        ...(historyFamily
+          ? ["eventHistoryBounds", "eventHistoryRetentionAddress"]
+          : []),
+      ],
       contractName === "fraudProofCatalogueMint" ? ["fraudProofCatalogue"] : [],
       field,
     );
+    if (historyFamily) {
+      parseDeploymentManifestEventHistoryBounds(
+        entry.eventHistoryBounds,
+        `${field}.eventHistoryBounds`,
+      );
+      parseDeploymentManifestEventHistoryRetentionAddress(
+        entry.eventHistoryRetentionAddress,
+      );
+    }
     const refScriptUTxO =
       entry.refScriptUTxO === null
         ? null

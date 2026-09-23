@@ -117,7 +117,7 @@ const genuineFixture = async () => {
     headerHash,
     headerCborHex,
     stateQueueNodeCborHex: Data.to(
-      { header, da_attestation: "Unattested" },
+      { proven_fraud: null, header, da_attestation: "Unattested" },
       SDK.StateQueueNode,
     ),
     linkedListDatumCborHex: CML.PlutusData.from_cbor_hex(
@@ -126,7 +126,7 @@ const genuineFixture = async () => {
           key: { Key: { key: headerHash } },
           next: "Empty",
           data: Data.castTo(
-            { header, da_attestation: "Unattested" },
+            { proven_fraud: null, header, da_attestation: "Unattested" },
             SDK.StateQueueNode,
           ),
         }),

@@ -148,6 +148,7 @@ const setup = async (descendantCount: number, attestedTarget = false) => {
           data: Data.from(
             Data.to(
               {
+                proven_fraud: null,
                 header: entry,
                 da_attestation:
                   index === 0 || (index === 1 && attestedTarget)

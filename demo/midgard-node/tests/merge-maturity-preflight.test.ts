@@ -154,6 +154,7 @@ const makeCandidate = (
     blockHeader: {},
     firstBlockNode: {},
     readiness: {
+      provenFraud: null,
       status,
       headerHash,
       reason:

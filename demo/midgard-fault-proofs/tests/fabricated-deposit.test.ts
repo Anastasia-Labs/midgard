@@ -43,6 +43,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
+import { authenticateFabricatedHistoryWitness } from "../src/fabricated-history-witness.js";
 import {
   classifyFabricatedDepositFault,
   fabricatedDepositBlockEvidenceFromVerifiedPayload,
@@ -54,7 +55,6 @@ import {
   deriveFabricatedDepositStep01Handoff,
   parseSubmitFabricatedDepositInclusion,
 } from "../src/submit-fabricated-deposit-step-01.js";
-import { authenticateFabricatedDepositEventUtxo } from "../src/submit-fabricated-deposit-step-02.js";
 import { deriveFabricatedDepositStep03Handoff } from "../src/submit-fabricated-deposit-step-03.js";
 import { assertFabricatedDepositStep04Finalizable } from "../src/submit-fabricated-deposit-step-04.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
@@ -112,8 +112,6 @@ const NONCE_AUTHENTIC_DEPOSIT_ID =
 
 const DATUM_AUTHENTIC_DEPOSIT_EVENT =
   "d8799fd8799fd8799f58207a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a03ffd8799fd8799fd8799f581c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1cffd87a80ff00d87a80ffff0f581c57575757575757575757575757575757575757575757575757575757ff";
-const HASH_AUTHENTIC_DEPOSIT_EVENT_DATUM =
-  "2538e7986f6a3468a1dd016318a82d3dd4f60d55f6e688e164dd35564c4a85b4";
 
 const FI_DEPOSITS_PHAS_ROOT =
   "b0374d9482ece991566bebfa200b6577eaeed4a2bcc56e25eb28e8d4f06655b4";
@@ -130,15 +128,15 @@ const HEADER_END_TIME = 20n;
 const AUTHENTIC_INCLUSION_TIME = 15n;
 
 const FI_HEADER_HASH =
-  "3e44a01bc7b6debd95fedbd6851545dc5a31b3eb37db73c30668e119";
+  "6a404d9de58a96111da77453168c29f4d23007592856b93e06b6bb46";
 const MM_HEADER_HASH =
-  "60c9a4c6860d24b6ed3a8f17c4d0718ae0a58cf655bbff24508f7789";
+  "b50943cc7ac3d1b46b37e1b33223419dcb3d4dbd03564f4966918ec6";
 
 /** `step_04.State` of each Aiken scenario, byte for byte. */
 const FI_STEP_04_STATE_CBOR =
-  "d8799f581c3e44a01bc7b6debd95fedbd6851545dc5a31b3eb37db73c30668e1190a14d8799f58205c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c00ffd87980ff";
+  "d8799f581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb581c6a404d9de58a96111da77453168c29f4d23007592856b93e06b6bb460a14d8799f58205c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c00ffd87980ff";
 const MM_STEP_04_STATE_CBOR =
-  "d8799f581c60c9a4c6860d24b6ed3a8f17c4d0718ae0a58cf655bbff24508f77890a14d8799f58207a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a03ffd87a9f58200ee4d3827f036188d9d47734f69d3d0db79598a14864eb91595ccbe7f00f8335582089ccb485f7c52cf77b0bdec91ab262a90bc7b519e9b6fae5a2a03529833c68630fffff";
+  "d8799f581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb581cb50943cc7ac3d1b46b37e1b33223419dcb3d4dbd03564f4966918ec60a14d8799f58207a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a03ffd87a9f58200ee4d3827f036188d9d47734f69d3d0db79598a14864eb91595ccbe7f00f8335582089ccb485f7c52cf77b0bdec91ab262a90bc7b519e9b6fae5a2a03529833c68630fffff";
 
 const DA_PROVENANCE: SDK.EvidenceProvenance = {
   trustClass: "public_or_permissionless_da",
@@ -254,15 +252,51 @@ const l1Observation = (
   ...overrides,
 });
 
-const absentIdentityWitness = (
-  liveOutputReferences: readonly SDK.OutputReference[] = [
-    FABRICATED_DEPOSIT_ID,
-  ],
-): FabricatedDepositL1Witness => ({
-  kind: "absent_identity",
+const historyEnvironment = {
+  inlineLimitBytes: 512n,
+  maxPayloadBytes: 5000n,
+  maxPayloadNodes: 512n,
+  retentionAddress: credentialToAddress("Preview", {
+    type: "Script",
+    hash: h28(0xee),
+  }),
+};
+const historyWitness = (anchor: UTxO): FabricatedDepositL1Witness => ({
   observation: l1Observation(),
-  liveOutputReferences,
+  hubOraclePolicyId: h28(0x16),
+  hubOracleUtxo: hubOracleUtxoFixture(),
+  network: "Preview",
+  history: historyEnvironment,
+  anchor,
 });
+const rootHistoryUtxo = (): UTxO => ({
+  ...syntheticUtxo({
+    txIdByte: 0xa3,
+    outputIndex: 0,
+    datum: Data.to(
+      {
+        position: "Root",
+        next: null,
+        protected_until: 0n,
+        payload: "RootContent",
+      },
+      SDK.EventHistoryNode,
+    ),
+    assets: { [DEPOSIT_POLICY_ID]: 1n },
+  }),
+  address: credentialToAddress("Preview", {
+    type: "Script",
+    hash: DEPOSIT_POLICY_ID,
+  }),
+});
+const absentIdentityWitness = (
+  authenticated = true,
+): FabricatedDepositL1Witness => {
+  const anchor = rootHistoryUtxo();
+  return historyWitness(
+    authenticated ? anchor : { ...anchor, assets: { lovelace: 5_000_000n } },
+  );
+};
 
 const presentEventWitness = ({
   observedEventAssetName = NONCE_AUTHENTIC_DEPOSIT_ID,
@@ -270,13 +304,13 @@ const presentEventWitness = ({
 }: {
   readonly observedEventAssetName?: string;
   readonly eventDatumCbor?: string;
-} = {}): FabricatedDepositL1Witness => ({
-  kind: "present_event",
-  observation: l1Observation(),
-  depositEventPolicyId: DEPOSIT_POLICY_ID,
-  observedEventAssetName,
-  eventDatumCbor,
-});
+} = {}): FabricatedDepositL1Witness =>
+  historyWitness(
+    depositEventUtxoFixture({
+      assetName: observedEventAssetName,
+      datum: Data.from(eventDatumCbor, SDK.DepositDatum),
+    }),
+  );
 
 /** A canonical `DepositDatum` with an arbitrary identity, content and window. */
 const depositEventDatum = ({
@@ -307,7 +341,7 @@ const depositEventDatum = ({
 
 // ## Step-02 UTxO fixtures
 //
-// `authenticateFabricatedDepositEventUtxo` reads the deposit policy out of the
+// The public history verifier reads the deposit policy out of the
 // **authentic hub oracle datum**, so the policy is never a caller's claim; these
 // literals exist to exercise exactly that read.
 
@@ -365,16 +399,18 @@ const syntheticUtxo = ({
   datum,
 });
 
-const hubOracleUtxoFixture = (depositScriptHash = DEPOSIT_POLICY_ID): UTxO =>
-  syntheticUtxo({
+const hubOracleUtxoFixture = (depositScriptHash = DEPOSIT_POLICY_ID): UTxO => ({
+  ...syntheticUtxo({
     txIdByte: 0xa1,
     outputIndex: 0,
     datum: Data.to(
       hubOracleDatumWithDepositPolicy(depositScriptHash),
       SDK.HubOracleDatum,
     ),
-    assets: {},
-  });
+    assets: { [toUnit(h28(0x16), SDK.HUB_ORACLE_ASSET_NAME)]: 1n },
+  }),
+  address: credentialToAddress("Preview", { type: "Script", hash: h28(0x16) }),
+});
 
 const depositEventUtxoFixture = ({
   policyId = DEPOSIT_POLICY_ID,
@@ -384,20 +420,83 @@ const depositEventUtxoFixture = ({
   readonly policyId?: string;
   readonly assetName?: string;
   readonly datum?: SDK.DepositDatum;
-} = {}): UTxO =>
-  syntheticUtxo({
+} = {}): UTxO => ({
+  ...syntheticUtxo({
     txIdByte: 0xa2,
     outputIndex: 1,
-    datum: Data.to(datum, SDK.DepositDatum),
+    datum: Data.to(
+      {
+        position: { Key: [NONCE_AUTHENTIC_DEPOSIT_ID] },
+        next: null,
+        protected_until: 0n,
+        payload: {
+          Order: {
+            facts: {
+              event_id: datum.event.id,
+              inclusion_time: datum.inclusion_time,
+              location: { Inline: { payload: historyPayload(datum) } },
+              structural_lovelace: 2_000_000n,
+              structural_refund_key: h28(0x44),
+            },
+          },
+        },
+      },
+      SDK.EventHistoryNode,
+    ),
     assets: { [toUnit(policyId, assetName)]: 1n },
-  });
+  }),
+  address: credentialToAddress("Preview", {
+    type: "Script",
+    hash: DEPOSIT_POLICY_ID,
+  }),
+});
+
+/** Read-only public-output fixture. A nonce lookup must never authorize absence. */
+const historyLucid = (nodes: readonly UTxO[]): LucidEvolution =>
+  ({
+    utxosByOutRef: async () => {
+      throw new Error("Unexpected identity-nonce lookup");
+    },
+    utxosAtWithUnit: async (address: string, unit: string) => {
+      const hub = hubOracleUtxoFixture();
+      return hub.address === address && hub.assets[unit] === 1n ? [hub] : [];
+    },
+    utxosAt: async (address: string) =>
+      nodes.filter((u) => u.address === address),
+  }) as unknown as LucidEvolution;
 
 // ## Measured-state twins for the submit-side handoffs
 //
 // Built from the Aiken constants rather than from a local block, so the step-04
 // handoff bytes can be compared against the Aiken scenarios' exact CBOR.
 
+const historyAssets: SDK.Value = new Map([["", new Map([["", 3_000_000n]])]]);
+const historyPayload = (datum: SDK.DepositDatum): SDK.EventHistoryPayload => ({
+  DepositPayload: { event: datum.event },
+});
+const historyOpening = (datum = depositEventDatum(), assets = historyAssets) =>
+  Data.to(
+    {
+      RetainedEventData: {
+        payload: historyPayload(datum),
+        original_assets: assets,
+      },
+    },
+    SDK.FabricatedDepositAuthenticContentOpening,
+  );
+const historyCommitment = SDK.eventHistoryCommitment(
+  "30".repeat(28),
+  "Deposit",
+  {
+    event_id: AUTHENTIC_DEPOSIT_ID,
+    inclusion_time: AUTHENTIC_INCLUSION_TIME,
+  },
+  historyPayload(depositEventDatum()),
+  historyAssets,
+);
+
 const fiStep03State: SDK.FabricatedDepositStep03State = {
+  state_queue_policy: "bb".repeat(28),
   challenged_header_hash: FI_HEADER_HASH,
   header_start_time: HEADER_START_TIME,
   header_end_time: HEADER_END_TIME,
@@ -407,6 +506,7 @@ const fiStep03State: SDK.FabricatedDepositStep03State = {
 };
 
 const mmStep03State: SDK.FabricatedDepositStep03State = {
+  state_queue_policy: "bb".repeat(28),
   challenged_header_hash: MM_HEADER_HASH,
   header_start_time: HEADER_START_TIME,
   header_end_time: HEADER_END_TIME,
@@ -414,8 +514,7 @@ const mmStep03State: SDK.FabricatedDepositStep03State = {
   committed_deposit_info_hash: HASH_DIVERTED_DEPOSIT_INFO,
   verdict: {
     DepositEventObserved: {
-      event_datum_hash: HASH_AUTHENTIC_DEPOSIT_EVENT_DATUM,
-      event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
+      commitment: historyCommitment,
     },
   },
 };
@@ -506,6 +605,7 @@ describe("Q39 fabricated-deposit proof plan", () => {
     expect(plan.classification.verdict).toBe("DepositIdentityAbsent");
     expect(plan.classification.fault).toBe("NonexistentDepositIdentity");
     expect(plan.step02State).toEqual({
+      stateQueuePolicyId: h28(0x15),
       challengedHeaderHash: fixture.headerHash,
       headerStartTime: "10",
       headerEndTime: "20",
@@ -513,7 +613,7 @@ describe("Q39 fabricated-deposit proof plan", () => {
       committedDepositInfoHash: HASH_AUTHENTIC_DEPOSIT_INFO,
     });
     // An absence proof has no retained content to open at step 03.
-    expect(plan.authenticContent.eventDatumCbor).toBeNull();
+    expect(plan.authenticContent.openingCbor).toBeNull();
     expect(
       plan.depositInclusion.depositMembershipProofCbor.length,
     ).toBeGreaterThan(0);
@@ -542,8 +642,7 @@ describe("Q39 fabricated-deposit proof plan", () => {
 
     expect(plan.classification.verdict).toEqual({
       DepositEventObserved: {
-        event_datum_hash: HASH_AUTHENTIC_DEPOSIT_EVENT_DATUM,
-        event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
+        commitment: { ...historyCommitment, policy: DEPOSIT_POLICY_ID },
       },
     });
     expect(plan.classification.fault).toEqual({
@@ -556,9 +655,7 @@ describe("Q39 fabricated-deposit proof plan", () => {
     expect(plan.challengedLeaf.committedDepositInfoHash).toBe(
       HASH_DIVERTED_DEPOSIT_INFO,
     );
-    expect(plan.authenticContent.eventDatumCbor).toBe(
-      DATUM_AUTHENTIC_DEPOSIT_EVENT,
-    );
+    expect(plan.authenticContent.openingCbor).toBe(historyOpening());
   });
 
   it("refuses leaves that do not open the committed counted deposits_root, in the root or in the cardinality", async () => {
@@ -655,18 +752,17 @@ describe("Q39 fabricated-deposit L1 witness authentication", () => {
     return plan.challengedLeaf;
   };
 
-  it("refuses an absence claim that rests on a consumed UTxO, and any witness that is not authenticated L1 security-grade evidence", async () => {
+  it("refuses an absence claim without an authenticated history token, and any witness that is not authenticated L1 security-grade evidence", async () => {
     const leaf = await fiLeaf();
-    // The committed identity is absent from the authenticated live set, so its
-    // absence cannot be established: no fallback, no downgrade.
+    // A gap-shaped datum without its list NFT cannot authenticate absence.
     await expect(
       classifyFabricatedDepositFault({
         leaf,
         headerStartTime: HEADER_START_TIME,
         headerEndTime: HEADER_END_TIME,
-        witness: absentIdentityWitness([AUTHENTIC_DEPOSIT_ID]),
+        witness: absentIdentityWitness(false),
       }),
-    ).rejects.toMatchObject({ code: "consumed_live_utxo_fallback_refused" });
+    ).rejects.toMatchObject({ code: "history_witness_invalid" });
     await expect(
       classifyFabricatedDepositFault({
         leaf,
@@ -684,7 +780,7 @@ describe("Q39 fabricated-deposit L1 witness authentication", () => {
           }),
         },
       }),
-    ).rejects.toBeInstanceOf(SDK.CanonicalEvidenceRejection);
+    ).rejects.toMatchObject({ code: "history_witness_invalid" });
   });
 
   it("refuses a present-event witness that is not bound to the committed identity", async () => {
@@ -697,7 +793,7 @@ describe("Q39 fabricated-deposit L1 witness authentication", () => {
         headerEndTime: HEADER_END_TIME,
         witness: presentEventWitness({ observedEventAssetName: h32(0x4d) }),
       }),
-    ).rejects.toMatchObject({ code: "deposit_identity_observation_mismatch" });
+    ).rejects.toMatchObject({ code: "history_witness_invalid" });
     // The retained datum names a different deposit identity.
     await expect(
       classifyFabricatedDepositFault({
@@ -711,7 +807,7 @@ describe("Q39 fabricated-deposit L1 witness authentication", () => {
           ),
         }),
       }),
-    ).rejects.toMatchObject({ code: "event_identity_mismatch" });
+    ).rejects.toMatchObject({ code: "history_witness_invalid" });
   });
 
   it("refuses to challenge a header that committed exactly the authentic content", async () => {
@@ -736,7 +832,7 @@ describe("Q39 fabricated-deposit L1 witness authentication", () => {
     });
   });
 
-  it("refuses an authentic event that was not due for the challenged block, on either side of the window", async () => {
+  it("proves an authentic event ineligible for the challenged block, on either side of the window", async () => {
     const leaf = await mmLeaf();
     for (const inclusionTime of [HEADER_START_TIME, HEADER_END_TIME + 1n]) {
       const datum = depositEventDatum({ inclusionTime });
@@ -749,9 +845,10 @@ describe("Q39 fabricated-deposit L1 witness authentication", () => {
             eventDatumCbor: Data.to(datum, SDK.DepositDatum),
           }),
         }),
-      ).rejects.toMatchObject({
-        name: "FabricatedDepositRejectionV1",
-        code: "event_not_due_for_block",
+      ).resolves.toMatchObject({
+        fault: {
+          IneligibleDepositEvent: { event_inclusion_time: inclusionTime },
+        },
       });
     }
   });
@@ -803,16 +900,8 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
   it("roundtrips an absence fault through journal normalization and rejects artifact tampering", async () => {
     const fixture = await buildDepositsBlockFixture({ leaves: [FI_LEAF] });
     const authority = createFabricatedDepositEvidenceAuthority({
-      lucid: {
-        utxosByOutRef: async () => [
-          syntheticUtxo({
-            txIdByte: 0x5c,
-            outputIndex: 0,
-            datum: "d87980",
-            assets: {},
-          }),
-        ],
-      } as unknown as LucidEvolution,
+      history: historyEnvironment,
+      lucid: historyLucid([rootHistoryUtxo()]),
       network: "Preview",
       hubOraclePolicyId: h28(0x16),
       minimumConfirmationDepth: 1,
@@ -823,7 +912,8 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
     expect(detections[0]!.detection.violationId).toBe("fabricated-deposit");
     expect(detections[0]!.artifact.l1Evidence).toEqual({
       kind: "absent_identity",
-      unspentOutRef: `${FABRICATED_DEPOSIT_ID.transactionId}#0`,
+      historyOutRef: `${h32(0xa3)}#0`,
+      retainedDataOutRef: null,
     });
     await expect(
       authority.readmit(
@@ -852,9 +942,11 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
     const { artifactDigest: _digest, ...body } = detections[0]!.artifact;
     const substitutedBody = {
       ...body,
+      authenticContent: { openingCbor: historyOpening() },
       l1Evidence: {
-        kind: "absent_identity" as const,
-        unspentOutRef: `${h32(0x77)}#0`,
+        kind: "present_event" as const,
+        historyOutRef: `${h32(0x77)}#0`,
+        retainedDataOutRef: null,
       },
     };
     await expect(
@@ -862,7 +954,7 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
         ...substitutedBody,
         artifactDigest: artifactDigestForTest(substitutedBody),
       }),
-    ).rejects.toThrow(/current L1/u);
+    ).rejects.toThrow(/History facts changed before capture/u);
     await expect(
       authority.readmit({ ...detections[0]!.artifact, extra: true }),
     ).rejects.toThrow(/unknown, missing, or non-string/u);
@@ -913,15 +1005,20 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
         hash: hubDatum.deposit,
       });
       expect(eventAddress).not.toBe(mintPolicyAddress);
+      expect(event.assets[eventUnit]).toBe(1n);
       let liveEventAddress = eventAddress;
       const queries: string[] = [];
       const authority = createFabricatedDepositEvidenceAuthority({
+        history: historyEnvironment,
         lucid: {
-          utxosByOutRef: async () => [],
-          utxosAtWithUnit: async (address: string, unit: string) => {
+          utxosByOutRef: async () => {
+            throw new Error("Unexpected identity-nonce lookup");
+          },
+          utxosAtWithUnit: async (address: string, unit: string) =>
+            address === hubAddress && unit === hubUnit ? [hub] : [],
+          utxosAt: async (address: string) => {
             queries.push(address);
-            if (address === hubAddress && unit === hubUnit) return [hub];
-            return address === liveEventAddress && unit === eventUnit
+            return address === liveEventAddress
               ? [{ ...event, address: liveEventAddress }]
               : [];
           },
@@ -961,9 +1058,9 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
       liveEventAddress = mintPolicyAddress;
       await expect(
         authority.detect(ordinaryEvidence, h28(0x44)),
-      ).rejects.toThrow("event lookup requires exactly one current L1 output");
+      ).rejects.toThrow("no unique authenticated witness");
       await expect(authority.readmit(detections[0]!.artifact)).rejects.toThrow(
-        "event lookup requires exactly one current L1 output",
+        "no unique authenticated witness",
       );
     },
   );
@@ -974,18 +1071,9 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
         { key: KEY_AUTHENTIC_DEPOSIT_ID, value: VALUE_AUTHENTIC_DEPOSIT_INFO },
       ],
     });
-    const hubUnit = toUnit(h28(0x16), SDK.HUB_ORACLE_ASSET_NAME);
-    const hub = {
-      ...hubOracleUtxoFixture(),
-      assets: { lovelace: 5_000_000n, [hubUnit]: 1n },
-    };
-    const event = depositEventUtxoFixture();
     const authority = createFabricatedDepositEvidenceAuthority({
-      lucid: {
-        utxosByOutRef: async () => [],
-        utxosAtWithUnit: async (_address: string, unit: string) =>
-          unit === hubUnit ? [hub] : [event],
-      } as unknown as LucidEvolution,
+      history: historyEnvironment,
+      lucid: historyLucid([depositEventUtxoFixture()]),
       network: "Preview",
       hubOraclePolicyId: h28(0x16),
       minimumConfirmationDepth: 1,
@@ -995,18 +1083,10 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
     ).toEqual([]);
   });
 
-  it("fails closed when a spent identity has no live event marker, whether arbitrary or historically consumed", async () => {
-    const hubUnit = toUnit(h28(0x16), SDK.HUB_ORACLE_ASSET_NAME);
-    const hub = {
-      ...hubOracleUtxoFixture(),
-      assets: { lovelace: 5_000_000n, [hubUnit]: 1n },
-    };
+  it("requires an authenticated gap for arbitrary and historically consumed identities", async () => {
     const authority = createFabricatedDepositEvidenceAuthority({
-      lucid: {
-        utxosByOutRef: async () => [],
-        utxosAtWithUnit: async (_address: string, unit: string) =>
-          unit === hubUnit ? [hub] : [],
-      } as unknown as LucidEvolution,
+      history: historyEnvironment,
+      lucid: historyLucid([]),
       network: "Preview",
       hubOraclePolicyId: h28(0x16),
       minimumConfirmationDepth: 1,
@@ -1021,11 +1101,41 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
       ],
     ]) {
       const fixture = await buildDepositsBlockFixture({ leaves });
+      const authenticated = createFabricatedDepositEvidenceAuthority({
+        history: historyEnvironment,
+        lucid: historyLucid([rootHistoryUtxo()]),
+        network: "Preview",
+        hubOraclePolicyId: h28(0x16),
+        minimumConfirmationDepth: 1,
+      });
+      expect(
+        await authenticated.detect(await canonicalEvidence(fixture), h28(0x44)),
+      ).toHaveLength(1);
       await expect(
         authority.detect(await canonicalEvidence(fixture), h28(0x44)),
-      ).rejects.toThrow(/requires exactly one current L1 output/u);
+      ).rejects.toThrow(/no unique authenticated witness/u);
     }
   });
+});
+
+it("authenticates an equal-key filler as absence without counting its funds or using nonce liveness", async () => {
+  const anchor = depositEventUtxoFixture();
+  const node = Data.from(anchor.datum!, SDK.EventHistoryNode);
+  const filler = {
+    ...anchor,
+    datum: Data.to(
+      { ...node, payload: { Filler: { refund_key: h28(0x44) } } },
+      SDK.EventHistoryNode,
+    ),
+  };
+  const result = await authenticateFabricatedHistoryWitness(
+    historyWitness(filler),
+    "Deposit",
+    AUTHENTIC_DEPOSIT_ID,
+  );
+  expect(result.witness.kind).toBe("Absent");
+  expect(result.captured).toBeUndefined();
+  expect(result.witness.anchor.utxo.assets.lovelace).toBe(5_000_000n);
 });
 
 describe("Q39 fabricated-deposit submit-side re-derivation", () => {
@@ -1044,6 +1154,7 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
       plan.depositInclusion,
     );
     const handoff = await deriveFabricatedDepositStep01Handoff({
+      stateQueuePolicyId: h28(0x15),
       header: fixture.header,
       headerHash: fixture.headerHash,
       inclusion,
@@ -1053,6 +1164,7 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
     expect(handoff.committedDeposit.phas_root).toBe(MM_DEPOSITS_PHAS_ROOT);
     expect(handoff.committedDeposit.count).toBe(1n);
     expect(handoff.step02State).toEqual({
+      state_queue_policy: h28(0x15),
       challenged_header_hash: fixture.headerHash,
       header_start_time: HEADER_START_TIME,
       header_end_time: HEADER_END_TIME,
@@ -1062,6 +1174,7 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
 
     await expect(
       deriveFabricatedDepositStep01Handoff({
+        stateQueuePolicyId: h28(0x15),
         header: fixture.header,
         headerHash: fixture.headerHash,
         inclusion: { ...inclusion, depositsPhasRoot: FI_DEPOSITS_PHAS_ROOT },
@@ -1070,45 +1183,57 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
   });
 
   it("authenticates the deposit event UTxO through the hub oracle's deposit policy", async () => {
-    const state: SDK.FabricatedDepositStep02State = {
-      challenged_header_hash: MM_HEADER_HASH,
-      header_start_time: HEADER_START_TIME,
-      header_end_time: HEADER_END_TIME,
-      committed_deposit_id: AUTHENTIC_DEPOSIT_ID,
-      committed_deposit_info_hash: HASH_DIVERTED_DEPOSIT_INFO,
-    };
-    const authenticated = await authenticateFabricatedDepositEventUtxo({
-      state,
-      hubOracleUtxo: hubOracleUtxoFixture(),
-      eventUtxo: depositEventUtxoFixture(),
+    const authenticate = (anchor: UTxO) =>
+      authenticateFabricatedHistoryWitness(
+        historyWitness(anchor),
+        "Deposit",
+        AUTHENTIC_DEPOSIT_ID,
+      );
+    const authenticated = await authenticate(depositEventUtxoFixture());
+    await expect(
+      authenticateFabricatedHistoryWitness(
+        {
+          ...historyWitness(depositEventUtxoFixture()),
+          hubOracleUtxo: {
+            ...hubOracleUtxoFixture(),
+            assets: { lovelace: 5_000_000n },
+          },
+        },
+        "Deposit",
+        AUTHENTIC_DEPOSIT_ID,
+      ),
+    ).rejects.toThrow("authentic inline hub oracle");
+    await expect(
+      authenticate({
+        ...depositEventUtxoFixture(),
+        address: credentialToAddress("Preview", {
+          type: "Key",
+          hash: h28(0x44),
+        }),
+      }),
+    ).rejects.toThrow("Invalid authenticated history output shape");
+
+    expect(authenticated.deployment.policyId).toBe(DEPOSIT_POLICY_ID);
+    expect(authenticated.witness.anchor.key).toBe(NONCE_AUTHENTIC_DEPOSIT_ID);
+    expect(authenticated.captured?.commitment).toEqual({
+      ...historyCommitment,
+      policy: DEPOSIT_POLICY_ID,
     });
-    expect(authenticated.depositPolicyId).toBe(DEPOSIT_POLICY_ID);
-    expect(authenticated.expectedEventAssetName).toBe(
-      NONCE_AUTHENTIC_DEPOSIT_ID,
-    );
-    expect(authenticated.eventDatumHash).toBe(
-      HASH_AUTHENTIC_DEPOSIT_EVENT_DATUM,
-    );
+    expect(authenticated.captured?.originalAssets).toEqual(historyAssets);
 
     // A foreign policy is refused even though the asset name is the authentic
     // nonce: the policy comes from the hub oracle, not from the prover.
     await expect(
-      authenticateFabricatedDepositEventUtxo({
-        state,
-        hubOracleUtxo: hubOracleUtxoFixture(),
-        eventUtxo: depositEventUtxoFixture({ policyId: h28(0x99) }),
-      }),
-    ).rejects.toThrow(/does not carry the authentic deposit event NFT/u);
+      authenticate(depositEventUtxoFixture({ policyId: h28(0x99) })),
+    ).rejects.toThrow(/no unique authenticated witness/u);
     // The authentic policy and nonce, but a datum for another identity.
     await expect(
-      authenticateFabricatedDepositEventUtxo({
-        state,
-        hubOracleUtxo: hubOracleUtxoFixture(),
-        eventUtxo: depositEventUtxoFixture({
+      authenticate(
+        depositEventUtxoFixture({
           datum: depositEventDatum({ id: FABRICATED_DEPOSIT_ID }),
         }),
-      }),
-    ).rejects.toThrow(/not the committed identity/u);
+      ),
+    ).rejects.toThrow(/identity differs/u);
   });
 
   it("opens step-02's retained commitment into the Aiken scenarios' exact step-04 handoffs", async () => {
@@ -1123,7 +1248,7 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
 
     const present = await deriveFabricatedDepositStep03Handoff({
       state: mmStep03State,
-      eventDatumCbor: DATUM_AUTHENTIC_DEPOSIT_EVENT,
+      openingCbor: historyOpening(),
     });
     expect(present.fault).toEqual({
       MismatchedDepositContent: {
@@ -1142,23 +1267,22 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
     // dispute into the strictly stronger non-existence conviction.
     await expect(
       deriveFabricatedDepositStep03Handoff({ state: mmStep03State }),
-    ).rejects.toThrow(/does not pair|non-existence conviction/u);
+    ).rejects.toThrow(/requires its retained payload and original Value/u);
     await expect(
       deriveFabricatedDepositStep03Handoff({
         state: fiStep03State,
-        eventDatumCbor: DATUM_AUTHENTIC_DEPOSIT_EVENT,
+        openingCbor: historyOpening(),
       }),
-    ).rejects.toThrow(/does not pair with the L1 verdict/u);
+    ).rejects.toThrow(/absence admits no retained event opening/u);
     // Only the hash equality makes supplied bytes authentic.
     await expect(
       deriveFabricatedDepositStep03Handoff({
         state: mmStep03State,
-        eventDatumCbor: Data.to(
+        openingCbor: historyOpening(
           depositEventDatum({ paymentKeyByte: 0x3e }),
-          SDK.DepositDatum,
         ),
       }),
-    ).rejects.toThrow(/not the commitment/u);
+    ).rejects.toThrow(/does not match the authenticated history commitment/u);
   });
 
   it("refuses to finalize a misfiled conviction or an unestablished fault", async () => {

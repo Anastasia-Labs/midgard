@@ -125,6 +125,7 @@ const configureCandidate = ({
   );
   getStateQueueNodeFromStateQueueDatumMock.mockImplementation(() =>
     Effect.succeed({
+      proven_fraud: null,
       header: blockHeader,
       da_attestation: daAttestation,
     } as SDK.StateQueueNode),

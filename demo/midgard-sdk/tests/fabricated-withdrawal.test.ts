@@ -22,6 +22,7 @@
  * ones, and the normalised bytes are asserted to match exactly.
  */
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
+import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -47,6 +48,7 @@ import {
   withdrawalEventDatumCommitment,
   withdrawalEventNonce,
 } from "../src/fraud-proof/fabricated-withdrawal.js";
+import { FabricatedWithdrawalAuthenticContentOpening } from "../src/fraud-proof/fabricated-withdrawal.js";
 import {
   type WithdrawalInfo,
   WithdrawalInfo as WithdrawalInfoType,
@@ -55,6 +57,11 @@ import {
   commitCountedRootProgram,
   ROOT_DOMAINS,
 } from "../src/transition-trace.js";
+import { type EventHistoryPayload } from "../src/user-events/history.js";
+import {
+  eventHistoryCommitment,
+  opensEventHistoryCommitment,
+} from "../src/user-events/history-proof.js";
 import { type WithdrawalOrderDatum } from "../src/user-events/withdrawal.js";
 
 // ## Fixture twins
@@ -200,18 +207,18 @@ const FI_WITHDRAWALS_PHAS_ROOT =
 const FI_WITHDRAWALS_ROOT =
   "520d2e1a48bd0ba1c6424899fc91f0572ad5049e84a912a2c28e841ae3a1d88b";
 const FI_HEADER_HASH =
-  "735fcb9ab869fa81efc508ca11991963a774ae8024658d6de1889967";
+  "3644888b6b3bbab155df4b7b6572e33c50f78407422d4558d19418b4";
 const FI_THREAD_TOKEN_ASSET_NAME =
-  "0000000c735fcb9ab869fa81efc508ca11991963a774ae8024658d6de1889967";
+  "0000000c3644888b6b3bbab155df4b7b6572e33c50f78407422d4558d19418b4";
 
 const MM_WITHDRAWALS_PHAS_ROOT =
   "9b82564d9ec08f4d54a61982cc5b26972cb0c4ff6ead2d03da141bb0d9ef6b42";
 const MM_WITHDRAWALS_ROOT =
   "ddf6c2b73b0a5be5c6afcb11cbb8c47ecec36a856231911288306a01e411bbed";
 const MM_HEADER_HASH =
-  "44201f07972dae5999a6a5f5b8659c0ac65fb96168f3035dd4728182";
+  "39e9477c2cde2da7f1830e232c2d3ece94d4e3760f4b46cc1477334a";
 const MM_THREAD_TOKEN_ASSET_NAME =
-  "0000000c44201f07972dae5999a6a5f5b8659c0ac65fb96168f3035dd4728182";
+  "0000000c39e9477c2cde2da7f1830e232c2d3ece94d4e3760f4b46cc1477334a";
 
 const AU_WITHDRAWALS_PHAS_ROOT =
   "f15ac1acdd0df79c30da7d61d4ff84cb5116a1b99c203d58976d3c10465d3ce7";
@@ -220,27 +227,49 @@ const AU_WITHDRAWALS_ROOT =
 
 /** `step_02.State` of the nonexistent-identity scenario. */
 const FI_STEP_02_STATE_CBOR =
-  "d8799f581c735fcb9ab869fa81efc508ca11991963a774ae8024658d6de18899670a14d8799f58203a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a00ff5820283ad237b5850498ff2cc5e4c2017d6129a3d955265f5e3a889387776716d12fff";
+  "d8799f581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb581c3644888b6b3bbab155df4b7b6572e33c50f78407422d4558d19418b40a14d8799f58203a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a00ff5820283ad237b5850498ff2cc5e4c2017d6129a3d955265f5e3a889387776716d12fff";
 /** `step_03.State` of the nonexistent-identity scenario. */
 const FI_STEP_03_STATE_CBOR =
-  "d8799f581c735fcb9ab869fa81efc508ca11991963a774ae8024658d6de18899670a14d8799f58203a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a00ff5820283ad237b5850498ff2cc5e4c2017d6129a3d955265f5e3a889387776716d12fd87980ff";
+  "d8799f581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb581c3644888b6b3bbab155df4b7b6572e33c50f78407422d4558d19418b40a14d8799f58203a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a00ff5820283ad237b5850498ff2cc5e4c2017d6129a3d955265f5e3a889387776716d12fd87980ff";
 /** `step_04.State` of the nonexistent-identity scenario. */
 const FI_STEP_04_STATE_CBOR =
-  "d8799f581c735fcb9ab869fa81efc508ca11991963a774ae8024658d6de18899670a14d8799f58203a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a00ffd87980ff";
+  "d8799f581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb581c3644888b6b3bbab155df4b7b6572e33c50f78407422d4558d19418b40a14d8799f58203a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a00ffd87980ff";
 
 /** `step_02.State` of the content-mismatch scenario. */
 const MM_STEP_02_STATE_CBOR =
-  "d8799f581c44201f07972dae5999a6a5f5b8659c0ac65fb96168f3035dd47281820a14d8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ff58208e8f341a7ae7b42e43bf1b09b3e63c742979eb2ada627a417d7af04be1dbe2a3ff";
+  "d8799f581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb581c39e9477c2cde2da7f1830e232c2d3ece94d4e3760f4b46cc1477334a0a14d8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ff58208e8f341a7ae7b42e43bf1b09b3e63c742979eb2ada627a417d7af04be1dbe2a3ff";
 /** `step_03.State` of the content-mismatch scenario. */
 const MM_STEP_03_STATE_CBOR =
-  "d8799f581c44201f07972dae5999a6a5f5b8659c0ac65fb96168f3035dd47281820a14d8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ff58208e8f341a7ae7b42e43bf1b09b3e63c742979eb2ada627a417d7af04be1dbe2a3d87a9f5820b5e4fa1c72a874ec61778f2e29dc4cc326313b3bc581bc64738fd45f1d9a9a700fffff";
+  "d8799f581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb581c39e9477c2cde2da7f1830e232c2d3ece94d4e3760f4b46cc1477334a0a14d8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ff58208e8f341a7ae7b42e43bf1b09b3e63c742979eb2ada627a417d7af04be1dbe2a3d87a9fd8799f581c30303030303030303030303030303030303030303030303030303030d87a80d8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ff0f5820537808b384b40793ff2082cc2570120d7d9687041b1b2b7daf48de4dab00db645820ad7eb588061e3a3d90e1ded245c9896e896590ba2dcb368ca2ad3328b4177179ffffff";
 /** `step_04.State` of the content-mismatch scenario. */
 const MM_STEP_04_STATE_CBOR =
-  "d8799f581c44201f07972dae5999a6a5f5b8659c0ac65fb96168f3035dd47281820a14d8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ffd87a9f58208e8f341a7ae7b42e43bf1b09b3e63c742979eb2ada627a417d7af04be1dbe2a35820283ad237b5850498ff2cc5e4c2017d6129a3d955265f5e3a889387776716d12f0fffff";
+  "d8799f581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb581c39e9477c2cde2da7f1830e232c2d3ece94d4e3760f4b46cc1477334a0a14d8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ffd87a9f58208e8f341a7ae7b42e43bf1b09b3e63c742979eb2ada627a417d7af04be1dbe2a35820283ad237b5850498ff2cc5e4c2017d6129a3d955265f5e3a889387776716d12f0fffff";
+
+const HISTORY_PAYLOAD: EventHistoryPayload = {
+  WithdrawalPayload: {
+    event: AUTHENTIC_WITHDRAWAL_EVENT_DATUM.event,
+    refund_address: AUTHENTIC_WITHDRAWAL_EVENT_DATUM.refund_address,
+    refund_datum: AUTHENTIC_WITHDRAWAL_EVENT_DATUM.refund_datum,
+  },
+};
+const ORIGINAL_ASSETS = new Map([["", new Map([["", 3_000_000n]])]]);
+const HISTORY_COMMITMENT = eventHistoryCommitment(
+  "30".repeat(28),
+  "Withdrawal",
+  {
+    event_id: AUTHENTIC_WITHDRAWAL_ID,
+    inclusion_time: AUTHENTIC_INCLUSION_TIME,
+  },
+  HISTORY_PAYLOAD,
+  ORIGINAL_ASSETS,
+);
+const HISTORY_OPENING_CBOR =
+  "d87a9fd87a9fd8799fd8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ffd8799fd8799fd8799f58207e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e01ff581c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9ca1581c4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4ba14d6d6964676172642d746f6b656e182ad8799fd8799f581c2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2bffd87a80ffd87980ff9f5820adadadadadadadadadadadadadadadadadadadadadadadadadadadadadadadad5840bebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebeffd87980ffffd8799fd8799f581c2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2bffd87a80ffd87980ffa140a1401a002dc6c0ff";
 
 // ## Handoff builders under test
 
 const fiStep02State: FabricatedWithdrawalStep02State = {
+  state_queue_policy: "bb".repeat(28),
   challenged_header_hash: FI_HEADER_HASH,
   header_start_time: HEADER_START_TIME,
   header_end_time: HEADER_END_TIME,
@@ -249,6 +278,7 @@ const fiStep02State: FabricatedWithdrawalStep02State = {
 };
 
 const mmStep02State: FabricatedWithdrawalStep02State = {
+  state_queue_policy: "bb".repeat(28),
   challenged_header_hash: MM_HEADER_HASH,
   header_start_time: HEADER_START_TIME,
   header_end_time: HEADER_END_TIME,
@@ -262,8 +292,7 @@ const fiStep03State: FabricatedWithdrawalStep03State =
 const mmStep03State: FabricatedWithdrawalStep03State =
   fabricatedWithdrawalStep03State(mmStep02State, {
     WithdrawalEventObserved: {
-      event_datum_hash: HASH_AUTHENTIC_WITHDRAWAL_EVENT_DATUM,
-      event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
+      commitment: HISTORY_COMMITMENT,
     },
   });
 
@@ -522,5 +551,55 @@ describe("fabricated-withdrawal v1 byte twins", () => {
     // three-field one, so a conviction cannot be re-labelled on the wire.
     expect(FI_STEP_04_STATE_CBOR.endsWith("d87980ff")).toBe(true);
     expect(MM_STEP_04_STATE_CBOR).toContain("d87a9f");
+  });
+});
+
+describe("withdrawal retained history opening", () => {
+  it("matches Aiken's complete payload and original Value bytes", () => {
+    const opening: FabricatedWithdrawalAuthenticContentOpening = {
+      RetainedEventData: {
+        payload: HISTORY_PAYLOAD,
+        original_assets: ORIGINAL_ASSETS,
+      },
+    };
+    expect(
+      aikenSerialisedPlutusDataCborPreservingMapOrder(
+        Data.to(opening, FabricatedWithdrawalAuthenticContentOpening),
+      ),
+    ).toBe(HISTORY_OPENING_CBOR);
+    expect(
+      opensEventHistoryCommitment(
+        HISTORY_COMMITMENT,
+        HISTORY_PAYLOAD,
+        ORIGINAL_ASSETS,
+      ),
+    ).toBe(true);
+    expect(
+      opensEventHistoryCommitment(
+        HISTORY_COMMITMENT,
+        HISTORY_PAYLOAD,
+        new Map([["", new Map([["", 1n]])]]),
+      ),
+    ).toBe(false);
+  });
+  it("classifies timing independently of content fidelity", () => {
+    for (const time of [HEADER_START_TIME, HEADER_END_TIME + 1n]) {
+      expect(
+        isFabricatedWithdrawalFault({
+          ...mmStep04State,
+          fault: { IneligibleWithdrawalEvent: { event_inclusion_time: time } },
+        }),
+      ).toBe(true);
+    }
+    expect(
+      isFabricatedWithdrawalFault({
+        ...mmStep04State,
+        fault: {
+          IneligibleWithdrawalEvent: {
+            event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
+          },
+        },
+      }),
+    ).toBe(false);
   });
 });

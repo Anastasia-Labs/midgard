@@ -102,6 +102,11 @@ const loadRealContracts = () =>
         {
           referenceScriptAuth: placeholderContracts.referenceScriptAuth,
           availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
+          eventHistoryBounds: {
+            inlineLimitBytes: 512n,
+            maxPayloadBytes: 5000n,
+            maxPayloadNodes: 512n,
+          },
         },
       );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),

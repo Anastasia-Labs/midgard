@@ -1,6 +1,7 @@
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, Network } from "@lucid-evolution/lucid";
 
+import { type FabricatedHistoryEnvironment } from "../fabricated-history-witness.js";
 import {
   CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
   COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,
@@ -69,9 +70,19 @@ export const createCatalogueCompleteCanonicalReplay = (input: {
   readonly hubOraclePolicyId: string;
   readonly minimumConfirmationDepth: number;
   readonly owner: string;
+  readonly history: {
+    readonly deposit: FabricatedHistoryEnvironment;
+    readonly withdrawal: FabricatedHistoryEnvironment;
+  };
 }) => {
-  const deposit = createFabricatedDepositEvidenceAuthority(input);
-  const withdrawal = createFabricatedWithdrawalEvidenceAuthority(input);
+  const deposit = createFabricatedDepositEvidenceAuthority({
+    ...input,
+    history: input.history.deposit,
+  });
+  const withdrawal = createFabricatedWithdrawalEvidenceAuthority({
+    ...input,
+    history: input.history.withdrawal,
+  });
   const replay = createCompleteCanonicalReplayUnion([
     DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
     NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,

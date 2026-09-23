@@ -90,6 +90,7 @@ const nodeOutput = (
     key: { Key: { key: headerHash } },
     next: "Empty",
     data: SDK.castStateQueueNodeToData({
+      proven_fraud: null,
       header,
       da_attestation: attestation,
     }) as SDK.LinkedListNodeView["data"],

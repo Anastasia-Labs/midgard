@@ -2,32 +2,30 @@ import { createHash } from "node:crypto";
 
 import {
   type AuthenticatedStateQueueHeaderObservation,
-  depositEventNonce,
   FABRICATED_DEPOSIT_VIOLATION_ID,
-  HUB_ORACLE_ASSET_NAME,
-  HubOracleDatum,
+  FabricatedDepositAuthenticContentOpening,
   OutputReference,
 } from "@al-ft/midgard-sdk";
 import {
-  credentialToAddress,
   Data,
   type LucidEvolution,
   type Network,
-  scriptHashToCredential,
-  toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import {
+  authenticateFabricatedHistoryWitness,
+  type FabricatedHistoryEnvironment,
+  fetchCurrentHistory,
+  fetchFabricatedHistoryWitness,
+} from "../fabricated-history-witness.js";
 import {
   type FabricatedDepositL1Witness,
   FabricatedDepositRejection,
   prepareFabricatedDepositFromCommittedLeaves,
 } from "../prepare-fabricated-deposit.js";
-import { requireSingletonUtxo } from "../runtime.js";
 import type { CanonicalViolationDetection } from "./classification.js";
-import { governedUserEventAddress } from "./user-event-address.js";
 
 export const FABRICATED_DEPOSIT_EVIDENCE_AUTHORITY =
   "midgard-production-fabricated-deposit-evidence-authority-v1" as const;
@@ -45,10 +43,12 @@ export type FabricatedDepositArtifact = Readonly<{
     depositsPhasRoot: string;
     depositMembershipProofCbor: string;
   }>;
-  authenticContent: Readonly<{ eventDatumCbor: string | null }>;
-  l1Evidence:
-    | Readonly<{ kind: "absent_identity"; unspentOutRef: string }>
-    | Readonly<{ kind: "present_event"; eventOutRef: string }>;
+  authenticContent: Readonly<{ openingCbor: string | null }>;
+  l1Evidence: Readonly<{
+    kind: "absent_identity" | "present_event";
+    historyOutRef: string;
+    retainedDataOutRef: string | null;
+  }>;
   artifactDigest: string;
 }>;
 
@@ -70,6 +70,9 @@ export interface FabricatedDepositEvidenceAuthority {
   ): Promise<FabricatedDepositArtifact>;
   /** Re-authenticates a journal-restored artifact against current public L1. */
   readmit(value: unknown): Promise<FabricatedDepositArtifact>;
+  /** Integrity-only journal admission after capture. The stage submitter must
+   * authenticate the opening against its actual L1 computation-thread state. */
+  readmitRetained(value: unknown): FabricatedDepositArtifact;
 }
 
 const admittedAuthorities = new WeakSet<object>();
@@ -125,103 +128,61 @@ const artifactDigest = (
     .update(JSON.stringify(value.authenticContent))
     .update("\0")
     .update(
-      JSON.stringify(
-        value.l1Evidence.kind === "absent_identity"
-          ? {
-              kind: value.l1Evidence.kind,
-              unspentOutRef: value.l1Evidence.unspentOutRef,
-            }
-          : {
-              kind: value.l1Evidence.kind,
-              eventOutRef: value.l1Evidence.eventOutRef,
-            },
-      ),
+      JSON.stringify({
+        kind: value.l1Evidence.kind,
+        historyOutRef: value.l1Evidence.historyOutRef,
+        retainedDataOutRef: value.l1Evidence.retainedDataOutRef,
+      }),
     )
     .digest("hex");
 
 const outRef = (utxo: Pick<UTxO, "txHash" | "outputIndex">): string =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
-const exactOne = <T>(values: readonly T[], label: string): T => {
-  if (values.length !== 1) {
-    throw new Error(`${label} requires exactly one current L1 output`);
-  }
-  return values[0]!;
-};
-
 const discoverWitness = async ({
   lucid,
   network,
   hubOraclePolicyId,
+  history,
   observation,
   depositId,
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
   readonly hubOraclePolicyId: string;
+  readonly history: FabricatedHistoryEnvironment;
   readonly observation: AuthenticatedStateQueueHeaderObservation;
-  readonly depositId: Readonly<{
-    transactionId: string;
-    outputIndex: bigint;
-  }>;
+  readonly depositId: OutputReference;
 }): Promise<{
   readonly witness: FabricatedDepositL1Witness;
   readonly l1Evidence: FabricatedDepositArtifact["l1Evidence"];
 }> => {
-  const candidateOutRef = `${depositId.transactionId}#${depositId.outputIndex.toString()}`;
-  const live = await lucid.utxosByOutRef([
-    {
-      txHash: depositId.transactionId,
-      outputIndex: Number(depositId.outputIndex),
-    },
-  ]);
-  if (live.length > 1) {
-    throw new Error("fabricated-deposit L1 lookup returned duplicate outrefs");
-  }
-  if (live.length === 1) {
-    return {
-      witness: {
-        kind: "absent_identity",
-        observation,
-        liveOutputReferences: [depositId],
-      },
-      l1Evidence: { kind: "absent_identity", unspentOutRef: candidateOutRef },
-    };
-  }
-
-  const hubOracleAddress = credentialToAddress(
-    network,
-    scriptHashToCredential(hubOraclePolicyId),
-  );
-  const hubOracleUtxo = await requireSingletonUtxo({
+  const witness = await fetchFabricatedHistoryWitness({
     lucid,
-    address: hubOracleAddress,
-    unit: toUnit(hubOraclePolicyId, HUB_ORACLE_ASSET_NAME),
-    label: "fabricated-deposit hub oracle",
+    network,
+    hubOraclePolicyId,
+    history,
+    observation,
+    kind: "Deposit",
+    id: depositId,
   });
-  if (hubOracleUtxo.datum == null) {
-    throw new Error("fabricated-deposit hub oracle has no inline datum");
-  }
-  const hub = Data.from(hubOracleUtxo.datum, HubOracleDatum);
-  const nonce = await Effect.runPromise(depositEventNonce(depositId));
-  const eventUnit = toUnit(hub.deposit, nonce);
-  const depositAddress = governedUserEventAddress(network, hub.deposit_addr);
-  const eventUtxo = exactOne(
-    await lucid.utxosAtWithUnit(depositAddress, eventUnit),
-    "fabricated-deposit event lookup",
+  const authenticated = await authenticateFabricatedHistoryWitness(
+    witness,
+    "Deposit",
+    depositId,
   );
-  if (eventUtxo.datum == null) {
-    throw new Error("fabricated-deposit event output has no inline datum");
-  }
   return {
-    witness: {
-      kind: "present_event",
-      observation,
-      depositEventPolicyId: hub.deposit,
-      observedEventAssetName: nonce,
-      eventDatumCbor: eventUtxo.datum,
+    witness,
+    l1Evidence: {
+      kind:
+        authenticated.witness.kind === "Present"
+          ? "present_event"
+          : "absent_identity",
+      historyOutRef: outRef(witness.anchor),
+      retainedDataOutRef: witness.retainedDataUtxo
+        ? outRef(witness.retainedDataUtxo)
+        : null,
     },
-    l1Evidence: { kind: "present_event", eventOutRef: outRef(eventUtxo) },
   };
 };
 
@@ -229,6 +190,7 @@ const prepareAt = async ({
   lucid,
   network,
   hubOraclePolicyId,
+  history,
   minimumConfirmationDepth,
   evidence,
   owner,
@@ -237,6 +199,7 @@ const prepareAt = async ({
   readonly lucid: LucidEvolution;
   readonly network: Network;
   readonly hubOraclePolicyId: string;
+  readonly history: FabricatedHistoryEnvironment;
   readonly minimumConfirmationDepth: number;
   readonly evidence: CanonicalBlockEvidence;
   readonly owner: string;
@@ -259,6 +222,7 @@ const prepareAt = async ({
     lucid,
     network,
     hubOraclePolicyId,
+    history,
     observation: evidence.observation,
     depositId: selected.key,
   });
@@ -298,18 +262,20 @@ const prepareAt = async ({
 
 /**
  * Concrete production authority. Candidate discovery is not trusted: step 02
- * re-authenticates the exact live outref or hub-bound event NFT and the family
+ * re-authenticates the current hub-bound list witness and the family
  * adapter captures a locally evaluated transaction before any submit.
  */
 export const createFabricatedDepositEvidenceAuthority = ({
   lucid,
   network,
   hubOraclePolicyId,
+  history,
   minimumConfirmationDepth,
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
   readonly hubOraclePolicyId: string;
+  readonly history: FabricatedHistoryEnvironment;
   readonly minimumConfirmationDepth: number;
 }): FabricatedDepositEvidenceAuthority => {
   if (
@@ -326,6 +292,7 @@ export const createFabricatedDepositEvidenceAuthority = ({
         lucid,
         network,
         hubOraclePolicyId,
+        history,
         minimumConfirmationDepth,
         evidence,
         owner,
@@ -343,6 +310,7 @@ export const createFabricatedDepositEvidenceAuthority = ({
             lucid,
             network,
             hubOraclePolicyId,
+            history,
             minimumConfirmationDepth,
             evidence,
             owner,
@@ -363,8 +331,7 @@ export const createFabricatedDepositEvidenceAuthority = ({
         } catch (cause) {
           if (
             cause instanceof FabricatedDepositRejection &&
-            (cause.code === "authentic_content_matches_commitment" ||
-              cause.code === "event_not_due_for_block")
+            cause.code === "authentic_content_matches_commitment"
           ) {
             continue;
           }
@@ -375,68 +342,45 @@ export const createFabricatedDepositEvidenceAuthority = ({
     },
     readmit: async (value) => {
       const artifact = parseArtifact(value);
-      const depositId = Data.from(
+      const id = Data.from(
         artifact.depositInclusion.committedDepositIdCbor,
-        // This is the same exact V1 key decoded by step 01.
         OutputReference,
       );
-      const current = await lucid.utxosByOutRef([
-        {
-          txHash: depositId.transactionId,
-          outputIndex: Number(depositId.outputIndex),
-        },
-      ]);
-      if (current.length > 1) {
+      // Resolve current L1 anchors afresh: stored output references are hints,
+      // and an unchanged Order may have any number of pointer continuations.
+      const current = await fetchCurrentHistory({
+        lucid,
+        network,
+        hubOraclePolicyId,
+        history,
+        kind: "Deposit",
+        id,
+      });
+      const captured = current.captured;
+      const currentOpening = captured
+        ? Data.to(
+            {
+              RetainedEventData: {
+                payload: captured.payload,
+                original_assets: captured.originalAssets,
+              },
+            },
+            FabricatedDepositAuthenticContentOpening,
+          )
+        : null;
+      const currentKind = captured ? "present_event" : "absent_identity";
+      if (
+        currentKind !== artifact.l1Evidence.kind ||
+        currentOpening !== artifact.authenticContent.openingCbor
+      )
         throw new Error(
-          "fabricated-deposit artifact re-admission found duplicate original outrefs",
+          "History facts changed before capture; reprepare the proof artifact",
         );
-      }
-      if (artifact.l1Evidence.kind === "absent_identity") {
-        const expected = `${depositId.transactionId}#${depositId.outputIndex.toString()}`;
-        if (
-          current.length !== 1 ||
-          artifact.l1Evidence.unspentOutRef !== expected
-        ) {
-          throw new Error(
-            "fabricated-deposit absence artifact is no longer authenticated by current L1",
-          );
-        }
-      } else {
-        if (current.length !== 0) {
-          throw new Error(
-            "fabricated-deposit event artifact conflicts with a live original outref",
-          );
-        }
-        const hubOracleAddress = credentialToAddress(
-          network,
-          scriptHashToCredential(hubOraclePolicyId),
-        );
-        const hubOracleUtxo = await requireSingletonUtxo({
-          lucid,
-          address: hubOracleAddress,
-          unit: toUnit(hubOraclePolicyId, HUB_ORACLE_ASSET_NAME),
-          label: "fabricated-deposit hub oracle",
-        });
-        if (hubOracleUtxo.datum == null) {
-          throw new Error("fabricated-deposit hub oracle has no inline datum");
-        }
-        const hub = Data.from(hubOracleUtxo.datum, HubOracleDatum);
-        const nonce = await Effect.runPromise(depositEventNonce(depositId));
-        const eventUtxos = await lucid.utxosAtWithUnit(
-          governedUserEventAddress(network, hub.deposit_addr),
-          toUnit(hub.deposit, nonce),
-        );
-        const event = exactOne(eventUtxos, "fabricated-deposit event lookup");
-        if (
-          event.datum == null ||
-          outRef(event) !== artifact.l1Evidence.eventOutRef ||
-          event.datum !== artifact.authenticContent.eventDatumCbor
-        ) {
-          throw new Error(
-            "fabricated-deposit event artifact changed its authenticated L1 outref or datum",
-          );
-        }
-      }
+      admittedArtifacts.add(artifact);
+      return artifact;
+    },
+    readmitRetained: (value) => {
+      const artifact = parseArtifact(value);
       admittedArtifacts.add(artifact);
       return artifact;
     },
@@ -486,15 +430,12 @@ const parseArtifact = (value: unknown): FabricatedDepositArtifact => {
   );
   const authentic = plainRecord(
     outer.authenticContent,
-    ["eventDatumCbor"],
+    ["openingCbor"],
     "fabricated-deposit authentic content",
   );
   const l1 = plainRecord(
     outer.l1Evidence,
-    (outer.l1Evidence as { readonly kind?: unknown })?.kind ===
-      "absent_identity"
-      ? ["kind", "unspentOutRef"]
-      : ["kind", "eventOutRef"],
+    ["kind", "historyOutRef", "retainedDataOutRef"],
     "fabricated-deposit L1 evidence",
   );
   const artifact = {
@@ -518,14 +459,12 @@ const parseArtifact = (value: unknown): FabricatedDepositArtifact => {
     !EVEN_HEX.test(artifact.depositInclusion.committedDepositInfoCbor) ||
     !HEX_32.test(artifact.depositInclusion.depositsPhasRoot) ||
     !EVEN_HEX.test(artifact.depositInclusion.depositMembershipProofCbor) ||
-    (artifact.authenticContent.eventDatumCbor !== null &&
-      !EVEN_HEX.test(artifact.authenticContent.eventDatumCbor)) ||
+    (artifact.authenticContent.openingCbor !== null &&
+      !EVEN_HEX.test(artifact.authenticContent.openingCbor)) ||
     !["absent_identity", "present_event"].includes(artifact.l1Evidence.kind) ||
-    !OUT_REF.test(
-      artifact.l1Evidence.kind === "absent_identity"
-        ? artifact.l1Evidence.unspentOutRef
-        : artifact.l1Evidence.eventOutRef,
-    )
+    !OUT_REF.test(artifact.l1Evidence.historyOutRef) ||
+    (artifact.l1Evidence.retainedDataOutRef !== null &&
+      !OUT_REF.test(artifact.l1Evidence.retainedDataOutRef))
   ) {
     throw new Error("fabricated-deposit production artifact is malformed");
   }

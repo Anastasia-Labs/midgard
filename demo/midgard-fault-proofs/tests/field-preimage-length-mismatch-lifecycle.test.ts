@@ -195,6 +195,11 @@ const registeredContracts = async (harness: Harness) => {
     throw new Error("field-preimage-length deployment is absent");
   }
   const params = () => ({
+    eventHistoryBounds: {
+      inlineLimitBytes: 512n,
+      maxPayloadBytes: 5000n,
+      maxPayloadNodes: 512n,
+    },
     blueprint: parseFaultProofBlueprint(structuredClone(harness.realBlueprint)),
     network,
     hubOraclePolicyId: harness.contracts.hubOracle.policyId,

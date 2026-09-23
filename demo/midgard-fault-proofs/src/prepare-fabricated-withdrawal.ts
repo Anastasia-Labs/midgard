@@ -37,19 +37,10 @@
  * convention. The same reasoning is recorded at
  * `src/evidence/prepare-from-evidence.ts:145-150`.
  *
- * The L1 side of the argument is authenticated, never asserted: absence of a
- * withdrawal identity is established by exhibiting the committed `WithdrawalId` in
- * an authenticated **live** output-reference set (an unspent outref cannot have
- * been consumed by `authenticate_new_event`), and presence is established by the
- * withdrawal event NFT asset name derived from the committed identity. No operator
- * REST/DB/file input is reachable from this module, and there is no consumed-live-
- * UTxO fallback: both arms fail closed.
- *
- * Leaf bytes are compared in `serialiseData` form throughout — see the note on
- * definite versus indefinite Plutus maps in
- * `midgard-sdk/src/fraud-proof/fabricated-withdrawal.ts`. A withdrawal leaf
- * value embeds a `Value` map, so this matters here in a way it did not for
- * deposits.
+ * The L1 side is a hub-authenticated sorted-list gap/filler or Order. Large
+ * payloads must be supplied by the actual retained-data reference output. The
+ * preparation persists a complete payload/Value opening for the later capture
+ * commitment; no operator archive or live nonce establishes list membership.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -63,6 +54,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import {
+  authenticateFabricatedHistoryWitness,
+  type FabricatedHistoryWitness,
+} from "./fabricated-history-witness.js";
 import { stringifyJson } from "./json-file.js";
 import { buildTrieView, requireProof } from "./prepare-double-spend.js";
 import {
@@ -85,12 +80,8 @@ export type FabricatedWithdrawalRejectionCode =
   | "withdrawals_root_mismatch"
   | "no_committed_withdrawal_leaf"
   | "leaf_not_committed"
-  | "consumed_live_utxo_fallback_refused"
-  | "withdrawal_identity_observation_mismatch"
-  | "event_datum_not_canonical"
-  | "event_identity_mismatch"
   | "authentic_content_matches_commitment"
-  | "event_not_due_for_block";
+  | "history_witness_invalid";
 
 /** Deterministic, value-free rejection; `detail` carries only public data. */
 export class FabricatedWithdrawalRejection extends Error {
@@ -180,88 +171,20 @@ const decodeCommittedWithdrawalLeaf = async (
   };
 };
 
-/** A live (unspent) L1 output reference at an authenticated chain point. */
-export type LiveOutputReference = {
-  readonly transactionId: string;
-  readonly outputIndex: bigint;
-};
+/** Public-L1 hub, authenticated list anchor and optional retained-data output. */
+export type FabricatedWithdrawalL1Witness = FabricatedHistoryWitness;
 
-/**
- * The prover's authenticated L1 witness about a committed withdrawal identity.
- *
- * `absent_identity` carries the live output-reference set observed at the
- * authenticated chain point. Because `authenticate_new_event` rule 4 requires a
- * withdrawal event's id to be an outref the authenticating transaction **spent**,
- * a still-live outref positively proves no event with that identity was ever
- * authenticated. Membership in that set is checked here; a prover cannot simply
- * declare absence, and a consumed outref is refused rather than treated as absent.
- *
- * `present_event` carries the retained withdrawal event datum plus the withdrawal
- * policy and the asset name observed carrying the event, so the observation is
- * bound to the committed identity by `out_ref_to_nonce` rather than by trust.
- */
-export type FabricatedWithdrawalL1Witness =
-  | {
-      readonly kind: "absent_identity";
-      readonly observation: SDK.AuthenticatedL1Observation;
-      readonly liveOutputReferences: readonly LiveOutputReference[];
-    }
-  | {
-      readonly kind: "present_event";
-      readonly observation: SDK.AuthenticatedL1Observation;
-      /**
-       * Withdrawal event NFT policy id, read from the authentic hub oracle's
-       * `withdrawal` field — not its `deposit` field, which registers a different
-       * event family.
-       */
-      readonly withdrawalEventPolicyId: string;
-      /** Asset name observed carrying the withdrawal event. */
-      readonly observedEventAssetName: string;
-      /** Canonical CBOR of the retained withdrawal event datum. */
-      readonly eventDatumCbor: string;
-    };
-
-/** The classified fault, plus the two authenticated intermediates it rests on. */
 export type ClassifiedFabricatedWithdrawalFault = {
   readonly verdict: SDK.FabricatedWithdrawalEvidenceVerdict;
   readonly fault: SDK.FabricatedWithdrawalFault;
-  /** Present only for the content-mismatch shape. */
+  readonly stateQueuePolicyId: string;
+  readonly openingCbor: string | null;
   readonly authenticWithdrawalContentHash?: string;
-  /** Present only for the content-mismatch shape. */
   readonly eventInclusionTime?: bigint;
-  /** Present only for the content-mismatch shape. */
-  readonly eventDatumHash?: string;
 };
 
-const admitWitnessObservation = ({
-  witness,
-  minimumConfirmationDepth,
-}: {
-  readonly witness: FabricatedWithdrawalL1Witness;
-  readonly minimumConfirmationDepth?: number;
-}): SDK.EvidenceProvenance => {
-  const admitted = SDK.admitAuthenticatedL1Observation({
-    observation: witness.observation,
-    ...(minimumConfirmationDepth === undefined
-      ? {}
-      : { minimumConfirmationDepth }),
-  });
-  return SDK.assertSecurityGradeEvidence(admitted.provenance);
-};
-
-/**
- * Classifies one committed withdrawal leaf against an authenticated L1 witness.
- *
- * Both arms are decided by a check, never by the prover's claim: absence by
- * live-set membership of the committed identity, presence by the event NFT asset
- * name the committed identity derives, and mismatch by comparing two commitments
- * over canonical bytes inside the block's own event window. The content comparison
- * is a single 32-byte inequality over the leaf's `(body, signature)` content, so
- * both a diverted body and a forged signature are caught by it. A committed
- * `validity` verdict that differs from the L1 order datum's placeholder is the
- * operator's own claim (decision 0007) and is deliberately outside the
- * comparison.
- */
+/** Current authenticated list absence or immutable Order facts. No live-nonce
+ * fallback or operator archive can establish an event's existence/absence. */
 export const classifyFabricatedWithdrawalFault = async ({
   leaf,
   headerStartTime,
@@ -275,107 +198,69 @@ export const classifyFabricatedWithdrawalFault = async ({
   readonly witness: FabricatedWithdrawalL1Witness;
   readonly minimumConfirmationDepth?: number;
 }): Promise<ClassifiedFabricatedWithdrawalFault> => {
-  admitWitnessObservation({
-    witness,
-    ...(minimumConfirmationDepth === undefined
-      ? {}
-      : { minimumConfirmationDepth }),
-  });
-  if (witness.kind === "absent_identity") {
-    const live = witness.liveOutputReferences.some(
-      (candidate) =>
-        candidate.transactionId.toLowerCase() ===
-          leaf.committedWithdrawalId.transactionId.toLowerCase() &&
-        candidate.outputIndex === leaf.committedWithdrawalId.outputIndex,
-    );
-    if (!live) {
-      throw new FabricatedWithdrawalRejection(
-        "consumed_live_utxo_fallback_refused",
-        `committed_withdrawal_id=${leaf.committedWithdrawalIdCbor} is not in the authenticated live output-reference set, so its absence cannot be established from a consumed UTxO`,
-      );
-    }
-    return {
-      verdict: "WithdrawalIdentityAbsent",
-      fault: "NonexistentWithdrawalIdentity",
-    };
-  }
-
-  const expectedAssetName = await Effect.runPromise(
-    SDK.withdrawalEventNonce(leaf.committedWithdrawalId),
-  );
-  if (witness.observedEventAssetName.toLowerCase() !== expectedAssetName) {
-    throw new FabricatedWithdrawalRejection(
-      "withdrawal_identity_observation_mismatch",
-      `observed_asset_name=${witness.observedEventAssetName.toLowerCase()} expected=${expectedAssetName} policy=${witness.withdrawalEventPolicyId.toLowerCase()}`,
-    );
-  }
-  const eventDatumCbor = hexOf(
-    witness.eventDatumCbor,
-    "witness.eventDatumCbor",
-  );
-  let eventDatum: SDK.WithdrawalOrderDatum;
+  let authenticated: Awaited<
+    ReturnType<typeof authenticateFabricatedHistoryWitness>
+  >;
   try {
-    eventDatum = Data.from(
-      eventDatumCbor.toString("hex"),
-      SDK.WithdrawalOrderDatum,
+    authenticated = await authenticateFabricatedHistoryWitness(
+      witness,
+      "Withdrawal",
+      leaf.committedWithdrawalId,
+      minimumConfirmationDepth,
     );
   } catch (cause) {
     throw new FabricatedWithdrawalRejection(
-      "event_datum_not_canonical",
-      `witness.eventDatumCbor does not decode as a withdrawal event datum: ${String(cause)}`,
+      "history_witness_invalid",
+      String(cause),
     );
   }
-  if (
-    SDK.withdrawalEventDatumBytes(eventDatum) !== eventDatumCbor.toString("hex")
-  ) {
+  const { captured, stateQueuePolicyId } = authenticated;
+  if (captured === undefined)
+    return {
+      verdict: "WithdrawalIdentityAbsent",
+      fault: "NonexistentWithdrawalIdentity",
+      stateQueuePolicyId,
+      openingCbor: null,
+    };
+  const { commitment, payload, originalAssets } = captured;
+  if (!("WithdrawalPayload" in payload))
     throw new FabricatedWithdrawalRejection(
-      "event_datum_not_canonical",
-      "witness.eventDatumCbor is not canonical for a withdrawal event datum",
+      "history_witness_invalid",
+      "Wrong authenticated event kind",
     );
-  }
+  const authenticWithdrawalContentHash = await Effect.runPromise(
+    SDK.withdrawalContentCommitment(payload.WithdrawalPayload.event.info),
+  );
+  const inclusionTime = commitment.inclusion_time;
+  const eligible =
+    headerStartTime < inclusionTime && inclusionTime <= headerEndTime;
   if (
-    SDK.committedWithdrawalKeyBytes(eventDatum.event.id) !==
-    leaf.committedWithdrawalIdCbor
-  ) {
-    throw new FabricatedWithdrawalRejection(
-      "event_identity_mismatch",
-      `event_id=${SDK.committedWithdrawalKeyBytes(eventDatum.event.id)} committed_withdrawal_id=${leaf.committedWithdrawalIdCbor}`,
-    );
-  }
-  const [authenticWithdrawalContentHash, eventDatumHash] = await Promise.all([
-    Effect.runPromise(SDK.withdrawalContentCommitment(eventDatum.event.info)),
-    Effect.runPromise(SDK.withdrawalEventDatumCommitment(eventDatum)),
-  ]);
-  if (authenticWithdrawalContentHash === leaf.committedWithdrawalContentHash) {
+    eligible &&
+    authenticWithdrawalContentHash === leaf.committedWithdrawalContentHash
+  )
     throw new FabricatedWithdrawalRejection(
       "authentic_content_matches_commitment",
-      `committed_withdrawal_content_hash=${leaf.committedWithdrawalContentHash} equals the authentic event's content; a valid block cannot be challenged`,
+      "The eligible event content matches the header; no fabrication is established",
     );
-  }
-  const inclusionTime = eventDatum.inclusion_time;
-  if (!(headerStartTime < inclusionTime && inclusionTime <= headerEndTime)) {
-    throw new FabricatedWithdrawalRejection(
-      "event_not_due_for_block",
-      `inclusion_time=${inclusionTime.toString()} is outside the challenged block's window (${headerStartTime.toString()}, ${headerEndTime.toString()}]`,
-    );
-  }
   return {
-    verdict: {
-      WithdrawalEventObserved: {
-        event_datum_hash: eventDatumHash,
-        event_inclusion_time: inclusionTime,
-      },
-    },
-    fault: {
-      MismatchedWithdrawalContent: {
-        committed_withdrawal_content_hash: leaf.committedWithdrawalContentHash,
-        authentic_withdrawal_content_hash: authenticWithdrawalContentHash,
-        event_inclusion_time: inclusionTime,
-      },
-    },
+    verdict: { WithdrawalEventObserved: { commitment } },
+    fault: eligible
+      ? {
+          MismatchedWithdrawalContent: {
+            committed_withdrawal_content_hash:
+              leaf.committedWithdrawalContentHash,
+            authentic_withdrawal_content_hash: authenticWithdrawalContentHash,
+            event_inclusion_time: inclusionTime,
+          },
+        }
+      : { IneligibleWithdrawalEvent: { event_inclusion_time: inclusionTime } },
+    stateQueuePolicyId,
+    openingCbor: Data.to(
+      { RetainedEventData: { payload, original_assets: originalAssets } },
+      SDK.FabricatedWithdrawalAuthenticContentOpening,
+    ),
     authenticWithdrawalContentHash,
     eventInclusionTime: inclusionTime,
-    eventDatumHash,
   };
 };
 
@@ -390,11 +275,12 @@ export type PreparedFabricatedWithdrawalInclusionJson = {
 
 /** The retained L1 opening `fabricated_withdrawal/step_03` re-hashes. */
 export type PreparedFabricatedWithdrawalContentJson = {
-  readonly eventDatumCbor: string | null;
+  readonly openingCbor: string | null;
 };
 
 /** Exactly the step-02 state the on-chain step-01 validator will derive. */
 export type PreparedFabricatedWithdrawalStateJson = {
+  readonly stateQueuePolicyId: string;
   readonly challengedHeaderHash: string;
   readonly headerStartTime: string;
   readonly headerEndTime: string;
@@ -545,12 +431,10 @@ export const prepareFabricatedWithdrawalFromCommittedLeaves = async ({
     classification,
     withdrawalInclusion,
     authenticContent: {
-      eventDatumCbor:
-        witness.kind === "present_event"
-          ? witness.eventDatumCbor.toLowerCase()
-          : null,
+      openingCbor: classification.openingCbor,
     },
     step02State: {
+      stateQueuePolicyId: classification.stateQueuePolicyId,
       challengedHeaderHash: headerHash.toLowerCase(),
       headerStartTime: headerStartTime.toString(),
       headerEndTime: headerEndTime.toString(),

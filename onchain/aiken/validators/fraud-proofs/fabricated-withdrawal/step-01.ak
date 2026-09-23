@@ -17,6 +17,8 @@ use aiken/builtin
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
+use midgard/common/utils
+use midgard/event_history/horizon
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/fabricated_withdrawal/step_01.{
@@ -81,13 +83,16 @@ validator main(
         // 2. The thread must belong to this family's catalogue category, and the
         //    header must be the authentic state-queue block the thread token
         //    names.
-        let header, header_hash, _hub_datum <- verify_challenged_header_v1(
+        let header, header_hash, hub_datum <- verify_challenged_header_v1(
           computation_thread_token_asset_name,
           hub_oracle,
           hub_ref_input_index,
           state_queue_node_ref_input_index,
           reference_inputs,
         )
+
+        let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(tx.validity_range)
+        expect horizon.capture_permitted(header.end_time, lower, upper)
 
         // 3. The challenged header must genuinely commit the withdrawal leaf
         //    under dispute. Without this the family would adjudicate a leaf no
@@ -104,6 +109,7 @@ validator main(
         //    event was due for *this* block before it convicts.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
+          state_queue_policy: hub_datum.state_queue,
           challenged_header_hash: header_hash,
           header_start_time: header.start_time,
           header_end_time: header.end_time,
@@ -138,6 +144,7 @@ fn run_step_01(
   thread_asset_name: AssetName,
 ) -> Bool {
   let expected_output_state: Data = step_02.State {
+    state_queue_policy: fixture.state_queue_policy_id,
     challenged_header_hash: block.block.header_hash,
     header_start_time: block.block.header.start_time,
     header_end_time: block.block.header.end_time,

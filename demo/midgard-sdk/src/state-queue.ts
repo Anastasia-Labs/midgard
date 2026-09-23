@@ -71,6 +71,22 @@ import {
 import { dedupeAndSortUtxos } from "./tx-out-ref-order.js";
 import { outputDatumCborMatches } from "./tx-output-utils.js";
 
+/** A terminal history proof must protect its pending header from merge. */
+export const CompletedFraudWitnessSchema = Data.Enum([
+  Data.Object({
+    RecordedOutput: Data.Object({ output_index: Data.Integer() }),
+  }),
+  Data.Object({
+    PreviouslyRecorded: Data.Object({ reference_input_index: Data.Integer() }),
+  }),
+]);
+export type CompletedFraudWitness = Data.Static<
+  typeof CompletedFraudWitnessSchema
+>;
+export const CompletedFraudWitness = asDataType<CompletedFraudWitness>(
+  CompletedFraudWitnessSchema,
+);
+
 export const STATE_QUEUE_ROOT_ASSET_NAME = fromText("MIDGARD_CONFIRMED_STATE");
 
 type ActiveOperatorSpendTxRedeemer =
@@ -309,6 +325,13 @@ export const StateQueueSpendRedeemerSchema = Data.Enum([
       state_queue_input_index: Data.Integer(),
       state_queue_output_index: Data.Integer(),
       availability_mint_redeemer_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    RecordCompletedFraud: Data.Object({
+      state_queue_input_index: Data.Integer(),
+      state_queue_output_index: Data.Integer(),
+      fraud_proof_asset_name: Data.Bytes({ minLength: 32, maxLength: 32 }),
     }),
   }),
 ]);
@@ -1124,6 +1147,7 @@ export const incompleteEmulatorCommitBlockHeaderTxProgram = (
       key: { Key: { key: newHeaderHash } },
       next: "Empty",
       data: castStateQueueNodeToData({
+        proven_fraud: null,
         header: params.newHeader,
         da_attestation: NO_DA_ATTESTATION,
       }) as LinkedListNodeView["data"],

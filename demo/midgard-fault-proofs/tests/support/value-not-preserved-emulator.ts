@@ -723,7 +723,15 @@ const commitHeaderAfterAnchorBlock = async ({
           assetName: CORRECTION_LOCK_ASSET_NAME,
         },
         confirmedStateRefInput,
-        additionalRefInputs: [hubOracleUtxo],
+        additionalRefInputs: [
+          hubOracleUtxo,
+          ...contracts.operatorLifecycleReferenceScripts.initial
+            .filter((r) => r.name === "state-queue minting")
+            .map((r) => r.utxo),
+          ...contracts.operatorLifecycleReferenceScripts.active
+            .filter((r) => r.name === "active-operators spending")
+            .map((r) => r.utxo),
+        ],
         activeOperatorInput: activeOperatorNode,
         activeOperatorSpendRedeemer: activeOperatorCommitRedeemer,
         activeOperatorSpendingScript: contracts.activeOperators.spendingScript,

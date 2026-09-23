@@ -219,7 +219,7 @@ const submitInitialMintTx = async ({
   };
   let builder = lucid
     .newTx()
-    .validFrom(Number(header.startTime - 120_000n))
+    .validFrom(Math.max(0, lucid.slotToUnixTime(lucid.currentSlot()) - 60_000))
     .validTo(Number(header.startTime + 1n))
     .collectFrom([nonceUtxo])
     // `hub_oracle.mint` requires the exact hub-policy set — hub oracle and
@@ -825,7 +825,9 @@ const submitSchedulerAppointmentTx = async ({
           schedulerUtxo.assets,
         )
         .attach.Script(contracts.scheduler.spendingScript)
-        .validFrom(Number(header.startTime - 120_000n))
+        .validFrom(
+          Math.max(0, lucid.slotToUnixTime(lucid.currentSlot()) - 60_000),
+        )
         .validTo(Number(header.startTime + 1n))
         .complete({ localUPLCEval: true }),
   );
@@ -869,7 +871,7 @@ const submitHeaderCommitTx = async ({
   confirmedStateRefInput,
 }: {
   readonly lucid: SetupLucid;
-  readonly contracts: MidgardValidators;
+  readonly contracts: SetupContracts;
   readonly header: Header;
   readonly headerHash: string;
   readonly units: SetupUnits;
@@ -963,7 +965,15 @@ const submitHeaderCommitTx = async ({
         ...(confirmedStateRefInput === undefined
           ? {}
           : { confirmedStateRefInput }),
-        additionalRefInputs: [hubOracleUtxo],
+        additionalRefInputs: [
+          hubOracleUtxo,
+          ...(contracts.operatorLifecycleReferenceScripts?.initial ?? [])
+            .filter((r) => r.name === "state-queue minting")
+            .map((r) => r.utxo),
+          ...(contracts.operatorLifecycleReferenceScripts?.active ?? [])
+            .filter((r) => r.name === "active-operators spending")
+            .map((r) => r.utxo),
+        ],
         activeOperatorInput: activeOperatorNode,
         activeOperatorSpendRedeemer: activeOperatorCommitRedeemer,
         activeOperatorSpendingScript: contracts.activeOperators.spendingScript,
@@ -1040,12 +1050,15 @@ export const submitSetupTx = async ({
   nonceUtxo,
   catalogue,
   header,
+  beforeHeaderCommit,
 }: {
   readonly lucid: SetupLucid;
   readonly contracts: SetupContracts;
   readonly nonceUtxo: UTxO;
   readonly catalogue: FraudProofCatalogueDeploymentInfo;
   readonly header: Header;
+  /** Run actual event admission after hub creation, before committing this header. */
+  readonly beforeHeaderCommit?: (hubOracle: UTxO) => Promise<void>;
 }): Promise<{
   readonly fraudulentBlockOutRef: string;
   readonly headerHash: string;
@@ -1132,6 +1145,7 @@ export const submitSetupTx = async ({
     "registered-operators root after setup",
   );
 
+  await beforeHeaderCommit?.(hubOracleUtxo);
   const appointedSchedulerUtxo = await submitSchedulerAppointmentTx({
     lucid,
     contracts,

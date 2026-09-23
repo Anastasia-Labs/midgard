@@ -33,6 +33,7 @@ import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
   assertDeploymentManifestMatchesConfig,
   buildRealTxOrderContracts,
+  eventHistoryBoundsFromExplicitEnvironment,
   readRuntimeDeploymentManifestFile,
   withRealStateQueueAndOperatorContracts,
 } from "../src/services/midgard-contracts.js";
@@ -101,16 +102,26 @@ describe("midgard contracts registry", () => {
         {
           referenceScriptAuth: placeholderContracts.referenceScriptAuth,
           availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
+          eventHistoryBounds: {
+            inlineLimitBytes: 512n,
+            maxPayloadBytes: 5000n,
+            maxPayloadNodes: 512n,
+          },
         },
       );
 
-      // Full production bundle captured at 2bc9bdbcdc21 before builder consolidation.
+      // Applied recipes include the completed-fraud queue marker and explicit
+      // history bounds/retention metadata; normalize bigint parameters as decimal strings.
       expect(
-        createHash("sha256").update(JSON.stringify(resolved)).digest("hex"),
+        createHash("sha256")
+          .update(
+            JSON.stringify(normalizeDeploymentManifestJsonValue(resolved)),
+          )
+          .digest("hex"),
       ).toBe(
-        "8453fdfe9546ca85cace812dea8bf16e3bd64edd0eacb7676cbfac1417bfb86c",
+        "e5d05d35e13019de51cf0e8af3ce6c60d440afc82f086d1dff57b3ab78122283",
       );
-      // Captured from the production recipes at 4cb2f2336 before extraction.
+      // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
       expect(
         createHash("sha256")
@@ -122,7 +133,7 @@ describe("midgard contracts registry", () => {
           )
           .digest("hex"),
       ).toBe(
-        "2ef4597c7a616d1a9ce982dda61e8f00b624b523292596a5faa17aa6ce93180f",
+        "7ea695e5bf105e14c6e1bbce64f93f31afdc337ab1c9ab8ccac401b7d62ffd64",
       );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test
@@ -231,6 +242,11 @@ describe("midgard contracts registry", () => {
           {
             referenceScriptAuth: placeholderContracts.referenceScriptAuth,
             availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
+            eventHistoryBounds: {
+              inlineLimitBytes: 512n,
+              maxPayloadBytes: 5000n,
+              maxPayloadNodes: 512n,
+            },
           },
         ),
       );
@@ -252,7 +268,7 @@ describe("midgard contracts registry", () => {
     {
       title: "state_queue.spend.spend",
       mutation: "extra",
-      error: /declares 4 parameter/,
+      error: /declares 5 parameter/,
     },
     {
       title: "state_queue_yields.merge.withdraw",
@@ -310,6 +326,11 @@ describe("midgard contracts registry", () => {
               {
                 referenceScriptAuth: contracts.referenceScriptAuth,
                 availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
+                eventHistoryBounds: {
+                  inlineLimitBytes: 512n,
+                  maxPayloadBytes: 5000n,
+                  maxPayloadNodes: 512n,
+                },
               },
             ),
           ),
@@ -459,3 +480,29 @@ describe("midgard contracts registry", () => {
     },
   );
 });
+
+unitIt(
+  "requires explicit history bounds before deriving fresh contracts",
+  () => {
+    try {
+      vi.stubEnv("MIDGARD_EVENT_HISTORY_INLINE_LIMIT_BYTES", undefined);
+      vi.stubEnv("MIDGARD_EVENT_HISTORY_MAX_PAYLOAD_BYTES", "5000");
+      vi.stubEnv("MIDGARD_EVENT_HISTORY_MAX_PAYLOAD_NODES", "512");
+      expect(() => eventHistoryBoundsFromExplicitEnvironment()).toThrow(
+        /inlineLimitBytes/,
+      );
+      vi.stubEnv("MIDGARD_EVENT_HISTORY_INLINE_LIMIT_BYTES", "512");
+      expect(eventHistoryBoundsFromExplicitEnvironment()).toEqual({
+        inlineLimitBytes: 512n,
+        maxPayloadBytes: 5000n,
+        maxPayloadNodes: 512n,
+      });
+      vi.stubEnv("MIDGARD_EVENT_HISTORY_MAX_PAYLOAD_BYTES", "511");
+      expect(() => eventHistoryBoundsFromExplicitEnvironment()).toThrow(
+        /inline bound/,
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  },
+);

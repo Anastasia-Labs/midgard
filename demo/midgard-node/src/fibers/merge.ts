@@ -187,7 +187,9 @@ const logSemanticSkip = (
   const message =
     readiness.status === "skipped_oldest_block_unattested"
       ? "oldest block is not DA-attested yet"
-      : "oldest block is not mature yet";
+      : readiness.status === "skipped_oldest_block_proven_fraud"
+        ? "oldest block has completed fraud and requires state correction"
+        : "oldest block is not mature yet";
   return Effect.logInfo(
     `🔸 Skipping merge ${phase} because ${message} (${readiness.reason}).`,
   );

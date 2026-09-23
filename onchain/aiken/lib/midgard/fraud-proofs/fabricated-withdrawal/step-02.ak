@@ -1,72 +1,16 @@
-//// ## `fabricated-withdrawal` step-02 — authenticated L1 withdrawal evidence
-//// (`GOAL_SPEC.md` §9.1 / Q40)
-////
-//// Step-01 established *what the challenged header commits*. Step-02 establishes
-//// *what L1 actually holds* about that committed identity, and it is the only
-//// step in this family that reads the L1 chain. Everything it hands forward is
-//// authenticated material, so the later steps never touch a prover-supplied
-//// claim about L1 again.
-////
-//// ### The two admissible witnesses
-////
-//// - `AbsentWithdrawalIdentity` — the prover exhibits the **still-unspent L1
-////   output at exactly the committed `WithdrawalId`**. `WithdrawalId` is the
-////   output reference a withdrawal authentication transaction must have *spent*
-////   (`midgard/user_events`'s `authenticate_new_event`, rule 4, requires the
-////   event id to equal the spent nonce output reference, and rule 1 mints the
-////   event NFT under `out_ref_to_nonce` of that same reference). An output is
-////   spent at most once, so a live output at that reference is a positive proof
-////   that no withdrawal event with that identity was ever authenticated. Verdict:
-////   `WithdrawalIdentityAbsent`.
-////
-//// - `PresentWithdrawalEvent` — the prover exhibits the authentic withdrawal
-////   event itself: a reference input carrying exactly one NFT of the
-////   hub-registered *withdrawal* policy under the asset name
-////   `out_ref_to_nonce(committed WithdrawalId)`, whose inline `withdrawal.Datum`
-////   names that same id. Verdict: `WithdrawalEventObserved`, carrying a 32-byte
-////   commitment to the event datum and the event's inclusion time.
-////
-//// ### Why the policy comes from the hub datum
-////
-//// `hub_datum.withdrawal` is read out of the authentic hub-oracle UTxO
-//// (`hub.get_datum` authenticates it against the `hub_oracle` script hash the
-//// validator is parameterised by), and the asset name is *derived* from the
-//// committed identity rather than accepted from the redeemer. A prover therefore
-//// cannot nominate a policy it controls, and cannot point at a genuine event NFT
-//// of some other withdrawal: both halves of the token are pinned by material the
-//// prover does not choose. Note the withdrawal policy is a different hub field
-//// from the deposit one — a withdrawal fraud proof authenticated against
-//// `hub_datum.deposit` would be reading the wrong event family entirely.
-////
-//// ### Why the verdict carries a datum hash and not the datum
-////
-//// A withdrawal event datum is `user_events.OptimisticDatum<WithdrawalEvent>`,
-//// which embeds the whole `WithdrawalInfo` (multi-asset `l2_value`, an unbounded
-//// `l1_datum`) *and* a `refund_address`/`refund_datum` pair, all chosen by the
-//// withdrawer. Threading it through the dispute would make every later step's L1
-//// footprint attacker-chosen; threading its hash keeps each handoff fixed-size.
-//// It also keeps the family alive past settlement: the event NFT is burned when
-//// the withdrawal is settled or refunded, so by the time a fraud proof runs the
-//// UTxO exhibited here may be gone — step-03 re-opens the preimage from its own
-//// redeemer and checks it against this commitment, which is retained
-//// authenticated material rather than a live-chain lookup.
-////
-//// ### Mirror of `fabricated-deposit` (Q39)
-////
-//// The unspent-nonce and hub-registered-event-NFT arguments are the same ones
-//// `midgard/fraud_proofs/fabricated_deposit/step_02` makes for deposits. This
-//// module mirrors rather than imports them because the two families read different
-//// hub fields and different datum shapes (a withdrawal event datum has five
-//// fields, a `DepositDatum` three).
+//// Authenticate a current history-list gap/filler or immutable Order facts.
+//// Captured commitments survive pointer continuations; nonce liveness is not evidence.
 
-use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/address
 use cardano/assets.{AssetName, PolicyId}
-use cardano/transaction.{InlineDatum, Input, NoDatum, Output}
-use midgard/common/types.{H32, PosixTime}
+use cardano/transaction.{InlineDatum, Input, NoDatum, Output, Transaction}
+use midgard/common/types.{PosixTime}
 use midgard/common/utils
 use midgard/computation_thread as ct
+use midgard/event_history/order_facts
+use midgard/event_history/proof_evidence
+use midgard/event_history/proof_fixture
 use midgard/fraud_proofs/fabricated_withdrawal/step_01
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/hub_oracle as hub
@@ -74,15 +18,12 @@ use midgard/ledger_state
 use midgard/user_events
 use midgard/user_events/withdrawal
 
-/// Blake2b-256 hash of `cbor.serialise` of a withdrawal event's datum.
-pub type WithdrawalDatumHash =
-  H32<withdrawal.Datum>
-
 // ## Step-02 thread types
 
 /// What step-01 hands forward: the authenticated challenged-header facts plus the
 /// committed withdrawal leaf, with the leaf's value reduced to its commitment.
 pub type State {
+  state_queue_policy: PolicyId,
   challenged_header_hash: ledger_state.HeaderHash,
   header_start_time: PosixTime,
   header_end_time: PosixTime,
@@ -90,24 +31,22 @@ pub type State {
   committed_withdrawal_content_hash: step_01.WithdrawalContentHash,
 }
 
-/// The prover's chosen L1 witness about the committed withdrawal identity.
+/// Both paths authenticate the deployment through its hub oracle.
 pub type WithdrawalEvidenceV1 {
-  /// The still-unspent L1 output at the committed `WithdrawalId`.
-  AbsentWithdrawalIdentity { unspent_ref_input_index: Int }
-  /// The authentic withdrawal event NFT and its datum.
+  AbsentWithdrawalIdentity {
+    hub_ref_input_index: Int,
+    history_ref_input_index: Int,
+  }
   PresentWithdrawalEvent {
     hub_ref_input_index: Int,
     event_ref_input_index: Int,
+    external_ref_input_index: Option<Int>,
   }
 }
 
-/// What L1 says, once authenticated. Only this reaches step-03.
 pub type WithdrawalEvidenceVerdictV1 {
   WithdrawalIdentityAbsent
-  WithdrawalEventObserved {
-    event_datum_hash: WithdrawalDatumHash,
-    event_inclusion_time: PosixTime,
-  }
+  WithdrawalEventObserved { commitment: order_facts.Commitment }
 }
 
 pub type Args {
@@ -130,53 +69,48 @@ pub type SpendRedeemer =
 /// no arm that forwards an unauthenticated claim.
 pub fn verify_withdrawal_evidence_v1(
   hub_oracle: ScriptHash,
-  committed_withdrawal_id: ledger_state.WithdrawalId,
+  state: State,
   evidence: WithdrawalEvidenceV1,
-  reference_inputs: List<Input>,
+  tx: Transaction,
+  params: proof_evidence.Parameters,
 ) -> WithdrawalEvidenceVerdictV1 {
+  let hub_index = when evidence is {
+    AbsentWithdrawalIdentity { hub_ref_input_index, .. } -> hub_ref_input_index
+    PresentWithdrawalEvent { hub_ref_input_index, .. } -> hub_ref_input_index
+  }
+  let authority = hub.get_datum(tx.reference_inputs, hub_oracle, hub_index)
+  expect authority.state_queue == state.state_queue_policy
   when evidence is {
-    AbsentWithdrawalIdentity { unspent_ref_input_index } -> {
-      // The witness must be the live output at *exactly* the committed identity.
-      // Any other still-unspent output proves nothing: on a valid block the
-      // committed `WithdrawalId` is spent (that spend is what authenticated the
-      // event), so a prover attacking a valid block has no choice but to
-      // substitute some other live output here, and this equality is what
-      // refuses it. Nothing about the referenced output's content matters — its
-      // continued existence is the whole argument.
-      expect Some(Input { output_reference, .. }) = list.at(
-        reference_inputs,
-        unspent_ref_input_index,
-      )
-      expect output_reference == committed_withdrawal_id
+    AbsentWithdrawalIdentity { history_ref_input_index, .. } -> {
+      expect
+        proof_evidence.absence(
+          tx,
+          authority.withdrawal,
+          authority.withdrawal_addr,
+          state.committed_withdrawal_id,
+          state.header_end_time,
+          history_ref_input_index,
+        )
       WithdrawalIdentityAbsent
     }
-    PresentWithdrawalEvent { hub_ref_input_index, event_ref_input_index } -> {
-      // The withdrawal event policy is read from the authentic hub oracle, never
-      // from the redeemer, and the NFT's asset name is derived from the committed
-      // identity rather than accepted from the prover — so the only reference
-      // input that can satisfy this is the authentic event UTxO for this very
-      // `WithdrawalId`.
-      let hub_datum = hub.get_datum(
-        reference_inputs,
-        hub_oracle,
-        hub_ref_input_index,
-      )
-      let event_datum_data = utils.get_authentic_input_datum_with_nft_at(
-        reference_inputs,
-        hub_datum.withdrawal,
-        user_events.out_ref_to_nonce(committed_withdrawal_id),
-        event_ref_input_index,
-      )
-      expect event_datum: withdrawal.Datum = event_datum_data
-      // Belt and braces against a datum that disagrees with the NFT it sits
-      // under: `authenticate_new_event` already ties the two together, and this
-      // re-derives it from the committed identity rather than trusting it.
-      expect event_datum.event.id == committed_withdrawal_id
+    PresentWithdrawalEvent {
+      event_ref_input_index,
+      external_ref_input_index,
+      ..
+    } ->
       WithdrawalEventObserved {
-        event_datum_hash: utils.serialise_and_hash_32(event_datum_data),
-        event_inclusion_time: event_datum.inclusion_time,
+        commitment: proof_evidence.presence(
+          tx,
+          authority.withdrawal,
+          authority.withdrawal_addr,
+          order_facts.Withdrawal,
+          state.committed_withdrawal_id,
+          state.header_end_time,
+          params,
+          event_ref_input_index,
+          external_ref_input_index,
+        ),
       }
-    }
   }
 }
 
@@ -219,6 +153,7 @@ pub fn fixture_withdrawal_event_policy_v1() -> PolicyId {
 /// against continuous state rather than restated constants.
 pub fn fixture_state_v1(block: step_01.FabricatedWithdrawalBlockV1) -> State {
   State {
+    state_queue_policy: proof_fixture.state_queue_policy(),
     challenged_header_hash: block.block.header_hash,
     header_start_time: block.block.header.start_time,
     header_end_time: block.block.header.end_time,
@@ -253,12 +188,26 @@ pub fn authentic_withdrawal_datum_v1(
 
 /// The verdict step-02 produces for `event_datum`: the commitment is the exact
 /// hash of the datum bytes the authentic event UTxO carries.
+pub fn history_payload(event_datum: withdrawal.Datum) -> order_facts.Payload {
+  order_facts.WithdrawalPayload {
+    event: event_datum.event,
+    refund_address: event_datum.refund_address,
+    refund_datum: event_datum.refund_datum,
+  }
+}
+
 pub fn observed_verdict_v1(
   event_datum: withdrawal.Datum,
 ) -> WithdrawalEvidenceVerdictV1 {
+  let payload = history_payload(event_datum)
   WithdrawalEventObserved {
-    event_datum_hash: utils.serialise_and_hash_32(event_datum),
-    event_inclusion_time: event_datum.inclusion_time,
+    commitment: order_facts.commitment(
+      fixture_withdrawal_event_policy_v1(),
+      order_facts.Withdrawal,
+      proof_fixture.facts(payload, event_datum.inclusion_time),
+      payload,
+      proof_fixture.original_assets(),
+    ),
   }
 }
 
@@ -270,17 +219,12 @@ pub fn withdrawal_event_reference_input_v1(
   event_nft_asset_name: AssetName,
   event_datum: withdrawal.Datum,
 ) -> Input {
-  let event_datum_data: Data = event_datum
-  Input {
-    output_reference: fixture.own_out_ref(),
-    output: Output {
-      address: address.from_script(event_nft_policy),
-      value: assets.from_lovelace(3_000_000)
-        |> assets.add(event_nft_policy, event_nft_asset_name, 1),
-      datum: InlineDatum(event_datum_data),
-      reference_script: None,
-    },
-  }
+  proof_fixture.order_reference(
+    event_nft_policy,
+    event_nft_asset_name,
+    history_payload(event_datum),
+    event_datum.inclusion_time,
+  )
 }
 
 /// A reference input carrying a well-formed withdrawal event datum with **no**

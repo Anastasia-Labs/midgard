@@ -75,6 +75,11 @@ describe("validation resolver production-builder parameter application", () => {
 
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
+        eventHistoryBounds: {
+          inlineLimitBytes: 512n,
+          maxPayloadBytes: 5000n,
+          maxPayloadNodes: 512n,
+        },
         blueprint: currentTreeBlueprint,
         network: "Preprod",
         hubOraclePolicyId: "bb".repeat(28),

@@ -200,6 +200,7 @@ const makeFixture = () => {
   >;
   const headerHash = h28("10");
   const stateQueueNode: StateQueueNode = {
+    proven_fraud: null,
     header: {
       prevUtxosRoot: h32("01"),
       utxosRoot: h32("02"),

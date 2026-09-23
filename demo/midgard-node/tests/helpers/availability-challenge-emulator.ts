@@ -223,6 +223,7 @@ export const createAvailabilityFixture = async (
     update_threshold: 2n,
   };
   const stateQueueNode: SDK.StateQueueNode = {
+    proven_fraud: null,
     header: {
       prevUtxosRoot: h32("01"),
       utxosRoot: h32("02"),

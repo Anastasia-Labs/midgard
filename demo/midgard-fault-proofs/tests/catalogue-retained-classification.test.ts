@@ -13,7 +13,11 @@ import {
   MIN_FEE_VIOLATION_ID,
   type RejectionReason,
 } from "@al-ft/midgard-sdk";
-import { getAddressDetails, type LucidEvolution } from "@lucid-evolution/lucid";
+import {
+  credentialToAddress,
+  getAddressDetails,
+  type LucidEvolution,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -209,7 +213,17 @@ const setup = async (
       raw,
       historySource,
     });
+  const history = {
+    inlineLimitBytes: 512n,
+    maxPayloadBytes: 5000n,
+    maxPayloadNodes: 512n,
+    retentionAddress: credentialToAddress("Preprod", {
+      type: "Script",
+      hash: "ee".repeat(28),
+    }),
+  };
   const replayer = createCatalogueCompleteCanonicalReplay({
+    history: { deposit: history, withdrawal: history },
     lucid: unusedEventProvider,
     network: "Preprod",
     hubOraclePolicyId,

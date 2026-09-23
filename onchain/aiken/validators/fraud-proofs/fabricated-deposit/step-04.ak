@@ -5,12 +5,15 @@
 //// conviction must not get wrong: that the fault is filed against the header the
 //// thread token names, and that the carried fault is really a fault.
 
+use aiken/collection/list
+use aiken/interval
 use cardano/address.{Address}
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/types.{PosixTime}
 use midgard/common/utils
 use midgard/computation_thread as ct
+use midgard/event_history/proof_fixture
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/fabricated_deposit/step_01
 use midgard/fraud_proofs/fabricated_deposit/step_02
@@ -20,6 +23,7 @@ use midgard/fraud_proofs/fabricated_deposit/step_04.{
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/ledger_state
+use midgard/state_queue
 use midgard/user_events/deposit
 
 validator main(
@@ -47,6 +51,7 @@ validator main(
         input_index,
         output_index,
         fraud_proof_mint_redeemer_index,
+        completed_fraud_witness,
       }) -> {
         let Transaction { inputs, outputs, redeemers, .. } = tx
 
@@ -91,8 +96,12 @@ validator main(
         // 3. The carried fault must really be a fabricated-deposit fault.
         expect fabricated_deposit_fault_is_established_v1(state)
 
-        // Done.
-        True
+        state_queue.require_completed_fraud_witness(
+          tx,
+          state.state_queue_policy,
+          computation_thread_token_asset_name,
+          completed_fraud_witness,
+        )
       }
     }
   }
@@ -154,6 +163,28 @@ fn nonexistent_identity_state() -> step_04.State {
 }
 
 fn run_step_04(state: step_04.State, thread_asset_name: AssetName) -> Bool {
+  let absent_block = step_01.fabricated_identity_block_v1().block
+  let block = if state.challenged_header_hash == absent_block.header_hash {
+    absent_block
+  } else {
+    step_01.mismatched_content_block_v1().block
+  }
+  run_step_04_tx(
+    state,
+    state_queue.PreviouslyRecorded { reference_input_index: 0 },
+    proof_fixture.terminal(
+      fixture.finalize_step_l1_tx_v1(thread_asset_name),
+      block.header,
+      thread_asset_name,
+    ),
+  )
+}
+
+fn run_step_04_tx(
+  state: step_04.State,
+  witness: state_queue.CompletedFraudWitness,
+  tx: Transaction,
+) -> Bool {
   main.spend(
     fixture.fraud_proof_policy_id,
     fixture.fraud_proof_token_address(),
@@ -169,10 +200,11 @@ fn run_step_04(state: step_04.State, thread_asset_name: AssetName) -> Bool {
         input_index: 0,
         output_index: 0,
         fraud_proof_mint_redeemer_index: 0,
+        completed_fraud_witness: witness,
       },
     ),
     fixture.own_out_ref(),
-    fixture.finalize_step_l1_tx_v1(thread_asset_name),
+    tx,
   )
 }
 
@@ -249,3 +281,80 @@ test rejects_wrong_source_identity() fail {
 
 /// One millisecond past the challenged header's `end_time` of 20.
 const stale_inclusion_time: PosixTime = 21
+
+fn completed_history_tx() -> Transaction {
+  let state = nonexistent_identity_state()
+  let asset = step_01.computation_thread_token_asset_name_v1(
+    state.challenged_header_hash,
+  )
+  proof_fixture.terminal(
+    fixture.finalize_step_l1_tx_v1(asset),
+    step_01.fabricated_identity_block_v1().block.header,
+    asset,
+  )
+}
+
+test terminal_rejects_missing_queue_marker() fail {
+  let tx = completed_history_tx()
+  run_step_04_tx(
+    nonexistent_identity_state(),
+    state_queue.PreviouslyRecorded { reference_input_index: 0 },
+    Transaction { ..tx, reference_inputs: [] },
+  )
+}
+
+test terminal_rejects_after_merge_maturity() fail {
+  let tx = completed_history_tx()
+  let deadline = 20 + ledger_state.block_maturity_duration_v1
+  run_step_04_tx(
+    nonexistent_identity_state(),
+    state_queue.PreviouslyRecorded { reference_input_index: 0 },
+    Transaction {
+      ..tx,
+      validity_range: interval.between(deadline, deadline + 1),
+    },
+  )
+}
+
+test terminal_rejects_unbounded_validity() fail {
+  let tx = completed_history_tx()
+  run_step_04_tx(
+    nonexistent_identity_state(),
+    state_queue.PreviouslyRecorded { reference_input_index: 0 },
+    Transaction { ..tx, validity_range: interval.everything },
+  )
+}
+
+test terminal_rejects_another_queue_policy() fail {
+  let state = step_04.State {
+    ..nonexistent_identity_state(),
+    state_queue_policy: fixture.computation_thread_policy_id,
+  }
+  run_step_04_tx(
+    state,
+    state_queue.PreviouslyRecorded { reference_input_index: 0 },
+    completed_history_tx(),
+  )
+}
+
+test terminal_accepts_atomic_marker_output() {
+  let tx = completed_history_tx()
+  expect [reference] = tx.reference_inputs
+  run_step_04_tx(
+    nonexistent_identity_state(),
+    state_queue.RecordedOutput { output_index: 1 },
+    Transaction {
+      ..tx,
+      reference_inputs: [],
+      outputs: list.concat(tx.outputs, [reference.output]),
+    },
+  )
+}
+
+test terminal_rejects_fraud_output_as_queue_marker() fail {
+  run_step_04_tx(
+    nonexistent_identity_state(),
+    state_queue.RecordedOutput { output_index: 0 },
+    completed_history_tx(),
+  )
+}

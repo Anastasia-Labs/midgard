@@ -59,6 +59,7 @@ const makeTail = async ({
     key: { Key: { key: headerHash } },
     next,
     data: SDK.castStateQueueNodeToData({
+      proven_fraud: null,
       header,
       da_attestation: SDK.NO_DA_ATTESTATION,
     }) as SDK.LinkedListNodeView["data"],

@@ -32,13 +32,10 @@
  * convention. The same reasoning is recorded at
  * `src/evidence/prepare-from-evidence.ts:145-150`.
  *
- * The L1 side of the argument is authenticated, never asserted: absence of a
- * deposit identity is established by exhibiting the committed `DepositId` in an
- * authenticated **live** output-reference set (an unspent outref cannot have been
- * consumed by `authenticate_new_event`), and presence is established by the
- * deposit event NFT asset name derived from the committed identity. No operator
- * REST/DB/file input is reachable from this module, and there is no
- * consumed-live-UTxO fallback: both arms fail closed.
+ * The L1 side is a hub-authenticated sorted-list gap/filler or Order. Large
+ * payloads must be supplied by the actual retained-data reference output. The
+ * preparation persists a complete payload/Value opening for the later capture
+ * commitment; no operator archive or live nonce establishes list membership.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -52,6 +49,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import {
+  authenticateFabricatedHistoryWitness,
+  type FabricatedHistoryWitness,
+} from "./fabricated-history-witness.js";
 import { stringifyJson } from "./json-file.js";
 import { buildTrieView, requireProof } from "./prepare-double-spend.js";
 import {
@@ -74,12 +75,8 @@ export type FabricatedDepositRejectionCode =
   | "deposits_root_mismatch"
   | "no_committed_deposit_leaf"
   | "leaf_not_committed"
-  | "consumed_live_utxo_fallback_refused"
-  | "deposit_identity_observation_mismatch"
-  | "event_datum_not_canonical"
-  | "event_identity_mismatch"
   | "authentic_content_matches_commitment"
-  | "event_not_due_for_block";
+  | "history_witness_invalid";
 
 /** Deterministic, value-free rejection; `detail` carries only public data. */
 export class FabricatedDepositRejection extends Error {
@@ -163,80 +160,20 @@ const decodeCommittedDepositLeaf = async (
   };
 };
 
-/** A live (unspent) L1 output reference at an authenticated chain point. */
-export type LiveOutputReference = {
-  readonly transactionId: string;
-  readonly outputIndex: bigint;
-};
+/** Public-L1 hub, authenticated list anchor and optional retained-data output. */
+export type FabricatedDepositL1Witness = FabricatedHistoryWitness;
 
-/**
- * The prover's authenticated L1 witness about a committed deposit identity.
- *
- * `absent_identity` carries the live output-reference set observed at the
- * authenticated chain point. Because `authenticate_new_event` rule 4 requires a
- * deposit event's id to be an outref the authenticating transaction **spent**,
- * a still-live outref positively proves no event with that identity was ever
- * authenticated. Membership in that set is checked here; a prover cannot simply
- * declare absence, and a consumed outref is refused rather than treated as
- * absent.
- *
- * `present_event` carries the retained deposit event datum plus the deposit
- * policy and the asset name observed carrying the event, so the observation is
- * bound to the committed identity by `out_ref_to_nonce` rather than by trust.
- */
-export type FabricatedDepositL1Witness =
-  | {
-      readonly kind: "absent_identity";
-      readonly observation: SDK.AuthenticatedL1Observation;
-      readonly liveOutputReferences: readonly LiveOutputReference[];
-    }
-  | {
-      readonly kind: "present_event";
-      readonly observation: SDK.AuthenticatedL1Observation;
-      /** Deposit event NFT policy id, read from the authentic hub oracle. */
-      readonly depositEventPolicyId: string;
-      /** Asset name observed carrying the deposit event. */
-      readonly observedEventAssetName: string;
-      /** Canonical CBOR of the retained `DepositDatum`. */
-      readonly eventDatumCbor: string;
-    };
-
-/** The classified fault, plus the two authenticated intermediates it rests on. */
 export type ClassifiedFabricatedDepositFault = {
   readonly verdict: SDK.FabricatedDepositEvidenceVerdict;
   readonly fault: SDK.FabricatedDepositFault;
-  /** Present only for the content-mismatch shape. */
+  readonly stateQueuePolicyId: string;
+  readonly openingCbor: string | null;
   readonly authenticDepositInfoHash?: string;
-  /** Present only for the content-mismatch shape. */
   readonly eventInclusionTime?: bigint;
-  /** Present only for the content-mismatch shape. */
-  readonly eventDatumHash?: string;
 };
 
-const admitWitnessObservation = ({
-  witness,
-  minimumConfirmationDepth,
-}: {
-  readonly witness: FabricatedDepositL1Witness;
-  readonly minimumConfirmationDepth?: number;
-}): SDK.EvidenceProvenance => {
-  const admitted = SDK.admitAuthenticatedL1Observation({
-    observation: witness.observation,
-    ...(minimumConfirmationDepth === undefined
-      ? {}
-      : { minimumConfirmationDepth }),
-  });
-  return SDK.assertSecurityGradeEvidence(admitted.provenance);
-};
-
-/**
- * Classifies one committed deposit leaf against an authenticated L1 witness.
- *
- * Both arms are decided by a check, never by the prover's claim: absence by
- * live-set membership of the committed identity, presence by the event NFT
- * asset name the committed identity derives, and mismatch by comparing two
- * commitments over canonical bytes inside the block's own event window.
- */
+/** Current authenticated list absence or immutable Order facts. No live-nonce
+ * fallback or operator archive can establish an event's existence/absence. */
 export const classifyFabricatedDepositFault = async ({
   leaf,
   headerStartTime,
@@ -250,104 +187,65 @@ export const classifyFabricatedDepositFault = async ({
   readonly witness: FabricatedDepositL1Witness;
   readonly minimumConfirmationDepth?: number;
 }): Promise<ClassifiedFabricatedDepositFault> => {
-  admitWitnessObservation({
-    witness,
-    ...(minimumConfirmationDepth === undefined
-      ? {}
-      : { minimumConfirmationDepth }),
-  });
-  if (witness.kind === "absent_identity") {
-    const live = witness.liveOutputReferences.some(
-      (candidate) =>
-        candidate.transactionId.toLowerCase() ===
-          leaf.committedDepositId.transactionId.toLowerCase() &&
-        candidate.outputIndex === leaf.committedDepositId.outputIndex,
+  let authenticated: Awaited<
+    ReturnType<typeof authenticateFabricatedHistoryWitness>
+  >;
+  try {
+    authenticated = await authenticateFabricatedHistoryWitness(
+      witness,
+      "Deposit",
+      leaf.committedDepositId,
+      minimumConfirmationDepth,
     );
-    if (!live) {
-      throw new FabricatedDepositRejection(
-        "consumed_live_utxo_fallback_refused",
-        `committed_deposit_id=${leaf.committedDepositIdCbor} is not in the authenticated live output-reference set, so its absence cannot be established from a consumed UTxO`,
-      );
-    }
+  } catch (cause) {
+    throw new FabricatedDepositRejection(
+      "history_witness_invalid",
+      String(cause),
+    );
+  }
+  const { captured, stateQueuePolicyId } = authenticated;
+  if (captured === undefined)
     return {
       verdict: "DepositIdentityAbsent",
       fault: "NonexistentDepositIdentity",
+      stateQueuePolicyId,
+      openingCbor: null,
     };
-  }
-
-  const expectedAssetName = await Effect.runPromise(
-    SDK.depositEventNonce(leaf.committedDepositId),
+  const { commitment, payload, originalAssets } = captured;
+  if (!("DepositPayload" in payload))
+    throw new FabricatedDepositRejection(
+      "history_witness_invalid",
+      "Wrong authenticated event kind",
+    );
+  const authenticDepositInfoHash = await Effect.runPromise(
+    SDK.depositInfoCommitment(payload.DepositPayload.event.info),
   );
-  if (witness.observedEventAssetName.toLowerCase() !== expectedAssetName) {
-    throw new FabricatedDepositRejection(
-      "deposit_identity_observation_mismatch",
-      `observed_asset_name=${witness.observedEventAssetName.toLowerCase()} expected=${expectedAssetName} policy=${witness.depositEventPolicyId.toLowerCase()}`,
-    );
-  }
-  const eventDatumCbor = hexOf(
-    witness.eventDatumCbor,
-    "witness.eventDatumCbor",
-  );
-  let eventDatum: SDK.DepositDatum;
-  try {
-    eventDatum = Data.from(eventDatumCbor.toString("hex"), SDK.DepositDatum);
-  } catch (cause) {
-    throw new FabricatedDepositRejection(
-      "event_datum_not_canonical",
-      `witness.eventDatumCbor does not decode as DepositDatum: ${String(cause)}`,
-    );
-  }
-  if (
-    Data.to(eventDatum, SDK.DepositDatum) !== eventDatumCbor.toString("hex")
-  ) {
-    throw new FabricatedDepositRejection(
-      "event_datum_not_canonical",
-      "witness.eventDatumCbor is not canonical for DepositDatum",
-    );
-  }
-  if (
-    SDK.committedDepositKeyBytes(eventDatum.event.id) !==
-    leaf.committedDepositIdCbor
-  ) {
-    throw new FabricatedDepositRejection(
-      "event_identity_mismatch",
-      `event_id=${SDK.committedDepositKeyBytes(eventDatum.event.id)} committed_deposit_id=${leaf.committedDepositIdCbor}`,
-    );
-  }
-  const [authenticDepositInfoHash, eventDatumHash] = await Promise.all([
-    Effect.runPromise(SDK.depositInfoCommitment(eventDatum.event.info)),
-    Effect.runPromise(SDK.depositEventDatumCommitment(eventDatum)),
-  ]);
-  if (authenticDepositInfoHash === leaf.committedDepositInfoHash) {
+  const inclusionTime = commitment.inclusion_time;
+  const eligible =
+    headerStartTime < inclusionTime && inclusionTime <= headerEndTime;
+  if (eligible && authenticDepositInfoHash === leaf.committedDepositInfoHash)
     throw new FabricatedDepositRejection(
       "authentic_content_matches_commitment",
-      `committed_deposit_info_hash=${leaf.committedDepositInfoHash} equals the authentic event's content; a valid block cannot be challenged`,
+      "The eligible event content matches the header; no fabrication is established",
     );
-  }
-  const inclusionTime = eventDatum.inclusion_time;
-  if (!(headerStartTime < inclusionTime && inclusionTime <= headerEndTime)) {
-    throw new FabricatedDepositRejection(
-      "event_not_due_for_block",
-      `inclusion_time=${inclusionTime.toString()} is outside the challenged block's window (${headerStartTime.toString()}, ${headerEndTime.toString()}]`,
-    );
-  }
   return {
-    verdict: {
-      DepositEventObserved: {
-        event_datum_hash: eventDatumHash,
-        event_inclusion_time: inclusionTime,
-      },
-    },
-    fault: {
-      MismatchedDepositContent: {
-        committed_deposit_info_hash: leaf.committedDepositInfoHash,
-        authentic_deposit_info_hash: authenticDepositInfoHash,
-        event_inclusion_time: inclusionTime,
-      },
-    },
+    verdict: { DepositEventObserved: { commitment } },
+    fault: eligible
+      ? {
+          MismatchedDepositContent: {
+            committed_deposit_info_hash: leaf.committedDepositInfoHash,
+            authentic_deposit_info_hash: authenticDepositInfoHash,
+            event_inclusion_time: inclusionTime,
+          },
+        }
+      : { IneligibleDepositEvent: { event_inclusion_time: inclusionTime } },
+    stateQueuePolicyId,
+    openingCbor: Data.to(
+      { RetainedEventData: { payload, original_assets: originalAssets } },
+      SDK.FabricatedDepositAuthenticContentOpening,
+    ),
     authenticDepositInfoHash,
     eventInclusionTime: inclusionTime,
-    eventDatumHash,
   };
 };
 
@@ -362,11 +260,12 @@ export type PreparedFabricatedDepositInclusionJson = {
 
 /** The retained L1 opening `fabricated_deposit/step_03` re-hashes. */
 export type PreparedFabricatedDepositContentJson = {
-  readonly eventDatumCbor: string | null;
+  readonly openingCbor: string | null;
 };
 
 /** Exactly the step-02 state the on-chain step-01 validator will derive. */
 export type PreparedFabricatedDepositStateJson = {
+  readonly stateQueuePolicyId: string;
   readonly challengedHeaderHash: string;
   readonly headerStartTime: string;
   readonly headerEndTime: string;
@@ -517,12 +416,10 @@ export const prepareFabricatedDepositFromCommittedLeaves = async ({
     classification,
     depositInclusion,
     authenticContent: {
-      eventDatumCbor:
-        witness.kind === "present_event"
-          ? witness.eventDatumCbor.toLowerCase()
-          : null,
+      openingCbor: classification.openingCbor,
     },
     step02State: {
+      stateQueuePolicyId: classification.stateQueuePolicyId,
       challengedHeaderHash: headerHash.toLowerCase(),
       headerStartTime: headerStartTime.toString(),
       headerEndTime: headerEndTime.toString(),

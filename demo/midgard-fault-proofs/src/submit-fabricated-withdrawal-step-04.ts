@@ -13,7 +13,7 @@
  *   conviction cannot be filed against the wrong block; and
  * - **establishment** — `isFabricatedWithdrawalFault`, the twin of
  *   `fabricated_withdrawal_fault_is_established_v1`, must hold for the carried
- *   state, so a stale or content-identical "fault" is never made permanent. For the
+ *   state, so an inconsistent fault classification is never made permanent. For the
  *   mismatch shape that means the two `(body, signature)` commitments really
  *   differ — the single inequality that settles body and signature fidelity at
  *   once, with the operator-owned `validity` verdict excluded per decision 0007 —
@@ -41,6 +41,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { prepareFabricatedCompletedFraud } from "./fabricated-completed-fraud.js";
 import { requireFabricatedReferenceScript } from "./fabricated-reference-script.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -117,7 +118,7 @@ export const assertFabricatedWithdrawalStep04Finalizable = ({
   }
   if (!isFabricatedWithdrawalFault(state)) {
     throw new Error(
-      "Fabricated-withdrawal step 04 refuses to finalize: the carried fault is not an established fabricated-withdrawal fault (identical content commitments, or an event outside the challenged block's window).",
+      "Fabricated-withdrawal step 04 refuses to finalize: the carried fault is not an established fabricated-withdrawal fault (the carried content or eligibility classification is inconsistent).",
     );
   }
 };
@@ -170,14 +171,18 @@ export const submitFabricatedWithdrawalStep04 = async ({
   witnessReferenceScripts,
   preSubmitBoundary,
   awaitConfirmation = true,
+  now = Date.now,
 }: {
+  readonly now?: () => number;
   readonly lucid: LucidEvolution;
   readonly contracts: FabricatedWithdrawalContracts;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts & {
+    readonly stateQueueSpend?: UTxO;
+  };
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedWithdrawalStep04Result> => {
@@ -201,6 +206,21 @@ export const submitFabricatedWithdrawalStep04 = async ({
   assertFabricatedWithdrawalStep04Finalizable({
     state,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
+  });
+
+  if (state.state_queue_policy !== contracts.stateQueuePolicyId)
+    throw new Error(
+      "Terminal proof carried queue policy differs from deployment",
+    );
+  const completedFraud = await prepareFabricatedCompletedFraud({
+    lucid,
+    hubOraclePolicyId: contracts.hubOraclePolicyId,
+    stateQueuePolicyId: state.state_queue_policy,
+    headerHash: state.challenged_header_hash,
+    headerEnd: state.header_end_time,
+    proofAsset: threadToken.assetName,
+    queueReferenceScript: witnessReferenceScripts?.stateQueueSpend,
+    now: now(),
   });
 
   signer.selectWallet(lucid);
@@ -248,6 +268,7 @@ export const submitFabricatedWithdrawalStep04 = async ({
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
             fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
+            completed_fraud_witness: completedFraud.witness(ctx),
           },
         ],
       },
@@ -323,8 +344,8 @@ export const submitFabricatedWithdrawalStep04 = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash);
-  const tx = fraudProofMintCarriage.attach(
-    computationThreadMintCarriage.attach(base),
+  const tx = completedFraud.apply(
+    fraudProofMintCarriage.attach(computationThreadMintCarriage.attach(base)),
   );
 
   const unsigned = await tx.complete({ localUPLCEval: true });
@@ -342,6 +363,12 @@ export const submitFabricatedWithdrawalStep04 = async ({
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
+        {
+          role: "state queue spending",
+          utxo: completedFraud.queueReferenceScript,
+          expectedScript:
+            completedFraud.queueReferenceScript?.scriptRef ?? undefined,
+        },
         {
           role: "V1 fraud-proof fabricated-withdrawal step-04",
           utxo: referenceScriptUtxo,
@@ -404,6 +431,9 @@ export const submitFabricatedWithdrawalStep04FromFiles = async (
   config: SubmitFabricatedWithdrawalStep04CliConfig & {
     readonly contracts: FabricatedWithdrawalContracts;
     readonly referenceScriptUtxo: UTxO;
+    readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts & {
+      readonly stateQueueSpend?: UTxO;
+    };
   },
 ): Promise<SubmitFabricatedWithdrawalStep04Result> => {
   const lucid = await makeLucidForSubmit(config);
@@ -414,6 +444,7 @@ export const submitFabricatedWithdrawalStep04FromFiles = async (
     signer,
     threadOutRef: config.threadOutRef,
     referenceScriptUtxo: config.referenceScriptUtxo,
+    witnessReferenceScripts: config.witnessReferenceScripts,
     awaitConfirmation: config.awaitConfirmation,
   });
 };

@@ -235,6 +235,22 @@ describe("contract deployment info", () => {
           authPolicy,
         );
 
+        for (const [category, entry] of [
+          ["fabricatedDeposit", "fraudProofFabricatedDeposit"],
+          ["fabricatedWithdrawal", "fraudProofFabricatedWithdrawal"],
+        ] as const) {
+          expect(manifest.contracts[entry].eventHistoryBounds).toEqual({
+            inlineLimitBytes: "512",
+            maxPayloadBytes: "5000",
+            maxPayloadNodes: "512",
+          });
+          expect(
+            manifest.contracts[entry].eventHistoryRetentionAddress,
+          ).toEqual(
+            contracts.fraudProofContracts[category].history.retentionAddress,
+          );
+        }
+
         expect(manifest.referenceScriptAuthPolicy.policyId).toEqual(
           authPolicy.policyId,
         );
@@ -829,6 +845,15 @@ describe("contract deployment info", () => {
           "fixture-contract-deployment-info.json",
           contracts,
         );
+
+        for (const category of [
+          "fabricatedDeposit",
+          "fabricatedWithdrawal",
+        ] as const) {
+          expect(reconstructed.fraudProofContracts[category].history).toEqual(
+            contracts.fraudProofContracts[category].history,
+          );
+        }
 
         for (const [field, name] of [
           ["forcedStep", "fraudProofMissingSignatureForcedStep"],

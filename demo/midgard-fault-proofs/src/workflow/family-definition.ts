@@ -74,7 +74,9 @@ export type LinearFamilyStepDatumSchema = NonNullable<
 >;
 
 /** A shared witness script a family's transactions execute by reference. */
-export type FaultProofWitnessRole = keyof FaultProofWitnessReferenceScripts;
+export type FaultProofWitnessRole =
+  | keyof FaultProofWitnessReferenceScripts
+  | "stateQueueSpend";
 
 type PerStep<Steps extends readonly unknown[], Value> = {
   readonly [Index in keyof Steps]: Value;

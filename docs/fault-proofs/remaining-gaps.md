@@ -3,7 +3,8 @@
 Status: Active
 
 Last reviewed: 2026-09-12 against the current Aiken, SDK, watcher, node, and
-technical-specification sources.
+technical-specification sources. NIFP-01–03 closure recommendations aligned with
+the selected list proposal on 2026-09-21; findings and open status are unchanged.
 
 ## Purpose and closure rule
 
@@ -82,31 +83,25 @@ arms do not exhaust the possible identities a malicious block can place in
 
 ### Recommended fix
 
-Introduce an L1-authenticated, event-kind-aware history commitment from which a
-challenger can prove both membership and non-membership for the canonical key
-`(Withdrawal, WithdrawalId)` at a checkpoint that is at or after the challenged
-block's event-selection horizon. A sparse Merkle/MPF root or another ordered
-authenticated set is suitable; an operator or watcher database lookup is not.
+Implement the selected [authenticated list design](event-history-design.md):
+every real withdrawal is admitted atomically into the deployed withdrawal list.
+Authenticate original content, eligibility time and all other facts consumed by
+proofs. Current-list absence must establish ineligibility for the challenged
+interval, with evidence captured after that interval and no backdated admission.
+Retirement must preserve every event still needed by a permitted challenge.
 
-Then:
+Add list presence and gap/exact-key-filler absence to the entire fabricated
+withdrawal workflow. A later malicious reuse of a legitimately retired ID is
+rejected through absence; this does not require a permanent record or assert
+that the ID never existed. Captured facts must remain usable across proof stages
+when pointer updates spend and recreate list nodes.
 
-1. add a history-nonmembership evidence arm to `fabricatedWithdrawal` step 02;
-2. bind the history checkpoint and its chain point to the challenged header's
-   admissible L1 event horizon;
-3. retain the existing unspent-nonce arm as a cheaper positive witness where it
-   applies;
-4. use history membership, not merely a current event NFT, for real-event content
-   comparison after settlement; and
-5. add cases for a never-created transaction hash, nonexistent output index,
-   unrelated prior spend, a live authentic withdrawal, a settled authentic
-   withdrawal, content substitution, an honest block, rollback, and the last
-   challengeable checkpoint.
-
-The existing register-then-unregister witness can be an optimized nonmembership
-route only if its identity also distinguishes the event kind and the protocol
-forbids deregistration until every block that could reference the event is no
-longer challengeable. Current settlement semantics do not provide that
-guarantee.
+Use the proposal's lifecycle-specific acceptance matrix for arbitrary IDs,
+content substitution, timing, honest refusal, rollback, retirement and challenge
+deadlines. An exact unspent nonce is not required by the new universal absence
+path. Do not retain the old path merely as a compatibility obligation for an
+undeployed interface. These recommendations do not claim implementation or
+closure of this entry.
 
 ## NIFP-02 — Fabricated deposit nonexistence is not universal
 
@@ -134,15 +129,16 @@ every arbitrary nonexistent deposit identity committed by a malicious block.
 
 ### Recommended fix
 
-Use the same authenticated event-history design as NIFP-01, keyed by
-`(Deposit, DepositId)`, and add history membership/nonmembership evidence to the
-deposit family. Share the checkpoint and proof primitives with withdrawals, but
-keep type-specific content decoding and policy authentication separate.
+Use the same authenticated list primitives as NIFP-01 in a separately deployed
+or domain-bound deposit list. Keep event-kind decoding and policy authentication
+separate. Authenticate original deposited Value as well as payload and time,
+including every affected staged projection proof.
 
-Closure tests must include the withdrawal matrix's identity cases for deposits,
-plus live, settled, refunded, content-mismatched, honest, rollback, and retention
-deadline cases. Implementing only the currently provable unspent-nonce case does
-not close this entry.
+Closure covers the same lifecycle-specific identity/content/timing cases as
+withdrawals, plus asset substitution, pointer-update preservation, finalized
+absorption and later reuse of retired IDs. The current deposit lifecycle has no
+general early refund; this work does not introduce one. Implementing only the
+currently provable unspent-nonce case does not close this entry.
 
 ## NIFP-03 — Event-proof lifetime is not closed
 
@@ -192,24 +188,29 @@ on the event is no longer challengeable.
 
 ### Recommended fix
 
-Make event history a protocol object, not only a watcher record:
+For deposits and withdrawals, implement the selected
+[list retention and staged-proof design](event-history-design.md):
 
-1. at event creation, authenticate a commitment to the event kind, ID, canonical
-   original datum, inclusion point, and any fact later proof families consume;
-2. when the live event is settled, refunded, or otherwise consumed, atomically
-   preserve that commitment as a compact tombstone or in an authenticated
-   append-only history root;
-3. retain the L1-authenticated history through the maximum challenge horizon of
-   every header that could select or mention the event, including rollback and
-   correction margins;
-4. let fabricated-event and transition-trace validators accept either a live
-   event witness or membership in the retained history; and
-5. make pruning fail closed unless the protocol can prove that no challengeable
-   header or open proof still depends on the record.
+1. atomically authenticate each admitted event's identity, original payload,
+   eligibility time and original assets in the appropriate list;
+2. preserve those facts when list pointers change, and retain the Order and any
+   external data while required for a permitted challenge;
+3. capture authenticated facts into proof threads so later stages do not depend
+   on an obsolete output reference;
+4. authorize settlement/retirement against the actual finalized frontier and
+   proof deadlines, rather than elapsed time or payment alone; and
+5. prove that later pending headers reusing a retired ID remain challengeable
+   through current-list absence without retaining the old payload forever.
 
-Off-chain archival retention remains required to provide datum preimages and
-proof paths. It closes this entry only when an on-chain commitment authenticates
-those bytes.
+The acceptance matrix distinguishes pointer-update consumption, finalized order
+retirement and an expired challenge opportunity. Off-chain archives support
+retrieval/recovery but are never independent L1 authority. Public retrieval and
+adversarial witness churn must be verified through all permitted proof stages.
+
+Forced-order omission/window evidence has a separate unresolved lifetime. Keep
+that portion of NIFP-03 open after deposit/withdrawal work is delivered, and
+preserve its existing behavior when shared helpers change. This two-list design
+does not specify a forced-order history redesign or close NIFP-04.
 
 ## NIFP-04 — Fabricated or substituted forced transactions
 
@@ -453,9 +454,10 @@ not closed under the optimistic dispute model.
 ## Existing documentation for withdrawal, deposit, and event gaps
 
 The repository contains partial requirements and a proposed
-[event-history architecture](event-history-design.md), which compares the current
-flow, alternatives, checkpoint completeness, retention, and acceptance criteria.
-The proposal is not an accepted or implemented solution; these gaps remain open.
+[event-history architecture](event-history-design.md), which records the selected
+deposit/withdrawal lists, current flow, remaining implementation decisions,
+retention rules and lifecycle-specific acceptance criteria. The architecture is
+selected but not implemented or verified; these gaps remain open.
 The earlier documentation establishes the following narrower guarantees:
 
 | Document                                                                                                                                                                                                                      | What it already establishes                                                                                                   | What remains                                                                                                |

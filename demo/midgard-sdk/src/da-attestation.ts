@@ -884,6 +884,7 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
     const updatedStateQueueDatum = encodeLinkedListNodeView({
       ...config.target.stateQueueUtxo.datum,
       data: castStateQueueNodeToData({
+        proven_fraud: config.target.stateQueueNode.proven_fraud,
         header: config.target.stateQueueNode.header,
         da_attestation: {
           Attested: { da_bond_asset_name: bondAssetName },

@@ -17,6 +17,7 @@
  * measured out of those Aiken modules.
  */
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
+import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -28,13 +29,19 @@ import {
   OutputReference,
   OutputReferenceSchema,
   POSIXTimeSchema,
+  ValueSchema,
 } from "../common.js";
 import { DepositInfo } from "../ledger-state.js";
+import { CompletedFraudWitnessSchema } from "../state-queue.js";
 import {
   DepositSourceMembershipProofSchema,
   type RootMembershipProof,
 } from "../transition-trace.js";
-import { DepositDatum, DepositDatumSchema } from "../user-events/deposit.js";
+import { DepositDatum } from "../user-events/deposit.js";
+import {
+  EventHistoryCommitmentSchema,
+  EventHistoryPayloadSchema,
+} from "../user-events/history.js";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "./catalogue.js";
 import {
   faultProofStepDatumSchema,
@@ -123,6 +130,7 @@ export const FabricatedDepositStep01SpendRedeemer =
 // ## Step 02 — authenticated L1 deposit evidence
 
 export const FabricatedDepositStep02StateSchema = Data.Object({
+  state_queue_policy: Data.Bytes({ minLength: 28, maxLength: 28 }),
   /** 28-byte hash of the challenged block header. */
   challenged_header_hash: ChallengedHeaderHashSchema,
   /** Challenged header's `start_time`. */
@@ -153,13 +161,15 @@ export const FabricatedDepositStep02Datum =
 export const FabricatedDepositEvidenceSchema = Data.Enum([
   Data.Object({
     AbsentDepositIdentity: Data.Object({
-      unspent_ref_input_index: Data.Integer(),
+      hub_ref_input_index: Data.Integer(),
+      history_ref_input_index: Data.Integer(),
     }),
   }),
   Data.Object({
     PresentDepositEvent: Data.Object({
       hub_ref_input_index: Data.Integer(),
       event_ref_input_index: Data.Integer(),
+      external_ref_input_index: Data.Nullable(Data.Integer()),
     }),
   }),
 ]);
@@ -175,8 +185,7 @@ export const FabricatedDepositEvidenceVerdictSchema = Data.Enum([
   Data.Literal("DepositIdentityAbsent"),
   Data.Object({
     DepositEventObserved: Data.Object({
-      event_datum_hash: H32Schema,
-      event_inclusion_time: POSIXTimeSchema,
+      commitment: EventHistoryCommitmentSchema,
     }),
   }),
 ]);
@@ -215,6 +224,7 @@ export const FabricatedDepositStep02SpendRedeemer =
 // ## Step 03 — fault classification
 
 export const FabricatedDepositStep03StateSchema = Data.Object({
+  state_queue_policy: Data.Bytes({ minLength: 28, maxLength: 28 }),
   /** 28-byte hash of the challenged block header. */
   challenged_header_hash: ChallengedHeaderHashSchema,
   /** Challenged header's `start_time`. */
@@ -243,18 +253,14 @@ export type FabricatedDepositStep03Datum = Data.Static<
 export const FabricatedDepositStep03Datum =
   asDataType<FabricatedDepositStep03Datum>(FabricatedDepositStep03DatumSchema);
 
-/**
- * The prover's opening of step-02's retained event-datum commitment.
- *
- * On chain the `RetainedEventDatum` field is an opaque `Data`, because the step
- * hashes it before it decodes it. Off chain it is typed as the `DepositDatum` it
- * must decode to: the wire bytes are identical, and the tighter type means a
- * builder cannot assemble an opening the L1 step would reject at decode time.
- */
+/** Reopen the authenticated payload and original L1 Value, independent of pointers. */
 export const FabricatedDepositAuthenticContentOpeningSchema = Data.Enum([
   Data.Literal("NoAuthenticContent"),
   Data.Object({
-    RetainedEventDatum: Data.Object({ event_datum: DepositDatumSchema }),
+    RetainedEventData: Data.Object({
+      payload: EventHistoryPayloadSchema,
+      original_assets: ValueSchema,
+    }),
   }),
 ]);
 export type FabricatedDepositAuthenticContentOpening = Data.Static<
@@ -291,13 +297,18 @@ export const FabricatedDepositStep03SpendRedeemer =
 
 // ## Step 04 — the established fault
 
-/** The `FabricatedDeposit` violation, in its two shapes. */
+/** Authenticated absence, content mismatch, or ineligible timing. */
 export const FabricatedDepositFaultSchema = Data.Enum([
   Data.Literal("NonexistentDepositIdentity"),
   Data.Object({
     MismatchedDepositContent: Data.Object({
       committed_deposit_info_hash: H32Schema,
       authentic_deposit_info_hash: H32Schema,
+      event_inclusion_time: POSIXTimeSchema,
+    }),
+  }),
+  Data.Object({
+    IneligibleDepositEvent: Data.Object({
       event_inclusion_time: POSIXTimeSchema,
     }),
   }),
@@ -310,6 +321,7 @@ export const FabricatedDepositFault = asDataType<FabricatedDepositFault>(
 );
 
 export const FabricatedDepositStep04StateSchema = Data.Object({
+  state_queue_policy: Data.Bytes({ minLength: 28, maxLength: 28 }),
   /** 28-byte hash of the challenged block header. */
   challenged_header_hash: ChallengedHeaderHashSchema,
   /** Challenged header's `start_time`. */
@@ -343,6 +355,7 @@ export const FabricatedDepositStep04ArgsSchema = Data.Object({
   output_index: Data.Integer(),
   /** Index of the fraud-proof mint redeemer. */
   fraud_proof_mint_redeemer_index: Data.Integer(),
+  completed_fraud_witness: CompletedFraudWitnessSchema,
 });
 export type FabricatedDepositStep04Args = Data.Static<
   typeof FabricatedDepositStep04ArgsSchema
@@ -403,7 +416,7 @@ export const fabricatedDepositStepDatumSchema = (
 export const depositInfoCommitment = (
   info: DepositInfo,
 ): Effect.Effect<string, HashingError> =>
-  hashHexWithBlake2b(Data.to(info, DepositInfo), 32);
+  hashHexWithBlake2b(committedDepositValueBytes(info), 32);
 
 /**
  * Blake2b-256 of a deposit event datum's canonical bytes — step-02's retained
@@ -416,9 +429,7 @@ export const depositEventDatumCommitment = (
 
 /**
  * The deposit event NFT asset name for a committed identity: Blake2b-256 of the
- * `DepositId`'s canonical bytes. Twin of `user_events.out_ref_to_nonce`, and the
- * reason a still-unspent output at that reference proves no such event was ever
- * authenticated.
+ * `DepositId`'s canonical bytes. Twin of `user_events.out_ref_to_nonce`, with the existing user event ID preserved.
  */
 export const depositEventNonce = (
   depositId: OutputReference,
@@ -431,7 +442,7 @@ export const committedDepositKeyBytes = (depositId: OutputReference): string =>
 
 /** The canonical bytes of a committed deposit leaf's MPF value. */
 export const committedDepositValueBytes = (info: DepositInfo): string =>
-  Data.to(info, DepositInfo);
+  aikenSerialisedPlutusDataCborPreservingMapOrder(Data.to(info, DepositInfo));
 
 // ## Handoffs
 
@@ -441,11 +452,13 @@ export const committedDepositValueBytes = (info: DepositInfo): string =>
  * validator's `expected_output_state`.
  */
 export const fabricatedDepositStep02State = ({
+  stateQueuePolicy,
   challengedHeaderHash,
   headerStartTime,
   headerEndTime,
   committedDeposit,
 }: {
+  readonly stateQueuePolicy: string;
   readonly challengedHeaderHash: ChallengedHeaderHash;
   readonly headerStartTime: bigint;
   readonly headerEndTime: bigint;
@@ -454,6 +467,7 @@ export const fabricatedDepositStep02State = ({
   Effect.map(
     depositInfoCommitment(committedDeposit.value),
     (committed_deposit_info_hash) => ({
+      state_queue_policy: stateQueuePolicy,
       challenged_header_hash: challengedHeaderHash,
       header_start_time: headerStartTime,
       header_end_time: headerEndTime,
@@ -467,6 +481,7 @@ export const fabricatedDepositStep03State = (
   state: FabricatedDepositStep02State,
   verdict: FabricatedDepositEvidenceVerdict,
 ): FabricatedDepositStep03State => ({
+  state_queue_policy: state.state_queue_policy,
   challenged_header_hash: state.challenged_header_hash,
   header_start_time: state.header_start_time,
   header_end_time: state.header_end_time,
@@ -480,6 +495,7 @@ export const fabricatedDepositStep04State = (
   state: FabricatedDepositStep03State,
   fault: FabricatedDepositFault,
 ): FabricatedDepositStep04State => ({
+  state_queue_policy: state.state_queue_policy,
   challenged_header_hash: state.challenged_header_hash,
   header_start_time: state.header_start_time,
   header_end_time: state.header_end_time,
@@ -501,6 +517,10 @@ export const isFabricatedDepositFault = (
   const { fault } = state;
   if (fault === "NonexistentDepositIdentity") {
     return true;
+  }
+  if ("IneligibleDepositEvent" in fault) {
+    const time = fault.IneligibleDepositEvent.event_inclusion_time;
+    return !(state.header_start_time < time && time <= state.header_end_time);
   }
   const {
     committed_deposit_info_hash,

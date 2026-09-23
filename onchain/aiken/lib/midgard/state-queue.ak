@@ -3,13 +3,14 @@ use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
-use cardano/transaction.{Input, Output, OutputReference, ValidityRange}
+use cardano/transaction.{Input, Output, OutputReference, Transaction, ValidityRange}
 use midgard/availability_challenge as availability
 use midgard/common/utils
+use midgard/fraud_proof
 use midgard/ledger_state.{
   ConfirmedState, DepositsRoot, EventToStepRoot, ForcedTransactionsRoot,
   HeaderHash, HeaderV1, MidgardTxsRoot, TransitionTraceRoot,
-  ValidationTracesRoot, WithdrawalsRoot, protocol_version_v1,
+  ValidationTracesRoot, WithdrawalsRoot, block_maturity_duration_v1, protocol_version_v1,
 }
 
 /// TODO: It might be better to be space-conscious and use an empty name.
@@ -37,6 +38,8 @@ pub const da_attestation_timeout_v1: Int = 3_600_000
 pub type StateQueueNode {
   header: HeaderV1,
   da_attestation: availability.StateQueueStatusV1,
+  /// Completed fraud, never proof initiation. The marked header cannot merge.
+  proven_fraud: Option<AssetName>,
 }
 
 pub type StateQueueNodeV1 =
@@ -84,6 +87,19 @@ pub type SpendRedeemer {
     state_queue_output_index: Int,
     availability_mint_redeemer_index: Int,
   }
+  RecordCompletedFraud {
+    state_queue_input_index: Int,
+    state_queue_output_index: Int,
+    fraud_proof_asset_name: AssetName,
+  }
+}
+
+/// Terminal history proofs either write the marker atomically or reference a
+/// header already protected by another completed proof. The latter cannot be
+/// rewritten repeatedly to obstruct correction or concurrent terminal proofs.
+pub type CompletedFraudWitness {
+  RecordedOutput { output_index: Int }
+  PreviouslyRecorded { reference_input_index: Int }
 }
 
 /// How the fraudulent operator's bond is reached by a
@@ -443,7 +459,92 @@ pub fn validate_da_availability_status_transition(
   expect input_block.da_attestation == expected_input_status
   expect output_block.header == input_block.header
   expect output_block.da_attestation == expected_output_status
+  expect output_block.proven_fraud == input_block.proven_fraud
   True
+}
+
+/// Consume the challenged node in the terminal proof transaction. A prepared
+/// merge loses its input; a refreshed merge rejects the permanent marker.
+/// Different headers need not contend on the global correction singleton.
+pub fn validate_completed_fraud_record(
+  tx: Transaction,
+  state_queue_policy: PolicyId,
+  fraud_proof_policy: PolicyId,
+  input_index: Int,
+  output_index: Int,
+  proof_asset: AssetName,
+) -> Bool {
+  expect Some(input) = list.at(tx.inputs, input_index)
+  expect Some(output) = list.at(tx.outputs, output_index)
+  let before_ada, header_hash, before, before_link <- get_node_info(
+    input.output,
+    state_queue_policy,
+  )
+  let after_ada, after_hash, after, after_link <- get_node_info(
+    output,
+    state_queue_policy,
+  )
+  let header_data: Data = before.header
+  let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
+    tx.validity_range,
+  )
+  and {
+    bytearray.length(proof_asset) == 32,
+    fraud_proof.asset_name_to_header_hash(proof_asset) == header_hash,
+    header_hash == utils.serialise_and_hash_28(header_data),
+    before.proven_fraud == None,
+    before.header.end_time < lower,
+    upper < before.header.end_time + block_maturity_duration_v1,
+    assets.quantity_of(tx.mint, fraud_proof_policy, proof_asset) == 1,
+    assets.tokens(tx.mint, state_queue_policy) == assets.tokens(
+      assets.zero,
+      state_queue_policy,
+    ),
+    input.output.address == output.address,
+    input.output.reference_script == None,
+    output.reference_script == None,
+    after_ada >= before_ada,
+    after_hash == header_hash,
+    after_link == before_link,
+    after == StateQueueNode { ..before, proven_fraud: Some(proof_asset) },
+  }
+}
+
+/// Called by event-history-dependent terminal steps, with the queue policy
+/// authenticated during their header opening. Starting a thread is not enough:
+/// the challenged header must be unmergeable in the same ledger transition
+/// that produces the completed proof. Existing unrelated proof semantics are
+/// not changed by this helper.
+pub fn require_completed_fraud_witness(
+  tx: Transaction,
+  state_queue_policy: PolicyId,
+  terminal_proof_asset: AssetName,
+  witness: CompletedFraudWitness,
+) -> Bool {
+  let (output, newly_recorded) = when witness is {
+    RecordedOutput { output_index } -> {
+      expect Some(output) = list.at(tx.outputs, output_index)
+      (output, True)
+    }
+    PreviouslyRecorded { reference_input_index } -> {
+      expect Some(input) = list.at(tx.reference_inputs, reference_input_index)
+      (input.output, False)
+    }
+  }
+  let _, header_hash, node, _ <- get_node_info(output, state_queue_policy)
+  expect Some(recorded_proof) = node.proven_fraud
+  let header_data: Data = node.header
+  let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(tx.validity_range)
+  and {
+    bytearray.length(terminal_proof_asset) == 32,
+    bytearray.length(recorded_proof) == 32,
+    fraud_proof.asset_name_to_header_hash(terminal_proof_asset) == header_hash,
+    fraud_proof.asset_name_to_header_hash(recorded_proof) == header_hash,
+    header_hash == utils.serialise_and_hash_28(header_data),
+    !newly_recorded || recorded_proof == terminal_proof_asset,
+    node.header.end_time < lower,
+    upper < node.header.end_time + block_maturity_duration_v1,
+  }
 }
 
 pub fn get_prev_header_hash_of_node_v1(

@@ -11,10 +11,10 @@
  * derivation against another: if either side's encoding moves, the literal stops
  * matching.
  *
- * The family is reached by direct module import rather than through
- * `src/fraud-proof/catalogue.ts`, because the `fabricatedDeposit` catalogue
- * category is not registered yet.
+ * History handoff literals are measured by event-history/proof-evidence.test.ak.
+ * Catalogue identity and applied deployment fit are separate acceptance gates.
  */
+import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -38,11 +38,17 @@ import {
   fabricatedDepositThreadTokenAssetName,
   isFabricatedDepositFault,
 } from "../src/fraud-proof/fabricated-deposit.js";
+import { FabricatedDepositAuthenticContentOpening } from "../src/fraud-proof/fabricated-deposit.js";
 import {
   commitCountedRootProgram,
   ROOT_DOMAINS,
 } from "../src/transition-trace.js";
 import { DepositDatum } from "../src/user-events/deposit.js";
+import { type EventHistoryPayload } from "../src/user-events/history.js";
+import {
+  eventHistoryCommitment,
+  opensEventHistoryCommitment,
+} from "../src/user-events/history-proof.js";
 
 // ## Fixture twins
 //
@@ -135,42 +141,57 @@ const FI_DEPOSITS_PHAS_ROOT =
 const FI_DEPOSITS_ROOT =
   "60b531d1961d33baf3b6e83da728b0fc1497faf43f78e2cdaf9e03aae9959890";
 const FI_HEADER_HASH =
-  "3e44a01bc7b6debd95fedbd6851545dc5a31b3eb37db73c30668e119";
+  "6a404d9de58a96111da77453168c29f4d23007592856b93e06b6bb46";
 const FI_THREAD_TOKEN_ASSET_NAME =
-  "0000000b3e44a01bc7b6debd95fedbd6851545dc5a31b3eb37db73c30668e119";
+  "0000000b6a404d9de58a96111da77453168c29f4d23007592856b93e06b6bb46";
 
 const MM_DEPOSITS_PHAS_ROOT =
   "4b0c3a7234e798d045b06088ab4933c71e22d74781c9457f022987bf8e416c22";
 const MM_DEPOSITS_ROOT =
   "880ba7ceb072fce058c5e8f9adbbe9b5bcc3efdcb53ec82039f142f577c47ab4";
 const MM_HEADER_HASH =
-  "60c9a4c6860d24b6ed3a8f17c4d0718ae0a58cf655bbff24508f7789";
+  "b50943cc7ac3d1b46b37e1b33223419dcb3d4dbd03564f4966918ec6";
 const MM_THREAD_TOKEN_ASSET_NAME =
-  "0000000b60c9a4c6860d24b6ed3a8f17c4d0718ae0a58cf655bbff24508f7789";
+  "0000000bb50943cc7ac3d1b46b37e1b33223419dcb3d4dbd03564f4966918ec6";
 
 /** `step_02.State` of the nonexistent-identity scenario. */
 const FI_STEP_02_STATE_CBOR =
-  "d8799f581c3e44a01bc7b6debd95fedbd6851545dc5a31b3eb37db73c30668e1190a14d8799f58205c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c00ff582089ccb485f7c52cf77b0bdec91ab262a90bc7b519e9b6fae5a2a03529833c6863ff";
+  "d8799f581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb581c6a404d9de58a96111da77453168c29f4d23007592856b93e06b6bb460a14d8799f58205c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c00ff582089ccb485f7c52cf77b0bdec91ab262a90bc7b519e9b6fae5a2a03529833c6863ff";
 /** `step_03.State` of the nonexistent-identity scenario. */
 const FI_STEP_03_STATE_CBOR =
-  "d8799f581c3e44a01bc7b6debd95fedbd6851545dc5a31b3eb37db73c30668e1190a14d8799f58205c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c00ff582089ccb485f7c52cf77b0bdec91ab262a90bc7b519e9b6fae5a2a03529833c6863d87980ff";
+  "d8799f581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb581c6a404d9de58a96111da77453168c29f4d23007592856b93e06b6bb460a14d8799f58205c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c00ff582089ccb485f7c52cf77b0bdec91ab262a90bc7b519e9b6fae5a2a03529833c6863d87980ff";
 /** `step_04.State` of the nonexistent-identity scenario. */
 const FI_STEP_04_STATE_CBOR =
-  "d8799f581c3e44a01bc7b6debd95fedbd6851545dc5a31b3eb37db73c30668e1190a14d8799f58205c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c00ffd87980ff";
+  "d8799f581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb581c6a404d9de58a96111da77453168c29f4d23007592856b93e06b6bb460a14d8799f58205c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c00ffd87980ff";
 
 /** `step_02.State` of the content-mismatch scenario. */
 const MM_STEP_02_STATE_CBOR =
-  "d8799f581c60c9a4c6860d24b6ed3a8f17c4d0718ae0a58cf655bbff24508f77890a14d8799f58207a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a03ff58200ee4d3827f036188d9d47734f69d3d0db79598a14864eb91595ccbe7f00f8335ff";
+  "d8799f581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb581cb50943cc7ac3d1b46b37e1b33223419dcb3d4dbd03564f4966918ec60a14d8799f58207a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a03ff58200ee4d3827f036188d9d47734f69d3d0db79598a14864eb91595ccbe7f00f8335ff";
 /** `step_03.State` of the content-mismatch scenario. */
 const MM_STEP_03_STATE_CBOR =
-  "d8799f581c60c9a4c6860d24b6ed3a8f17c4d0718ae0a58cf655bbff24508f77890a14d8799f58207a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a03ff58200ee4d3827f036188d9d47734f69d3d0db79598a14864eb91595ccbe7f00f8335d87a9f58202538e7986f6a3468a1dd016318a82d3dd4f60d55f6e688e164dd35564c4a85b40fffff";
+  "d8799f581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb581cb50943cc7ac3d1b46b37e1b33223419dcb3d4dbd03564f4966918ec60a14d8799f58207a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a03ff58200ee4d3827f036188d9d47734f69d3d0db79598a14864eb91595ccbe7f00f8335d87a9fd8799f581c30303030303030303030303030303030303030303030303030303030d87980d8799f58207a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a03ff0f5820bdca4e7a9ef85fd8ccab45508e0fb36748b458a85bc89453e88965bda1b815115820ad7eb588061e3a3d90e1ded245c9896e896590ba2dcb368ca2ad3328b4177179ffffff";
 /** `step_04.State` of the content-mismatch scenario. */
 const MM_STEP_04_STATE_CBOR =
-  "d8799f581c60c9a4c6860d24b6ed3a8f17c4d0718ae0a58cf655bbff24508f77890a14d8799f58207a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a03ffd87a9f58200ee4d3827f036188d9d47734f69d3d0db79598a14864eb91595ccbe7f00f8335582089ccb485f7c52cf77b0bdec91ab262a90bc7b519e9b6fae5a2a03529833c68630fffff";
+  "d8799f581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb581cb50943cc7ac3d1b46b37e1b33223419dcb3d4dbd03564f4966918ec60a14d8799f58207a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a03ffd87a9f58200ee4d3827f036188d9d47734f69d3d0db79598a14864eb91595ccbe7f00f8335582089ccb485f7c52cf77b0bdec91ab262a90bc7b519e9b6fae5a2a03529833c68630fffff";
+
+const HISTORY_PAYLOAD: EventHistoryPayload = {
+  DepositPayload: { event: AUTHENTIC_DEPOSIT_EVENT_DATUM.event },
+};
+const ORIGINAL_ASSETS = new Map([["", new Map([["", 3_000_000n]])]]);
+const HISTORY_COMMITMENT = eventHistoryCommitment(
+  "30".repeat(28),
+  "Deposit",
+  { event_id: AUTHENTIC_DEPOSIT_ID, inclusion_time: AUTHENTIC_INCLUSION_TIME },
+  HISTORY_PAYLOAD,
+  ORIGINAL_ASSETS,
+);
+const HISTORY_OPENING_CBOR =
+  "d87a9fd8799fd8799fd8799f58207a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a03ffd8799fd8799fd8799f581c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1cffd87a80ff00d87a80ffffffa140a1401a002dc6c0ff";
 
 // ## Handoff builders under test
 
 const fiStep02State: FabricatedDepositStep02State = {
+  state_queue_policy: "bb".repeat(28),
   challenged_header_hash: FI_HEADER_HASH,
   header_start_time: HEADER_START_TIME,
   header_end_time: HEADER_END_TIME,
@@ -179,6 +200,7 @@ const fiStep02State: FabricatedDepositStep02State = {
 };
 
 const mmStep02State: FabricatedDepositStep02State = {
+  state_queue_policy: "bb".repeat(28),
   challenged_header_hash: MM_HEADER_HASH,
   header_start_time: HEADER_START_TIME,
   header_end_time: HEADER_END_TIME,
@@ -192,8 +214,7 @@ const fiStep03State: FabricatedDepositStep03State =
 const mmStep03State: FabricatedDepositStep03State =
   fabricatedDepositStep03State(mmStep02State, {
     DepositEventObserved: {
-      event_datum_hash: HASH_AUTHENTIC_DEPOSIT_EVENT_DATUM,
-      event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
+      commitment: HISTORY_COMMITMENT,
     },
   });
 
@@ -346,6 +367,56 @@ describe("fabricated-deposit v1 byte twins", () => {
             committed_deposit_info_hash: HASH_DIVERTED_DEPOSIT_INFO,
             authentic_deposit_info_hash: HASH_AUTHENTIC_DEPOSIT_INFO,
             event_inclusion_time: HEADER_START_TIME,
+          },
+        },
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("deposit retained history opening", () => {
+  it("matches Aiken's complete payload and original Value bytes", () => {
+    const opening: FabricatedDepositAuthenticContentOpening = {
+      RetainedEventData: {
+        payload: HISTORY_PAYLOAD,
+        original_assets: ORIGINAL_ASSETS,
+      },
+    };
+    expect(
+      aikenSerialisedPlutusDataCborPreservingMapOrder(
+        Data.to(opening, FabricatedDepositAuthenticContentOpening),
+      ),
+    ).toBe(HISTORY_OPENING_CBOR);
+    expect(
+      opensEventHistoryCommitment(
+        HISTORY_COMMITMENT,
+        HISTORY_PAYLOAD,
+        ORIGINAL_ASSETS,
+      ),
+    ).toBe(true);
+    expect(
+      opensEventHistoryCommitment(
+        HISTORY_COMMITMENT,
+        HISTORY_PAYLOAD,
+        new Map([["", new Map([["", 1n]])]]),
+      ),
+    ).toBe(false);
+  });
+  it("classifies timing independently of content fidelity", () => {
+    for (const time of [HEADER_START_TIME, HEADER_END_TIME + 1n]) {
+      expect(
+        isFabricatedDepositFault({
+          ...mmStep04State,
+          fault: { IneligibleDepositEvent: { event_inclusion_time: time } },
+        }),
+      ).toBe(true);
+    }
+    expect(
+      isFabricatedDepositFault({
+        ...mmStep04State,
+        fault: {
+          IneligibleDepositEvent: {
+            event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
           },
         },
       }),

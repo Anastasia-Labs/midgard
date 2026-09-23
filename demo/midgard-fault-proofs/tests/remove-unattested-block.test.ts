@@ -55,6 +55,7 @@ const block = (
     key: { Key: { key: h(byte) } },
     next: "Empty",
     data: SDK.castStateQueueNodeToData({
+      proven_fraud: null,
       header: { ...header, endTime },
       da_attestation: attested
         ? { Attested: { da_bond_asset_name: tx("ab") } }

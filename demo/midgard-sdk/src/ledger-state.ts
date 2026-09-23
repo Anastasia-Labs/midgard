@@ -366,6 +366,7 @@ export const makeHeaderTransitionCommitmentsProgram = (
 export const StateQueueNodeSchema = Data.Object({
   header: HeaderSchema,
   da_attestation: DaAvailabilityStateQueueStatusSchema,
+  proven_fraud: Data.Nullable(Data.Bytes({ minLength: 32, maxLength: 32 })),
 });
 export type StateQueueNode = Data.Static<typeof StateQueueNodeSchema>;
 export const StateQueueNode = asDataType<StateQueueNode>(StateQueueNodeSchema);

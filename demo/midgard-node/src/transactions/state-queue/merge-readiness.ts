@@ -29,6 +29,7 @@ export type MergeReadinessStatus =
   | "skipped_below_min_queue_length"
   | "skipped_pending_local_work"
   | "skipped_oldest_block_unattested"
+  | "skipped_oldest_block_proven_fraud"
   | "skipped_oldest_block_not_mature"
   | "skipped_oldest_block_local_ledger_not_ready"
   | "skipped_merge_candidate_changed";
@@ -49,6 +50,7 @@ export type MergePreflightDecision = {
   readonly status: Exclude<
     MergeReadinessStatus,
     | "skipped_oldest_block_unattested"
+    | "skipped_oldest_block_proven_fraud"
     | "skipped_oldest_block_not_mature"
     | "skipped_merge_candidate_changed"
   >;
@@ -335,6 +337,7 @@ export const mergeSubmitValidityEvidence = ({
 export type OldestQueuedBlockReadinessInput = {
   readonly headerHash: string;
   readonly currentDaAvailability: SDK.DaAvailabilityStateQueueStatus;
+  readonly provenFraud: string | null;
   readonly readyAfterUnixTime: number;
   readonly nowUnixTime: number;
 };
@@ -350,6 +353,7 @@ export type OldestQueuedBlockReadiness =
   | {
       readonly status:
         | "skipped_oldest_block_unattested"
+        | "skipped_oldest_block_proven_fraud"
         | "skipped_oldest_block_not_mature";
       readonly headerHash: string;
       readonly reason: string;
@@ -361,6 +365,7 @@ export type MergeCandidateIdentityInput = {
   readonly firstBlockOutRef: string;
   readonly headerHash: string;
   readonly currentDaAvailability: SDK.DaAvailabilityStateQueueStatus;
+  readonly provenFraud: string | null;
   readonly readyAfterUnixTime: number;
 };
 
@@ -370,6 +375,7 @@ export const mergeCandidateIdentity = (
   [
     input.firstBlockOutRef,
     input.headerHash,
+    input.provenFraud ?? "unmarked",
     SDK.daAvailabilityStateQueueStatusIdentity(input.currentDaAvailability),
     input.readyAfterUnixTime.toString(),
   ].join("|");
@@ -384,12 +390,22 @@ export type OldestQueuedBlockCandidateReadiness = OldestQueuedBlockReadiness & {
   readonly firstBlockOutRef: string;
   readonly candidateIdentity: string;
   readonly currentDaAvailability: SDK.DaAvailabilityStateQueueStatus;
+  readonly provenFraud: string | null;
   readonly validFromUnixTime: number;
 };
 
 export const classifyOldestQueuedBlockReadiness = (
   input: OldestQueuedBlockReadinessInput,
 ): OldestQueuedBlockReadiness => {
+  if (input.provenFraud !== null) {
+    return {
+      status: "skipped_oldest_block_proven_fraud",
+      headerHash: input.headerHash,
+      reason: `header=${input.headerHash},proof=${input.provenFraud},state_correction_required=true`,
+      readyAfterUnixTime: input.readyAfterUnixTime,
+      nowUnixTime: input.nowUnixTime,
+    };
+  }
   if (
     !SDK.daAvailabilityStateQueueStatusPermitsMerge(input.currentDaAvailability)
   ) {
@@ -428,6 +444,7 @@ export const classifyOldestQueuedBlockCandidateReadiness = (
     firstBlockOutRef: input.firstBlockOutRef,
     candidateIdentity: mergeCandidateIdentity(input),
     currentDaAvailability: input.currentDaAvailability,
+    provenFraud: input.provenFraud,
     validFromUnixTime: input.validFromUnixTime,
   };
 };

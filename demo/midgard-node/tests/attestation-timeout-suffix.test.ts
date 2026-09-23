@@ -66,6 +66,7 @@ const fixture = async (tailApplied = false) => {
       key: { Key: { key: firstHash } },
       next: { Key: { key: tailHash } },
       data: SDK.castStateQueueNodeToData({
+        proven_fraud: null,
         header: header(1000n),
         da_attestation: { Attested: { da_bond_asset_name: "11".repeat(32) } },
       }) as SDK.LinkedListNodeView["data"],
@@ -78,6 +79,7 @@ const fixture = async (tailApplied = false) => {
       key: { Key: { key: tailHash } },
       next: "Empty",
       data: SDK.castStateQueueNodeToData({
+        proven_fraud: null,
         header: header(2000n),
         da_attestation: tailApplied
           ? { Attested: { da_bond_asset_name: "22".repeat(32) } }

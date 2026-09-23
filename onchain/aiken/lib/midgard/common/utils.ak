@@ -16,6 +16,23 @@ use cardano/transaction.{
 use env
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, Proof, ValuePairs}
 
+/// Validate datum value pairs without sorting or dropping entries, returning
+/// a Value or failing. Both policy IDs and asset names must be strictly
+/// lexicographically increasing; asset maps must be nonempty and quantities
+/// nonzero. The empty value is valid, and signed quantities remain valid for
+/// this general-purpose Value check. Check nonnegativity separately for funds.
+/// This checks Value's structural invariants, not ledger key-length limits or
+/// the special ADA namespace. Callers must enforce those when required.
+pub fn is_canonical_value(xs: Pairs<PolicyId, Pairs<AssetName, Int>>) -> Value {
+  xs
+    |> list.map(
+        fn(Pair(policy, entries)) {
+          Pair(policy, dict.from_ascending_pairs(entries))
+        },
+      )
+    |> assets.from_ascending_pairs
+}
+
 /// Check whether the interval starts on or after the point.
 pub fn is_hereafter(self: Interval, point: Int) -> Bool {
   when self.lower_bound.bound_type is {

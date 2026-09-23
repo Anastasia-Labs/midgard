@@ -107,6 +107,7 @@ import { Effect } from "effect";
 
 import {
   assertFraudProofCatalogueCategoryReady,
+  contractDeploymentHistoryBounds,
   type ContractDeploymentInfo,
   parseContractDeploymentInfo,
   parseContractDeploymentReferenceScriptAuthPolicyId,
@@ -1050,12 +1051,14 @@ const buildOneCategoryFaultProofContracts = async ({
   fraudProofCataloguePolicyId,
   referenceScriptAuthPolicyId,
   categoryName,
+  deploymentInfo,
 }: {
   readonly blueprint: ReturnType<typeof parseFaultProofBlueprint>;
   readonly network: Network;
   readonly hubOraclePolicyId: string;
   readonly fraudProofCataloguePolicyId: string;
   readonly referenceScriptAuthPolicyId: string;
+  readonly deploymentInfo: ContractDeploymentInfo;
   readonly categoryName: SupportedFaultProofCategoryName;
 }): Promise<OneCategoryFaultProofContracts> => {
   const params = {
@@ -1110,11 +1113,23 @@ const buildOneCategoryFaultProofContracts = async ({
       );
     case "fabricatedDeposit":
       return await Effect.runPromise(
-        buildFabricatedDepositFaultProofContracts(params),
+        buildFabricatedDepositFaultProofContracts({
+          ...params,
+          eventHistoryBounds: contractDeploymentHistoryBounds(
+            deploymentInfo,
+            "fabricatedDeposit",
+          ),
+        }),
       );
     case "fabricatedWithdrawal":
       return await Effect.runPromise(
-        buildFabricatedWithdrawalFaultProofContracts(params),
+        buildFabricatedWithdrawalFaultProofContracts({
+          ...params,
+          eventHistoryBounds: contractDeploymentHistoryBounds(
+            deploymentInfo,
+            "fabricatedWithdrawal",
+          ),
+        }),
       );
     case "nativeScriptDecoding":
       return await Effect.runPromise(
@@ -1352,6 +1367,7 @@ export const resolveFaultProofDeploymentContracts = async ({
       "reference-script-auth minting",
     );
   const contracts = await buildOneCategoryFaultProofContracts({
+    deploymentInfo: parsedDeploymentInfo,
     blueprint: parsedBlueprint,
     network,
     hubOraclePolicyId,
@@ -1364,6 +1380,26 @@ export const resolveFaultProofDeploymentContracts = async ({
     throw new Error(
       `${categoryLabel(categoryName)} builder did not return its category chain.`,
     );
+  }
+  if (
+    categoryName === "fabricatedDeposit" ||
+    categoryName === "fabricatedWithdrawal"
+  ) {
+    const historyChain =
+      categoryName === "fabricatedDeposit"
+        ? contracts.fabricatedDeposit
+        : contracts.fabricatedWithdrawal;
+    const entry =
+      categoryName === "fabricatedDeposit"
+        ? "fraudProofFabricatedDeposit"
+        : "fraudProofFabricatedWithdrawal";
+    if (
+      historyChain?.history.retentionAddress !==
+      parsedDeploymentInfo[entry]?.eventHistoryRetentionAddress
+    )
+      throw new Error(
+        `${entry} retained-data address does not match the reapplied history validator`,
+      );
   }
   const derivedFirstStepHash = categoryContracts.firstStep.spendingScriptHash;
   requireMatchingScriptHash({

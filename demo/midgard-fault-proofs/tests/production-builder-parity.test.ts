@@ -50,52 +50,55 @@ const input = {
   fieldPreimageCertificatePolicyId: "44".repeat(28),
   hubOracleScriptHash: "55".repeat(28),
 };
-// Captured from production adapters at 2bc9bdbcdc21 before consolidation.
+// Migrated for StateQueueNode.proven_fraud in the shared queue authenticator.
+// Pinned testnet Aiken v1.1.23+5adf783 blueprint SHA-256:
+// 3d04859765f10a154e7bfbc2a7daeb6063e2d216754d1cf39cd5981c8af2fb19.
+// Existing full-byte, identity and adapter-metadata assertions remain intact.
 const baselines: Record<string, string> = {
   "distinct-asset-accumulation-limit":
-    "3c1783e0a51d88db8ac8151296e1e2536975da69c9075e30be5d727c4bae548e",
+    "5db21fa765796f44754404319288ce635946a64387b966b246757d973b41faa0",
   "execution-native-script-invalid":
-    "05c8f71190645f1baba78d12f4e6754924a343c123900db206742b364a3371ef",
+    "fe39f9475fd55a9f0bc7cfdbdc6b1ba1cca3a34ea7223d0c364868c61f02dac2",
   "execution-source-script-decoding":
-    "b39afd1da9d861f8a602e913551dd4528ebc9124a876f212fb728c71dfb4c477",
+    "7be112a12411c4a5d8edb7fbd64c454c252c3092c736aa723856150ffeda96f1",
   "field-item-width-illegal":
-    "b344d1bcaec0c680141917415a668e8d302653409647eef6e9eb5ffe0571daba",
+    "646ce5580702259782f1262cc5613204a25984b41066cfbc1f1bc7532c3253a8",
   "mint-declared-asset-limit":
-    "3679ee0fc063469172b084f096d6a8f688f60de5515bdb20d991055a0eca00d7",
+    "9013434447e7b48fdc444517068c3c7430d2c53607c10fa300b0700b87b17da1",
   "mint-item-non-canonical":
-    "c38c3cf343635d2c65119d431749ebffef23a56f845f87faa6bf31f51e09ecf2",
+    "a2f4a660bc3086f886cd6aa3d2224e0bafa81e9981b630535a5c7aaf0c882432",
   "missing-redeemer":
-    "62318f5120dba05ca5d4e06e06e524c20b500a8942e4698bf4d9d99b9c0777d2",
+    "b2faa6365e62d955e139b8b9fd9c4bf60661340148d8b30a8cafdfef2aaafe65",
   "missing-script-source":
-    "4905a3773de6aca896c9bfc09f187cd063225d439c287630951d224261e2820f",
+    "31c6996e515be139127ebeeb7f259a33c515c5b5ca09e4fe5967e2ce9ed7ab0c",
   "observer-order-invalid":
-    "1e1a0ac61c572a71740b25fb31aa3efe516253aa07c1c02c06eeaa8d9930626f",
+    "63b594b7365f05cbcc31011ebbeb9cace893931d5f58ddcd416548237ff9c1aa",
   "observers-forbidden-on-untagged-network":
-    "9646c20e9fa8bfd68dccb9ae6c755c3369d81da2b158a28239d3fea5575423fd",
+    "54aee2fc8b8052578e22cfa14e457059aa8f597f9286fe075b1cda7938c77492",
   "output-reference-script-decoding":
-    "b1bfef126ce6cd32654ef63bbd203bfa05eb07d6573c61e025187246434e835c",
+    "8beccb1e8212ec2ea906ce621c8b96b7669c314f285f72dda5768a049520d0f8",
   "protected-output-signer-missing":
-    "b62f872fd755a572055337b6cad6bb653696b37f615b47c645d8c7ae9682462e",
+    "bb38b7afba8410b71ec64fcabee94b81f052d9663450e5685bf2fe53a34d831d",
   "receive-purpose-language":
-    "199ee69cc7b6b859c8fdd67d7191e48081f119c11664dc162544d5c0fa874eac",
+    "e5ae3dfb1ea92cc28650058a18125ccbdc64bc5313bac8f600a0e12ff70bd31c",
   "redeemer-canonicity":
-    "5659ea938a5169e07ed1e43b6e26b89e923e12e416c50331edcf25ce7cd51b4d",
+    "d14f2b6929ade6d2ee56ade87b946640d87ce6ddbb190aaf5b122baac934c65a",
   "resolved-output-non-canonical":
-    "16f239aaa016efe9b05aa62edd77e1e4789d50b899d953eeb03466168d038bf3",
+    "c991c7f79c395f0cd8186038d24121acdf61b3c7e1f898ecc0cbc583c7768d26",
   "script-integrity-hash-mismatch":
-    "a9ffc998ecea0fe0d705e156390778ecc922635d59a138f9c5104df9532d0cba",
+    "d5e271ea4d7675d4d89b2947e6022caff093de2f6091982e48ef493e5e6db439",
   "spend-input-signer-missing":
-    "40bf2c05dc4e3766e4600a14f2011fa63e4f48e5520634837e8c4e09cfbe6c06",
+    "95194082e0b51f7a89bbe7ff67a33cbcef783f62cc0834208cc59a9cf1c8cd76",
   "transaction-output-non-canonical":
-    "98e226d1eea479c9be0225221ba5ae468bf850404819d5a9d5387dfce967f6dc",
+    "b5c59a9236fa34cfd2a9872cd6d751bee63c0485e4eada924c0226c3ea3e6424",
   "unused-redeemer":
-    "4a0a8dc6bb7cd2715a71defb9ab494d0c3d9dc032c80db348af5d21ed89efa73",
+    "cb72c551dd91fffce3f845a2e37f2a8553ddf2ec1cbb8531ac1b54ae2ec00adc",
   "unused-script-witness":
-    "4280bb16702704fdc83813ee5e9b245421440b94ead7337792619d0612928265",
+    "2ddfccd81f70ac3b7460ffc90a23e2517ec9ef0cf494df8e30412f3c5e5c1ba0",
   "witness-script-decoding":
-    "ef17819b9af94846c54074f265f47027de9929f2dcddc1a9ad3725492a56ebce",
+    "b778a71e89e7b53b52a0de8f124ba2d309fa61143af4131b26a24babe70772ad",
   "zero-input":
-    "04c0e6030e701090c9ea3aa51c925fc9622bd8f65259d8a000b83154f319d79d",
+    "d20bb8ae985a2b4cea8ccb95396c32a3fe8574a4add569c104c9f5b1461a42d1",
 };
 const builders = [
   [
@@ -188,8 +191,8 @@ it("preserves the L2 mistag adapter identity", () => {
   const digest = createHash("sha256")
     .update(JSON.stringify(result))
     .digest("hex");
-  // Captured from the L2 adapter at the same pre-consolidation commit.
+  // Same queue-schema/compiler migration as the production adapters above.
   expect(digest).toBe(
-    "bf8c1858c54bcac5980a799eb7e067ff2adced1e5040308bac97a6e6d709e22b",
+    "66e29e8a33f08e6125b27da894a56d0556232a5d0d03120b5534dd9e17ff7836",
   );
 });

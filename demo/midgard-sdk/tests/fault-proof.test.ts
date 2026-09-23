@@ -1352,6 +1352,11 @@ describe("fault-proof contract builder", () => {
 
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
+        eventHistoryBounds: {
+          inlineLimitBytes: 512n,
+          maxPayloadBytes: 5000n,
+          maxPayloadNodes: 512n,
+        },
         blueprint,
         network: "Preprod",
         hubOraclePolicyId: h28b,

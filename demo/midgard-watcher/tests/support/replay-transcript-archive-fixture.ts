@@ -103,7 +103,7 @@ export const makeWatcherTranscriptArchiveFixture = async () => {
     headerHash,
     headerCborHex,
     stateQueueNodeCborHex: Data.to(
-      { header, da_attestation: "Unattested" },
+      { proven_fraud: null, header, da_attestation: "Unattested" },
       SDK.StateQueueNode,
     ),
     linkedListDatumCborHex: "80",

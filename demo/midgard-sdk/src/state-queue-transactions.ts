@@ -38,7 +38,7 @@ import {
   castStateQueueNodeToData,
   type ConfirmedState,
   confirmedStateNextHeaderProtocolVersion,
-  getHeaderFromStateQueueDatum,
+  getStateQueueNodeFromStateQueueDatum,
   hashBlockHeader,
   type Header,
   NO_DA_ATTESTATION,
@@ -678,10 +678,12 @@ export const buildCommitBlockHeaderTxProgram = ({
       next: "Empty",
       data: ("validationTracesRoot" in newHeader
         ? castStateQueueNodeToData({
+            proven_fraud: null,
             header: newHeader,
             da_attestation: NO_DA_ATTESTATION,
           })
         : castStateQueueNodeToData({
+            proven_fraud: null,
             header: newHeader,
             da_attestation: NO_DA_ATTESTATION,
           })) as LinkedListNodeView["data"],
@@ -1185,9 +1187,18 @@ export const buildMergeToConfirmedStateTxProgram = ({
         }),
       );
     }
-    const blockHeader = yield* getHeaderFromStateQueueDatum(
+    const firstBlockNode = yield* getStateQueueNodeFromStateQueueDatum(
       firstBlockUTxO.datum,
     );
+    if (firstBlockNode.proven_fraud !== null) {
+      return yield* Effect.fail(
+        new StateQueueError({
+          message: "Refusing to merge a header with completed fraud",
+          cause: `proof=${firstBlockNode.proven_fraud}; state correction is required`,
+        }),
+      );
+    }
+    const blockHeader = firstBlockNode.header;
     if (firstBlockUTxO.datum.key === "Empty") {
       return yield* Effect.fail(
         new StateQueueError({

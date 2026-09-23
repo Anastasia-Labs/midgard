@@ -8,15 +8,14 @@ note does not adopt a new protocol decision.
 
 ## Existing plan and requirements
 
-The existing plan is the recommended-fix sections of
-[NIFP-01, NIFP-02, and NIFP-03](remaining-gaps.md#nifp-01--fabricated-withdrawal-nonexistence-is-not-universal).
-They call for an L1-authenticated, event-kind-aware history commitment, membership
-and nonmembership, a checkpoint covering the challenged header's event horizon,
-and retention across consumption and challenge expiry. They suggest an
-authenticated set or compact tombstones, but do not choose a complete protocol,
-define update/closure transactions, or provide an implementation receipt. The
-tracker's [existing-documentation inventory](remaining-gaps.md#existing-documentation-for-withdrawal-deposit-and-event-gaps)
-explicitly records that limitation.
+The recommended-fix sections of
+[NIFP-01, NIFP-02, and NIFP-03](remaining-gaps.md#nifp-01--fabricated-withdrawal-nonexistence-is-not-universal)
+now point to the selected [deposit/withdrawal list proposal](event-history-design.md).
+Read that proposal for agreed behavior, deferred features, remaining decisions
+and lifecycle-specific acceptance. This note supplies source research, not an
+additional implementation plan. The proposal covers the deposit/withdrawal
+portion of NIFP-03; forced-order evidence lifetime remains separate. Neither
+document supplies implementation or deployment acceptance evidence.
 
 [GOAL_SPEC Q39–Q42 and Q47](../exec-plans/GOAL_SPEC.md#L948-L956) require fabricated
 deposit/withdrawal fidelity, duplicate-event proofs that survive NFT consumption,

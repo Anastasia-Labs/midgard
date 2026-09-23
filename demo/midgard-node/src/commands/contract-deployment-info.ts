@@ -2785,18 +2785,37 @@ export const buildContractDeploymentInfoFromContracts = (
     referenceScriptAuthPolicy,
     contracts: Object.fromEntries(
       collectScriptDescriptors(contracts, referenceScriptAuthPolicy).map(
-        (descriptor) => [
-          descriptor.name,
-          {
-            refScriptUTxO: referenceScriptOutRefs.get(descriptor.name) ?? null,
-            contract: descriptor.contract,
-            scriptHash: descriptor.scriptHash,
-            ...(descriptor.name === "fraudProofCatalogueMint" &&
-            fraudProofCatalogue !== undefined
-              ? { fraudProofCatalogue }
-              : {}),
-          } satisfies ContractDeploymentInfoEntry,
-        ],
+        (descriptor) => {
+          const history =
+            descriptor.name === "fraudProofFabricatedDeposit"
+              ? contracts.fraudProofContracts.fabricatedDeposit.history
+              : descriptor.name === "fraudProofFabricatedWithdrawal"
+                ? contracts.fraudProofContracts.fabricatedWithdrawal.history
+                : undefined;
+          return [
+            descriptor.name,
+            {
+              refScriptUTxO:
+                referenceScriptOutRefs.get(descriptor.name) ?? null,
+              contract: descriptor.contract,
+              scriptHash: descriptor.scriptHash,
+              ...(history === undefined
+                ? {}
+                : {
+                    eventHistoryRetentionAddress: history.retentionAddress,
+                    eventHistoryBounds: {
+                      inlineLimitBytes: history.inlineLimitBytes.toString(),
+                      maxPayloadBytes: history.maxPayloadBytes.toString(),
+                      maxPayloadNodes: history.maxPayloadNodes.toString(),
+                    },
+                  }),
+              ...(descriptor.name === "fraudProofCatalogueMint" &&
+              fraudProofCatalogue !== undefined
+                ? { fraudProofCatalogue }
+                : {}),
+            } satisfies ContractDeploymentInfoEntry,
+          ];
+        },
       ),
     ),
   });

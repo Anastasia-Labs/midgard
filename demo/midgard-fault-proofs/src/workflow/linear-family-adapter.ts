@@ -223,9 +223,14 @@ const parseMutationLeaseRecovery = (
   return { token: record.token, source: record.source };
 };
 
-const requiresMutationLease = (action: FraudProofWorkflowAction): boolean =>
-  action.input.stage === "remove" &&
-  action.input.requiresMutationLease === true;
+const requiresMutationLease = (
+  category: LinearFamilyCategory,
+  action: FraudProofWorkflowAction,
+): boolean =>
+  ((category === "fabricatedDeposit" || category === "fabricatedWithdrawal") &&
+    action.input.stage === "step_04") ||
+  (action.input.stage === "remove" &&
+    action.input.requiresMutationLease === true);
 
 /**
  * Shared crash-safe adapter mechanics for exact 1–4 step families. This
@@ -319,7 +324,7 @@ export const createLinearFamilyWorkflowAdapter = <
       }
       const captured = await transactions.capture({ action, artifact });
       if (
-        requiresMutationLease(action) !==
+        requiresMutationLease(category, action) !==
         (captured.mutationLease !== undefined)
       ) {
         await captured.mutationLease?.fail(
@@ -399,7 +404,10 @@ export const createLinearFamilyWorkflowAdapter = <
       }
       const headerHash = identity.target.headerHash;
       const recovery = parseMutationLeaseRecovery(durableRecovery);
-      if (requiresMutationLease(action) !== (recovery !== undefined)) {
+      if (
+        requiresMutationLease(category, action) !==
+        (recovery !== undefined)
+      ) {
         return {
           kind: "conflict",
           reason: `${category} durable mutation-lease identity disagrees with removal topology`,

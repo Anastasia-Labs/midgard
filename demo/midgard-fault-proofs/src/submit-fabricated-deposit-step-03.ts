@@ -1,30 +1,9 @@
-/**
- * `fabricated-deposit` step-03 submitter (Goal task `Q39`, §9.1 output 8).
- *
- * Step 03 reads no chain state beyond the thread it spends: it opens step-02's
- * retained event-datum commitment and turns the authenticated verdict into the
- * named fault. Two things are re-run locally before any transaction is built, so
- * an unfinalizable thread is refused off-chain rather than on chain:
- *
- * - the **pairing** rule — a `DepositIdentityAbsent` verdict admits only the
- *   `NoAuthenticContent` opening and a `DepositEventObserved` verdict only
- *   `RetainedEventDatum`, because the cross pairs claim more than the evidence
- *   supports (`open_authentic_deposit_content_v1`); and
- * - the **establishment** rule that step 04 will re-apply
- *   (`isFabricatedDepositFault`), including the
- *   `start_time < inclusion_time <= end_time` window, so a stale event cannot be
- *   walked one step further only to be refused at finalization.
- *
- * The supplied event datum is required to be *canonical* CBOR. On chain step 02
- * hashed the reference input's datum through `serialise_data`, whose output is
- * canonical, so hashing anything else here would silently disagree with the
- * commitment the thread carries.
- */
+/** Reopen payload and original Value authenticated by the history-capture stage.
+ * Pointer churn cannot change the retained facts. No operator archive supplies
+ * authority: every opening must match the commitment in the authentic thread. */
 import {
-  DepositDatum,
-  depositEventDatumCommitment,
   depositInfoCommitment,
-  type FabricatedDepositAuthenticContentOpening,
+  FabricatedDepositAuthenticContentOpening,
   type FabricatedDepositFault,
   FabricatedDepositStep03Datum,
   FabricatedDepositStep03SpendRedeemer,
@@ -33,6 +12,7 @@ import {
   type FabricatedDepositStep04State,
   fabricatedDepositStep04State,
   isFabricatedDepositFault,
+  opensEventHistoryCommitment,
   OutputReference,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -46,6 +26,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { fabricatedProofValidity } from "./fabricated-proof-validity.js";
 import { requireFabricatedReferenceScript } from "./fabricated-reference-script.js";
 import { parseHex, readJsonFile, requireRecord } from "./json-file.js";
 import {
@@ -106,94 +87,69 @@ export const requireFabricatedDepositStep03Datum = ({
   return datum.data;
 };
 
-/**
- * Decodes a supplied event datum and refuses non-canonical bytes, whose hash
- * cannot be the commitment step 02 retained.
- */
-export const decodeCanonicalDepositEventDatum = (
-  eventDatumCbor: string,
-): DepositDatum => {
-  const decoded = Data.from(eventDatumCbor, DepositDatum);
-  const canonical = Data.to(decoded, DepositDatum);
-  if (canonical !== eventDatumCbor.toLowerCase()) {
-    throw new Error(
-      `Supplied deposit event datum is not canonical CBOR: re-encoding yields ${canonical}, not ${eventDatumCbor.toLowerCase()}.`,
-    );
-  }
-  return decoded;
-};
-
-/**
- * Pure twin of `open_authentic_deposit_content_v1` plus step-04's
- * establishment gate. Throws — fail-closed — on any pairing, commitment,
- * identity, equality or window failure.
- */
+/** Exact twin of the on-chain opening and fault-classification predicates. */
 export const deriveFabricatedDepositStep03Handoff = async ({
   state,
-  eventDatumCbor,
+  openingCbor,
 }: {
   readonly state: FabricatedDepositStep03State;
-  readonly eventDatumCbor?: string;
+  readonly openingCbor?: string;
 }): Promise<FabricatedDepositStep03Handoff> => {
-  let opening: FabricatedDepositAuthenticContentOpening;
+  const opening =
+    openingCbor === undefined
+      ? "NoAuthenticContent"
+      : Data.from(openingCbor, FabricatedDepositAuthenticContentOpening);
   let fault: FabricatedDepositFault;
-
   if (state.verdict === "DepositIdentityAbsent") {
-    if (eventDatumCbor !== undefined) {
-      throw new Error(
-        "Fabricated-deposit step 03 refuses a RetainedEventDatum opening on a DepositIdentityAbsent verdict: the opening does not pair with the L1 verdict.",
-      );
-    }
-    opening = "NoAuthenticContent";
+    if (opening !== "NoAuthenticContent")
+      throw new Error("Authenticated absence admits no retained event opening");
     fault = "NonexistentDepositIdentity";
   } else {
-    if (eventDatumCbor === undefined) {
+    if (opening === "NoAuthenticContent")
       throw new Error(
-        "Fabricated-deposit step 03 refuses a NoAuthenticContent opening on a DepositEventObserved verdict: it would convert a content dispute into a non-existence conviction.",
+        "Observed Order requires its retained payload and original Value",
       );
-    }
-    const { event_datum_hash, event_inclusion_time } =
-      state.verdict.DepositEventObserved;
-    const eventDatum = decodeCanonicalDepositEventDatum(eventDatumCbor);
-    const suppliedHash = await Effect.runPromise(
-      depositEventDatumCommitment(eventDatum),
-    );
-    if (suppliedHash !== event_datum_hash) {
+    const { commitment } = state.verdict.DepositEventObserved;
+    const { payload, original_assets } = opening.RetainedEventData;
+    if (
+      commitment.kind !== "Deposit" ||
+      Data.to(commitment.event_id, OutputReference) !==
+        Data.to(state.committed_deposit_id, OutputReference) ||
+      !opensEventHistoryCommitment(commitment, payload, original_assets)
+    )
       throw new Error(
-        `Supplied deposit event datum hashes to ${suppliedHash}, not the commitment ${event_datum_hash} step 02 authenticated.`,
+        "Retained event opening does not match the authenticated history commitment",
       );
-    }
-    const suppliedId = Data.to(eventDatum.event.id, OutputReference);
-    const committedId = Data.to(state.committed_deposit_id, OutputReference);
-    if (suppliedId !== committedId) {
-      throw new Error(
-        `Supplied deposit event datum names identity ${suppliedId}, not the committed identity ${committedId}.`,
+    if (!("DepositPayload" in payload))
+      throw new Error("Retained payload has the wrong event kind");
+    const event_inclusion_time = commitment.inclusion_time;
+    if (
+      !(
+        state.header_start_time < event_inclusion_time &&
+        event_inclusion_time <= state.header_end_time
+      )
+    ) {
+      fault = { IneligibleDepositEvent: { event_inclusion_time } };
+    } else {
+      const authenticHash = await Effect.runPromise(
+        depositInfoCommitment(payload.DepositPayload.event.info),
       );
+      if (authenticHash === state.committed_deposit_info_hash)
+        throw new Error(
+          "Authentic eligible event content matches the header commitment",
+        );
+      fault = {
+        MismatchedDepositContent: {
+          committed_deposit_info_hash: state.committed_deposit_info_hash,
+          authentic_deposit_info_hash: authenticHash,
+          event_inclusion_time,
+        },
+      };
     }
-    const authenticDepositInfoHash = await Effect.runPromise(
-      depositInfoCommitment(eventDatum.event.info),
-    );
-    if (authenticDepositInfoHash === state.committed_deposit_info_hash) {
-      throw new Error(
-        `Fabricated-deposit step 03 cannot classify a fault: the authentic deposit content hashes to ${authenticDepositInfoHash}, which is exactly what the header committed.`,
-      );
-    }
-    opening = { RetainedEventDatum: { event_datum: eventDatum } };
-    fault = {
-      MismatchedDepositContent: {
-        committed_deposit_info_hash: state.committed_deposit_info_hash,
-        authentic_deposit_info_hash: authenticDepositInfoHash,
-        event_inclusion_time,
-      },
-    };
   }
-
   const step04State = fabricatedDepositStep04State(state, fault);
-  if (!isFabricatedDepositFault(step04State)) {
-    throw new Error(
-      `Fabricated-deposit step 03 refuses to hand step 04 a fault it must reject: the authentic event is not due for the challenged block (${state.header_start_time.toString()} < inclusion_time <= ${state.header_end_time.toString()}).`,
-    );
-  }
+  if (!isFabricatedDepositFault(step04State))
+    throw new Error("Retained event does not establish the classified fault");
   return { opening, fault, step04State };
 };
 
@@ -208,18 +164,23 @@ export type SubmitFabricatedDepositStep03CliConfig = SubmitProviderConfig & {
 };
 
 export type SubmitFabricatedDepositAuthenticContent = {
-  readonly eventDatumCbor: string;
+  readonly openingCbor: string | null;
 };
 
 export const parseSubmitFabricatedDepositAuthenticContent = (
   value: unknown,
 ): SubmitFabricatedDepositAuthenticContent => {
   const record = requireRecord(value, "fabricated-deposit authentic content");
+  if (Object.keys(record).length !== 1 || !("openingCbor" in record))
+    throw new Error("Authentic content requires exactly openingCbor");
   return {
-    eventDatumCbor: parseHex(
-      record["eventDatumCbor"],
-      "fabricated-deposit authentic content eventDatumCbor",
-    ),
+    openingCbor:
+      record["openingCbor"] === null
+        ? null
+        : parseHex(
+            record["openingCbor"],
+            "fabricated-deposit authentic content openingCbor",
+          ),
   };
 };
 
@@ -250,19 +211,21 @@ export const submitFabricatedDepositStep03 = async ({
   contracts,
   signer,
   threadOutRef,
-  eventDatumCbor,
+  openingCbor,
   referenceScriptUtxo,
   preSubmitBoundary,
   awaitConfirmation = true,
+  now = Date.now,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: FabricatedDepositContracts;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly eventDatumCbor?: string;
+  readonly openingCbor?: string;
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  readonly now?: () => number;
 }): Promise<SubmitFabricatedDepositStep03Result> => {
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
@@ -283,7 +246,7 @@ export const submitFabricatedDepositStep03 = async ({
   const state = requireFabricatedDepositStep03Datum({ threadUtxo, signer });
   const handoff = await deriveFabricatedDepositStep03Handoff({
     state,
-    eventDatumCbor,
+    openingCbor,
   });
 
   signer.selectWallet(lucid);
@@ -327,8 +290,11 @@ export const submitFabricatedDepositStep03 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
+  const validity = fabricatedProofValidity(state.header_end_time, now());
   const tx = lucid
     .newTx()
+    .validFrom(validity.validFrom)
+    .validTo(validity.validTo)
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
     .readFrom([
@@ -413,11 +379,11 @@ export const submitFabricatedDepositStep03FromFiles = async (
     contracts: config.contracts,
     signer,
     threadOutRef: config.threadOutRef,
-    eventDatumCbor:
+    openingCbor:
       authenticContentJson === undefined
         ? undefined
-        : parseSubmitFabricatedDepositAuthenticContent(authenticContentJson)
-            .eventDatumCbor,
+        : (parseSubmitFabricatedDepositAuthenticContent(authenticContentJson)
+            .openingCbor ?? undefined),
     referenceScriptUtxo: config.referenceScriptUtxo,
     awaitConfirmation: config.awaitConfirmation,
   });

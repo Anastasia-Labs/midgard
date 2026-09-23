@@ -197,7 +197,11 @@ fn node_input_with_attestation(
   let datum: state_queue.Datum =
     linked_list.Element {
       data: linked_list.Node(
-        state_queue.StateQueueNode { header: node_header, da_attestation },
+        state_queue.StateQueueNode {
+          header: node_header,
+          da_attestation,
+          proven_fraud: None,
+        },
       ),
       link,
     }
@@ -435,6 +439,7 @@ test attestation_timeout_accepts_exact_boundary_and_rejects_adjacent_premature()
   let timed_out_header_hash = hash_header(timed_out_header)
   let node =
     state_queue.StateQueueNode {
+      proven_fraud: None,
       header: timed_out_header,
       da_attestation: state_queue.no_da_attestation,
     }
@@ -633,6 +638,7 @@ test attestation_timeout_append_fence_pins_boundary_and_marker_identity() {
   and {
     state_queue_validator.state_queue_head_allows_append_v1(
       state_queue.StateQueueNode {
+        proven_fraud: None,
         header: head_header,
         da_attestation: state_queue.no_da_attestation,
       },
@@ -641,6 +647,7 @@ test attestation_timeout_append_fence_pins_boundary_and_marker_identity() {
     ),
     !state_queue_validator.state_queue_head_allows_append_v1(
       state_queue.StateQueueNode {
+        proven_fraud: None,
         header: head_header,
         da_attestation: state_queue.no_da_attestation,
       },
@@ -649,6 +656,7 @@ test attestation_timeout_append_fence_pins_boundary_and_marker_identity() {
     ),
     state_queue_validator.state_queue_head_allows_append_v1(
       state_queue.StateQueueNode {
+        proven_fraud: None,
         header: head_header,
         da_attestation: availability.Attested { da_bond_asset_name },
       },
@@ -657,6 +665,7 @@ test attestation_timeout_append_fence_pins_boundary_and_marker_identity() {
     ),
     !state_queue_validator.state_queue_head_allows_append_v1(
       state_queue.StateQueueNode {
+        proven_fraud: None,
         header: head_header,
         da_attestation: availability.Challenged {
           da_bond_asset_name,
@@ -678,6 +687,7 @@ test attestation_timeout_append_fence_authenticates_single_and_deep_queue_heads(
   let head_header_hash = hash_header(head_header)
   let head_node =
     state_queue.StateQueueNode {
+      proven_fraud: None,
       header: head_header,
       da_attestation: state_queue.no_da_attestation,
     }
@@ -686,6 +696,7 @@ test attestation_timeout_append_fence_authenticates_single_and_deep_queue_heads(
   let head_ref = node_input(1, head_header_hash, head_header, None)
   let tail_data: Data =
     state_queue.StateQueueNode {
+      proven_fraud: None,
       header: header(rotated_operator, head_header_hash),
       da_attestation: state_queue.no_da_attestation,
     }
@@ -715,6 +726,7 @@ test attestation_timeout_append_fence_rejects_missing_deep_head_reference() fail
   let root = root_input(0, Some(head_header_hash))
   let tail_data: Data =
     state_queue.StateQueueNode {
+      proven_fraud: None,
       header: header(rotated_operator, head_header_hash),
       da_attestation: state_queue.no_da_attestation,
     }
@@ -726,6 +738,7 @@ test attestation_timeout_append_fence_rejects_missing_deep_head_reference() fail
     0,
     None,
   ) == state_queue.StateQueueNode {
+    proven_fraud: None,
     header: head_header,
     da_attestation: state_queue.no_da_attestation,
   }
@@ -1121,5 +1134,363 @@ test unattested_timeout_rejects_changed_predecessor_datum() fail {
     fixture,
     Output { ..continued, datum: InlineDatum(changed_datum) },
     fixture.boundary,
+  )
+}
+
+// A completed proof consumes its exact queue node before maturity. Open proof
+// threads do not have this authority; topology and DA status are preserved.
+const completed_fraud_policy =
+  #"12121212121212121212121212121212121212121212121212121212"
+
+fn completed_fraud_asset() -> ByteArray {
+  #"00000001"
+    |> bytearray.concat(
+        hash_header(header(faulty_operator, parent_header_hash)),
+      )
+}
+
+fn marked_output(output: Output, marker: Option<ByteArray>) -> Output {
+  expect InlineDatum(data) = output.datum
+  expect element: state_queue.Datum = data
+  expect linked_list.Node(node) = element.data
+  let continued: state_queue.Datum = linked_list.Element {
+    ..element,
+    data: linked_list.Node(
+      state_queue.StateQueueNode { ..node, proven_fraud: marker },
+    ),
+  }
+  Output { ..output, datum: InlineDatum(continued) }
+}
+
+fn completed_fraud_tx() -> transaction.Transaction {
+  let block = header(faulty_operator, parent_header_hash)
+  let input = node_input(
+    0,
+    hash_header(block),
+    block,
+    Some(descendant_header_hash),
+  )
+  transaction.Transaction {
+    ..transaction.placeholder,
+    inputs: [input],
+    outputs: [marked_output(input.output, Some(completed_fraud_asset()))],
+    mint: assets.from_asset(completed_fraud_policy, completed_fraud_asset(), 1),
+    validity_range: between(3_000, 4_000),
+  }
+}
+
+fn record_completed_fraud(tx: transaction.Transaction) -> Bool {
+  state_queue_validator.spend.spend(
+    state_queue_policy,
+    da_attestation_policy,
+    availability_policy,
+    completed_fraud_policy,
+    None,
+    state_queue.RecordCompletedFraud {
+      state_queue_input_index: 0,
+      state_queue_output_index: 0,
+      fraud_proof_asset_name: completed_fraud_asset(),
+    },
+    out_ref(0),
+    tx,
+  )
+}
+
+test completed_fraud_marks_exact_header_with_fresh_terminal_mint() {
+  record_completed_fraud(completed_fraud_tx())
+}
+
+test completed_fraud_marker_allows_permissionless_min_ada_topup() {
+  let tx = completed_fraud_tx()
+  expect [output] = tx.outputs
+  record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      outputs: [
+        Output {
+          ..output,
+          value: assets.add(output.value, #"", #"", 1_000_000),
+        },
+      ],
+    },
+  )
+}
+
+test completed_fraud_marker_rejects_missing_proof_mint() {
+  let tx = completed_fraud_tx()
+  !record_completed_fraud(transaction.Transaction { ..tx, mint: assets.zero })
+}
+
+test completed_fraud_marker_rejects_foreign_proof_policy() {
+  let tx = completed_fraud_tx()
+  !record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      mint: assets.from_asset(availability_policy, completed_fraud_asset(), 1),
+    },
+  )
+}
+
+test completed_fraud_marker_rejects_nonunit_proof_mint() {
+  let tx = completed_fraud_tx()
+  !record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      mint: assets.from_asset(
+        completed_fraud_policy,
+        completed_fraud_asset(),
+        2,
+      ),
+    },
+  )
+}
+
+test completed_fraud_marker_rejects_simultaneous_queue_mutation() {
+  let tx = completed_fraud_tx()
+  !record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      mint: assets.add(
+        tx.mint,
+        state_queue_policy,
+        node_asset_name(descendant_header_hash),
+        -1,
+      ),
+    },
+  )
+}
+
+test completed_fraud_marker_rejects_lower_bound_at_header_end() {
+  let tx = completed_fraud_tx()
+  !record_completed_fraud(
+    transaction.Transaction { ..tx, validity_range: between(2_000, 3_000) },
+  )
+}
+
+test completed_fraud_marker_rejects_terminal_at_maturity() {
+  let tx = completed_fraud_tx()
+  let boundary = 2_000 + ledger_state.block_maturity_duration_v1
+  !record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      validity_range: between(boundary - 1_000, boundary),
+    },
+  )
+}
+
+test completed_fraud_marker_accepts_last_inclusive_tick_before_maturity() {
+  let tx = completed_fraud_tx()
+  let boundary = 2_000 + ledger_state.block_maturity_duration_v1
+  record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      validity_range: between(boundary - 1_000, boundary - 1),
+    },
+  )
+}
+
+test completed_fraud_marker_rejects_removing_locked_ada() {
+  let tx = completed_fraud_tx()
+  expect [output] = tx.outputs
+  !record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      outputs: [
+        Output { ..output, value: assets.add(output.value, #"", #"", -1) },
+      ],
+    },
+  )
+}
+
+test completed_fraud_marker_rejects_changing_address() {
+  let tx = completed_fraud_tx()
+  expect [output] = tx.outputs
+  !record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      outputs: [
+        Output { ..output, address: address.from_script(availability_policy) },
+      ],
+    },
+  )
+}
+
+test completed_fraud_marker_rejects_attaching_reference_script() {
+  let tx = completed_fraud_tx()
+  expect [output] = tx.outputs
+  !record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      outputs: [
+        Output { ..output, reference_script: Some(availability_policy) },
+      ],
+    },
+  )
+}
+
+test completed_fraud_marker_rejects_different_output_proof() {
+  let tx = completed_fraud_tx()
+  expect [output] = tx.outputs
+  !record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      outputs: [
+        marked_output(
+          output,
+          Some(
+            #"00000002"
+              |> bytearray.concat(
+                  hash_header(header(faulty_operator, parent_header_hash)),
+                ),
+          ),
+        ),
+      ],
+    },
+  )
+}
+
+test completed_fraud_marker_rejects_repeated_write() {
+  let tx = completed_fraud_tx()
+  expect [input] = tx.inputs
+  expect [output] = tx.outputs
+  !record_completed_fraud(
+    transaction.Transaction { ..tx, inputs: [Input { ..input, output }] },
+  )
+}
+
+test completed_fraud_marker_rejects_redirected_spending_index() fail {
+  let tx = completed_fraud_tx()
+  expect [input] = tx.inputs
+  record_completed_fraud(
+    transaction.Transaction {
+      ..tx,
+      inputs: [Input { ..input, output_reference: out_ref(1) }],
+    },
+  )
+}
+
+test completed_fraud_marked_head_cannot_append() {
+  !state_queue_validator.state_queue_head_allows_append_v1(
+    state_queue.StateQueueNode {
+      header: header(faulty_operator, parent_header_hash),
+      da_attestation: availability.Attested { da_bond_asset_name },
+      proven_fraud: Some(completed_fraud_asset()),
+    },
+    da_attestation_policy,
+    between(3_000, 4_000),
+  )
+}
+
+test completed_fraud_terminal_requires_exact_new_output_marker() {
+  state_queue.require_completed_fraud_witness(
+    completed_fraud_tx(), state_queue_policy, completed_fraud_asset(),
+    state_queue.RecordedOutput { output_index: 0 },
+  )
+}
+
+test completed_fraud_terminal_rejects_an_unmarked_header() fail {
+  let tx = completed_fraud_tx()
+  expect [input] = tx.inputs
+  state_queue.require_completed_fraud_witness(
+    transaction.Transaction { ..tx, outputs: [input.output] },
+    state_queue_policy, completed_fraud_asset(),
+    state_queue.RecordedOutput { output_index: 0 },
+  )
+}
+
+test completed_fraud_terminal_rejects_a_different_new_marker() {
+  let tx = completed_fraud_tx()
+  let other_proof = #"00000002" |> bytearray.concat(hash_header(header(faulty_operator, parent_header_hash)))
+  !state_queue.require_completed_fraud_witness(
+    tx, state_queue_policy, other_proof,
+    state_queue.RecordedOutput { output_index: 0 },
+  )
+}
+
+test completed_fraud_terminal_references_an_already_marked_header_without_rewriting() {
+  let tx = completed_fraud_tx()
+  expect [output] = tx.outputs
+  let other_proof = #"00000002" |> bytearray.concat(hash_header(header(faulty_operator, parent_header_hash)))
+  state_queue.require_completed_fraud_witness(
+    transaction.Transaction {
+      ..tx, inputs: [], outputs: [],
+      reference_inputs: [Input { output_reference: out_ref(1), output }],
+    },
+    state_queue_policy, other_proof,
+    state_queue.PreviouslyRecorded { reference_input_index: 0 },
+  )
+}
+
+test completed_fraud_terminal_rejects_a_reference_to_another_header() {
+  let tx = completed_fraud_tx()
+  expect [output] = tx.outputs
+  let other_proof = #"00000002" |> bytearray.concat(descendant_header_hash)
+  !state_queue.require_completed_fraud_witness(
+    transaction.Transaction { ..tx, reference_inputs: [Input { output_reference: out_ref(1), output }] },
+    state_queue_policy, other_proof,
+    state_queue.PreviouslyRecorded { reference_input_index: 0 },
+  )
+}
+
+test completed_fraud_terminal_rejects_unmarked_reference() fail {
+  let tx = completed_fraud_tx()
+  state_queue.require_completed_fraud_witness(
+    transaction.Transaction { ..tx, reference_inputs: tx.inputs },
+    state_queue_policy, completed_fraud_asset(),
+    state_queue.PreviouslyRecorded { reference_input_index: 0 },
+  )
+}
+
+test completed_fraud_terminal_rejects_foreign_queue_policy() fail {
+  state_queue.require_completed_fraud_witness(
+    completed_fraud_tx(), availability_policy, completed_fraud_asset(),
+    state_queue.RecordedOutput { output_index: 0 },
+  )
+}
+
+test completed_fraud_terminal_rejects_expired_terminal_even_when_already_recorded() {
+  let tx = completed_fraud_tx()
+  expect [output] = tx.outputs
+  let boundary = 2_000 + ledger_state.block_maturity_duration_v1
+  !state_queue.require_completed_fraud_witness(
+    transaction.Transaction {
+      ..tx, validity_range: between(boundary, boundary + 1_000),
+      reference_inputs: [Input { output_reference: out_ref(1), output }],
+    },
+    state_queue_policy, completed_fraud_asset(),
+    state_queue.PreviouslyRecorded { reference_input_index: 0 },
+  )
+}
+
+test completed_fraud_da_update_preserves_marker() {
+  let tx = completed_fraud_tx()
+  expect [input] = tx.inputs
+  expect [marked] = tx.outputs
+  expect InlineDatum(data) = marked.datum
+  expect element: state_queue.Datum = data
+  expect linked_list.Node(node) = element.data
+  let attested = availability.Attested { da_bond_asset_name }
+  let continued: state_queue.Datum = linked_list.Element {
+    ..element,
+    data: linked_list.Node(state_queue.StateQueueNode { ..node, da_attestation: attested }),
+  }
+  state_queue.validate_da_availability_status_transition(
+    [Input { ..input, output: marked }],
+    [Output { ..marked, datum: InlineDatum(continued) }],
+    state_queue_policy, 0, 0,
+    hash_header(node.header), state_queue.no_da_attestation, attested,
+  )
+}
+
+test completed_fraud_da_update_cannot_clear_marker() fail {
+  let tx = completed_fraud_tx()
+  expect [input] = tx.inputs
+  expect [marked] = tx.outputs
+  let attested = availability.Attested { da_bond_asset_name }
+  let block = header(faulty_operator, parent_header_hash)
+  let unmarked = node_input_with_attestation(0, hash_header(block), block, attested, Some(descendant_header_hash))
+  state_queue.validate_da_availability_status_transition(
+    [Input { ..input, output: marked }], [unmarked.output],
+    state_queue_policy, 0, 0, hash_header(block), state_queue.no_da_attestation, attested,
   )
 }

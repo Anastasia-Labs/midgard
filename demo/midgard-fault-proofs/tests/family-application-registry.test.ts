@@ -346,7 +346,12 @@ describe("family application rosters name deployed contracts", () => {
       const config = await bind(registry[key]!, { infrastructure, references });
       const referenceScripts = boundReferenceScripts(config);
       const stepRoles = roles.filter((role) => /^step[0-9]{2}$/u.test(role));
-      const witnessRoles = roles.filter((role) => WITNESS_ROLES.has(role));
+      const witnessRoles = roles.filter(
+        (role) =>
+          WITNESS_ROLES.has(role) ||
+          ((key === "fabricatedDeposit" || key === "fabricatedWithdrawal") &&
+            role === "stateQueueSpend"),
+      );
       expect(boundSteps(referenceScripts, roster, stepRoles)).toEqual(
         stepRoles.map((role) => references[role]),
       );
@@ -465,7 +470,17 @@ describe("family application records bind the admitted decision digest", () => {
       );
       if (!declaresRemoval) {
         for (const name of removalNames) {
-          expect(roster, category).not.toContain(name);
+          if (
+            (category === "fabricatedDeposit" ||
+              category === "fabricatedWithdrawal") &&
+            name === "stateQueueSpend"
+          ) {
+            // Terminal history proofs mark the queue; this is not the full removal set.
+            expect(roster, category).toContain(name);
+            expect(definitions[category]?.witnessRoles).toContain(name);
+          } else {
+            expect(roster, category).not.toContain(name);
+          }
         }
       } else {
         expect([...declared].sort(), category).toEqual(

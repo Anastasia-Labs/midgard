@@ -561,8 +561,28 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       noReferenceInput: repeatedFaultProofChain(noReferenceInput, 4),
       referenceInputNoIdx: repeatedFaultProofChain(referenceInputNoIdx, 4),
       invalidSignature: repeatedFaultProofChain(invalidSignature, 2),
-      fabricatedDeposit: repeatedFaultProofChain(zeroInput, 4),
-      fabricatedWithdrawal: repeatedFaultProofChain(zeroInput, 4),
+      fabricatedDeposit: {
+        ...repeatedFaultProofChain<
+          SDK.FaultProofContractChains["fabricatedDeposit"]
+        >(zeroInput, 4),
+        history: {
+          inlineLimitBytes: 512n,
+          maxPayloadBytes: 5000n,
+          maxPayloadNodes: 512n,
+          retentionAddress: zeroInput.spendingScriptAddress,
+        },
+      },
+      fabricatedWithdrawal: {
+        ...repeatedFaultProofChain<
+          SDK.FaultProofContractChains["fabricatedWithdrawal"]
+        >(zeroInput, 4),
+        history: {
+          inlineLimitBytes: 512n,
+          maxPayloadBytes: 5000n,
+          maxPayloadNodes: 512n,
+          retentionAddress: zeroInput.spendingScriptAddress,
+        },
+      },
       nativeScriptDecoding: repeatedFaultProofChain(zeroInput, 6),
       missingSignature: {
         ...repeatedFaultProofChain(invalidSignature, 4),

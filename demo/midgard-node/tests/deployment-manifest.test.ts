@@ -110,6 +110,20 @@ const canonicalIdentity = (): Omit<DeploymentManifest, "manifestId"> => {
         contractName,
         {
           refScriptUTxO: referenceOutRefByContract.get(contractName) ?? null,
+          ...(contractName === "fraudProofFabricatedDeposit" ||
+          contractName === "fraudProofFabricatedWithdrawal"
+            ? {
+                eventHistoryBounds: {
+                  inlineLimitBytes: "512",
+                  maxPayloadBytes: "5000",
+                  maxPayloadNodes: "512",
+                },
+                eventHistoryRetentionAddress: credentialToAddress("Preview", {
+                  type: "Script",
+                  hash: "ee".repeat(28),
+                }),
+              }
+            : {}),
           contract: {
             type:
               contractName === "referenceScriptAuthMint"

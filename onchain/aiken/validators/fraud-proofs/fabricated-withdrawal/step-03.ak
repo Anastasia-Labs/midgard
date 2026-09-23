@@ -20,12 +20,15 @@
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
+use midgard/common/utils
 use midgard/computation_thread as ct
+use midgard/event_history/horizon
+use midgard/event_history/proof_fixture
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/fabricated_withdrawal/step_01
 use midgard/fraud_proofs/fabricated_withdrawal/step_02
 use midgard/fraud_proofs/fabricated_withdrawal/step_03.{
-  Args, AuthenticContentOpeningV1, Datum, NoAuthenticContent, RetainedEventDatum,
+  Args, AuthenticContentOpeningV1, Datum, NoAuthenticContent, RetainedEventData,
   SpendRedeemer, State, open_authentic_withdrawal_content_v1,
 }
 use midgard/fraud_proofs/fabricated_withdrawal/step_04
@@ -77,6 +80,11 @@ validator main(
         )
 
         expect Some(input_state) = m_input_state_data
+        let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
+          tx.validity_range,
+        )
+        expect
+          horizon.capture_permitted(input_state.header_end_time, lower, upper)
 
         // 2. Classify the fault. The opening must pair with the verdict, its
         //    bytes must be the ones step-02 committed to, and the authentic
@@ -91,6 +99,7 @@ validator main(
         //    step.
         expect output_script_hash == step_04_validator_script_hash
         let expected_output_state: Data = step_04.State {
+          state_queue_policy: input_state.state_queue_policy,
           challenged_header_hash: input_state.challenged_header_hash,
           header_start_time: input_state.header_start_time,
           header_end_time: input_state.header_end_time,
@@ -154,7 +163,9 @@ fn run_step_03(
     ),
     ct.Continue(Args { input_index: 0, output_index: 0, authentic_content }),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(asset_name, expected_output_state),
+    proof_fixture.after_header(
+      fixture.continue_mid_step_l1_tx_v1(asset_name, expected_output_state),
+    ),
   )
 }
 
@@ -179,10 +190,12 @@ fn run_content_mismatch(
   opened_event_datum: withdrawal.Datum,
   expected_fault: step_04.FabricatedWithdrawalFaultV1,
 ) -> Bool {
-  let opened_event_datum_data: Data = opened_event_datum
   run_step_03(
     state_from(block, step_02.observed_verdict_v1(authentic_event_datum())),
-    RetainedEventDatum { event_datum: opened_event_datum_data },
+    RetainedEventData {
+      payload: step_02.history_payload(opened_event_datum),
+      original_assets: proof_fixture.original_assets(),
+    },
     expected_fault,
   )
 }

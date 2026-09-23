@@ -1,5 +1,8 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { validatorToScriptHash } from "@lucid-evolution/lucid";
+import {
+  credentialToAddress,
+  validatorToScriptHash,
+} from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
@@ -32,6 +35,7 @@ import {
   normalizeDeploymentManifestJsonValue,
   parseDeploymentManifestAvailabilityChallenge,
   parseDeploymentManifestEconomics,
+  parseDeploymentManifestEventHistoryBounds,
   parseDeploymentMarker,
   verifyDeploymentManifestFraudProofCatalogueIdentity,
   verifyDeploymentManifestIdentity,
@@ -196,6 +200,20 @@ const finalizedManifest = () => {
             name === "referenceScriptAuthMint"
               ? policyId
               : CATALOGUE_FIXTURE_SCRIPT_HASH,
+          ...(name === "fraudProofFabricatedDeposit" ||
+          name === "fraudProofFabricatedWithdrawal"
+            ? {
+                eventHistoryRetentionAddress: credentialToAddress("Preview", {
+                  type: "Script",
+                  hash: "ee".repeat(28),
+                }),
+                eventHistoryBounds: {
+                  inlineLimitBytes: "512",
+                  maxPayloadBytes: "5000",
+                  maxPayloadNodes: "512",
+                },
+              }
+            : {}),
           ...(name === "fraudProofCatalogueMint"
             ? { fraudProofCatalogue: catalogueFixture() }
             : {}),
@@ -905,4 +923,76 @@ describe("DeploymentManifestV1 shared identity", () => {
       }),
     ).toThrow(/value\.historicalVersion is unexpected/u);
   });
+});
+
+describe("event history applied bounds in deployment identity", () => {
+  const bounds = {
+    inlineLimitBytes: "512",
+    maxPayloadBytes: "5000",
+    maxPayloadNodes: "512",
+  };
+  it("requires explicit canonical integers and a total bound covering inline data", () => {
+    expect(parseDeploymentManifestEventHistoryBounds(bounds)).toEqual(bounds);
+    for (const invalid of [
+      undefined,
+      {},
+      { ...bounds, inlineLimitBytes: 512 },
+      { ...bounds, maxPayloadNodes: "0" },
+      { ...bounds, maxPayloadBytes: "04999" },
+      { ...bounds, maxPayloadBytes: "511" },
+      { ...bounds, inlineLimitBytes: "-1" },
+      { ...bounds, maxPayloadNodes: "9007199254740992" },
+      { ...bounds, extra: true },
+    ])
+      expect(() =>
+        parseDeploymentManifestEventHistoryBounds(invalid),
+      ).toThrow();
+  });
+  for (const name of [
+    "fraudProofFabricatedDeposit",
+    "fraudProofFabricatedWithdrawal",
+  ])
+    it(`${name} bounds are required and bind the complete manifest identity`, () => {
+      const manifest = finalizedManifest();
+      verifyFinalizedDeploymentManifest(manifest);
+      const entry = manifest.contracts[name]!;
+      const before = manifest.manifestId;
+      entry.eventHistoryBounds = { ...bounds, maxPayloadNodes: "513" };
+      expect(() => verifyFinalizedDeploymentManifest(manifest)).toThrow(
+        /id mismatch/,
+      );
+      const { manifestId: _id, ...identity } = manifest;
+      manifest.manifestId = computeDeploymentManifestId(identity);
+      expect(manifest.manifestId).not.toBe(before);
+      // Syntax/identity acceptance is separate from reapplying the blueprint.
+      expect(verifyFinalizedDeploymentManifest(manifest)).toBe(manifest);
+      const addressBefore = manifest.manifestId;
+      entry.eventHistoryRetentionAddress = credentialToAddress("Preprod", {
+        type: "Script",
+        hash: "ef".repeat(28),
+      });
+      expect(() => verifyFinalizedDeploymentManifest(manifest)).toThrow(
+        /id mismatch/,
+      );
+      const { manifestId: _address, ...withAddress } = manifest;
+      manifest.manifestId = computeDeploymentManifestId(withAddress);
+      expect(manifest.manifestId).not.toBe(addressBefore);
+      expect(verifyFinalizedDeploymentManifest(manifest)).toBe(manifest);
+      delete entry.eventHistoryRetentionAddress;
+      const { manifestId: _missingAddress, ...withoutAddress } = manifest;
+      manifest.manifestId = computeDeploymentManifestId(withoutAddress);
+      expect(() => verifyFinalizedDeploymentManifest(manifest)).toThrow(
+        /eventHistoryRetentionAddress/,
+      );
+      entry.eventHistoryRetentionAddress = credentialToAddress("Preprod", {
+        type: "Script",
+        hash: "ef".repeat(28),
+      });
+      delete entry.eventHistoryBounds;
+      const { manifestId: _changed, ...missing } = manifest;
+      manifest.manifestId = computeDeploymentManifestId(missing);
+      expect(() => verifyFinalizedDeploymentManifest(manifest)).toThrow(
+        /eventHistoryBounds/,
+      );
+    });
 });

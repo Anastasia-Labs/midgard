@@ -470,6 +470,7 @@ export const fetchCanonicalMergeCandidateReadiness = (
         firstBlockOutRef: firstBlockOutRef(firstBlockUTxO),
         headerHash: recomputedHeaderHash,
         currentDaAvailability: firstBlockNode.da_attestation,
+        provenFraud: firstBlockNode.proven_fraud,
         validFromUnixTime: mergeMaturity.validFromUnixTime,
         readyAfterUnixTime: mergeMaturity.readyAfterUnixTime,
         nowUnixTime,
@@ -922,6 +923,12 @@ export const buildAndSubmitMergeTx = (
         if (oldestBlockReadiness.status === "skipped_oldest_block_unattested") {
           yield* Effect.logInfo(
             `🔸 Skipping merge because oldest block is not DA-attested yet (${oldestBlockReadiness.reason}).`,
+          );
+        } else if (
+          oldestBlockReadiness.status === "skipped_oldest_block_proven_fraud"
+        ) {
+          yield* Effect.logInfo(
+            `🔸 Skipping merge because completed fraud requires state correction (${oldestBlockReadiness.reason}).`,
           );
         } else {
           yield* Effect.logInfo(

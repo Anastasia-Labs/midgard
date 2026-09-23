@@ -114,6 +114,7 @@ pub fn state_queue_head_allows_append_v1(
     utils.get_inclusive_bounds_of_a_short_validity_range(validity_range)
   and {
     header_v1_is_valid(header),
+    head.proven_fraud == None,
     when head.da_attestation is {
       availability.Unattested ->
         inclusive_tx_upper_bound < header.end_time + da_attestation_timeout_v1
@@ -420,8 +421,9 @@ fn merge_to_confirmed_state(
       )
 
     expect input_header_node_key == header_node_key
-    expect StateQueueNode { header: input_header_data, da_attestation }: StateQueueNode =
+    expect StateQueueNode { header: input_header_data, da_attestation, proven_fraud }: StateQueueNode =
       input_header_node_data
+    expect proven_fraud == None
     expect
       when da_attestation is {
         availability.Attested { .. } -> True
@@ -497,6 +499,7 @@ validator spend(
   state_queue_mint_script_hash: ByteArray,
   da_attestation_policy_id: PolicyId,
   availability_policy_id: PolicyId,
+  fraud_proof_policy_id: PolicyId,
 ) {
   spend(
     _datum: Option<Data>,
@@ -547,6 +550,22 @@ validator spend(
           availability_mint_redeemer_index,
           state_queue_input_index,
           state_queue_output_index,
+        )
+      }
+      state_queue.RecordCompletedFraud {
+        state_queue_input_index,
+        state_queue_output_index,
+        fraud_proof_asset_name,
+      } -> {
+        expect Some(input) = list.at(tx.inputs, state_queue_input_index)
+        expect input.output_reference == own_ref
+        state_queue.validate_completed_fraud_record(
+          tx,
+          state_queue_mint_script_hash,
+          fraud_proof_policy_id,
+          state_queue_input_index,
+          state_queue_output_index,
+          fraud_proof_asset_name,
         )
       }
     }
@@ -1077,8 +1096,9 @@ pub fn validate_commit_block_header_v1(
         correction_lock_address,
       )
 
-    expect StateQueueNode { header: output_header_data, da_attestation }: StateQueueNode =
+    expect StateQueueNode { header: output_header_data, da_attestation, proven_fraud }: StateQueueNode =
       output_node_data
+    expect proven_fraud == None
     expect da_attestation == no_da_attestation
 
     // 4. The new block in state queue must have the hash of the header

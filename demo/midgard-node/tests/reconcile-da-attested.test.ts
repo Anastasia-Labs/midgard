@@ -58,7 +58,7 @@ const classify = ({
   });
 
 describe("DA-attested reconciliation", () => {
-  it("accepts the exact canonical state-queue marker without watcher trust", () => {
+  it("accepts the exact canonical state-queue marker without committee node trust", () => {
     expect(
       classify({
         localPayloadPresent: false,
@@ -158,14 +158,14 @@ describe("DA-attested reconciliation", () => {
     });
   });
 
-  it("uses configured Cardano state-queue evidence even when a watcher URL is supplied", async () => {
+  it("uses configured Cardano state-queue evidence even when a committee node URL is supplied", async () => {
     const fetchSorted = vi.mocked(SDK.fetchSortedStateQueueUTxOsProgram);
     const getNode = vi.mocked(SDK.getStateQueueNodeFromStateQueueDatum);
     const hashHeader = vi.mocked(SDK.hashBlockHeader);
-    const watcherFetch = vi
+    const committeeFetch = vi
       .spyOn(globalThis, "fetch")
       .mockRejectedValue(
-        new Error("watcher access is not part of reconciliation"),
+        new Error("committee node access is not part of reconciliation"),
       );
     const contracts = {
       stateQueue: {
@@ -195,6 +195,7 @@ describe("DA-attested reconciliation", () => {
     );
     getNode.mockReturnValue(
       Effect.succeed({
+        proven_fraud: null,
         header: { canonical: true },
         da_attestation: ATTESTED,
       } as never),
@@ -207,7 +208,7 @@ describe("DA-attested reconciliation", () => {
     const result = await Effect.runPromise(
       reconcileDaAttestedProgram({
         headerHash: Buffer.from(HEADER_HASH, "hex"),
-        watcherUrl: "https://watcher.example.invalid",
+        committeeUrl: "https://committee.example.invalid",
         deploymentFingerprint: "deployment-fingerprint",
         repair: false,
       }).pipe(
@@ -229,7 +230,7 @@ describe("DA-attested reconciliation", () => {
         }),
       }),
     );
-    expect(watcherFetch).not.toHaveBeenCalled();
-    watcherFetch.mockRestore();
+    expect(committeeFetch).not.toHaveBeenCalled();
+    committeeFetch.mockRestore();
   });
 });

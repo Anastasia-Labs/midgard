@@ -191,6 +191,7 @@ export const fixture = async ({
     key: { Key: { key: headerHash } },
     next: "Empty",
     data: castStateQueueNodeToData({
+      proven_fraud: null,
       header,
       da_attestation: NO_DA_ATTESTATION,
     }) as never,

@@ -439,6 +439,7 @@ const buildTestContracts = async (
       stateQueueMinting.policyId,
       base.daAttestation.policyId,
       availabilityChallenge.policyId,
+      base.fraudProof.policyId,
     ],
   );
   const commitYield = makeSpendingValidator(

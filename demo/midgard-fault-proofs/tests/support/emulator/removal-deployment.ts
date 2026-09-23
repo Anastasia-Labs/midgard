@@ -209,6 +209,29 @@ export const buildRemovalDeploymentInfo = (
             entryName,
             {
               scriptHash: steps[index]!.spendingScriptHash,
+              ...(index === 0 &&
+              (categoryName === "fabricatedDeposit" ||
+                categoryName === "fabricatedWithdrawal")
+                ? {
+                    eventHistoryBounds: {
+                      inlineLimitBytes:
+                        contracts.fraudProofContracts[
+                          categoryName
+                        ].history.inlineLimitBytes.toString(),
+                      maxPayloadBytes:
+                        contracts.fraudProofContracts[
+                          categoryName
+                        ].history.maxPayloadBytes.toString(),
+                      maxPayloadNodes:
+                        contracts.fraudProofContracts[
+                          categoryName
+                        ].history.maxPayloadNodes.toString(),
+                    },
+                    eventHistoryRetentionAddress:
+                      contracts.fraudProofContracts[categoryName].history
+                        .retentionAddress,
+                  }
+                : {}),
               ...(published === undefined
                 ? {}
                 : {

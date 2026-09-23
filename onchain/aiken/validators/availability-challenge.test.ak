@@ -196,7 +196,11 @@ fn terminal_accumulator_asset_name() -> ByteArray {
 fn node_output(status: availability.StateQueueStatusV1) -> Output {
   let datum: state_queue.Datum = linked_list.Element {
     data: linked_list.Node(
-      state_queue.StateQueueNode { header: header(), da_attestation: status },
+      state_queue.StateQueueNode {
+        header: header(),
+        da_attestation: status,
+        proven_fraud: None,
+      },
     ),
     link: None,
   }

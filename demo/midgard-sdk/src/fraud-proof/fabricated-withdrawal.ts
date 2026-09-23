@@ -57,6 +57,7 @@ import {
   OutputReference,
   OutputReferenceSchema,
   POSIXTimeSchema,
+  ValueSchema,
 } from "../common.js";
 import {
   WithdrawalBody,
@@ -65,14 +66,16 @@ import {
   type WithdrawalSignature,
   WithdrawalSignatureSchema,
 } from "../ledger-state.js";
+import { CompletedFraudWitnessSchema } from "../state-queue.js";
 import {
   type RootMembershipProof,
   WithdrawalSourceMembershipProofSchema,
 } from "../transition-trace.js";
 import {
-  WithdrawalOrderDatum,
-  WithdrawalOrderDatumSchema,
-} from "../user-events/withdrawal.js";
+  EventHistoryCommitmentSchema,
+  EventHistoryPayloadSchema,
+} from "../user-events/history.js";
+import { WithdrawalOrderDatum } from "../user-events/withdrawal.js";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "./catalogue.js";
 import {
   faultProofStepDatumSchema,
@@ -175,6 +178,7 @@ export const FabricatedWithdrawalStep01SpendRedeemer =
 // ## Step 02 — authenticated L1 withdrawal evidence
 
 export const FabricatedWithdrawalStep02StateSchema = Data.Object({
+  state_queue_policy: Data.Bytes({ minLength: 28, maxLength: 28 }),
   /** 28-byte hash of the challenged block header. */
   challenged_header_hash: FabricatedWithdrawalChallengedHeaderHashSchema,
   /** Challenged header's `start_time`. */
@@ -209,13 +213,15 @@ export const FabricatedWithdrawalStep02Datum =
 export const FabricatedWithdrawalEvidenceSchema = Data.Enum([
   Data.Object({
     AbsentWithdrawalIdentity: Data.Object({
-      unspent_ref_input_index: Data.Integer(),
+      hub_ref_input_index: Data.Integer(),
+      history_ref_input_index: Data.Integer(),
     }),
   }),
   Data.Object({
     PresentWithdrawalEvent: Data.Object({
       hub_ref_input_index: Data.Integer(),
       event_ref_input_index: Data.Integer(),
+      external_ref_input_index: Data.Nullable(Data.Integer()),
     }),
   }),
 ]);
@@ -230,8 +236,7 @@ export const FabricatedWithdrawalEvidenceVerdictSchema = Data.Enum([
   Data.Literal("WithdrawalIdentityAbsent"),
   Data.Object({
     WithdrawalEventObserved: Data.Object({
-      event_datum_hash: H32Schema,
-      event_inclusion_time: POSIXTimeSchema,
+      commitment: EventHistoryCommitmentSchema,
     }),
   }),
 ]);
@@ -272,6 +277,7 @@ export const FabricatedWithdrawalStep02SpendRedeemer =
 // ## Step 03 — fault classification
 
 export const FabricatedWithdrawalStep03StateSchema = Data.Object({
+  state_queue_policy: Data.Bytes({ minLength: 28, maxLength: 28 }),
   /** 28-byte hash of the challenged block header. */
   challenged_header_hash: FabricatedWithdrawalChallengedHeaderHashSchema,
   /** Challenged header's `start_time`. */
@@ -304,20 +310,13 @@ export const FabricatedWithdrawalStep03Datum =
     FabricatedWithdrawalStep03DatumSchema,
   );
 
-/**
- * The prover's opening of step-02's retained event-datum commitment.
- *
- * On chain the `RetainedEventDatum` field is an opaque `Data`, because the step
- * hashes it before it decodes it. Off chain it is typed as the withdrawal event
- * datum it must decode to: the wire bytes are identical, and the tighter type
- * means a builder cannot assemble an opening the L1 step would reject at decode
- * time.
- */
+/** Reopen the authenticated payload and original L1 Value, independent of pointers. */
 export const FabricatedWithdrawalAuthenticContentOpeningSchema = Data.Enum([
   Data.Literal("NoAuthenticContent"),
   Data.Object({
-    RetainedEventDatum: Data.Object({
-      event_datum: WithdrawalOrderDatumSchema,
+    RetainedEventData: Data.Object({
+      payload: EventHistoryPayloadSchema,
+      original_assets: ValueSchema,
     }),
   }),
 ]);
@@ -357,13 +356,18 @@ export const FabricatedWithdrawalStep03SpendRedeemer =
 
 // ## Step 04 — the established fault
 
-/** The `FabricatedWithdrawal` violation, in its two shapes. */
+/** Authenticated absence, content mismatch, or ineligible timing. */
 export const FabricatedWithdrawalFaultSchema = Data.Enum([
   Data.Literal("NonexistentWithdrawalIdentity"),
   Data.Object({
     MismatchedWithdrawalContent: Data.Object({
       committed_withdrawal_content_hash: H32Schema,
       authentic_withdrawal_content_hash: H32Schema,
+      event_inclusion_time: POSIXTimeSchema,
+    }),
+  }),
+  Data.Object({
+    IneligibleWithdrawalEvent: Data.Object({
       event_inclusion_time: POSIXTimeSchema,
     }),
   }),
@@ -376,6 +380,7 @@ export const FabricatedWithdrawalFault = asDataType<FabricatedWithdrawalFault>(
 );
 
 export const FabricatedWithdrawalStep04StateSchema = Data.Object({
+  state_queue_policy: Data.Bytes({ minLength: 28, maxLength: 28 }),
   /** 28-byte hash of the challenged block header. */
   challenged_header_hash: FabricatedWithdrawalChallengedHeaderHashSchema,
   /** Challenged header's `start_time`. */
@@ -413,6 +418,7 @@ export const FabricatedWithdrawalStep04ArgsSchema = Data.Object({
   output_index: Data.Integer(),
   /** Index of the fraud-proof mint redeemer. */
   fraud_proof_mint_redeemer_index: Data.Integer(),
+  completed_fraud_witness: CompletedFraudWitnessSchema,
 });
 export type FabricatedWithdrawalStep04Args = Data.Static<
   typeof FabricatedWithdrawalStep04ArgsSchema
@@ -545,8 +551,7 @@ export const withdrawalEventDatumCommitment = (
 /**
  * The withdrawal event NFT asset name for a committed identity: Blake2b-256 of
  * the `WithdrawalId`'s canonical bytes. Twin of `user_events.out_ref_to_nonce`,
- * and the reason a still-unspent output at that reference proves no such event was
- * ever authenticated.
+ * with the existing user event ID preserved.
  */
 export const withdrawalEventNonce = (
   withdrawalId: OutputReference,
@@ -561,11 +566,13 @@ export const withdrawalEventNonce = (
  * `expected_output_state`.
  */
 export const fabricatedWithdrawalStep02State = ({
+  stateQueuePolicy,
   challengedHeaderHash,
   headerStartTime,
   headerEndTime,
   committedWithdrawal,
 }: {
+  readonly stateQueuePolicy: string;
   readonly challengedHeaderHash: FabricatedWithdrawalChallengedHeaderHash;
   readonly headerStartTime: bigint;
   readonly headerEndTime: bigint;
@@ -574,6 +581,7 @@ export const fabricatedWithdrawalStep02State = ({
   Effect.map(
     withdrawalContentCommitment(committedWithdrawal.value),
     (committed_withdrawal_content_hash) => ({
+      state_queue_policy: stateQueuePolicy,
       challenged_header_hash: challengedHeaderHash,
       header_start_time: headerStartTime,
       header_end_time: headerEndTime,
@@ -587,6 +595,7 @@ export const fabricatedWithdrawalStep03State = (
   state: FabricatedWithdrawalStep02State,
   verdict: FabricatedWithdrawalEvidenceVerdict,
 ): FabricatedWithdrawalStep03State => ({
+  state_queue_policy: state.state_queue_policy,
   challenged_header_hash: state.challenged_header_hash,
   header_start_time: state.header_start_time,
   header_end_time: state.header_end_time,
@@ -600,6 +609,7 @@ export const fabricatedWithdrawalStep04State = (
   state: FabricatedWithdrawalStep03State,
   fault: FabricatedWithdrawalFault,
 ): FabricatedWithdrawalStep04State => ({
+  state_queue_policy: state.state_queue_policy,
   challenged_header_hash: state.challenged_header_hash,
   header_start_time: state.header_start_time,
   header_end_time: state.header_end_time,
@@ -621,6 +631,10 @@ export const isFabricatedWithdrawalFault = (
   const { fault } = state;
   if (fault === "NonexistentWithdrawalIdentity") {
     return true;
+  }
+  if ("IneligibleWithdrawalEvent" in fault) {
+    const time = fault.IneligibleWithdrawalEvent.event_inclusion_time;
+    return !(state.header_start_time < time && time <= state.header_end_time);
   }
   const {
     committed_withdrawal_content_hash,

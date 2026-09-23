@@ -5,6 +5,7 @@
 import { Effect } from "effect";
 
 import { type FraudProofs } from "../../common.js";
+import { type EventHistoryPayloadBounds } from "../../user-events/history-payload.js";
 import { buildCanonicalDecodabilityChain } from "./families/canonical-decodability.js";
 import { buildCommittedFieldShapeChain } from "./families/committed-field-shape.js";
 import { buildCrossBlockDuplicateEventChain } from "./families/cross-block-duplicate-event.js";
@@ -70,7 +71,9 @@ import {
 } from "./types.js";
 
 export const buildFaultProofContracts = (
-  params: BuildMinAdaFaultProofContractsParams,
+  params: BuildMinAdaFaultProofContractsParams & {
+    readonly eventHistoryBounds: EventHistoryPayloadBounds;
+  },
 ): Effect.Effect<FaultProofContracts, Error> =>
   Effect.gen(function* () {
     const shared = yield* buildSharedFaultProofContracts(params);

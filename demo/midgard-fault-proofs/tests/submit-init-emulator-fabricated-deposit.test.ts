@@ -1,26 +1,20 @@
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
 /**
- * `fabricated-deposit` emulator lifecycle (Goal task `Q39`, §9.1 output 9).
- *
- * Drives the real Aiken step validators through a Lucid emulator with the
- * production submitters: init -> step-01 -> step-02 -> step-03 -> step-04 ->
- * permanent fraud-proof token, plus the valid-block negative on both planes
- * (off-chain fail-closed and on-chain membership rejection).
- *
- * The committed evidence is a `deposits_root` leaf that pairs the authentic
- * deposit identity with **diverted** content — exactly the fault the family
- * adjudicates (Q39's `MismatchedDepositContent` shape). The authentic L1
- * deposit event is exhibited as a reference input carrying the hub-registered
- * deposit event NFT, so step-02's verdict rests on authenticated material.
- *
- * Until #614 regenerated the blueprint this file was a boundary tripwire that
- * measured the family's titles as absent (#482); the titles are present now,
- * so the tripwire is retired into this real lifecycle.
+ * Complete fabricated-deposit proof fixture: real list initialization and
+ * nonce admission, retained-DA preparation, catalogue-member CT initialization,
+ * production stages 01-04, atomic queue marking, and fraud removal. Both inline
+ * and separately prepublished external payloads are exercised. Content-matching
+ * eligible events refuse this family off chain and cannot open a substituted
+ * committed leaf on chain; unrelated L2 validity is outside this fixture.
  */
 import { outRefLabel } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, toUnit } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
@@ -53,6 +47,11 @@ import {
   outRefCbor,
   reencodeFixturePayload,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { historyWitnessFixture } from "./helpers/history-witness-fixture.js";
+import {
+  prepareFamilyHistory,
+  recordFamilyTransaction,
+} from "./support/emulator/family-history.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -68,6 +67,29 @@ import {
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
 
+const historyRecords: unknown[] = [];
+afterAll(() => {
+  const directory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
+  if (directory === undefined) return;
+  mkdirSync(directory, { recursive: true });
+  const blueprint = readFileSync(
+    new URL("../../../onchain/aiken/plutus.json", import.meta.url),
+  );
+  writeFileSync(
+    join(directory, "full-deposit-history.json"),
+    JSON.stringify(
+      {
+        scope:
+          "Real history admission, catalogue-member CT initialization adapter, production stages 01-04 and fraud removal; fixture catalogue governance, not live acceptance",
+        blueprintSha256: createHash("sha256").update(blueprint).digest("hex"),
+        records: historyRecords,
+      },
+      (_, v: unknown) => (typeof v === "bigint" ? v.toString() : v),
+      2,
+    ) + "\n",
+  );
+});
+
 // The `mismatched_content_block_v1` scenario, measured out of
 // `onchain/aiken/lib/midgard/fraud-proofs/fabricated-deposit/step-0{1,2}.ak`:
 // the authentic deposit identity committed with diverted content, and the
@@ -78,8 +100,6 @@ const VALUE_DIVERTED_DEPOSIT_INFO =
   "d8799fd8799fd8799f581c2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2dffd87a80ff00d87a80ff";
 const DATUM_AUTHENTIC_DEPOSIT_EVENT =
   "d8799fd8799fd8799f58207a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a03ffd8799fd8799fd8799f581c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1cffd87a80ff00d87a80ffff0f581c57575757575757575757575757575757575757575757575757575757ff";
-const HASH_AUTHENTIC_DEPOSIT_EVENT_DATUM =
-  "2538e7986f6a3468a1dd016318a82d3dd4f60d55f6e688e164dd35564c4a85b4";
 const HASH_AUTHENTIC_DEPOSIT_INFO =
   "89ccb485f7c52cf77b0bdec91ab262a90bc7b519e9b6fae5a2a03529833c6863";
 const HASH_DIVERTED_DEPOSIT_INFO =
@@ -188,7 +208,14 @@ const makeEmulatorHarness = async () => {
   expect(category.scriptHash).toBe(
     fabricatedDeposit.steps[0].spendingScriptHash,
   );
-  return { ...harness, fabricatedDeposit, category };
+  const history = await prepareFamilyHistory(harness, historyRecords);
+  return {
+    ...harness,
+    contracts: history.contracts,
+    history,
+    fabricatedDeposit,
+    category,
+  };
 };
 
 /**
@@ -199,6 +226,7 @@ const makeEmulatorHarness = async () => {
 const setupChallengedBlockOnEmulator = async (
   harness: Awaited<ReturnType<typeof makeEmulatorHarness>>,
   committedInfoCbor: string,
+  mode: "inline" | "external" = "inline",
 ) => {
   const {
     emulator,
@@ -208,15 +236,21 @@ const setupChallengedBlockOnEmulator = async (
     nonceUtxo,
     fabricatedDeposit,
   } = harness;
+  const nonce = harness.history.nonce("Deposit");
+  const eventId = {
+    transactionId: nonce.txHash,
+    outputIndex: BigInt(nonce.outputIndex),
+  };
+  const keyCbor = SDK.committedDepositKeyBytes(eventId);
   const counted = await buildCountedRoot(SDK.ROOT_DOMAINS.deposits, [
     {
-      key: Buffer.from(KEY_AUTHENTIC_DEPOSIT_ID, "hex"),
+      key: Buffer.from(keyCbor, "hex"),
       value: Buffer.from(committedInfoCbor, "hex"),
     },
   ]);
   const funderKeyHash = await funderPaymentKeyHash(funderLucid);
   const headerStartTime =
-    alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 120_000) -
+    alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 240_000) -
     1;
   // `header_v1_is_valid` (state-queue `CommitBlockHeader`) enforces the
   // transition-commitment identities: `total_event_count` must equal the sum
@@ -234,13 +268,27 @@ const setupChallengedBlockOnEmulator = async (
     transitionTraceRoot: counted.root,
     eventToStepRoot: counted.root,
   };
+  const authenticEvent = {
+    ...Data.from(DATUM_AUTHENTIC_DEPOSIT_EVENT, SDK.DepositDatum).event,
+    id: eventId,
+  };
+  if (mode === "external") authenticEvent.info.l2_datum = "ab".repeat(2000);
+  let admitted: Awaited<ReturnType<typeof harness.history.admit>> | undefined;
   const setup = await submitSetupTx({
     lucid: funderLucid,
     contracts,
     nonceUtxo,
     catalogue,
     header,
+    beforeHeaderCommit: async (hub) => {
+      admitted = await harness.history.admit(
+        hub,
+        { DepositPayload: { event: authenticEvent } },
+        header,
+      );
+    },
   });
+  if (admitted === undefined) throw new Error("History admission did not run");
   const step01ReferenceScriptUtxo = (
     await publishPlainReferenceScriptUtxo({
       lucid: funderLucid,
@@ -269,25 +317,16 @@ const setupChallengedBlockOnEmulator = async (
       label: "fabricated-deposit step-04",
     })
   ).utxo;
-  // The authentic event's inclusion time, inside this header's establishment
-  // window `(start_time, end_time]`.
-  const eventInclusionTime = header.startTime + 500n;
-  const authenticEventDatum: SDK.DepositDatum = {
-    ...Data.from(DATUM_AUTHENTIC_DEPOSIT_EVENT, SDK.DepositDatum),
-    inclusion_time: eventInclusionTime,
-  };
-  const eventDatumCbor = Data.to(authenticEventDatum, SDK.DepositDatum);
-  const observedEventAssetName = await Effect.runPromise(
-    SDK.depositEventNonce(authenticEventDatum.event.id),
-  );
+  const eventInclusionTime = admitted.captured.commitment.inclusion_time;
+  expect(eventInclusionTime).toBe(header.endTime);
   return {
     counted,
     header,
     setup,
     eventInclusionTime,
-    authenticEventDatum,
-    eventDatumCbor,
-    observedEventAssetName,
+    keyCbor,
+    admitted,
+    eventUtxo: admitted.witness.anchor.utxo,
     referenceScriptUtxos: [
       step01ReferenceScriptUtxo,
       step02ReferenceScriptUtxo,
@@ -311,6 +350,16 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
     expect(evidence.headerHash).toBe(block.headerHash);
 
     // ## 2. The proof plan the prover would submit.
+    const witness = await historyWitnessFixture(
+      {
+        DepositPayload: {
+          event: Data.from(DATUM_AUTHENTIC_DEPOSIT_EVENT, SDK.DepositDatum)
+            .event,
+        },
+      },
+      AUTHENTIC_INCLUSION_TIME,
+      L1_OBSERVATION,
+    );
     const plan = await prepareFabricatedDepositFromCommittedLeaves({
       headerHash: evidence.headerHash,
       committedDepositsRoot: evidence.committedDepositsRoot,
@@ -318,14 +367,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       headerStartTime: evidence.headerStartTime,
       headerEndTime: evidence.headerEndTime,
       entries: evidence.entries,
-      witness: {
-        kind: "present_event",
-        observation: L1_OBSERVATION,
-        depositEventPolicyId: h28(0x18),
-        observedEventAssetName:
-          "db496846395df718772b56f398cc7c7882869ddc0154fd035d63da1c3e95dd06",
-        eventDatumCbor: DATUM_AUTHENTIC_DEPOSIT_EVENT,
-      },
+      witness,
     });
     expect(plan.threadTokenAssetName).toBe(
       `${SDK.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID}${block.headerHash}`,
@@ -337,6 +379,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       SDK.FabricatedDepositStep01Datum,
     );
     const step01Handoff = await deriveFabricatedDepositStep01Handoff({
+      stateQueuePolicyId: "15".repeat(28),
       header: block.header,
       headerHash: block.headerHash,
       inclusion: parseSubmitFabricatedDepositInclusion(plan.depositInclusion),
@@ -347,12 +390,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
     );
     const step03State = SDK.fabricatedDepositStep03State(
       step01Handoff.step02State,
-      {
-        DepositEventObserved: {
-          event_datum_hash: HASH_AUTHENTIC_DEPOSIT_EVENT_DATUM,
-          event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
-        },
-      },
+      plan.classification.verdict,
     );
     const step03Datum = Data.to(
       { fraud_prover: FRAUD_PROVER, data: step03State },
@@ -360,7 +398,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
     );
     const step03Handoff = await deriveFabricatedDepositStep03Handoff({
       state: step03State,
-      eventDatumCbor: DATUM_AUTHENTIC_DEPOSIT_EVENT,
+      openingCbor: plan.classification.openingCbor!,
     });
     const step04Datum = Data.to(
       { fraud_prover: FRAUD_PROVER, data: step03Handoff.step04State },
@@ -385,334 +423,377 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
     }
   }, 60_000);
 
-  it("proves a fabricated deposit end-to-end, mints permanent evidence, and removes the fraudulent commitment", async () => {
-    const harness = await makeEmulatorHarness();
-    const {
-      realBlueprint,
-      funderLucid,
-      proverLucid,
-      proverSigner,
-      contracts,
-      catalogue,
-      fabricatedDeposit,
-      category,
-    } = harness;
+  it.each(["inline", "external"] as const)(
+    "proves a fabricated deposit with %s history, mints permanent evidence, and removes the fraudulent commitment",
+    async (mode) => {
+      const harness = await makeEmulatorHarness();
+      const {
+        realBlueprint,
+        funderLucid,
+        proverLucid,
+        proverSigner,
+        contracts,
+        catalogue,
+        fabricatedDeposit,
+        category,
+      } = harness;
 
-    const {
-      counted,
-      header,
-      setup,
-      eventInclusionTime,
-      eventDatumCbor,
-      observedEventAssetName,
-      referenceScriptUtxos,
-    } = await setupChallengedBlockOnEmulator(
-      harness,
-      VALUE_DIVERTED_DEPOSIT_INFO,
-    );
-    const { headerHash } = setup;
-    await expectStateQueueHeaderOrder({
-      lucid: funderLucid,
-      contracts,
-      expectedHeaderHashes: [headerHash],
-    });
-    const removalReferences = await publishRemovalReferenceScripts({
-      lucid: proverLucid,
-      contracts,
-    });
-
-    // ## The authentic L1 deposit event, minted under the hub-registered
-    // deposit policy with the nonce asset name the committed identity derives.
-    const eventUnit = toUnit(
-      contracts.deposit.policyId,
-      observedEventAssetName,
-    );
-    const eventMintUnsigned = await funderLucid
-      .newTx()
-      .mintAssets({ [eventUnit]: 1n }, Data.void())
-      .pay.ToContract(
-        contracts.deposit.spendingScriptAddress,
-        { kind: "inline", value: eventDatumCbor },
-        { lovelace: 5_000_000n, [eventUnit]: 1n },
-      )
-      .attach.MintingPolicy(contracts.deposit.mintingScript)
-      .complete({ localUPLCEval: true });
-    const eventMintSigned = await eventMintUnsigned.sign
-      .withWallet()
-      .complete();
-    await funderLucid.awaitTx(await eventMintSigned.submit());
-    const eventUtxo = await expectSingleUtxoWithUnit(
-      funderLucid,
-      contracts.deposit.spendingScriptAddress,
-      eventUnit,
-    );
-
-    // ## Evidence admission over the emulator block's retained-DA bytes.
-    const base = await buildCanonicalBlockFixture({ transactions: [] });
-    const payload: SDK.DaPayload = {
-      ...base.payload,
-      block_body: {
-        ...base.payload.block_body,
+      const {
+        counted,
         header,
-        header_hash: headerHash,
-        deposits: [[KEY_AUTHENTIC_DEPOSIT_ID, VALUE_DIVERTED_DEPOSIT_INFO]],
-        counts: {
-          ...base.payload.block_body.counts,
-          depositCount: counted.count,
+        setup,
+        eventInclusionTime,
+        keyCbor,
+        admitted,
+        eventUtxo,
+        referenceScriptUtxos,
+      } = await setupChallengedBlockOnEmulator(
+        harness,
+        VALUE_DIVERTED_DEPOSIT_INFO,
+        mode,
+      );
+      if (!("DepositPayload" in admitted.captured.payload))
+        throw new Error("Wrong payload kind");
+      const authenticDepositInfoHash = await Effect.runPromise(
+        SDK.depositInfoCommitment(
+          admitted.captured.payload.DepositPayload.event.info,
+        ),
+      );
+      if (mode === "inline")
+        expect(authenticDepositInfoHash).toBe(HASH_AUTHENTIC_DEPOSIT_INFO);
+      const { headerHash } = setup;
+      await expectStateQueueHeaderOrder({
+        lucid: funderLucid,
+        contracts,
+        expectedHeaderHashes: [headerHash],
+      });
+      const removalReferences = await publishRemovalReferenceScripts({
+        lucid: proverLucid,
+        contracts,
+      });
+
+      // ## Evidence admission over the emulator block's retained-DA bytes.
+      const base = await buildCanonicalBlockFixture({ transactions: [] });
+      const payload: SDK.DaPayload = {
+        ...base.payload,
+        block_body: {
+          ...base.payload.block_body,
+          header,
+          header_hash: headerHash,
+          deposits: [[keyCbor, VALUE_DIVERTED_DEPOSIT_INFO]],
+          counts: {
+            ...base.payload.block_body.counts,
+            depositCount: counted.count,
+          },
         },
-      },
-    };
-    const evidence = await fabricatedDepositBlockEvidenceFromVerifiedPayload({
-      observation: authenticatedHeaderObservation({
-        ...base,
-        header,
-        headerHash,
-      }),
-      payloadEnvelopeCbor: await reencodeFixturePayload(payload),
-      daProvenance: DA_PROVENANCE,
-    });
-    expect(evidence.headerHash).toBe(headerHash);
-    expect(evidence.committedDepositsRoot).toBe(counted.root);
+      };
+      const evidence = await fabricatedDepositBlockEvidenceFromVerifiedPayload({
+        observation: authenticatedHeaderObservation({
+          ...base,
+          header,
+          headerHash,
+        }),
+        payloadEnvelopeCbor: await reencodeFixturePayload(payload),
+        daProvenance: DA_PROVENANCE,
+      });
+      expect(evidence.headerHash).toBe(headerHash);
+      expect(evidence.committedDepositsRoot).toBe(counted.root);
 
-    // ## The proof plan, classified against the authentic event.
-    const plan = await prepareFabricatedDepositFromCommittedLeaves({
-      headerHash: evidence.headerHash,
-      committedDepositsRoot: evidence.committedDepositsRoot,
-      depositCount: evidence.depositCount,
-      headerStartTime: evidence.headerStartTime,
-      headerEndTime: evidence.headerEndTime,
-      entries: evidence.entries,
-      witness: {
-        kind: "present_event",
-        observation: L1_OBSERVATION,
-        depositEventPolicyId: contracts.deposit.policyId,
-        observedEventAssetName,
-        eventDatumCbor,
-      },
-    });
-    expect(plan.threadTokenAssetName).toBe(
-      `${SDK.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID}${headerHash}`,
-    );
-    expect(plan.classification.fault).toEqual({
-      MismatchedDepositContent: {
-        committed_deposit_info_hash: HASH_DIVERTED_DEPOSIT_INFO,
-        authentic_deposit_info_hash: HASH_AUTHENTIC_DEPOSIT_INFO,
-        event_inclusion_time: eventInclusionTime,
-      },
-    });
+      // ## The proof plan, classified against the authentic event.
+      const plan = await prepareFabricatedDepositFromCommittedLeaves({
+        headerHash: evidence.headerHash,
+        committedDepositsRoot: evidence.committedDepositsRoot,
+        depositCount: evidence.depositCount,
+        headerStartTime: evidence.headerStartTime,
+        headerEndTime: evidence.headerEndTime,
+        entries: evidence.entries,
+        witness: { ...admitted.raw, observation: L1_OBSERVATION },
+      });
+      expect(plan.threadTokenAssetName).toBe(
+        `${SDK.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID}${headerHash}`,
+      );
+      expect(plan.classification.fault).toEqual({
+        MismatchedDepositContent: {
+          committed_deposit_info_hash: HASH_DIVERTED_DEPOSIT_INFO,
+          authentic_deposit_info_hash: authenticDepositInfoHash,
+          event_inclusion_time: eventInclusionTime,
+        },
+      });
 
-    // ## init
-    const initResult = await submitFabricatedFamilyInit({
-      lucid: proverLucid,
-      realBlueprint,
-      contracts,
-      catalogueRoot: catalogue.root,
-      category,
-      family: fabricatedDeposit,
-      familyLabel: "fabricated-deposit",
-      signer: proverSigner,
-      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-    });
-    expect(initResult.txHash).toHaveLength(64);
-    expect(initResult.fraudulentHeaderHash).toBe(headerHash);
-    expect(initResult.computationThreadAssetName).toBe(
-      plan.threadTokenAssetName,
-    );
-    const firstStepUtxo = await expectSingleUtxoWithUnit(
-      proverLucid,
-      initResult.firstStepAddress,
-      initResult.computationThreadUnit,
-    );
-    expect(outRefLabel(firstStepUtxo)).toBe(initResult.threadOutRef);
-    expect(
-      Data.from(firstStepUtxo.datum!, SDK.FabricatedDepositStep01Datum),
-    ).toEqual({ fraud_prover: proverSigner.paymentKeyHash, data: null });
-
-    // ## step-01: bind the committed diverted leaf to the header
-    const inclusion = parseSubmitFabricatedDepositInclusion(
-      plan.depositInclusion,
-    );
-    const expectedHandoff = await deriveFabricatedDepositStep01Handoff({
-      header,
-      headerHash,
-      inclusion,
-    });
-    const step01Result = await submitFabricatedDepositStep01({
-      lucid: proverLucid,
-      contracts: fabricatedDeposit,
-      network,
-      signer: proverSigner,
-      threadOutRef: initResult.threadOutRef,
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      depositInclusion: inclusion,
-      referenceScriptUtxo: referenceScriptUtxos[0],
-      awaitConfirmation: true,
-    });
-    expect(step01Result.txHash).toHaveLength(64);
-    expect(step01Result.fraudulentHeaderHash).toBe(headerHash);
-    expect(step01Result.committedDepositInfoHash).toBe(
-      HASH_DIVERTED_DEPOSIT_INFO,
-    );
-    await expect(
-      proverLucid.utxosAtWithUnit(
+      // ## init
+      const initResult = await submitFabricatedFamilyInit({
+        onSigned: (signed) =>
+          recordFamilyTransaction(
+            historyRecords,
+            `deposit-init-${mode}`,
+            signed,
+          ),
+        lucid: proverLucid,
+        realBlueprint,
+        contracts,
+        catalogueRoot: catalogue.root,
+        category,
+        family: fabricatedDeposit,
+        familyLabel: "fabricated-deposit",
+        signer: proverSigner,
+        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      });
+      expect(initResult.txHash).toHaveLength(64);
+      expect(initResult.fraudulentHeaderHash).toBe(headerHash);
+      expect(initResult.computationThreadAssetName).toBe(
+        plan.threadTokenAssetName,
+      );
+      const firstStepUtxo = await expectSingleUtxoWithUnit(
+        proverLucid,
         initResult.firstStepAddress,
         initResult.computationThreadUnit,
-      ),
-    ).resolves.toHaveLength(0);
-    const secondStepUtxo = await expectSingleUtxoWithUnit(
-      proverLucid,
-      step01Result.secondStepAddress,
-      initResult.computationThreadUnit,
-    );
-    expect(outRefLabel(secondStepUtxo)).toBe(step01Result.nextThreadOutRef);
-    // The handoff the L1 step-01 validator pinned is exactly the one the
-    // off-chain rule derives from the committed bytes.
-    expect(
-      Data.from(secondStepUtxo.datum!, SDK.FabricatedDepositStep02Datum),
-    ).toEqual({
-      fraud_prover: proverSigner.paymentKeyHash,
-      data: expectedHandoff.step02State,
-    });
+      );
+      expect(outRefLabel(firstStepUtxo)).toBe(initResult.threadOutRef);
+      expect(
+        Data.from(firstStepUtxo.datum!, SDK.FabricatedDepositStep01Datum),
+      ).toEqual({ fraud_prover: proverSigner.paymentKeyHash, data: null });
 
-    // ## step-02: authenticate the L1 deposit-event witness
-    const step02Result = await submitFabricatedDepositStep02({
-      lucid: proverLucid,
-      contracts: fabricatedDeposit,
-      network,
-      signer: proverSigner,
-      threadOutRef: step01Result.nextThreadOutRef,
-      evidence: { kind: "present_event", eventOutRef: outRefLabel(eventUtxo) },
-      referenceScriptUtxo: referenceScriptUtxos[1],
-      awaitConfirmation: true,
-    });
-    expect(step02Result.verdict).toEqual({
-      DepositEventObserved: {
-        event_datum_hash: plan.classification.eventDatumHash!,
-        event_inclusion_time: eventInclusionTime,
-      },
-    });
-    await expect(
-      proverLucid.utxosAtWithUnit(
+      // ## step-01: bind the committed diverted leaf to the header
+      const inclusion = parseSubmitFabricatedDepositInclusion(
+        plan.depositInclusion,
+      );
+      const expectedHandoff = await deriveFabricatedDepositStep01Handoff({
+        stateQueuePolicyId: contracts.stateQueue.policyId,
+        header,
+        headerHash,
+        inclusion,
+      });
+      const step01Result = await submitFabricatedDepositStep01({
+        preSubmitBoundary: async ({ signed }) =>
+          recordFamilyTransaction(
+            historyRecords,
+            `deposit-step-01-${mode}`,
+            signed,
+          ),
+        now: () => harness.emulator.now(),
+        lucid: proverLucid,
+        contracts: fabricatedDeposit,
+        network,
+        signer: proverSigner,
+        threadOutRef: initResult.threadOutRef,
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        depositInclusion: inclusion,
+        referenceScriptUtxo: referenceScriptUtxos[0],
+        awaitConfirmation: true,
+      });
+      expect(step01Result.txHash).toHaveLength(64);
+      expect(step01Result.fraudulentHeaderHash).toBe(headerHash);
+      expect(step01Result.committedDepositInfoHash).toBe(
+        HASH_DIVERTED_DEPOSIT_INFO,
+      );
+      await expect(
+        proverLucid.utxosAtWithUnit(
+          initResult.firstStepAddress,
+          initResult.computationThreadUnit,
+        ),
+      ).resolves.toHaveLength(0);
+      const secondStepUtxo = await expectSingleUtxoWithUnit(
+        proverLucid,
         step01Result.secondStepAddress,
         initResult.computationThreadUnit,
-      ),
-    ).resolves.toHaveLength(0);
-    const thirdStepUtxo = await expectSingleUtxoWithUnit(
-      proverLucid,
-      step02Result.thirdStepAddress,
-      initResult.computationThreadUnit,
-    );
-    expect(outRefLabel(thirdStepUtxo)).toBe(step02Result.nextThreadOutRef);
-    const step03State = SDK.fabricatedDepositStep03State(
-      expectedHandoff.step02State,
-      step02Result.verdict,
-    );
-    expect(
-      Data.from(thirdStepUtxo.datum!, SDK.FabricatedDepositStep03Datum),
-    ).toEqual({
-      fraud_prover: proverSigner.paymentKeyHash,
-      data: step03State,
-    });
+      );
+      expect(outRefLabel(secondStepUtxo)).toBe(step01Result.nextThreadOutRef);
+      // The handoff the L1 step-01 validator pinned is exactly the one the
+      // off-chain rule derives from the committed bytes.
+      expect(
+        Data.from(secondStepUtxo.datum!, SDK.FabricatedDepositStep02Datum),
+      ).toEqual({
+        fraud_prover: proverSigner.paymentKeyHash,
+        data: expectedHandoff.step02State,
+      });
 
-    // ## step-03: re-open the authenticated event datum and pin the fault
-    const step03Result = await submitFabricatedDepositStep03({
-      lucid: proverLucid,
-      contracts: fabricatedDeposit,
-      signer: proverSigner,
-      threadOutRef: step02Result.nextThreadOutRef,
-      eventDatumCbor,
-      referenceScriptUtxo: referenceScriptUtxos[2],
-      awaitConfirmation: true,
-    });
-    expect(step03Result.fault).toEqual(plan.classification.fault);
-    await expect(
-      proverLucid.utxosAtWithUnit(
+      // ## step-02: authenticate the L1 deposit-event witness
+      const step02Result = await submitFabricatedDepositStep02({
+        preSubmitBoundary: async ({ signed }) =>
+          recordFamilyTransaction(
+            historyRecords,
+            `deposit-step-02-${mode}`,
+            signed,
+          ),
+        now: () => harness.emulator.now(),
+        lucid: proverLucid,
+        contracts: fabricatedDeposit,
+        network,
+        signer: proverSigner,
+        threadOutRef: step01Result.nextThreadOutRef,
+        evidence: {
+          kind: "present_event",
+          eventOutRef: outRefLabel(eventUtxo),
+        },
+        referenceScriptUtxo: referenceScriptUtxos[1],
+        awaitConfirmation: true,
+      });
+      expect(step02Result.verdict).toEqual({
+        DepositEventObserved: { commitment: admitted.captured.commitment },
+      });
+      await expect(
+        proverLucid.utxosAtWithUnit(
+          step01Result.secondStepAddress,
+          initResult.computationThreadUnit,
+        ),
+      ).resolves.toHaveLength(0);
+      const thirdStepUtxo = await expectSingleUtxoWithUnit(
+        proverLucid,
         step02Result.thirdStepAddress,
         initResult.computationThreadUnit,
-      ),
-    ).resolves.toHaveLength(0);
-    const fourthStepUtxo = await expectSingleUtxoWithUnit(
-      proverLucid,
-      step03Result.fourthStepAddress,
-      initResult.computationThreadUnit,
-    );
-    expect(outRefLabel(fourthStepUtxo)).toBe(step03Result.nextThreadOutRef);
-    const step03Handoff = await deriveFabricatedDepositStep03Handoff({
-      state: step03State,
-      eventDatumCbor,
-    });
-    expect(
-      Data.from(fourthStepUtxo.datum!, SDK.FabricatedDepositStep04Datum),
-    ).toEqual({
-      fraud_prover: proverSigner.paymentKeyHash,
-      data: step03Handoff.step04State,
-    });
+      );
+      expect(outRefLabel(thirdStepUtxo)).toBe(step02Result.nextThreadOutRef);
+      const step03State = SDK.fabricatedDepositStep03State(
+        expectedHandoff.step02State,
+        step02Result.verdict,
+      );
+      expect(
+        Data.from(thirdStepUtxo.datum!, SDK.FabricatedDepositStep03Datum),
+      ).toEqual({
+        fraud_prover: proverSigner.paymentKeyHash,
+        data: step03State,
+      });
 
-    // ## step-04: adjudicate and mint the permanent fraud-proof token
-    const step04Result = await submitFabricatedDepositStep04({
-      lucid: proverLucid,
-      contracts: fabricatedDeposit,
-      signer: proverSigner,
-      threadOutRef: step03Result.nextThreadOutRef,
-      referenceScriptUtxo: referenceScriptUtxos[3],
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      awaitConfirmation: true,
-    });
-    expect(step04Result.fault).toEqual(plan.classification.fault);
-    expect(step04Result.fraudProofAssetName).toBe(plan.threadTokenAssetName);
-    // The computation thread is burned; the fraud-proof token is permanent.
-    await expect(
-      proverLucid.utxosAtWithUnit(
+      // ## step-03: re-open the authenticated event datum and pin the fault
+      const step03Result = await submitFabricatedDepositStep03({
+        preSubmitBoundary: async ({ signed }) =>
+          recordFamilyTransaction(
+            historyRecords,
+            `deposit-step-03-${mode}`,
+            signed,
+          ),
+        now: () => harness.emulator.now(),
+        lucid: proverLucid,
+        contracts: fabricatedDeposit,
+        signer: proverSigner,
+        threadOutRef: step02Result.nextThreadOutRef,
+        openingCbor: admitted.openingCbor,
+        referenceScriptUtxo: referenceScriptUtxos[2],
+        awaitConfirmation: true,
+      });
+      expect(step03Result.fault).toEqual(plan.classification.fault);
+      await expect(
+        proverLucid.utxosAtWithUnit(
+          step02Result.thirdStepAddress,
+          initResult.computationThreadUnit,
+        ),
+      ).resolves.toHaveLength(0);
+      const fourthStepUtxo = await expectSingleUtxoWithUnit(
+        proverLucid,
         step03Result.fourthStepAddress,
         initResult.computationThreadUnit,
-      ),
-    ).resolves.toHaveLength(0);
-    const fraudProofUtxo = await expectSingleUtxoWithUnit(
-      proverLucid,
-      step04Result.fraudProofAddress,
-      step04Result.fraudProofUnit,
-    );
-    expect(outRefLabel(fraudProofUtxo)).toBe(step04Result.fraudProofOutRef);
-    expect(fraudProofUtxo.assets[step04Result.fraudProofUnit]).toBe(1n);
-    expect(Data.from(fraudProofUtxo.datum!, SDK.FraudProofTokenDatum)).toEqual({
-      fraud_prover: proverSigner.paymentKeyHash,
-    });
+      );
+      expect(outRefLabel(fourthStepUtxo)).toBe(step03Result.nextThreadOutRef);
+      const step03Handoff = await deriveFabricatedDepositStep03Handoff({
+        state: step03State,
+        openingCbor: admitted.openingCbor,
+      });
+      expect(
+        Data.from(fourthStepUtxo.datum!, SDK.FabricatedDepositStep04Datum),
+      ).toEqual({
+        fraud_prover: proverSigner.paymentKeyHash,
+        data: step03Handoff.step04State,
+      });
 
-    // ## removal: consume the convicted state-queue node while retaining the
-    // permanent proof token at its original out-ref.
-    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
-      removalReferenceScripts: removalReferences.published,
-    });
-    const removeNow = BigInt(harness.emulator.now());
-    const removal = await submitRemoveFraudulentBlock({
-      lucid: proverLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      fraudCategory: "fabricatedDeposit",
-      fraudulentHeaderHash: headerHash,
-      awaitConfirmation: true,
-      requireReferenceScripts: true,
-      validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
-      validTo: removeNow + 300_000n,
-    });
-    expect(removal.fraudCategory).toBe("fabricatedDeposit");
-    expect(removal.transactions).toHaveLength(1);
-    await expect(
-      proverLucid.utxosAtWithUnit(
-        contracts.stateQueue.spendingScriptAddress,
+      // ## step-04: adjudicate and mint the permanent fraud-proof token
+      const step04Result = await submitFabricatedDepositStep04({
+        preSubmitBoundary: async ({ signed }) =>
+          recordFamilyTransaction(
+            historyRecords,
+            `deposit-step-04-${mode}`,
+            signed,
+          ),
+        now: () => harness.emulator.now(),
+        lucid: proverLucid,
+        contracts: fabricatedDeposit,
+        signer: proverSigner,
+        threadOutRef: step03Result.nextThreadOutRef,
+        referenceScriptUtxo: referenceScriptUtxos[3],
+        witnessReferenceScripts: {
+          ...harness.witnessReferenceScripts,
+          stateQueueSpend: removalReferences.published.stateQueueSpend,
+        },
+        awaitConfirmation: true,
+      });
+      expect(step04Result.fault).toEqual(plan.classification.fault);
+      expect(step04Result.fraudProofAssetName).toBe(plan.threadTokenAssetName);
+      const markedQueue = await proverLucid.utxoByUnit(
         setup.stateQueueBlockUnit,
-      ),
-    ).resolves.toHaveLength(0);
-    const retainedFraudProof = await expectSingleUtxoWithUnit(
-      proverLucid,
-      step04Result.fraudProofAddress,
-      step04Result.fraudProofUnit,
-    );
-    expect(outRefLabel(retainedFraudProof)).toBe(step04Result.fraudProofOutRef);
-  }, 240_000);
+      );
+      expect(markedQueue.txHash).toBe(step04Result.txHash);
+      expect(outRefLabel(markedQueue)).not.toBe(setup.fraudulentBlockOutRef);
+      const markedView = await Effect.runPromise(
+        SDK.getLinkedListNodeViewFromUTxO(markedQueue),
+      );
+      expect(
+        Effect.runSync(SDK.getStateQueueNodeFromStateQueueDatum(markedView))
+          .proven_fraud,
+      ).toBe(plan.threadTokenAssetName);
+      // The computation thread is burned; the fraud-proof token is permanent.
+      await expect(
+        proverLucid.utxosAtWithUnit(
+          step03Result.fourthStepAddress,
+          initResult.computationThreadUnit,
+        ),
+      ).resolves.toHaveLength(0);
+      const fraudProofUtxo = await expectSingleUtxoWithUnit(
+        proverLucid,
+        step04Result.fraudProofAddress,
+        step04Result.fraudProofUnit,
+      );
+      expect(outRefLabel(fraudProofUtxo)).toBe(step04Result.fraudProofOutRef);
+      expect(fraudProofUtxo.assets[step04Result.fraudProofUnit]).toBe(1n);
+      expect(
+        Data.from(fraudProofUtxo.datum!, SDK.FraudProofTokenDatum),
+      ).toEqual({
+        fraud_prover: proverSigner.paymentKeyHash,
+      });
+
+      // ## removal: consume the convicted state-queue node while retaining the
+      // permanent proof token at its original out-ref.
+      const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
+        removalReferenceScripts: removalReferences.published,
+      });
+      const removeNow = BigInt(harness.emulator.now());
+      const removal = await submitRemoveFraudulentBlock({
+        preSubmitBoundary: async ({ signed }) =>
+          recordFamilyTransaction(
+            historyRecords,
+            `deposit-removal-${mode}`,
+            signed,
+          ),
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        fraudCategory: "fabricatedDeposit",
+        fraudulentHeaderHash: headerHash,
+        awaitConfirmation: true,
+        requireReferenceScripts: true,
+        validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
+        validTo: removeNow + 300_000n,
+      });
+      expect(removal.fraudCategory).toBe("fabricatedDeposit");
+      expect(removal.transactions).toHaveLength(1);
+      await expect(
+        proverLucid.utxosAtWithUnit(
+          contracts.stateQueue.spendingScriptAddress,
+          setup.stateQueueBlockUnit,
+        ),
+      ).resolves.toHaveLength(0);
+      const retainedFraudProof = await expectSingleUtxoWithUnit(
+        proverLucid,
+        step04Result.fraudProofAddress,
+        step04Result.fraudProofUnit,
+      );
+      expect(outRefLabel(retainedFraudProof)).toBe(
+        step04Result.fraudProofOutRef,
+      );
+    },
+    240_000,
+  );
 
   it("cannot advance a fabricated-deposit thread against a valid block", async () => {
     const harness = await makeEmulatorHarness();
@@ -731,16 +812,12 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
     const authenticInfoCbor = SDK.committedDepositValueBytes(
       Data.from(DATUM_AUTHENTIC_DEPOSIT_EVENT, SDK.DepositDatum).event.info,
     );
-    const {
-      counted,
-      header,
-      setup,
-      eventDatumCbor,
-      observedEventAssetName,
-      referenceScriptUtxos,
-    } = await setupChallengedBlockOnEmulator(harness, authenticInfoCbor);
+    const { counted, header, setup, keyCbor, admitted, referenceScriptUtxos } =
+      await setupChallengedBlockOnEmulator(harness, authenticInfoCbor);
 
     const initResult = await submitFabricatedFamilyInit({
+      onSigned: (signed) =>
+        recordFamilyTransaction(historyRecords, "deposit-init", signed),
       lucid: proverLucid,
       realBlueprint,
       contracts,
@@ -767,14 +844,8 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
         depositCount: counted.count,
         headerStartTime: header.startTime,
         headerEndTime: header.endTime,
-        entries: [[KEY_AUTHENTIC_DEPOSIT_ID, authenticInfoCbor]],
-        witness: {
-          kind: "present_event",
-          observation: L1_OBSERVATION,
-          depositEventPolicyId: contracts.deposit.policyId,
-          observedEventAssetName,
-          eventDatumCbor,
-        },
+        entries: [[keyCbor, authenticInfoCbor]],
+        witness: { ...admitted.raw, observation: L1_OBSERVATION },
       }),
     ).rejects.toThrow(/authentic_content_matches_commitment/u);
 
@@ -785,17 +856,20 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
     // spend handler is what refuses it.
     const honestProof = await keyValuePhasProof(
       { ...counted, root: counted.phasRoot },
-      Buffer.from(KEY_AUTHENTIC_DEPOSIT_ID, "hex"),
+      Buffer.from(keyCbor, "hex"),
       Buffer.from(authenticInfoCbor, "hex"),
     );
     const divertedInclusion = parseSubmitFabricatedDepositInclusion({
-      committedDepositIdCbor: KEY_AUTHENTIC_DEPOSIT_ID,
+      committedDepositIdCbor: keyCbor,
       committedDepositInfoCbor: VALUE_DIVERTED_DEPOSIT_INFO,
       depositsPhasRoot: counted.phasRoot,
       depositMembershipProofCbor: Data.to(honestProof, SDK.Proof),
     });
     await expect(
       submitFabricatedDepositStep01({
+        preSubmitBoundary: async ({ signed }) =>
+          recordFamilyTransaction(historyRecords, "deposit-step-01", signed),
+        now: () => harness.emulator.now(),
         lucid: proverLucid,
         contracts: fabricatedDeposit,
         network,

@@ -1918,7 +1918,6 @@ describe("production local Kupmios raw source V1", () => {
   it("keeps raw transaction CBOR enabled in every checked-in Ogmios launch path", async () => {
     const repository = resolve(process.cwd(), "../..");
     const paths = [
-      "l1-services/docker-compose.yml",
       "demo/midgard-node/scripts/run-ogmios.sh",
       "demo/midgard-node-tools/devnet/phase4-process/compose.yaml",
     ];

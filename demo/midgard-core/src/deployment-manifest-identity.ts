@@ -2610,6 +2610,60 @@ export type DeploymentManifestAvailabilityChallenge = Readonly<{
   bondOwnerCredential: string;
 }>;
 
+/** Applied payload bounds for a fabricated-event family. Strings preserve the
+ * exact integer parameters in JSON; no runtime default is an identity source. */
+export type DeploymentManifestEventHistoryBounds = Readonly<{
+  inlineLimitBytes: string;
+  maxPayloadBytes: string;
+  maxPayloadNodes: string;
+}>;
+
+export const parseDeploymentManifestEventHistoryBounds = (
+  value: unknown,
+  field = "eventHistoryBounds",
+): DeploymentManifestEventHistoryBounds => {
+  const record = requireRecord(value, `Deployment manifest ${field}`);
+  requireExactKeys(
+    record,
+    ["inlineLimitBytes", "maxPayloadBytes", "maxPayloadNodes"],
+    [],
+    field,
+  );
+  const integer = (key: string): string => {
+    const value = record[key];
+    if (
+      typeof value !== "string" ||
+      !/^[1-9][0-9]{0,15}$/u.test(value) ||
+      BigInt(value) > BigInt(Number.MAX_SAFE_INTEGER)
+    )
+      throw new Error(
+        `Deployment manifest ${field}.${key} must be a positive canonical safe integer string`,
+      );
+    return value;
+  };
+  const bounds = {
+    inlineLimitBytes: integer("inlineLimitBytes"),
+    maxPayloadBytes: integer("maxPayloadBytes"),
+    maxPayloadNodes: integer("maxPayloadNodes"),
+  };
+  if (BigInt(bounds.inlineLimitBytes) > BigInt(bounds.maxPayloadBytes))
+    throw new Error(
+      `Deployment manifest ${field} inline bound exceeds total payload bound`,
+    );
+  return Object.freeze(bounds);
+};
+
+export const parseDeploymentManifestEventHistoryRetentionAddress = (
+  value: unknown,
+): string => {
+  const address = requireString(value, "eventHistoryRetentionAddress");
+  if (getAddressDetails(address).paymentCredential?.type !== "Script")
+    throw new Error(
+      "Deployment manifest eventHistoryRetentionAddress must have a script payment credential",
+    );
+  return address;
+};
+
 export type DeploymentManifestContractEntry = {
   readonly refScriptUTxO: {
     readonly txHash: string;
@@ -2621,6 +2675,8 @@ export type DeploymentManifestContractEntry = {
   };
   readonly scriptHash: string;
   readonly fraudProofCatalogue?: DeploymentManifestFraudProofCatalogueIdentity;
+  readonly eventHistoryBounds?: DeploymentManifestEventHistoryBounds;
+  readonly eventHistoryRetentionAddress?: string;
 };
 
 export type DeploymentManifestStepStatus =
@@ -4080,12 +4136,31 @@ const validateFinalizedContracts = (
   for (const contractName of DEPLOYMENT_MANIFEST_CONTRACT_NAMES) {
     const field = `contracts.${contractName}`;
     const entry = requireRecord(contracts[contractName], field);
+    const historyFamily =
+      contractName === "fraudProofFabricatedDeposit" ||
+      contractName === "fraudProofFabricatedWithdrawal";
     requireExactKeys(
       entry,
-      ["refScriptUTxO", "contract", "scriptHash"],
+      [
+        "refScriptUTxO",
+        "contract",
+        "scriptHash",
+        ...(historyFamily
+          ? ["eventHistoryBounds", "eventHistoryRetentionAddress"]
+          : []),
+      ],
       contractName === "fraudProofCatalogueMint" ? ["fraudProofCatalogue"] : [],
       field,
     );
+    if (historyFamily) {
+      parseDeploymentManifestEventHistoryBounds(
+        entry.eventHistoryBounds,
+        `${field}.eventHistoryBounds`,
+      );
+      parseDeploymentManifestEventHistoryRetentionAddress(
+        entry.eventHistoryRetentionAddress,
+      );
+    }
     if (referenceScriptContractNames.has(contractName)) {
       requireFinalOutRef(entry.refScriptUTxO, `${field}.refScriptUTxO`);
     } else if (entry.refScriptUTxO !== null) {

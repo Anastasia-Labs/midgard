@@ -429,6 +429,11 @@ export const buildMinimalFaultProofContracts = async (
       readonly hubOraclePolicyId: string;
       readonly fraudProofCataloguePolicyId: string;
       readonly referenceScriptAuthPolicyId: string;
+      readonly eventHistoryBounds: {
+        inlineLimitBytes: bigint;
+        maxPayloadBytes: bigint;
+        maxPayloadNodes: bigint;
+      };
     }) => Effect.Effect<T, E>,
   ): Promise<T | undefined> => {
     if (!enabled) {
@@ -436,6 +441,11 @@ export const buildMinimalFaultProofContracts = async (
     }
     const familyContracts = await Effect.runPromise(
       build({
+        eventHistoryBounds: {
+          inlineLimitBytes: 512n,
+          maxPayloadBytes: 5000n,
+          maxPayloadNodes: 512n,
+        },
         blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
         network,
         hubOraclePolicyId: hubOracle.policyId,
@@ -727,6 +737,7 @@ export const buildMinimalFaultProofContracts = async (
     fabricatedDepositContracts === undefined
       ? undefined
       : {
+          history: fabricatedDepositContracts.fabricatedDeposit.history,
           steps: fabricatedDepositContracts.fabricatedDeposit.steps,
           computationThread: fabricatedDepositContracts.computationThread,
           fraudProof: fabricatedDepositContracts.fraudProof,
@@ -972,6 +983,7 @@ export const buildMinimalFaultProofContracts = async (
     fabricatedWithdrawalContracts === undefined
       ? undefined
       : {
+          history: fabricatedWithdrawalContracts.fabricatedWithdrawal.history,
           steps: fabricatedWithdrawalContracts.fabricatedWithdrawal.steps,
           computationThread: fabricatedWithdrawalContracts.computationThread,
           fraudProof: fabricatedWithdrawalContracts.fraudProof,
@@ -1015,11 +1027,17 @@ export const buildMinimalFaultProofContracts = async (
     fabricatedDeposit:
       fabricatedDeposit === undefined
         ? withActiveOperators.fraudProofContracts.fabricatedDeposit
-        : chainFromSteps(fabricatedDeposit.steps),
+        : {
+            ...chainFromSteps(fabricatedDeposit.steps),
+            history: fabricatedDeposit.history,
+          },
     fabricatedWithdrawal:
       fabricatedWithdrawal === undefined
         ? withActiveOperators.fraudProofContracts.fabricatedWithdrawal
-        : chainFromSteps(fabricatedWithdrawal.steps),
+        : {
+            ...chainFromSteps(fabricatedWithdrawal.steps),
+            history: fabricatedWithdrawal.history,
+          },
     nativeScriptDecoding:
       nativeScriptDecoding === undefined
         ? withActiveOperators.fraudProofContracts.nativeScriptDecoding

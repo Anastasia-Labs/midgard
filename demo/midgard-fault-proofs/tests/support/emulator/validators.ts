@@ -365,8 +365,24 @@ export const makeAlwaysSucceedsContracts = (
     noReferenceInput: scaffoldChain(nonExistentInputFirstStep, 4),
     referenceInputNoIdx: scaffoldChain(nonExistentInputNoIndexFirstStep, 4),
     invalidSignature: scaffoldChain(invalidRangeFirstStep, 2),
-    fabricatedDeposit: scaffoldChain(appendedFamilyFallback, 4),
-    fabricatedWithdrawal: scaffoldChain(appendedFamilyFallback, 4),
+    fabricatedDeposit: {
+      ...scaffoldChain(appendedFamilyFallback, 4),
+      history: {
+        inlineLimitBytes: 512n,
+        maxPayloadBytes: 5000n,
+        maxPayloadNodes: 512n,
+        retentionAddress: appendedFamilyFallback.spendingScriptAddress,
+      },
+    },
+    fabricatedWithdrawal: {
+      ...scaffoldChain(appendedFamilyFallback, 4),
+      history: {
+        inlineLimitBytes: 512n,
+        maxPayloadBytes: 5000n,
+        maxPayloadNodes: 512n,
+        retentionAddress: appendedFamilyFallback.spendingScriptAddress,
+      },
+    },
     nativeScriptDecoding: scaffoldChain(appendedFamilyFallback, 6),
     missingSignature: {
       ...scaffoldChain(appendedFamilyFallback, 4),

@@ -1,39 +1,8 @@
-/**
- * `fabricated-withdrawal` step-03 submitter (Goal task `Q40`, §9.1 output 8).
- *
- * Step 03 reads no chain state beyond the thread it spends: it opens step-02's
- * retained event-datum commitment and turns the authenticated verdict into the
- * named fault. Two things are re-run locally before any transaction is built, so
- * an unfinalizable thread is refused off-chain rather than on chain:
- *
- * - the **pairing** rule — a `WithdrawalIdentityAbsent` verdict admits only the
- *   `NoAuthenticContent` opening and a `WithdrawalEventObserved` verdict only
- *   `RetainedEventDatum`, because the cross pairs claim more than the evidence
- *   supports (`open_authentic_withdrawal_content_v1`); and
- * - the **establishment** rule that step 04 will re-apply
- *   (`isFabricatedWithdrawalFault`), including the
- *   `start_time < inclusion_time <= end_time` window, so a stale event cannot be
- *   walked one step further only to be refused at finalization.
- *
- * ### Why this step normalizes instead of demanding byte-identical CBOR
- *
- * The `fabricated-deposit` twin of this module refuses a supplied event datum whose
- * `Data.to` re-encoding is not byte-identical to the supplied hex. That check cannot
- * be reused here. A withdrawal event datum embeds the withdrawer's `l2_value` map,
- * and the two encoders disagree on exactly that: Plutus `serialise_data` — the
- * function step 02 hashed the reference input's datum through, and the one step 03
- * will hash the redeemer opening through — writes non-empty maps **definite**, while
- * Lucid's `Data.to` writes them indefinite. Demanding byte equality against
- * `Data.to` would therefore refuse the authentic datum as observed on chain and
- * accept only a form the script never hashes.
- *
- * So this module normalizes the supplied bytes to `serialise_data` form before
- * hashing, and lets the hash equality against step-02's retained commitment be the
- * authenticity gate — which is precisely the on-chain rule, since Plutus
- * re-serialises whatever wire form the redeemer arrived in.
- */
+/** Reopen payload and original Value authenticated by the history-capture stage.
+ * Pointer churn cannot change the retained facts. No operator archive supplies
+ * authority: every opening must match the commitment in the authentic thread. */
 import {
-  type FabricatedWithdrawalAuthenticContentOpening,
+  FabricatedWithdrawalAuthenticContentOpening,
   type FabricatedWithdrawalFault,
   FabricatedWithdrawalStep03Datum,
   FabricatedWithdrawalStep03SpendRedeemer,
@@ -42,14 +11,12 @@ import {
   type FabricatedWithdrawalStep04State,
   fabricatedWithdrawalStep04State,
   isFabricatedWithdrawalFault,
+  opensEventHistoryCommitment,
   OutputReference,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
   withdrawalContentCommitment,
-  withdrawalEventDatumBytes,
-  withdrawalEventDatumCommitment,
-  WithdrawalOrderDatum,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -59,6 +26,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { fabricatedProofValidity } from "./fabricated-proof-validity.js";
 import { requireFabricatedReferenceScript } from "./fabricated-reference-script.js";
 import { parseHex, readJsonFile, requireRecord } from "./json-file.js";
 import {
@@ -119,98 +87,70 @@ export const requireFabricatedWithdrawalStep03Datum = ({
   return datum.data;
 };
 
-/**
- * Decodes a supplied withdrawal event datum and reports the `serialise_data` bytes
- * the on-chain step will actually hash, whatever wire form the operator supplied.
- */
-export const decodeWithdrawalEventDatumForOpening = (
-  eventDatumCbor: string,
-): {
-  readonly eventDatum: WithdrawalOrderDatum;
-  readonly serialisedBytes: string;
-} => {
-  const eventDatum = Data.from(eventDatumCbor, WithdrawalOrderDatum);
-  return {
-    eventDatum,
-    serialisedBytes: withdrawalEventDatumBytes(eventDatum),
-  };
-};
-
-/**
- * Pure twin of `open_authentic_withdrawal_content_v1` plus step-04's
- * establishment gate. Throws — fail-closed — on any pairing, commitment,
- * identity, equality or window failure.
- */
+/** Exact twin of the on-chain opening and fault-classification predicates. */
 export const deriveFabricatedWithdrawalStep03Handoff = async ({
   state,
-  eventDatumCbor,
+  openingCbor,
 }: {
   readonly state: FabricatedWithdrawalStep03State;
-  readonly eventDatumCbor?: string;
+  readonly openingCbor?: string;
 }): Promise<FabricatedWithdrawalStep03Handoff> => {
-  let opening: FabricatedWithdrawalAuthenticContentOpening;
+  const opening =
+    openingCbor === undefined
+      ? "NoAuthenticContent"
+      : Data.from(openingCbor, FabricatedWithdrawalAuthenticContentOpening);
   let fault: FabricatedWithdrawalFault;
-
   if (state.verdict === "WithdrawalIdentityAbsent") {
-    if (eventDatumCbor !== undefined) {
-      throw new Error(
-        "Fabricated-withdrawal step 03 refuses a RetainedEventDatum opening on a WithdrawalIdentityAbsent verdict: the opening does not pair with the L1 verdict.",
-      );
-    }
-    opening = "NoAuthenticContent";
+    if (opening !== "NoAuthenticContent")
+      throw new Error("Authenticated absence admits no retained event opening");
     fault = "NonexistentWithdrawalIdentity";
   } else {
-    if (eventDatumCbor === undefined) {
+    if (opening === "NoAuthenticContent")
       throw new Error(
-        "Fabricated-withdrawal step 03 refuses a NoAuthenticContent opening on a WithdrawalEventObserved verdict: it would convert a content dispute into a non-existence conviction.",
+        "Observed Order requires its retained payload and original Value",
       );
-    }
-    const { event_datum_hash, event_inclusion_time } =
-      state.verdict.WithdrawalEventObserved;
-    const { eventDatum, serialisedBytes } =
-      decodeWithdrawalEventDatumForOpening(eventDatumCbor);
-    const suppliedHash = await Effect.runPromise(
-      withdrawalEventDatumCommitment(eventDatum),
-    );
-    if (suppliedHash !== event_datum_hash) {
-      throw new Error(
-        `Supplied withdrawal event datum serialises to ${serialisedBytes} and hashes to ${suppliedHash}, not the commitment ${event_datum_hash} step 02 authenticated.`,
-      );
-    }
-    const suppliedId = Data.to(eventDatum.event.id, OutputReference);
-    const committedId = Data.to(state.committed_withdrawal_id, OutputReference);
-    if (suppliedId !== committedId) {
-      throw new Error(
-        `Supplied withdrawal event datum names identity ${suppliedId}, not the committed identity ${committedId}.`,
-      );
-    }
-    const authenticWithdrawalContentHash = await Effect.runPromise(
-      withdrawalContentCommitment(eventDatum.event.info),
-    );
+    const { commitment } = state.verdict.WithdrawalEventObserved;
+    const { payload, original_assets } = opening.RetainedEventData;
     if (
-      authenticWithdrawalContentHash === state.committed_withdrawal_content_hash
-    ) {
+      commitment.kind !== "Withdrawal" ||
+      Data.to(commitment.event_id, OutputReference) !==
+        Data.to(state.committed_withdrawal_id, OutputReference) ||
+      !opensEventHistoryCommitment(commitment, payload, original_assets)
+    )
       throw new Error(
-        `Fabricated-withdrawal step 03 cannot classify a fault: the authentic withdrawal content hashes to ${authenticWithdrawalContentHash}, which is exactly what the header committed.`,
+        "Retained event opening does not match the authenticated history commitment",
       );
+    if (!("WithdrawalPayload" in payload))
+      throw new Error("Retained payload has the wrong event kind");
+    const event_inclusion_time = commitment.inclusion_time;
+    if (
+      !(
+        state.header_start_time < event_inclusion_time &&
+        event_inclusion_time <= state.header_end_time
+      )
+    ) {
+      fault = { IneligibleWithdrawalEvent: { event_inclusion_time } };
+    } else {
+      const authenticHash = await Effect.runPromise(
+        withdrawalContentCommitment(payload.WithdrawalPayload.event.info),
+      );
+      if (authenticHash === state.committed_withdrawal_content_hash)
+        throw new Error(
+          "Authentic eligible event content matches the header commitment",
+        );
+      fault = {
+        MismatchedWithdrawalContent: {
+          committed_withdrawal_content_hash:
+            state.committed_withdrawal_content_hash,
+          authentic_withdrawal_content_hash: authenticHash,
+          event_inclusion_time,
+        },
+      };
     }
-    opening = { RetainedEventDatum: { event_datum: eventDatum } };
-    fault = {
-      MismatchedWithdrawalContent: {
-        committed_withdrawal_content_hash:
-          state.committed_withdrawal_content_hash,
-        authentic_withdrawal_content_hash: authenticWithdrawalContentHash,
-        event_inclusion_time,
-      },
-    };
   }
-
   const step04State = fabricatedWithdrawalStep04State(state, fault);
-  if (!isFabricatedWithdrawalFault(step04State)) {
-    throw new Error(
-      `Fabricated-withdrawal step 03 refuses to hand step 04 a fault it must reject: the authentic event is not due for the challenged block (${state.header_start_time.toString()} < inclusion_time <= ${state.header_end_time.toString()}).`,
-    );
-  }
+  if (!isFabricatedWithdrawalFault(step04State))
+    throw new Error("Retained event does not establish the classified fault");
   return { opening, fault, step04State };
 };
 
@@ -225,7 +165,7 @@ export type SubmitFabricatedWithdrawalStep03CliConfig = SubmitProviderConfig & {
 };
 
 export type SubmitFabricatedWithdrawalAuthenticContent = {
-  readonly eventDatumCbor: string;
+  readonly openingCbor: string | null;
 };
 
 export const parseSubmitFabricatedWithdrawalAuthenticContent = (
@@ -235,11 +175,16 @@ export const parseSubmitFabricatedWithdrawalAuthenticContent = (
     value,
     "fabricated-withdrawal authentic content",
   );
+  if (Object.keys(record).length !== 1 || !("openingCbor" in record))
+    throw new Error("Authentic content requires exactly openingCbor");
   return {
-    eventDatumCbor: parseHex(
-      record["eventDatumCbor"],
-      "fabricated-withdrawal authentic content eventDatumCbor",
-    ),
+    openingCbor:
+      record["openingCbor"] === null
+        ? null
+        : parseHex(
+            record["openingCbor"],
+            "fabricated-withdrawal authentic content openingCbor",
+          ),
   };
 };
 
@@ -270,19 +215,21 @@ export const submitFabricatedWithdrawalStep03 = async ({
   contracts,
   signer,
   threadOutRef,
-  eventDatumCbor,
+  openingCbor,
   referenceScriptUtxo,
   preSubmitBoundary,
   awaitConfirmation = true,
+  now = Date.now,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: FabricatedWithdrawalContracts;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly eventDatumCbor?: string;
+  readonly openingCbor?: string;
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  readonly now?: () => number;
 }): Promise<SubmitFabricatedWithdrawalStep03Result> => {
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
@@ -303,7 +250,7 @@ export const submitFabricatedWithdrawalStep03 = async ({
   const state = requireFabricatedWithdrawalStep03Datum({ threadUtxo, signer });
   const handoff = await deriveFabricatedWithdrawalStep03Handoff({
     state,
-    eventDatumCbor,
+    openingCbor,
   });
 
   signer.selectWallet(lucid);
@@ -347,8 +294,11 @@ export const submitFabricatedWithdrawalStep03 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
+  const validity = fabricatedProofValidity(state.header_end_time, now());
   const tx = lucid
     .newTx()
+    .validFrom(validity.validFrom)
+    .validTo(validity.validTo)
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
     .readFrom([
@@ -433,11 +383,11 @@ export const submitFabricatedWithdrawalStep03FromFiles = async (
     contracts: config.contracts,
     signer,
     threadOutRef: config.threadOutRef,
-    eventDatumCbor:
+    openingCbor:
       authenticContentJson === undefined
         ? undefined
-        : parseSubmitFabricatedWithdrawalAuthenticContent(authenticContentJson)
-            .eventDatumCbor,
+        : (parseSubmitFabricatedWithdrawalAuthenticContent(authenticContentJson)
+            .openingCbor ?? undefined),
     referenceScriptUtxo: config.referenceScriptUtxo,
     awaitConfirmation: config.awaitConfirmation,
   });

@@ -14,6 +14,8 @@ import {
   type DeploymentMarker,
   makeDeploymentMarker,
   parseDeploymentManifestAvailabilityChallenge,
+  parseDeploymentManifestEventHistoryBounds,
+  parseDeploymentManifestEventHistoryRetentionAddress,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { normalizeOutRef } from "@al-ft/midgard-core/out-ref";
@@ -94,6 +96,21 @@ export const availabilityParametersFromExplicitEnvironment =
           `${name} must be set to an explicit positive integer before deriving Q58 scripts without a finalized manifest`,
       ),
     );
+
+/** No implicit payload-bound profile when deriving a fresh deployment. */
+export const eventHistoryBoundsFromExplicitEnvironment =
+  (): SDK.EventHistoryPayloadBounds => {
+    const bounds = parseDeploymentManifestEventHistoryBounds({
+      inlineLimitBytes: process.env.MIDGARD_EVENT_HISTORY_INLINE_LIMIT_BYTES,
+      maxPayloadBytes: process.env.MIDGARD_EVENT_HISTORY_MAX_PAYLOAD_BYTES,
+      maxPayloadNodes: process.env.MIDGARD_EVENT_HISTORY_MAX_PAYLOAD_NODES,
+    });
+    return {
+      inlineLimitBytes: BigInt(bounds.inlineLimitBytes),
+      maxPayloadBytes: BigInt(bounds.maxPayloadBytes),
+      maxPayloadNodes: BigInt(bounds.maxPayloadNodes),
+    };
+  };
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REAL_BLUEPRINT_CANDIDATES = [
@@ -731,6 +748,33 @@ const linearFaultProofChainFromManifest = <
   const firstStep = steps[0];
   if (firstStep === undefined) {
     throw new Error(`Fault-proof chain has no first step: ${category}`);
+  }
+  if (category === "fabricatedDeposit" || category === "fabricatedWithdrawal") {
+    const [, secondStep, thirdStep, fourthStep] = steps;
+    if (
+      steps.length !== 4 ||
+      secondStep === undefined ||
+      thirdStep === undefined ||
+      fourthStep === undefined
+    ) {
+      throw new Error(`Expected four history proof steps for ${category}`);
+    }
+    const entry = manifest.contracts[faultProofStepContractName(category, 0)];
+    const bounds = parseDeploymentManifestEventHistoryBounds(
+      entry?.eventHistoryBounds,
+    );
+    return {
+      firstStep,
+      steps: [firstStep, secondStep, thirdStep, fourthStep] as const,
+      history: {
+        inlineLimitBytes: BigInt(bounds.inlineLimitBytes),
+        maxPayloadBytes: BigInt(bounds.maxPayloadBytes),
+        maxPayloadNodes: BigInt(bounds.maxPayloadNodes),
+        retentionAddress: parseDeploymentManifestEventHistoryRetentionAddress(
+          entry?.eventHistoryRetentionAddress,
+        ),
+      },
+    } as SDK.FaultProofContractChains[Category];
   }
   if (category === "valueNotPreserved") {
     return {
@@ -1822,6 +1866,7 @@ export type HubOracleOneShotOutRef = {
 export type RealContractDeploymentParameters = {
   readonly referenceScriptAuth: SDK.MintingValidator;
   readonly availabilityChallengeParameters: SDK.DaAvailabilityParameters;
+  readonly eventHistoryBounds: SDK.EventHistoryPayloadBounds;
   readonly daParamsGovernorInitOutRef?: HubOracleOneShotOutRef;
   readonly daParamsMaxCommitteeSize?: number;
   readonly daParamsMaxOwnerCount?: number;
@@ -2015,10 +2060,12 @@ const buildRealFaultProofContracts = (
   contracts: SDK.MidgardValidators,
   computationThread: SDK.MintingValidator,
   fraudProof: SDK.AuthenticatedValidator,
+  eventHistoryBounds: SDK.EventHistoryPayloadBounds,
 ): Effect.Effect<SDK.FaultProofContractChains, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
     const derived = yield* SDK.buildFaultProofContracts({
+      eventHistoryBounds,
       blueprint,
       network,
       hubOraclePolicyId: contracts.hubOracle.policyId,
@@ -2649,6 +2696,7 @@ export const withRealStateQueueAndOperatorContracts = (
       withRealFraudProofCatalogue,
       realComputationThread,
       realFraudProof,
+      deploymentParameters.eventHistoryBounds,
     );
     const withRealFraudProof: SDK.MidgardValidators = {
       ...withRealFraudProofCatalogue,
@@ -2913,6 +2961,7 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
     oneShotOutRef,
     {
       referenceScriptAuth,
+      eventHistoryBounds: eventHistoryBoundsFromExplicitEnvironment(),
       availabilityChallengeParameters:
         availabilityParametersFromExplicitEnvironment(),
     },

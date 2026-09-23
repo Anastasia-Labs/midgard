@@ -1,20 +1,12 @@
-//// ## Fabricated Deposit Fraud Proof — step-02 (`GOAL_SPEC.md` §9.1 / Q39)
-////
-//// The only step that reads L1. It authenticates the prover's witness about the
-//// committed deposit identity and forwards an authenticated verdict, so no later
-//// step ever has to trust a claim about the chain.
-////
-//// Either the committed `DepositId` is still an unspent output — which proves no
-//// deposit event with that identity was ever authenticated, because
-//// `midgard/user_events`'s `authenticate_new_event` can only mint an event NFT
-//// by spending that very output reference — or the authentic event UTxO is
-//// exhibited under the hub-registered deposit policy and its datum is committed
-//// to by hash.
+//// Authenticate sorted-list absence or immutable Order facts before maturity.
 
 use aiken/crypto.{ScriptHash}
+use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Input, OutputReference, Transaction}
 use midgard/computation_thread as ct
+use midgard/event_history/proof_evidence
+use midgard/event_history/proof_fixture
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/fabricated_deposit/step_01
 use midgard/fraud_proofs/fabricated_deposit/step_02.{
@@ -31,6 +23,10 @@ validator main(
   step_03_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
   hub_oracle: ScriptHash,
+  retention_address: Address,
+  inline_limit: Int,
+  max_payload_bytes: Int,
+  max_payload_nodes: Int,
 ) {
   spend(
     datum: Option<Datum>,
@@ -49,7 +45,7 @@ validator main(
           tx,
         )
       ct.Continue(Args { input_index, output_index, evidence }) -> {
-        let Transaction { inputs, outputs, reference_inputs, .. } = tx
+        let Transaction { inputs, outputs, .. } = tx
 
         expect Some(step_datum) = datum
 
@@ -71,15 +67,17 @@ validator main(
           outputs,
         )
 
-        expect
-            Some(State {
+        expect Some(input_state) = m_input_state_data
+        let
+            State {
+              state_queue_policy,
               challenged_header_hash,
               header_start_time,
               header_end_time,
               committed_deposit_id,
               committed_deposit_info_hash,
-            })
-          = m_input_state_data
+            }
+          = input_state
 
         // 2. Authenticate what L1 holds about the committed identity. Every arm
         //    of this either produces an authenticated verdict or fails; the
@@ -88,15 +86,22 @@ validator main(
         //    prover-chosen token can stand in for the authentic event.
         let verdict = verify_deposit_evidence_v1(
           hub_oracle,
-          committed_deposit_id,
+          input_state,
           evidence,
-          reference_inputs,
+          tx,
+          proof_evidence.Parameters {
+            retention_address,
+            inline_limit,
+            max_payload_bytes,
+            max_payload_nodes,
+          },
         )
 
         // 3. The verdict, and everything already authenticated, must be passed
         //    to the next step.
         expect output_script_hash == step_03_validator_script_hash
         let expected_output_state: Data = step_03.State {
+          state_queue_policy,
           challenged_header_hash,
           header_start_time,
           header_end_time,
@@ -133,6 +138,7 @@ fn run_step_02(
     input_state.challenged_header_hash,
   )
   let expected_output_state: Data = step_03.State {
+    state_queue_policy: input_state.state_queue_policy,
     challenged_header_hash: input_state.challenged_header_hash,
     header_start_time: input_state.header_start_time,
     header_end_time: input_state.header_end_time,
@@ -144,6 +150,10 @@ fn run_step_02(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
+    proof_fixture.parameters().retention_address,
+    proof_fixture.parameters().inline_limit,
+    proof_fixture.parameters().max_payload_bytes,
+    proof_fixture.parameters().max_payload_nodes,
     Some(
       ct.StepDatum {
         fraud_prover: fixture.fraud_prover_key_hash,
@@ -169,9 +179,15 @@ fn absent_identity_state() -> State {
 fn run_absent_identity(witnessed_out_ref: ledger_state.DepositId) -> Bool {
   run_step_02(
     absent_identity_state(),
-    AbsentDepositIdentity { unspent_ref_input_index: 0 },
+    AbsentDepositIdentity { hub_ref_input_index: 0, history_ref_input_index: 1 },
     step_02.DepositIdentityAbsent,
-    [step_01.unspent_output_reference_input_v1(witnessed_out_ref)],
+    [
+      fixture.hub_reference_input(),
+      proof_fixture.absent_reference(
+        step_02.fixture_deposit_event_policy_v1(),
+        witnessed_out_ref,
+      ),
+    ],
   )
 }
 
@@ -192,7 +208,11 @@ fn authentic_event_datum() -> deposit.DepositDatum {
 fn run_present_event(event_reference_input: Input) -> Bool {
   run_step_02(
     present_event_state(),
-    PresentDepositEvent { hub_ref_input_index: 0, event_ref_input_index: 1 },
+    PresentDepositEvent {
+      hub_ref_input_index: 0,
+      event_ref_input_index: 1,
+      external_ref_input_index: None,
+    },
     step_02.observed_verdict_v1(authentic_event_datum()),
     [fixture.hub_reference_input(), event_reference_input],
   )
@@ -237,7 +257,15 @@ test rejects_wrong_nft_policy() fail {
 /// block can only offer some other still-unspent output, and this is where that
 /// substitution is refused.
 test rejects_wrong_event_outref() fail {
-  run_absent_identity(step_01.foreign_deposit_id_v1())
+  run_step_02(
+    absent_identity_state(),
+    AbsentDepositIdentity { hub_ref_input_index: 0, history_ref_input_index: 1 },
+    step_02.DepositIdentityAbsent,
+    [
+      fixture.hub_reference_input(),
+      step_01.unspent_output_reference_input_v1(step_01.foreign_deposit_id_v1()),
+    ],
+  )
 }
 
 /// A reference input carrying a well-formed `DepositDatum` but no event NFT at

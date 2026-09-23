@@ -1265,6 +1265,7 @@ fn test_state_queue_node_output(
   da_attestation: availability.StateQueueStatusV1,
 ) -> Output {
   let node = state_queue.StateQueueNode {
+    proven_fraud: None,
     header: test_header(),
     da_attestation,
   }

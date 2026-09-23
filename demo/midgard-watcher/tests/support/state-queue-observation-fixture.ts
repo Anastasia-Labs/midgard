@@ -215,6 +215,7 @@ const commitTransaction = (
   ).toString("hex");
   const nodeAssetHeaderHash = computedHeaderHash;
   const stateQueueNode: SDK.StateQueueNode = {
+    proven_fraud: null,
     header: nodeHeader,
     da_attestation: "Unattested",
   };

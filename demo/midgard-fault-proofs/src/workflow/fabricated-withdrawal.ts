@@ -51,6 +51,7 @@ import {
 } from "./transaction-boundary.js";
 
 const WITNESS_ROLES = [
+  "stateQueueSpend",
   "computationThreadMint",
   "fraudProofMint",
   "phasMembershipWithdraw",
@@ -195,12 +196,17 @@ const transactionPort = (
     );
   },
   capture: async ({ action, artifact }) => {
+    const input = actionInput(action);
+    const retained = ["step_03", "step_04", "remove"].includes(
+      stringField(input, "stage"),
+    );
     const admitted = requireFabricatedWithdrawalArtifact(
-      await config.evidence.readmit(artifact),
+      retained
+        ? config.evidence.readmitRetained(artifact)
+        : await config.evidence.readmit(artifact),
       config.signer.paymentKeyHash,
       config.binding.definition.headerHash,
     );
-    const input = actionInput(action);
     if (input.stage === "init") {
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransaction(
@@ -257,7 +263,7 @@ const transactionPort = (
           ? ({ kind: "absent_identity" } as const)
           : ({
               kind: "present_event",
-              eventOutRef: admitted.l1Evidence.eventOutRef,
+              eventOutRef: admitted.l1Evidence.historyOutRef,
             } as const);
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransaction(
@@ -269,6 +275,7 @@ const transactionPort = (
               signer: config.signer,
               threadOutRef: stringField(input, "threadOutRef"),
               evidence,
+              expectedOpeningCbor: admitted.authenticContent.openingCbor,
               referenceScriptUtxo: config.references.steps[1],
               preSubmitBoundary,
               awaitConfirmation: false,
@@ -286,10 +293,10 @@ const transactionPort = (
               contracts: config.contracts,
               signer: config.signer,
               threadOutRef: stringField(input, "threadOutRef"),
-              ...(admitted.authenticContent.eventDatumCbor === null
+              ...(admitted.authenticContent.openingCbor === null
                 ? {}
                 : {
-                    eventDatumCbor: admitted.authenticContent.eventDatumCbor,
+                    openingCbor: admitted.authenticContent.openingCbor,
                   }),
               referenceScriptUtxo: config.references.steps[2],
               preSubmitBoundary,
@@ -300,8 +307,11 @@ const transactionPort = (
       });
     }
     if (input.stage === "step_04") {
-      return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
+      const mutationLease =
+        await config.stateQueueMutationLeaseCoordinator.acquire();
+      try {
+        await mutationLease.renew();
+        const transaction = await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitFabricatedWithdrawalStep04({
               lucid: config.lucid,
@@ -310,12 +320,21 @@ const transactionPort = (
               threadOutRef: stringField(input, "threadOutRef"),
               referenceScriptUtxo: config.references.steps[3],
               witnessReferenceScripts: config.references.witnesses,
-              preSubmitBoundary,
+              preSubmitBoundary: async (built) => {
+                await mutationLease.renew();
+                await preSubmitBoundary(built);
+              },
               awaitConfirmation: false,
             });
           },
-        ),
-      });
+        );
+        return Object.freeze({ transaction, mutationLease });
+      } catch (error) {
+        await mutationLease.fail(
+          `Terminal proof capture failed: ${String(error)}`,
+        );
+        throw error;
+      }
     }
     if (input.stage === "remove") {
       return await captureRemoval(config, input);
@@ -347,6 +366,7 @@ const contracts = (context: AssemblyContext): FabricatedWithdrawalContracts => {
   }
   return Object.freeze({
     steps: chain.steps,
+    history: chain.history,
     computationThread: resolved.contracts.computationThread,
     fraudProof: {
       policyId: resolved.contracts.fraudProof.policyId,
@@ -365,13 +385,19 @@ const contracts = (context: AssemblyContext): FabricatedWithdrawalContracts => {
  * read. It is a stateless view over the bound hub oracle; each caller may
  * hold its own instance.
  */
-const evidenceAuthority = (context: AssemblyContext) =>
-  createFabricatedWithdrawalEvidenceAuthority({
+const evidenceAuthority = (context: AssemblyContext) => {
+  const chain =
+    context.binding.resolvedContracts.contracts.fabricatedWithdrawal;
+  if (chain === undefined)
+    throw new Error("Missing applied history proof family");
+  return createFabricatedWithdrawalEvidenceAuthority({
+    history: chain.history,
     lucid: context.lucid,
     network: context.binding.network,
     hubOraclePolicyId: context.binding.resolvedContracts.hubOraclePolicyId,
     minimumConfirmationDepth: 1,
   });
+};
 
 export const FABRICATED_WITHDRAWAL_FAMILY_DEFINITION = defineLinearFamily({
   category: "fabricatedWithdrawal",
