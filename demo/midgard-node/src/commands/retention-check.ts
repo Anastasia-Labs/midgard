@@ -1,30 +1,40 @@
 import {
   daRetentionPruneDecision,
   MIDGARD_RETENTION_WINDOW,
-  RETENTION_KNOWN_HEADER_STATUSES,
   retentionDeadlineAlert,
+  type RetentionHeaderStatus,
   type RetentionPruneReasonCode,
+  type RetentionQueueReference,
 } from "@al-ft/midgard-core";
+import { SqlClient } from "@effect/sql";
+import { Effect } from "effect";
+
+import { fetchRetentionL1View } from "../fibers/retention-sweeper.js";
+import { ContractDeploymentIdentity } from "../services/index.js";
 
 /**
  * Executable retention deadline alert (GOAL_SPEC 9.4 / Q54).
  *
- * Pure evaluator, in the shape of `evaluateReadiness`: no IO, no clock, no
- * database. Callers supply the observed retained records and the evaluator
- * reports whether any still-challengeable record has burned through its alert
- * headroom, so the CLI verb can exit nonzero.
+ * `evaluateRetentionCheck` is a pure evaluator, in the shape of
+ * `evaluateReadiness`: no IO, no clock, no database. Callers supply the
+ * observed retained records and the evaluator reports whether any
+ * still-challengeable record has burned through its alert headroom, so the CLI
+ * verb can exit nonzero. `retentionCheckProgram` gathers those records from the
+ * database and the node's authenticated L1 view.
  */
 
 /** One retained DA record as observed by the caller. */
 export type RetentionCheckRecord = {
   readonly headerHash: string;
-  /** Block END TIME in ms. `null`/`undefined` means unknown (fails closed). */
-  readonly blockEndTimeMs?: number | null;
-  /** L1 state-queue header status, if known. Unknown fails closed. */
-  readonly headerStatus?: string | null;
+  /** Block END TIME in ms. */
+  readonly blockEndTimeMs: number;
+  /** Authenticated terminal status, or `unobserved` when none is recorded. */
+  readonly headerStatus: RetentionHeaderStatus | "unobserved";
+  /** Where the header sits in the caller's authenticated L1 view. */
+  readonly queueReference: RetentionQueueReference;
   /**
    * Deployment fingerprint the record was written under. When the caller
-   * supplies `expectedDeploymentFingerprint`, a mismatch retains and alerts.
+   * supplies `expectedDeploymentFingerprint`, a mismatch is reported.
    */
   readonly deploymentFingerprint?: string | null;
 };
@@ -44,7 +54,7 @@ export type RetentionCheckFinding = {
   readonly reasonCode:
     | RetentionPruneReasonCode
     | "deployment_fingerprint_mismatch";
-  readonly remainingMs: number | null;
+  readonly remainingMs: number;
   readonly headroomMs: number | null;
 };
 
@@ -65,8 +75,8 @@ export type RetentionCheckResult = {
  *
  * A record alerts when it is still challengeable AND its remaining time to the
  * challengeability deadline is at or below `alertThresholdMs`, or when its
- * deployment fingerprint does not match the expected one (in which case the
- * record is both retained and flagged).
+ * deployment fingerprint does not match the expected one. The mismatch is a
+ * diagnostic only; it never changes the retention decision.
  */
 export const evaluateRetentionCheck = (
   input: RetentionCheckInput,
@@ -84,96 +94,37 @@ export const evaluateRetentionCheck = (
   let stillChallengeable = 0;
 
   for (const record of input.records) {
-    const decision = daRetentionPruneDecision(
-      {
-        headerHash: record.headerHash,
-        blockEndTimeMs: record.blockEndTimeMs ?? null,
-      },
-      {
-        nowMs: input.nowMillis,
-        retentionDays,
-        headerStatus: record.headerStatus ?? undefined,
-        // The exact current deployment schema has no Q58 capability. When it
-        // lands this must be replaced by authenticated challenge state.
-        availabilityChallengeState: "not_deployed",
-      },
-    );
+    const decision = daRetentionPruneDecision({
+      nowMs: input.nowMillis,
+      blockEndTimeMs: record.blockEndTimeMs,
+      headerStatus: record.headerStatus,
+      queueReference: record.queueReference,
+      retentionDays,
+    });
 
-    const fingerprintMismatch =
+    if (
       input.expectedDeploymentFingerprint !== undefined &&
-      record.deploymentFingerprint !== input.expectedDeploymentFingerprint;
-
-    if (decision.decision === "retain") {
-      stillChallengeable += 1;
-    }
-
-    if (fingerprintMismatch) {
-      // Fail closed: an unrecognised deployment fingerprint means the record's
-      // window cannot be reasoned about, so retain it and alert.
+      record.deploymentFingerprint !== input.expectedDeploymentFingerprint
+    ) {
       alerts.push({
         headerHash: record.headerHash,
         reasonCode: "deployment_fingerprint_mismatch",
-        remainingMs: decision.remainingMs ?? null,
+        remainingMs: decision.remainingMs,
         headroomMs: null,
       });
       reasons.push(
         `retention_deployment_fingerprint_mismatch:${record.headerHash}`,
       );
-      continue;
     }
 
-    // Report malformed local evidence independently of the Q58 retention
-    // hold. The prune authority intentionally evaluates an unavailable
-    // availability-challenge capability first, but that must not mask a
-    // missing consensus timestamp or an unrecognised queue status from the
-    // operator-facing diagnostic.
-    const blockEndTimeMs = record.blockEndTimeMs;
-    const structuralReason: RetentionPruneReasonCode | undefined =
-      typeof blockEndTimeMs !== "number" ||
-      !Number.isSafeInteger(blockEndTimeMs) ||
-      blockEndTimeMs < 0
-        ? "missing_block_end_time"
-        : typeof record.headerStatus !== "string" ||
-            !(RETENTION_KNOWN_HEADER_STATUSES as readonly string[]).includes(
-              record.headerStatus,
-            )
-          ? "header_status_unknown"
-          : undefined;
-    if (structuralReason !== undefined) {
-      alerts.push({
-        headerHash: record.headerHash,
-        reasonCode: structuralReason,
-        remainingMs: null,
-        headroomMs: null,
-      });
-      reasons.push(`retention_indeterminate:${structuralReason}`);
+    if (decision.reasonCode !== "still_challengeable") {
       continue;
     }
-    if (typeof blockEndTimeMs !== "number") {
-      throw new Error("validated retention record lost its block end time");
-    }
-
-    if (decision.decision !== "retain") {
-      continue;
-    }
-
-    if (decision.reasonCode === "missing_block_end_time") {
-      // Retained for a fail-closed reason with no computable deadline: report
-      // it so an operator sees the unresolvable record, but do not fabricate a
-      // remaining-time number.
-      alerts.push({
-        headerHash: record.headerHash,
-        reasonCode: decision.reasonCode,
-        remainingMs: null,
-        headroomMs: null,
-      });
-      reasons.push(`retention_indeterminate:${decision.reasonCode}`);
-      continue;
-    }
+    stillChallengeable += 1;
 
     const alert = retentionDeadlineAlert({
       nowMs: input.nowMillis,
-      blockEndTimeMs,
+      blockEndTimeMs: record.blockEndTimeMs,
       retentionDays,
       alertThresholdMs,
       headerHash: record.headerHash,
@@ -207,3 +158,50 @@ export const evaluateRetentionCheck = (
 /** Process exit code for a retention check result: 0 clean, 1 alerting. */
 export const retentionCheckExitCode = (result: RetentionCheckResult): number =>
   result.ok ? 0 : 1;
+
+/**
+ * Reads every retained DA payload, its authenticated terminal outcome under
+ * this deployment, and its place in the live L1 state queue, then evaluates.
+ */
+export const retentionCheckProgram = (alertThresholdMs?: number) =>
+  Effect.gen(function* () {
+    const view = yield* fetchRetentionL1View;
+    const deploymentIdentity = yield* ContractDeploymentIdentity;
+    const sql = yield* SqlClient.SqlClient;
+    const deploymentIdentityDigest =
+      deploymentIdentity.manifestId === undefined
+        ? null
+        : Buffer.from(deploymentIdentity.manifestId, "hex");
+    const rows = yield* sql<{
+      readonly header_hash: Buffer;
+      readonly block_end_time: Date;
+      readonly terminal_outcome: "merged" | "removed" | null;
+    }>`
+      SELECT payload.header_hash, payload.block_end_time, terminal.terminal_outcome
+      FROM da_payloads payload
+      LEFT JOIN da_payload_terminal_outcomes terminal
+        ON terminal.header_hash = payload.header_hash
+       AND terminal.deployment_identity_digest = ${deploymentIdentityDigest}`;
+    const confirmedHeadHash = view.confirmedHeadHash.toString("hex");
+    const liveQueueHeaderHashes = new Set(
+      view.liveQueueHeaderHashes.map((hash) => hash.toString("hex")),
+    );
+    return evaluateRetentionCheck({
+      nowMillis: Date.now(),
+      alertThresholdMs,
+      records: rows.map((row) => {
+        const headerHash = row.header_hash.toString("hex");
+        return {
+          headerHash,
+          blockEndTimeMs: row.block_end_time.getTime(),
+          headerStatus: row.terminal_outcome ?? "unobserved",
+          queueReference:
+            headerHash === confirmedHeadHash
+              ? "confirmed_head"
+              : liveQueueHeaderHashes.has(headerHash)
+                ? "live_in_queue"
+                : "none",
+        };
+      }),
+    });
+  });

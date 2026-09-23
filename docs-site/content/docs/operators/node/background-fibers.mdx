@@ -90,8 +90,8 @@ fetch, withdrawal fetch and admission processing, along with other readiness
 conditions. It does not provide a distinct heartbeat for every module in this
 table. Inspect its reasons and the relevant worker logs, not only `/healthz`.
 
-For a blocked merge, inspect its reported blocker and the admin-gated
-`GET /stateQueueMutationLease` before restarting. A lease is one possible cause. See
+For a blocked merge, inspect its reported blocker and the `stateQueueMutationLease`
+field of `/readyz` before restarting. A lease is one possible cause. See
 [Server HTTP API](/docs/operators/node/server-http-api).
 
 ## Related

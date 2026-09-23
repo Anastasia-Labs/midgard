@@ -135,7 +135,6 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
           store: createDatabaseStateQueueCorrectionObserverStore({
             sql,
             deploymentManifest: deploymentIdentity.manifest,
-            readAvailabilityTerminalInput: source.readAvailabilityTerminalInput,
           }),
           reinclude: async (transition) => {
             await Effect.runPromise(

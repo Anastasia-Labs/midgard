@@ -28,7 +28,7 @@ import type {
   Header,
   StateQueueHeaderRecord,
 } from "../src/domain.js";
-import { JsonFileWatcherStore } from "../src/store.js";
+import { JsonFileCommitteeStore } from "../src/store.js";
 import { makePayloadFixture, tempDir } from "./helpers.js";
 
 const deploymentFingerprint = "01".repeat(32);
@@ -302,7 +302,7 @@ describe("DA libp2p proof protocol handlers", () => {
   });
 
   it("gates stream request handlers by registered requester roles", async () => {
-    const store = await JsonFileWatcherStore.open(await tempDir());
+    const store = await JsonFileCommitteeStore.open(await tempDir());
     const registry = new DaPeerRegistry([
       {
         peerId: "peer-retrieval",
@@ -404,9 +404,9 @@ const streamLimits = {
 
 const makeHandlers = async (): Promise<{
   readonly handlers: DaLibp2pProofProtocolHandlers;
-  readonly store: JsonFileWatcherStore;
+  readonly store: JsonFileCommitteeStore;
 }> => {
-  const store = await JsonFileWatcherStore.open(await tempDir());
+  const store = await JsonFileCommitteeStore.open(await tempDir());
   const handlers = new DaLibp2pProofProtocolHandlers({
     deploymentFingerprint,
     store,
@@ -454,7 +454,7 @@ const saveVerifiedPayload = async ({
   headerHash,
   rootSummary = rootSummaryFromHeader(header),
 }: {
-  readonly store: JsonFileWatcherStore;
+  readonly store: JsonFileCommitteeStore;
   readonly payloadCbor: Buffer;
   readonly payloadHash: Buffer;
   readonly header: Header;

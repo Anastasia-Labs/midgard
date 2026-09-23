@@ -2,13 +2,21 @@
 # docker-compose.kupmios.yaml for Class B/full-pipeline runs.
 #
 # Bare benchmark profile keeps observability services off. Add
-# `--profile observability` only when debugging observer-visible behavior.
+# `--profile observability` only when debugging observer-visible behavior; the
+# node command below drops `--with-monitoring` so it does not export OTLP to a
+# tempo host that is not running. `.env.benchmark` holds deployment-specific
+# overrides (start from scripts/stress.benchmark.env) and is optional.
 
 services:
   midgard-node:
+    command:
+      - node
+      - ./dist/index.js
+      - listen
     env_file:
       - .env
-      - .env.benchmark
+      - path: .env.benchmark
+        required: false
     cpus: "4.0"
     cpuset: "0-7"
     mem_limit: "8g"
@@ -21,7 +29,8 @@ services:
   midgard-node-migrate:
     env_file:
       - .env
-      - .env.benchmark
+      - path: .env.benchmark
+        required: false
     environment:
       MIDGARD_NODE_URL: "http://127.0.0.1:3000"
       STRESS_SUBMIT_ENDPOINT: "http://127.0.0.1:3000"
@@ -69,7 +78,8 @@ services:
     profiles: ["load-generator-cohosted"]
     entrypoint: ["node", "scripts/throughput-valid-stress.mjs"]
     env_file:
-      - .env.benchmark
+      - path: .env.benchmark
+        required: false
     environment:
       MIDGARD_NODE_URL: "http://midgard-node:3000"
       STRESS_SUBMIT_ENDPOINT: "http://midgard-node:3000"

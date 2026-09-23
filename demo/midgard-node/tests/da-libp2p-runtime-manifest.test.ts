@@ -45,7 +45,7 @@ import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge.js
 import { TEST_CARDANO_PROTOCOL_PARAMETERS } from "./helpers/cardano-protocol-parameters.js";
 
 const PRODUCER_KEY = `seed:${"00".repeat(31)}01`;
-const WATCHER_KEY = `seed:${"00".repeat(31)}02`;
+const COMMITTEE_KEY = `seed:${"00".repeat(31)}02`;
 const PUBLIC_RETAINED_DA_KEY = `seed:${"00".repeat(31)}03`;
 const DA_VKEY = "11".repeat(32);
 const PRODUCER_DA_VKEY = "22".repeat(32);
@@ -95,7 +95,7 @@ describe("DA libp2p runtime manifest profiles", () => {
     const deploymentInfo = await writeFinalizedDeploymentInfo();
     const manifest = await generateDaLibp2pRuntimeManifest({
       target: "producer",
-      profile: "producer-container-watcher-host",
+      profile: "producer-container-committee-host",
       contractDeploymentInfoPath: deploymentInfo.path,
       network: "Preprod",
       producerPrivateKeySource: PRODUCER_KEY,
@@ -105,7 +105,7 @@ describe("DA libp2p runtime manifest profiles", () => {
         {
           signerIndex: 0,
           daVkey: DA_VKEY,
-          libp2pPrivateKeySource: WATCHER_KEY,
+          libp2pPrivateKeySource: COMMITTEE_KEY,
           roles: ["committee", "retrieval"],
         },
       ],
@@ -148,19 +148,19 @@ describe("DA libp2p runtime manifest profiles", () => {
       network: "Preprod",
       producerPrivateKeySource: PRODUCER_KEY,
       publicRetainedDaPrivateKeySource: PUBLIC_RETAINED_DA_KEY,
-      watcherServiceName: "watcher-a",
+      committeeServiceName: "committee-a",
       threshold: 1,
       committeeMembers: [
         {
           signerIndex: 0,
           daVkey: DA_VKEY,
-          libp2pPrivateKeySource: WATCHER_KEY,
+          libp2pPrivateKeySource: COMMITTEE_KEY,
           roles: ["committee"],
         },
       ],
     });
 
-    expect(JSON.stringify(manifest)).toContain("/dns4/watcher-a/tcp/39001/");
+    expect(JSON.stringify(manifest)).toContain("/dns4/committee-a/tcp/39001/");
   });
 
   it("persists the exact runtime manifest atomically", async () => {
@@ -177,7 +177,7 @@ describe("DA libp2p runtime manifest profiles", () => {
         {
           signerIndex: 0,
           daVkey: DA_VKEY,
-          libp2pPrivateKeySource: WATCHER_KEY,
+          libp2pPrivateKeySource: COMMITTEE_KEY,
           roles: ["committee"],
         },
       ],
@@ -202,7 +202,7 @@ describe("DA libp2p runtime manifest profiles", () => {
     const deploymentInfo = await writeFinalizedDeploymentInfo();
     const manifest = await generateDaLibp2pRuntimeManifest({
       target: "producer",
-      profile: "producer-container-watcher-host",
+      profile: "producer-container-committee-host",
       contractDeploymentInfoPath: deploymentInfo.path,
       network: "Preprod",
       producerPrivateKeySource: PRODUCER_KEY,
@@ -212,7 +212,7 @@ describe("DA libp2p runtime manifest profiles", () => {
         {
           signerIndex: 0,
           daVkey: DA_VKEY,
-          libp2pPrivateKeySource: WATCHER_KEY,
+          libp2pPrivateKeySource: COMMITTEE_KEY,
           roles: ["committee", "retrieval", "watcher"],
         },
         {
@@ -250,13 +250,13 @@ describe("DA libp2p runtime manifest profiles", () => {
         producerPrivateKeySource: PRODUCER_KEY,
         publicRetainedDaPrivateKeySource: PUBLIC_RETAINED_DA_KEY,
         producerPublicHost: "127.0.0.1",
-        watcherPublicHost: "da.example",
+        committeePublicHost: "da.example",
         threshold: 1,
         committeeMembers: [
           {
             signerIndex: 0,
             daVkey: DA_VKEY,
-            libp2pPrivateKeySource: WATCHER_KEY,
+            libp2pPrivateKeySource: COMMITTEE_KEY,
             roles: ["committee"],
           },
         ],
@@ -283,7 +283,7 @@ describe("DA libp2p runtime manifest profiles", () => {
           {
             signerIndex: 0,
             daVkey: DA_VKEY,
-            libp2pPrivateKeySource: WATCHER_KEY,
+            libp2pPrivateKeySource: COMMITTEE_KEY,
             roles: ["committee"],
           },
         ],
@@ -305,7 +305,7 @@ describe("DA libp2p runtime manifest profiles", () => {
         {
           signerIndex: 0,
           daVkey: DA_VKEY,
-          libp2pPrivateKeySource: WATCHER_KEY,
+          libp2pPrivateKeySource: COMMITTEE_KEY,
           roles: ["committee"],
         },
       ],

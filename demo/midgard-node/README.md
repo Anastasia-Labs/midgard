@@ -41,7 +41,8 @@ It is responsible for:
 - `pnpm build` bundles the node entry point and worker entry points with tsup;
   workspace imports resolve through package exports.
 - `ADMIN_API_KEY` gates the admin-only HTTP surface; keep it set in any shared
-  or remotely reachable environment.
+  or remotely reachable environment. Left empty, every admin route answers
+  `403 Admin endpoints are disabled`; a wrong `x-midgard-admin-key` answers `401`.
 - Accepted `mempool` and `mempool_ledger` rows, spent-input deletion, consumed
   deposit tracking, and the durable admission terminal update commit atomically.
   `mempool_tx_deltas` and produced-side `address_history` rows are auxiliary
@@ -52,6 +53,24 @@ It is responsible for:
   mempool/immutable transaction CBOR. The writer never drops live-process rows:
   queue overflow falls back to an inline write, and graceful shutdown drains the
   queue.
+- The retention sweeper runs every `WAIT_BETWEEN_RETENTION_SWEEPS` ms (default
+  900000, 15 minutes).
+  `da_payloads` pruning always runs, whatever `RETENTION_DAYS` says. A payload is
+  deleted once its block end time is past the challengeability horizon (10.5
+  days) or its header was removed from the state queue under this deployment.
+  The payload of the L1 confirmed head and the payload of every header live in
+  the L1 state queue are never deleted. `RETENTION_DAYS` governs only the
+  wall-clock tables (`tx_rejections`, `address_history`, `deposits_utxos`,
+  `withdrawal_utxos`): `0` keeps them forever, any other value must be at least
+  the manifest's `da.transportProfile.retentionDays`. That manifest value is
+  validated at load but does not govern DA payload pruning; it currently only
+  feeds the `retainUntilMs` field of retention reports.
+- Each sweep reads the state queue from L1 first. If that read fails, the
+  sweeper logs `retention_pass_skipped` and deletes no DA payload. Once the last
+  successful read is older than `L1_VIEW_FATAL_MS`, the node exits non-zero.
+  The default is the DA attestation timeout (one hour, four default sweep
+  intervals). The value must be at least three sweep intervals and at most the
+  retention margin (4.5 days).
 
 ## Transaction Preparation Checks
 
@@ -73,80 +92,68 @@ emulator regression before rerunning the full live flow.
 
 ## How to Run
 
+The canonical stack is `docker-compose.yaml` plus the `docker-compose.kupmios.yaml`
+overlay: PostgreSQL, the node, a one-shot schema migration, and an in-stack
+Cardano L1 (cardano-node bootstrapped from a certified Mithril snapshot, Ogmios,
+Kupo). The base file alone starts no L1, and the node accepts only a `Kupmios`
+provider, so every command below uses both files.
+
+Bringing up a node is three phases: build, one-time protocol bring-up, run.
+`listen` refuses to start until the bring-up artifacts exist.
+
 ### With Docker
 
-Using Docker, you can run Midgard node on `localhost:3000` (or another port)
-quite easily.
+0. If you don't have Docker yet or want to update, follow this [GUIDE](https://docs.docker.com/engine/install/). After installation, do not forget to execute also the [POST-INSTALLATION STEPS](https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user) to avoid using sudo with Docker. Compose v2 is required.
 
-0. If you don't have Docker yet or want to update, follow this [GUIDE](https://docs.docker.com/engine/install/). After installation, do not forget to execute also the [POST-INSTALLATION STEPS](https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user) to avoid using sudo with Docker.
-
-1. Run Docker daemon if it's not running already:
+1. Build the on-chain blueprint. `onchain/aiken/plutus.json` is gitignored and
+   the image build copies it, so a fresh clone fails at `docker compose build`
+   without this step:
 
    ```sh
-   sudo dockerd
+   cd onchain/aiken && aiken build --env testnet && cd ../..
    ```
 
-2. Use the Node.js and pnpm versions declared in `demo/package.json`.
-   Workspace SDK dependencies resolve through pnpm; no SDK tarball is needed.
-
-3. Prepare your `.env` file. You can use `.env.example` as your starting point:
-
-   ```sh
-   cd ../midgard-node
-   cp .env.example .env
-   ```
-
-   1. Demo-node acceptance supports `L1_PROVIDER=Kupmios` only. Use local Kupo
-      and Ogmios endpoints, and run
-      `node dist/index.js l1-provider-preflight --json` before long-running
-      deployment steps.
-   2. If local Kupo or Ogmios is unhealthy, fix the local
-      `docker-compose.kupmios.yaml` stack instead of switching to a remote L1
-      provider.
-
-4. Install all the dependencies:
+2. Use the Node.js version in `demo/.nvmrc` and the pnpm version pinned in
+   `demo/package.json` (`packageManager`). Install and build the workspace from
+   `demo/`:
 
    ```sh
+   cd demo
    pnpm install --frozen-lockfile
+   pnpm run build
+   cd midgard-node
    ```
 
    Resolve dependency or lockfile drift through the workspace package manifests
    and pnpm. Do not manually replace integrity hashes in the lockfile.
 
-5. Build the midgard-node:
+3. Prepare your `.env` from `.env.example`:
 
    ```sh
-   pnpm build
+   cp .env.example .env
    ```
 
-6. Run the application stack:
+   The "Required settings" block at the top of `.env.example` lists every key
+   that has no default. Config load fails, for every command including
+   `db:migrate`, until each of them has a value; the error names the variable.
+   Three distinct wallets are required (operator, merge, reference-script). The
+   overlay injects the in-stack `L1_OGMIOS_KEY`/`L1_KUPO_KEY` into both the node
+   and the migration container, so leave the `127.0.0.1` values alone unless you
+   run an external L1.
+
+   `.env` values override the image pins in the compose files. Keep the
+   `*_IMAGE_TAG` / `CARDANO_NODE_IMAGE_DIGEST` lines in step with
+   `docker-compose.kupmios.yaml` when you bump one.
+
+4. Start the L1 and PostgreSQL first and wait until they are healthy:
 
    ```sh
-   docker compose up -d
-
-   # or this for development:
-   docker compose -f docker-compose.dev.yaml up -d
+   docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml \
+     up -d postgres cardano-node-ogmios kupo
+   docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml ps
    ```
 
-   `docker compose up` starts PostgreSQL, runs the one-shot
-   `midgard-node-migrate` service with `node ./dist/index.js db:migrate`, and
-   starts `midgard-node` only after the migration service exits successfully.
-   On an empty Postgres volume this creates the Midgard schema before the node
-   begins listening. If migration fails, the node is not started; inspect the
-   migration logs with:
-
-   ```sh
-   docker compose logs midgard-node-migrate
-   ```
-
-7. To run against an in-stack local `Kupmios` provider backed by a Mithril
-   bootstrap, start with the compose override:
-
-   ```sh
-   docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml up -d
-   ```
-
-   Notes:
+   Notes on the L1 stack:
 
    1. The first run restores a Mithril-certified Cardano DB snapshot into
       `./cardano/db` only when that directory is empty. Existing data is never
@@ -159,9 +166,15 @@ quite easily.
       `./cardano/kupo` before restarting the stack.
    4. The local stack restores an official Kupo SQLite snapshot into
       `./cardano/kupo` when that directory is empty, then continues syncing
-      with `--match * --since origin --prune-utxo`. That preserves a full
-      wildcard current-UTxO index without forcing every fresh checkout to
-      start from an empty Kupo database.
+      with `--match * --since origin` and **without** `--prune-utxo`. The
+      node's forced-order carriage reader needs spent carriage outputs to stay
+      readable, and a pruning index deletes them. The official snapshot was
+      built pruned, so outputs spent before its snapshot point are absent.
+      That is harmless for a deployment you initialise after this bring-up
+      (the snapshot predates `init` by construction). To join a deployment
+      whose L1 history starts before the snapshot was taken, set
+      `KUPO_BOOTSTRAP_MODE=origin` before the first start (or clear
+      `./cardano/kupo` and restart with it) so Kupo syncs from origin instead.
    5. Kupo is considered healthy only once its `/health` endpoint returns
       `200`, not while it is still returning `202 Accepted` during replay. That
       keeps `midgard-node` from starting against a stale wildcard index.
@@ -169,8 +182,68 @@ quite easily.
       containers instead of the combined `cardano-node-ogmios` image, because
       the certified Mithril snapshot can move ahead of that combined image's
       bundled Cardano node version.
+   7. A host that runs only a watcher or a DA committee node uses the same two
+      files and the same `up -d cardano-node-ogmios kupo` command; nothing else
+      in the base file starts.
 
-Midgard node should be running on port `PORT` (from your `.env`).
+   Confirm the route the node will use before spending anything:
+
+   ```sh
+   node dist/index.js l1-provider-preflight --json
+   ```
+
+   If local Kupo or Ogmios is unhealthy, fix this stack. Remote L1 providers are
+   not supported for demo-node acceptance.
+
+5. Install the schema:
+
+   ```sh
+   docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml \
+     run --rm midgard-node-migrate
+   ```
+
+   `docker compose up` also runs this as the one-shot `midgard-node-migrate`
+   service and starts `midgard-node` only after it exits successfully. If it
+   fails, inspect `docker compose logs midgard-node-migrate`.
+
+6. One-time protocol bring-up. Run these from `demo/midgard-node` against the
+   healthy L1; each verb runs a wallet funding preflight and refuses locally
+   before it spends anything. Full detail is in
+   [Export Contract Deployment Info](#export-contract-deployment-info) and the
+   docs-site page `docs-site/content/docs/operators/node/initialization-deployment.mdx`.
+
+   ```sh
+   node dist/index.js prepare-hub-oracle-one-shot-nonce
+   #   -> copy HUB_ORACLE_ONE_SHOT_TX_HASH / _OUTPUT_INDEX into .env
+   node dist/index.js deploy-reference-script-node-runtime
+   node dist/index.js init \
+     --contract-deployment-info-output deploymentInfo/contract-deployment-info.json
+   node dist/index.js da-libp2p-generate-manifest --target producer \
+     --out deploymentInfo/da-libp2p-producer-manifest.json ...
+   #   -> the --out path must equal MIDGARD_DEPLOYMENT_MANIFEST_PATH in .env
+   node dist/index.js register-operator
+   node dist/index.js activate-operator
+   ```
+
+   `listen` fails closed without `deploymentInfo/contract-deployment-info.json`
+   and the DA producer manifest. `deploymentInfo/` is gitignored and mounted
+   into the container, so the files written here are the ones the node reads.
+   Run `node dist/index.js deployment-status` to reconcile an existing identity
+   before repeating any of these.
+
+7. Run the full stack:
+
+   ```sh
+   docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml up -d
+   ```
+
+   `docker-compose.dev.yaml` is a standalone no-monitoring variant of the base
+   file; combine it with the same overlay when you want an in-stack L1 without
+   Grafana, Loki, Tempo, and Prometheus.
+
+The node is up when `curl -s localhost:3000/readyz` reports ready. The compose
+port mapping and healthcheck are fixed at 3000; `PORT` only changes the port
+the process binds inside the container.
 
 You can view logs of `midgard-node` with `docker`:
 
@@ -183,8 +256,8 @@ If you made any changes to `midgard-node` and had an image running, restart it
 without deleting durable state:
 
 ```sh
-docker compose stop midgard-node
-docker compose up -d --build
+docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml stop midgard-node
+docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml up -d --build
 ```
 
 Only wipe Docker volumes or local MPF/PostgreSQL state as part of a full clean
@@ -201,8 +274,8 @@ POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
 POSTGRES_DB=midgard
 POSTGRES_HOST=localhost
-LEDGER_MPF_DB_PATH=midgard-ledger-mpf-db
-TRANSACTIONS_MPF_DB_PATH=midgard-transactions-mpf-db
+LEDGER_MPF_DB_PATH=db/midgard-ledger-mpf-db
+TRANSACTIONS_MPF_DB_PATH=db/midgard-transactions-mpf-db
 ```
 
 With a properly setup database, the following set of commands should start the
@@ -212,10 +285,12 @@ most up to date `midgard-node`:
 # Optional
 nix develop
 
+# Build the blueprint once (gitignored): cd onchain/aiken && aiken build --env testnet
 # From demo/midgard-node, install the pinned workspace dependencies.
 pnpm install --frozen-lockfile
 pnpm build
 node dist/index.js db:migrate
+# One-time protocol bring-up: see step 6 of "With Docker".
 pnpm listen
 ```
 
@@ -228,7 +303,7 @@ pnpm listen
 - `node dist/index.js deploy-reference-script-node-runtime`: generate the
   reference-script auth timelock policy, publish the node-runtime reference
   scripts with role tokens, and write the deployment-info manifest.
-- `pnpm init`: initialize hub-oracle, state-queue, operator roots, and
+- `pnpm run init`: initialize hub-oracle, state-queue, operator roots, and
   scheduler state.
 - `node dist/index.js export-contract-deployment-info --out <path>`: write a
   JSON manifest describing the currently configured validator bundle,
@@ -279,7 +354,7 @@ node dist/index.js reconcile phas-registered --json [--repair]
 node dist/index.js reconcile reference-scripts-complete --scope node-runtime --json [--repair]
 node dist/index.js reconcile deposit-projected --cardano-tx-hash <hash> --json [--repair]
 node dist/index.js reconcile tx-committed --tx-hash <l2-tx-id> --json
-node dist/index.js reconcile da-attested --header-hash <hash> --watcher-url <url> --contract-deployment-info deploymentInfo/contract-deployment-info.json --json [--repair]
+node dist/index.js reconcile da-attested --header-hash <hash> --committee-url <url> --contract-deployment-info deploymentInfo/contract-deployment-info.json --json [--repair]
 node dist/index.js reconcile block-committed --header-hash <hash> --json
 node dist/index.js reconcile merge-complete --header-hash <hash> --json [--repair]
 ```
@@ -624,7 +699,10 @@ The benchmark env also requires no-op calibration by default: start
 server, or explicitly disable the requirement for a non-gating diagnostic run.
 
 For an isolated Compose run, layer `docker-compose.benchmark.yaml` over the
-normal stack and set deployment-specific values in `.env.benchmark`. The
+normal stack and set deployment-specific values in `.env.benchmark` (optional;
+start from `scripts/stress.benchmark.env`). The overlay runs the node without
+`--with-monitoring`, so nothing is exported to a tempo host unless you also add
+`--profile observability`. The
 optional cohosted load generator is behind the `load-generator-cohosted`
 profile; a separate load-generator host is the preferred topology.
 

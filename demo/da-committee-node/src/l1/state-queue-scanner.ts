@@ -3,7 +3,7 @@ import {
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, type UTxO } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import type {
@@ -23,12 +23,6 @@ export interface StateQueueProvider {
     anchor: readonly SDK.StateQueueTransitionNode[],
     current: readonly SDK.StateQueueTransitionNode[],
   ): Promise<readonly SDK.StateQueueAuthenticatedReplayCheckpoint[]>;
-  readAvailabilityRetentionInput?(
-    transition: SDK.StateQueueAuthenticatedTransition,
-  ): Promise<UTxO | null>;
-  withCurrentRetentionAuthority?(
-    action: () => Promise<boolean>,
-  ): Promise<boolean>;
   currentChainSyncCursor?(): Promise<ChainSyncCursor>;
   replayChainSyncEvents?(
     afterSequence: number,
@@ -52,9 +46,19 @@ export type StateQueueScanConfig = {
   readonly consensusProfile: MidgardConsensusProfile;
   readonly previousHeaders?: readonly StateQueueHeaderRecord[];
   readonly terminalReplayAnchor?: StateQueueReplayAnchor;
-  readonly availabilityRetentionAuthority?: SDK.DaAvailabilityRetentionAuthority;
   readonly recordReplayAnchor?: (anchor: StateQueueReplayAnchor) => void;
+  /**
+   * Receives the retention exemption sets of this scan's L1 snapshot: the
+   * `ConfirmedState` header hash and the hash of every live queue header.
+   * Called only when the provider returned a full state-queue snapshot.
+   */
+  readonly recordL1View?: (view: StateQueueL1View) => void;
 };
+
+export type StateQueueL1View = Readonly<{
+  confirmedHeaderHash: string;
+  liveQueueHeaderHashes: readonly string[];
+}>;
 
 export const scanStateQueue = async (
   provider: StateQueueProvider,
@@ -96,7 +100,7 @@ export const scanStateQueue = async (
       "state-queue changed without an authenticated replay checkpoint",
     );
   }
-  let records = terminalRetentionOutcomes(
+  const records = terminalRetentionOutcomes(
     config.previousHeaders ?? [],
     current,
     checkpoints,
@@ -111,38 +115,12 @@ export const scanStateQueue = async (
         : { replayAnchor: config.terminalReplayAnchor }),
     },
   );
-  if (
-    config.availabilityRetentionAuthority !== undefined &&
-    provider.readAvailabilityRetentionInput !== undefined
-  ) {
-    const terminals = checkpoints.flatMap((checkpoint) =>
-      checkpoint.terminalTransition === null
-        ? []
-        : [checkpoint.terminalTransition],
-    );
-    const evidenceByHeader = new Map<
-      string,
-      StateQueueHeaderRecord["availabilityRetention"]
-    >();
-    for (const transition of terminals) {
-      const consumed =
-        await provider.readAvailabilityRetentionInput(transition);
-      const evidence =
-        consumed === null
-          ? null
-          : SDK.deriveDaAvailabilityRetentionEvidence(
-              transition,
-              consumed,
-              config.availabilityRetentionAuthority,
-            );
-      if (evidence !== null)
-        evidenceByHeader.set(evidence.headerHash, { transition, evidence });
-    }
-    records = records.map((record) => {
-      const availabilityRetention = evidenceByHeader.get(record.headerHash);
-      return availabilityRetention === undefined
-        ? record
-        : { ...record, availabilityRetention };
+  if (snapshot !== undefined && config.recordL1View !== undefined) {
+    config.recordL1View({
+      confirmedHeaderHash: normalizeHex(snapshot.confirmedHeaderHash, {
+        fieldName: "state queue confirmed header hash",
+      }),
+      liveQueueHeaderHashes: current.map(({ headerHash }) => headerHash),
     });
   }
   if (snapshot !== undefined && config.recordReplayAnchor !== undefined) {

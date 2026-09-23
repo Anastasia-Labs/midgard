@@ -3,88 +3,94 @@ import {
   MIDGARD_RETENTION_WINDOW,
   retentionDeadlineAlert,
   type RetentionPruneDecision,
+  type RetentionQueueReference,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
 
 import type {
   DaStoredPayloadRecord,
   StateQueueHeaderRecord,
 } from "../domain.js";
-import type { WatcherStore } from "../store.js";
+import type { CommitteeStore } from "../store.js";
 
 /**
- * Retention enforcement for the committee watcher store (GOAL_SPEC 9.4 / Q54).
+ * Retention enforcement for the committee node store (GOAL_SPEC 9.4 / Q54).
  *
- * Retained DA payloads are only prunable once BOTH the block's challengeability
- * horizon (maturity + worst-case proof-time bound) has strictly passed AND its
- * L1 state-queue header has reached a terminal outcome. Every unknown - missing
- * header row, missing block end time, unrecognised status, foreign deployment
- * fingerprint - retains.
+ * A retained DA payload is prunable once its header was removed from the state
+ * queue OR its block's challengeability horizon (maturity + worst-case
+ * proof-time bound) has strictly passed, unless it is the payload of the L1
+ * confirmed head or of a header still live in the L1 state queue. Both
+ * exemption sets come from the poller's latest authenticated L1 view, never
+ * from local header rows, so the retained set is bounded by one head, the live
+ * queue, and the payloads whose block ended within the horizon.
  */
 
 export type RetentionCandidate = {
   readonly headerHash: string;
   readonly deploymentFingerprint: string;
-  readonly blockEndTimeMs: number | null;
-  readonly headerStatus: StateQueueHeaderRecord["status"] | undefined;
-  readonly headerPresent: boolean;
+  readonly blockEndTimeMs: number;
+  readonly headerStatus: StateQueueHeaderRecord["status"] | "unobserved";
+  readonly queueReference: RetentionQueueReference;
+  /** Diagnostic only: payload or header written under another deployment. */
   readonly fingerprintMismatch: boolean;
+  /** Diagnostic only: terminal status without authenticated L1 history. */
   readonly terminalHistoryAuthorityMismatch: boolean;
-  readonly availabilityChallengeAuthorityMismatch: boolean;
-  readonly activeAvailabilityChallenge: boolean;
-  readonly availabilityTerminalTransitionDigest: string | null;
   readonly decision: RetentionPruneDecision;
 };
 
-export type RetentionScanOptions = {
-  readonly nowMs: number;
-  readonly retentionDays?: number;
-  /**
-   * When set, a payload written under a different deployment fingerprint is
-   * always retained (and reported), never pruned.
-   */
-  readonly deploymentFingerprint?: string;
-  /**
-   * Release-bound L1 depth. A terminal header is never pruning authority when
-   * this is absent/malformed or its authenticated transition was shallower.
-   */
-  readonly minimumFinalityDepth?: number;
-  readonly availabilityChallengeAuthority?: {
-    readonly deploymentFingerprint: string;
-    readonly capability: "deployed_unobserved";
-    readonly activeHeaderHashes?: ReadonlySet<string>;
-    readonly terminalEvidence?: ReadonlyMap<
-      string,
-      {
-        readonly transition: SDK.StateQueueAuthenticatedTransition;
-        readonly evidence: SDK.DaAvailabilityRetentionEvidence;
-        readonly authority: SDK.DaAvailabilityRetentionAuthority;
-      }
-    >;
-    /** Serializes the exact evidence check and deletion with source rollback. */
-    readonly withCurrentTerminalEvidence?: (
-      headerHash: string,
-      transitionDigest: string,
-      remove: () => Promise<boolean>,
-    ) => Promise<boolean>;
-  };
+/** The poller's latest authenticated L1 state-queue view. */
+export type RetentionL1View = {
+  /** Header hash in the L1 `ConfirmedState` datum. */
+  readonly confirmedHeadHash: string;
+  /** Hashes of every header node currently in the L1 state queue. */
+  readonly liveQueueHeaderHashes: ReadonlySet<string>;
 };
 
-const blockEndTimeMsOf = (
+export type RetentionScanOptions = RetentionL1View & {
+  readonly nowMs: number;
+  readonly retentionDays?: number;
+  /** Reported as a diagnostic when a payload or header does not match it. */
+  readonly deploymentFingerprint?: string;
+  /** Release-bound L1 depth used by the terminal-history diagnostic. */
+  readonly minimumFinalityDepth?: number;
+};
+
+/**
+ * End time the horizon is measured from: the payload's own header `endTime`,
+ * or, when the store holds no representable header row, the local receipt
+ * time of the payload. A header that is unobserved here and not live in the
+ * L1 queue has left the queue, so no availability challenge can open against
+ * it; receipt time still keeps a payload pushed before its header commits
+ * retained for one full horizon, and bounds the rest.
+ */
+export const retentionBlockEndTimeMs = (
+  payload: Pick<DaStoredPayloadRecord, "fetchedAt">,
   header: StateQueueHeaderRecord | undefined,
-): number | null => {
-  if (header === undefined) {
-    return null;
-  }
-  const endTime = header.header.endTime;
+): number => {
+  const endTime: unknown = header?.header.endTime;
   const asNumber =
     typeof endTime === "bigint"
       ? Number(endTime)
       : typeof endTime === "number"
         ? endTime
         : Number.NaN;
-  return Number.isSafeInteger(asNumber) && asNumber >= 0 ? asNumber : null;
+  if (Number.isSafeInteger(asNumber) && asNumber >= 0) {
+    return asNumber;
+  }
+  const fetchedAtMs = Date.parse(payload.fetchedAt);
+  return Number.isSafeInteger(fetchedAtMs) && fetchedAtMs >= 0
+    ? fetchedAtMs
+    : 0;
 };
+
+export const retentionQueueReference = (
+  headerHash: string,
+  view: RetentionL1View,
+): RetentionQueueReference =>
+  headerHash === view.confirmedHeadHash
+    ? "confirmed_head"
+    : view.liveQueueHeaderHashes.has(headerHash)
+      ? "live_in_queue"
+      : "none";
 
 const isTerminalStatus = (status: StateQueueHeaderRecord["status"]): boolean =>
   status === "merged" || status === "removed";
@@ -125,7 +131,7 @@ const hasAuthenticatedTerminalHistory = (
  * retention decision to each pair.
  */
 export const retentionCandidates = async (
-  store: WatcherStore,
+  store: CommitteeStore,
   options: RetentionScanOptions,
 ): Promise<readonly RetentionCandidate[]> => {
   const payloads = await store.listDaPayloads();
@@ -136,7 +142,9 @@ export const retentionCandidates = async (
 
   return payloads.map((payload: DaStoredPayloadRecord) => {
     const header = headerByHash.get(payload.headerHash);
-    const blockEndTimeMs = blockEndTimeMsOf(header);
+    const blockEndTimeMs = retentionBlockEndTimeMs(payload, header);
+    const headerStatus = header?.status ?? "unobserved";
+    const queueReference = retentionQueueReference(payload.headerHash, options);
     const fingerprintMismatch =
       (options.deploymentFingerprint !== undefined &&
         payload.deploymentFingerprint !== options.deploymentFingerprint) ||
@@ -148,77 +156,21 @@ export const retentionCandidates = async (
       header !== undefined &&
       isTerminalStatus(header.status) &&
       !hasAuthenticatedTerminalHistory(header, options.minimumFinalityDepth);
-    const challengeAuthority = options.availabilityChallengeAuthority;
-    const availabilityChallengeAuthorityMismatch =
-      challengeAuthority === undefined ||
-      options.deploymentFingerprint === undefined ||
-      challengeAuthority.deploymentFingerprint !==
-        options.deploymentFingerprint;
-    const activeAvailabilityChallenge =
-      !availabilityChallengeAuthorityMismatch &&
-      challengeAuthority.capability === "deployed_unobserved" &&
-      challengeAuthority.activeHeaderHashes?.has(payload.headerHash) === true;
-    const terminal = challengeAuthority?.terminalEvidence?.get(
-      payload.headerHash,
-    );
-    const confirmedInactive =
-      terminal !== undefined &&
-      header !== undefined &&
-      terminal.authority.deploymentIdentityDigest ===
-        payload.deploymentFingerprint &&
-      Number.isSafeInteger(options.minimumFinalityDepth) &&
-      terminal.authority.minimumFinalityDepth ===
-        BigInt(options.minimumFinalityDepth ?? -1) &&
-      terminal.transition.blockHash === header.observedChainPoint.blockHash &&
-      terminal.transition.slot === String(header.observedChainPoint.slot) &&
-      terminal.transition.blockNo ===
-        String(header.observedChainPoint.blockHeight) &&
-      terminal.transition.removedHeaderHashes[0] === payload.headerHash &&
-      terminal.evidence.blockEndTimeMs === String(blockEndTimeMs) &&
-      (terminal.transition.transitionKind === "merge"
-        ? "merged"
-        : "removed") === header.status &&
-      SDK.parseDaAvailabilityRetentionEvidence(
-        terminal.evidence,
-        terminal.transition,
-        terminal.authority,
-      ) !== null;
-    const availabilityChallengeState = availabilityChallengeAuthorityMismatch
-      ? "unknown"
-      : activeAvailabilityChallenge
-        ? "active"
-        : confirmedInactive
-          ? "inactive"
-          : "unknown";
-    const decision = daRetentionPruneDecision(
-      { headerHash: payload.headerHash, blockEndTimeMs },
-      {
-        nowMs: options.nowMs,
-        retentionDays: options.retentionDays,
-        // A missing header row yields an undefined status, which the core
-        // decision treats as unknown and therefore retains.
-        headerStatus: terminalHistoryAuthorityMismatch
-          ? undefined
-          : header?.status,
-        availabilityChallengeState,
-      },
-    );
     return {
       headerHash: payload.headerHash,
       deploymentFingerprint: payload.deploymentFingerprint,
       blockEndTimeMs,
-      headerStatus: header?.status,
-      headerPresent: header !== undefined,
+      headerStatus,
+      queueReference,
       fingerprintMismatch,
       terminalHistoryAuthorityMismatch,
-      availabilityChallengeAuthorityMismatch,
-      activeAvailabilityChallenge,
-      availabilityTerminalTransitionDigest: confirmedInactive
-        ? terminal.transition.transitionDigest
-        : null,
-      decision: fingerprintMismatch
-        ? { decision: "retain", reasonCode: "header_status_unknown" }
-        : decision,
+      decision: daRetentionPruneDecision({
+        nowMs: options.nowMs,
+        blockEndTimeMs,
+        headerStatus,
+        queueReference,
+        retentionDays: options.retentionDays,
+      }),
     };
   });
 };
@@ -230,36 +182,24 @@ export type RetentionPruneResult = {
 };
 
 const pruneRetentionCandidates = async (
-  store: WatcherStore,
+  store: CommitteeStore,
   candidates: readonly RetentionCandidate[],
   options: RetentionScanOptions,
 ): Promise<RetentionPruneResult> => {
   const prunedHeaderHashes: string[] = [];
   for (const candidate of candidates) {
-    if (
-      candidate.decision.decision !== "prune" ||
-      candidate.decision.reasonCode !== "expired_and_terminal" ||
-      candidate.fingerprintMismatch ||
-      candidate.terminalHistoryAuthorityMismatch ||
-      candidate.availabilityChallengeAuthorityMismatch
-    ) {
+    if (candidate.decision.decision !== "prune") {
       continue;
     }
-    const source = options.availabilityChallengeAuthority;
-    const terminal = source?.terminalEvidence?.get(candidate.headerHash);
-    if (
-      !terminal ||
-      !source?.withCurrentTerminalEvidence ||
-      candidate.availabilityTerminalTransitionDigest === null ||
-      candidate.availabilityTerminalTransitionDigest !==
-        terminal.transition.transitionDigest
-    )
-      continue;
-    const deleted = await source.withCurrentTerminalEvidence(
-      candidate.headerHash,
-      candidate.availabilityTerminalTransitionDigest,
-      () => store.deleteDaPayload(candidate.headerHash),
-    );
+    // The store re-decides inside its own write boundary, so a header
+    // observed between the scan and the delete is decided afresh.
+    const deleted = await store.deleteDaPayloadIfPrunable({
+      headerHash: candidate.headerHash,
+      nowMs: options.nowMs,
+      retentionDays: options.retentionDays,
+      confirmedHeadHash: options.confirmedHeadHash,
+      liveQueueHeaderHashes: options.liveQueueHeaderHashes,
+    });
     if (deleted) {
       prunedHeaderHashes.push(candidate.headerHash);
     }
@@ -271,14 +211,9 @@ const pruneRetentionCandidates = async (
   };
 };
 
-/**
- * Deletes only `expired_and_terminal` retained DA payloads.
- *
- * Terminal status must come from authenticated ordered L1 transition history;
- * neither local disappearance nor a latest-root snapshot is sufficient.
- */
+/** Deletes every retained DA payload the core retention decision prunes. */
 export const pruneExpiredDaPayloads = async (
-  store: WatcherStore,
+  store: CommitteeStore,
   options: RetentionScanOptions,
 ): Promise<RetentionPruneResult> => {
   const candidates = await retentionCandidates(store, options);
@@ -288,9 +223,9 @@ export const pruneExpiredDaPayloads = async (
 export type RetentionDeadlineEntry = {
   readonly headerHash: string;
   readonly reasonCode: RetentionPruneDecision["reasonCode"];
-  readonly challengeableUntilMs: number | null;
-  readonly remainingMs: number | null;
-  readonly headroomMs: number | null;
+  readonly challengeableUntilMs: number;
+  readonly remainingMs: number;
+  readonly headroomMs: number;
   readonly alerting: boolean;
 };
 
@@ -317,23 +252,6 @@ const retentionDeadlineReportFromCandidates = (
     throw new Error("alertThresholdMs must be a non-negative safe integer");
   }
   const entries = candidates.map<RetentionDeadlineEntry>((candidate) => {
-    if (
-      candidate.blockEndTimeMs === null ||
-      candidate.fingerprintMismatch ||
-      candidate.terminalHistoryAuthorityMismatch ||
-      candidate.availabilityChallengeAuthorityMismatch
-    ) {
-      // Fail closed: no computable deadline, so report it as alerting rather
-      // than fabricating headroom.
-      return {
-        headerHash: candidate.headerHash,
-        reasonCode: candidate.decision.reasonCode,
-        challengeableUntilMs: null,
-        remainingMs: null,
-        headroomMs: null,
-        alerting: true,
-      };
-    }
     const alert = retentionDeadlineAlert({
       nowMs: options.nowMs,
       blockEndTimeMs: candidate.blockEndTimeMs,
@@ -347,7 +265,9 @@ const retentionDeadlineReportFromCandidates = (
       challengeableUntilMs: alert.challengeableUntilMs,
       remainingMs: alert.remainingMs,
       headroomMs: alert.headroomMs,
-      alerting: candidate.decision.decision === "retain" && alert.alerting,
+      alerting:
+        candidate.decision.reasonCode === "still_challengeable" &&
+        alert.alerting,
     };
   });
   const prunable = candidates.filter(
@@ -369,7 +289,7 @@ const retentionDeadlineReportFromCandidates = (
 
 /** Executable deadline report over the retained DA payload set. */
 export const retentionDeadlineReport = async (
-  store: WatcherStore,
+  store: CommitteeStore,
   options: RetentionScanOptions & { readonly alertThresholdMs?: number },
 ): Promise<RetentionDeadlineReport> => {
   const candidates = await retentionCandidates(store, options);
@@ -383,11 +303,11 @@ export type RetentionCycleResult = {
 
 /** One non-overlapping production retention cycle: report before deletion. */
 export const runRetentionCycle = async (
-  store: WatcherStore,
+  store: CommitteeStore,
   options: RetentionScanOptions & { readonly alertThresholdMs?: number },
 ): Promise<RetentionCycleResult> => {
   // Use one joined snapshot for both reporting and deletion. Incoming DA writes
-  // may run concurrently with the watcher tick; a second scan could otherwise
+  // may run concurrently with the committee node tick; a second scan could otherwise
   // delete a record that was never present in the preceding report.
   const candidates = await retentionCandidates(store, options);
   const deadlines = retentionDeadlineReportFromCandidates(candidates, options);

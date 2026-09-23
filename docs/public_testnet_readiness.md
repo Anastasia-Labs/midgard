@@ -114,8 +114,7 @@ Previously implemented portions of a combined gate still need release verificati
       wallets by default and reject that custody mistake before submission.
 - [ ] Define an authoritative action map: public HTTP/CLI, operator-only CLI,
       admin HTTP, or internal. Test the route graph. Protect `/init`, `/commit`,
-      `/merge`, `/stateQueue`, `/stateQueueMutationLease`, `/logBlocksDB`, and
-      `/logGlobals`. Admin mutations use POST, scoped attributable signed or mTLS
+      `/merge`, `/stateQueue`, `/logBlocksDB`, and `/logGlobals`. Admin mutations use POST, scoped attributable signed or mTLS
       identities, key ids, rotation/revocation, replay protection, and idempotency.
 - [ ] Bound request bodies/content types at proxy and app, per-IP/global rates,
       admission concurrency, and read query cost. Paginate tx/UTxO/block/status/batch

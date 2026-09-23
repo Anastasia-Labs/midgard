@@ -16,7 +16,7 @@ import {
   validateDaSignatureRecord,
 } from "../peer/signatures.js";
 import type { DaCommitteeValidation } from "../signer.js";
-import type { WatcherStore } from "../store.js";
+import type { CommitteeStore } from "../store.js";
 import type {
   DaAttestationContext,
   ReconcileAttestationArgs,
@@ -33,7 +33,7 @@ export type SubmitterReconcilerDeps = {
   readonly deploymentFingerprint: string;
   readonly committeeValidation: DaCommitteeValidation;
   readonly availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthority;
-  readonly store: Pick<WatcherStore, "getDaPayload" | "listDaSignatures">;
+  readonly store: Pick<CommitteeStore, "getDaPayload" | "listDaSignatures">;
   readonly coordinator: {
     readonly reconcileAttestation: (
       args: ReconcileAttestationArgs,

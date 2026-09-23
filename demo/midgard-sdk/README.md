@@ -120,13 +120,3 @@ must establish a stable canonical boundary. Use `runDaAvailabilityOperation` and
 the durable operation journal for signing, reservation, submission, and recovery.
 See the [operational lifecycle plan](../../docs/fault-proofs/availability-challenge-operations.md)
 for the service authority and acceptance requirements.
-
-Retention uses `deriveDaAvailabilityRetentionEvidence` only after the native chain
-source admits a finalized queue transition and its exact consumed output. A
-consumed `Published` datum proves closed availability; final unavailable removal
-must bind the challenged header and challenge through the correction lock. The
-evidence commits to the authenticated header's end time and exact transition.
-`parseDaAvailabilityRetentionEvidence` revalidates durable evidence before
-pruning. Deployed roles alone report `deployed_unobserved`; absent challenge
-UTxOs, generic terminal queue status, and missing active-set entries never prove
-inactivity. Revoke terminal evidence with its transition on rollback.

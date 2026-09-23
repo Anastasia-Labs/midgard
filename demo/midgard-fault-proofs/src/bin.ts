@@ -110,9 +110,6 @@ export type ParsedArgs = {
   readonly tx2InputsPath: string | undefined;
   readonly doubleSpentInputIndex: string | undefined;
   readonly midgardNodeUrl: string | undefined;
-  readonly midgardNodeAdminKey: string | undefined;
-  readonly midgardNodeAdminKeyEnv: string | undefined;
-  readonly stateQueueLeaseTtlMs: string | undefined;
   readonly transactionsPath: string | undefined;
   readonly sampleDoubleSpend: boolean;
   readonly headerHash: string | undefined;
@@ -170,6 +167,7 @@ const fraudCategoryUsage = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.join("|");
 const usage = `Usage:
   prepare-* security-grade execution consumes CanonicalBlockEvidenceV1 through executeCanonicalPrepareCommandV1.
   --midgard-node-url, --transactions-file, and --sample-double-spend are labelled diagnostics only and are rejected before proof construction.
+  remove-* coordinate state-queue mutation locally and never contact a Midgard node. A non-tail removal that loses a race to a competing commit or merge fails and must be re-run; the watcher's workflow orchestrator retries it until confirmed.
   midgard-fault-proofs workflow-readiness [--fraud-category <${fraudCategoryUsage}>]
   midgard-fault-proofs run-workflow --fraud-category <${fraudCategoryUsage}> --deployment-fingerprint <32-byte hex> --header-hash <28-byte hex> --workflow-journal-dir <directory> --workflow-runtime-config <versioned-infrastructure-config.json>
   midgard-fault-proofs resume-workflow --fraud-category <${fraudCategoryUsage}> --deployment-fingerprint <32-byte hex> --header-hash <28-byte hex> --workflow-journal-dir <directory> --workflow-runtime-config <versioned-infrastructure-config.json>
@@ -224,8 +222,8 @@ const usage = `Usage:
   midgard-fault-proofs submit-reference-input-no-idx-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --outputs-preimage <outputs-preimage.json> --native-tx-compact <producing-tx-compact.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-invalid-signature-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> --witness-set-compact <invalid-signature-witness-set-compact.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-invalid-signature-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --addr-tx-wits-preimage <invalid-signature-addr-tx-wits-preimage.json> --native-tx-compact <native-tx-compact.json> --witness-set-compact <invalid-signature-witness-set-compact.json> --bad-addr-tx-wit-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <${fraudCategoryUsage}>] [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs remove-unattested-block --deployment-info <path> --correction-journal <path> [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--no-await-confirmation] [wallet options]
+  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <${fraudCategoryUsage}>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs remove-unattested-block --deployment-info <path> --correction-journal <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--no-await-confirmation] [wallet options]
 `;
 
 export const parseFraudCategory = (
@@ -272,9 +270,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let tx2InputsPath: string | undefined;
   let doubleSpentInputIndex: string | undefined;
   let midgardNodeUrl: string | undefined;
-  let midgardNodeAdminKey: string | undefined;
-  let midgardNodeAdminKeyEnv: string | undefined;
-  let stateQueueLeaseTtlMs: string | undefined;
   let transactionsPath: string | undefined;
   let sampleDoubleSpend = false;
   let headerHash: string | undefined;
@@ -398,15 +393,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
         break;
       case "--midgard-node-url":
         midgardNodeUrl = rest[++index];
-        break;
-      case "--midgard-node-admin-key":
-        midgardNodeAdminKey = rest[++index];
-        break;
-      case "--midgard-node-admin-key-env":
-        midgardNodeAdminKeyEnv = rest[++index];
-        break;
-      case "--state-queue-lease-ttl-ms":
-        stateQueueLeaseTtlMs = rest[++index];
         break;
       case "--transactions-file":
         transactionsPath = rest[++index];
@@ -613,9 +599,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     tx2InputsPath,
     doubleSpentInputIndex,
     midgardNodeUrl,
-    midgardNodeAdminKey,
-    midgardNodeAdminKeyEnv,
-    stateQueueLeaseTtlMs,
     transactionsPath,
     sampleDoubleSpend,
     headerHash,
@@ -669,6 +652,21 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   };
 };
 
+/**
+ * `--midgard-node-url` is still parsed for the `prepare-*` diagnostics, so a
+ * removal command must refuse it explicitly rather than ignore it: removal is
+ * coordinated locally and never talks to a Midgard node. A lost race against a
+ * competing commit or merge fails the run, which the operator re-runs; the
+ * watcher's workflow orchestrator does that retry itself.
+ */
+const refuseRemovalMidgardNodeUrl = (args: ParsedArgs, command: string) => {
+  if (args.midgardNodeUrl !== undefined) {
+    throw new Error(
+      `${command} does not accept --midgard-node-url: state-queue removal is coordinated locally and never contacts a Midgard node. A removal that loses a race to a competing commit or merge fails and must be re-run.\n${usage}`,
+    );
+  }
+};
+
 export const buildRemoveFraudulentBlockCliConfig = (args: ParsedArgs) => {
   if (args.blueprintPath === undefined) {
     throw new Error(`Missing required --blueprint <path>.\n${usage}`);
@@ -681,6 +679,7 @@ export const buildRemoveFraudulentBlockCliConfig = (args: ParsedArgs) => {
       `Missing required --fraudulent-header-hash <hex>.\n${usage}`,
     );
   }
+  refuseRemovalMidgardNodeUrl(args, "remove-fraudulent-block");
   return {
     blueprintPath: args.blueprintPath,
     deploymentInfoPath: args.deploymentInfoPath,
@@ -697,13 +696,6 @@ export const buildRemoveFraudulentBlockCliConfig = (args: ParsedArgs) => {
     fraudCategory: args.fraudCategory,
     fraudulentHeaderHash: args.fraudulentHeaderHash,
     awaitConfirmation: args.awaitConfirmation,
-    midgardNodeUrl: args.midgardNodeUrl,
-    midgardNodeAdminKey: args.midgardNodeAdminKey,
-    midgardNodeAdminKeyEnv: args.midgardNodeAdminKeyEnv,
-    stateQueueLeaseTtlMs:
-      args.stateQueueLeaseTtlMs === undefined
-        ? undefined
-        : Number(args.stateQueueLeaseTtlMs),
   };
 };
 
@@ -714,8 +706,7 @@ export const buildRemoveUnattestedBlockCliConfig = (args: ParsedArgs) => {
   if (args.correctionJournalPath === undefined) {
     throw new Error(`Missing required --correction-journal <path>.\n${usage}`);
   }
-  const adminKeyEnvName =
-    args.midgardNodeAdminKeyEnv ?? "MIDGARD_NODE_ADMIN_KEY";
+  refuseRemovalMidgardNodeUrl(args, "remove-unattested-block");
   return {
     deploymentInfoPath: args.deploymentInfoPath,
     journalPath: args.correctionJournalPath,
@@ -730,13 +721,6 @@ export const buildRemoveUnattestedBlockCliConfig = (args: ParsedArgs) => {
     walletPrivateKey: args.walletPrivateKey,
     walletPrivateKeyEnv: args.walletPrivateKeyEnv,
     awaitConfirmation: args.awaitConfirmation,
-    midgardNodeUrl: args.midgardNodeUrl,
-    midgardNodeAdminKey:
-      args.midgardNodeAdminKey ?? process.env[adminKeyEnvName],
-    stateQueueLeaseTtlMs:
-      args.stateQueueLeaseTtlMs === undefined
-        ? undefined
-        : Number(args.stateQueueLeaseTtlMs),
   };
 };
 
@@ -2418,7 +2402,7 @@ export const main = async (): Promise<void> => {
         `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
       );
     }
-    const { contracts, referenceScriptUtxo } =
+    const { contracts, referenceScriptUtxo, witnessReferenceScripts } =
       await resolveFabricatedDepositCliContracts({
         config: {
           blueprintPath: args.blueprintPath,
@@ -2447,6 +2431,7 @@ export const main = async (): Promise<void> => {
       awaitConfirmation: args.awaitConfirmation,
       contracts,
       referenceScriptUtxo,
+      witnessReferenceScripts,
     });
 
     writeJson(output);
@@ -2598,7 +2583,7 @@ export const main = async (): Promise<void> => {
         `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
       );
     }
-    const { contracts, referenceScriptUtxo } =
+    const { contracts, referenceScriptUtxo, witnessReferenceScripts } =
       await resolveFabricatedWithdrawalCliContracts({
         config: {
           blueprintPath: args.blueprintPath,
@@ -2627,6 +2612,7 @@ export const main = async (): Promise<void> => {
       awaitConfirmation: args.awaitConfirmation,
       contracts,
       referenceScriptUtxo,
+      witnessReferenceScripts,
     });
 
     writeJson(output);

@@ -9,7 +9,9 @@ import {
   daRetentionPruneDecision,
   MIDGARD_MIN_RETENTION_DAYS,
   MIDGARD_RETENTION_WINDOW,
+  resolveL1ViewFatalMs,
   RETENTION_MS_PER_DAY,
+  type RetentionQueueReference,
   retentionDaysCoverWindow,
   retentionDeadlineAlert,
   retentionDeadlineForBlock,
@@ -158,159 +160,199 @@ describe("retentionDeadlineForBlockV1", () => {
 });
 
 describe("daRetentionPruneDecisionV1", () => {
+  const HORIZON = 907_200_000;
   const decide = (
     nowMs: number,
-    headerStatus: unknown,
-    blockEndTimeMs: number | null = BLOCK_END,
+    headerStatus: Parameters<
+      typeof daRetentionPruneDecision
+    >[0]["headerStatus"] = "merged",
+    queueReference: RetentionQueueReference = "none",
+    blockEndTimeMs = BLOCK_END,
   ) =>
-    daRetentionPruneDecision(
-      { headerHash: "ab".repeat(28), blockEndTimeMs },
-      {
-        nowMs,
-        headerStatus,
-        availabilityChallengeState: "inactive",
-      },
-    );
-
-  it("prunes a 16-day-old terminal record", () => {
-    const now = BLOCK_END + 16 * RETENTION_MS_PER_DAY;
-    expect(decide(now, "merged")).toMatchObject({
-      decision: "prune",
-      reasonCode: "expired_and_terminal",
+    daRetentionPruneDecision({
+      nowMs,
+      blockEndTimeMs,
+      headerStatus,
+      queueReference,
     });
-    expect(decide(now, "removed").decision).toBe("prune");
+
+  it("retains the L1 confirmed head's payload however old or removed", () => {
+    const now = BLOCK_END + 60 * RETENTION_MS_PER_DAY;
+    for (const status of ["merged", "removed", "unobserved"] as const) {
+      expect(decide(now, status, "confirmed_head")).toMatchObject({
+        decision: "retain",
+        reasonCode: "confirmed_head_payload",
+      });
+    }
   });
 
-  it("retains exactly at the challengeability deadline and prunes 1ms past it", () => {
-    const deadline = BLOCK_END + 907_200_000;
-    expect(decide(deadline, "merged")).toMatchObject({
+  it("retains a header live in the L1 queue however old or removed", () => {
+    const now = BLOCK_END + 60 * RETENTION_MS_PER_DAY;
+    for (const status of ["attested", "removed", "unobserved"] as const) {
+      expect(decide(now, status, "live_in_queue")).toMatchObject({
+        decision: "retain",
+        reasonCode: "live_queue_header",
+      });
+    }
+  });
+
+  it("prunes a removed header immediately, inside the horizon", () => {
+    expect(decide(BLOCK_END, "removed")).toMatchObject({
+      decision: "prune",
+      reasonCode: "removed_header",
+    });
+  });
+
+  it("retains exactly at the challengeability horizon and prunes 1ms past it", () => {
+    expect(decide(BLOCK_END + HORIZON)).toMatchObject({
       decision: "retain",
-      reasonCode: "still_within_retention_window",
+      reasonCode: "still_challengeable",
+      challengeableUntilMs: BLOCK_END + HORIZON,
       remainingMs: 0,
     });
-    expect(decide(deadline + 1, "merged")).toMatchObject({
+    expect(decide(BLOCK_END + HORIZON + 1)).toMatchObject({
       decision: "prune",
-      reasonCode: "expired_and_terminal",
+      reasonCode: "past_challengeability_horizon",
       remainingMs: -1,
     });
   });
 
-  it("retains inside maturity even for a terminal header", () => {
-    expect(decide(BLOCK_END + 604_800_000, "merged")).toMatchObject({
-      decision: "retain",
-      reasonCode: "still_within_maturity",
-    });
-    expect(decide(BLOCK_END + 604_800_001, "merged").reasonCode).toBe(
-      "still_within_retention_window",
-    );
-  });
-
-  it("fails closed on missing block end time", () => {
-    const now = BLOCK_END + 16 * RETENTION_MS_PER_DAY;
-    for (const bad of [null, undefined]) {
-      expect(
-        daRetentionPruneDecision(
-          { blockEndTimeMs: bad },
-          {
-            nowMs: now,
-            headerStatus: "merged",
-            availabilityChallengeState: "inactive",
-          },
-        ),
-      ).toEqual({ decision: "retain", reasonCode: "missing_block_end_time" });
-    }
-  });
-
-  it("fails closed on unknown or out-of-set header statuses", () => {
-    const now = BLOCK_END + 16 * RETENTION_MS_PER_DAY;
-    for (const status of [
-      undefined,
-      null,
-      "",
-      "MERGED",
-      "finalised",
-      42,
-      { status: "merged" },
-    ]) {
-      expect(decide(now, status)).toEqual({
-        decision: "retain",
-        reasonCode: "header_status_unknown",
-      });
-    }
-  });
-
-  it("retains every known non-terminal status past the deadline", () => {
-    const now = BLOCK_END + 16 * RETENTION_MS_PER_DAY;
+  it("prunes past the horizon for every non-removed status, including unobserved", () => {
+    const now = BLOCK_END + HORIZON + 1;
     for (const status of [
       "unattested",
       "attesting",
       "attested",
+      "merged",
       "conflicted",
-    ]) {
-      expect(decide(now, status)).toMatchObject({
-        decision: "retain",
-        reasonCode: "header_status_not_terminal",
-      });
+      "unobserved",
+    ] as const) {
+      expect(decide(now, status).decision).toBe("prune");
     }
   });
 
-  it("blocks a tampered block end time via the terminal-status conjunct", () => {
-    // An attacker back-dating block_end_time to force expiry still cannot get
-    // a prune while the header has not reached a terminal L1 outcome.
-    const now = BLOCK_END;
-    expect(
-      daRetentionPruneDecision(
-        { blockEndTimeMs: 0 },
-        {
-          nowMs: now,
-          headerStatus: "attested",
-          availabilityChallengeState: "inactive",
-        },
-      ),
-    ).toMatchObject({
+  it("reports the configured retain-until alongside the horizon", () => {
+    expect(decide(BLOCK_END)).toMatchObject({
       decision: "retain",
-      reasonCode: "header_status_not_terminal",
+      retainUntilMs: BLOCK_END + 15 * RETENTION_MS_PER_DAY,
+      remainingMs: HORIZON,
     });
   });
 
-  it("treats an active availability challenge as an absolute retention hold", () => {
-    expect(
-      daRetentionPruneDecision(
-        { headerHash: "ab".repeat(28), blockEndTimeMs: 0 },
-        {
-          nowMs: BLOCK_END + 100 * RETENTION_MS_PER_DAY,
-          headerStatus: "removed",
-          availabilityChallengeState: "active",
-        },
-      ),
-    ).toEqual({
-      decision: "retain",
-      reasonCode: "active_availability_challenge",
-    });
+  it("rejects malformed times instead of retaining", () => {
+    expect(() => decide(Number.NaN)).toThrow(/nowMs/u);
+    expect(() => decide(BLOCK_END, "merged", "none", -1)).toThrow(
+      /blockEndTimeMs/u,
+    );
+    expect(() => decide(BLOCK_END, "merged", "none", 1.5)).toThrow(
+      /blockEndTimeMs/u,
+    );
   });
 
-  it("fails closed on missing, malformed, or unknown challenge state", () => {
-    for (const availabilityChallengeState of [
+  it("never retains more than the head, the live queue, and the horizon", () => {
+    // Deterministic xorshift PRNG: the package carries no property-test library.
+    let seed = 0x9e3779b9;
+    const next = (): number => {
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      return (seed >>> 0) / 0x1_0000_0000;
+    };
+    const statuses: readonly unknown[] = [
+      "unattested",
+      "attesting",
+      "attested",
+      "merged",
+      "removed",
+      "conflicted",
+      "unobserved",
+      "not-a-status",
       undefined,
       null,
-      "unknown",
-      "not_deployed",
-      false,
-      { active: false },
-    ]) {
-      expect(
-        daRetentionPruneDecision(
-          { headerHash: "ab".repeat(28), blockEndTimeMs: 0 },
-          {
-            nowMs: BLOCK_END + 100 * RETENTION_MS_PER_DAY,
-            headerStatus: "removed",
-            availabilityChallengeState,
-          },
-        ),
-      ).toEqual({
-        decision: "retain",
-        reasonCode: "availability_challenge_state_unknown",
-      });
+      42,
+    ];
+    const now = BLOCK_END + 60 * RETENTION_MS_PER_DAY;
+    for (let run = 0; run < 200; run += 1) {
+      const count = 1 + Math.floor(next() * 200);
+      const liveCount = Math.floor(next() * 5);
+      const headIndex = Math.floor(next() * count);
+      let retained = 0;
+      let insideHorizon = 0;
+      for (let index = 0; index < count; index += 1) {
+        const blockEndTimeMs =
+          BLOCK_END + Math.floor(next() * 60 * RETENTION_MS_PER_DAY);
+        const queueReference =
+          index === headIndex
+            ? "confirmed_head"
+            : index < liveCount
+              ? "live_in_queue"
+              : next() < 0.05
+                ? ("garbage" as never)
+                : "none";
+        const headerStatus = statuses[
+          Math.floor(next() * statuses.length)
+        ] as never;
+        const inside = now <= blockEndTimeMs + HORIZON;
+        const decision = daRetentionPruneDecision({
+          nowMs: now,
+          blockEndTimeMs,
+          headerStatus,
+          queueReference,
+        });
+        if (decision.decision === "retain") {
+          retained += 1;
+          expect(
+            queueReference === "confirmed_head" ||
+              queueReference === "live_in_queue" ||
+              inside,
+          ).toBe(true);
+        }
+        if (
+          inside &&
+          queueReference !== "confirmed_head" &&
+          queueReference !== "live_in_queue"
+        ) {
+          insideHorizon += 1;
+        }
+      }
+      expect(retained).toBeLessThanOrEqual(
+        1 + Math.min(liveCount, count) + insideHorizon,
+      );
+    }
+  });
+});
+
+describe("resolveL1ViewFatalMs", () => {
+  const resolve = (value: unknown, pollIntervalMs = 10_000) =>
+    resolveL1ViewFatalMs({
+      value,
+      defaultMs: 3_600_000,
+      pollIntervalMs,
+      fieldName: "L1_VIEW_FATAL_MS",
+    });
+
+  it("defaults, and accepts decimal strings and numbers", () => {
+    expect(resolve(undefined)).toBe(3_600_000);
+    expect(resolve("60000")).toBe(60_000);
+    expect(resolve(30_000)).toBe(30_000);
+  });
+
+  it("rejects fewer than three poll intervals", () => {
+    expect(() => resolve(29_999)).toThrow(/three poll intervals/u);
+  });
+
+  it("rejects more than the deployed retention margin", () => {
+    expect(resolve(MIDGARD_RETENTION_WINDOW.marginMs)).toBe(
+      MIDGARD_RETENTION_WINDOW.marginMs,
+    );
+    expect(() => resolve(MIDGARD_RETENTION_WINDOW.marginMs + 1)).toThrow(
+      /retention margin/u,
+    );
+  });
+
+  it("rejects malformed values", () => {
+    for (const bad of ["", "1e6", "-1", -1, 1.5, Number.NaN, null]) {
+      expect(() => resolve(bad)).toThrow(/non-negative safe integer/u);
     }
   });
 });

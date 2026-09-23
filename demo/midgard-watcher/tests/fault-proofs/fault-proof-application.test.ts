@@ -163,11 +163,6 @@ const infrastructure = (): WatcherFaultProofInfrastructureAuthority => ({
   manifestPath: MANIFEST_PATH,
   blueprintPath: BLUEPRINT_PATH,
   deploymentInfoPath: DEPLOYMENT_INFO_PATH,
-  midgardNodeUrl: "http://127.0.0.1:3000",
-  midgardNodeAdminKeySource: {
-    kind: "environment",
-    variable: "MIDGARD_NODE_ADMIN_KEY",
-  },
   historicalNativeScriptHistory: {
     sourceMode: "external_provider_quorum",
     consistencyPolicy: "exact_bytes_all_providers_v1",
@@ -184,7 +179,6 @@ const infrastructure = (): WatcherFaultProofInfrastructureAuthority => ({
       },
     ],
   },
-  stateQueueLeaseTtlMs: 30_000,
 });
 
 const invocation = (
@@ -301,7 +295,6 @@ describe("watcher production fault-proof application V1", () => {
         dependencies(),
         {
           MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
-          MIDGARD_NODE_ADMIN_KEY: "admin-key",
         },
       );
       expect(application.installedCategories).toEqual([
@@ -337,7 +330,6 @@ describe("watcher production fault-proof application V1", () => {
         deps,
         {
           MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
-          MIDGARD_NODE_ADMIN_KEY: "admin-key",
         },
       );
 
@@ -524,7 +516,6 @@ describe("watcher production fault-proof application V1", () => {
         deps,
         {
           MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
-          MIDGARD_NODE_ADMIN_KEY: "admin-key",
         },
       );
       expect(application.installedCategories).toContain("nativeScriptDecoding");
@@ -585,6 +576,30 @@ describe("watcher production fault-proof application V1", () => {
       ),
     ).toThrow("unknown or missing fields");
 
+    // The Midgard node lease coordination keys are gone; a caller still
+    // supplying one is refused like any other unknown field.
+    for (const deleted of [
+      { midgardNodeUrl: "http://127.0.0.1:3000" },
+      {
+        midgardNodeAdminKeySource: {
+          kind: "environment",
+          variable: "MIDGARD_NODE_ADMIN_KEY",
+        },
+      },
+      { stateQueueLeaseTtlMs: 30_000 },
+    ]) {
+      expect(() =>
+        unsafeCreateWatcherFaultProofApplicationForTest(
+          {
+            deploymentIdentity: AUTHORITY.result,
+            historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
+            infrastructure: { ...infrastructure(), ...deleted } as never,
+          },
+          dependencies(),
+        ),
+      ).toThrow("unknown or missing fields");
+    }
+
     expect(() =>
       unsafeCreateWatcherFaultProofApplicationForTest(
         {
@@ -627,7 +642,6 @@ describe("watcher production fault-proof application V1", () => {
         dependencies(),
         {
           MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
-          MIDGARD_NODE_ADMIN_KEY: "admin-key",
         },
       );
       // Every catalogue category now has an installed workflow (54/54), so the
@@ -686,10 +700,7 @@ describe("watcher production fault-proof application V1", () => {
     const deps = dependencies();
     const readText = vi.mocked(deps.readText).getMockImplementation()!;
     vi.mocked(deps.readText).mockImplementation(async (path) => {
-      if (
-        path === "/etc/midgard/prover.key" ||
-        path === "/etc/midgard/admin.key"
-      )
+      if (path === "/etc/midgard/prover.key")
         throw new Error(`secret ${path} was read`);
       return await readText(path);
     });
@@ -697,13 +708,7 @@ describe("watcher production fault-proof application V1", () => {
       {
         deploymentIdentity: AUTHORITY.result,
         historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
-        infrastructure: {
-          ...infrastructure(),
-          midgardNodeAdminKeySource: {
-            kind: "file",
-            path: "/etc/midgard/admin.key",
-          },
-        },
+        infrastructure: infrastructure(),
         unsafeTransportFactoryForTest: transportFactory().factory,
       },
       deps,
@@ -726,7 +731,8 @@ describe("watcher production fault-proof application V1", () => {
           .filter((path) => path.endsWith(".key")),
       ).toEqual([]);
 
-      // The acting path reads both secrets and fails closed when one is missing.
+      // The acting path reads the prover secret and fails closed when it is
+      // missing.
       await expect(
         application.unsafeLoadRuntimeForTest({
           runtimeConfigPath: configPath,
@@ -757,7 +763,6 @@ describe("watcher production fault-proof application V1", () => {
       deps,
       {
         MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
-        MIDGARD_NODE_ADMIN_KEY: "admin-key",
       },
     );
     const applied = async <
@@ -842,6 +847,19 @@ describe("watcher production fault-proof application V1", () => {
       expect(Object.keys(referenceScriptOutRefs)).toEqual(
         Object.keys(FAMILY_APPLICATION_REGISTRY.minAda.roster),
       );
+      // Non-tail removal is coordinated locally: the acting path builds its
+      // lease coordinator from nothing, and the only secret it reads is the
+      // prover wallet supplied above (no Midgard node admin key exists).
+      expect(deps.createLeaseCoordinator).toHaveBeenCalled();
+      for (const call of vi.mocked(deps.createLeaseCoordinator).mock.calls) {
+        expect(call).toEqual([]);
+      }
+      expect(
+        vi
+          .mocked(deps.readText)
+          .mock.calls.map(([path]) => path)
+          .filter((path) => path.endsWith(".key")),
+      ).toEqual([]);
     } finally {
       await application.close();
       await rm(directory, { recursive: true, force: true });
@@ -849,7 +867,7 @@ describe("watcher production fault-proof application V1", () => {
   });
 });
 
-it("verifies completion deployment metadata without resolving wallet or admin secrets", async () => {
+it("verifies completion deployment metadata without resolving wallet secrets", async () => {
   const deps = dependencies();
   vi.mocked(deps.readText).mockImplementation(async (path) => {
     if (path === "/etc/midgard/watcher.json")

@@ -176,7 +176,7 @@ jobs:
           test "$version" = "$AIKEN_FORK_VERSION"
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          package_json_file: demo/package.json
       - uses: actions/setup-node@v4
         with:
           node-version-file: demo/.nvmrc
@@ -187,6 +187,47 @@ jobs:
       - name: Build testnet Aiken blueprint
         working-directory: onchain/aiken
         run: aiken build --env testnet
+      # The launch surface. Every compose stack an operator can be told to run
+      # must render from `.env.example` alone, and the node image must build
+      # from a fresh checkout plus the blueprint the step above produced; none
+      # of that was exercised by CI before, so a gitignored COPY source or a
+      # mistyped overlay reached operators first.
+      - name: Render every operator compose stack from .env.example
+        working-directory: demo/midgard-node
+        run: |
+          set -euo pipefail
+          render() {
+            docker compose --env-file .env.example "$@" config --quiet
+            # Locally built services render as bare project-prefixed names;
+            # every pulled image must carry a tag other than latest.
+            images="$(docker compose --env-file .env.example "$@" config --images | grep -v '^midgard-node-')"
+            if grep -E ':latest$|^[^:@]+$' <<<"$images"; then
+              echo "unpinned image in: $*" >&2
+              exit 1
+            fi
+          }
+          render -f docker-compose.yaml
+          render -f docker-compose.yaml -f docker-compose.kupmios.yaml
+          render -f docker-compose.dev.yaml
+          render -f docker-compose.yaml -f docker-compose.kupmios.yaml -f docker-compose.benchmark.yaml \
+            --profile observability --profile load-generator-cohosted
+          render -f docker-compose.yaml --profile test
+      - name: Render the phase4 devnet compose
+        working-directory: demo/midgard-node-tools/devnet/phase4-process
+        env:
+          MIDGARD_PHASE4_COMPOSE_PROJECT: ci
+          MIDGARD_PHASE4_POSTGRES_DATABASE: midgard_phase4
+          MIDGARD_PHASE4_POSTGRES_PASSWORD: ci
+          MIDGARD_PHASE4_RUN_DIR: ${{ runner.temp }}/phase4
+        run: docker compose -f compose.yaml config --quiet
+      - name: Build the node image
+        working-directory: demo
+        run: |
+          set -euo pipefail
+          docker build --file midgard-node/Dockerfile \
+            --build-context onchain=../onchain/aiken \
+            --tag midgard-node:ci .
+          docker run --rm midgard-node:ci node ./dist/index.js --help >/dev/null
       - name: Build lucid-midgard
         run: pnpm --dir demo/lucid-midgard run build
       - name: Build and test Midgard core DA transport

@@ -3,7 +3,6 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
 import { assertReferenceScriptAuthMinimumRemaining } from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
 import { Command } from "commander";
 import { Effect, pipe } from "effect";
 
@@ -146,7 +145,7 @@ const parseDaLibp2pPreflightMode = (value: unknown): DaLibp2pPreflightMode => {
   throw new Error("--mode must be bind-listen or dial-only");
 };
 
-const DA_LIBP2P_RUNTIME_TARGETS = new Set(["producer", "watcher"]);
+const DA_LIBP2P_RUNTIME_TARGETS = new Set(["producer", "committee"]);
 
 const parseDaLibp2pRuntimeTarget = (
   value: unknown,
@@ -154,7 +153,7 @@ const parseDaLibp2pRuntimeTarget = (
   if (typeof value === "string" && DA_LIBP2P_RUNTIME_TARGETS.has(value)) {
     return value as DaLibp2pRuntimeManifestTarget;
   }
-  throw new Error("--target must be producer or watcher");
+  throw new Error("--target must be producer or committee");
 };
 
 const parseDaLibp2pRuntimeProfile = (
@@ -696,12 +695,14 @@ reconcile
 
 reconcile
   .command("da-attested")
-  .description("Reconcile DA payload and copied watcher attestation status")
+  .description(
+    "Reconcile DA payload and copied committee node attestation status",
+  )
   .requiredOption("--header-hash <hex>", "28-byte block header hash")
-  .option("--watcher-url <url>", "Copied DA node base URL")
+  .option("--committee-url <url>", "Copied DA node base URL")
   .option(
     "--contract-deployment-info <path>",
-    "Finalized V1 contract deployment info path used to derive the watcher deployment fingerprint",
+    "Finalized V1 contract deployment info path used to derive the committee node deployment fingerprint",
   )
   .option(
     "--repair",
@@ -711,7 +712,7 @@ reconcile
   .action(
     async (options: {
       readonly headerHash: string;
-      readonly watcherUrl?: string;
+      readonly committeeUrl?: string;
       readonly contractDeploymentInfo?: string;
       readonly repair?: boolean;
     }) => {
@@ -732,7 +733,7 @@ reconcile
       const mainEffect = provideDatabaseTxServices(
         ReconcileCommand.reconcileDaAttestedProgram({
           headerHash,
-          watcherUrl: options.watcherUrl,
+          committeeUrl: options.committeeUrl,
           deploymentFingerprint,
           repair: options.repair === true,
         }).pipe(tapJson()),
@@ -790,36 +791,8 @@ reconcile
       failCli("reconcile retention-check", error);
       return;
     }
-    const mainEffect = provideDatabaseServices(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        // A DA payload whose header no longer sits in the local state-queue
-        // mirror has reached a terminal L1 outcome; anything still queued is
-        // attested-but-not-terminal. Unknown rows fail closed inside the
-        // evaluator.
-        const rows = yield* sql<{
-          readonly header_hash: Buffer;
-          readonly block_end_time: Date | null;
-          readonly still_queued: boolean;
-        }>`
-          SELECT payload.header_hash,
-                 payload.block_end_time,
-                 EXISTS (
-                   SELECT 1 FROM blocks
-                   WHERE blocks.header_hash = payload.header_hash
-                 ) AS still_queued
-          FROM da_payloads payload`;
-        const result = RetentionCheck.evaluateRetentionCheck({
-          nowMillis: Date.now(),
-          alertThresholdMs,
-          records: rows.map((row) => ({
-            headerHash: row.header_hash.toString("hex"),
-            blockEndTimeMs: row.block_end_time?.getTime() ?? null,
-            headerStatus: row.still_queued ? "attested" : "merged",
-          })),
-        });
-        return result;
-      }).pipe(tapJson()),
+    const mainEffect = provideDatabaseTxServices(
+      RetentionCheck.retentionCheckProgram(alertThresholdMs).pipe(tapJson()),
     ).pipe(
       Effect.tap((result) =>
         Effect.sync(() => {
@@ -980,7 +953,7 @@ program
 program
   .command("da-libp2p-generate-manifest")
   .description("Generate a target-specific libp2p DA runtime manifest")
-  .requiredOption("--target <target>", "Runtime target: producer or watcher")
+  .requiredOption("--target <target>", "Runtime target: producer or committee")
   .requiredOption(
     "--profile <profile>",
     `Address profile: ${DA_LIBP2P_RUNTIME_PROFILES.join(", ")}`,
@@ -1005,17 +978,20 @@ program
     [],
   )
   .requiredOption("--network <network>", "Exact Cardano network label")
-  .option("--local-signer-index <n>", "Local watcher signer index")
+  .option("--local-signer-index <n>", "Local committee signer index")
   .option("--producer-port <port>", "Producer retrieval libp2p port")
-  .option("--watcher-port <port>", "Watcher libp2p port")
+  .option("--committee-port <port>", "Committee node libp2p port")
   .option("--public-retained-da-port <port>", "Public retained-DA libp2p port")
   .option("--producer-service-name <name>", "Compose producer service DNS name")
-  .option("--watcher-service-name <name>", "Compose watcher service DNS name")
+  .option(
+    "--committee-service-name <name>",
+    "Compose committee node service DNS name",
+  )
   .option("--producer-public-host <host>", "Public producer DNS/IP")
-  .option("--watcher-public-host <host>", "Public watcher DNS/IP")
+  .option("--committee-public-host <host>", "Public committee node DNS/IP")
   .option(
     "--public-retained-da-public-host <host>",
-    "Public retained-DA DNS/IP (defaults to --watcher-public-host)",
+    "Public retained-DA DNS/IP (defaults to --committee-public-host)",
   )
   .option("--out <path>", "Write manifest JSON to this path")
   .action(async (options) => {
@@ -1052,11 +1028,11 @@ program
               ),
             }
           : {}),
-        ...(typeof opts.watcherPort === "string"
+        ...(typeof opts.committeePort === "string"
           ? {
-              watcherPort: parsePositiveIntegerOption(
-                opts.watcherPort,
-                "--watcher-port",
+              committeePort: parsePositiveIntegerOption(
+                opts.committeePort,
+                "--committee-port",
               ),
             }
           : {}),
@@ -1071,14 +1047,14 @@ program
         ...(typeof opts.producerServiceName === "string"
           ? { producerServiceName: opts.producerServiceName }
           : {}),
-        ...(typeof opts.watcherServiceName === "string"
-          ? { watcherServiceName: opts.watcherServiceName }
+        ...(typeof opts.committeeServiceName === "string"
+          ? { committeeServiceName: opts.committeeServiceName }
           : {}),
         ...(typeof opts.producerPublicHost === "string"
           ? { producerPublicHost: opts.producerPublicHost }
           : {}),
-        ...(typeof opts.watcherPublicHost === "string"
-          ? { watcherPublicHost: opts.watcherPublicHost }
+        ...(typeof opts.committeePublicHost === "string"
+          ? { committeePublicHost: opts.committeePublicHost }
           : {}),
         ...(typeof opts.publicRetainedDaPublicHost === "string"
           ? { publicRetainedDaPublicHost: opts.publicRetainedDaPublicHost }
@@ -1516,6 +1492,8 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
                 referenceScriptAuth: authPolicy,
                 availabilityChallengeParameters:
                   Services.availabilityParametersFromExplicitEnvironment(),
+                eventHistoryBounds:
+                  Services.eventHistoryBoundsFromExplicitEnvironment(),
               },
             );
           yield* Effect.try({

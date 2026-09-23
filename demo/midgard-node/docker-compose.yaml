@@ -24,7 +24,7 @@ services:
       - listen
       - --with-monitoring
     ports:
-      - "3000:3000" # api server
+      - "${PORT:-3000}:${PORT:-3000}" # api server (PORT from .env, default 3000)
       - "9464:9464" # prometheus exporter
       - "39002:39002" # DA libp2p producer
       # - "4318:4318" # opentelemetry
@@ -39,7 +39,7 @@ services:
         - CMD
         - node
         - -e
-        - fetch('http://127.0.0.1:3000/readyz').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))
+        - fetch('http://127.0.0.1:${PORT:-3000}/readyz').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))
       interval: 5s
       timeout: 3s
       retries: 60
@@ -201,7 +201,9 @@ services:
       - "10001:10001"
       - "/var/tempo"
     volumes:
-      - ./tempo-data:/var/tempo
+      # Same named volume tempo mounts below; a bind mount here would chown a
+      # stray host directory and leave the real volume untouched.
+      - tempo-data:/var/tempo
     networks:
       midgard_net:
 
@@ -244,7 +246,7 @@ services:
       midgard_net:
     logging: *default-logging
     environment:
-      - COREPACK_EXPERIMENTAL_SKIP_ASK=true=
+      - COREPACK_EXPERIMENTAL_SKIP_ASK=true
 
 networks:
   midgard_net:

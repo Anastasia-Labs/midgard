@@ -8,7 +8,6 @@ export const ADMIN_ROUTE_PATHS: ReadonlySet<string> = new Set([
   "/commit",
   "/merge",
   "/stateQueue",
-  "/stateQueueMutationLease",
   "/logBlocksDB",
   "/logGlobals",
   "/operator/status",

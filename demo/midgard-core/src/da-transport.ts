@@ -99,7 +99,7 @@ export type DaLibp2pRuntimeManifest = {
         readonly producer_peer_id: string;
       }
     | {
-        readonly target: "watcher";
+        readonly target: "committee";
         readonly profile: string;
         readonly producer_peer_id: string;
         readonly local_signer_index: number;
@@ -827,14 +827,14 @@ const parseDaLibp2pRuntimeTopology = (
       ),
     };
   }
-  if (topology.target === "watcher") {
+  if (topology.target === "committee") {
     exactRecordKeys(
       topology,
       ["target", "profile", "producer_peer_id", "local_signer_index"],
       fieldName,
     );
     return {
-      target: "watcher",
+      target: "committee",
       profile: nonEmptyStringValue(topology.profile, `${fieldName}.profile`),
       producer_peer_id: nonEmptyStringValue(
         topology.producer_peer_id,

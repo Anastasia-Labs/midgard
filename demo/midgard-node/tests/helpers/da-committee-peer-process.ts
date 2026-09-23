@@ -6,7 +6,7 @@ import {
   DaLibp2pNode,
   processWideDaPayloadSubmitAdmission,
 } from "da-committee-node/da/libp2p";
-import { JsonFileWatcherStore } from "da-committee-node/store";
+import { JsonFileCommitteeStore } from "da-committee-node/store";
 
 type PeerProcessConfig = {
   readonly peerIndex: number;
@@ -21,7 +21,7 @@ if (configPath === undefined) throw new Error("missing peer config path");
 const input = JSON.parse(
   await readFile(configPath, "utf8"),
 ) as PeerProcessConfig;
-const store = await JsonFileWatcherStore.open(input.storeDir);
+const store = await JsonFileCommitteeStore.open(input.storeDir);
 const handlers = new Map(
   createDaLibp2pPayloadRequestHandlers({
     deploymentFingerprint: input.transport.deploymentFingerprint,

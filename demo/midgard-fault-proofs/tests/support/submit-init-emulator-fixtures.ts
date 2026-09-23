@@ -135,7 +135,10 @@ import {
   type TrieEntry,
 } from "../../src/ne-proofs.js";
 import { createReferenceScriptPublisher } from "./emulator/reference-script-publisher.js";
-import { findStateQueueYieldReferenceScript } from "./emulator/reference-scripts.js";
+import {
+  findStateQueueYieldReferenceScript,
+  type OperatorLifecycleReferenceScripts,
+} from "./emulator/reference-scripts.js";
 import {
   nativeTxFromCoreCompact,
   type NeInputPreimageEntry,
@@ -1483,7 +1486,9 @@ export const submitSuccessorBlockTx = async ({
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
   readonly emulator: Emulator;
-  readonly contracts: MidgardValidators;
+  readonly contracts: MidgardValidators & {
+    readonly operatorLifecycleReferenceScripts?: OperatorLifecycleReferenceScripts;
+  };
   readonly anchorBlockUnit: string;
   readonly header: Header;
   readonly hubOracle: UTxO;
@@ -1651,7 +1656,15 @@ export const submitSuccessorBlockTx = async ({
         ...(headStateQueueNodeRefInput === undefined
           ? {}
           : { headStateQueueNodeRefInput }),
-        additionalRefInputs: [hubOracle],
+        additionalRefInputs: [
+          hubOracle,
+          ...(contracts.operatorLifecycleReferenceScripts?.initial ?? [])
+            .filter((r) => r.name === "state-queue minting")
+            .map((r) => r.utxo),
+          ...(contracts.operatorLifecycleReferenceScripts?.active ?? [])
+            .filter((r) => r.name === "active-operators spending")
+            .map((r) => r.utxo),
+        ],
         activeOperatorInput: activeOperatorNode,
         activeOperatorSpendRedeemer: activeOperatorCommitRedeemer,
         activeOperatorSpendingScript: contracts.activeOperators.spendingScript,
@@ -1872,9 +1885,17 @@ export const instrumentLucidForRemoval = ({
 
 export const buildProvedDoubleSpendFixture = async ({
   successorCount = 0,
+  successorsAfterProofCount = 0,
   headerMinimumFee = 0n,
 }: {
+  /** Successors committed before `submitInit` mints the computation thread. */
   readonly successorCount?: number;
+  /**
+   * Successors committed after the fraud-proof token is minted and before any
+   * removal, appended after the `successorCount` ones. `successors` lists both
+   * sets in queue order; `fraudulentBlockOutRef` stays the one the proof used.
+   */
+  readonly successorsAfterProofCount?: number;
   /** Optional second violation used by cross-family Q53 idempotency tests. */
   readonly headerMinimumFee?: bigint;
 } = {}): Promise<ProvedDoubleSpendFixture> => {
@@ -1997,49 +2018,65 @@ export const buildProvedDoubleSpendFixture = async ({
   let activeOperatorNode = setup.activeOperatorNode;
   let previousHeader = fraudulentHeader;
   let previousHeaderHash = headerHash;
-  for (let index = 0; index < successorCount; index += 1) {
-    const successorStart = emulatorSuccessorHeaderStart({
-      predecessorEndTime: previousHeader.endTime,
-      emulator,
-    });
-    const baseSuccessorHeader = makeHeader(
-      funderPaymentCredential.hash,
-      successorStart,
-      EMPTY_MERKLE_TREE_ROOT,
-    );
-    const successorHeader = {
-      ...baseSuccessorHeader,
-      endTime:
-        baseSuccessorHeader.startTime +
-        BigInt(EMULATOR_HEADER_CLOCK_HEADROOM_MS),
-      prevHeaderHash: previousHeaderHash,
-    };
-    const successor = await submitSuccessorBlockTx({
-      lucid: funderLucid,
-      emulator,
-      contracts,
-      anchorBlockUnit,
-      header: successorHeader,
-      hubOracle: setup.hubOracle,
-      scheduler: setup.scheduler,
-      activeOperatorNode,
-      activeOperatorNodeUnit: setup.activeOperatorNodeUnit,
-    });
-    successors.push({ ...successor, header: successorHeader });
-    anchorBlockUnit = successor.successorBlockUnit;
-    activeOperatorNode = successor.activeOperatorNode;
-    previousHeader = successorHeader;
-    previousHeaderHash = successor.successorHeaderHash;
-  }
+  const appendSuccessors = async (count: number, afterProof: boolean) => {
+    for (let index = 0; index < count; index += 1) {
+      // The proof steps run the clock past the target's end, so the first
+      // post-proof successor still starts exactly there (contiguity) but ends
+      // one headroom past the live clock rather than past its own start. The
+      // lag is rounded up to whole seconds so the end stays on the same
+      // slot-boundary offset the commit's inclusive upper bound normalizes to.
+      const successorStart = afterProof
+        ? Number(previousHeader.endTime)
+        : emulatorSuccessorHeaderStart({
+            predecessorEndTime: previousHeader.endTime,
+            emulator,
+          });
+      const baseSuccessorHeader = makeHeader(
+        funderPaymentCredential.hash,
+        successorStart,
+        EMPTY_MERKLE_TREE_ROOT,
+      );
+      const successorHeader = {
+        ...baseSuccessorHeader,
+        endTime:
+          baseSuccessorHeader.startTime +
+          BigInt(EMULATOR_HEADER_CLOCK_HEADROOM_MS) +
+          (afterProof
+            ? BigInt(
+                Math.ceil(Math.max(0, emulator.now() - successorStart) / 1000) *
+                  1000,
+              )
+            : 0n),
+        prevHeaderHash: previousHeaderHash,
+      };
+      const successor = await submitSuccessorBlockTx({
+        lucid: funderLucid,
+        emulator,
+        contracts,
+        anchorBlockUnit,
+        header: successorHeader,
+        hubOracle: setup.hubOracle,
+        scheduler: setup.scheduler,
+        activeOperatorNode,
+        activeOperatorNodeUnit: setup.activeOperatorNodeUnit,
+      });
+      successors.push({ ...successor, header: successorHeader });
+      anchorBlockUnit = successor.successorBlockUnit;
+      activeOperatorNode = successor.activeOperatorNode;
+      previousHeader = successorHeader;
+      previousHeaderHash = successor.successorHeaderHash;
+    }
 
-  await expectStateQueueHeaderOrder({
-    lucid: funderLucid,
-    contracts,
-    expectedHeaderHashes: [
-      headerHash,
-      ...successors.map((successor) => successor.successorHeaderHash),
-    ],
-  });
+    await expectStateQueueHeaderOrder({
+      lucid: funderLucid,
+      contracts,
+      expectedHeaderHashes: [
+        headerHash,
+        ...successors.map((successor) => successor.successorHeaderHash),
+      ],
+    });
+  };
+  await appendSuccessors(successorCount, false);
 
   const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
     removalReferenceScripts: removalReferenceScriptPublications.published,
@@ -2298,6 +2335,8 @@ export const buildProvedDoubleSpendFixture = async ({
   expect(positiveNonAdaAssets(fraudProofUtxo)).toEqual([
     [step04Result.fraudProofUnit, 1n],
   ]);
+
+  await appendSuccessors(successorsAfterProofCount, true);
 
   return {
     emulator,

@@ -22,8 +22,8 @@ import {
   signDaAttestation,
   validateDaCommittee,
 } from "../src/signer.js";
-import { JsonFileWatcherStore } from "../src/store.js";
-import { createDaConflictEvidenceGossipHandler } from "../src/watcher.js";
+import { JsonFileCommitteeStore } from "../src/store.js";
+import { createDaConflictEvidenceGossipHandler } from "../src/committee-service.js";
 import { tempDir } from "./helpers.js";
 
 const DEPLOYMENT_FINGERPRINT = "ab".repeat(32);
@@ -36,7 +36,7 @@ describe("DA conflict evidence V1 lifecycle", () => {
   it("persists authenticated conflicting signatures once and survives restart", async () => {
     const fixture = await conflictFixture();
     const directory = await tempDir();
-    const store = await JsonFileWatcherStore.open(directory);
+    const store = await JsonFileCommitteeStore.open(directory);
     try {
       const gossip = conflictGossip(fixture.registry, store);
 
@@ -53,7 +53,7 @@ describe("DA conflict evidence V1 lifecycle", () => {
       await store.close();
     }
 
-    const reopened = await JsonFileWatcherStore.open(directory);
+    const reopened = await JsonFileCommitteeStore.open(directory);
     try {
       await expect(reopened.listDaConflictEvidence()).resolves.toEqual([
         fixture.record,
@@ -65,7 +65,7 @@ describe("DA conflict evidence V1 lifecycle", () => {
 
   it("rejects forged, malformed, and wrong-deployment evidence before persistence", async () => {
     const fixture = await conflictFixture();
-    const store = await JsonFileWatcherStore.open(await tempDir());
+    const store = await JsonFileCommitteeStore.open(await tempDir());
     const gossip = conflictGossip(fixture.registry, store);
     const conflict = decodeDaConflictEvidenceCbor(fixture.encoded);
 
@@ -149,7 +149,7 @@ describe("DA conflict evidence V1 lifecycle", () => {
     const headerHash = LOWER_HEADER_HASH;
     const expected = availabilityCommitment(headerHash, "44".repeat(28));
     const conflicting = availabilityCommitment(headerHash, "55".repeat(28));
-    const store = await JsonFileWatcherStore.open(await tempDir());
+    const store = await JsonFileCommitteeStore.open(await tempDir());
     await store.saveDaPayload({
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       headerHash,
@@ -268,13 +268,13 @@ describe("DA conflict evidence V1 lifecycle", () => {
         committeeSignersHash: "77".repeat(32),
       }),
     );
-    const first = await JsonFileWatcherStore.open(directory);
+    const first = await JsonFileCommitteeStore.open(directory);
     for (const record of variants) {
       await first.saveDaSignature(record);
     }
     await first.close();
 
-    const reopened = await JsonFileWatcherStore.open(directory);
+    const reopened = await JsonFileCommitteeStore.open(directory);
     try {
       await expect(
         reopened.listDaSignatures(LOWER_HEADER_HASH),
@@ -440,7 +440,7 @@ const signatureRecord = ({
 
 const conflictGossip = (
   registry: DaPeerRegistry,
-  store: JsonFileWatcherStore,
+  store: JsonFileCommitteeStore,
 ): DaGossip => {
   const handler = createDaConflictEvidenceGossipHandler({
     deploymentFingerprint: DEPLOYMENT_FINGERPRINT,

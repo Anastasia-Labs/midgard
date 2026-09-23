@@ -67,7 +67,8 @@ describe("retention policy", () => {
     }
   });
 
-  it("enables pruning when retentionDays covers DA payload availability", () => {
+  it("enables wall-clock table pruning only for a non-zero retentionDays", () => {
+    expect(shouldPruneRetention(0)).toBe(false);
     expect(shouldPruneRetention(MIN_DA_PAYLOAD_RETENTION_DAYS)).toBe(true);
     expect(shouldPruneRetention(30)).toBe(true);
   });
@@ -104,7 +105,7 @@ describe("assertRetentionDaysMatchesDeploymentV1", () => {
     );
   });
 
-  it("accepts retentionDays=0 because pruning is disabled entirely", () => {
+  it("accepts retentionDays=0, which disables only wall-clock table pruning", () => {
     expect(assertRetentionDaysMatchesDeployment(0, 15)).toBe(0);
   });
 

@@ -16,7 +16,7 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 import { PublicRetainedDaListener } from "da-committee-node/da/libp2p";
 import { libp2pSubmittedDaPayloadRecord } from "da-committee-node/store";
-import { PostgresWatcherStore } from "da-committee-node/store/postgres";
+import { PostgresCommitteeStore } from "da-committee-node/store/postgres";
 import { PostgresPublicRetainedDaStore } from "da-committee-node/store/public-retained-da";
 
 /** Real committee storage and the production TCP/Noise/Yamux public reader. */
@@ -37,7 +37,7 @@ export const startJourneyRetainedDa = async ({
   );
   databaseUrl.username = username;
   databaseUrl.password = password;
-  const writer = await PostgresWatcherStore.open(databaseUrl.toString());
+  const writer = await PostgresCommitteeStore.open(databaseUrl.toString());
   const cleanup: (() => Promise<void>)[] = [() => writer.close()];
   const close = async () => {
     const failures: unknown[] = [];
@@ -72,7 +72,7 @@ export const startJourneyRetainedDa = async ({
         input: `DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${readerRole}') THEN CREATE ROLE ${readerRole} LOGIN; END IF; END $$;
       ALTER ROLE ${readerRole} PASSWORD '${readerPassword}';
       GRANT USAGE ON SCHEMA public TO ${readerRole};
-      GRANT SELECT ON watcher_da_payloads, watcher_state_queue_headers TO ${readerRole};`,
+      GRANT SELECT ON committee_da_payloads, committee_state_queue_headers TO ${readerRole};`,
         stdio: ["pipe", "pipe", "pipe"],
       },
     );

@@ -1,11 +1,11 @@
 import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 
-import type { WatcherStore } from "../store.js";
+import type { CommitteeStore } from "../store.js";
 
 /** Read the exact retained envelope that the committee committed to signing. */
 export const retainedAvailabilityPayload = async (args: {
-  readonly store: Pick<WatcherStore, "getDaPayload">;
+  readonly store: Pick<CommitteeStore, "getDaPayload">;
   readonly deploymentFingerprint: string;
   readonly deploymentIdentity: string;
   readonly commitment: SDK.DaAvailabilityCommitment;

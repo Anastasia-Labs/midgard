@@ -13,7 +13,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Data, type UTxO } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import * as DaPayloadTerminalOutcomesDB from "../database/daPayloadTerminalOutcomes.js";
@@ -44,9 +44,6 @@ export type StateQueueCorrectionObserverSource = Readonly<{
     previousQueue: readonly StateQueueTransitionNode[],
     nextQueue: readonly StateQueueTransitionNode[],
   ) => Promise<readonly StateQueueAuthenticatedReplayCheckpoint[]>;
-  readAvailabilityTerminalInput?: (
-    transition: StateQueueAuthenticatedTransition,
-  ) => Promise<UTxO | null>;
   canonicalDepth: (
     transition: StateQueueAuthenticatedTransition,
   ) => Promise<bigint | null>;
@@ -264,9 +261,7 @@ export const createFileStateQueueCorrectionObserverStore = (
 export const createDatabaseStateQueueCorrectionObserverStore = ({
   sql,
   deploymentManifest,
-  readAvailabilityTerminalInput,
 }: {
-  readonly readAvailabilityTerminalInput?: StateQueueCorrectionObserverSource["readAvailabilityTerminalInput"];
   readonly sql: SqlClient.SqlClient;
   readonly deploymentManifest: unknown;
 }): StateQueueCorrectionObserverStore => ({
@@ -305,30 +300,6 @@ export const createDatabaseStateQueueCorrectionObserverStore = ({
         "Observer database store refused foreign or non-canonical state",
       );
     }
-    const availabilityAuthority =
-      DaPayloadTerminalOutcomesDB.availabilityRetentionAuthority(authority);
-    const evidenceByTransition = new Map<
-      string,
-      SDK.DaAvailabilityRetentionEvidence
-    >();
-    if (
-      availabilityAuthority !== null &&
-      readAvailabilityTerminalInput !== undefined
-    ) {
-      for (const transition of state.admitted) {
-        const consumed = await readAvailabilityTerminalInput(transition);
-        const evidence =
-          consumed === null
-            ? null
-            : SDK.deriveDaAvailabilityRetentionEvidence(
-                transition,
-                consumed,
-                availabilityAuthority,
-              );
-        if (evidence !== null)
-          evidenceByTransition.set(transition.transitionDigest, evidence);
-      }
-    }
     const program = sql.withTransaction(
       Effect.gen(function* () {
         const txSql = yield* SqlClient.SqlClient;
@@ -339,7 +310,6 @@ export const createDatabaseStateQueueCorrectionObserverStore = ({
           yield* DaPayloadTerminalOutcomesDB.recordAuthenticatedTransition(
             transition,
             deploymentManifest,
-            evidenceByTransition.get(transition.transitionDigest),
           );
         }
         const rows = yield* txSql<{
@@ -1339,68 +1309,6 @@ const reconstructQueueAfterTransaction = ({
   return nextQueue;
 };
 
-/** Only resolved, exact NFT-bearing inline outputs can supply retention evidence. */
-export const decodeKupoAvailabilityRetentionInput = (
-  candidate: unknown,
-  reference: { readonly txHash: string; readonly outputIndex: number },
-  address: string,
-  policyId: string,
-  headerHash: string,
-): UTxO | null => {
-  try {
-    if (
-      typeof candidate !== "object" ||
-      candidate === null ||
-      Array.isArray(candidate)
-    )
-      return null;
-    const match = candidate as Record<string, unknown>;
-    if (
-      match.transaction_id !== reference.txHash ||
-      match.output_index !== reference.outputIndex ||
-      match.address !== address ||
-      match.datum_type !== "inline" ||
-      typeof match.datum !== "string" ||
-      match.script_hash != null ||
-      match.script != null
-    )
-      return null;
-    if (
-      typeof match.value !== "object" ||
-      match.value === null ||
-      Array.isArray(match.value)
-    )
-      return null;
-    const value = match.value as Record<string, unknown>;
-    if (
-      (typeof value.coins !== "string" && typeof value.coins !== "number") ||
-      !/^(?:0|[1-9][0-9]*)$/u.test(String(value.coins)) ||
-      typeof value.assets !== "object" ||
-      value.assets === null ||
-      Array.isArray(value.assets)
-    )
-      return null;
-    const entries = Object.entries(value.assets).map(
-      ([unit, amount]) => [unit.replaceAll(".", ""), amount] as const,
-    );
-    const unit = policyId + SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash;
-    if (
-      entries.length !== 1 ||
-      entries[0]![0] !== unit ||
-      (entries[0]![1] !== 1 && entries[0]![1] !== "1")
-    )
-      return null;
-    return {
-      ...reference,
-      address,
-      assets: { lovelace: BigInt(value.coins), [unit]: 1n },
-      datum: match.datum,
-    };
-  } catch {
-    return null;
-  }
-};
-
 /** Node-owned local Kupmios/Ogmios source; no watcher process is consulted. */
 export const makeLocalKupmiosStateQueueCorrectionSource = ({
   deploymentIdentityDigest,
@@ -1456,35 +1364,6 @@ export const makeLocalKupmiosStateQueueCorrectionSource = ({
   return {
     readQueue,
     canonicalDepth,
-    readAvailabilityTerminalInput: async (transition) => {
-      if (
-        transition.deploymentIdentityDigest !== deploymentIdentityDigest ||
-        transition.stateQueuePolicyId !== stateQueuePolicyId ||
-        transition.removedHeaderHashes.length !== 1
-      )
-        return null;
-      const removed = transition.previousQueue.find(
-        (node) => node.headerHash === transition.removedHeaderHashes[0],
-      );
-      if (removed === undefined) return null;
-      const reference = outRef(removed.outRef);
-      const candidate = await fetchKupoResolvedOutput({
-        kupoUrl,
-        reference,
-        fetchImpl,
-      });
-      const decoded = decodeKupoAvailabilityRetentionInput(
-        candidate,
-        reference,
-        stateQueueAddress,
-        stateQueuePolicyId,
-        removed.headerHash!,
-      );
-      const depth = await canonicalDepth(transition);
-      return depth !== null && depth >= BigInt(transition.finalityDepth)
-        ? decoded
-        : null;
-    },
     observeTransitions: async (previousQueue, nextQueue) => {
       let workingQueue = previousQueue;
       const observations: StateQueueAuthenticatedReplayCheckpoint[] = [];

@@ -1,7 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 
-import type { WatcherStore } from "../store.js";
+import type { CommitteeStore } from "../store.js";
 import { retainedAvailabilityPayload } from "./retained-payload.js";
 
 export type AvailabilityResponderChallenge = Readonly<{
@@ -55,7 +55,7 @@ export type AvailabilityResponderReport = Readonly<{
 export type AvailabilityResponderDeps = Readonly<{
   deploymentFingerprint: string;
   deploymentIdentity: string;
-  store: Pick<WatcherStore, "getDaPayload">;
+  store: Pick<CommitteeStore, "getDaPayload">;
   /** The concrete adapter authenticates policy units and all linked datums. */
   discover: () => Promise<readonly AvailabilityResponderChallenge[]>;
   /** Called before discovery so an ambiguous submission never creates new work. */

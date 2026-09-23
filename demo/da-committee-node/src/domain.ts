@@ -53,10 +53,6 @@ export type StateQueueHeaderRecord = {
   readonly stateQueueOutRef: string;
   readonly blockAssetName: string;
   readonly rawStateQueueDatumCbor?: string;
-  readonly availabilityRetention?: {
-    readonly transition: SDK.StateQueueAuthenticatedTransition;
-    readonly evidence: SDK.DaAvailabilityRetentionEvidence;
-  };
   readonly header: Header;
   readonly computedHeaderHash: string;
   readonly daAttestation: SDK.DaAvailabilityStateQueueStatus;

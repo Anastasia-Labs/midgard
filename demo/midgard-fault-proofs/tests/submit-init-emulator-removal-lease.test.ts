@@ -1,7 +1,8 @@
 /**
- * State-queue mutation lease coordination around non-tail removal: acquire /
- * refetch / renew / release ordering, and the two failure paths that must mark
- * the lease failed rather than silently release it.
+ * Local state-queue mutation coordination around non-tail removal: every peel
+ * is confirmed and the state-queue topology refetched before the next one, a
+ * failed run leaves the queue intact for a re-run, and successors committed
+ * after the fraud-proof token is minted are peeled too.
  *
  * Split out of `submit-init-emulator.test.ts`. The split was made while
  * `@lucid-evolution/uplc` (through 0.2.22) leaked wasm linear memory on every
@@ -11,9 +12,9 @@
 
 import { describe, expect, it } from "vitest";
 
+import { createLocalStateQueueMutationLeaseCoordinator } from "../src/remove-fraudulent-block.js";
 import {
   buildProvedDoubleSpendFixture,
-  createRecordingLeaseCoordinator,
   eventIndexes,
   expectRemovedFraudProofState,
   expectStateQueueHeaderOrder,
@@ -22,8 +23,14 @@ import {
   submitRemovalForFixture,
 } from "./support/submit-init-emulator-fixtures.js";
 
+const LOCAL_LEASE_RESULT = {
+  token: "local-retry-until-confirmed",
+  source: "local",
+  released: true,
+} as const;
+
 describe("fault-proof emulator integration", () => {
-  it("coordinates non-tail removal with lease acquire, refetch, renew, and release ordering", async () => {
+  it("removes a non-tail block under the local coordinator, confirming and refetching between peels", async () => {
     const fixture = await buildProvedDoubleSpendFixture({ successorCount: 1 });
     const events: RemovalEvent[] = [];
     const removeResult = await submitRemovalForFixture(fixture, {
@@ -33,16 +40,12 @@ describe("fault-proof emulator integration", () => {
         events,
       }),
       stateQueueMutationLeaseCoordinator:
-        createRecordingLeaseCoordinator(events),
+        createLocalStateQueueMutationLeaseCoordinator(),
     });
 
     expect(removeResult.fraudulentHeaderHash).toBe(fixture.headerHash);
     expect(removeResult.fraudProver).toBe(fixture.proverPaymentKeyHash);
-    expect(removeResult.stateQueueMutationLease).toEqual({
-      token: "emulator-fault-proof-removal",
-      source: "emulator",
-      released: true,
-    });
+    expect(removeResult.stateQueueMutationLease).toEqual(LOCAL_LEASE_RESULT);
     expect(removeResult.transactions.map((tx) => tx.kind)).toEqual([
       "remove-successor",
       "remove-target",
@@ -55,45 +58,19 @@ describe("fault-proof emulator integration", () => {
       "OperatorAlreadySlashed",
     ]);
 
+    // Initial load, post-acquire refetch, then one refetch after the first
+    // peel is confirmed and before the second is built.
     const stateQueueLoadIndexes = eventIndexes(events, "stateQueue.utxosAt");
-    const acquireIndex = eventIndexes(events, "lease.acquire")[0]!;
-    const renewIndexes = eventIndexes(events, "lease.renew");
     const awaitTxIndexes = eventIndexes(events, "awaitTx");
-    const releaseIndex = eventIndexes(events, "lease.release")[0]!;
     expect(stateQueueLoadIndexes).toHaveLength(3);
-    expect(renewIndexes).toHaveLength(4);
     expect(awaitTxIndexes).toHaveLength(2);
-    expect(eventIndexes(events, "lease.fail")).toHaveLength(0);
-    expect(stateQueueLoadIndexes[0]!).toBeLessThan(acquireIndex);
-    expect(acquireIndex).toBeLessThan(stateQueueLoadIndexes[1]!);
-    expect(renewIndexes[0]!).toBeLessThan(awaitTxIndexes[0]!);
-    expect(awaitTxIndexes[0]!).toBeLessThan(renewIndexes[1]!);
-    expect(renewIndexes[1]!).toBeLessThan(stateQueueLoadIndexes[2]!);
-    expect(stateQueueLoadIndexes[2]!).toBeLessThan(renewIndexes[2]!);
-    expect(renewIndexes[2]!).toBeLessThan(awaitTxIndexes[1]!);
-    expect(awaitTxIndexes[1]!).toBeLessThan(renewIndexes[3]!);
-    expect(renewIndexes[3]!).toBeLessThan(releaseIndex);
+    expect(awaitTxIndexes[0]!).toBeLessThan(stateQueueLoadIndexes[2]!);
+    expect(stateQueueLoadIndexes[2]!).toBeLessThan(awaitTxIndexes[1]!);
 
     await expectRemovedFraudProofState(fixture);
   }, 180_000);
 
-  it("rejects non-tail removal without a state-queue mutation lease", async () => {
-    const fixture = await buildProvedDoubleSpendFixture({ successorCount: 1 });
-
-    await expect(submitRemovalForFixture(fixture)).rejects.toThrow(
-      "requires a live Midgard node state-queue mutation lease",
-    );
-    await expectStateQueueHeaderOrder({
-      lucid: fixture.funderLucid,
-      contracts: fixture.contracts,
-      expectedHeaderHashes: [
-        fixture.headerHash,
-        fixture.successors[0]!.successorHeaderHash,
-      ],
-    });
-  }, 180_000);
-
-  it("marks the lease failed when post-acquire topology refetch fails", async () => {
+  it("fails a run whose topology refetch fails, leaves the queue intact, and completes on re-run", async () => {
     const fixture = await buildProvedDoubleSpendFixture({ successorCount: 1 });
     const events: RemovalEvent[] = [];
 
@@ -106,26 +83,11 @@ describe("fault-proof emulator integration", () => {
           failStateQueueUtxosAtCall: 2,
         }),
         stateQueueMutationLeaseCoordinator:
-          createRecordingLeaseCoordinator(events),
+          createLocalStateQueueMutationLeaseCoordinator(),
       }),
     ).rejects.toThrow("instrumented state-queue topology load failure");
-
-    const stateQueueLoadIndexes = eventIndexes(events, "stateQueue.utxosAt");
-    const acquireIndex = eventIndexes(events, "lease.acquire")[0]!;
-    const failIndex = eventIndexes(events, "lease.fail")[0]!;
-    expect(stateQueueLoadIndexes).toHaveLength(2);
-    expect(stateQueueLoadIndexes[0]!).toBeLessThan(acquireIndex);
-    expect(acquireIndex).toBeLessThan(stateQueueLoadIndexes[1]!);
-    expect(stateQueueLoadIndexes[1]!).toBeLessThan(failIndex);
-    expect(eventIndexes(events, "lease.renew")).toHaveLength(0);
-    expect(eventIndexes(events, "lease.release")).toHaveLength(0);
+    expect(eventIndexes(events, "stateQueue.utxosAt")).toHaveLength(2);
     expect(eventIndexes(events, "awaitTx")).toHaveLength(0);
-    expect(
-      events.find(
-        (event): event is Extract<RemovalEvent, { kind: "lease.fail" }> =>
-          event.kind === "lease.fail",
-      )?.error,
-    ).toContain("instrumented state-queue topology load failure");
     await expectStateQueueHeaderOrder({
       lucid: fixture.funderLucid,
       contracts: fixture.contracts,
@@ -134,9 +96,21 @@ describe("fault-proof emulator integration", () => {
         fixture.successors[0]!.successorHeaderHash,
       ],
     });
-  }, 180_000);
 
-  it("marks the lease failed when removal preparation fails after acquisition", async () => {
+    // A bare CLI run is not retried in process; the operator re-runs it.
+    const rerun = await submitRemovalForFixture(fixture, {
+      stateQueueMutationLeaseCoordinator:
+        createLocalStateQueueMutationLeaseCoordinator(),
+    });
+    expect(rerun.stateQueueMutationLease).toEqual(LOCAL_LEASE_RESULT);
+    expect(rerun.transactions.map((tx) => tx.removedHeaderHash)).toEqual([
+      fixture.successors[0]!.successorHeaderHash,
+      fixture.headerHash,
+    ]);
+    await expectRemovedFraudProofState(fixture);
+  }, 240_000);
+
+  it("fails a run whose removal preparation fails before any submission and leaves the queue intact", async () => {
     const fixture = await buildProvedDoubleSpendFixture({ successorCount: 1 });
     const events: RemovalEvent[] = [];
 
@@ -149,30 +123,11 @@ describe("fault-proof emulator integration", () => {
           failSchedulerUtxosAtWithUnitCall: 2,
         }),
         stateQueueMutationLeaseCoordinator:
-          createRecordingLeaseCoordinator(events),
+          createLocalStateQueueMutationLeaseCoordinator(),
       }),
     ).rejects.toThrow("instrumented scheduler lookup failure");
-
-    const stateQueueLoadIndexes = eventIndexes(events, "stateQueue.utxosAt");
-    const schedulerIndexes = eventIndexes(events, "scheduler.utxosAtWithUnit");
-    const acquireIndex = eventIndexes(events, "lease.acquire")[0]!;
-    const renewIndex = eventIndexes(events, "lease.renew")[0]!;
-    const failIndex = eventIndexes(events, "lease.fail")[0]!;
-    expect(stateQueueLoadIndexes).toHaveLength(2);
-    expect(schedulerIndexes).toHaveLength(2);
-    expect(eventIndexes(events, "lease.renew")).toHaveLength(1);
-    expect(eventIndexes(events, "lease.release")).toHaveLength(0);
+    expect(eventIndexes(events, "scheduler.utxosAtWithUnit")).toHaveLength(2);
     expect(eventIndexes(events, "awaitTx")).toHaveLength(0);
-    expect(acquireIndex).toBeLessThan(stateQueueLoadIndexes[1]!);
-    expect(stateQueueLoadIndexes[1]!).toBeLessThan(renewIndex);
-    expect(renewIndex).toBeLessThan(schedulerIndexes[1]!);
-    expect(schedulerIndexes[1]!).toBeLessThan(failIndex);
-    expect(
-      events.find(
-        (event): event is Extract<RemovalEvent, { kind: "lease.fail" }> =>
-          event.kind === "lease.fail",
-      )?.error,
-    ).toContain("instrumented scheduler lookup failure");
     await expectStateQueueHeaderOrder({
       lucid: fixture.funderLucid,
       contracts: fixture.contracts,
@@ -182,4 +137,69 @@ describe("fault-proof emulator integration", () => {
       ],
     });
   }, 180_000);
+
+  it("removes the target and two blocks committed between the fraud-proof token mint and the first peel", async () => {
+    const fixture = await buildProvedDoubleSpendFixture({
+      successorsAfterProofCount: 2,
+    });
+    expect(fixture.successors).toHaveLength(2);
+    // The proof ran against the then-tail target, before either successor.
+    expect(fixture.fraudulentBlockOutRef).toBe(
+      fixture.setup.fraudulentBlockOutRef,
+    );
+    await expectStateQueueHeaderOrder({
+      lucid: fixture.funderLucid,
+      contracts: fixture.contracts,
+      expectedHeaderHashes: [
+        fixture.headerHash,
+        fixture.successors[0]!.successorHeaderHash,
+        fixture.successors[1]!.successorHeaderHash,
+      ],
+    });
+
+    const events: RemovalEvent[] = [];
+    const removeResult = await submitRemovalForFixture(fixture, {
+      lucid: instrumentLucidForRemoval({
+        lucid: fixture.proverLucid,
+        contracts: fixture.contracts,
+        events,
+      }),
+      stateQueueMutationLeaseCoordinator:
+        createLocalStateQueueMutationLeaseCoordinator(),
+    });
+
+    expect(removeResult.stateQueueMutationLease).toEqual(LOCAL_LEASE_RESULT);
+    expect(removeResult.transactions.map((tx) => tx.kind)).toEqual([
+      "remove-successor",
+      "remove-successor",
+      "remove-target",
+    ]);
+    expect(removeResult.transactions.map((tx) => tx.removedHeaderHash)).toEqual(
+      [
+        fixture.successors[0]!.successorHeaderHash,
+        fixture.successors[1]!.successorHeaderHash,
+        fixture.headerHash,
+      ],
+    );
+
+    // Initial load and post-acquire refetch before the first peel is built;
+    // then each peel is confirmed before the next refetch, and the next peel
+    // is built only after that refetch.
+    const stateQueueLoadIndexes = eventIndexes(events, "stateQueue.utxosAt");
+    const awaitTxIndexes = eventIndexes(events, "awaitTx");
+    expect(stateQueueLoadIndexes).toHaveLength(4);
+    expect(awaitTxIndexes).toHaveLength(3);
+    expect(
+      events.flatMap((event) =>
+        event.kind === "awaitTx" ? [event.txHash] : [],
+      ),
+    ).toEqual(removeResult.transactions.map((tx) => tx.txHash));
+    expect(stateQueueLoadIndexes[1]!).toBeLessThan(awaitTxIndexes[0]!);
+    expect(awaitTxIndexes[0]!).toBeLessThan(stateQueueLoadIndexes[2]!);
+    expect(stateQueueLoadIndexes[2]!).toBeLessThan(awaitTxIndexes[1]!);
+    expect(awaitTxIndexes[1]!).toBeLessThan(stateQueueLoadIndexes[3]!);
+    expect(stateQueueLoadIndexes[3]!).toBeLessThan(awaitTxIndexes[2]!);
+
+    await expectRemovedFraudProofState(fixture);
+  }, 300_000);
 });

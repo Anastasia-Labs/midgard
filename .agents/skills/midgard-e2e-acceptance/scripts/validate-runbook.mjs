@@ -331,9 +331,9 @@ for (const label of requiredTransactionLabels) {
 
 for (const marker of [
   "--target producer",
-  "--profile producer-container-watcher-host",
+  "--profile producer-container-committee-host",
   "--profile host",
-  "--target watcher",
+  "--target committee",
   "$PRODUCER_PREFLIGHT_MANIFEST",
   "DA_L1_SUBMITTER_KEY_SOURCE",
 ]) {
@@ -341,19 +341,19 @@ for (const marker of [
 }
 
 const daSection = documents.live.slice(
-  documents.live.indexOf("## DA manifests and watcher"),
+  documents.live.indexOf("## DA manifests and committee node"),
 );
-const watcherStart = daSection.indexOf("e2e-start-service");
+const committeeStart = daSection.indexOf("e2e-start-service");
 const bindPreflight = daSection.indexOf("--id da-libp2p-bind-listen-preflight");
 const nodeStart = daSection.indexOf("$COMPOSE up -d midgard-node");
 if (
-  watcherStart < 0 ||
+  committeeStart < 0 ||
   bindPreflight < 0 ||
   nodeStart < 0 ||
-  !(watcherStart < bindPreflight && bindPreflight < nodeStart)
+  !(committeeStart < bindPreflight && bindPreflight < nodeStart)
 ) {
   fail(
-    "DA order must be watcher start, bind/listen preflight, then node start",
+    "DA order must be committee node start, bind/listen preflight, then node start",
   );
 }
 

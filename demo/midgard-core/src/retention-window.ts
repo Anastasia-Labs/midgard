@@ -23,18 +23,9 @@ import { DA_TRANSPORT_LIMITS } from "./da-transport.js";
 export const RETENTION_MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
- * Terminal L1 state-queue header statuses. Only a header that has reached a
- * terminal on-chain outcome can make its retained evidence prunable; anything
- * else (including an unrecognised status) is still challengeable.
- */
-export const RETENTION_TERMINAL_HEADER_STATUSES = Object.freeze([
-  "merged",
-  "removed",
-] as const);
-
-/**
- * Closed set of header statuses the retention decision understands. A status
- * outside this set is treated as unknown and therefore retained.
+ * Closed set of L1 state-queue header statuses a store can record. Only
+ * `removed` moves the retention decision; every other status is decided by the
+ * queue references and the challengeability horizon alone.
  */
 export const RETENTION_KNOWN_HEADER_STATUSES = Object.freeze([
   "unattested",
@@ -98,6 +89,13 @@ export const MIDGARD_RETENTION_WINDOW: RetentionWindow =
 // Module-load fail-closed assertion: the shipped profile pair must already
 // cover the still-challengeable horizon. If a future profile edit breaks this,
 // every importer fails at load rather than silently pruning live evidence.
+//
+// `requiredRetentionMs` is also the prune horizon of `daRetentionPruneDecision`.
+// When the time-based availability-challenge bond reclaim lands, a payload must
+// stay retained for as long as an availability challenge can be opened and
+// answered, so this assertion must then also check
+// `requiredRetentionMs >= daChallengeWindowMs + responseDeadlineMs`. That
+// plan's own relation (challenge window <= block maturity) already implies it.
 if (
   !Number.isSafeInteger(MIDGARD_RETENTION_WINDOW.deployedRetentionMs) ||
   !Number.isSafeInteger(MIDGARD_RETENTION_WINDOW.requiredRetentionMs) ||
@@ -275,110 +273,133 @@ export const retentionDeadlineForBlock = (args: {
   };
 };
 
+/**
+ * Where one retained payload's header sits in the store's latest authenticated
+ * L1 view: the header hash in the `ConfirmedState` datum, a header node still
+ * live in the state queue, or neither. Always sourced from L1, never from local
+ * header rows.
+ */
+export type RetentionQueueReference =
+  | "confirmed_head"
+  | "live_in_queue"
+  | "none";
+
 export type RetentionPruneReasonCode =
-  | "active_availability_challenge"
-  | "availability_challenge_state_unknown"
-  | "still_within_maturity"
-  | "still_within_retention_window"
-  | "header_status_not_terminal"
-  | "header_status_unknown"
-  | "missing_block_end_time"
-  | "expired_and_terminal";
+  | "confirmed_head_payload"
+  | "live_queue_header"
+  | "removed_header"
+  | "past_challengeability_horizon"
+  | "still_challengeable";
 
 export type RetentionPruneDecision = {
   readonly decision: "retain" | "prune";
   readonly reasonCode: RetentionPruneReasonCode;
-  readonly challengeableUntilMs?: number;
-  readonly retainUntilMs?: number;
-  readonly remainingMs?: number;
+  readonly challengeableUntilMs: number;
+  readonly retainUntilMs: number;
+  readonly remainingMs: number;
 };
 
-export type RetentionPruneRecord = {
-  readonly headerHash?: string;
-  readonly blockEndTimeMs?: number | null;
+export type RetentionPruneInput = {
+  readonly nowMs: number;
+  /** End time of the payload's own block header. */
+  readonly blockEndTimeMs: number;
+  /** Stored header status; `unobserved` when the store has no header row. */
+  readonly headerStatus: RetentionHeaderStatus | "unobserved";
+  readonly queueReference: RetentionQueueReference;
+  readonly window?: RetentionWindow;
+  readonly retentionDays?: number;
 };
 
 /**
- * Single authority on whether one retained DA record may be pruned.
+ * Single authority on whether one retained DA payload may be pruned.
  *
- * Fail-closed by construction: a missing block end time, an unknown header
- * status, or any not-yet-terminal header keeps the record. Only a block whose
- * challengeability horizon has strictly passed AND whose L1 header reached a
- * terminal outcome is prunable.
+ * A payload is prunable when its header was removed from the state queue OR
+ * its challengeability horizon has strictly passed, unless it is the L1
+ * confirmed head's payload or its header is still live in the L1 state queue.
+ * There is no other arm: every input is required, so no caller can reach a
+ * "keep everything" outcome by leaving one out. The retained set of any store
+ * is therefore a subset of {confirmed head} + {live queue headers} + {payloads
+ * whose block ended within the horizon}.
  */
 export const daRetentionPruneDecision = (
-  record: RetentionPruneRecord,
-  options: {
-    readonly nowMs: number;
-    readonly window?: RetentionWindow;
-    readonly retentionDays?: number;
-    readonly headerStatus?: unknown;
-    /** Only an authenticated `inactive` observation permits pruning. */
-    readonly availabilityChallengeState?: unknown;
-  },
+  input: RetentionPruneInput,
 ): RetentionPruneDecision => {
-  const window = options.window ?? MIDGARD_RETENTION_WINDOW;
-  if (options.availabilityChallengeState === "active") {
+  const window = input.window ?? MIDGARD_RETENTION_WINDOW;
+  if (!Number.isSafeInteger(input.nowMs)) {
+    throw new Error("nowMs must be a safe integer of milliseconds");
+  }
+  if (!Number.isSafeInteger(input.blockEndTimeMs) || input.blockEndTimeMs < 0) {
+    throw new Error(
+      "blockEndTimeMs must be a non-negative safe integer of milliseconds",
+    );
+  }
+  const retentionDays = input.retentionDays ?? window.retentionDays;
+  const challengeableUntilMs =
+    input.blockEndTimeMs + window.requiredRetentionMs;
+  const base = {
+    challengeableUntilMs,
+    retainUntilMs: input.blockEndTimeMs + retentionDays * RETENTION_MS_PER_DAY,
+    remainingMs: challengeableUntilMs - input.nowMs,
+  };
+  if (input.queueReference === "confirmed_head") {
     return {
       decision: "retain",
-      reasonCode: "active_availability_challenge",
-    };
-  }
-  if (options.availabilityChallengeState !== "inactive") {
-    return {
-      decision: "retain",
-      reasonCode: "availability_challenge_state_unknown",
-    };
-  }
-  const blockEndTimeMs = record.blockEndTimeMs;
-  if (
-    blockEndTimeMs === undefined ||
-    blockEndTimeMs === null ||
-    typeof blockEndTimeMs !== "number" ||
-    !Number.isSafeInteger(blockEndTimeMs) ||
-    blockEndTimeMs < 0
-  ) {
-    return { decision: "retain", reasonCode: "missing_block_end_time" };
-  }
-
-  const status = options.headerStatus;
-  const knownStatus =
-    typeof status === "string" &&
-    (RETENTION_KNOWN_HEADER_STATUSES as readonly string[]).includes(status)
-      ? (status as RetentionHeaderStatus)
-      : undefined;
-  if (knownStatus === undefined) {
-    return { decision: "retain", reasonCode: "header_status_unknown" };
-  }
-
-  const retentionDays = options.retentionDays ?? window.retentionDays;
-  const challengeableUntilMs = blockEndTimeMs + window.requiredRetentionMs;
-  const retainUntilMs = blockEndTimeMs + retentionDays * RETENTION_MS_PER_DAY;
-  const remainingMs = challengeableUntilMs - options.nowMs;
-  const base = { challengeableUntilMs, retainUntilMs, remainingMs };
-
-  if (options.nowMs <= blockEndTimeMs + window.maturityMs) {
-    return { decision: "retain", reasonCode: "still_within_maturity", ...base };
-  }
-  if (options.nowMs <= challengeableUntilMs) {
-    return {
-      decision: "retain",
-      reasonCode: "still_within_retention_window",
+      reasonCode: "confirmed_head_payload",
       ...base,
     };
   }
-  if (
-    !(RETENTION_TERMINAL_HEADER_STATUSES as readonly string[]).includes(
-      knownStatus,
-    )
-  ) {
+  if (input.queueReference === "live_in_queue") {
+    return { decision: "retain", reasonCode: "live_queue_header", ...base };
+  }
+  if (input.headerStatus === "removed") {
+    return { decision: "prune", reasonCode: "removed_header", ...base };
+  }
+  if (input.nowMs > challengeableUntilMs) {
     return {
-      decision: "retain",
-      reasonCode: "header_status_not_terminal",
+      decision: "prune",
+      reasonCode: "past_challengeability_horizon",
       ...base,
     };
   }
-  return { decision: "prune", reasonCode: "expired_and_terminal", ...base };
+  return { decision: "retain", reasonCode: "still_challengeable", ...base };
+};
+
+/**
+ * Validates the L1-view staleness deadline after which a store that cannot
+ * obtain a fresh authenticated L1 view exits instead of running on a stale
+ * one. The deadline must tolerate at least three missed passes, so one bad
+ * poll is never fatal, and must not exceed the deployed retention margin, so
+ * the deployed window is never silently breached while the process waits.
+ */
+export const resolveL1ViewFatalMs = (args: {
+  readonly value: unknown;
+  readonly defaultMs: number;
+  readonly pollIntervalMs: number;
+  readonly fieldName: string;
+}): number => {
+  const raw = args.value === undefined ? args.defaultMs : args.value;
+  const value =
+    typeof raw === "string" && /^\d+$/u.test(raw) ? Number(raw) : raw;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(
+      `${args.fieldName} must be a non-negative safe integer of ms`,
+    );
+  }
+  if (value < 3 * args.pollIntervalMs) {
+    throw new Error(
+      `${args.fieldName}=${String(value)} must be at least three poll intervals (${String(
+        3 * args.pollIntervalMs,
+      )} ms)`,
+    );
+  }
+  if (value > MIDGARD_RETENTION_WINDOW.marginMs) {
+    throw new Error(
+      `${args.fieldName}=${String(value)} must not exceed the deployed retention margin ${String(
+        MIDGARD_RETENTION_WINDOW.marginMs,
+      )} ms`,
+    );
+  }
+  return value;
 };
 
 export type RetentionDeadlineAlert = {

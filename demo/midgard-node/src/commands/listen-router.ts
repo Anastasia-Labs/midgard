@@ -686,7 +686,6 @@ const READINESS_ENDPOINT: string = "readyz";
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
-const STATE_QUEUE_MUTATION_LEASE_ENDPOINT: string = "stateQueueMutationLease";
 
 const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
@@ -861,19 +860,6 @@ const parseFixedHexParam = (
   }
 };
 
-const parsePositiveInteger = (
-  value: unknown,
-  label: string,
-): number | undefined => {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`${label} must be a positive safe integer.`);
-  }
-  return value;
-};
-
 const encodeStateQueueMutationLease = (
   lease: StateQueueMutationLeasesDB.Entry | undefined,
   now: Date = new Date(),
@@ -922,178 +908,6 @@ const encodeStateQueueMutationLeaseInspection = (
     encodeStateQueueMutationLease(lease, inspection.dbNow),
   ),
 });
-
-export type StateQueueMutationLeaseEndpointResult = {
-  readonly statusCode: number;
-  readonly body: unknown;
-};
-
-export type StateQueueMutationLeaseEndpointStore<R = Database> = {
-  readonly inspect: (args?: {
-    readonly recentLimit?: number;
-  }) => Effect.Effect<StateQueueMutationLeasesDB.LeaseInspection, unknown, R>;
-  readonly tryAcquire: (args: {
-    readonly holder: string;
-    readonly ttlMs?: number;
-  }) => Effect.Effect<
-    StateQueueMutationLeasesDB.LeaseAcquireResult,
-    unknown,
-    R
-  >;
-  readonly renew: (args: {
-    readonly token: string;
-    readonly ttlMs?: number;
-  }) => Effect.Effect<void, unknown, R>;
-  readonly release: (token: string) => Effect.Effect<void, unknown, R>;
-  readonly markFailed: (
-    token: string,
-    error: string,
-  ) => Effect.Effect<void, unknown, R>;
-};
-
-const defaultStateQueueMutationLeaseEndpointStore: StateQueueMutationLeaseEndpointStore =
-  {
-    inspect: StateQueueMutationLeasesDB.inspect,
-    tryAcquire: StateQueueMutationLeasesDB.tryAcquire,
-    renew: StateQueueMutationLeasesDB.renew,
-    release: StateQueueMutationLeasesDB.release,
-    markFailed: StateQueueMutationLeasesDB.markFailed,
-  };
-
-export const resolveStateQueueMutationLeaseRequest = <R = Database>(
-  body: unknown,
-  store: StateQueueMutationLeaseEndpointStore<R> = defaultStateQueueMutationLeaseEndpointStore as StateQueueMutationLeaseEndpointStore<R>,
-): Effect.Effect<StateQueueMutationLeaseEndpointResult, never, R> =>
-  Effect.gen(function* () {
-    if (typeof body !== "object" || body === null || !("action" in body)) {
-      return {
-        statusCode: 400,
-        body: { error: 'Request body must include an "action" field.' },
-      };
-    }
-    const action = (body as { readonly action?: unknown }).action;
-    if (action === "inspect") {
-      let recentLimit: number | undefined;
-      try {
-        recentLimit = parsePositiveInteger(
-          (body as { readonly recentLimit?: unknown }).recentLimit,
-          "recentLimit",
-        );
-      } catch (error) {
-        return {
-          statusCode: 400,
-          body: {
-            error: errorMessage(error),
-          },
-        };
-      }
-      const inspection = yield* store.inspect(
-        recentLimit === undefined ? undefined : { recentLimit },
-      );
-      return {
-        statusCode: 200,
-        body: encodeStateQueueMutationLeaseInspection(inspection),
-      };
-    }
-    if (action === "acquire") {
-      const holderValue = (body as { readonly holder?: unknown }).holder;
-      const holder =
-        typeof holderValue === "string" && holderValue.trim().length > 0
-          ? holderValue.trim()
-          : "fault_proof_removal";
-      let ttlMs: number | undefined;
-      try {
-        ttlMs = parsePositiveInteger(
-          (body as { readonly ttlMs?: unknown }).ttlMs,
-          "ttlMs",
-        );
-      } catch (error) {
-        return {
-          statusCode: 400,
-          body: {
-            error: errorMessage(error),
-          },
-        };
-      }
-      const result = yield* store.tryAcquire({
-        holder,
-        ...(ttlMs === undefined ? {} : { ttlMs }),
-      });
-      if (result._tag === "Busy") {
-        return {
-          statusCode: 409,
-          body: {
-            status: "busy",
-            activeLease: encodeStateQueueMutationLease(result.activeLease),
-          },
-        };
-      }
-      return {
-        statusCode: 200,
-        body: {
-          status: "acquired",
-          token: result.token,
-        },
-      };
-    }
-
-    const token = (body as { readonly token?: unknown }).token;
-    if (typeof token !== "string" || token.trim().length === 0) {
-      return {
-        statusCode: 400,
-        body: { error: '"token" must be a non-empty string.' },
-      };
-    }
-    if (action === "renew") {
-      let ttlMs: number | undefined;
-      try {
-        ttlMs = parsePositiveInteger(
-          (body as { readonly ttlMs?: unknown }).ttlMs,
-          "ttlMs",
-        );
-      } catch (error) {
-        return {
-          statusCode: 400,
-          body: {
-            error: errorMessage(error),
-          },
-        };
-      }
-      yield* store.renew({
-        token: token.trim(),
-        ...(ttlMs === undefined ? {} : { ttlMs }),
-      });
-      return { statusCode: 200, body: { status: "renewed" } };
-    }
-    if (action === "release") {
-      yield* store.release(token.trim());
-      return { statusCode: 200, body: { status: "released" } };
-    }
-    if (action === "fail") {
-      const errorValue = (body as { readonly error?: unknown }).error;
-      const error =
-        typeof errorValue === "string"
-          ? errorValue
-          : "external state-queue mutation failed";
-      yield* store.markFailed(token.trim(), error);
-      return { statusCode: 200, body: { status: "failed" } };
-    }
-
-    return {
-      statusCode: 400,
-      body: { error: `Unsupported action: ${String(action)}` },
-    };
-  }).pipe(
-    Effect.catchAll((error) =>
-      Effect.succeed({
-        statusCode: 500,
-        body: {
-          error: "State-queue mutation lease request failed.",
-          detail: String(error),
-        },
-      }),
-    ),
-  );
 
 /**
  * Wraps a route handler with admin-key authorization when the path belongs to
@@ -1547,64 +1361,6 @@ const postTxStatusBatchHandler = Effect.gen(function* () {
       TX_STATUS_ENDPOINT,
       e.cause,
       "batched transaction status query failed",
-    ),
-  ),
-);
-
-/**
- * `POST /stateQueueMutationLease`: admin-only coordination endpoint for
- * external state-queue mutators such as manual fault-proof removal.
- */
-const postStateQueueMutationLeaseHandler = Effect.gen(function* () {
-  const request = yield* HttpServerRequest.HttpServerRequest;
-  const parsedBody = yield* Effect.either(request.json);
-  if (parsedBody._tag === "Left") {
-    return yield* HttpServerResponse.json(
-      { error: "Request body must be valid JSON." },
-      { status: 400 },
-    );
-  }
-  const result = yield* resolveStateQueueMutationLeaseRequest(parsedBody.right);
-  return yield* HttpServerResponse.json(result.body, {
-    status: result.statusCode,
-  });
-}).pipe(
-  Effect.catchTag("HttpBodyError", (e) =>
-    failWith500("POST", STATE_QUEUE_MUTATION_LEASE_ENDPOINT, e),
-  ),
-);
-
-const getStateQueueMutationLeaseHandler = Effect.gen(function* () {
-  const params = yield* ParsedSearchParams;
-  const recentLimitParam = params["recent_limit"];
-  let recentLimit: number | undefined;
-  try {
-    recentLimit =
-      recentLimitParam === undefined
-        ? undefined
-        : parsePositiveInteger(Number(recentLimitParam), "recent_limit");
-  } catch (error) {
-    return yield* HttpServerResponse.json(
-      { error: errorMessage(error) },
-      { status: 400 },
-    );
-  }
-  const inspection = yield* StateQueueMutationLeasesDB.inspect(
-    recentLimit === undefined ? undefined : { recentLimit },
-  );
-  return yield* HttpServerResponse.json(
-    encodeStateQueueMutationLeaseInspection(inspection),
-  );
-}).pipe(
-  Effect.catchTag("HttpBodyError", (e) =>
-    failWith500("GET", STATE_QUEUE_MUTATION_LEASE_ENDPOINT, e),
-  ),
-  Effect.catchTag("DatabaseError", (e) =>
-    failWith500(
-      "GET",
-      STATE_QUEUE_MUTATION_LEASE_ENDPOINT,
-      e.cause,
-      `db failure with table ${e.table}`,
     ),
   ),
 );
@@ -2450,6 +2206,7 @@ const getStateQueueHandler = Effect.gen(function* () {
           return classifyOldestQueuedBlockReadiness({
             headerHash,
             currentDaAvailability: stateQueueNode.da_attestation,
+            provenFraud: stateQueueNode.proven_fraud,
             readyAfterUnixTime: maturity.readyAfterUnixTime,
             nowUnixTime: Date.now(),
           });
@@ -3166,25 +2923,6 @@ export const buildSubmitRouter = <R>(
     ),
   );
 
-/** The lease coordination routes shared by the node and integration fixtures. */
-export const buildStateQueueMutationLeaseRouter = () =>
-  HttpRouter.empty.pipe(
-    HttpRouter.get(
-      `/${STATE_QUEUE_MUTATION_LEASE_ENDPOINT}`,
-      withAdminAccess(
-        STATE_QUEUE_MUTATION_LEASE_ENDPOINT,
-        getStateQueueMutationLeaseHandler,
-      ),
-    ),
-    HttpRouter.post(
-      `/${STATE_QUEUE_MUTATION_LEASE_ENDPOINT}`,
-      withAdminAccess(
-        STATE_QUEUE_MUTATION_LEASE_ENDPOINT,
-        postStateQueueMutationLeaseHandler,
-      ),
-    ),
-  );
-
 /**
  * Builds the full HTTP router for the node command server.
  */
@@ -3239,7 +2977,6 @@ export const buildListenRouter = (
         `/${STATE_QUEUE_ENDPOINT}`,
         withAdminAccess(STATE_QUEUE_ENDPOINT, getStateQueueHandler),
       ),
-      HttpRouter.concat(buildStateQueueMutationLeaseRouter()),
       HttpRouter.get(
         `/logBlocksDB`,
         withAdminAccess("logBlocksDB", getLogBlocksDBHandler),

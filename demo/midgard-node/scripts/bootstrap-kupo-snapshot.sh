@@ -101,6 +101,22 @@ tmp_root="$restore_root/.kupo-restore"
 stage_dir="$tmp_root/stage.$$"
 resolved_cardano_network="$(normalize_cardano_network "$NETWORK")"
 snapshot_release_tag="${KUPO_SNAPSHOT_RELEASE_TAG:-v2.8}"
+# snapshot: restore the official Kupo SQLite snapshot (fast, but the official
+#           snapshots are built with --prune-utxo, so outputs spent before the
+#           snapshot point are absent from the index).
+# origin:   restore nothing and let Kupo sync from origin (slow, complete).
+# Use origin when this node serves a Midgard deployment whose L1 history
+# starts before the snapshot was taken; the node's forced-order carriage
+# reader (src/l1-tx-order-carriage.ts) reads spent outputs.
+bootstrap_mode="${KUPO_BOOTSTRAP_MODE:-snapshot}"
+case "$bootstrap_mode" in
+  snapshot|origin) ;;
+  *)
+    echo "KUPO_BOOTSTRAP_MODE must be 'snapshot' or 'origin', got '$bootstrap_mode'." >&2
+    exit 1
+    ;;
+esac
+bootstrap_mode_marker="$metadata_dir/kupo-bootstrap-mode"
 configured_snapshot_url="${KUPO_SNAPSHOT_URL:-}"
 expected_snapshot_md5="${KUPO_SNAPSHOT_MD5:-$(resolve_default_kupo_snapshot_md5 "$resolved_cardano_network")}"
 
@@ -115,11 +131,30 @@ if dir_has_substantive_entries "$final_db_dir"; then
       exit 1
     fi
     echo "Existing Kupo DB detected at $final_db_dir for network '$resolved_cardano_network'; skipping snapshot restore." >&2
+    if [ -f "$bootstrap_mode_marker" ]; then
+      existing_mode="$(cat "$bootstrap_mode_marker")"
+      if [ "$existing_mode" != "$bootstrap_mode" ]; then
+        echo "Warning: existing Kupo DB was bootstrapped in '$existing_mode' mode but KUPO_BOOTSTRAP_MODE=$bootstrap_mode." >&2
+        echo "Remove ./cardano/kupo explicitly to re-bootstrap in the new mode." >&2
+      fi
+    fi
     exit 0
   fi
 
   echo "Existing Kupo DB detected at $final_db_dir; skipping snapshot restore." >&2
   echo "Network compatibility was not verified because $network_marker is missing." >&2
+  exit 0
+fi
+
+if [ "$bootstrap_mode" = "origin" ]; then
+  if [ -e "$final_db_dir" ] && [ ! -d "$final_db_dir" ]; then
+    echo "Refusing to overwrite non-directory destination at $final_db_dir." >&2
+    exit 1
+  fi
+  mkdir -p "$final_db_dir"
+  printf "%s\n" "$resolved_cardano_network" >"$network_marker"
+  printf "%s\n" "$bootstrap_mode" >"$bootstrap_mode_marker"
+  echo "KUPO_BOOTSTRAP_MODE=origin: no snapshot restored; Kupo will sync from origin into $final_db_dir (complete, unpruned index)." >&2
   exit 0
 fi
 
@@ -177,5 +212,7 @@ mv "$stage_dir/kupo.sqlite3" "$final_db_dir/kupo.sqlite3"
 printf "%s\n" "$resolved_cardano_network" >"$network_marker"
 printf "%s\n" "$snapshot_source" >"$snapshot_source_marker"
 printf "%s\n" "$actual_snapshot_md5" >"$snapshot_md5_marker"
+printf "%s\n" "$bootstrap_mode" >"$bootstrap_mode_marker"
 
 echo "Kupo snapshot restore complete. SQLite DB is ready at $final_db_dir/kupo.sqlite3." >&2
+echo "Note: official Kupo snapshots are pruned; outputs spent before the snapshot point are absent. Use KUPO_BOOTSTRAP_MODE=origin for a deployment older than the snapshot." >&2

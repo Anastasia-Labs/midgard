@@ -4,10 +4,13 @@ import {
   MIDGARD_RETENTION_WINDOW,
   RETENTION_MS_PER_DAY,
 } from "@al-ft/midgard-core";
-import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
+import {
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_CONSENSUS_PROFILE_ID,
+} from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Data, type UTxO } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -15,21 +18,25 @@ import { evaluateReadiness } from "../src/commands/readiness.js";
 import {
   evaluateRetentionCheck,
   retentionCheckExitCode,
+  retentionCheckProgram,
 } from "../src/commands/retention-check.js";
 import {
   DaPayloadsDB,
   DaPayloadTerminalOutcomesDB,
 } from "../src/database/index.js";
 import * as MigrationRunner from "../src/database/migrations/runner.js";
+import { computeChallengeableCutoff } from "../src/database/retention-policy.js";
+import { retentionSweepAction } from "../src/fibers/retention-sweeper.js";
 import {
-  computeChallengeableCutoff,
-  computeRetentionCutoff,
-} from "../src/database/retention-policy.js";
+  ContractDeploymentIdentity,
+  NodeConfig,
+} from "../src/services/index.js";
 import {
   createDatabaseStateQueueCorrectionObserverStore,
   parseStateQueueCorrectionObserverState,
 } from "../src/services/state-queue-correction-observer.js";
 import { makeFinalizedDeploymentManifestFixture } from "./helpers/finalized-deployment-manifest.js";
+import { makeRetentionL1Queue } from "./helpers/retention-l1-view.js";
 import { deterministicFixtureBytes, provideDatabaseLayers } from "./utils.js";
 
 const REQUIRED_RETENTION_MS = MIDGARD_RETENTION_WINDOW.requiredRetentionMs;
@@ -73,7 +80,14 @@ describe("Q54 executable retention deadline alert", () => {
   it("exits 0 when every retained record has headroom", () => {
     const result = evaluateRetentionCheck({
       nowMillis: NOW.getTime(),
-      records: [{ headerHash, blockEndTimeMs, headerStatus: "attested" }],
+      records: [
+        {
+          headerHash,
+          blockEndTimeMs,
+          headerStatus: "attested",
+          queueReference: "none",
+        },
+      ],
     });
     expect(result.ok).toBe(true);
     expect(result.alerts).toEqual([]);
@@ -89,7 +103,14 @@ describe("Q54 executable retention deadline alert", () => {
       evaluateRetentionCheck({
         nowMillis: blockEndTimeMs + REQUIRED_RETENTION_MS - remainingMs,
         alertThresholdMs: 0,
-        records: [{ headerHash, blockEndTimeMs, headerStatus: "attested" }],
+        records: [
+          {
+            headerHash,
+            blockEndTimeMs,
+            headerStatus: "attested",
+            queueReference: "none",
+          },
+        ],
       });
     expect(at(0).ok).toBe(false);
     expect(retentionCheckExitCode(at(0))).toBe(1);
@@ -106,6 +127,7 @@ describe("Q54 executable retention deadline alert", () => {
           headerHash,
           blockEndTimeMs,
           headerStatus: "attested",
+          queueReference: "none",
           deploymentFingerprint: "bb".repeat(32),
         },
       ],
@@ -118,20 +140,43 @@ describe("Q54 executable retention deadline alert", () => {
     expect(retentionCheckExitCode(result)).toBe(1);
   });
 
-  it("fails closed on missing block end time and unknown status", () => {
-    const missing = evaluateRetentionCheck({
+  it("counts only still-challengeable records toward the deadline alert", () => {
+    const pastHorizon = NOW.getTime() - REQUIRED_RETENTION_MS - 1;
+    const result = evaluateRetentionCheck({
       nowMillis: NOW.getTime(),
-      records: [{ headerHash, blockEndTimeMs: null, headerStatus: "merged" }],
+      alertThresholdMs: REQUIRED_RETENTION_MS,
+      records: [
+        {
+          headerHash: "01".repeat(28),
+          blockEndTimeMs: pastHorizon,
+          headerStatus: "unobserved",
+          queueReference: "none",
+        },
+        {
+          headerHash: "02".repeat(28),
+          blockEndTimeMs: pastHorizon,
+          headerStatus: "merged",
+          queueReference: "confirmed_head",
+        },
+        {
+          headerHash: "03".repeat(28),
+          blockEndTimeMs,
+          headerStatus: "removed",
+          queueReference: "none",
+        },
+        {
+          headerHash: "04".repeat(28),
+          blockEndTimeMs,
+          headerStatus: "unobserved",
+          queueReference: "none",
+        },
+      ],
     });
-    expect(missing.ok).toBe(false);
-    expect(missing.alerts[0]?.reasonCode).toBe("missing_block_end_time");
-
-    const unknown = evaluateRetentionCheck({
-      nowMillis: NOW.getTime(),
-      records: [{ headerHash, blockEndTimeMs, headerStatus: "not-a-status" }],
-    });
-    expect(unknown.ok).toBe(false);
-    expect(unknown.alerts[0]?.reasonCode).toBe("header_status_unknown");
+    expect(result.checked).toBe(4);
+    expect(result.stillChallengeable).toBe(1);
+    expect(result.alerts.map((alert) => alert.headerHash)).toEqual([
+      "04".repeat(28),
+    ]);
   });
 
   it("rejects malformed alert thresholds", () => {
@@ -162,13 +207,12 @@ describe("Q54 executable retention deadline alert", () => {
 });
 
 describe("Q54 authenticated release retention authority", () => {
-  it("reports deployed roles without inferring per-header inactivity", () => {
+  it("admits the deployment identity and finality depth", () => {
     expect(
       DaPayloadTerminalOutcomesDB.admitDaPayloadRetentionReleaseAuthority(
         deploymentManifest,
       ),
     ).toMatchObject({
-      availabilityChallengeCapability: "deployed_unobserved",
       minimumFinalityDepth: 30n,
     });
   });
@@ -310,12 +354,6 @@ const terminalMerge = (
 };
 
 const publishedFixture = (endTime: Date, sequence = 1) => {
-  const release =
-    DaPayloadTerminalOutcomesDB.admitDaPayloadRetentionReleaseAuthority(
-      deploymentManifest,
-    )!;
-  const authority =
-    DaPayloadTerminalOutcomesDB.availabilityRetentionAuthority(release)!;
   const header: SDK.Header = {
     ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS,
     prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -338,167 +376,8 @@ const publishedFixture = (endTime: Date, sequence = 1) => {
     "hex",
   );
   const transition = terminalMerge(headerHash, sequence);
-  const input: UTxO = {
-    txHash: transition.previousQueue[1]!.outRef.split("#")[0]!,
-    outputIndex: 0,
-    address: authority.stateQueueAddress,
-    assets: {
-      lovelace: 4000000n,
-      [authority.stateQueuePolicyId +
-      SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX +
-      headerHash.toString("hex")]: 1n,
-    },
-    datum: Data.to(
-      {
-        data: {
-          Node: {
-            data: Data.castTo(
-              {
-                header,
-                da_attestation: {
-                  Published: { terminal_commitment: "aa".repeat(32) },
-                },
-              },
-              SDK.StateQueueNode,
-            ),
-          },
-        },
-        link: null,
-      },
-      SDK.LinkedListDatum,
-    ),
-  };
-  const evidence = SDK.deriveDaAvailabilityRetentionEvidence(
-    transition,
-    input,
-    authority,
-  );
-  if (!evidence) throw new Error("invalid published terminal fixture");
-  return { header, headerHash, input, transition, evidence, authority };
+  return { headerHash, transition };
 };
-describe("final unavailable removal retention evidence", () => {
-  it("binds timeout evidence to the exact challenge and final correction-lock transition", () => {
-    const f = publishedFixture(
-      new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY),
-    );
-    const hash = f.headerHash.toString("hex");
-    const challenge = "44414348" + "33".repeat(28);
-    const correctionIdentity = {
-      AvailabilityChallenge: { challenge_asset_name: challenge },
-    } as const;
-    const input = {
-      ...f.input,
-      datum: Data.to(
-        {
-          data: {
-            Node: {
-              data: Data.castTo(
-                {
-                  header: f.header,
-                  da_attestation: {
-                    Challenged: {
-                      da_bond_asset_name: "44".repeat(32),
-                      challenge_asset_name: challenge,
-                    },
-                  },
-                },
-                SDK.StateQueueNode,
-              ),
-            },
-          },
-          link: null,
-        },
-        SDK.LinkedListDatum,
-      ),
-    };
-    const transition = SDK.deriveStateQueueAuthenticatedTransition({
-      deploymentIdentityDigest: f.transition.deploymentIdentityDigest,
-      stateQueuePolicyId: f.authority.stateQueuePolicyId,
-      transactionHash: f.transition.transactionHash,
-      blockHash: f.transition.blockHash,
-      slot: f.transition.slot,
-      blockNo: f.transition.blockNo,
-      transactionIndex: "0",
-      chainPointId: f.transition.chainPointId,
-      finalityDepth: f.transition.finalityDepth,
-      mintPolicyIds: [f.authority.stateQueuePolicyId],
-      referenceInputOutRefs: [],
-      spentInputOutRefs: [
-        ...f.transition.consumedQueueOutRefs,
-        `${h32("f")}#0`,
-      ],
-      previousQueue: f.transition.previousQueue,
-      nextQueue: f.transition.nextQueue,
-      correctionLockWitness: {
-        kind: "correction_transition",
-        consumedOutRef: `${h32("f")}#0`,
-        continuedOutRef: `${f.transition.transactionHash}#9`,
-        targetHeaderHash: hash,
-        correctionIdentity,
-        previousDatum: {
-          Locked: {
-            target_header_hash: hash,
-            correction_identity: correctionIdentity,
-          },
-        },
-        nextDatum: "Idle",
-      },
-      redeemers: [
-        {
-          purpose: "mint",
-          index: "0",
-          cborHex: Data.to(
-            {
-              RemoveUnavailableBlockAfterTimeout: {
-                yield_to_ref_input_index: 0n,
-                unavailable_header_hash: hash,
-                challenge_asset_name: challenge,
-                removal_approach: {
-                  RemoveTimedOutHead: {
-                    confirmed_state_input_outref: {
-                      transactionId: h32("0"),
-                      outputIndex: 0n,
-                    },
-                    confirmed_state_output_index: 0n,
-                  },
-                },
-              },
-            },
-            SDK.StateQueueRedeemer,
-          ),
-        },
-      ],
-    });
-    expect(transition).not.toBeNull();
-    const evidence = SDK.deriveDaAvailabilityRetentionEvidence(
-      transition,
-      input,
-      f.authority,
-    );
-    expect(evidence?.kind).toBe("timed_out");
-    expect(
-      SDK.parseDaAvailabilityRetentionEvidence(
-        evidence,
-        transition!,
-        f.authority,
-      ),
-    ).toEqual(evidence);
-    expect(
-      SDK.deriveDaAvailabilityRetentionEvidence(
-        f.transition,
-        input,
-        f.authority,
-      ),
-    ).toBeNull();
-    expect(
-      SDK.deriveDaAvailabilityRetentionEvidence(
-        transition,
-        { ...input, txHash: h32("e") },
-        f.authority,
-      ),
-    ).toBeNull();
-  });
-});
 
 const seedPublished = (endTime: Date, sequence = 1) =>
   Effect.gen(function* () {
@@ -513,7 +392,6 @@ const seedPublished = (endTime: Date, sequence = 1) =>
     yield* DaPayloadTerminalOutcomesDB.recordAuthenticatedTransition(
       fixture.transition,
       deploymentManifest,
-      fixture.evidence,
     );
     return fixture;
   });
@@ -526,6 +404,88 @@ const seedTerminal = (
     terminalMerge(headerHash, sequence),
     deploymentManifest,
   );
+
+const manifestDigest = (): Buffer =>
+  Buffer.from(deploymentManifest.manifestId, "hex");
+
+/** Records an authenticated-looking `removed` outcome under `digest`. */
+const seedRemoved = (
+  headerHash: Buffer,
+  sequence: number,
+  digest: Buffer,
+): Effect.Effect<void, unknown, SqlClient.SqlClient> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const transition = terminalMerge(headerHash, sequence);
+    yield* sql`
+      INSERT INTO da_payload_terminal_outcomes (
+        header_hash, terminal_outcome, transition_kind,
+        deployment_identity_digest, state_queue_policy_id,
+        transaction_hash, block_hash, slot, block_no,
+        transaction_index, chain_point_id, finality_depth,
+        transition_digest, transition_record
+      ) VALUES (
+        ${headerHash}, 'removed', 'fraud_removal', ${digest},
+        ${Buffer.from(deploymentManifest.contracts.stateQueueMint.scriptHash, "hex")},
+        ${Buffer.from(transition.transactionHash, "hex")},
+        ${Buffer.from(transition.blockHash, "hex")}, ${transition.slot},
+        ${transition.blockNo}, ${Number(transition.transactionIndex)},
+        ${Buffer.from(transition.chainPointId, "hex")},
+        ${transition.finalityDepth},
+        ${Buffer.from(transition.transitionDigest, "hex")},
+        ${JSON.stringify(transition)}
+      )`;
+  });
+
+/** An L1 view that references none of the seeded payloads. */
+const unrelatedView: DaPayloadsDB.RetentionL1View = {
+  confirmedHeadHash: deterministicFixtureBytes("unrelated-head", 28),
+  liveQueueHeaderHashes: [deterministicFixtureBytes("unrelated-live", 28)],
+};
+
+const prune = (
+  options: {
+    readonly view?: DaPayloadsDB.RetentionL1View;
+    readonly digest?: Buffer | undefined;
+  } = {},
+) =>
+  DaPayloadsDB.pruneBeyondRetention({
+    challengeableCutoff: computeChallengeableCutoff(NOW),
+    view: options.view ?? unrelatedView,
+    deploymentIdentityDigest:
+      "digest" in options ? options.digest : manifestDigest(),
+  });
+
+const remainingHashes = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{
+    readonly header_hash: Buffer;
+  }>`SELECT header_hash FROM da_payloads`;
+  return rows.map((row) => row.header_hash.toString("hex")).sort();
+});
+
+/** Runs a sweep with RETENTION_DAYS overridden and this deployment's identity. */
+const withSweepServices = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  retentionDays: number,
+) =>
+  Effect.gen(function* () {
+    const nodeConfig = yield* NodeConfig;
+    return yield* effect.pipe(
+      Effect.provideService(NodeConfig, {
+        ...nodeConfig,
+        RETENTION_DAYS: retentionDays,
+      }),
+      Effect.provideService(
+        ContractDeploymentIdentity,
+        ContractDeploymentIdentity.make({
+          kind: "manifest",
+          manifestId: deploymentManifest.manifestId,
+          consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+        }),
+      ),
+    );
+  });
 
 const countRows = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -555,7 +515,9 @@ describe.skipIf(!dbEnabled)(
       );
     }, 120_000);
 
-    const run = <A>(effect: Effect.Effect<A, unknown, SqlClient.SqlClient>) =>
+    const run = <A>(
+      effect: Effect.Effect<A, unknown, SqlClient.SqlClient | NodeConfig>,
+    ) =>
       Effect.runPromise(
         provideDatabaseLayers(
           Effect.gen(function* () {
@@ -588,8 +550,9 @@ describe.skipIf(!dbEnabled)(
           const base = {
             schemaVersion:
               "midgard-node-state-queue-correction-observer-v1" as const,
-            deploymentIdentityDigest: f.authority.deploymentIdentityDigest,
-            stateQueuePolicyId: f.authority.stateQueuePolicyId,
+            deploymentIdentityDigest: deploymentManifest.manifestId,
+            stateQueuePolicyId:
+              deploymentManifest.contracts.stateQueueMint.scriptHash,
             cursorQueue: f.transition.nextQueue,
             pending: [],
             admitted: [f.transition],
@@ -606,7 +569,6 @@ describe.skipIf(!dbEnabled)(
           const store = createDatabaseStateQueueCorrectionObserverStore({
             sql,
             deploymentManifest,
-            readAvailabilityTerminalInput: async () => f.input,
           });
           yield* Effect.promise(() => store.save(state));
           expect(
@@ -614,362 +576,231 @@ describe.skipIf(!dbEnabled)(
               yield* Effect.promise(() => store.load()),
             ),
           ).toEqual(state);
-          return yield* DaPayloadsDB.pruneOlderThan(
-            computeRetentionCutoff(NOW, 15),
-            computeChallengeableCutoff(NOW),
-            deploymentManifest,
-          );
+          return yield* prune();
         }),
       );
       expect(deleted).toBe(1);
     });
-    it("uses the authenticated header horizon when local timestamp metadata is stale", async () => {
-      const result = await run(
-        Effect.gen(function* () {
-          const f = yield* seedPublished(NOW);
-          const sql = yield* SqlClient.SqlClient;
-          const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
-          yield* sql`UPDATE da_payloads SET block_start_time=${old},block_end_time=${old} WHERE header_hash=${f.headerHash}`;
-          return yield* DaPayloadsDB.pruneOlderThan(
-            computeRetentionCutoff(NOW, 15),
-            computeChallengeableCutoff(NOW),
-            deploymentManifest,
-          );
-        }),
-      );
-      expect(result).toBe(0);
-    });
-
-    it("prunes published terminal evidence and revokes it atomically on rollback", async () => {
-      const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
-      const result = await run(
-        Effect.gen(function* () {
-          yield* seedPublished(old, 1);
-          const rolledBack = yield* seedPublished(old, 2);
-          yield* DaPayloadTerminalOutcomesDB.revokeAuthenticatedTransition(
-            rolledBack.transition,
-            deploymentManifest,
-          );
-          const deleted = yield* DaPayloadsDB.pruneOlderThan(
-            computeRetentionCutoff(NOW, 15),
-            computeChallengeableCutoff(NOW),
-            deploymentManifest,
-          );
-          return { deleted, remaining: yield* countRows };
-        }),
-      );
-      expect(result).toEqual({ deleted: 1, remaining: 1 });
-    });
-    it("revalidates durable evidence and rejects active, foreign, malformed and shallow authority", async () => {
-      const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
-      const result = await run(
-        Effect.gen(function* () {
-          const f = yield* seedPublished(old);
-          expect(
-            SDK.deriveDaAvailabilityRetentionEvidence(
-              f.transition,
-              {
-                ...f.input,
-                datum: Data.to(
-                  {
-                    data: {
-                      Node: {
-                        data: Data.castTo(
-                          {
-                            header: f.header,
-                            da_attestation: SDK.NO_DA_ATTESTATION,
-                          },
-                          SDK.StateQueueNode,
-                        ),
-                      },
-                    },
-                    link: null,
-                  },
-                  SDK.LinkedListDatum,
-                ),
-              },
-              f.authority,
-            ),
-          ).toBeNull();
-          expect(
-            SDK.parseDaAvailabilityRetentionEvidence(
-              { ...f.evidence, availabilityPolicyId: "ff".repeat(28) },
-              f.transition,
-              f.authority,
-            ),
-          ).toBeNull();
-          expect(
-            SDK.deriveDaAvailabilityRetentionEvidence(f.transition, f.input, {
-              ...f.authority,
-              minimumFinalityDepth: 100n,
-            }),
-          ).toBeNull();
-          const sql = yield* SqlClient.SqlClient;
-          yield* sql`UPDATE da_payload_terminal_outcomes SET availability_terminal_evidence = ${JSON.stringify({ ...f.evidence, removedQueueInputCbor: "00" })} WHERE header_hash = ${f.headerHash}`;
-          return yield* DaPayloadsDB.pruneOlderThan(
-            computeRetentionCutoff(NOW, 15),
-            computeChallengeableCutoff(NOW),
-            deploymentManifest,
-          );
-        }),
-      );
-      expect(result).toBe(0);
-    });
-    it("requires the strict challenge horizon even with published terminal evidence", async () => {
+    it("retains a block_end_time exactly at the horizon and prunes 1ms past it", async () => {
       const cutoff = computeChallengeableCutoff(NOW);
-      const result = await run(
+      const outcome = await run(
         Effect.gen(function* () {
-          yield* seedPublished(cutoff, 1);
-          yield* seedPublished(new Date(cutoff.getTime() - 1), 2);
-          return yield* DaPayloadsDB.pruneOlderThan(
-            computeRetentionCutoff(NOW, 15),
-            cutoff,
-            deploymentManifest,
-          );
-        }),
-      );
-      expect(result).toBe(1);
-    });
-
-    it("retains a 16-day-old terminal record without per-header availability evidence", async () => {
-      const days16 = new Date(NOW.getTime() - 16 * RETENTION_MS_PER_DAY);
-      const deleted = await run(
-        Effect.gen(function* () {
-          const headerHash = yield* seedPayload("expired", days16, days16);
-          yield* seedTerminal(headerHash, 1);
-          return yield* DaPayloadsDB.pruneOlderThan(
-            computeRetentionCutoff(NOW, 15),
-            computeChallengeableCutoff(NOW),
-            deploymentManifest,
-          );
-        }),
-      );
-      expect(deleted).toBe(0);
-    });
-
-    it("retains a block_end_time exactly at the cutoff and prunes 1ms past it", async () => {
-      const cutoff = computeChallengeableCutoff(NOW);
-      const createdAt = new Date(NOW.getTime() - 16 * RETENTION_MS_PER_DAY);
-      const atCutoff = await run(
-        Effect.gen(function* () {
-          const headerHash = yield* seedPayload("at-cutoff", cutoff, createdAt);
-          yield* seedTerminal(headerHash, 1);
-          const deleted = yield* DaPayloadsDB.pruneOlderThan(
-            computeRetentionCutoff(NOW, 15),
-            cutoff,
-            deploymentManifest,
-          );
-          return { deleted, remaining: yield* countRows };
-        }),
-      );
-      expect(atCutoff).toEqual({ deleted: 0, remaining: 1 });
-
-      const pastCutoff = await run(
-        Effect.gen(function* () {
-          const headerHash = yield* seedPayload(
+          const atCutoff = yield* seedPayload("at-cutoff", cutoff, cutoff);
+          yield* seedPayload(
             "past-cutoff",
             new Date(cutoff.getTime() - 1),
-            createdAt,
-          );
-          yield* seedTerminal(headerHash, 2);
-          const deleted = yield* DaPayloadsDB.pruneOlderThan(
-            computeRetentionCutoff(NOW, 15),
             cutoff,
-            deploymentManifest,
           );
-          return { deleted, remaining: yield* countRows };
+          const deleted = yield* prune();
+          return { deleted, remaining: yield* remainingHashes, atCutoff };
         }),
       );
-      expect(pastCutoff).toEqual({ deleted: 0, remaining: 1 });
+      expect(outcome.deleted).toBe(1);
+      expect(outcome.remaining).toEqual([outcome.atCutoff.toString("hex")]);
     });
 
-    it("never prunes on the created_at predicate alone (regression guard)", async () => {
-      // A row inserted long ago but whose block is still challengeable must
-      // survive. A created_at-only predicate would delete it.
-      const oldCreatedAt = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
-      const recentBlockEnd = new Date(NOW.getTime() - 1_000);
-      const outcome = await run(
-        Effect.gen(function* () {
-          const headerHash = yield* seedPayload(
-            "young-block",
-            recentBlockEnd,
-            oldCreatedAt,
-          );
-          yield* seedTerminal(headerHash, 1);
-          const deleted = yield* DaPayloadsDB.pruneOlderThan(
-            computeRetentionCutoff(NOW, 15),
-            computeChallengeableCutoff(NOW),
-            deploymentManifest,
-          );
-          return { deleted, remaining: yield* countRows };
-        }),
-      );
-      expect(outcome).toEqual({ deleted: 0, remaining: 1 });
-    });
-
-    it("never prunes a NULL block_end_time", async () => {
+    it("prunes past the horizon with no terminal outcome, whatever created_at says", async () => {
       const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
       const outcome = await run(
         Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          const headerHash = yield* seedPayload("null-end", old, old);
-          yield* seedTerminal(headerHash, 1);
-          // The production schema declares block_end_time NOT NULL; relax it
-          // only for this adversarial row so the predicate's IS NOT NULL guard
-          // is exercised rather than assumed.
-          yield* sql`ALTER TABLE da_payloads ALTER COLUMN block_end_time DROP NOT NULL`;
-          yield* sql`ALTER TABLE da_payloads DROP CONSTRAINT IF EXISTS da_payloads_check`;
-          yield* sql`UPDATE da_payloads SET block_end_time = NULL WHERE header_hash = ${headerHash}`;
-          const deleted = yield* DaPayloadsDB.pruneOlderThan(
-            computeRetentionCutoff(NOW, 15),
-            computeChallengeableCutoff(NOW),
-            deploymentManifest,
+          yield* seedPayload("old-fresh-insert", old, NOW);
+          const young = yield* seedPayload(
+            "young-old-insert",
+            new Date(NOW.getTime() - 1_000),
+            old,
           );
-          const remaining = yield* countRows;
-          yield* sql`UPDATE da_payloads SET block_end_time = ${old} WHERE header_hash = ${headerHash}`;
-          yield* sql`ALTER TABLE da_payloads ALTER COLUMN block_end_time SET NOT NULL`;
-          yield* sql`ALTER TABLE da_payloads ADD CONSTRAINT da_payloads_check CHECK (block_end_time >= block_start_time)`;
-          return { deleted, remaining };
+          const deleted = yield* prune();
+          return { deleted, remaining: yield* remainingHashes, young };
         }),
       );
-      expect(outcome).toEqual({ deleted: 0, remaining: 1 });
+      expect(outcome.deleted).toBe(1);
+      expect(outcome.remaining).toEqual([outcome.young.toString("hex")]);
     });
 
-    it("prunes nothing when the wall-clock retention cutoff has not passed", async () => {
-      const days16 = new Date(NOW.getTime() - 16 * RETENTION_MS_PER_DAY);
+    it("prunes past the horizon regardless of a merged outcome or its deployment", async () => {
+      const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
       const outcome = await run(
         Effect.gen(function* () {
-          const headerHash = yield* seedPayload("fresh-insert", days16, NOW);
-          yield* seedTerminal(headerHash, 1);
-          const deleted = yield* DaPayloadsDB.pruneOlderThan(
-            computeRetentionCutoff(NOW, 15),
-            computeChallengeableCutoff(NOW),
-            deploymentManifest,
-          );
+          const merged = yield* seedPayload("merged", old, old);
+          yield* seedTerminal(merged, 1);
+          yield* seedPayload("unobserved", old, old);
+          const deleted = yield* prune({ digest: undefined });
           return { deleted, remaining: yield* countRows };
         }),
       );
-      expect(outcome).toEqual({ deleted: 0, remaining: 1 });
+      expect(outcome).toEqual({ deleted: 2, remaining: 0 });
     });
 
-    it("retains expired payloads without exact terminal or release authority", async () => {
-      const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
-      const outcomes = await run(
+    it("retains a merged header inside the horizon", async () => {
+      const young = new Date(NOW.getTime() - 1_000);
+      const outcome = await run(
         Effect.gen(function* () {
-          const noTerminal = yield* seedPayload("nonterminal", old, old);
-          const deletedWithoutTerminal = yield* DaPayloadsDB.pruneOlderThan(
-            computeRetentionCutoff(NOW, 15),
-            computeChallengeableCutoff(NOW),
-            deploymentManifest,
-          );
-          yield* seedTerminal(noTerminal, 1);
-          const deletedWithoutManifest = yield* DaPayloadsDB.pruneOlderThan(
-            computeRetentionCutoff(NOW, 15),
-            computeChallengeableCutoff(NOW),
-          );
-          const deletedWithUnknownQ58 = yield* DaPayloadsDB.pruneOlderThan(
-            computeRetentionCutoff(NOW, 15),
-            computeChallengeableCutoff(NOW),
-            {
-              ...deploymentManifest,
-              availabilityChallenges: { state: "unknown" },
-            },
-          );
+          const merged = yield* seedPayload("young-merged", young, young);
+          yield* seedTerminal(merged, 1);
+          const deleted = yield* prune();
+          return { deleted, remaining: yield* remainingHashes, merged };
+        }),
+      );
+      expect(outcome.deleted).toBe(0);
+      expect(outcome.remaining).toEqual([outcome.merged.toString("hex")]);
+    });
+
+    it("prunes a removed header inside the horizon only under this deployment", async () => {
+      const young = new Date(NOW.getTime() - 1_000);
+      const outcome = await run(
+        Effect.gen(function* () {
+          const removed = yield* seedPayload("removed", young, young);
+          yield* seedRemoved(removed, 1, manifestDigest());
+          const foreign = yield* seedPayload("removed-foreign", young, young);
+          yield* seedRemoved(foreign, 2, Buffer.from("ff".repeat(32), "hex"));
+          const withoutDigest = yield* prune({ digest: undefined });
+          const deleted = yield* prune();
           return {
-            deletedWithoutTerminal,
-            deletedWithoutManifest,
-            deletedWithUnknownQ58,
-            remaining: yield* countRows,
+            withoutDigest,
+            deleted,
+            remaining: yield* remainingHashes,
+            foreign,
           };
         }),
       );
-      expect(outcomes).toEqual({
-        deletedWithoutTerminal: 0,
-        deletedWithoutManifest: 0,
-        deletedWithUnknownQ58: 0,
-        remaining: 1,
-      });
+      expect(outcome.withoutDigest).toBe(0);
+      expect(outcome.deleted).toBe(1);
+      expect(outcome.remaining).toEqual([outcome.foreign.toString("hex")]);
     });
 
-    it("rejects forged/foreign transitions and cannot use a foreign deployment row", async () => {
+    it("retains the L1 confirmed head and live queue headers even when prunable", async () => {
       const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
       const outcome = await run(
         Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          const headerHash = yield* seedPayload("foreign", old, old);
-          const canonical = terminalMerge(headerHash, 1);
-          const forged = {
-            ...canonical,
-            deploymentIdentityDigest: "ff".repeat(32),
+          const head = yield* seedPayload("head", old, old);
+          const live = yield* seedPayload("live", old, old);
+          const liveRemoved = yield* seedPayload("live-removed", NOW, NOW);
+          yield* seedRemoved(liveRemoved, 1, manifestDigest());
+          yield* seedPayload("unreferenced", old, old);
+          const deleted = yield* prune({
+            view: {
+              confirmedHeadHash: head,
+              liveQueueHeaderHashes: [live, liveRemoved],
+            },
+          });
+          return {
+            deleted,
+            remaining: yield* remainingHashes,
+            kept: [head, live, liveRemoved]
+              .map((hash) => hash.toString("hex"))
+              .sort(),
           };
-          const rejected = yield* Effect.either(
-            DaPayloadTerminalOutcomesDB.recordAuthenticatedTransition(
-              forged,
-              deploymentManifest,
+        }),
+      );
+      expect(outcome.deleted).toBe(1);
+      expect(outcome.remaining).toEqual(outcome.kept);
+    });
+
+    it("exempts the L1 confirmed head and live queue headers in the retention check", async () => {
+      const queue = await makeRetentionL1Queue({
+        confirmedHeadHash: deterministicFixtureBytes(
+          "retention-check-head",
+          28,
+        ).toString("hex"),
+        liveUtxosRoots: ["71".repeat(32), "72".repeat(32)],
+      });
+      // Every record is one minute from its deadline, so any that the check
+      // does not exempt is still challengeable and alerts.
+      const nearDeadline = new Date(
+        Date.now() - REQUIRED_RETENTION_MS + 60_000,
+      );
+      const result = await run(
+        Effect.gen(function* () {
+          const hashes = [
+            deterministicFixtureBytes("retention-check-head", 28),
+            ...queue.liveHeaderHashes.map((hash) => Buffer.from(hash, "hex")),
+          ];
+          for (const [index, headerHash] of hashes.entries()) {
+            yield* DaPayloadsDB.upsertAvailable({
+              ...daPayloadFixture(`check-${index.toString()}`, nearDeadline),
+              [DaPayloadsDB.Columns.HEADER_HASH]: headerHash,
+            });
+          }
+          const control = yield* seedPayload(
+            "check-unreferenced",
+            nearDeadline,
+            nearDeadline,
+          );
+          const check = yield* queue.provide(retentionCheckProgram()).pipe(
+            Effect.provideService(
+              ContractDeploymentIdentity,
+              ContractDeploymentIdentity.make({
+                kind: "manifest",
+                manifestId: deploymentManifest.manifestId,
+                consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+              }),
             ),
           );
-          yield* sql`
-            INSERT INTO da_payload_terminal_outcomes (
-              header_hash, terminal_outcome, transition_kind,
-              deployment_identity_digest, state_queue_policy_id,
-              transaction_hash, block_hash, slot, block_no,
-              transaction_index, chain_point_id, finality_depth,
-              transition_digest, transition_record
-            ) VALUES (
-              ${headerHash}, 'merged', 'merge', ${Buffer.from("ff".repeat(32), "hex")},
-              ${Buffer.from(deploymentManifest.contracts.stateQueueMint.scriptHash, "hex")},
-              ${Buffer.from(canonical.transactionHash, "hex")},
-              ${Buffer.from(canonical.blockHash, "hex")}, ${canonical.slot},
-              ${canonical.blockNo}, ${Number(canonical.transactionIndex)},
-              ${Buffer.from(canonical.chainPointId, "hex")},
-              ${canonical.finalityDepth},
-              ${Buffer.from(canonical.transitionDigest, "hex")},
-              ${JSON.stringify(canonical)}
-            )`;
-          const deleted = yield* DaPayloadsDB.pruneOlderThan(
-            computeRetentionCutoff(NOW, 15),
-            computeChallengeableCutoff(NOW),
-            deploymentManifest,
-          );
-          return {
-            rejected: rejected._tag,
-            deleted,
-            remaining: yield* countRows,
-          };
+          return { check, control: control.toString("hex") };
         }),
       );
-      expect(outcome).toEqual({ rejected: "Left", deleted: 0, remaining: 1 });
+      expect(result.check.checked).toBe(4);
+      expect(result.check.stillChallengeable).toBe(1);
+      expect(result.check.alerts.map(({ headerHash }) => headerHash)).toEqual([
+        result.control,
+      ]);
     });
 
-    it("prunes multiple independently authenticated terminal outcomes and revokes on rollback", async () => {
-      const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
+    it("declares block_end_time NOT NULL, so no row can escape the horizon", async () => {
       const outcome = await run(
         Effect.gen(function* () {
-          const first = yield* seedPayload("multi-first", old, old);
-          const second = yield* seedPayload("multi-second", old, old);
-          const firstTransition = terminalMerge(first, 1);
-          const secondTransition = terminalMerge(second, 2);
-          yield* DaPayloadTerminalOutcomesDB.recordAuthenticatedTransition(
-            firstTransition,
-            deploymentManifest,
+          const sql = yield* SqlClient.SqlClient;
+          const headerHash = yield* seedPayload("null-end", NOW, NOW);
+          return yield* Effect.either(
+            sql`UPDATE da_payloads SET block_end_time = NULL WHERE header_hash = ${headerHash}`,
           );
-          yield* DaPayloadTerminalOutcomesDB.recordAuthenticatedTransition(
-            secondTransition,
-            deploymentManifest,
-          );
-          yield* DaPayloadTerminalOutcomesDB.revokeAuthenticatedTransition(
-            secondTransition,
-            deploymentManifest,
-          );
-          const deleted = yield* DaPayloadsDB.pruneOlderThan(
-            computeRetentionCutoff(NOW, 15),
-            computeChallengeableCutoff(NOW),
-            deploymentManifest,
-          );
-          return { deleted, remaining: yield* countRows };
         }),
       );
-      expect(outcome).toEqual({ deleted: 0, remaining: 2 });
+      expect(outcome._tag).toBe("Left");
+    });
+
+    it("prunes DA payloads with RETENTION_DAYS=0 but leaves the wall-clock tables alone", async () => {
+      const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
+      const sweep = (retentionDays: number) =>
+        run(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`DELETE FROM tx_rejections`;
+            yield* seedPayload("split", old, old);
+            yield* sql`INSERT INTO tx_rejections (tx_id, reject_code, created_at) VALUES (${deterministicFixtureBytes("split-rejection", 32)}, 'test', ${old})`;
+            yield* withSweepServices(
+              retentionSweepAction(
+                {
+                  confirmedHeadHash: deterministicFixtureBytes("head", 28),
+                  liveQueueHeaderHashes: [],
+                },
+                NOW,
+              ),
+              retentionDays,
+            );
+            const rejections = yield* sql<{
+              readonly count: string;
+            }>`SELECT COUNT(*)::text AS count FROM tx_rejections`;
+            return {
+              daPayloads: yield* countRows,
+              txRejections: Number(rejections[0]?.count ?? "0"),
+            };
+          }),
+        );
+      expect(await sweep(0)).toEqual({ daPayloads: 0, txRejections: 1 });
+      expect(await sweep(15)).toEqual({ daPayloads: 0, txRejections: 0 });
+    });
+
+    it("prunes no DA payload in a sweep without an L1 view", async () => {
+      const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
+      const remaining = await run(
+        Effect.gen(function* () {
+          yield* seedPayload("no-view", old, old);
+          yield* withSweepServices(retentionSweepAction(undefined, NOW), 0);
+          return yield* countRows;
+        }),
+      );
+      expect(remaining).toBe(1);
     });
   },
 );

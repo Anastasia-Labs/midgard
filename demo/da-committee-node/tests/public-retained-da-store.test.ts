@@ -81,7 +81,7 @@ const fakePool = ({
       if (query.includes("FROM pg_roles role")) {
         return { rows: [access as unknown as T] };
       }
-      if (query.includes("FROM watcher_da_payloads")) {
+      if (query.includes("FROM committee_da_payloads")) {
         return {
           rows:
             payload === undefined
@@ -89,7 +89,7 @@ const fakePool = ({
               : ([{ record: payload }] as unknown as readonly T[]),
         };
       }
-      if (query.includes("FROM watcher_state_queue_headers")) {
+      if (query.includes("FROM committee_state_queue_headers")) {
         return {
           rows:
             header === undefined
@@ -181,7 +181,7 @@ describe("PostgresPublicRetainedDaStore", () => {
     }
   });
 
-  it("rejects a role granted DELETE on watcher_da_payloads at open()", async () => {
+  it("rejects a role granted DELETE on committee_da_payloads at open()", async () => {
     // Q54 adversarial: the public retained-DA plane must be structurally
     // incapable of pruning still-challengeable evidence. A login that merely
     // *holds* DELETE (even without exercising it) is refused at open().
@@ -226,7 +226,7 @@ describe("PostgresPublicRetainedDaStore", () => {
     expect(beginIndexes[0]).toBe(0);
     for (const query of fake.queries) {
       expect(
-        /\b(?:DELETE|TRUNCATE|DROP)\s+(?:FROM\s+)?watcher_/iu.test(query),
+        /\b(?:DELETE|TRUNCATE|DROP)\s+(?:FROM\s+)?committee_/iu.test(query),
       ).toBe(false);
     }
     await store.close();
@@ -301,17 +301,17 @@ describe("PostgresPublicRetainedDaStore against a real PostgreSQL cluster", () =
     );
     dbClient = await adminClient(databaseName);
     await dbClient.query(
-      "CREATE TABLE watcher_da_payloads (header_hash text PRIMARY KEY, record jsonb NOT NULL)",
+      "CREATE TABLE committee_da_payloads (header_hash text PRIMARY KEY, record jsonb NOT NULL)",
     );
     await dbClient.query(
-      "CREATE TABLE watcher_state_queue_headers (header_hash text PRIMARY KEY, record jsonb NOT NULL)",
+      "CREATE TABLE committee_state_queue_headers (header_hash text PRIMARY KEY, record jsonb NOT NULL)",
     );
     await dbClient.query(
-      "INSERT INTO watcher_da_payloads (header_hash, record) VALUES ($1, $2)",
+      "INSERT INTO committee_da_payloads (header_hash, record) VALUES ($1, $2)",
       [HEADER_HASH, JSON.stringify(payloadRecord())],
     );
     await dbClient.query(
-      "INSERT INTO watcher_state_queue_headers (header_hash, record) VALUES ($1, $2)",
+      "INSERT INTO committee_state_queue_headers (header_hash, record) VALUES ($1, $2)",
       [HEADER_HASH, JSON.stringify({ headerHash: HEADER_HASH })],
     );
     await dbClient.query(
@@ -319,7 +319,7 @@ describe("PostgresPublicRetainedDaStore against a real PostgreSQL cluster", () =
     );
     await dbClient.query(`GRANT USAGE ON SCHEMA public TO ${readerRole}`);
     await dbClient.query(
-      `GRANT SELECT ON watcher_da_payloads, watcher_state_queue_headers TO ${readerRole}`,
+      `GRANT SELECT ON committee_da_payloads, committee_state_queue_headers TO ${readerRole}`,
     );
   }, 60_000);
 
@@ -360,7 +360,7 @@ describe("PostgresPublicRetainedDaStore against a real PostgreSQL cluster", () =
     // retained-evidence table is refused. Only a real cluster can decide
     // whether the probe's has_table_privilege SQL sees that grant.
     await dbClient.query(
-      `GRANT DELETE ON watcher_da_payloads TO ${readerRole}`,
+      `GRANT DELETE ON committee_da_payloads TO ${readerRole}`,
     );
     try {
       await expect(openReal()).rejects.toThrow(/SELECT-only role/u);
@@ -368,7 +368,7 @@ describe("PostgresPublicRetainedDaStore against a real PostgreSQL cluster", () =
       // Revoked in a finally so a failure here cannot leak the grant into
       // the following cases and manufacture cascading failures.
       await dbClient.query(
-        `REVOKE DELETE ON watcher_da_payloads FROM ${readerRole}`,
+        `REVOKE DELETE ON committee_da_payloads FROM ${readerRole}`,
       );
     }
     const store = await openReal();
@@ -393,12 +393,12 @@ describe("PostgresPublicRetainedDaStore against a real PostgreSQL cluster", () =
     // path the store deliberately lacks.
     await dbClient.query("BEGIN READ ONLY");
     await expect(
-      dbClient.query("DELETE FROM watcher_da_payloads"),
+      dbClient.query("DELETE FROM committee_da_payloads"),
     ).rejects.toMatchObject({ code: "25006" });
     await dbClient.query("ROLLBACK");
     // Nothing was pruned.
     const remaining = await dbClient.query<{ readonly count: string }>(
-      "SELECT count(*)::text AS count FROM watcher_da_payloads",
+      "SELECT count(*)::text AS count FROM committee_da_payloads",
     );
     expect(remaining.rows[0]?.count).toBe("1");
   }, 60_000);
@@ -413,7 +413,7 @@ describe("PostgresPublicRetainedDaStore against a real PostgreSQL cluster", () =
     await reader.connect();
     try {
       await expect(
-        reader.query("DELETE FROM watcher_da_payloads"),
+        reader.query("DELETE FROM committee_da_payloads"),
       ).rejects.toMatchObject({ code: "42501" });
     } finally {
       await reader.end();

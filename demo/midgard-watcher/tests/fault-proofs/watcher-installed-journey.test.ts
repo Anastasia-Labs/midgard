@@ -23,7 +23,6 @@ import {
   createPublishedWorkflowDeploymentAccounts,
   publishWorkflowDeployment,
 } from "midgard-node/tests/helpers/published-workflow-deployment";
-import { startStateQueueMutationLeaseServer } from "midgard-node/tests/helpers/state-queue-mutation-lease-server";
 import { expect, it, vi } from "vitest";
 
 import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.js";
@@ -145,10 +144,6 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       server.close((error) => (error ? reject(error) : resolve())),
     );
   try {
-    const leaseServer = await stage("node lease service", () =>
-      startStateQueueMutationLeaseServer(),
-    );
-    cleanup.push(leaseServer.close);
     const accounts = createPublishedWorkflowDeploymentAccounts();
     const availabilityAccount = generateEmulatorAccount({ lovelace: 0n });
     const deployment = await stage("published deployment", () =>
@@ -327,7 +322,6 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     vi.stubEnv("MIDGARD_WATCHER_PROVER_KEY", accounts.publisher.seedPhrase);
     vi.stubEnv("WATCHER_AVAILABILITY_KEY", availabilityAccount.seedPhrase);
     vi.stubEnv("MIDGARD_WATCHER_TRUSTED_HEAD_BEARER", "39".repeat(32));
-    vi.stubEnv("MIDGARD_NODE_ADMIN_KEY", leaseServer.adminApiKey);
     const watcherConfig = {
       ...native.watcherConfig,
       storage: {
@@ -387,16 +381,10 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
         journalPath: join(directory, "availability.sqlite"),
         minimumFundingLovelace: "100000000",
       },
-      readinessHeaderHash: staged.current.headerHash,
       faultProofInfrastructure: {
         manifestPath: configuration.manifestPath,
         blueprintPath: configuration.blueprintPath,
         deploymentInfoPath: configuration.deploymentInfoPath,
-        midgardNodeUrl: leaseServer.url,
-        midgardNodeAdminKeySource: {
-          kind: "environment",
-          variable: "MIDGARD_NODE_ADMIN_KEY",
-        },
         historicalNativeScriptHistory: {
           sourceMode: "external_provider_quorum",
           consistencyPolicy: "exact_bytes_all_providers_v1",
@@ -675,11 +663,6 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       );
       expect(locks).toHaveLength(1);
       expect(Data.from(locks[0]!.datum!, SDK.CorrectionLockDatum)).toBe("Idle");
-      const leases = await leaseServer.inspect();
-      expect(leases.activeLease).toBeUndefined();
-      // This target is the tail: correction is atomic. A mutation lease is
-      // required only when removal must walk through successor commitments.
-      expect(leases.recentLeases).toEqual([]);
     });
     requireLiveRuntime();
     // The following commitment is supplied by the fixture's second operator;

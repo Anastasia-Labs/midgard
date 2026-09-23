@@ -86,8 +86,8 @@ Dedicated public retained-DA TCP/Noise/Yamux reader. It requires:
   DA_PUBLIC_RETAINED_DA_DATABASE_ROLE
 
 The database role must have SELECT and no DML privileges on
-watcher_da_payloads and watcher_state_queue_headers. File stores and the
-committee WATCHER_DB_PATH/WATCHER_DATABASE_URL credentials are refused.
+committee_da_payloads and committee_state_queue_headers. File stores and the
+committee DA_COMMITTEE_DB_PATH/DA_COMMITTEE_DATABASE_URL credentials are refused.
 `);
 };
 

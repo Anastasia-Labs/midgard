@@ -118,7 +118,6 @@ export const terminalRetentionOutcomes = (
       if (prior !== undefined) {
         terminalByHash.set(headerHash, {
           ...prior,
-          availabilityRetention: undefined,
           status: transition.transitionKind === "merge" ? "merged" : "removed",
           observedChainPoint: {
             slot: Number(transition.slot),

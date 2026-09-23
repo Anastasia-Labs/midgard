@@ -50,7 +50,7 @@ describe("L1 provider adapters", () => {
       key: { Key: { key: headerHash } },
       next: "Empty",
       data: Data.castTo(
-        { header, da_attestation: SDK.NO_DA_ATTESTATION },
+        { proven_fraud: null, header, da_attestation: SDK.NO_DA_ATTESTATION },
         SDK.StateQueueNode,
       ) as SDK.LinkedListNodeView["data"],
     };
@@ -1225,42 +1225,3 @@ const localNodeSource = {
 
 const sha256 = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
-
-describe("retention chain authority serialization", () => {
-  it("refuses deletion when a queued rollback replaces the expected cursor", async () => {
-    const dir = await tempDir();
-    let rollback = false;
-    const point: CanonicalChainPoint = {
-      network: "Preview",
-      slot: 20,
-      blockHash: "aa".repeat(32),
-      providerSource: "chain-sync:node-a",
-      observedAt: new Date(0).toISOString(),
-    };
-    const earlier = { ...point, slot: 10, blockHash: "bb".repeat(32) };
-    const authority = new LocalNodeChainAuthority(
-      "node-a",
-      "Preview",
-      {
-        next: async (cursor) => {
-          const tip = rollback ? earlier : point;
-          return cursor === undefined
-            ? { event: { direction: "roll_forward", point: tip }, tip }
-            : rollback && cursor.rollbackGeneration === 0
-              ? { event: { direction: "roll_backward", point: tip }, tip }
-              : { tip };
-        },
-      },
-      new FileChainSyncCursorStore(`${dir}/cursor.json`, "11".repeat(32)),
-    );
-    await authority.synchronizeToTip();
-    const expected = await authority.currentCursor();
-    rollback = true;
-    const sync = authority.synchronizeToTip();
-    const remove = vi.fn(async () => true);
-    const admitted = authority.withCurrentCursor(expected, remove);
-    await sync;
-    expect(await admitted).toBe(false);
-    expect(remove).not.toHaveBeenCalled();
-  });
-});

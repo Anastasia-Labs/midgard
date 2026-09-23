@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 
+import { resolveL1ViewFatalMs } from "@al-ft/midgard-core";
 import {
   MIDGARD_CONSENSUS_LIMITS,
   type MidgardConsensusProfile,
@@ -15,6 +16,7 @@ import {
   parseDeploymentManifestAvailabilityChallenge,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import * as SDK from "@al-ft/midgard-sdk";
 import { multiaddr } from "@multiformats/multiaddr";
 import { blake2b } from "@noble/hashes/blake2.js";
 
@@ -95,7 +97,7 @@ export const l1SourceAuthorityDigest = (
     )
     .digest("hex");
 
-export type WatcherConfig = {
+export type CommitteeConfig = {
   readonly network: string;
   readonly deploymentManifestPath: string;
   readonly contractDeploymentInfoPath: string;
@@ -148,9 +150,14 @@ export type WatcherConfig = {
   readonly apiHost: string;
   readonly apiPort: number;
   readonly pollIntervalMs: number;
+  /**
+   * Longest time the committee may run without a fresh authenticated L1 view
+   * before it exits with code 70.
+   */
+  readonly l1ViewFatalMs: number;
 };
 
-export type LoadedWatcherConfig = WatcherConfig & {
+export type LoadedCommitteeConfig = CommitteeConfig & {
   readonly cardanoL1Source: CardanoL1SourceConfig;
 };
 
@@ -255,9 +262,9 @@ export const LIBP2P_DA_TRANSPORT_LIMITS = {
 
 export const LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES = 65_536;
 export const LIBP2P_DA_MIN_RETENTION_DAYS = 15;
-export const loadWatcherConfig = async (
+export const loadCommitteeConfig = async (
   env: Env = process.env,
-): Promise<LoadedWatcherConfig> => {
+): Promise<LoadedCommitteeConfig> => {
   const deploymentManifestPath = requireEnv(
     env,
     "MIDGARD_DEPLOYMENT_MANIFEST_PATH",
@@ -405,6 +412,18 @@ export const loadWatcherConfig = async (
       `CARDANO_FINALITY_DEPTH must exactly equal the verified deployment manifest l1Finality.confirmationDepth: runtime=${configuredFinalityDepth.toString()}, manifest=${manifestFinalityDepth.toString()}`,
     );
   }
+  const pollIntervalMs = positiveInt(
+    env.DA_COMMITTEE_POLL_INTERVAL_MS ?? "15000",
+    "DA_COMMITTEE_POLL_INTERVAL_MS",
+  );
+  // A committee that cannot read L1 for the attestation timeout has already
+  // failed the duty that timeout exists for, so that is the default deadline.
+  const l1ViewFatalMs = resolveL1ViewFatalMs({
+    value: env.L1_VIEW_FATAL_MS,
+    defaultMs: Number(SDK.DA_ATTESTATION_TIMEOUT_MS),
+    pollIntervalMs,
+    fieldName: "L1_VIEW_FATAL_MS",
+  });
 
   return {
     network,
@@ -499,12 +518,13 @@ export const loadWatcherConfig = async (
       env.DA_PEER_RATE_LIMIT_MAX_REQUESTS ?? "120",
       "DA_PEER_RATE_LIMIT_MAX_REQUESTS",
     ),
-    apiHost: env.WATCHER_API_HOST ?? "127.0.0.1",
-    apiPort: positiveInt(env.WATCHER_API_PORT ?? "8787", "WATCHER_API_PORT"),
-    pollIntervalMs: positiveInt(
-      env.WATCHER_POLL_INTERVAL_MS ?? "15000",
-      "WATCHER_POLL_INTERVAL_MS",
+    apiHost: env.DA_COMMITTEE_API_HOST ?? "127.0.0.1",
+    apiPort: positiveInt(
+      env.DA_COMMITTEE_API_PORT ?? "8787",
+      "DA_COMMITTEE_API_PORT",
     ),
+    pollIntervalMs,
+    l1ViewFatalMs,
   };
 };
 
@@ -1174,7 +1194,7 @@ const signerIndex = (value: string): number => {
 
 const optionalSignerConfig = (
   env: Env,
-): Pick<WatcherConfig, "signerIndex" | "signerKeySource"> => {
+): Pick<CommitteeConfig, "signerIndex" | "signerKeySource"> => {
   const configuredMode = optionalNonEmpty(env.DA_MODE);
   if (configuredMode !== undefined) {
     throw new Error("DA_MODE has been removed and must be omitted");
@@ -1195,11 +1215,40 @@ const optionalSignerConfig = (
   };
 };
 
+const RETIRED_WATCHER_ENV_NAMES: Readonly<Record<string, string>> = {
+  WATCHER_API_HOST: "DA_COMMITTEE_API_HOST",
+  WATCHER_API_PORT: "DA_COMMITTEE_API_PORT",
+  WATCHER_POLL_INTERVAL_MS: "DA_COMMITTEE_POLL_INTERVAL_MS",
+  WATCHER_DB_PATH: "DA_COMMITTEE_DB_PATH",
+  WATCHER_DATABASE_URL: "DA_COMMITTEE_DATABASE_URL",
+};
+
+/**
+ * The committee node read `WATCHER_*` variables before the DA committee role
+ * was split out of the watcher.  Refuse them rather than silently ignoring a
+ * setting the operator believes is in effect.
+ */
+export const rejectRetiredWatcherEnvNames = (env: Env): void => {
+  const present = Object.keys(RETIRED_WATCHER_ENV_NAMES).filter(
+    (name) => env[name] !== undefined,
+  );
+  if (present.length > 0) {
+    throw new Error(
+      `retired environment variable(s) ${present.join(", ")}: the DA committee node is not the watcher; use ${present
+        .map((name) => RETIRED_WATCHER_ENV_NAMES[name])
+        .join(", ")}`,
+    );
+  }
+};
+
 const localState = (env: Env): LocalStateConfig => {
-  const dbPath = optionalNonEmpty(env.WATCHER_DB_PATH);
-  const databaseUrl = optionalNonEmpty(env.WATCHER_DATABASE_URL);
+  rejectRetiredWatcherEnvNames(env);
+  const dbPath = optionalNonEmpty(env.DA_COMMITTEE_DB_PATH);
+  const databaseUrl = optionalNonEmpty(env.DA_COMMITTEE_DATABASE_URL);
   if (dbPath !== undefined && databaseUrl !== undefined) {
-    throw new Error("set only one of WATCHER_DB_PATH or WATCHER_DATABASE_URL");
+    throw new Error(
+      "set only one of DA_COMMITTEE_DB_PATH or DA_COMMITTEE_DATABASE_URL",
+    );
   }
   if (dbPath !== undefined) {
     return { kind: "file", path: dbPath };
@@ -1207,7 +1256,9 @@ const localState = (env: Env): LocalStateConfig => {
   if (databaseUrl !== undefined) {
     return { kind: "database", url: databaseUrl };
   }
-  throw new Error("WATCHER_DB_PATH or WATCHER_DATABASE_URL is required");
+  throw new Error(
+    "DA_COMMITTEE_DB_PATH or DA_COMMITTEE_DATABASE_URL is required",
+  );
 };
 
 const availabilityJournalPath = (env: Env): string | undefined => {
@@ -1348,8 +1399,8 @@ const libp2pDaTransportConfig = ({
   readonly deploymentFingerprint: string;
 }): Libp2pDaTransportConfig => {
   rejectLibp2pDaUrlEnvOverrides(env);
-  if (runtimeManifest.runtime_topology.target !== "watcher") {
-    throw new Error("runtime_topology.target must be watcher");
+  if (runtimeManifest.runtime_topology.target !== "committee") {
+    throw new Error("runtime_topology.target must be committee");
   }
   const { da_committee: daCommittee, da_transport: daTransport } =
     runtimeManifest;

@@ -18,9 +18,9 @@ import {
   createHeaderClassifier,
   createHistoricalNativeScriptHistorySource,
   createHistoricalNativeScriptProviderRoster,
-  createHttpStateQueueMutationLeaseCoordinator,
   createLocalKupmiosFraudProofRawL1SnapshotAuthority,
   createLocalKupmiosHttpOgmiosRawSource,
+  createLocalStateQueueMutationLeaseCoordinator,
   FAMILY_APPLICATION_REGISTRY,
   type FamilyValidationChallengePort,
   type FraudProofCompletedVerification,
@@ -116,6 +116,13 @@ export const WATCHER_FAULT_PROOF_APPLICATION =
   "midgard-watcher-fault-proof-production-application-v1" as const;
 export const WATCHER_FAULT_PROOF_STARTUP_READINESS =
   "midgard-watcher-fault-proof-startup-readiness-v1" as const;
+/**
+ * Header hash carried by every startup readiness invocation. Readiness binds
+ * the deployment and resolves the family roster for no particular header, and
+ * nothing on that path checks the hash against L1; the shared readiness input
+ * still requires one, so it is this fixed placeholder.
+ */
+export const WATCHER_STARTUP_READINESS_HEADER_HASH = "00".repeat(28);
 
 export type WatcherHistoricalNativeScriptHistoryOverlay = Readonly<{
   sourceMode: "external_provider_quorum";
@@ -185,10 +192,7 @@ export type WatcherFaultProofInfrastructureAuthority = Readonly<{
   manifestPath: string;
   blueprintPath: string;
   deploymentInfoPath: string;
-  midgardNodeUrl: string;
-  midgardNodeAdminKeySource: WatcherWalletKeySource;
   historicalNativeScriptHistory: WatcherHistoricalNativeScriptHistoryOverlay;
-  stateQueueLeaseTtlMs?: number;
 }>;
 
 export type WatcherFaultProofApplicationOptions = Readonly<{
@@ -304,11 +308,12 @@ export type WatcherFaultProofApplicationDependencies = Readonly<{
     readonly deploymentInfo: ReturnType<typeof parseContractDeploymentInfo>;
     readonly contractName: string;
   }): Promise<UTxO>;
-  createLeaseCoordinator(input: {
-    readonly midgardNodeUrl: string;
-    readonly adminKey: string;
-    readonly ttlMs?: number;
-  }): StateQueueMutationLeaseCoordinator;
+  /**
+   * Non-tail removal is coordinated locally: the workflow orchestrator retries
+   * a lost peel against a fresh authenticated L1 view until it confirms. The
+   * watcher never talks to a Midgard node.
+   */
+  createLeaseCoordinator(): StateQueueMutationLeaseCoordinator;
 }>;
 
 const productionDependencies: WatcherFaultProofApplicationDependencies =
@@ -339,12 +344,8 @@ const productionDependencies: WatcherFaultProofApplicationDependencies =
         deploymentInfo,
         name: contractName,
       }),
-    createLeaseCoordinator: ({ midgardNodeUrl, adminKey, ttlMs }) =>
-      createHttpStateQueueMutationLeaseCoordinator({
-        midgardNodeUrl,
-        adminKey,
-        ...(ttlMs === undefined ? {} : { ttlMs }),
-      }),
+    createLeaseCoordinator: () =>
+      createLocalStateQueueMutationLeaseCoordinator(),
   });
 
 const plainRecord = (
@@ -398,27 +399,6 @@ const canonicalAbsolutePath = (value: unknown, label: string): string => {
     throw new Error(`${label} must be a canonical absolute path`);
   }
   return value;
-};
-
-const canonicalLoopbackUrl = (value: unknown, label: string): string => {
-  if (typeof value !== "string" || value.trim() !== value) {
-    throw new Error(`${label} must be a canonical URL`);
-  }
-  const parsed = new URL(value);
-  const hostname = parsed.hostname.toLowerCase();
-  if (
-    hostname !== "127.0.0.1" &&
-    hostname !== "localhost" &&
-    hostname !== "::1" &&
-    hostname !== "[::1]"
-  ) {
-    throw new Error(`${label} must be a loopback endpoint`);
-  }
-  if (!/^(?:http|https|ws|wss):$/u.test(parsed.protocol)) {
-    throw new Error(`${label} has an unsupported protocol`);
-  }
-  parsed.hash = "";
-  return parsed.toString().replace(/\/$/u, "");
 };
 
 const historicalProviderEndpoint = (value: unknown): string => {
@@ -511,31 +491,6 @@ const admitHistoricalNativeScriptHistory = (
   });
 };
 
-const secretSource = (
-  value: unknown,
-  label: string,
-): WatcherWalletKeySource => {
-  const source = plainRecord(value, label);
-  if (source.kind === "environment") {
-    exactKeys(source, ["kind", "variable"], label);
-    if (
-      typeof source.variable !== "string" ||
-      !/^[A-Z][A-Z0-9_]{2,127}$/u.test(source.variable)
-    ) {
-      throw new Error(`${label}.variable is not a canonical environment name`);
-    }
-    return Object.freeze({ kind: "environment", variable: source.variable });
-  }
-  if (source.kind === "file") {
-    exactKeys(source, ["kind", "path"], label);
-    return Object.freeze({
-      kind: "file",
-      path: canonicalAbsolutePath(source.path, `${label}.path`),
-    });
-  }
-  throw new Error(`${label}.kind is unsupported`);
-};
-
 const admitInfrastructure = (
   value: unknown,
 ): WatcherFaultProofInfrastructureAuthority => {
@@ -546,22 +501,10 @@ const admitInfrastructure = (
       "manifestPath",
       "blueprintPath",
       "deploymentInfoPath",
-      "midgardNodeUrl",
-      "midgardNodeAdminKeySource",
       "historicalNativeScriptHistory",
-      ...(input.stateQueueLeaseTtlMs === undefined
-        ? []
-        : ["stateQueueLeaseTtlMs"]),
     ],
     "fault-proof infrastructure authority",
   );
-  const ttl = input.stateQueueLeaseTtlMs;
-  if (
-    ttl !== undefined &&
-    (!Number.isSafeInteger(ttl) || (ttl as number) <= 0)
-  ) {
-    throw new Error("state-queue lease TTL must be a positive integer");
-  }
   return Object.freeze({
     manifestPath: canonicalAbsolutePath(input.manifestPath, "manifestPath"),
     blueprintPath: canonicalAbsolutePath(input.blueprintPath, "blueprintPath"),
@@ -569,18 +512,9 @@ const admitInfrastructure = (
       input.deploymentInfoPath,
       "deploymentInfoPath",
     ),
-    midgardNodeUrl: canonicalLoopbackUrl(
-      input.midgardNodeUrl,
-      "Midgard node URL",
-    ),
-    midgardNodeAdminKeySource: secretSource(
-      input.midgardNodeAdminKeySource,
-      "midgardNodeAdminKeySource",
-    ),
     historicalNativeScriptHistory: admitHistoricalNativeScriptHistory(
       input.historicalNativeScriptHistory,
     ),
-    ...(ttl === undefined ? {} : { stateQueueLeaseTtlMs: ttl as number }),
   });
 };
 
@@ -756,7 +690,7 @@ const buildCommonInfrastructure = async ({
   readonly environment: NodeJS.ProcessEnv;
 }): Promise<WatcherWorkflowInfrastructure> => {
   const { category } = invocation;
-  const [binding, proverSecret, adminKey] = await Promise.all([
+  const [binding, proverSecret] = await Promise.all([
     bindWatcherDeploymentAuthority({
       watcherConfig,
       infrastructure,
@@ -767,12 +701,6 @@ const buildCommonInfrastructure = async ({
       dependencies,
       environment,
       label: "watcher prover wallet",
-    }),
-    readSecret({
-      source: infrastructure.midgardNodeAdminKeySource,
-      dependencies,
-      environment,
-      label: "Midgard node admin",
     }),
   ]);
   const resolvedSigner = dependencies.resolveSigner({
@@ -814,13 +742,7 @@ const buildCommonInfrastructure = async ({
         ogmiosUrl: binding.ogmiosUrl,
         timeoutMs: watcherConfig.l1.requestTimeoutMs,
       }),
-      stateQueueMutationLeaseCoordinator: dependencies.createLeaseCoordinator({
-        midgardNodeUrl: infrastructure.midgardNodeUrl,
-        adminKey,
-        ...(infrastructure.stateQueueLeaseTtlMs === undefined
-          ? {}
-          : { ttlMs: infrastructure.stateQueueLeaseTtlMs }),
-      }),
+      stateQueueMutationLeaseCoordinator: dependencies.createLeaseCoordinator(),
       historicalNativeScriptAuthority: Object.freeze({
         ...historicalNativeScriptAuthority,
         l1SourceRoster: await historicalNativeScriptAuthority.l1SourceRoster,
@@ -1452,8 +1374,8 @@ function createApplication({
       // Readiness binds the deployment and resolves the family's whole roster,
       // then stops: it binds no config, constructs no workflow and reads no
       // secret, so it can neither act nor need the optional infrastructure an
-      // acting invocation must hold. The prover wallet and node admin key are
-      // proven present by the trusted-head startup phase, not here.
+      // acting invocation must hold. The prover wallet is proven present by
+      // the trusted-head startup phase, not here.
       const watcherConfig = await readAdmittedWatcherRuntimeConfig({
         runtimeConfigPath: invocation.runtimeConfigPath,
         deploymentFingerprint: invocation.deploymentFingerprint,

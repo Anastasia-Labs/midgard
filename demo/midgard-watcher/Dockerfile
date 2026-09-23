@@ -43,5 +43,7 @@ WORKDIR /app
 COPY --from=build /prod/midgard-watcher ./
 COPY --from=native-chain-sync /out/midgard-chain-sync /usr/local/bin/midgard-chain-sync
 ENV NODE_ENV=production
+# Must be set before Node starts; see README.md.
+ENV MALLOC_MMAP_THRESHOLD_=131072
 ENTRYPOINT ["node", "./dist/cli.js"]
 CMD ["start", "--config", "/etc/midgard/watcher-process.json"]

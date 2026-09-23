@@ -84,7 +84,7 @@ validate_cardano_node_image_tag() {
   image_tag="$1"
   case "$image_tag" in
     ''|*[!0-9.]*|*.*.*.*|.*|*.)
-      echo "CARDANO_NODE_IMAGE_TAG '$image_tag' must be an explicit Cardano node version like '10.6.2'." >&2
+      echo "CARDANO_NODE_IMAGE_TAG '$image_tag' must be an explicit Cardano node version like '11.1.0' (no digest suffix)." >&2
       exit 1
       ;;
   esac
@@ -164,7 +164,10 @@ default_mithril_ancillary_key_url="https://raw.githubusercontent.com/input-outpu
 resolved_mithril_aggregator="${MITHRIL_AGGREGATOR_ENDPOINT:-$default_mithril_aggregator}"
 resolved_mithril_genesis_key_url="${MITHRIL_GENESIS_VERIFICATION_KEY_URL:-$default_mithril_genesis_key_url}"
 resolved_mithril_ancillary_key_url="${MITHRIL_ANCILLARY_VERIFICATION_KEY_URL:-$default_mithril_ancillary_key_url}"
-cardano_node_image_tag="${CARDANO_NODE_IMAGE_TAG:-10.6.2}"
+# Keep this default identical to the cardano-node service default in
+# docker-compose.kupmios.yaml; the compatibility gate below compares it against
+# the certified snapshot, so a stale fallback here gates the wrong version.
+cardano_node_image_tag="${CARDANO_NODE_IMAGE_TAG:-11.1.0}"
 
 validate_cardano_node_image_tag "$cardano_node_image_tag"
 

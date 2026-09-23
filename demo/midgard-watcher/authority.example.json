@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "midgard-watcher-trusted-head-authority-process-config-v1",
+  "policy": {
+    "schemaVersion": "midgard-watcher-finality-policy-v1",
+    "network": "Preprod",
+    "sourceMode": "local_node",
+    "authorityNodeId": "watcher-node",
+    "authorityGenesisIdentitySha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "authorityChainSyncSocketPath": "/ipc/node.socket",
+    "localQueryServices": [
+      {
+        "kind": "kupo",
+        "providerId": "local-kupo",
+        "endpoint": "http://127.0.0.1:1442"
+      },
+      {
+        "kind": "ogmios",
+        "providerId": "local-ogmios",
+        "endpoint": "ws://127.0.0.1:1337"
+      }
+    ],
+    "externalProviders": null,
+    "confirmationDepth": "30",
+    "maximumPreFinalityRollbackDepth": "30",
+    "maximumPostFinalityRecoveryDepth": "2160",
+    "beforeFinalityRollback": "rewind",
+    "afterFinalityRollback": "quarantine",
+    "blueprintHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "deploymentMarker": {
+      "schemaVersion": "midgard-deployment-marker-v1",
+      "manifestId": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "policyDigest": "929959e7314ee662c075680ca62b750f024d90f5e7a5a7c8159e94c6865b0b16"
+  },
+  "directory": "/var/lib/midgard-watcher/authority",
+  "endpoint": "http://127.0.0.1:7401",
+  "recordAuthenticationKeySource": {
+    "kind": "file",
+    "path": "/run/secrets/record_key"
+  },
+  "httpBearerSecretSource": {
+    "kind": "file",
+    "path": "/run/secrets/bearer"
+  }
+}

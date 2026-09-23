@@ -66,7 +66,7 @@ import { normalizeOgmiosHttpUrl } from "./local-ledger-slot.js";
  * index the order address *and* the §8 carriage the order references: raw carriage
  * and certificates live at the order creator's own wallet address (§8.11's custody
  * rule), which no operator can enumerate in advance, so a pattern-restricted Kupo
- * cannot resolve tier 2/3 carriage — `l1-services/docker-compose.yml` runs Kupo
+ * cannot resolve tier 2/3 carriage — `docker-compose.kupmios.yaml` runs Kupo
  * with `--match "*"`, which satisfies this. *(ii)* Kupo must **not** run
  * `--prune-utxo`: a pruning index deletes matches once their output is spent,
  * while §8.7 lets a creator reclaim a carriage UTxO at any time and §8.11 keeps
@@ -81,7 +81,7 @@ import { normalizeOgmiosHttpUrl } from "./local-ledger-slot.js";
  * field at all. {@link fetchKupoMatch} refuses that answer by name rather than
  * reading it as "this output carries no datum", so a mis-deployed index fails the
  * read loudly on its first request instead of quietly emptying carriage indices.
- * `l1-services/docker-compose.yml` pins v2.11.0.
+ * `docker-compose.kupmios.yaml` pins v2.11.0 by digest.
  */
 
 /** A point on the chain, spelled the way both Ogmios and Kupo spell it. */
@@ -410,7 +410,7 @@ const fetchKupoMatch = async ({
       `Kupo did not resolve hashes for ${url}: the match carries no \`datum\` ` +
         "field, which is what an index older than v2.10.0 answers — it ignores " +
         "the `?resolve_hashes` flag instead of rejecting it. Run Kupo v2.10.0 " +
-        "or newer (l1-services/docker-compose.yml pins v2.11.0).",
+        "or newer (docker-compose.kupmios.yaml pins v2.11.0).",
     );
   }
   return match;
@@ -615,8 +615,8 @@ const exactOutRef = (value: unknown, label: string): OutRefLike => {
  *
  * The raw transaction CBOR is deliberately not used: Ogmios only emits a
  * transaction's `cbor` when the *server* was started with
- * `--include-transaction-cbor`, which `l1-services/docker-compose.yml` does not
- * pass and no node can require of an operator's endpoint. `redeemers` and
+ * `--include-transaction-cbor`; the in-repo stack passes it (`scripts/run-ogmios.sh`)
+ * but no node can require it of an operator's endpoint. `redeemers` and
  * `references` are unconditional, so the read stands on fields that are always
  * there. (`midgard-watcher` takes the other route — its `l1-adapter.ts`
  * re-derives everything from raw bytes — because it is given the bytes.)

@@ -3,12 +3,12 @@ import { describe, expect, it } from "vitest";
 
 import type { DaAttestationChainReader } from "../src/l1/da-attestation-reader.js";
 import { loadDaSigner, validateDaSignerMembership } from "../src/signer.js";
-import { JsonFileWatcherStore } from "../src/store.js";
+import { JsonFileCommitteeStore } from "../src/store.js";
 import { bytesToHex } from "../src/utils/hex.js";
-import { WatcherService } from "../src/watcher.js";
+import { CommitteeService } from "../src/committee-service.js";
 import { minimalConfig, tempDir } from "./helpers.js";
 
-describe("watcher startup DA params checks", () => {
+describe("committee node startup DA params checks", () => {
   it("fails closed when live DA params do not match config", async () => {
     const dir = await tempDir();
     const seed = "00".repeat(31) + "01";
@@ -41,9 +41,9 @@ describe("watcher startup DA params checks", () => {
       signer,
       signerIndex: committeeKeys.indexOf(signer.publicKeyHex),
     });
-    const service = new WatcherService({
+    const service = new CommitteeService({
       config,
-      store: await JsonFileWatcherStore.open(dir),
+      store: await JsonFileCommitteeStore.open(dir),
       stateQueueProvider: { fetchStateQueueNodes: async () => [] },
       payloadSource: {
         fetchPayloadCandidates: async () => {

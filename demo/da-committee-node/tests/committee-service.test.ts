@@ -4,7 +4,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { WatcherConfig } from "../src/config.js";
+import type { CommitteeConfig } from "../src/config.js";
 import { OnChainLifecycleCoordinator } from "../src/coordinator/on-chain.js";
 import { SubmitterReconciler } from "../src/coordinator/submitter-reconciler.js";
 import { DaPeerRegistry } from "../src/da/libp2p/DaPeerRegistry.js";
@@ -31,10 +31,10 @@ import {
 } from "../src/signer.js";
 import {
   DECISION_EFFECT_PENDING_LEASE_MS,
-  JsonFileWatcherStore,
+  JsonFileCommitteeStore,
 } from "../src/store.js";
 import { bytesToHex } from "../src/utils/hex.js";
-import { WatcherService } from "../src/watcher.js";
+import { CommitteeService } from "../src/committee-service.js";
 import {
   makeObservedNode,
   makePayloadFixture,
@@ -43,12 +43,12 @@ import {
   tempDir,
 } from "./helpers.js";
 
-const openStores = new Set<JsonFileWatcherStore>();
+const openStores = new Set<JsonFileCommitteeStore>();
 
-const openJsonWatcherStore = async (
+const openJsonCommitteeStore = async (
   path: string,
-): Promise<JsonFileWatcherStore> => {
-  const store = await JsonFileWatcherStore.open(path);
+): Promise<JsonFileCommitteeStore> => {
+  const store = await JsonFileCommitteeStore.open(path);
   openStores.add(store);
   return store;
 };
@@ -59,7 +59,7 @@ afterEach(async () => {
 });
 
 type CommitmentConfig = Pick<
-  WatcherConfig,
+  CommitteeConfig,
   "hubOraclePolicyId" | "availabilityChallenge"
 >;
 
@@ -107,7 +107,7 @@ const countSummaryFromHeader = (header: Header): DaStoredPayloadCountSet => ({
   validationTraceCount: header.validationTraceCount,
 });
 
-describe("WatcherService", () => {
+describe("CommitteeService", () => {
   it("registers the store-backed conflict handler before libp2p startup", async () => {
     const dir = await tempDir();
     const seed = "00".repeat(31) + "01";
@@ -122,9 +122,9 @@ describe("WatcherService", () => {
     const registry = DaPeerRegistry.fromConfig(config.daTransport);
     const setGossipHandler = vi.fn();
 
-    new WatcherService({
+    new CommitteeService({
       config,
-      store: await JsonFileWatcherStore.open(dir),
+      store: await JsonFileCommitteeStore.open(dir),
       stateQueueProvider: { fetchStateQueueNodes: async () => [] },
       payloadSource: {
         fetchPayloadCandidates: async () => ({
@@ -168,9 +168,9 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonWatcherStore(dir);
+    const store = await openJsonCommitteeStore(dir);
     const payloadSource = payloadSourceFromBytes(payloadCbor);
-    const service = new WatcherService({
+    const service = new CommitteeService({
       config: configWithDaHash,
       store,
       stateQueueProvider: {
@@ -207,7 +207,7 @@ describe("WatcherService", () => {
       }),
     ).resolves.toMatchObject({ headerHash, signerIndex: 0 });
     await expect(
-      service.readinessSnapshot({ localPeerId: "watcher-peer" }),
+      service.readinessSnapshot({ localPeerId: "committee-peer" }),
     ).resolves.toMatchObject({
       ready: true,
       deployment: {
@@ -216,7 +216,7 @@ describe("WatcherService", () => {
         storeMatchesConfigured: true,
       },
       peer: {
-        localPeerId: "watcher-peer",
+        localPeerId: "committee-peer",
         l1SubmitterPreflight: { status: "not_required" },
       },
       scanner: { status: "ok", scannedHeaders: 1, signedHeaders: 1 },
@@ -230,7 +230,7 @@ describe("WatcherService", () => {
     });
     await expect(
       service.readinessSnapshot({
-        localPeerId: "watcher-peer",
+        localPeerId: "committee-peer",
         retention: {
           status: "alerting",
           checkedAt: "2026-08-29T00:00:00.000Z",
@@ -273,7 +273,7 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const firstStore = await openJsonWatcherStore(dir);
+    const firstStore = await openJsonCommitteeStore(dir);
     const completeDecisionEffect =
       firstStore.completeDecisionEffect.bind(firstStore);
     let failAcknowledgement = true;
@@ -285,7 +285,7 @@ describe("WatcherService", () => {
       await completeDecisionEffect(args);
     };
     const publishedWitnesses: string[] = [];
-    const first = new WatcherService({
+    const first = new CommitteeService({
       config: configured,
       store: firstStore,
       stateQueueProvider: {
@@ -349,8 +349,8 @@ describe("WatcherService", () => {
     ]);
 
     await firstStore.close();
-    const restartedStore = await openJsonWatcherStore(dir);
-    const restarted = new WatcherService({
+    const restartedStore = await openJsonCommitteeStore(dir);
+    const restarted = new CommitteeService({
       config: configured,
       store: restartedStore,
       stateQueueProvider: {
@@ -391,7 +391,7 @@ describe("WatcherService", () => {
     ]);
   });
 
-  it("allows only one watcher worker to own a pending external effect", async () => {
+  it("allows only one committee node worker to own a pending external effect", async () => {
     const dir = await tempDir();
     const { header, headerHash, payloadCbor } = await makePayloadFixture();
     const seed = "00".repeat(31) + "62";
@@ -417,7 +417,7 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonWatcherStore(dir);
+    const store = await openJsonCommitteeStore(dir);
     let publishCalls = 0;
     let enteredPublish!: () => void;
     let releasePublish!: () => void;
@@ -436,7 +436,7 @@ describe("WatcherService", () => {
       },
     };
     const service = () =>
-      new WatcherService({
+      new CommitteeService({
         config: configured,
         store,
         stateQueueProvider: {
@@ -496,8 +496,8 @@ describe("WatcherService", () => {
     const firstOutRef = `${"ab".repeat(32)}#0`;
     const attestedOutRef = `${"ac".repeat(32)}#1`;
     let sourceView: "unattested" | "attested" | "missing" = "unattested";
-    const store = await openJsonWatcherStore(dir);
-    const service = new WatcherService({
+    const store = await openJsonCommitteeStore(dir);
+    const service = new CommitteeService({
       config: configured,
       store,
       stateQueueProvider: {
@@ -589,8 +589,8 @@ describe("WatcherService", () => {
       signerSeed: seed,
       signerPublicKey: signer.publicKeyHex,
     });
-    const store = await openJsonWatcherStore(dir);
-    const service = new WatcherService({
+    const store = await openJsonCommitteeStore(dir);
+    const service = new CommitteeService({
       config,
       store,
       stateQueueProvider: {
@@ -639,8 +639,8 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const firstStore = await openJsonWatcherStore(dir);
-    const first = new WatcherService({
+    const firstStore = await openJsonCommitteeStore(dir);
+    const first = new CommitteeService({
       config: configWithDaHash,
       store: firstStore,
       stateQueueProvider: {
@@ -687,8 +687,8 @@ describe("WatcherService", () => {
     });
 
     await firstStore.close();
-    const restartedStore = await openJsonWatcherStore(dir);
-    const disappeared = new WatcherService({
+    const restartedStore = await openJsonCommitteeStore(dir);
+    const disappeared = new CommitteeService({
       config: configWithDaHash,
       store: restartedStore,
       stateQueueProvider: { fetchStateQueueNodes: async () => [] },
@@ -756,9 +756,9 @@ describe("WatcherService", () => {
 
     let publishCalls = 0;
     await restartedStore.close();
-    const afterQuarantine = new WatcherService({
+    const afterQuarantine = new CommitteeService({
       config: configWithDaHash,
-      store: await openJsonWatcherStore(dir),
+      store: await openJsonCommitteeStore(dir),
       stateQueueProvider: {
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 10 }),
@@ -846,8 +846,8 @@ describe("WatcherService", () => {
         consumedCursor = cursor;
       },
     };
-    const firstStore = await openJsonWatcherStore(dir);
-    const first = new WatcherService({
+    const firstStore = await openJsonCommitteeStore(dir);
+    const first = new CommitteeService({
       config: configured,
       store: firstStore,
       stateQueueProvider: firstProvider,
@@ -915,8 +915,8 @@ describe("WatcherService", () => {
         throw new Error("quarantined rollback must not be acknowledged");
       },
     };
-    const restartedStore = await openJsonWatcherStore(dir);
-    const restarted = new WatcherService({
+    const restartedStore = await openJsonCommitteeStore(dir);
+    const restarted = new CommitteeService({
       config: configured,
       store: restartedStore,
       stateQueueProvider: restartedProvider,
@@ -962,8 +962,8 @@ describe("WatcherService", () => {
         queryProviderUrls: ["fixture:/tmp/state-queue.json"],
       },
     };
-    const firstStore = await openJsonWatcherStore(dir);
-    const first = new WatcherService({
+    const firstStore = await openJsonCommitteeStore(dir);
+    const first = new CommitteeService({
       config,
       store: firstStore,
       stateQueueProvider: { fetchStateQueueNodes: async () => [] },
@@ -978,8 +978,8 @@ describe("WatcherService", () => {
     });
 
     await firstStore.close();
-    const restartedStore = await openJsonWatcherStore(dir);
-    const restarted = new WatcherService({
+    const restartedStore = await openJsonCommitteeStore(dir);
+    const restarted = new CommitteeService({
       config: {
         ...config,
         l1Source: {
@@ -1031,8 +1031,8 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const firstStore = await openJsonWatcherStore(dir);
-    const first = new WatcherService({
+    const firstStore = await openJsonCommitteeStore(dir);
+    const first = new CommitteeService({
       config: configured,
       store: firstStore,
       stateQueueProvider: {
@@ -1049,9 +1049,9 @@ describe("WatcherService", () => {
 
     let publishCalls = 0;
     await firstStore.close();
-    const stale = new WatcherService({
+    const stale = new CommitteeService({
       config: configured,
-      store: await openJsonWatcherStore(dir),
+      store: await openJsonCommitteeStore(dir),
       stateQueueProvider: {
         fetchStateQueueNodes: async () => [
           makeObservedNode({ header, headerHash, depth: 0 }),
@@ -1102,8 +1102,8 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonWatcherStore(dir);
-    const service = new WatcherService({
+    const store = await openJsonCommitteeStore(dir);
+    const service = new CommitteeService({
       config: configWithDaHash,
       store,
       stateQueueProvider: {
@@ -1167,7 +1167,7 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonWatcherStore(dir);
+    const store = await openJsonCommitteeStore(dir);
     await store.saveDaPayload({
       deploymentFingerprint: configWithDaHash.deploymentFingerprint,
       headerHash,
@@ -1178,7 +1178,7 @@ describe("WatcherService", () => {
       fetchedAt: new Date().toISOString(),
       validationStatus: "fetched",
     });
-    const service = new WatcherService({
+    const service = new CommitteeService({
       config: configWithDaHash,
       store,
       stateQueueProvider: {
@@ -1249,7 +1249,7 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonWatcherStore(dir);
+    const store = await openJsonCommitteeStore(dir);
     await store.saveDaPayload({
       deploymentFingerprint: configWithDaHash.deploymentFingerprint,
       headerHash,
@@ -1260,7 +1260,7 @@ describe("WatcherService", () => {
       fetchedAt: new Date().toISOString(),
       validationStatus: "fetched",
     });
-    const service = new WatcherService({
+    const service = new CommitteeService({
       config: configWithDaHash,
       store,
       stateQueueProvider: {
@@ -1326,8 +1326,8 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonWatcherStore(dir);
-    const service = new WatcherService({
+    const store = await openJsonCommitteeStore(dir);
+    const service = new CommitteeService({
       config: configWithDaHash,
       store,
       stateQueueProvider: {
@@ -1396,8 +1396,8 @@ describe("WatcherService", () => {
       signerIndex: 0,
     });
     let payloadAvailable = false;
-    const store = await openJsonWatcherStore(dir);
-    const service = new WatcherService({
+    const store = await openJsonCommitteeStore(dir);
+    const service = new CommitteeService({
       config: configWithDaHash,
       store,
       stateQueueProvider: {
@@ -1485,8 +1485,8 @@ describe("WatcherService", () => {
     });
     let scans = 0;
     let payloadFetches = 0;
-    const store = await openJsonWatcherStore(dir);
-    const service = new WatcherService({
+    const store = await openJsonCommitteeStore(dir);
+    const service = new CommitteeService({
       config: configWithDaHash,
       store,
       stateQueueProvider: {
@@ -1552,10 +1552,10 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonWatcherStore(dir);
+    const store = await openJsonCommitteeStore(dir);
     const payloadSource = payloadSourceFromBytes(payloadCbor);
     const published: string[] = [];
-    const service = new WatcherService({
+    const service = new CommitteeService({
       config: configWithDaHash,
       store,
       stateQueueProvider: {
@@ -1613,10 +1613,10 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonWatcherStore(dir);
+    const store = await openJsonCommitteeStore(dir);
     const payloadSource = payloadSourceFromBytes(payloadCbor);
     const published: string[] = [];
-    const service = new WatcherService({
+    const service = new CommitteeService({
       config: configWithDaHash,
       store,
       stateQueueProvider: {
@@ -1694,7 +1694,7 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonWatcherStore(dir);
+    const store = await openJsonCommitteeStore(dir);
     const commitment = expectedCommitment(
       configWithDaHash,
       headerHash,
@@ -1741,7 +1741,7 @@ describe("WatcherService", () => {
     };
     await store.saveDaSignature(signature);
     const published: string[] = [];
-    const service = new WatcherService({
+    const service = new CommitteeService({
       config: configWithDaHash,
       store,
       stateQueueProvider: {
@@ -1816,7 +1816,7 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonWatcherStore(dir);
+    const store = await openJsonCommitteeStore(dir);
     const payloadSource = payloadSourceFromBytes(payloadCbor);
     const initialized = candidateRecord({
       headerHash,
@@ -1845,7 +1845,7 @@ describe("WatcherService", () => {
         applyAttestation: async () => submitted("applyTx"),
       },
     });
-    const service = new WatcherService({
+    const service = new CommitteeService({
       config: configWithDaHash,
       store,
       stateQueueProvider: {
@@ -1902,7 +1902,7 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonWatcherStore(dir);
+    const store = await openJsonCommitteeStore(dir);
     const payloadSource = payloadSourceFromBytes(payloadCbor);
     const initialized = candidateRecord({
       headerHash,
@@ -1955,7 +1955,7 @@ describe("WatcherService", () => {
         },
       },
     });
-    const service = new WatcherService({
+    const service = new CommitteeService({
       config: configWithDaHash,
       store,
       stateQueueProvider: {
@@ -2023,7 +2023,7 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await openJsonWatcherStore(dir);
+    const store = await openJsonCommitteeStore(dir);
     const commitment = expectedCommitment(
       configWithDaHash,
       headerHash,
@@ -2135,7 +2135,7 @@ describe("WatcherService", () => {
         },
       },
     });
-    const service = new WatcherService({
+    const service = new CommitteeService({
       config: configWithDaHash,
       store,
       stateQueueProvider: {
@@ -2264,7 +2264,7 @@ describe("WatcherService", () => {
       },
     ];
     const peerId = "peer-libp2p-1";
-    const store = await openJsonWatcherStore(dir);
+    const store = await openJsonCommitteeStore(dir);
     const initialized = candidateRecord({
       headerHash,
       committeeSignersHash,
@@ -2334,7 +2334,7 @@ describe("WatcherService", () => {
       coordinator: onChainCoordinator,
       peerPoller,
     });
-    const service = new WatcherService({
+    const service = new CommitteeService({
       config,
       store,
       stateQueueProvider: {
@@ -2419,7 +2419,7 @@ describe("WatcherService", () => {
       bitmap: "c0" + "00".repeat(31),
     });
     const calls: string[] = [];
-    const firstStore = await openJsonWatcherStore(dir);
+    const firstStore = await openJsonCommitteeStore(dir);
     const firstCoordinator = new OnChainLifecycleCoordinator({
       threshold: 2,
       visibilityRetryCount: 0,
@@ -2443,7 +2443,7 @@ describe("WatcherService", () => {
         },
       },
     });
-    const firstService = new WatcherService({
+    const firstService = new CommitteeService({
       config: configWithDaHash,
       store: firstStore,
       stateQueueProvider: {
@@ -2477,7 +2477,7 @@ describe("WatcherService", () => {
     ).resolves.toMatchObject({ broadcastStatus: "posted" });
 
     await firstStore.close();
-    const restartedStore = await openJsonWatcherStore(dir);
+    const restartedStore = await openJsonCommitteeStore(dir);
     const restartedCoordinator = new OnChainLifecycleCoordinator({
       threshold: 2,
       visibilityRetryCount: 0,
@@ -2500,7 +2500,7 @@ describe("WatcherService", () => {
         },
       },
     });
-    const restartedService = new WatcherService({
+    const restartedService = new CommitteeService({
       config: configWithDaHash,
       store: restartedStore,
       stateQueueProvider: {

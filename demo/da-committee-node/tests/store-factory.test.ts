@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { access, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -18,18 +18,18 @@ import type {
 import {
   DECISION_EFFECT_PENDING_LEASE_MS,
   decisionEffectId,
-  JsonFileWatcherStore,
+  JsonFileCommitteeStore,
   jsonReplacer,
 } from "../src/store.js";
-import { openWatcherStore } from "../src/store/factory.js";
+import { openCommitteeStore } from "../src/store/factory.js";
 import { tempDir } from "./helpers.js";
 
-const openStores = new Set<JsonFileWatcherStore>();
+const openStores = new Set<JsonFileCommitteeStore>();
 
-const openJsonWatcherStore = async (
+const openJsonCommitteeStore = async (
   path: string,
-): Promise<JsonFileWatcherStore> => {
-  const store = await JsonFileWatcherStore.open(path);
+): Promise<JsonFileCommitteeStore> => {
+  const store = await JsonFileCommitteeStore.open(path);
   openStores.add(store);
   return store;
 };
@@ -39,30 +39,63 @@ afterEach(async () => {
   openStores.clear();
 });
 
-describe("openWatcherStore", () => {
-  it("opens the JSON file store for WATCHER_DB_PATH config", async () => {
-    const store = await openWatcherStore({
+describe("openCommitteeStore", () => {
+  it("opens the JSON file store for DA_COMMITTEE_DB_PATH config", async () => {
+    const store = await openCommitteeStore({
       kind: "file",
       path: await tempDir(),
     });
-    expect(store).toBeInstanceOf(JsonFileWatcherStore);
+    expect(store).toBeInstanceOf(JsonFileCommitteeStore);
     await store.close?.();
+  });
+
+  it("renames a legacy watcher.json directory store to committee.json on open", async () => {
+    const dir = await tempDir();
+    const legacyPath = join(dir, "watcher.json");
+    const currentPath = join(dir, "committee.json");
+    await writeFile(
+      legacyPath,
+      JSON.stringify({ stateQueueHeaders: { abc: { headerHash: "abc" } } }),
+    );
+
+    const store = await openJsonCommitteeStore(dir);
+    expect((await store.listStateQueueHeaders()).length).toBe(1);
+    await store.close();
+
+    await access(currentPath);
+    await expect(access(legacyPath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("prefers committee.json when both a legacy and a current store exist", async () => {
+    const dir = await tempDir();
+    await writeFile(
+      join(dir, "watcher.json"),
+      JSON.stringify({
+        stateQueueHeaders: { legacy: { headerHash: "legacy" } },
+      }),
+    );
+    await writeFile(join(dir, "committee.json"), JSON.stringify({}));
+
+    const store = await openJsonCommitteeStore(dir);
+    expect(await store.listStateQueueHeaders()).toEqual([]);
+    await store.close();
+    await access(join(dir, "watcher.json"));
   });
 
   it("holds one durable exclusive lease per JSON store", async () => {
     const dir = await tempDir();
-    const first = await openJsonWatcherStore(dir);
-    await expect(openJsonWatcherStore(dir)).rejects.toThrow(
+    const first = await openJsonCommitteeStore(dir);
+    await expect(openJsonCommitteeStore(dir)).rejects.toThrow(
       /already exclusively leased/u,
     );
     await first.close();
-    const restarted = await openJsonWatcherStore(dir);
+    const restarted = await openJsonCommitteeStore(dir);
     await restarted.close();
   });
 
   it("joins concurrent JSON-store close calls before releasing the lease", async () => {
     const dir = await tempDir();
-    const store = await openJsonWatcherStore(dir);
+    const store = await openJsonCommitteeStore(dir);
     const internal = store as unknown as {
       readonly lockHandle: { close: () => Promise<void> };
     };
@@ -91,13 +124,13 @@ describe("openWatcherStore", () => {
     releaseClose();
     await Promise.all([first, second]);
     expect(secondResolved).toBe(true);
-    const restarted = await openJsonWatcherStore(dir);
+    const restarted = await openJsonCommitteeStore(dir);
     await restarted.close();
   });
 
-  it("rejects non-Postgres WATCHER_DATABASE_URL values", async () => {
+  it("rejects non-Postgres DA_COMMITTEE_DATABASE_URL values", async () => {
     await expect(
-      openWatcherStore({
+      openCommitteeStore({
         kind: "database",
         url: "sqlite:///tmp/watcher.db",
       }),
@@ -106,7 +139,7 @@ describe("openWatcherStore", () => {
 
   it("persists only the exact final DeploymentMarkerV1", async () => {
     const dir = await tempDir();
-    const store = await JsonFileWatcherStore.open(dir);
+    const store = await JsonFileCommitteeStore.open(dir);
     const marker = makeDeploymentMarker("11".repeat(32));
     await store.initDeployment({
       marker,
@@ -126,7 +159,7 @@ describe("openWatcherStore", () => {
 
     const legacyDir = await tempDir();
     await writeFile(
-      join(legacyDir, "watcher.json"),
+      join(legacyDir, "committee.json"),
       JSON.stringify({
         deployment: {
           fingerprint: "11".repeat(32),
@@ -136,13 +169,13 @@ describe("openWatcherStore", () => {
         },
       }),
     );
-    await expect(JsonFileWatcherStore.open(legacyDir)).rejects.toThrow(
+    await expect(JsonFileCommitteeStore.open(legacyDir)).rejects.toThrow(
       /must contain exactly marker/u,
     );
   });
 
   it("accepts only exact explicit-V1 DA payload records on JSON writes", async () => {
-    const store = await openJsonWatcherStore(await tempDir());
+    const store = await openJsonCommitteeStore(await tempDir());
     const payload = daPayloadRecord();
     await expect(store.saveDaPayload(payload)).resolves.toMatchObject({
       ...payload,
@@ -167,7 +200,7 @@ describe("openWatcherStore", () => {
 
   it("persists canonical L1 quarantine state across JSON-store restart", async () => {
     const dir = await tempDir();
-    const store = await openJsonWatcherStore(dir);
+    const store = await openJsonCommitteeStore(dir);
     await store.saveL1SourceState({
       schemaVersion: 1,
       sourceMode: "external_providers",
@@ -190,7 +223,7 @@ describe("openWatcherStore", () => {
       quarantinedAt: "2026-07-28T00:00:01.000Z",
     });
     await store.close();
-    const restarted = await openJsonWatcherStore(dir);
+    const restarted = await openJsonCommitteeStore(dir);
     await expect(restarted.getL1SourceState()).resolves.toMatchObject({
       sourceMode: "external_providers",
       status: "quarantined",
@@ -294,7 +327,7 @@ describe("openWatcherStore", () => {
   });
 
   it("accepts only exact explicit-source DA signature records on JSON writes", async () => {
-    const store = await openJsonWatcherStore(await tempDir());
+    const store = await openJsonCommitteeStore(await tempDir());
     const signature = daSignatureRecord();
     await expect(store.saveDaSignature(signature)).resolves.toBeUndefined();
     await expect(
@@ -329,7 +362,7 @@ describe("openWatcherStore", () => {
 
   it("deduplicates and reloads only exact explicit-V1 conflict evidence records", async () => {
     const directory = await tempDir();
-    const store = await JsonFileWatcherStore.open(directory);
+    const store = await JsonFileCommitteeStore.open(directory);
     const evidence = daConflictEvidenceRecord();
     await expect(store.saveDaConflictEvidence(evidence)).resolves.toBe(true);
     await expect(store.saveDaConflictEvidence(evidence)).resolves.toBe(false);
@@ -342,7 +375,7 @@ describe("openWatcherStore", () => {
     ).resolves.toBe(false);
     await expect(store.listDaConflictEvidence()).resolves.toEqual([evidence]);
     await store.close();
-    const reopenedEvidenceStore = await JsonFileWatcherStore.open(directory);
+    const reopenedEvidenceStore = await JsonFileCommitteeStore.open(directory);
     await expect(
       reopenedEvidenceStore.listDaConflictEvidence(),
     ).resolves.toEqual([evidence]);
@@ -369,7 +402,7 @@ describe("openWatcherStore", () => {
 
   it("atomically persists and completes deterministic decision outbox effects", async () => {
     const dir = await tempDir();
-    const store = await openJsonWatcherStore(dir);
+    const store = await openJsonCommitteeStore(dir);
     const signature = daSignatureRecord();
     const stateQueueOutRef = signature.validation.stateQueueOutRef;
     const effectId = decisionEffectId({
@@ -421,7 +454,7 @@ describe("openWatcherStore", () => {
       signature,
     });
     await store.close();
-    const restarted = await openJsonWatcherStore(dir);
+    const restarted = await openJsonCommitteeStore(dir);
     await expect(restarted.getDecisionOutbox(effectId)).resolves.toEqual(
       effect,
     );
@@ -491,7 +524,7 @@ describe("openWatcherStore", () => {
   });
 
   it("serializes concurrent decisions and makes L1 quarantine terminal", async () => {
-    const store = await openJsonWatcherStore(await tempDir());
+    const store = await openJsonCommitteeStore(await tempDir());
     const firstSignature = daSignatureRecord();
     const secondCommitment = availabilityCommitment(
       "23".repeat(28),
@@ -628,9 +661,9 @@ describe("openWatcherStore", () => {
 
   it("rejects malformed DA records when opening an existing JSON store", async () => {
     const malformedRootDir = await tempDir();
-    await writeFile(join(malformedRootDir, "watcher.json"), "[]");
-    await expect(openJsonWatcherStore(malformedRootDir)).rejects.toThrow(
-      /watcher store data must be an object/,
+    await writeFile(join(malformedRootDir, "committee.json"), "[]");
+    await expect(openJsonCommitteeStore(malformedRootDir)).rejects.toThrow(
+      /committee node store data must be an object/,
     );
 
     const payloadDir = await tempDir();
@@ -638,12 +671,12 @@ describe("openWatcherStore", () => {
     const { payloadSchemaVersion: _, ...missingVersion } = payload;
     void _;
     await writeFile(
-      join(payloadDir, "watcher.json"),
+      join(payloadDir, "committee.json"),
       JSON.stringify({
         daPayloads: { [payload.headerHash]: missingVersion },
       }),
     );
-    await expect(openJsonWatcherStore(payloadDir)).rejects.toThrow(
+    await expect(openJsonCommitteeStore(payloadDir)).rejects.toThrow(
       /missing required field payloadSchemaVersion/,
     );
 
@@ -652,7 +685,7 @@ describe("openWatcherStore", () => {
     const { source: __, ...missingSource } = signature;
     void __;
     await writeFile(
-      join(signatureDir, "watcher.json"),
+      join(signatureDir, "committee.json"),
       JSON.stringify(
         {
           daSignatures: {
@@ -663,7 +696,7 @@ describe("openWatcherStore", () => {
         jsonReplacer,
       ),
     );
-    await expect(openJsonWatcherStore(signatureDir)).rejects.toThrow(
+    await expect(openJsonCommitteeStore(signatureDir)).rejects.toThrow(
       /missing required field source/,
     );
 
@@ -682,9 +715,9 @@ describe("openWatcherStore", () => {
       '"value":"00"',
     );
     expect(nonCanonicalBigintJson).not.toBe(canonicalJson);
-    await writeFile(join(bigintDir, "watcher.json"), nonCanonicalBigintJson);
-    await expect(openJsonWatcherStore(bigintDir)).rejects.toThrow(
-      /invalid canonical watcher bigint encoding/,
+    await writeFile(join(bigintDir, "committee.json"), nonCanonicalBigintJson);
+    await expect(openJsonCommitteeStore(bigintDir)).rejects.toThrow(
+      /invalid canonical committee node bigint encoding/,
     );
   });
 });

@@ -1,14 +1,14 @@
 import type { LocalStateConfig } from "../config.js";
-import { JsonFileWatcherStore, type WatcherStore } from "../store.js";
-import { PostgresWatcherStore } from "./postgres.js";
+import { JsonFileCommitteeStore, type CommitteeStore } from "../store.js";
+import { PostgresCommitteeStore } from "./postgres.js";
 
-export const openWatcherStore = async (
+export const openCommitteeStore = async (
   localState: LocalStateConfig,
-): Promise<WatcherStore> => {
+): Promise<CommitteeStore> => {
   switch (localState.kind) {
     case "file":
-      return JsonFileWatcherStore.open(localState.path);
+      return JsonFileCommitteeStore.open(localState.path);
     case "database":
-      return PostgresWatcherStore.open(localState.url);
+      return PostgresCommitteeStore.open(localState.url);
   }
 };

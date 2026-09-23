@@ -6,20 +6,21 @@ import { computeDeploymentManifestId } from "@al-ft/midgard-core/deployment-mani
 import { describe, expect, it } from "vitest";
 
 import {
+  parseL1SourceConfig,
   DEFAULT_L1_SUBMITTER_PREFLIGHT,
   l1SourceAuthorityDigest,
   LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES,
   LIBP2P_DA_MIN_RETENTION_DAYS,
   LIBP2P_DA_TRANSPORT_LIMITS,
-  loadWatcherConfig,
-  parseL1SourceConfig,
+  loadCommitteeConfig,
+  rejectRetiredWatcherEnvNames,
 } from "../src/config.js";
 import { parseMidgardNodeDeploymentInfo } from "../src/l1/deployment.js";
 import { loadPublicRetainedDaRuntimeConfig } from "../src/public-retained-da-config.js";
 import { tempDir } from "./helpers.js";
 import { readDaDeploymentFixture } from "./helpers/deployment-fixture.js";
 
-describe("loadWatcherConfig", () => {
+describe("loadCommitteeConfig", () => {
   it("parses only the exact V1 manifest and consensus-profile pairing", async () => {
     const dir = await tempDir();
     const manifest = libp2pManifest("01".repeat(32));
@@ -53,7 +54,9 @@ describe("loadWatcherConfig", () => {
     });
     await writeFile(deploymentInfoPath, JSON.stringify(canonicalManifest));
     await expect(
-      loadWatcherConfig(libp2pConfigEnv(dir, manifestPath, deploymentInfoPath)),
+      loadCommitteeConfig(
+        libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+      ),
     ).resolves.toMatchObject({
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     });
@@ -66,7 +69,9 @@ describe("loadWatcherConfig", () => {
       }),
     );
     await expect(
-      loadWatcherConfig(libp2pConfigEnv(dir, manifestPath, deploymentInfoPath)),
+      loadCommitteeConfig(
+        libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+      ),
     ).rejects.toThrow(/schemaVersion must be/u);
   });
 
@@ -78,7 +83,7 @@ describe("loadWatcherConfig", () => {
     const deploymentInfoPath = join(dir, "deployment.json");
     await writeFile(manifestPath, JSON.stringify(manifest));
     await writeMinimalDeploymentInfo(deploymentInfoPath);
-    const config = await loadWatcherConfig({
+    const config = await loadCommitteeConfig({
       ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
       DA_SIGNER_INDEX: "0",
       DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
@@ -98,11 +103,11 @@ describe("loadWatcherConfig", () => {
     );
     const base = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
 
-    await expect(loadWatcherConfig(base)).resolves.toMatchObject({
+    await expect(loadCommitteeConfig(base)).resolves.toMatchObject({
       finalityDepth: 30,
     });
     await expect(
-      loadWatcherConfig({ ...base, CARDANO_FINALITY_DEPTH: "29" }),
+      loadCommitteeConfig({ ...base, CARDANO_FINALITY_DEPTH: "29" }),
     ).rejects.toThrow(
       /must exactly equal the verified deployment manifest l1Finality\.confirmationDepth/u,
     );
@@ -117,7 +122,7 @@ describe("loadWatcherConfig", () => {
       manifest,
     );
 
-    const config = await loadWatcherConfig(
+    const config = await loadCommitteeConfig(
       libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
     );
 
@@ -205,7 +210,7 @@ describe("loadWatcherConfig", () => {
       loadPublicRetainedDaRuntimeConfig(missingPublicKeyEnv),
     ).rejects.toThrow(/DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE/);
     await expect(
-      loadWatcherConfig({
+      loadCommitteeConfig({
         ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
         DA_PUBLIC_RETAINED_DA_ENABLED: "true",
         DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE: `seed:${"03".repeat(32)}`,
@@ -225,7 +230,7 @@ describe("loadWatcherConfig", () => {
       manifest,
     );
 
-    const config = await loadWatcherConfig(
+    const config = await loadCommitteeConfig(
       libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
     );
 
@@ -246,7 +251,7 @@ describe("loadWatcherConfig", () => {
       DA_PUBLIC_BASE_URL: "http://da-self.example",
     })) {
       await expect(
-        loadWatcherConfig({ ...baseEnv, [name]: value }),
+        loadCommitteeConfig({ ...baseEnv, [name]: value }),
       ).rejects.toThrow(new RegExp(name));
     }
   });
@@ -261,17 +266,17 @@ describe("loadWatcherConfig", () => {
     const missingKeyEnv: Record<string, string> = { ...baseEnv };
     delete missingKeyEnv.DA_LIBP2P_PRIVATE_KEY_SOURCE;
 
-    await expect(loadWatcherConfig(missingKeyEnv)).rejects.toThrow(
+    await expect(loadCommitteeConfig(missingKeyEnv)).rejects.toThrow(
       /DA_LIBP2P_PRIVATE_KEY_SOURCE/,
     );
     await expect(
-      loadWatcherConfig({
+      loadCommitteeConfig({
         ...baseEnv,
         DA_LIBP2P_PRIVATE_KEY_SOURCE: "seed:abcd",
       }),
     ).rejects.toThrow(/DA_LIBP2P_PRIVATE_KEY_SOURCE seed/);
     await expect(
-      loadWatcherConfig({
+      loadCommitteeConfig({
         ...baseEnv,
         DA_LIBP2P_PRIVATE_KEY_SOURCE: "private-key:ed25519_sk_test",
       }),
@@ -366,16 +371,16 @@ describe("loadWatcherConfig", () => {
     await writeFile(deploymentInfoPath, JSON.stringify(customDeployment));
     const baseEnv = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
 
-    await expect(loadWatcherConfig(baseEnv)).rejects.toThrow(
+    await expect(loadCommitteeConfig(baseEnv)).rejects.toThrow(
       /CARDANO_NETWORK_MAGIC is required for Custom/,
     );
     for (const invalid of ["-1", "01", "1.5", "4294967296"]) {
       await expect(
-        loadWatcherConfig({ ...baseEnv, CARDANO_NETWORK_MAGIC: invalid }),
+        loadCommitteeConfig({ ...baseEnv, CARDANO_NETWORK_MAGIC: invalid }),
       ).rejects.toThrow(/CARDANO_NETWORK_MAGIC/);
     }
 
-    const config = await loadWatcherConfig({
+    const config = await loadCommitteeConfig({
       ...baseEnv,
       CARDANO_NETWORK_MAGIC: "424242",
     });
@@ -386,7 +391,7 @@ describe("loadWatcherConfig", () => {
     });
     expect(config.cardanoL1Source.authorityDigest).toMatch(/^[0-9a-f]{64}$/u);
 
-    const otherAuthority = await loadWatcherConfig({
+    const otherAuthority = await loadCommitteeConfig({
       ...baseEnv,
       CARDANO_NETWORK_MAGIC: "424242",
       CARDANO_LOCAL_NODE_AUTHORITY_ID: "other-cardano-node",
@@ -394,7 +399,7 @@ describe("loadWatcherConfig", () => {
     expect(otherAuthority.cardanoL1Source.authorityDigest).not.toBe(
       config.cardanoL1Source.authorityDigest,
     );
-    const otherMagic = await loadWatcherConfig({
+    const otherMagic = await loadCommitteeConfig({
       ...baseEnv,
       CARDANO_NETWORK_MAGIC: "424243",
     });
@@ -410,7 +415,7 @@ describe("loadWatcherConfig", () => {
       libp2pManifest("01".repeat(32)),
     );
     await expect(
-      loadWatcherConfig({
+      loadCommitteeConfig({
         ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
         CARDANO_NETWORK_MAGIC: "2",
       }),
@@ -425,14 +430,14 @@ describe("loadWatcherConfig", () => {
     );
     const baseEnv = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
     await expect(
-      loadWatcherConfig({
+      loadCommitteeConfig({
         ...baseEnv,
         CARDANO_PROVIDER_URLS:
           "blockfrost:https://preview-a.example/api#project",
       }),
     ).rejects.toThrow(/local_node mode permits only same-node kupmios/);
 
-    const external = await loadWatcherConfig({
+    const external = await loadCommitteeConfig({
       ...baseEnv,
       ...externalProviderConfigEnv(),
     });
@@ -443,14 +448,14 @@ describe("loadWatcherConfig", () => {
     });
 
     await expect(
-      loadWatcherConfig({
+      loadCommitteeConfig({
         ...baseEnv,
         ...externalProviderConfigEnv(),
         CARDANO_PROVIDER_AUTHORITY_IDS: `${"11".repeat(32)},${"11".repeat(32)}`,
       }),
     ).rejects.toThrow(/operationally independent/);
     await expect(
-      loadWatcherConfig({
+      loadCommitteeConfig({
         ...baseEnv,
         ...externalProviderConfigEnv(),
         CARDANO_PROVIDER_URLS:
@@ -819,7 +824,7 @@ describe("loadWatcherConfig", () => {
       throw new Error("real Midgard deployment fixture did not parse");
     }
     await writeFile(manifestPath, JSON.stringify(manifest));
-    const config = await loadWatcherConfig({
+    const config = await loadCommitteeConfig({
       ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
       DA_SIGNER_INDEX: "0",
       DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
@@ -874,7 +879,7 @@ describe("loadWatcherConfig", () => {
       ),
     );
     await expect(
-      loadWatcherConfig({
+      loadCommitteeConfig({
         ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
         DA_SIGNER_INDEX: "0",
         DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
@@ -899,7 +904,7 @@ describe("loadWatcherConfig", () => {
       ),
     );
     await expect(
-      loadWatcherConfig({
+      loadCommitteeConfig({
         ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
         DA_SIGNER_INDEX: "0",
         DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
@@ -927,7 +932,7 @@ describe("loadWatcherConfig", () => {
     await writeFile(manifestPath, JSON.stringify(manifest));
     await writeFile(deploymentInfoPath, JSON.stringify(deploymentWithId));
     await expect(
-      loadWatcherConfig({
+      loadCommitteeConfig({
         ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
         ...externalProviderConfigEnv(),
         DA_SIGNER_INDEX: "0",
@@ -954,7 +959,7 @@ describe("loadWatcherConfig", () => {
       ),
     );
     await expect(
-      loadWatcherConfig({
+      loadCommitteeConfig({
         ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
         ...externalProviderConfigEnv(),
         DA_SIGNER_INDEX: "0",
@@ -996,7 +1001,7 @@ describe("loadWatcherConfig", () => {
       ),
     );
 
-    const config = await loadWatcherConfig({
+    const config = await loadCommitteeConfig({
       ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
       ...externalProviderConfigEnv(),
       L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
@@ -1045,31 +1050,31 @@ describe("loadWatcherConfig", () => {
     };
 
     await expect(
-      loadWatcherConfig({
+      loadCommitteeConfig({
         ...baseEnv,
         DA_L1_MIN_PLAIN_ADA_LOVELACE: "not-a-number",
       }),
     ).rejects.toThrow(/DA_L1_MIN_PLAIN_ADA_LOVELACE/);
     await expect(
-      loadWatcherConfig({
+      loadCommitteeConfig({
         ...baseEnv,
         DA_L1_MIN_SPENDABLE_UTXO_COUNT: "0",
       }),
     ).rejects.toThrow(/DA_L1_MIN_SPENDABLE_UTXO_COUNT/);
     await expect(
-      loadWatcherConfig({
+      loadCommitteeConfig({
         ...baseEnv,
         DA_L1_PREFLIGHT_RETRY_DELAY_MS: "-1",
       }),
     ).rejects.toThrow(/DA_L1_PREFLIGHT_RETRY_DELAY_MS/);
     await expect(
-      loadWatcherConfig({
+      loadCommitteeConfig({
         ...baseEnv,
         DA_L1_AUTO_FUND_KEY_SOURCE: "file:",
       }),
     ).rejects.toThrow(/DA_L1_AUTO_FUND_KEY_SOURCE/);
     await expect(
-      loadWatcherConfig({
+      loadCommitteeConfig({
         ...baseEnv,
         DA_L1_AUTO_FUND_KEY_SOURCE: "private-key:ed25519_sk_test",
       }),
@@ -1097,7 +1102,7 @@ describe("loadWatcherConfig", () => {
       L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
       DA_L1_SUBMISSION_ENABLED: "true",
     };
-    const config = await loadWatcherConfig({
+    const config = await loadCommitteeConfig({
       ...baseEnv,
       DA_L1_SUBMITTER_ID: "relayer-a",
       DA_L1_SUBMITTER_IDS: "relayer-a,relayer-b",
@@ -1110,7 +1115,7 @@ describe("loadWatcherConfig", () => {
     expect("signerIndex" in config).toBe(false);
     expect("signerKeySource" in config).toBe(false);
     await expect(
-      loadWatcherConfig({
+      loadCommitteeConfig({
         ...baseEnv,
         DA_L1_SUBMITTER_ID: "relayer-c",
         DA_L1_SUBMITTER_IDS: "relayer-a,relayer-b",
@@ -1134,7 +1139,7 @@ describe("loadWatcherConfig", () => {
     await writeFile(manifestPath, JSON.stringify(manifest));
     await writeFile(deploymentInfoPath, JSON.stringify(deploymentWithId));
     await expect(
-      loadWatcherConfig({
+      loadCommitteeConfig({
         ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
         DA_SIGNER_INDEX: "0",
         DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
@@ -1157,7 +1162,9 @@ describe("loadWatcherConfig", () => {
     await writeFile(manifestPath, JSON.stringify(manifest));
     await writeFile(deploymentInfoPath, JSON.stringify(deploymentWithId));
     await expect(
-      loadWatcherConfig(libp2pConfigEnv(dir, manifestPath, deploymentInfoPath)),
+      loadCommitteeConfig(
+        libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+      ),
     ).rejects.toThrow(/contracts\.payoutMint is required/);
   });
 });
@@ -1187,7 +1194,7 @@ const libp2pManifest = (
     identity_source: "contract_deployment_manifest_id",
   },
   runtime_topology: {
-    target: "watcher",
+    target: "committee",
     profile: "public",
     producer_peer_id: LIBP2P_PEER_ID_B,
     local_signer_index: 0,
@@ -1324,7 +1331,7 @@ const libp2pConfigEnv = (
   CARDANO_PROVIDER_URLS: "fixture:/tmp/state.json",
   CARDANO_FINALITY_DEPTH: "30",
   DA_LIBP2P_PRIVATE_KEY_SOURCE: LIBP2P_PRIVATE_KEY_SOURCE,
-  WATCHER_DB_PATH: join(dir, "db"),
+  DA_COMMITTEE_DB_PATH: join(dir, "db"),
 });
 
 const externalProviderConfigEnv = (): Record<string, string | undefined> => ({
@@ -1351,7 +1358,7 @@ const expectLibp2pManifestRejects = async (
     manifest,
   );
   await expect(
-    loadWatcherConfig({
+    loadCommitteeConfig({
       ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
       ...envOverrides,
     }),
@@ -1365,3 +1372,27 @@ const writeDaContractDeploymentFixture = async (
   await writeFile(fixturePath, JSON.stringify(await readDaDeploymentFixture()));
   return fixturePath;
 };
+
+describe("rejectRetiredWatcherEnvNames", () => {
+  it("refuses the pre-split WATCHER_* names and points at the DA_COMMITTEE_* replacements", () => {
+    expect(() =>
+      rejectRetiredWatcherEnvNames({
+        WATCHER_DATABASE_URL: "postgres://x",
+        WATCHER_API_PORT: "8787",
+        DA_COMMITTEE_API_HOST: "127.0.0.1",
+      }),
+    ).toThrow(
+      /retired environment variable\(s\) WATCHER_API_PORT, WATCHER_DATABASE_URL: .*use DA_COMMITTEE_API_PORT, DA_COMMITTEE_DATABASE_URL/u,
+    );
+  });
+
+  it("accepts an environment that uses only the current names", () => {
+    expect(() =>
+      rejectRetiredWatcherEnvNames({
+        DA_COMMITTEE_DB_PATH: "/tmp/db",
+        DA_COMMITTEE_API_PORT: "8787",
+        WATCHER_UNRELATED_PREFIX_ELSEWHERE: "ignored",
+      }),
+    ).not.toThrow();
+  });
+});

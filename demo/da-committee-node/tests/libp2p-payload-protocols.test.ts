@@ -48,7 +48,7 @@ import type {
   DaStoredPayloadRootSet,
   Header,
 } from "../src/domain.js";
-import { JsonFileWatcherStore } from "../src/store.js";
+import { JsonFileCommitteeStore } from "../src/store.js";
 import { makePayloadFixture, tempDir } from "./helpers.js";
 
 const deploymentFingerprint = "01".repeat(32);
@@ -119,8 +119,8 @@ describe("canonical V1 DA libp2p payload protocols", () => {
       encodeSubmit(fixture.headerHash, fixture.payloadCbor),
       { maxFrameBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes },
     );
-    const firstStore = await JsonFileWatcherStore.open(await tempDir());
-    const secondStore = await JsonFileWatcherStore.open(await tempDir());
+    const firstStore = await JsonFileCommitteeStore.open(await tempDir());
+    const secondStore = await JsonFileCommitteeStore.open(await tempDir());
     const firstLimits = {
       ...DA_TRANSPORT_LIMITS,
       requestTimeoutMs: 1_000,
@@ -205,7 +205,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
   });
 
   it("aborts a stalled inbound submit, releases admission, and recovers", async () => {
-    const store = await JsonFileWatcherStore.open(await tempDir());
+    const store = await JsonFileCommitteeStore.open(await tempDir());
     const admission = new DaPayloadSubmitAdmission(1);
     const limits = {
       ...DA_TRANSPORT_LIMITS,
@@ -279,7 +279,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
 
   it("rejects an incomplete frame without response or persistence and recovers", async () => {
     const fixture = await makePayloadFixture();
-    const store = await JsonFileWatcherStore.open(await tempDir());
+    const store = await JsonFileCommitteeStore.open(await tempDir());
     const admission = new DaPayloadSubmitAdmission(1);
     const limits = {
       ...DA_TRANSPORT_LIMITS,
@@ -780,9 +780,9 @@ const makeHandlers = async (
   }> = {},
 ): Promise<{
   readonly handlers: DaLibp2pPayloadProtocolHandlers;
-  readonly store: JsonFileWatcherStore;
+  readonly store: JsonFileCommitteeStore;
 }> => {
-  const store = await JsonFileWatcherStore.open(await tempDir());
+  const store = await JsonFileCommitteeStore.open(await tempDir());
   return {
     store,
     handlers: new DaLibp2pPayloadProtocolHandlers({

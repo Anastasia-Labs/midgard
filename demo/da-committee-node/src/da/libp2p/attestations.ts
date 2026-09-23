@@ -28,7 +28,7 @@ import {
   validateDaSignatureRecord,
 } from "../../peer/signatures.js";
 import type { DaCommitteeValidation } from "../../signer.js";
-import type { WatcherStore } from "../../store.js";
+import type { CommitteeStore } from "../../store.js";
 import type { DaLibp2pNode, DaLibp2pStreamHandler } from "./DaLibp2pNode.js";
 import type { DaPeerRegistry, DaPeerRegistryEntry } from "./DaPeerRegistry.js";
 import { createDaProtocolAllowlist } from "./DaProtocols.js";
@@ -65,7 +65,7 @@ export type StoreBackedDaAttestationProtocolDeps = {
   readonly committeeValidation: DaCommitteeValidation;
   readonly availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthority;
   readonly store: Pick<
-    WatcherStore,
+    CommitteeStore,
     | "getDaPayload"
     | "getL1SourceState"
     | "saveDaSignature"
@@ -309,7 +309,7 @@ export type DaLibp2pAttestationExchangeOptions = {
   readonly registry: DaPeerRegistry;
   readonly protocol: StoreBackedDaAttestationProtocol;
   readonly committeeValidation: DaCommitteeValidation;
-  readonly store: Pick<WatcherStore, "getDaPayload" | "getStateQueueHeader">;
+  readonly store: Pick<CommitteeStore, "getDaPayload" | "getStateQueueHeader">;
   readonly requestTimeoutMs: number;
 };
 

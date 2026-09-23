@@ -38,7 +38,7 @@ As implemented in this repository:
 - `ApplyToStateQueue` requires the frozen committee hash and threshold to equal current governed parameters and a sufficient attestation count. It burns the attestation token, requires the availability policy's `MintBondFromAttestation` redeemer, and attaches the derived DA bond identity to the state queue.
 - State-queue DA state is `Unattested`, `Attested { da_bond_asset_name }`, `Challenged { da_bond_asset_name, challenge_asset_name }`, or `Published { terminal_commitment }`. Merge permits `Attested` and `Published`; this is not a bare policy-id marker.
 - `RescueStrandedAttestation` refunds the fixed rescue beneficiary when committee or threshold changes strand an attestation. It is separate from the availability commitment's bond owner.
-- The contracts do not verify payload bytes, libp2p retrieval readiness, retention windows, deployment manifests, peer broadcasts, or the 14-day availability promise. Those are requirements of the `threshold-mirror-v1` committee profile defined here.
+- The contracts do not verify payload bytes, libp2p retrieval readiness, retention windows, deployment manifests, peer broadcasts, or the retention promise below (available until the block is past the challengeability horizon or its header is removed from the state queue). Those are requirements of the `threshold-mirror-v1` committee profile defined here.
 
 Protocol initialization resolves an explicitly configured packed committee or locally held signer keys. Without another configured key, it permits a one-key operator committee with threshold `1` and emits a warning. Two-key committees are the standing configuration; the initializer validates governed threshold floors.
 The public committee architecture below is the generalized profile that should replace or wrap that operator-local path for production deployments.
@@ -81,8 +81,8 @@ availability trust statement; it is not full optimistic-rollup verification.
 
 For a deployment using `threshold-mirror-v1` DA:
 
-- A block is DA-acceptable only if a threshold of configured DA committee nodes have independently verified, stored, and made the canonical block payload retrievable over the DA libp2p network for at least 14 days.
-- A DA committee signature over `header_hash` means: "I have the public payload needed to reconstruct this exact state-queue header and I will keep it available for 14 days."
+- A block is DA-acceptable only if a threshold of configured DA committee nodes have independently verified, stored, and made the canonical block payload retrievable over the DA libp2p network until the block is past the challengeability horizon (block end time plus 10.5 days) or its header is removed from the state queue, and for as long as it is the L1 confirmed head or a header live in the L1 state queue.
+- A DA committee signature over `header_hash` means: "I have the public payload needed to reconstruct this exact state-queue header and I will keep it available until its block is past the challengeability horizon or its header is removed from the state queue, and always while it is the L1 confirmed head or live in the L1 state queue."
 - Watchers retrieve the payload from DA committee peers over libp2p, reconstruct the state-queue header from that payload, compare it to Cardano L1, and then run normal Midgard block verification.
 - Operator databases, MPF stores, and admin endpoints are not security-critical DA sources.
 - The DA committee is trusted for availability until a stronger L1-secured DA layer exists.
@@ -163,12 +163,12 @@ and contract-deployment manifests, and its own database URL/role. Its derived
 peer ID must equal the deployment-manifest `public_retained_da.peer_id`; the
 manifest parser rejects using a producer or committee peer ID for this profile.
 
-The public executable refuses `WATCHER_DB_PATH` and `WATCHER_DATABASE_URL`:
+The public executable refuses `DA_COMMITTEE_DB_PATH` and `DA_COMMITTEE_DATABASE_URL`:
 the file store cannot be safely shared with the committee process, and mutable
 committee database credentials are not public-reader credentials. It accepts
 only `DA_PUBLIC_RETAINED_DA_DATABASE_URL` with a separately configured role
 that is verified at startup to have `SELECT` and no DML privilege on
-`watcher_da_payloads` and `watcher_state_queue_headers`. Each lookup is in an
+`committee_da_payloads` and `committee_state_queue_headers`. Each lookup is in an
 explicit PostgreSQL `READ ONLY` transaction; the public process never creates
 or migrates schema.
 
@@ -210,7 +210,7 @@ Validation responsibilities:
 - Resolve the matching state-queue node from Cardano L1 before signing.
 - Verify the reconstructed header equals the state-queue header datum observed on L1.
 - Verify the reconstructed `header_hash` equals the state-queue linked-list key and block asset suffix.
-- Require configured transport retention of at least 15 days, equal to the verified contract deployment manifest. The runtime runs a retention cycle and reports deadline failures. Pruning additionally requires authenticated terminal L1 history and inactive availability-challenge authority. The current composition supplies no challenge authority, so it retains every payload.
+- Require configured transport retention of at least 15 days, equal to the verified contract deployment manifest. That configured value does not govern pruning; it currently only feeds the `retainUntilMs` field of retention reports. The runtime runs a retention cycle and reports deadline failures. Retention is the payload of the L1 confirmed head, the payloads of headers live in the L1 state queue, and payloads whose block end time is within the challengeability horizon (10.5 days), nothing else: every other payload, including any whose header was removed from the queue, is pruned. A cycle runs only against an L1 view read in the same tick; the process exits with code 70 once no L1 view has been read for `L1_VIEW_FATAL_MS` (default: the one-hour DA attestation timeout). A persisted L1 source quarantine never records an L1 view: a quarantined tick returns before reading the state queue, and the store refuses to leave the quarantined state. A quarantined committee therefore exits with code 70 every `L1_VIEW_FATAL_MS` and restarts under its supervisor, repeatedly, until an operator clears the quarantine; there is no in-process path back to a healthy source state.
 
 The validator may store a payload before the L1 header exists, but it must not sign until the L1 header is observed and matched.
 
@@ -242,7 +242,7 @@ Store requirements:
 - Conflict detection for different payload bytes under one `header_hash`.
 - Durable local disk persistence.
 - Chunked reads for large payloads over libp2p streams.
-- Retention sweeper that refuses deletion before the 14-day promise plus configured safety margin.
+- Retention sweeper that never deletes the L1 confirmed head's payload, a live queue header's payload, or a payload still inside the challengeability horizon.
 
 ### L1 HeaderV1 Resolver
 
@@ -269,7 +269,7 @@ Signer inputs:
 - Reconstructed header.
 - L1-observed state-queue header.
 - Local libp2p retrieval readiness.
-- 14-day retention eligibility.
+- Retention eligibility: the payload is kept until its block is past the challengeability horizon or its header is removed from the state queue, and always while it is the L1 confirmed head or live in the L1 state queue.
 - Deployment manifest.
 
 Signer output:
@@ -377,6 +377,8 @@ must agree with governed committee identity. `deployment.fingerprint` equals
 `deployment.contract_deployment_manifest_id`; the contract manifest file digest
 is bound separately. `da_transport.retention_days` must match the verified
 contract manifest's `da.transportProfile.retentionDays` and be at least 15.
+Neither value governs pruning: both currently only feed the `retainUntilMs`
+field of retention reports.
 
 Use the manifest parser and current deployment tooling to produce a full valid
 manifest. Placeholder peer IDs or a shortened example are not a startup config.
@@ -575,7 +577,7 @@ Broadcast outage:
 
 Retention expiry:
 
-- Delete payload bytes only after the 14-day promise plus configured safety margin.
+- Delete payload bytes once the block is past the challengeability horizon (block end time plus 10.5 days) or its header has been removed from the state queue, never while it is the L1 confirmed head or live in the L1 state queue.
 - Keep metadata, signature witnesses, and attestation transaction references longer than payload bytes.
 
 ## Observability
@@ -633,7 +635,6 @@ Production work remains for committee accountability and operations:
 
 ## Open Protocol Decisions
 
-- Complete deployment-bound active/inactive challenge observation so retention deletion can be authorized. Until then the running cycle retains all payloads, including expired terminal headers.
 - How committee nodes discover coordinator peers.
 - Whether committee members are bonded and slashable for false availability claims.
 - Any future change to payload-write admission policy. Current writes remain manifest-authorized; the separate public retained-DA listener is read-only.

@@ -1,3 +1,4 @@
+import { daRetentionPruneDecision } from "@al-ft/midgard-core";
 import {
   assertDeploymentMarkerMatches,
   type DeploymentMarker,
@@ -25,6 +26,8 @@ import {
   parseDaStoredPayloadRecord,
 } from "../domain.js";
 import {
+  type CommitteeDeploymentRecord,
+  type CommitteeStore,
   DECISION_EFFECT_PENDING_LEASE_MS,
   type DecisionOutboxRecord,
   type DecisionOutboxStatus,
@@ -36,9 +39,12 @@ import {
   parseDecisionOutboxRecord,
   parseL1SourceState,
   resolveDaPayloadSave,
-  type WatcherDeploymentRecord,
-  type WatcherStore,
+  type RetainedPayloadPruneRequest,
 } from "../store.js";
+import {
+  retentionBlockEndTimeMs,
+  retentionQueueReference,
+} from "./retention.js";
 
 type JsonRecordRow = {
   readonly record: unknown;
@@ -53,21 +59,36 @@ type JsonRecordRow = {
   readonly effect_id?: unknown;
 };
 
-export class PostgresWatcherStore implements WatcherStore {
+const COMMITTEE_TABLES = [
+  "deployment",
+  "state_queue_headers",
+  "l1_source_state",
+  "decision_outbox",
+  "da_payloads",
+  "da_signatures",
+  "da_conflict_evidence",
+  "da_attestation_candidates",
+  "l1_submissions",
+  "peer_broadcasts",
+  "peer_health",
+  "peer_nonces",
+] as const;
+
+export class PostgresCommitteeStore implements CommitteeStore {
   private readonly pool: Pool;
 
   private constructor(pool: Pool) {
     this.pool = pool;
   }
 
-  static async open(databaseUrl: string): Promise<PostgresWatcherStore> {
+  static async open(databaseUrl: string): Promise<PostgresCommitteeStore> {
     const parsed = new URL(databaseUrl);
     if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
       throw new Error(
-        "WATCHER_DATABASE_URL must be a postgres:// or postgresql:// URL",
+        "DA_COMMITTEE_DATABASE_URL must be a postgres:// or postgresql:// URL",
       );
     }
-    const store = new PostgresWatcherStore(
+    const store = new PostgresCommitteeStore(
       new Pool({
         connectionString: databaseUrl,
         max: 10,
@@ -92,7 +113,7 @@ export class PostgresWatcherStore implements WatcherStore {
       readonly marker_schema_version: string;
       readonly manifest_id: string;
     }>(
-      "SELECT marker_schema_version, manifest_id FROM watcher_deployment WHERE id = 1",
+      "SELECT marker_schema_version, manifest_id FROM committee_deployment WHERE id = 1",
     );
     const existing = result.rows[0];
     if (existing !== undefined) {
@@ -107,12 +128,12 @@ export class PostgresWatcherStore implements WatcherStore {
         );
       } catch {
         throw new Error(
-          `stale_deployment_state_requires_fresh_redeploy: stored_manifest_id=${existing.manifest_id}, canonical_manifest_id=${marker.manifestId}, contract_deployment_info_sha256=${args.contractDeploymentInfoSha256}; refusing to reuse stale watcher state; perform an explicit fresh redeploy/reset before deleting local watcher state.`,
+          `stale_deployment_state_requires_fresh_redeploy: stored_manifest_id=${existing.manifest_id}, canonical_manifest_id=${marker.manifestId}, contract_deployment_info_sha256=${args.contractDeploymentInfoSha256}; refusing to reuse stale committee node state; perform an explicit fresh redeploy/reset before deleting local committee node state.`,
         );
       }
     }
     await this.pool.query(
-      `INSERT INTO watcher_deployment (
+      `INSERT INTO committee_deployment (
          id,
          marker_schema_version,
          manifest_id,
@@ -139,7 +160,7 @@ export class PostgresWatcherStore implements WatcherStore {
     );
   }
 
-  async getDeployment(): Promise<WatcherDeploymentRecord | undefined> {
+  async getDeployment(): Promise<CommitteeDeploymentRecord | undefined> {
     const result = await this.pool.query<{
       readonly marker_schema_version: string;
       readonly manifest_id: string;
@@ -152,7 +173,7 @@ export class PostgresWatcherStore implements WatcherStore {
               manifest_sha256,
               contract_deployment_info_sha256,
               manifest_raw
-       FROM watcher_deployment
+       FROM committee_deployment
        WHERE id = 1`,
     );
     const row = result.rows[0];
@@ -172,7 +193,7 @@ export class PostgresWatcherStore implements WatcherStore {
 
   async getL1SourceState(): Promise<L1SourceState | undefined> {
     const result = await this.pool.query<JsonRecordRow>(
-      "SELECT record FROM watcher_l1_source_state WHERE id = 1",
+      "SELECT record FROM committee_l1_source_state WHERE id = 1",
     );
     const decoded = decodeRow<unknown>(result.rows[0]);
     return decoded === undefined ? undefined : parseL1SourceState(decoded);
@@ -196,7 +217,7 @@ export class PostgresWatcherStore implements WatcherStore {
     effectId: string,
   ): Promise<DecisionOutboxRecord | undefined> {
     return this.getParsedRecord(
-      "SELECT effect_id, header_hash, record FROM watcher_decision_outbox WHERE effect_id = $1",
+      "SELECT effect_id, header_hash, record FROM committee_decision_outbox WHERE effect_id = $1",
       [effectId],
       parseDecisionOutboxRecord,
       assertDecisionOutboxRowIdentity,
@@ -208,9 +229,9 @@ export class PostgresWatcherStore implements WatcherStore {
   ): Promise<readonly DecisionOutboxRecord[]> {
     return this.listParsedRecords(
       headerHash === undefined
-        ? `SELECT effect_id, header_hash, record FROM watcher_decision_outbox
+        ? `SELECT effect_id, header_hash, record FROM committee_decision_outbox
            ORDER BY effect_id`
-        : `SELECT effect_id, header_hash, record FROM watcher_decision_outbox
+        : `SELECT effect_id, header_hash, record FROM committee_decision_outbox
            WHERE header_hash = $1 ORDER BY effect_id`,
       headerHash === undefined ? [] : [headerHash],
       parseDecisionOutboxRecord,
@@ -243,7 +264,7 @@ export class PostgresWatcherStore implements WatcherStore {
         assertPostgresDecisionSourceState(effect, sourceState);
         const current = await queryOne(
           client,
-          "SELECT effect_id, header_hash, record FROM watcher_decision_outbox WHERE effect_id = $1 FOR UPDATE",
+          "SELECT effect_id, header_hash, record FROM committee_decision_outbox WHERE effect_id = $1 FOR UPDATE",
           [effect.effectId],
           parseDecisionOutboxRecord,
           assertDecisionOutboxRowIdentity,
@@ -254,7 +275,7 @@ export class PostgresWatcherStore implements WatcherStore {
             `SELECT updated_at +
                     ($2::bigint * INTERVAL '1 millisecond') <= NOW()
                     AS lease_expired
-             FROM watcher_decision_outbox
+             FROM committee_decision_outbox
              WHERE effect_id = $1`,
             [effect.effectId, DECISION_EFFECT_PENDING_LEASE_MS],
           );
@@ -265,7 +286,7 @@ export class PostgresWatcherStore implements WatcherStore {
           }
         }
         await client.query(
-          `INSERT INTO watcher_decision_outbox
+          `INSERT INTO committee_decision_outbox
              (effect_id, header_hash, record, updated_at)
            VALUES ($1, $2, $3::jsonb, NOW())
            ON CONFLICT (effect_id) DO UPDATE SET
@@ -297,7 +318,7 @@ export class PostgresWatcherStore implements WatcherStore {
         const sourceState = await lockL1SourceState(client);
         const existing = await queryOne(
           client,
-          "SELECT effect_id, header_hash, record FROM watcher_decision_outbox WHERE effect_id = $1 FOR UPDATE",
+          "SELECT effect_id, header_hash, record FROM committee_decision_outbox WHERE effect_id = $1 FOR UPDATE",
           [args.effectId],
           parseDecisionOutboxRecord,
           assertDecisionOutboxRowIdentity,
@@ -330,7 +351,7 @@ export class PostgresWatcherStore implements WatcherStore {
             : { lastError: args.lastError }),
         });
         await client.query(
-          `UPDATE watcher_decision_outbox
+          `UPDATE committee_decision_outbox
            SET record = $2::jsonb, updated_at = NOW()
            WHERE effect_id = $1`,
           [args.effectId, encodeRecord(completed)],
@@ -364,14 +385,14 @@ export class PostgresWatcherStore implements WatcherStore {
           .map(({ headerHash }) => headerHash);
         const reason = `l1_source_quarantined:${quarantined.quarantineReason!}`;
         await client.query(
-          `UPDATE watcher_l1_source_state
+          `UPDATE committee_l1_source_state
            SET record = $1::jsonb, updated_at = NOW()
            WHERE id = 1`,
           [encodeRecord(quarantined)],
         );
         if (headerHashes.length > 0) {
           await client.query(
-            `UPDATE watcher_state_queue_headers
+            `UPDATE committee_state_queue_headers
              SET record =
                    record ||
                    jsonb_build_object(
@@ -386,7 +407,7 @@ export class PostgresWatcherStore implements WatcherStore {
             [headerHashes, reason, quarantined.quarantinedAt],
           );
           await client.query(
-            `UPDATE watcher_da_payloads
+            `UPDATE committee_da_payloads
              SET record =
                    record ||
                    jsonb_build_object(
@@ -398,7 +419,7 @@ export class PostgresWatcherStore implements WatcherStore {
             [headerHashes, reason],
           );
           await client.query(
-            `UPDATE watcher_da_signatures
+            `UPDATE committee_da_signatures
              SET record = record || jsonb_build_object(
                    'broadcastStatus', 'post_failed'
                  ),
@@ -407,7 +428,7 @@ export class PostgresWatcherStore implements WatcherStore {
             [headerHashes],
           );
           await client.query(
-            `UPDATE watcher_l1_submissions
+            `UPDATE committee_l1_submissions
              SET record =
                    record ||
                    jsonb_build_object(
@@ -419,7 +440,7 @@ export class PostgresWatcherStore implements WatcherStore {
             [headerHashes, reason],
           );
           await client.query(
-            `UPDATE watcher_peer_broadcasts
+            `UPDATE committee_peer_broadcasts
              SET record =
                    (record - 'nextAttemptAt') ||
                    jsonb_build_object(
@@ -432,7 +453,7 @@ export class PostgresWatcherStore implements WatcherStore {
             [headerHashes, reason, quarantined.quarantinedAt],
           );
           await client.query(
-            `UPDATE watcher_decision_outbox
+            `UPDATE committee_decision_outbox
              SET record =
                    record ||
                    jsonb_build_object(
@@ -462,7 +483,7 @@ export class PostgresWatcherStore implements WatcherStore {
 
   async upsertStateQueueHeader(record: StateQueueHeaderRecord): Promise<void> {
     await this.upsertRecord(
-      "watcher_state_queue_headers",
+      "committee_state_queue_headers",
       record.headerHash,
       record,
     );
@@ -470,7 +491,7 @@ export class PostgresWatcherStore implements WatcherStore {
 
   async listStateQueueHeaders(): Promise<readonly StateQueueHeaderRecord[]> {
     return this.listRecords<StateQueueHeaderRecord>(
-      "SELECT record FROM watcher_state_queue_headers ORDER BY header_hash",
+      "SELECT record FROM committee_state_queue_headers ORDER BY header_hash",
     );
   }
 
@@ -478,7 +499,7 @@ export class PostgresWatcherStore implements WatcherStore {
     headerHash: string,
   ): Promise<StateQueueHeaderRecord | undefined> {
     return this.getRecord<StateQueueHeaderRecord>(
-      "SELECT record FROM watcher_state_queue_headers WHERE header_hash = $1",
+      "SELECT record FROM committee_state_queue_headers WHERE header_hash = $1",
       [headerHash],
     );
   }
@@ -490,7 +511,7 @@ export class PostgresWatcherStore implements WatcherStore {
       try {
         const existing = await queryOne(
           client,
-          "SELECT header_hash, record FROM watcher_da_payloads WHERE header_hash = $1 FOR UPDATE",
+          "SELECT header_hash, record FROM committee_da_payloads WHERE header_hash = $1 FOR UPDATE",
           [canonicalRecord.headerHash],
           parseDaStoredPayloadRecord,
           assertPayloadRowIdentity,
@@ -498,7 +519,7 @@ export class PostgresWatcherStore implements WatcherStore {
         const saved = resolveDaPayloadSave(existing, canonicalRecord);
         await upsertRecordWithClient(
           client,
-          "watcher_da_payloads",
+          "committee_da_payloads",
           canonicalRecord.headerHash,
           saved,
         );
@@ -515,7 +536,7 @@ export class PostgresWatcherStore implements WatcherStore {
     headerHash: string,
   ): Promise<DaStoredPayloadRecord | undefined> {
     return this.getParsedRecord(
-      "SELECT header_hash, record FROM watcher_da_payloads WHERE header_hash = $1",
+      "SELECT header_hash, record FROM committee_da_payloads WHERE header_hash = $1",
       [headerHash],
       parseDaStoredPayloadRecord,
       assertPayloadRowIdentity,
@@ -524,19 +545,67 @@ export class PostgresWatcherStore implements WatcherStore {
 
   async listDaPayloads(): Promise<readonly DaStoredPayloadRecord[]> {
     return this.listParsedRecords(
-      "SELECT header_hash, record FROM watcher_da_payloads ORDER BY header_hash",
+      "SELECT header_hash, record FROM committee_da_payloads ORDER BY header_hash",
       [],
       parseDaStoredPayloadRecord,
       assertPayloadRowIdentity,
     );
   }
 
-  async deleteDaPayload(headerHash: string): Promise<boolean> {
-    const result = await this.pool.query(
-      "DELETE FROM watcher_da_payloads WHERE header_hash = $1",
-      [headerHash],
-    );
-    return (result.rowCount ?? 0) > 0;
+  async deleteDaPayloadIfPrunable(
+    request: RetainedPayloadPruneRequest,
+  ): Promise<boolean> {
+    return this.withClient(async (client) => {
+      await client.query("BEGIN");
+      try {
+        // The payload row is locked and its header row share-locked, so a
+        // header written between the caller's scan and this delete is either
+        // decided here or waits for the decision to commit.
+        const payload = await queryOne(
+          client,
+          "SELECT header_hash, record FROM committee_da_payloads WHERE header_hash = $1 FOR UPDATE",
+          [request.headerHash],
+          parseDaStoredPayloadRecord,
+          assertPayloadRowIdentity,
+        );
+        const header =
+          payload === undefined
+            ? undefined
+            : decodeRow<StateQueueHeaderRecord>(
+                (
+                  await client.query<JsonRecordRow>(
+                    "SELECT record FROM committee_state_queue_headers WHERE header_hash = $1 FOR SHARE",
+                    [request.headerHash],
+                  )
+                ).rows[0],
+              );
+        const prune =
+          payload !== undefined &&
+          daRetentionPruneDecision({
+            nowMs: request.nowMs,
+            blockEndTimeMs: retentionBlockEndTimeMs(payload, header),
+            headerStatus: header?.status ?? "unobserved",
+            queueReference: retentionQueueReference(
+              request.headerHash,
+              request,
+            ),
+            retentionDays: request.retentionDays,
+          }).decision === "prune";
+        const deleted =
+          prune &&
+          ((
+            await client.query(
+              "DELETE FROM committee_da_payloads WHERE header_hash = $1",
+              [request.headerHash],
+            )
+          ).rowCount ?? 0) > 0;
+        await client.query("COMMIT");
+        return deleted;
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    });
   }
 
   async saveDaSignature(record: DaSignatureRecord): Promise<void> {
@@ -565,7 +634,7 @@ export class PostgresWatcherStore implements WatcherStore {
     readonly signerIndex: number;
   }): Promise<DaSignatureRecordV1 | undefined> {
     return this.getParsedRecord(
-      `SELECT header_hash, commitment_digest, signer_index, record FROM watcher_da_signatures
+      `SELECT header_hash, commitment_digest, signer_index, record FROM committee_da_signatures
        WHERE header_hash = $1 AND commitment_digest = $2 AND signer_index = $3`,
       [args.headerHash, args.availabilityCommitmentDigest, args.signerIndex],
       parseDaSignatureRecord,
@@ -579,10 +648,10 @@ export class PostgresWatcherStore implements WatcherStore {
     return this.listParsedRecords(
       headerHash === undefined
         ? `SELECT header_hash, commitment_digest, signer_index, record
-           FROM watcher_da_signatures
+           FROM committee_da_signatures
            ORDER BY header_hash, commitment_digest, signer_index`
         : `SELECT header_hash, commitment_digest, signer_index, record
-           FROM watcher_da_signatures
+           FROM committee_da_signatures
            WHERE header_hash = $1
            ORDER BY header_hash, commitment_digest, signer_index`,
       headerHash === undefined ? [] : [headerHash],
@@ -596,7 +665,7 @@ export class PostgresWatcherStore implements WatcherStore {
   ): Promise<boolean> {
     const canonicalRecord = parseDaStoredConflictEvidenceRecord(record);
     const result = await this.pool.query(
-      `INSERT INTO watcher_da_conflict_evidence (
+      `INSERT INTO committee_da_conflict_evidence (
          deployment_fingerprint,
          evidence_hash,
          header_hash,
@@ -634,13 +703,13 @@ export class PostgresWatcherStore implements WatcherStore {
                   commitment_digest, conflicting_header_hash,
                   conflicting_commitment_digest, signer_index, reporter_peer_id,
                   record
-           FROM watcher_da_conflict_evidence
+           FROM committee_da_conflict_evidence
            ORDER BY header_hash, signer_index, evidence_hash`
         : `SELECT deployment_fingerprint, evidence_hash, header_hash,
                   commitment_digest, conflicting_header_hash,
                   conflicting_commitment_digest, signer_index, reporter_peer_id,
                   record
-           FROM watcher_da_conflict_evidence
+           FROM committee_da_conflict_evidence
            WHERE header_hash = $1
            ORDER BY header_hash, signer_index, evidence_hash`,
       headerHash === undefined ? [] : [headerHash],
@@ -653,7 +722,7 @@ export class PostgresWatcherStore implements WatcherStore {
     record: DaAttestationCandidateRecord,
   ): Promise<void> {
     await this.pool.query(
-      `INSERT INTO watcher_da_attestation_candidates (
+      `INSERT INTO committee_da_attestation_candidates (
          header_hash,
          out_ref,
          record,
@@ -672,9 +741,9 @@ export class PostgresWatcherStore implements WatcherStore {
   ): Promise<readonly DaAttestationCandidateRecord[]> {
     return this.listRecords<DaAttestationCandidateRecord>(
       headerHash === undefined
-        ? `SELECT record FROM watcher_da_attestation_candidates
+        ? `SELECT record FROM committee_da_attestation_candidates
            ORDER BY header_hash, out_ref`
-        : `SELECT record FROM watcher_da_attestation_candidates
+        : `SELECT record FROM committee_da_attestation_candidates
            WHERE header_hash = $1
            ORDER BY header_hash, out_ref`,
       headerHash === undefined ? [] : [headerHash],
@@ -683,7 +752,7 @@ export class PostgresWatcherStore implements WatcherStore {
 
   async saveL1Submission(record: L1SubmissionRecord): Promise<void> {
     await this.pool.query(
-      `INSERT INTO watcher_l1_submissions (
+      `INSERT INTO committee_l1_submissions (
          header_hash,
          tx_kind,
          tx_hash,
@@ -700,14 +769,14 @@ export class PostgresWatcherStore implements WatcherStore {
 
   async listL1Submissions(): Promise<readonly L1SubmissionRecord[]> {
     return this.listRecords<L1SubmissionRecord>(
-      `SELECT record FROM watcher_l1_submissions
+      `SELECT record FROM committee_l1_submissions
        ORDER BY header_hash, tx_kind, tx_hash`,
     );
   }
 
   async savePeerBroadcast(record: DaPeerBroadcastRecord): Promise<void> {
     await this.pool.query(
-      `INSERT INTO watcher_peer_broadcasts (
+      `INSERT INTO committee_peer_broadcasts (
          peer_id,
          header_hash,
          commitment_digest,
@@ -736,7 +805,7 @@ export class PostgresWatcherStore implements WatcherStore {
     readonly signerIndex: number;
   }): Promise<DaPeerBroadcastRecord | undefined> {
     return this.getRecord<DaPeerBroadcastRecord>(
-      `SELECT record FROM watcher_peer_broadcasts
+      `SELECT record FROM committee_peer_broadcasts
        WHERE peer_id = $1 AND header_hash = $2 AND commitment_digest = $3 AND signer_index = $4`,
       [
         args.peerId,
@@ -752,9 +821,9 @@ export class PostgresWatcherStore implements WatcherStore {
   ): Promise<readonly DaPeerBroadcastRecord[]> {
     return this.listRecords<DaPeerBroadcastRecord>(
       headerHash === undefined
-        ? `SELECT record FROM watcher_peer_broadcasts
+        ? `SELECT record FROM committee_peer_broadcasts
            ORDER BY header_hash, commitment_digest, signer_index, peer_id`
-        : `SELECT record FROM watcher_peer_broadcasts
+        : `SELECT record FROM committee_peer_broadcasts
            WHERE header_hash = $1
            ORDER BY header_hash, commitment_digest, signer_index, peer_id`,
       headerHash === undefined ? [] : [headerHash],
@@ -763,7 +832,7 @@ export class PostgresWatcherStore implements WatcherStore {
 
   async savePeerHealth(record: DaPeerHealthRecord): Promise<void> {
     await this.pool.query(
-      `INSERT INTO watcher_peer_health (
+      `INSERT INTO committee_peer_health (
          peer_id,
          record,
          updated_at
@@ -778,13 +847,13 @@ export class PostgresWatcherStore implements WatcherStore {
 
   async listPeerHealth(): Promise<readonly DaPeerHealthRecord[]> {
     return this.listRecords<DaPeerHealthRecord>(
-      `SELECT record FROM watcher_peer_health ORDER BY peer_id`,
+      `SELECT record FROM committee_peer_health ORDER BY peer_id`,
     );
   }
 
   async recordPeerNonce(record: DaPeerNonceRecord): Promise<boolean> {
     const result = await this.pool.query(
-      `INSERT INTO watcher_peer_nonces (
+      `INSERT INTO committee_peer_nonces (
          deployment_fingerprint,
          signer_index,
          nonce,
@@ -804,8 +873,9 @@ export class PostgresWatcherStore implements WatcherStore {
   }
 
   private async initSchema(): Promise<void> {
+    await this.renameLegacyTables();
     await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS watcher_deployment (
+      CREATE TABLE IF NOT EXISTS committee_deployment (
         id integer PRIMARY KEY CHECK (id = 1),
         marker_schema_version text NOT NULL CHECK (marker_schema_version = '${MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION}'),
         manifest_id text NOT NULL CHECK (manifest_id ~ '^[0-9a-f]{64}$'),
@@ -816,21 +886,21 @@ export class PostgresWatcherStore implements WatcherStore {
         updated_at timestamptz NOT NULL DEFAULT NOW()
       );
 
-      CREATE TABLE IF NOT EXISTS watcher_state_queue_headers (
+      CREATE TABLE IF NOT EXISTS committee_state_queue_headers (
         header_hash text PRIMARY KEY,
         record jsonb NOT NULL,
         created_at timestamptz NOT NULL DEFAULT NOW(),
         updated_at timestamptz NOT NULL DEFAULT NOW()
       );
 
-      CREATE TABLE IF NOT EXISTS watcher_l1_source_state (
+      CREATE TABLE IF NOT EXISTS committee_l1_source_state (
         id integer PRIMARY KEY CHECK (id = 1),
         record jsonb NOT NULL,
         created_at timestamptz NOT NULL DEFAULT NOW(),
         updated_at timestamptz NOT NULL DEFAULT NOW()
       );
 
-      CREATE TABLE IF NOT EXISTS watcher_decision_outbox (
+      CREATE TABLE IF NOT EXISTS committee_decision_outbox (
         effect_id text PRIMARY KEY,
         header_hash text NOT NULL,
         record jsonb NOT NULL,
@@ -838,14 +908,14 @@ export class PostgresWatcherStore implements WatcherStore {
         updated_at timestamptz NOT NULL DEFAULT NOW()
       );
 
-      CREATE TABLE IF NOT EXISTS watcher_da_payloads (
+      CREATE TABLE IF NOT EXISTS committee_da_payloads (
         header_hash text PRIMARY KEY,
         record jsonb NOT NULL,
         created_at timestamptz NOT NULL DEFAULT NOW(),
         updated_at timestamptz NOT NULL DEFAULT NOW()
       );
 
-      CREATE TABLE IF NOT EXISTS watcher_da_signatures (
+      CREATE TABLE IF NOT EXISTS committee_da_signatures (
         header_hash text NOT NULL,
         commitment_digest text NOT NULL CHECK (commitment_digest ~ '^[0-9a-f]{64}$'),
         signer_index integer NOT NULL CHECK (signer_index >= 0 AND signer_index <= 255),
@@ -855,7 +925,7 @@ export class PostgresWatcherStore implements WatcherStore {
         PRIMARY KEY (header_hash, commitment_digest, signer_index)
       );
 
-      CREATE TABLE IF NOT EXISTS watcher_da_conflict_evidence (
+      CREATE TABLE IF NOT EXISTS committee_da_conflict_evidence (
         deployment_fingerprint text NOT NULL CHECK (deployment_fingerprint ~ '^[0-9a-f]{64}$'),
         evidence_hash text NOT NULL CHECK (evidence_hash ~ '^[0-9a-f]{64}$'),
         header_hash text NOT NULL CHECK (header_hash ~ '^[0-9a-f]{56}$'),
@@ -870,7 +940,7 @@ export class PostgresWatcherStore implements WatcherStore {
         PRIMARY KEY (deployment_fingerprint, evidence_hash)
       );
 
-      CREATE TABLE IF NOT EXISTS watcher_da_attestation_candidates (
+      CREATE TABLE IF NOT EXISTS committee_da_attestation_candidates (
         header_hash text NOT NULL,
         out_ref text NOT NULL,
         record jsonb NOT NULL,
@@ -879,7 +949,7 @@ export class PostgresWatcherStore implements WatcherStore {
         PRIMARY KEY (header_hash, out_ref)
       );
 
-      CREATE TABLE IF NOT EXISTS watcher_l1_submissions (
+      CREATE TABLE IF NOT EXISTS committee_l1_submissions (
         header_hash text NOT NULL,
         tx_kind text NOT NULL,
         tx_hash text NOT NULL,
@@ -889,7 +959,7 @@ export class PostgresWatcherStore implements WatcherStore {
         PRIMARY KEY (header_hash, tx_kind, tx_hash)
       );
 
-      CREATE TABLE IF NOT EXISTS watcher_peer_broadcasts (
+      CREATE TABLE IF NOT EXISTS committee_peer_broadcasts (
         peer_id text NOT NULL,
         header_hash text NOT NULL,
         commitment_digest text NOT NULL CHECK (commitment_digest ~ '^[0-9a-f]{64}$'),
@@ -900,14 +970,14 @@ export class PostgresWatcherStore implements WatcherStore {
         PRIMARY KEY (peer_id, header_hash, commitment_digest, signer_index)
       );
 
-      CREATE TABLE IF NOT EXISTS watcher_peer_health (
+      CREATE TABLE IF NOT EXISTS committee_peer_health (
         peer_id text PRIMARY KEY,
         record jsonb NOT NULL,
         created_at timestamptz NOT NULL DEFAULT NOW(),
         updated_at timestamptz NOT NULL DEFAULT NOW()
       );
 
-      CREATE TABLE IF NOT EXISTS watcher_peer_nonces (
+      CREATE TABLE IF NOT EXISTS committee_peer_nonces (
         deployment_fingerprint text NOT NULL,
         signer_index integer NOT NULL CHECK (signer_index >= 0 AND signer_index <= 255),
         nonce text NOT NULL,
@@ -916,6 +986,27 @@ export class PostgresWatcherStore implements WatcherStore {
         PRIMARY KEY (deployment_fingerprint, signer_index, nonce)
       );
     `);
+  }
+
+  /**
+   * The committee node's tables were named `watcher_*` before the DA
+   * committee role was split out of the watcher.  Rename any legacy table in
+   * place so an existing Postgres store keeps its data; the rename is skipped
+   * when the new table already exists.
+   */
+  private async renameLegacyTables(): Promise<void> {
+    const statements = COMMITTEE_TABLES.map(
+      (table) => `
+      DO $$
+      BEGIN
+        IF to_regclass('committee_${table}') IS NULL
+           AND to_regclass('watcher_${table}') IS NOT NULL THEN
+          ALTER TABLE watcher_${table} RENAME TO committee_${table};
+        END IF;
+      END
+      $$;`,
+    );
+    await this.pool.query(statements.join("\n"));
   }
 
   private async upsertRecord<T extends { readonly headerHash: string }>(
@@ -983,7 +1074,7 @@ const ensureL1SourceStateRow = async (
   proposed: L1SourceState,
 ): Promise<void> => {
   await client.query(
-    `INSERT INTO watcher_l1_source_state (id, record, updated_at)
+    `INSERT INTO committee_l1_source_state (id, record, updated_at)
      VALUES (1, $1::jsonb, NOW())
      ON CONFLICT (id) DO NOTHING`,
     [encodeRecord(proposed)],
@@ -994,7 +1085,7 @@ const lockL1SourceState = async (
   client: PoolClient,
 ): Promise<L1SourceState> => {
   const result = await client.query<JsonRecordRow>(
-    "SELECT record FROM watcher_l1_source_state WHERE id = 1 FOR UPDATE",
+    "SELECT record FROM committee_l1_source_state WHERE id = 1 FOR UPDATE",
   );
   const decoded = decodeRow<unknown>(result.rows[0]);
   if (decoded === undefined) {
@@ -1011,7 +1102,7 @@ const mergeLockedL1SourceState = async (
   const current = await lockL1SourceState(client);
   const merged = mergeL1SourceState(current, proposed);
   await client.query(
-    `UPDATE watcher_l1_source_state
+    `UPDATE committee_l1_source_state
      SET record = $1::jsonb, updated_at = NOW()
      WHERE id = 1`,
     [encodeRecord(merged)],
@@ -1056,7 +1147,7 @@ const upsertSignatureWithClient = async (
   record: DaSignatureRecordV1,
 ): Promise<void> => {
   await client.query(
-    `INSERT INTO watcher_da_signatures
+    `INSERT INTO committee_da_signatures
        (header_hash, commitment_digest, signer_index, record, updated_at)
      VALUES ($1, $2, $3, $4::jsonb, NOW())
      ON CONFLICT (header_hash, commitment_digest, signer_index) DO UPDATE SET

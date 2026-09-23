@@ -77,7 +77,7 @@ node dist/index.js reconcile tx-committed \
   --json
 node dist/index.js reconcile da-attested \
   --header-hash <header-hash> \
-  --watcher-url http://127.0.0.1:8787 \
+  --committee-url http://127.0.0.1:8787 \
   --contract-deployment-info \
   deploymentInfo/contract-deployment-info.json \
   --json
@@ -109,7 +109,7 @@ acceptance. The running merge fiber must prove liveness.
 | Producer bind/listen preflight fails                   | Stop stale producer instances; regenerate matching host-preflight/runtime manifests; rerun before node startup.                                                            |
 | DA payload missing                                     | Inspect producer publication rows, retained payload, pending finalization, and watcher logs. Use `db:backfill-da-payloads --header-hash` only as explicit repair evidence. |
 | DA payload root mismatch, malformed data, or conflict  | Stop. Do not merge. Fix payload construction, deployment identity, or endpoint/peer set.                                                                                   |
-| State-queue lease blocks merge                         | Inspect `/stateQueueMutationLease` and unfinished mutation jobs; wait or repair the actual owner.                                                                          |
+| State-queue lease blocks merge                         | Inspect the `stateQueueMutationLease` field of `/readyz` and unfinished mutation jobs; wait or repair the actual owner.                                                    |
 | Scheduler/commit validity expired                      | Rebuild through the worker path with fresh timing; never reuse expired signed transactions or pending rows.                                                                |
 | Automatic merge wait times out                         | Inspect readiness, queue, lease, scheduler, finalization, DA status, and merge logs. Fix the merge fiber; do not call `/merge`.                                            |
 | Hash mismatch                                          | Preserve raw body/log separately; report command, tx hash, expected/actual hash, script policy/outref, and artifact path.                                                  |

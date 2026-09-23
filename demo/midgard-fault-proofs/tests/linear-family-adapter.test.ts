@@ -1,6 +1,11 @@
 import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 
+import {
+  createLocalStateQueueMutationLeaseCoordinator,
+  LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
+  LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
+} from "../src/remove-fraudulent-block.js";
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
 import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
@@ -174,6 +179,90 @@ const context = {
 } as const;
 
 describe("production linear family adapter V1", () => {
+  it.each(["fabricatedDeposit", "fabricatedWithdrawal"] as const)(
+    "persists and resumes the terminal queue lease for %s",
+    async (category) => {
+      const stage: { value: FraudProofRawL1FamilyStage } = {
+        value: {
+          kind: "step",
+          step: 4,
+          threadOutRef: outRef("22"),
+          stateQueueBlockOutRef: outRef("11"),
+        },
+      };
+      const required = linearFamilyObservation({
+        category,
+        headerHash,
+        provenance,
+        stage: stage.value,
+      });
+      if (required.kind !== "action_required")
+        throw new Error("missing terminal action");
+      const lease = {
+        token: "terminal-lease",
+        source: "queue-observer",
+        renew: vi.fn(async () => undefined),
+        release: vi.fn(async () => undefined),
+        fail: vi.fn(async () => undefined),
+      };
+      const resume = vi.fn(async () => lease);
+      const coordinator = { acquire: async () => lease, resume };
+      const observation = { ...l1(stage), category };
+      const transactions = {
+        ...port(async () => ({
+          transaction: transaction(),
+          mutationLease: lease,
+        })),
+        category,
+      };
+      const args = {
+        ...context,
+        identity: { ...identity, category },
+        action: required.action,
+      };
+      const adapter = createLinearFamilyWorkflowAdapter({
+        category,
+        l1: observation,
+        transactions,
+        stateQueueMutationLeaseCoordinator: coordinator,
+      });
+      const preflight = await adapter.preflight(args);
+      expect(preflight.durableRecovery).toEqual({
+        stateQueueMutationLease: { token: lease.token, source: lease.source },
+      });
+      const fresh = createLinearFamilyWorkflowAdapter({
+        category,
+        l1: observation,
+        transactions,
+        stateQueueMutationLeaseCoordinator: coordinator,
+      });
+      await expect(
+        fresh.reconcile({
+          ...args,
+          txHash,
+          durableRecovery: preflight.durableRecovery,
+        }),
+      ).resolves.toMatchObject({ kind: "unknown" });
+      expect(resume).toHaveBeenCalledWith({
+        token: lease.token,
+        source: lease.source,
+      });
+      expect(lease.release).not.toHaveBeenCalled();
+      const withoutLease = createLinearFamilyWorkflowAdapter({
+        category,
+        l1: observation,
+        transactions: {
+          ...transactions,
+          capture: async () => ({ transaction: transaction() }),
+        },
+        stateQueueMutationLeaseCoordinator: coordinator,
+      });
+      await expect(withoutLease.preflight(args)).rejects.toThrow(
+        "topology disagreed with its mutation lease",
+      );
+    },
+  );
+
   it("distinguishes a changed authenticated action from a deterministic build failure", async () => {
     const stage: { value: FraudProofRawL1FamilyStage } = {
       value: { kind: "not_started", stateQueueBlockOutRef: outRef("10") },
@@ -598,6 +687,102 @@ describe("production linear family adapter V1", () => {
       }),
     ).resolves.toEqual({ kind: "confirmed", txHash });
     expect(expiredResume).toHaveBeenCalledTimes(1);
+  });
+
+  it("resumes the local coordinator's journaled lease and refuses a node-lease journal", async () => {
+    const stage = {
+      value: {
+        kind: "proof_token",
+        fraudProofOutRef: outRef("22"),
+        stateQueueBlockOutRef: outRef("11"),
+        nextRemovalOutRef: outRef("33"),
+      } as FraudProofRawL1FamilyStage,
+    };
+    const required = linearFamilyObservation({
+      category: "daHashPreimage",
+      headerHash,
+      provenance,
+      stage: stage.value,
+    });
+    if (required.kind !== "action_required") throw new Error("missing action");
+    const coordinator = createLocalStateQueueMutationLeaseCoordinator();
+    const lease = await coordinator.acquire();
+    const adapter = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(async () => ({
+        transaction: transaction(),
+        mutationLease: lease,
+      })),
+      stateQueueMutationLeaseCoordinator: coordinator,
+    });
+    const preflight = await adapter.preflight({
+      ...context,
+      action: required.action,
+    });
+    expect(preflight.durableRecovery).toEqual({
+      stateQueueMutationLease: {
+        token: LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
+        source: LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
+      },
+    });
+
+    // A restarted process: fresh adapter, fresh local coordinator.
+    const localCoordinator = createLocalStateQueueMutationLeaseCoordinator();
+    const resume = vi.fn(localCoordinator.resume!);
+    const freshCoordinator = { ...localCoordinator, resume };
+    const fresh = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(async () => ({ transaction: transaction() })),
+      stateQueueMutationLeaseCoordinator: freshCoordinator,
+    });
+    await expect(
+      fresh.reconcile({
+        ...context,
+        action: required.action,
+        txHash,
+        durableRecovery: preflight.durableRecovery,
+      }),
+    ).resolves.toMatchObject({
+      kind: "unknown",
+      reason:
+        "Recorded signed bytes or canonical recovery source are unavailable",
+    });
+    expect(resume).toHaveBeenCalledWith({
+      token: LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
+      source: LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
+    });
+    await expect(resume.mock.results[0]!.value).resolves.toMatchObject({
+      token: lease.token,
+      source: lease.source,
+    });
+
+    // A journal written under a Midgard node's HTTP lease never resumes locally.
+    const nodeJournal = createLinearFamilyWorkflowAdapter({
+      category: "daHashPreimage",
+      l1: l1(stage),
+      transactions: port(async () => {
+        throw new Error("must not rebuild");
+      }),
+      stateQueueMutationLeaseCoordinator:
+        createLocalStateQueueMutationLeaseCoordinator(),
+    });
+    const refused = await nodeJournal.reconcile({
+      ...context,
+      action: required.action,
+      txHash,
+      durableRecovery: {
+        stateQueueMutationLease: {
+          token: "lease-token-1",
+          source: "http://midgard-node.test",
+        },
+      },
+    });
+    expect(refused).toMatchObject({ kind: "unknown" });
+    expect(refused.kind === "unknown" ? refused.reason : "").toContain(
+      "different coordinator",
+    );
   });
 
   it("rejects missing, surplus, or substituted mutation-lease authority", async () => {

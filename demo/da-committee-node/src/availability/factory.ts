@@ -8,7 +8,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { l1SourceAuthorityDigest, type WatcherConfig } from "../config.js";
+import { l1SourceAuthorityDigest, type CommitteeConfig } from "../config.js";
 import {
   correctionLockValidatorFromDeploymentInfo,
   daAttestationValidatorsFromDeployment,
@@ -20,7 +20,7 @@ import {
 } from "../l1/provider.js";
 import type { StateQueueProvider } from "../l1/state-queue-scanner.js";
 import { selectL1SubmitterWallet } from "../l1/submitter.js";
-import type { WatcherStore } from "../store.js";
+import type { CommitteeStore } from "../store.js";
 import { availabilityResponderReferenceScripts } from "./reference-scripts.js";
 import {
   AvailabilityResponder,
@@ -29,8 +29,8 @@ import {
 } from "./responder.js";
 
 export const availabilityResponderFromConfig = async (
-  config: WatcherConfig,
-  store: WatcherStore,
+  config: CommitteeConfig,
+  store: CommitteeStore,
   chainProvider: StateQueueProvider,
   deps: { readonly lucidFromProviderUrl: typeof lucidFromProviderUrl } = {
     lucidFromProviderUrl,
@@ -152,7 +152,7 @@ export const availabilityResponderFromConfig = async (
         cursor.point.network !== point.network
       ) {
         throw new Error(
-          "Availability responder awaits the next canonical watcher scan before acting",
+          "Availability responder awaits the next canonical committee node L1 scan before acting",
         );
       }
       return { pointId: `${point.slot}:${point.blockHash}`, slot: point.slot };
@@ -167,7 +167,7 @@ export const availabilityResponderFromConfig = async (
         l1SourceAuthorityDigest(config.network, config.l1Source)
     ) {
       throw new Error(
-        "Availability responder requires a healthy authenticated watcher source; rollback recovery must finish first",
+        "Availability responder requires a healthy authenticated committee node L1 source; rollback recovery must finish first",
       );
     }
     await readBoundary();
@@ -278,7 +278,7 @@ export const availabilityResponderFromConfig = async (
 };
 
 const availabilityParametersFromConfig = (
-  config: WatcherConfig,
+  config: CommitteeConfig,
 ): SDK.DaAvailabilityParameters => {
   const p = config.availabilityChallenge;
   return SDK.daAvailabilityParameters({

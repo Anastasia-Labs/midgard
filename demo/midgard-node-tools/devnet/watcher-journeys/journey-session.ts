@@ -11,7 +11,6 @@ import {
   resolveProverSigner,
 } from "@al-ft/midgard-fault-proofs";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
-import { startStateQueueMutationLeaseServer } from "midgard-node/tests/helpers/state-queue-mutation-lease-server";
 import {
   makeWatcherFinalityPolicy,
   parseWatcherConfig,
@@ -166,24 +165,6 @@ export const openJourneySession = async (runDirectory: string) => {
       deploymentFingerprint: deployment.manifest.manifestId,
     });
     cleanup.push(archives.close);
-    const leaseServer = await startStateQueueMutationLeaseServer({
-      postgres: {
-        host: "127.0.0.1",
-        port: Number(runEnv.MIDGARD_PHASE4_POSTGRES_PORT),
-        username: runEnv.MIDGARD_PHASE4_POSTGRES_USER,
-        password: runEnv.MIDGARD_PHASE4_POSTGRES_PASSWORD,
-      },
-    });
-    cleanup.push(async () => {
-      try {
-        await writeJourneyArtifact(
-          join(directory, "node-lease-inspection.json"),
-          await leaseServer.inspect(),
-        );
-      } finally {
-        await leaseServer.close();
-      }
-    });
     const secret = async (name: string, initial: string) => {
       const path = join(context.runDirectory, "secrets", name);
       if (!existsSync(path))
@@ -210,13 +191,6 @@ export const openJourneySession = async (runDirectory: string) => {
       "watcher-trusted-record.key",
       randomBytes(32).toString("hex"),
     );
-    const nodeAdminKey = {
-      kind: "file" as const,
-      path: join(context.runDirectory, "secrets/journey-node-admin.key"),
-    };
-    await writeFile(nodeAdminKey.path, leaseServer.adminApiKey, {
-      mode: 0o600,
-    });
     const nativeQuery = await journeyNativeNodeQuery(context.runDirectory);
     if (nativeQuery.watcherConfig.l1.source.sourceMode !== "local_node")
       throw new Error("Native node source required");
@@ -387,7 +361,7 @@ export const openJourneySession = async (runDirectory: string) => {
       },
       30_000,
     );
-    const launch = async (readinessHeaderHash: string) => {
+    const launch = async () => {
       const processInput = {
         schemaVersion: WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
         watcherConfig: watcherInput,
@@ -405,13 +379,10 @@ export const openJourneySession = async (runDirectory: string) => {
           journalPath: join(runtimeDirectory, "availability.sqlite"),
           minimumFundingLovelace: "100000000",
         },
-        readinessHeaderHash,
         faultProofInfrastructure: {
           manifestPath: authority.manifestPath,
           blueprintPath: authority.blueprintPath,
           deploymentInfoPath: authority.deploymentInfoPath,
-          midgardNodeUrl: leaseServer.url,
-          midgardNodeAdminKeySource: nodeAdminKey,
           historicalNativeScriptHistory: archives.configuration,
         },
       };
@@ -447,7 +418,6 @@ export const openJourneySession = async (runDirectory: string) => {
           availabilityKey.path,
           bearerKey.path,
           recordKey.path,
-          nodeAdminKey.path,
         ].map((path) => ({
           path,
           sha256: createHash("sha256").update(readFileSync(path)).digest("hex"),
@@ -603,14 +573,12 @@ export const openJourneySession = async (runDirectory: string) => {
         throw cause;
       }
     };
-    const ensureWatcher = async (readinessHeaderHash: string) => {
+    const ensureWatcher = async () => {
       await assertHealthy();
-      return await (started ??= launch(readinessHeaderHash).catch(
-        async (cause: unknown) => {
-          await close();
-          throw cause;
-        },
-      ));
+      return await (started ??= launch().catch(async (cause: unknown) => {
+        await close();
+        throw cause;
+      }));
     };
     return {
       context,

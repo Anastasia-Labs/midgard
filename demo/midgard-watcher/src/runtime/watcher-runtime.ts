@@ -21,6 +21,7 @@ import {
 import {
   createWatcherFaultProofApplication,
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+  WATCHER_STARTUP_READINESS_HEADER_HASH,
   type WatcherFaultProofApplication,
   type WatcherFaultProofStartupReadiness,
 } from "../fault-proofs/fault-proof-application.js";
@@ -371,10 +372,7 @@ export const createWatcherRuntime = async (input: {
   const trusted = await createWatcherTrustedHeadClientRuntime({
     config: input.config,
     policy,
-    additionalSecretSources: [
-      input.config.faultProofInfrastructure.midgardNodeAdminKeySource,
-      input.config.availability.keySource,
-    ],
+    additionalSecretSources: [input.config.availability.keySource],
   });
   const historicalNativeScriptCheckpointStore =
     createSqliteHistoricalNativeScriptCheckpointStore({
@@ -550,7 +548,6 @@ export const createWatcherRuntime = async (input: {
             input.config.workflowJournalDirectory,
             "readiness",
             category,
-            input.config.readinessHeaderHash,
           );
           await prepareJournalDirectory(journalDirectory);
           faultProofReadiness.push(
@@ -558,7 +555,7 @@ export const createWatcherRuntime = async (input: {
               mode: "resume",
               category,
               deploymentFingerprint: deploymentIdentity.manifestId,
-              headerHash: input.config.readinessHeaderHash,
+              headerHash: WATCHER_STARTUP_READINESS_HEADER_HASH,
               journalDirectory,
               runtimeConfigPath: input.config.watcherRuntimeConfigPath,
             }),

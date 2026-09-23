@@ -5,9 +5,9 @@ import { OnChainLifecycleCoordinator } from "../src/coordinator/on-chain.js";
 import type { DaAttestationCandidateRecord } from "../src/domain.js";
 import { deriveExpectedDaAvailabilityCommitment } from "../src/peer/signatures.js";
 import { loadDaSigner, validateDaSignerMembership } from "../src/signer.js";
-import { JsonFileWatcherStore } from "../src/store.js";
+import { JsonFileCommitteeStore } from "../src/store.js";
 import { bytesToHex } from "../src/utils/hex.js";
-import { WatcherService } from "../src/watcher.js";
+import { CommitteeService } from "../src/committee-service.js";
 import {
   makeObservedNode,
   makePayloadFixture,
@@ -61,17 +61,17 @@ describe("multi-node DA committee integration", () => {
       signer: peerSigner,
       signerIndex: 1,
     });
-    const coordinatorStore = await JsonFileWatcherStore.open(
+    const coordinatorStore = await JsonFileCommitteeStore.open(
       `${dir}/coordinator-store`,
     );
-    const peerStore = await JsonFileWatcherStore.open(`${dir}/peer-store`);
+    const peerStore = await JsonFileCommitteeStore.open(`${dir}/peer-store`);
     const observedHeaderProvider = {
       fetchStateQueueNodes: async () => [
         makeObservedNode({ header, headerHash, depth: 10 }),
       ],
     };
     const payloadSource = payloadSourceFromBytes(payloadCbor, "producer-peer");
-    const peerService = new WatcherService({
+    const peerService = new CommitteeService({
       config: peerConfig,
       store: peerStore,
       stateQueueProvider: observedHeaderProvider,
@@ -167,7 +167,7 @@ describe("multi-node DA committee integration", () => {
         },
       },
     });
-    const coordinatorService = new WatcherService({
+    const coordinatorService = new CommitteeService({
       config: coordinatorConfig,
       store: coordinatorStore,
       stateQueueProvider: observedHeaderProvider,

@@ -9,7 +9,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import type { LoadedWatcherConfig, WatcherConfig } from "../config.js";
+import type { LoadedCommitteeConfig, CommitteeConfig } from "../config.js";
 import type { DaAttestationCandidateRecord } from "../domain.js";
 import {
   blockfrostCurrentChainPointResolver,
@@ -51,7 +51,7 @@ export interface DaAttestationChainReader {
 
 export class LucidDaAttestationChainReader implements DaAttestationChainReader {
   private readonly lucid: LucidEvolution;
-  private readonly config: WatcherConfig;
+  private readonly config: CommitteeConfig;
   private readonly providerSource: string;
   private readonly inclusionPointResolver: (
     utxo: UTxO,
@@ -69,7 +69,7 @@ export class LucidDaAttestationChainReader implements DaAttestationChainReader {
     localAuthority,
   }: {
     readonly lucid: LucidEvolution;
-    readonly config: WatcherConfig;
+    readonly config: CommitteeConfig;
     readonly providerSource: string;
     readonly inclusionPointResolver?: (
       utxo: UTxO,
@@ -350,7 +350,7 @@ export class MultiDaAttestationChainReader implements DaAttestationChainReader {
 }
 
 export const daAttestationReaderFromConfig = async (
-  config: LoadedWatcherConfig,
+  config: LoadedCommitteeConfig,
 ): Promise<DaAttestationChainReader | undefined> => {
   const l1Source = config.l1Source;
   const providerDescriptors =

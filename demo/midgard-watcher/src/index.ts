@@ -23,6 +23,7 @@ export {
   WATCHER_FAULT_PROOF_STARTUP_READINESS,
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   WATCHER_MISSING_WORKFLOW_CATEGORIES,
+  WATCHER_STARTUP_READINESS_HEADER_HASH,
   type WatcherFaultProofApplication,
   type WatcherFaultProofApplicationDependencies,
   type WatcherFaultProofApplicationOptions,

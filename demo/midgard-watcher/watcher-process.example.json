@@ -1,0 +1,114 @@
+{
+  "schemaVersion": "midgard-watcher-production-process-config-v1",
+  "watcherConfig": {
+    "schemaVersion": "midgard-watcher-config-v1",
+    "mode": "acceptance",
+    "targetNetwork": "Preprod",
+    "l1": {
+      "source": {
+        "sourceMode": "local_node",
+        "authorityNodeId": "watcher-node",
+        "chainSync": {
+          "kind": "cardano_node_socket",
+          "socketPath": "/ipc/node.socket",
+          "nodeConfigPath": "/cardano-config/config.json",
+          "genesisConfigPath": "/cardano-config/shelley-genesis.json",
+          "genesisIdentitySha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "queryServices": [
+          {
+            "kind": "ogmios",
+            "identity": "local-ogmios",
+            "endpoint": "ws://127.0.0.1:1337"
+          },
+          {
+            "kind": "kupo",
+            "identity": "local-kupo",
+            "endpoint": "http://127.0.0.1:1442"
+          }
+        ]
+      },
+      "requestTimeoutMs": 10000,
+      "maxConcurrency": 4,
+      "finality": {
+        "depth": 30,
+        "rollback": {
+          "beforeFinality": "rewind",
+          "afterFinality": "quarantine",
+          "maxDepth": 30
+        }
+      }
+    },
+    "da": {
+      "peers": [
+        {
+          "identity": "da-peer-a",
+          "multiaddr": "/dns4/da-a.example/tcp/443/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345"
+        }
+      ],
+      "requestTimeoutMs": 10000,
+      "maxConcurrency": 4
+    },
+    "storage": {
+      "driver": "sqlite",
+      "path": "/var/lib/midgard-watcher/watcher.sqlite",
+      "rollbackAuthorityKeySource": {
+        "kind": "file",
+        "path": "/run/secrets/rollback_key"
+      }
+    },
+    "proverWallet": {
+      "keySource": {
+        "kind": "file",
+        "path": "/run/secrets/prover_key"
+      }
+    },
+    "deadlines": {
+      "daFetchMs": 60000,
+      "daPublishMs": 60000,
+      "proofConstructMs": 300000,
+      "proofSubmitMs": 120000
+    }
+  },
+  "watcherRuntimeConfigPath": "/etc/midgard/watcher-runtime.json",
+  "deploymentAuthorityPath": "/etc/midgard/bundles/deployment-authority.json",
+  "ruleBundlePath": "/etc/midgard/bundles/rule-bundle.json",
+  "fundingProfileBundlePath": "/etc/midgard/bundles/funding-profiles.json",
+  "nativeChainSyncBinaryPath": "/usr/local/bin/midgard-chain-sync",
+  "trustedHeadAuthorityEndpoint": "http://127.0.0.1:7401",
+  "operationsEndpoint": "http://127.0.0.1:7402",
+  "httpBearerSecretSource": {
+    "kind": "file",
+    "path": "/run/secrets/bearer"
+  },
+  "workflowJournalDirectory": "/var/lib/midgard-watcher/workflows",
+  "availability": {
+    "keySource": {
+      "kind": "file",
+      "path": "/run/secrets/availability_key"
+    },
+    "journalPath": "/var/lib/midgard-watcher/availability.sqlite",
+    "minimumFundingLovelace": "100000000"
+  },
+  "faultProofInfrastructure": {
+    "manifestPath": "/etc/midgard/bundles/deployment-manifest.json",
+    "blueprintPath": "/etc/midgard/bundles/plutus.json",
+    "deploymentInfoPath": "/etc/midgard/bundles/contract-deployment-info.json",
+    "historicalNativeScriptHistory": {
+      "sourceMode": "external_provider_quorum",
+      "consistencyPolicy": "exact_bytes_all_providers_v1",
+      "providers": [
+        {
+          "sourceId": "history-a",
+          "operatorIdentitySha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "authorityEndpoint": "https://history-a.example"
+        },
+        {
+          "sourceId": "history-b",
+          "operatorIdentitySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "authorityEndpoint": "https://history-b.example"
+        }
+      ]
+    }
+  }
+}

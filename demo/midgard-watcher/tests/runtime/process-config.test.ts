@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -10,6 +10,7 @@ import {
 } from "../../src/l1/finality-engine.js";
 import {
   parseWatcherConfig,
+  parseWatcherStrictJsonValue,
   WATCHER_CONFIG_SCHEMA_VERSION,
   type WatcherConfig,
 } from "../../src/runtime/config.js";
@@ -144,16 +145,10 @@ const productionConfig = (): WatcherProcessConfig =>
       journalPath: "/var/lib/midgard-watcher/availability.sqlite",
       minimumFundingLovelace: "100000000",
     },
-    readinessHeaderHash: h28("77"),
     faultProofInfrastructure: {
       manifestPath: "/etc/midgard/deployment-manifest.json",
       blueprintPath: "/etc/midgard/plutus.json",
       deploymentInfoPath: "/etc/midgard/contract-deployment-info.json",
-      midgardNodeUrl: "http://127.0.0.1:3000",
-      midgardNodeAdminKeySource: {
-        kind: "environment",
-        variable: "MIDGARD_NODE_ADMIN_KEY",
-      },
       historicalNativeScriptHistory: {
         sourceMode: "external_provider_quorum",
         consistencyPolicy: "exact_bytes_all_providers_v1",
@@ -217,9 +212,9 @@ describe("production process authority separation", () => {
     expect(() =>
       parseWatcherProcessConfig({
         ...base,
-        readinessHeaderHash: h32("77"),
+        readinessHeaderHash: h28("77"),
       }),
-    ).toThrow("readiness header hash is invalid");
+    ).toThrow("unknown or missing fields");
     expect(() => {
       const { ruleBundlePath: _omitted, ...withoutBundle } = base;
       return parseWatcherProcessConfig(withoutBundle);
@@ -264,6 +259,93 @@ describe("production process authority separation", () => {
         },
       }),
     ).toThrow("not independent");
+  });
+
+  it("rejects the deleted Midgard node lease coordination keys as unknown fields", () => {
+    const base = productionConfig();
+    for (const deleted of [
+      { midgardNodeUrl: "http://127.0.0.1:3000" },
+      {
+        midgardNodeAdminKeySource: {
+          kind: "environment",
+          variable: "MIDGARD_NODE_ADMIN_KEY",
+        },
+      },
+      { stateQueueLeaseTtlMs: 30_000 },
+    ]) {
+      expect(() =>
+        parseWatcherProcessConfig({
+          ...base,
+          faultProofInfrastructure: {
+            ...base.faultProofInfrastructure,
+            ...deleted,
+          },
+        }),
+      ).toThrow(
+        "watcher fault-proof infrastructure has unknown or missing fields",
+      );
+    }
+  });
+
+  it("parses the shipped watcher-process.example.json template", async () => {
+    // Parsed from its bytes rather than loaded by path: the loader refuses a
+    // checkout under /tmp, and the template's location is not what is tested.
+    const config = parseWatcherProcessConfig(
+      parseWatcherStrictJsonValue(
+        await readFile(
+          new URL("../../watcher-process.example.json", import.meta.url),
+          "utf8",
+        ),
+      ),
+    );
+    expect(config.schemaVersion).toBe(WATCHER_PROCESS_CONFIG_SCHEMA_VERSION);
+    expect(Object.keys(config.faultProofInfrastructure).sort()).toEqual([
+      "blueprintPath",
+      "deploymentInfoPath",
+      "historicalNativeScriptHistory",
+      "manifestPath",
+    ]);
+  });
+
+  it("parses the shipped authority.example.json template as the sidecar of the start template", async () => {
+    const template = async (name: string): Promise<unknown> =>
+      parseWatcherStrictJsonValue(
+        await readFile(new URL(`../../${name}`, import.meta.url), "utf8"),
+      );
+    const authority = parseWatcherTrustedHeadAuthorityProcessConfig(
+      await template("authority.example.json"),
+    );
+    const start = parseWatcherProcessConfig(
+      await template("watcher-process.example.json"),
+    );
+    expect(authority.schemaVersion).toBe(
+      WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION,
+    );
+    expect(authority.endpoint).toBe(start.trustedHeadAuthorityEndpoint);
+    expect(authority.httpBearerSecretSource).toEqual(
+      start.httpBearerSecretSource,
+    );
+    const source = start.watcherConfig.l1.source;
+    if (source.sourceMode !== "local_node") {
+      throw new Error("start template is not a local_node watcher");
+    }
+    expect(authority.policy.network).toBe(start.watcherConfig.targetNetwork);
+    expect(authority.policy.authorityNodeId).toBe(source.authorityNodeId);
+    expect(authority.policy.authorityChainSyncSocketPath).toBe(
+      source.chainSync.socketPath,
+    );
+    expect(authority.policy.authorityGenesisIdentitySha256).toBe(
+      source.chainSync.genesisIdentitySha256,
+    );
+    expect(
+      authority.policy.localQueryServices
+        .map((service) => `${service.providerId} ${service.endpoint}`)
+        .sort(),
+    ).toEqual(
+      source.queryServices
+        .map((service) => `${service.identity} ${service.endpoint}`)
+        .sort(),
+    );
   });
 
   it("requires a durable availability journal, positive capital, and a distinct challenger key", () => {

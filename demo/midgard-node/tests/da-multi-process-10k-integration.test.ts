@@ -15,7 +15,7 @@ import type {
   Libp2pDaPeerConfig,
   Libp2pDaTransportConfig,
 } from "da-committee-node/config";
-import { JsonFileWatcherStore } from "da-committee-node/store";
+import { JsonFileCommitteeStore } from "da-committee-node/store";
 import { build as bundleWithTsup } from "tsup";
 import { describe, expect, it } from "vitest";
 
@@ -385,7 +385,7 @@ describe("real separate-process canonical V1 DA publication", () => {
 
       await Promise.all(
         committeeSeeds.map(async (_, index) => {
-          const store = await JsonFileWatcherStore.open(
+          const store = await JsonFileCommitteeStore.open(
             join(temp, `store-${index.toString()}`),
           );
           try {

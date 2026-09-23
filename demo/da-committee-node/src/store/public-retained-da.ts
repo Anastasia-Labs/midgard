@@ -5,11 +5,11 @@ import type {
   StateQueueHeaderRecord,
 } from "../domain.js";
 import { parseDaStoredPayloadRecord } from "../domain.js";
-import type { WatcherStore } from "../store.js";
+import type { CommitteeStore } from "../store.js";
 
 /** The complete storage authority of the standalone public listener. */
 export type PublicRetainedDaStore = Pick<
-  WatcherStore,
+  CommitteeStore,
   "close" | "getDaPayload" | "getStateQueueHeader"
 >;
 
@@ -77,7 +77,7 @@ export class PostgresPublicRetainedDaStore implements PublicRetainedDaStore {
   ): Promise<DaStoredPayloadRecord | undefined> {
     return this.withReadOnlyTransaction(async (client) => {
       const result = await client.query<StoredRecordRow>(
-        "SELECT record FROM watcher_da_payloads WHERE header_hash = $1",
+        "SELECT record FROM committee_da_payloads WHERE header_hash = $1",
         [headerHash],
       );
       const record = result.rows[0]?.record;
@@ -97,7 +97,7 @@ export class PostgresPublicRetainedDaStore implements PublicRetainedDaStore {
   ): Promise<StateQueueHeaderRecord | undefined> {
     return this.withReadOnlyTransaction(async (client) => {
       const result = await client.query<StoredRecordRow>(
-        "SELECT record FROM watcher_state_queue_headers WHERE header_hash = $1",
+        "SELECT record FROM committee_state_queue_headers WHERE header_hash = $1",
         [headerHash],
       );
       const record = result.rows[0]?.record;
@@ -147,16 +147,16 @@ export class PostgresPublicRetainedDaStore implements PublicRetainedDaStore {
                pg_has_role(current_user, 'pg_read_all_data', 'member')
                  OR pg_has_role(current_user, 'pg_write_all_data', 'member')
                  OR pg_has_role(current_user, 'pg_monitor', 'member') AS broad_role_membership,
-               has_table_privilege(current_user, 'watcher_da_payloads', 'SELECT') AS payload_select,
-               has_table_privilege(current_user, 'watcher_da_payloads', 'INSERT')
-                 OR has_table_privilege(current_user, 'watcher_da_payloads', 'UPDATE')
-                 OR has_table_privilege(current_user, 'watcher_da_payloads', 'DELETE')
-                 OR has_table_privilege(current_user, 'watcher_da_payloads', 'TRUNCATE') AS payload_write,
-               has_table_privilege(current_user, 'watcher_state_queue_headers', 'SELECT') AS header_select,
-               has_table_privilege(current_user, 'watcher_state_queue_headers', 'INSERT')
-                 OR has_table_privilege(current_user, 'watcher_state_queue_headers', 'UPDATE')
-                 OR has_table_privilege(current_user, 'watcher_state_queue_headers', 'DELETE')
-                 OR has_table_privilege(current_user, 'watcher_state_queue_headers', 'TRUNCATE') AS header_write
+               has_table_privilege(current_user, 'committee_da_payloads', 'SELECT') AS payload_select,
+               has_table_privilege(current_user, 'committee_da_payloads', 'INSERT')
+                 OR has_table_privilege(current_user, 'committee_da_payloads', 'UPDATE')
+                 OR has_table_privilege(current_user, 'committee_da_payloads', 'DELETE')
+                 OR has_table_privilege(current_user, 'committee_da_payloads', 'TRUNCATE') AS payload_write,
+               has_table_privilege(current_user, 'committee_state_queue_headers', 'SELECT') AS header_select,
+               has_table_privilege(current_user, 'committee_state_queue_headers', 'INSERT')
+                 OR has_table_privilege(current_user, 'committee_state_queue_headers', 'UPDATE')
+                 OR has_table_privilege(current_user, 'committee_state_queue_headers', 'DELETE')
+                 OR has_table_privilege(current_user, 'committee_state_queue_headers', 'TRUNCATE') AS header_write
         FROM pg_roles role
         WHERE role.rolname = current_user
       `);

@@ -24,7 +24,7 @@ import {
   writeDaStreamFrame,
 } from "da-committee-node/da/libp2p/DaStreamCodec";
 import { hashBlockHeader } from "da-committee-node/l1/state-queue-scanner";
-import { JsonFileWatcherStore } from "da-committee-node/store";
+import { JsonFileCommitteeStore } from "da-committee-node/store";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -76,7 +76,7 @@ describe("real multi-peer DA publication", () => {
     };
     const stores = await Promise.all(
       committeeSeeds.map(async () =>
-        JsonFileWatcherStore.open(await tempDir()),
+        JsonFileCommitteeStore.open(await tempDir()),
       ),
     );
     let slowThirdPeer = false;

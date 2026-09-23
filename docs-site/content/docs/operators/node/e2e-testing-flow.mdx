@@ -31,12 +31,6 @@ durable, machine-readable summary:
 
 ## Prerequisites
 
-The current consensus profile has no accepted release-evidence digest. Both the
-committee and public retained-DA reader enforce release readiness at startup, so
-this acceptance sequence is currently blocked at that prerequisite. Verify the
-compiled profile before submitting deployment transactions; do not bypass the
-assertion to manufacture acceptance evidence.
-
 <Steps>
   <Step>
     **Toolchain**: `pnpm` (see [Local Dev](/docs/getting-started/local-dev)) and
@@ -142,7 +136,8 @@ node "$TOOLS_CLI" e2e-start-service \
   --cwd "$DA_NODE_DIR" \
   --ready-url http://127.0.0.1:8787/readyz \
   --health-url http://127.0.0.1:8787/healthz \
-  --pid-file "$DA_NODE_DIR/run/e2e-watcher.pid" \
+  --raw-log "$DA_NODE_DIR/run/e2e-da-committee-node.log" \
+  --pid-file "$DA_NODE_DIR/run/e2e-da-committee-node.pid" \
   --ready-timeout-ms 180000 \
   -- pnpm start
 ```
@@ -210,7 +205,7 @@ Classify a blocker and take the safe next action rather than resubmitting blindl
 | DA node not ready before L2 activity | Stop before transfers. Fix DA wallet/config/provider and restart the DA node.                                  |
 | DA payload conflict or root mismatch | Stop. Do not merge. Diagnose payload construction and the endpoint set.                                        |
 | DA signatures below threshold        | Start enough DA signer instances or fix peer propagation. Do not lower the threshold.                          |
-| Merge skipped by state-queue lease   | Inspect `/stateQueueMutationLease` and unfinished mutation jobs; wait or repair the real stuck job.            |
+| Merge skipped by state-queue lease   | Inspect `stateQueueMutationLease` in `/readyz` and unfinished mutation jobs; wait or repair the stuck job.     |
 
 Before repeating a submitted milestone, use the relevant `reconcile` command
 with `--json` and resolve ambiguous transaction observations. Use `--repair`

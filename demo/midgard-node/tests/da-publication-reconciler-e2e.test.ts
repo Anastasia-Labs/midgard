@@ -18,7 +18,7 @@ import {
   DaLibp2pNode,
   DaPayloadSubmitAdmission,
 } from "da-committee-node/da/libp2p";
-import { JsonFileWatcherStore } from "da-committee-node/store";
+import { JsonFileCommitteeStore } from "da-committee-node/store";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -94,7 +94,7 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
     };
     const stores = await Promise.all(
       committeeSeeds.map((_, index) =>
-        JsonFileWatcherStore.open(join(temp, "store-" + index.toString())),
+        JsonFileCommitteeStore.open(join(temp, "store-" + index.toString())),
       ),
     );
     const committeeNodes = committeeSeeds.map((seed, index) => {

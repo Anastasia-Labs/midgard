@@ -44,7 +44,7 @@ The runtime reads its deployment and network identity from the environment:
   `seed:`, `hex:`, or `file:` source. Required in libp2p DA mode.
 
 These are identity inputs, not a complete environment. Committee startup also
-requires store configuration (`WATCHER_DB_PATH` or `WATCHER_DATABASE_URL`) and the
+requires store configuration (`DA_COMMITTEE_DB_PATH` or `DA_COMMITTEE_DATABASE_URL`) and the
 manifest-selected committee signer and provider settings validated by
 `src/config.ts`. The public retained-DA reader has its own isolated environment
 and [startup instructions](/docs/watchers/da-committee-node#dedicated-public-reader).

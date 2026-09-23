@@ -169,10 +169,10 @@ const runJourney = async (
       historicalNativeScriptProviders: archives.configuration.providers,
       retain,
       readConfirmedTransaction: native.transaction,
-      onHealthyPredecessor: async (headerHash) => {
+      onHealthyPredecessor: async () => {
         // Binding and launch are awaited; the process then catches up while
         // the fixture prepares its fault. Baseline capture already completed.
-        await session.ensureWatcher(headerHash);
+        await session.ensureWatcher();
       },
       readSignedCommitRecovery: session.readSignedCommitRecovery,
       onStage: (name) => {
@@ -202,18 +202,13 @@ const runJourney = async (
     if (!session.watcherStarted() && existsSync(headPath)) {
       const head = await readJourneyArtifact<{
         deploymentFingerprint: string;
-        block: JourneySuccessor;
       }>(headPath);
-      if (
-        head.deploymentFingerprint !== deployment.manifest.manifestId ||
-        !/^[0-9a-f]{56}$/u.test(head.block.headerHash)
-      )
+      if (head.deploymentFingerprint !== deployment.manifest.manifestId)
         throw new Error(
-          "Watcher session readiness head belongs to a different deployment or is malformed",
+          "Watcher session readiness head belongs to a different deployment",
         );
       // Startup binds all runners; actual classification still observes the live queue.
-      // A retained header hash remains a valid binding identity after its UTxO is removed.
-      await session.ensureWatcher(head.block.headerHash);
+      await session.ensureWatcher();
     }
     const { fixture } = execution;
     const staged = await stage("invalid commitment and DA attestations", () =>
@@ -240,7 +235,7 @@ const runJourney = async (
         current: staged.current,
       }),
     );
-    const running = await session.ensureWatcher(staged.current.headerHash);
+    const running = await session.ensureWatcher();
     const { config, requireLive, operations, trustedHeadRevision } = running;
     diagnostics = running.diagnostics;
     const workflowBaseline = baseline?.get(staged.current.headerHash) ?? [];

@@ -1,6 +1,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 
-import type { WatcherConfig } from "../config.js";
+import type { CommitteeConfig } from "../config.js";
 import { type DaAttestationChainReader } from "../l1/da-attestation-reader.js";
 import { daAttestationValidatorsFromDeployment } from "../l1/deployment.js";
 import { lucidFromProviderUrl } from "../l1/lucid.js";
@@ -12,7 +12,7 @@ import {
   preflightL1SubmitterWallet,
   selectL1SubmitterWallet,
 } from "../l1/submitter.js";
-import type { WatcherStore } from "../store.js";
+import type { CommitteeStore } from "../store.js";
 import { normalizeHex } from "../utils/hex.js";
 import { LucidDaAttestationSubmitter } from "./lucid-submitter.js";
 import { OnChainLifecycleCoordinator } from "./on-chain.js";
@@ -34,10 +34,10 @@ const defaultDeps: OnChainCoordinatorFactoryDeps = {
 };
 
 export const onChainCoordinatorFromConfig = async (
-  config: WatcherConfig,
+  config: CommitteeConfig,
   chainReader?: DaAttestationChainReader,
   store?: Pick<
-    WatcherStore,
+    CommitteeStore,
     "saveDaAttestationCandidate" | "saveL1Submission" | "listDaSignatures"
   >,
   deps: OnChainCoordinatorFactoryDeps = defaultDeps,
@@ -133,7 +133,7 @@ export const onChainCoordinatorFromConfig = async (
 };
 
 export const l1SubmitterWalletPreflightFromConfig = async (
-  config: WatcherConfig,
+  config: CommitteeConfig,
   deps: Pick<
     OnChainCoordinatorFactoryDeps,
     | "lucidFromProviderUrl"
@@ -163,7 +163,7 @@ export const l1SubmitterWalletPreflightFromConfig = async (
 };
 
 const l1SubmitterPreflightOptionsFromConfig = (
-  config: WatcherConfig,
+  config: CommitteeConfig,
 ): L1SubmitterPreflightOptions => {
   if (config.l1SubmitterKeySource === undefined) {
     throw new Error(

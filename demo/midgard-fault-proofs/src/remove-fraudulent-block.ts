@@ -105,9 +105,6 @@ import {
 
 export const STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS = 300_000n;
 export const STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS = 120_000n;
-const DEFAULT_NODE_ADMIN_KEY_ENV = "MIDGARD_NODE_ADMIN_KEY";
-const STATE_QUEUE_MUTATION_LEASE_ENDPOINT = "stateQueueMutationLease";
-const FAULT_PROOF_LEASE_HOLDER = "fault_proof_removal";
 
 export type FraudSlashEconomicsPolicy = Readonly<{
   profile: "public-preprod-launch-v1" | "bounded-acceptance-v1";
@@ -489,10 +486,6 @@ export type RemoveFraudulentBlockCliConfig = SubmitProviderConfig & {
   readonly fraudCategory?: RemoveFraudulentBlockFraudCategory;
   readonly fraudulentHeaderHash: string;
   readonly awaitConfirmation?: boolean;
-  readonly midgardNodeUrl?: string;
-  readonly midgardNodeAdminKey?: string;
-  readonly midgardNodeAdminKeyEnv?: string;
-  readonly stateQueueLeaseTtlMs?: number;
 };
 
 export type RemoveFraudulentBlockFraudCategory =
@@ -596,180 +589,62 @@ export type SubmitRemoveFraudulentBlockResult = {
   } | null;
 };
 
-const normalizeNonEmpty = (value: string | undefined): string | undefined => {
-  const trimmed = value?.trim() ?? "";
-  return trimmed.length === 0 ? undefined : trimmed;
-};
+/**
+ * Lease identity recorded by the local coordinator, the only coordination mode.
+ * A journaled in-flight removal resumes only under this exact identity; a
+ * journal written under a Midgard node's HTTP lease (a node URL as `source`)
+ * is refused rather than silently continued.
+ */
+export const LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE = "local";
+export const LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN =
+  "local-retry-until-confirmed";
 
-const normalizeNodeUrl = (url: string): string => {
-  const trimmed = url.trim();
-  if (trimmed.length === 0) {
-    throw new Error("--midgard-node-url must not be empty.");
-  }
-  return trimmed.replace(/\/+$/, "");
-};
-
-const parsePositiveSafeInteger = (
-  value: number | undefined,
-  label: string,
-): number | undefined => {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`${label} must be a positive safe integer.`);
-  }
-  return value;
-};
-
-const resolveNodeAdminKey = (
-  config: RemoveFraudulentBlockCliConfig,
-  env: NodeJS.ProcessEnv = process.env,
-): string => {
-  const envName =
-    normalizeNonEmpty(config.midgardNodeAdminKeyEnv) ??
-    DEFAULT_NODE_ADMIN_KEY_ENV;
-  const resolved =
-    normalizeNonEmpty(config.midgardNodeAdminKey) ??
-    normalizeNonEmpty(env[envName]);
-  if (resolved === undefined) {
-    throw new Error(
-      `Midgard node admin key is required for coordinated state-queue removal; pass --midgard-node-admin-key or set ${envName}.`,
-    );
-  }
-  return resolved;
-};
-
-const readJsonResponse = async (response: Response): Promise<unknown> => {
-  const text = await response.text();
-  if (text.trim().length === 0) {
-    return {};
-  }
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { error: text };
-  }
-};
-
-const responseError = (json: unknown): string => {
-  if (typeof json === "object" && json !== null && "error" in json) {
-    const error = (json as { readonly error?: unknown }).error;
-    if (typeof error === "string") {
-      return error;
-    }
-  }
-  return JSON.stringify(json);
-};
-
-export const createHttpStateQueueMutationLeaseCoordinator = ({
-  midgardNodeUrl,
-  adminKey,
-  ttlMs,
-  holder = FAULT_PROOF_LEASE_HOLDER,
-}: {
-  readonly midgardNodeUrl: string;
-  readonly adminKey: string;
-  readonly ttlMs?: number;
-  readonly holder?: string;
-}): StateQueueMutationLeaseCoordinator => {
-  const nodeUrl = normalizeNodeUrl(midgardNodeUrl);
-  const normalizedTtlMs = parsePositiveSafeInteger(
-    ttlMs,
-    "--state-queue-lease-ttl-ms",
+const refuseLeaseCoordinationModeSwitch = (
+  expectedSource: string,
+  actualSource: string,
+): Error =>
+  new Error(
+    `Refusing state-queue mutation lease from a different coordinator: expected=${expectedSource} actual=${actualSource}. A journaled in-flight removal cannot switch coordination mode; a journal started by a coordinator that no longer exists must be abandoned.`,
   );
-  const endpoint = `${nodeUrl}/${STATE_QUEUE_MUTATION_LEASE_ENDPOINT}`;
-  const post = async (body: Record<string, unknown>): Promise<unknown> => {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-midgard-admin-key": adminKey,
-      },
-      body: JSON.stringify(body),
+
+/**
+ * Local state-queue mutation coordination. The prover fences no Midgard node's
+ * commitment or merge workers, so the "lease" is a frozen no-op: each peel of a
+ * non-tail removal is confirmed and the state-queue topology refetched before
+ * the next one, and a peel that loses to a competing commit or merge throws.
+ * Retry-until-confirmed lives in the watcher's workflow orchestrator, which
+ * reconciles against authenticated L1 state and rebuilds the removal from the
+ * fresh view; a bare CLI run fails on a lost race and must be re-run. The
+ * identity is still journaled so a resume cannot silently pick up a removal
+ * journaled under a different coordinator.
+ */
+export const createLocalStateQueueMutationLeaseCoordinator =
+  (): StateQueueMutationLeaseCoordinator => {
+    const lease: StateQueueMutationLease = Object.freeze({
+      token: LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
+      source: LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
+      renew: async () => {},
+      release: async () => {},
+      fail: async () => {},
     });
-    const json = await readJsonResponse(response);
-    if (!response.ok) {
-      throw new Error(
-        `POST /${STATE_QUEUE_MUTATION_LEASE_ENDPOINT} ${String(
-          body.action,
-        )} failed with HTTP ${response.status.toString()}: ${responseError(json)}`,
-      );
-    }
-    return json;
-  };
-  const leaseForToken = (token: string): StateQueueMutationLease => {
-    if (token.trim().length === 0 || token.trim() !== token) {
-      throw new Error("State-queue mutation lease token must be canonical");
-    }
-    const leaseBody = (
-      action: "renew" | "release" | "fail",
-      extra: Record<string, unknown> = {},
-    ) =>
-      post({
-        action,
-        token,
-        ...(normalizedTtlMs === undefined ? {} : { ttlMs: normalizedTtlMs }),
-        ...extra,
-      });
     return {
-      token,
-      source: nodeUrl,
-      renew: async () => {
-        await leaseBody("renew");
-      },
-      release: async () => {
-        await leaseBody("release");
-      },
-      fail: async (error: string) => {
-        await leaseBody("fail", { error });
+      acquire: async () => lease,
+      resume: async ({ token, source }) => {
+        if (source !== LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE) {
+          throw refuseLeaseCoordinationModeSwitch(
+            LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
+            source,
+          );
+        }
+        if (token !== LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN) {
+          throw new Error(
+            `Refusing state-queue mutation lease with an unknown local token: expected=${LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN} actual=${token}`,
+          );
+        }
+        return lease;
       },
     };
   };
-
-  return {
-    acquire: async () => {
-      const json = await post({
-        action: "acquire",
-        holder,
-        ...(normalizedTtlMs === undefined ? {} : { ttlMs: normalizedTtlMs }),
-      });
-      if (
-        typeof json !== "object" ||
-        json === null ||
-        (json as { readonly status?: unknown }).status !== "acquired" ||
-        typeof (json as { readonly token?: unknown }).token !== "string"
-      ) {
-        throw new Error(
-          `Unexpected state-queue mutation lease acquire response: ${JSON.stringify(json)}`,
-        );
-      }
-      const token = (json as { readonly token: string }).token;
-      return leaseForToken(token);
-    },
-    resume: async ({ token, source }) => {
-      if (source !== nodeUrl) {
-        throw new Error(
-          `Refusing state-queue mutation lease from a different coordinator: expected=${nodeUrl} actual=${source}`,
-        );
-      }
-      return leaseForToken(token);
-    },
-  };
-};
-
-const resolveStateQueueLeaseCoordinator = (
-  config: RemoveFraudulentBlockCliConfig,
-): StateQueueMutationLeaseCoordinator | undefined => {
-  if (config.midgardNodeUrl === undefined) {
-    return undefined;
-  }
-  return createHttpStateQueueMutationLeaseCoordinator({
-    midgardNodeUrl: config.midgardNodeUrl,
-    adminKey: resolveNodeAdminKey(config),
-    ttlMs: config.stateQueueLeaseTtlMs,
-  });
-};
 
 const requireOutputIndexByUnit = ({
   outputs,
@@ -2556,7 +2431,7 @@ export const submitRemoveFraudulentBlock = async ({
   requireReferenceScripts = true,
   validFrom,
   validTo,
-  stateQueueMutationLeaseCoordinator,
+  stateQueueMutationLeaseCoordinator = createLocalStateQueueMutationLeaseCoordinator(),
   fraudProverRewardLovelace,
   preSubmitBoundary,
 }: {
@@ -2579,6 +2454,14 @@ export const submitRemoveFraudulentBlock = async ({
   readonly requireReferenceScripts?: boolean;
   readonly validFrom?: bigint;
   readonly validTo?: bigint;
+  /**
+   * Coordinates a non-tail removal's successor peels. Defaults to
+   * {@link createLocalStateQueueMutationLeaseCoordinator}, which is the only
+   * coordination mode: a removal that loses a race to a competing commit or
+   * merge fails and must be re-run (the watcher's workflow orchestrator
+   * retries it until confirmed). Callers such as the watcher may still pass
+   * one explicitly.
+   */
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
   /**
    * Optional assertion of the deployment-manifest `fraudProverRewardLovelace`;
@@ -2746,11 +2629,6 @@ export const submitRemoveFraudulentBlock = async ({
   let stateQueueMutationLease: StateQueueMutationLease | undefined;
   let stateQueueMutationLeaseReleased = false;
   if (initialTargetHasSuccessor) {
-    if (stateQueueMutationLeaseCoordinator === undefined) {
-      throw new Error(
-        "Removing a non-tail fraudulent block requires a live Midgard node state-queue mutation lease. Pass --midgard-node-url and --midgard-node-admin-key so block commitment and merge workers are excluded during multi-step removal.",
-      );
-    }
     stateQueueMutationLease =
       await stateQueueMutationLeaseCoordinator.acquire();
     try {
@@ -3228,7 +3106,7 @@ export const submitRemoveFraudulentBlockFromFiles = async (
   config: RemoveFraudulentBlockCliConfig,
 ): Promise<SubmitRemoveFraudulentBlockResult> => {
   const stateQueueMutationLeaseCoordinator =
-    resolveStateQueueLeaseCoordinator(config);
+    createLocalStateQueueMutationLeaseCoordinator();
   const [lucid, blueprint, deploymentInfo] = await Promise.all([
     makeLucidForSubmit(config),
     readJsonFile(config.blueprintPath),

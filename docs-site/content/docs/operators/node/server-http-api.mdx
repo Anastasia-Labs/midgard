@@ -32,8 +32,8 @@ rate limiting, and ingress hardening are
 
 <Callout type="warn" title="Always set ADMIN_API_KEY on shared nodes">
   `ADMIN_API_KEY` gates the admin-only HTTP surface (init, commit, merge, state
-  queue inspection, mutation-lease coordination, and log routes). Keep it set in
-  any shared or remotely reachable environment.
+  queue inspection, operator status, and log routes). Keep it set in any shared
+  or remotely reachable environment.
 </Callout>
 
 ## Public routes
@@ -114,21 +114,20 @@ to `fundingAddress`; the request accepts at most 128 funding inputs.
 All routes below require the `x-midgard-admin-key` header matching
 `ADMIN_API_KEY`.
 
-| Method | Route                      | Purpose                                                                                                                                                                               |
-| ------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`  | `/init`                    | Initialize protocol state when startup policy and on-chain topology allow it. Refuses over invalid existing topology.                                                                 |
-| `GET`  | `/commit`                  | Trigger a manual block commitment.                                                                                                                                                    |
-| `GET`  | `/merge`                   | Trigger a manual merge of the oldest queued block into confirmed state.                                                                                                               |
-| `GET`  | `/stateQueue`              | Log and return the current ordered state-queue headers plus merge-readiness.                                                                                                          |
-| `GET`  | `/stateQueueMutationLease` | Inspect the state-queue mutation lease (`?recent_limit=...`).                                                                                                                         |
-| `POST` | `/stateQueueMutationLease` | Coordinate external state-queue mutators (`inspect`, `acquire`, `renew`, `release`, `fail`) for flows such as manual fault-proof removal.                                             |
-| `GET`  | `/logBlocksDB`             | Log a compact summary of block-link rows.                                                                                                                                             |
-| `GET`  | `/logGlobals`              | Log the current process-global coordination state.                                                                                                                                    |
-| `GET`  | `/operator/status`         | Return the node operator's directory status (`?operatorKeyHash=` for another key); same JSON as `operator-status`. See [Operator Lifecycle](/docs/operators/node/operator-lifecycle). |
+| Method | Route              | Purpose                                                                                                                                                                               |
+| ------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/init`            | Initialize protocol state when startup policy and on-chain topology allow it. Refuses over invalid existing topology.                                                                 |
+| `GET`  | `/commit`          | Trigger a manual block commitment.                                                                                                                                                    |
+| `GET`  | `/merge`           | Trigger a manual merge of the oldest queued block into confirmed state.                                                                                                               |
+| `GET`  | `/stateQueue`      | Log and return the current ordered state-queue headers plus merge-readiness.                                                                                                          |
+| `GET`  | `/logBlocksDB`     | Log a compact summary of block-link rows.                                                                                                                                             |
+| `GET`  | `/logGlobals`      | Log the current process-global coordination state.                                                                                                                                    |
+| `GET`  | `/operator/status` | Return the node operator's directory status (`?operatorKeyHash=` for another key); same JSON as `operator-status`. See [Operator Lifecycle](/docs/operators/node/operator-lifecycle). |
 
 <Callout type="info" title="The mutation lease is a safety interlock">
-  The state-queue mutation lease is a mutual-exclusion token. External mutators
-  (for example a manual fault-proof removal) must `acquire` the lease, do their
-  work, then `release` it. A busy lease returns `409`. The node's readiness
-  check treats a stale active lease as a reason to stay not-ready.
+  The state-queue mutation lease is an internal mutual-exclusion token: the
+  node's commitment and merge workers take it before mutating the state queue,
+  so they never race each other. It has no HTTP route; `/readyz` and
+  `/pipeline-status` report it under `stateQueueMutationLease`, and readiness
+  treats a stale active lease as a reason to stay not-ready.
 </Callout>

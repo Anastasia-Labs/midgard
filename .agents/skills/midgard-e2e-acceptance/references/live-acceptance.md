@@ -8,7 +8,7 @@ it completely before changing live state.
 1. [Shared preparation](#shared-preparation)
 2. [Attach or resume](#attach-or-resume)
 3. [Fresh deployment](#fresh-deployment)
-4. [DA manifests and watcher](#da-manifests-and-watcher)
+4. [DA manifests and committee node](#da-manifests-and-committee-node)
 5. [Node, deposit, and L2 activity](#node-deposit-and-l2-activity)
 6. [DA, finality, and automatic merge](#da-finality-and-automatic-merge)
 7. [State-correction and recovery acceptance](#state-correction-and-recovery-acceptance)
@@ -95,7 +95,7 @@ dashboard. A recovery summary uses `--mode resume`; an ordinary attach summary
 uses `--mode attach`.
 
 Once identity is proven, generate or verify the DA manifests as described below,
-start the watcher, run the producer preflight in the appropriate mode, and then
+start the DA committee node, run the producer preflight in the appropriate mode, and then
 start the node with `$COMPOSE up -d midgard-node`.
 
 ## Fresh deployment
@@ -241,13 +241,13 @@ The combined operator command may resume an exactly-one-registered,
 not-yet-active operator. Use `activate-operator` only after chain evidence proves
 that exact recovery state. Do not deregister or rewrite SQL to recover.
 
-## DA manifests and watcher
+## DA manifests and committee node
 
 Generate three manifests from the finalized canonical contract deployment manifest:
 
 - a producer runtime manifest for the producer container;
 - a producer host-preflight manifest used while the producer is stopped; and
-- a watcher runtime manifest for the host watcher.
+- a committee runtime manifest for the host DA committee node.
 
 The host-preflight manifest matters: `host.docker.internal` is a container route,
 so the host preflight must use the `host` address profile.
@@ -258,8 +258,8 @@ Keep this wallet distinct from the operator and DA signer.
 
 The command block below is the local development 1-of-1 example. If `.env`
 configures a larger committee or threshold, supply one `--committee-member`
-entry per configured member, generate a target-specific watcher manifest for
-each signer, and start enough watcher instances to reach the configured
+entry per configured member, generate a target-specific committee manifest for
+each signer, and start enough committee node instances to reach the configured
 threshold. Do not lower the threshold or collapse the committee to make the
 run pass.
 
@@ -275,12 +275,12 @@ set +a
 CONTRACT_INFO="$NODE_DIR/deploymentInfo/contract-deployment-info.json"
 PRODUCER_MANIFEST="$NODE_DIR/deploymentInfo/da-libp2p-producer-manifest.json"
 PRODUCER_PREFLIGHT_MANIFEST="$NODE_DIR/deploymentInfo/da-libp2p-producer-host-preflight-manifest.json"
-WATCHER_MANIFEST="$DA_NODE_DIR/run/$RUN_ID-watcher-manifest.json"
+COMMITTEE_MANIFEST="$DA_NODE_DIR/run/$RUN_ID-committee-manifest.json"
 # Provision the committee database and a distinct SELECT-only public reader
 # as described in the DA committee guide before starting either process.
 : "${DA_COMMITTEE_DATABASE_URL:?set the committee PostgreSQL writer connection}"
 PRODUCER_LIBP2P_KEY_SOURCE="${DA_PRODUCER_LIBP2P_KEY_SOURCE:-seed:0000000000000000000000000000000000000000000000000000000000000001}"
-WATCHER_LIBP2P_KEY_SOURCE="${DA_WATCHER_LIBP2P_KEY_SOURCE:-seed:0000000000000000000000000000000000000000000000000000000000000002}"
+COMMITTEE_LIBP2P_KEY_SOURCE="${DA_COMMITTEE_LIBP2P_KEY_SOURCE:-seed:0000000000000000000000000000000000000000000000000000000000000002}"
 PUBLIC_RETAINED_LIBP2P_KEY_SOURCE="${DA_RETAINED_LIBP2P_KEY_SOURCE:?set a dedicated non-signer libp2p identity}"
 DA_THRESHOLD="${DA_THRESHOLD:-1}"
 mkdir -p "$DA_NODE_DIR/run" "$DA_NODE_DIR/db"
@@ -303,13 +303,13 @@ COMMON_MANIFEST_ARGS=(
   --producer-libp2p-key-source "$PRODUCER_LIBP2P_KEY_SOURCE"
   --public-retained-da-libp2p-key-source "$PUBLIC_RETAINED_LIBP2P_KEY_SOURCE"
   --threshold "$DA_THRESHOLD"
-  --committee-member "0,$DA_VKEY,$WATCHER_LIBP2P_KEY_SOURCE,committee+retrieval+coordinator"
+  --committee-member "0,$DA_VKEY,$COMMITTEE_LIBP2P_KEY_SOURCE,committee+retrieval+coordinator"
   --network "${NETWORK:-Preprod}"
 )
 
 node dist/index.js da-libp2p-generate-manifest \
   --target producer \
-  --profile producer-container-watcher-host \
+  --profile producer-container-committee-host \
   "${COMMON_MANIFEST_ARGS[@]}" \
   --out "$PRODUCER_MANIFEST"
 
@@ -320,11 +320,11 @@ node dist/index.js da-libp2p-generate-manifest \
   --out "$PRODUCER_PREFLIGHT_MANIFEST"
 
 node dist/index.js da-libp2p-generate-manifest \
-  --target watcher \
-  --profile producer-container-watcher-host \
+  --target committee \
+  --profile producer-container-committee-host \
   "${COMMON_MANIFEST_ARGS[@]}" \
   --local-signer-index 0 \
-  --out "$WATCHER_MANIFEST"
+  --out "$COMMITTEE_MANIFEST"
 ```
 
 Ensure `.env` contains the container-relative producer runtime path and matching
@@ -335,7 +335,7 @@ MIDGARD_DEPLOYMENT_MANIFEST_PATH=deploymentInfo/da-libp2p-producer-manifest.json
 DA_LIBP2P_PRIVATE_KEY_SOURCE=seed:0000000000000000000000000000000000000000000000000000000000000001
 ```
 
-Build the watcher and export its environment for the wallet preflight and
+Build the DA committee node and export its environment for the wallet preflight and
 service. `export` is a shell builtin, so secret-bearing values do not become
 child-process arguments. Do not enable shell tracing or print the array because
 it contains key sources.
@@ -349,28 +349,28 @@ if [ -z "${DA_COMMITTEE_HEX:-}" ]; then
 fi
 
 # Committee configuration rejects public-reader credentials and cohosting.
-unset WATCHER_DB_PATH DA_PUBLIC_RETAINED_DA_ENABLED \
+unset DA_COMMITTEE_DB_PATH DA_PUBLIC_RETAINED_DA_ENABLED \
   DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE DA_PUBLIC_RETAINED_DA_DATABASE_URL \
   DA_PUBLIC_RETAINED_DA_DATABASE_ROLE
 
-DA_WATCHER_ENV=(
+DA_COMMITTEE_ENV=(
   "MIDGARD_NETWORK=${NETWORK:-Preprod}"
-  "MIDGARD_DEPLOYMENT_MANIFEST_PATH=$WATCHER_MANIFEST"
+  "MIDGARD_DEPLOYMENT_MANIFEST_PATH=$COMMITTEE_MANIFEST"
   "MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH=$CONTRACT_INFO"
   "CARDANO_PROVIDER_URLS=kupmios:http://127.0.0.1:${KUPO_PORT:-1442}|http://127.0.0.1:${OGMIOS_PORT:-1337}"
   "CARDANO_FINALITY_DEPTH=${CARDANO_FINALITY_DEPTH:-2}"
-  "DA_LIBP2P_PRIVATE_KEY_SOURCE=$WATCHER_LIBP2P_KEY_SOURCE"
+  "DA_LIBP2P_PRIVATE_KEY_SOURCE=$COMMITTEE_LIBP2P_KEY_SOURCE"
   "DA_SIGNER_INDEX=0"
   "DA_SIGNER_KEY_SOURCE=cardano-seed:$L1_OPERATOR_SEED_PHRASE"
   "DA_THRESHOLD=$DA_THRESHOLD"
   "DA_L1_SUBMISSION_ENABLED=true"
   "L1_SUBMITTER_KEY_SOURCE=$DA_L1_SUBMITTER_KEY_SOURCE"
-  "WATCHER_DATABASE_URL=$DA_COMMITTEE_DATABASE_URL"
-  "WATCHER_API_HOST=127.0.0.1"
-  "WATCHER_API_PORT=8787"
-  "WATCHER_POLL_INTERVAL_MS=15000"
+  "DA_COMMITTEE_DATABASE_URL=$DA_COMMITTEE_DATABASE_URL"
+  "DA_COMMITTEE_API_HOST=127.0.0.1"
+  "DA_COMMITTEE_API_PORT=8787"
+  "DA_COMMITTEE_POLL_INTERVAL_MS=15000"
 )
-export "${DA_WATCHER_ENV[@]}"
+export "${DA_COMMITTEE_ENV[@]}"
 
 DA_WALLET_PREFLIGHT_LOG="logs/$RUN_ID/da-l1-wallet-preflight.log"
 DA_WALLET_PREFLIGHT_STEP="$E2E_STEP_DIR/da-l1-wallet-preflight.json"
@@ -387,7 +387,7 @@ node "$TOOLS_CLI" e2e-run-step \
 Stop if the submitter wallet is not ready. Fund the distinct submitter wallet,
 wait for confirmation, and rerun the preflight.
 
-Start the watcher before probing producer-to-committee reachability.
+Start the DA committee node before probing producer-to-committee reachability.
 The committee uses PostgreSQL so the dedicated public retained-DA reader can
 read the same retained payload/header tables with a separate SELECT-only role.
 A JSON file store cannot support that public-reader path.
@@ -395,7 +395,7 @@ A JSON file store cannot support that public-reader path.
 After the committee starts and initializes its tables, start the dedicated
 `midgard-public-retained-da` process in a separately managed environment using the
 [DA committee guide](../../../../docs-site/content/docs/watchers/da-committee-node.mdx).
-Use the watcher manifest, the same contract manifest, the dedicated
+Use the committee manifest, the same contract manifest, the dedicated
 `PUBLIC_RETAINED_LIBP2P_KEY_SOURCE`, and the read-only database role. Never pass
 committee signer, provider, submitter, or writer-store credentials to that
 process. Its readiness must be established by a real public libp2p retrieval;
@@ -404,7 +404,7 @@ log, role, and retrieval evidence with the run.
 
 ```bash
 DA_NODE_LOG="logs/$RUN_ID/da-committee-node.log"
-DA_NODE_PID="$DA_NODE_DIR/run/$RUN_ID-watcher.pid"
+DA_NODE_PID="$DA_NODE_DIR/run/$RUN_ID-da-committee-node.pid"
 node "$TOOLS_CLI" e2e-start-service \
   --service da-committee-node \
   --cwd "$DA_NODE_DIR" \
@@ -416,12 +416,12 @@ node "$TOOLS_CLI" e2e-start-service \
   --poll-interval-ms 5000 \
   pnpm start
 
-# The managed watcher has inherited its environment. Remove the values from
+# The managed committee node has inherited its environment. Remove the values from
 # this shell before starting producer-side commands.
-for assignment in "${DA_WATCHER_ENV[@]}"; do
+for assignment in "${DA_COMMITTEE_ENV[@]}"; do
   unset "${assignment%%=*}"
 done
-unset DA_WATCHER_ENV
+unset DA_COMMITTEE_ENV
 
 DA_LIBP2P_PREFLIGHT_LOG="logs/$RUN_ID/da-libp2p-bind-listen-preflight.log"
 DA_LIBP2P_PREFLIGHT_STEP="$E2E_STEP_DIR/da-libp2p-bind-listen-preflight.json"
@@ -545,7 +545,7 @@ Retain the deposit block's confirmation and merge evidence with the run.
 
 ### Submit two baseline L2 transfers
 
-Require the watcher to remain ready first:
+Require the DA committee node to remain ready first:
 
 ```bash
 curl -sf http://127.0.0.1:8787/healthz
@@ -585,10 +585,10 @@ For every committed header:
    deployment fingerprint, threshold, announcement topic, and per-peer results.
 2. Retain the exact payload bytes obtained through libp2p retrieval and their
    digest. The operator HTTP server has no DA payload retrieval route.
-3. Query the watcher deployment/header status.
-4. Record payload hash/schema, watcher verification, attestation init,
+3. Query the committee node deployment/header status.
+4. Record payload hash/schema, committee node verification, attestation init,
    add-signatures, and apply transaction hashes.
-5. Require watcher status `attested` or `merged` before automatic merge.
+5. Require committee node header status `attested` or `merged` before automatic merge.
 
 Derive the deployment fingerprint from the contract manifest ID, not a file
 hash:
@@ -608,7 +608,7 @@ DEPLOYMENT_FINGERPRINT="$(node --input-type=module -e '
 ')"
 ```
 
-If the watcher reports `root_mismatch`, `malformed_da`, or `conflicted`, stop.
+If the committee node reports `root_mismatch`, `malformed_da`, or `conflicted`, stop.
 Do not merge. Diagnose payload construction, retained data, and peer identity.
 
 Wait for the running merge fiber to empty the state queue:
@@ -639,9 +639,6 @@ NODE
         exit 0
       fi
       curl -s http://127.0.0.1:3000/readyz || true
-      curl -s \
-        -H "x-midgard-admin-key: ${ADMIN_API_KEY:-localdev-admin}" \
-        http://127.0.0.1:3000/stateQueueMutationLease || true
       sleep 5
     done
     echo "automatic merge fiber did not empty stateQueue" >&2

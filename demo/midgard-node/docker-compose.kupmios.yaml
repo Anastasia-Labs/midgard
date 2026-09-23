@@ -1,9 +1,24 @@
+# In-stack Cardano L1 for midgard-node: cardano-node (Mithril-bootstrapped),
+# Ogmios and Kupo. This is the canonical L1 stack for every Midgard role; hosts
+# that run only a watcher or a DA committee node start just the L1 services:
+#
+#   docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml \
+#     up -d cardano-node-ogmios kupo
+#
+# Image pins: every image below is pinned by tag AND digest, with one default
+# per image shared by every service that names it. Change the tag and digest
+# together (see .env.example). CARDANO_NODE_IMAGE_TAG must stay a bare
+# version because the Mithril bootstrap compares it against the certified
+# snapshot's cardano_node_version.
+
+x-l1-env: &l1-env
+  L1_PROVIDER: Kupmios
+  L1_OGMIOS_KEY: http://cardano-node-ogmios:1337
+  L1_KUPO_KEY: http://kupo:1442
+
 services:
   midgard-node:
-    environment:
-      L1_PROVIDER: Kupmios
-      L1_OGMIOS_KEY: http://cardano-node-ogmios:1337
-      L1_KUPO_KEY: http://kupo:1442
+    environment: *l1-env
     depends_on:
       postgres:
         condition: service_healthy
@@ -12,14 +27,19 @@ services:
       kupo:
         condition: service_healthy
 
+  # db:migrate loads the full node config, so it needs the same in-stack L1
+  # endpoints as midgard-node even though it only touches Postgres.
+  midgard-node-migrate:
+    environment: *l1-env
+
   mithril-bootstrap:
-    image: ghcr.io/input-output-hk/mithril-client:${MITHRIL_CLIENT_IMAGE_TAG:-latest}
+    image: ghcr.io/intersectmbo/mithril-client:${MITHRIL_CLIENT_IMAGE_TAG:-2630.1-hotfix-3f6cb73@sha256:e512868501e19aaff39764909d6eccc473449da36567ba8d6fd652a24630a1e5}
     entrypoint:
       - /bin/sh
       - /bootstrap/bootstrap-kupmios-mithril.sh
     environment:
       NETWORK: ${NETWORK}
-      CARDANO_NODE_IMAGE_TAG: ${CARDANO_NODE_IMAGE_TAG:-11.0.1}
+      CARDANO_NODE_IMAGE_TAG: ${CARDANO_NODE_IMAGE_TAG:-11.1.0}
       MITHRIL_AGGREGATOR_ENDPOINT: ${MITHRIL_AGGREGATOR_ENDPOINT:-}
       MITHRIL_GENESIS_VERIFICATION_KEY_URL: ${MITHRIL_GENESIS_VERIFICATION_KEY_URL:-}
       MITHRIL_ANCILLARY_VERIFICATION_KEY_URL: ${MITHRIL_ANCILLARY_VERIFICATION_KEY_URL:-}
@@ -32,12 +52,13 @@ services:
       midgard_net:
 
   kupo-bootstrap:
-    image: ghcr.io/input-output-hk/mithril-client:${MITHRIL_CLIENT_IMAGE_TAG:-latest}
+    image: ghcr.io/intersectmbo/mithril-client:${MITHRIL_CLIENT_IMAGE_TAG:-2630.1-hotfix-3f6cb73@sha256:e512868501e19aaff39764909d6eccc473449da36567ba8d6fd652a24630a1e5}
     entrypoint:
       - /bin/sh
       - /bootstrap/bootstrap-kupo-snapshot.sh
     environment:
       NETWORK: ${NETWORK}
+      KUPO_BOOTSTRAP_MODE: ${KUPO_BOOTSTRAP_MODE:-snapshot}
       KUPO_SNAPSHOT_RELEASE_TAG: ${KUPO_SNAPSHOT_RELEASE_TAG:-v2.8}
       KUPO_SNAPSHOT_URL: ${KUPO_SNAPSHOT_URL:-}
       KUPO_SNAPSHOT_MD5: ${KUPO_SNAPSHOT_MD5:-}
@@ -49,7 +70,7 @@ services:
       midgard_net:
 
   cardano-node:
-    image: ghcr.io/intersectmbo/cardano-node:${CARDANO_NODE_IMAGE_TAG:-11.1.0}
+    image: ghcr.io/intersectmbo/cardano-node:${CARDANO_NODE_IMAGE_TAG:-11.1.0}@${CARDANO_NODE_IMAGE_DIGEST:-sha256:7b36384afd9d78e787c02f9b9a0868ed74b28a04b7d447325a68b1f397ddb43a}
     entrypoint:
       - /bin/sh
       - /bootstrap/run-cardano-node.sh
@@ -101,7 +122,16 @@ services:
       midgard_net:
 
   kupo:
-    image: cardanosolutions/kupo:${KUPO_IMAGE_TAG:-latest}
+    image: cardanosolutions/kupo:${KUPO_IMAGE_TAG:-v2.11.0@sha256:0a8cd8b5e373103e9e0a68b162d82c69a6f76042bb073c31912724034e51ca9e}
+    # No --prune-utxo: the node's forced-order carriage reader
+    # (src/l1-tx-order-carriage.ts) reads spent carriage outputs, which a
+    # pruning index deletes. The official Kupo snapshot restored by
+    # kupo-bootstrap was itself built pruned, so outputs spent before the
+    # snapshot point are absent. That is fine for a deployment initialised
+    # after this bring-up (the usual case); to serve a deployment whose L1
+    # history predates the snapshot, set KUPO_BOOTSTRAP_MODE=origin and let
+    # Kupo sync from origin instead. Kupo >= v2.10.0 is required for the
+    # ?resolve_hashes query the same reader depends on.
     command:
       - --ogmios-host
       - cardano-node-ogmios
@@ -117,7 +147,6 @@ services:
       - origin
       - --match
       - "*"
-      - --prune-utxo
       - --defer-db-indexes
     depends_on:
       cardano-node-ogmios:

@@ -2,9 +2,9 @@
 import { runDaZstdStartupSelfTest } from "@al-ft/midgard-core/da-compression";
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 
-import { createWatcherApiServer } from "./api/server.js";
+import { createCommitteeApiServer } from "./api/server.js";
 import { availabilityResponderFromConfig } from "./availability/factory.js";
-import { loadWatcherConfig } from "./config.js";
+import { loadCommitteeConfig } from "./config.js";
 import {
   l1SubmitterWalletPreflightFromConfig,
   onChainCoordinatorFromConfig,
@@ -20,7 +20,6 @@ import {
   DaPeerRegistry,
   StoreBackedDaAttestationProtocol,
 } from "./da/libp2p/index.js";
-import { availabilityRetentionSourceFromStore } from "./l1/availability-retention-source.js";
 import { daAttestationReaderFromConfig } from "./l1/da-attestation-reader.js";
 import { providerFromConfig } from "./l1/provider.js";
 import { l1SubmitterPreflightResultToJson } from "./l1/submitter.js";
@@ -32,12 +31,13 @@ import {
   validateDaCommittee,
   validateDaSignerMembership,
 } from "./signer.js";
-import { openWatcherStore } from "./store/factory.js";
-import { runRetentionCycle } from "./store/retention.js";
+import { openCommitteeStore } from "./store/factory.js";
+import { type RetentionL1View, runRetentionCycle } from "./store/retention.js";
+import { createCommitteeTickRunner } from "./tick-runner.js";
 import {
-  type WatcherRetentionReadinessSnapshot,
-  WatcherService,
-} from "./watcher.js";
+  type CommitteeRetentionReadinessSnapshot,
+  CommitteeService,
+} from "./committee-service.js";
 
 const main = async (): Promise<void> => {
   if (process.argv[2] === "l1-wallet-preflight") {
@@ -51,8 +51,9 @@ const main = async (): Promise<void> => {
   // Decoder-first rollout means every committee node must be capable of
   // safely decoding zstd envelopes before any producer is flipped.
   await runDaZstdStartupSelfTest();
-  const config = await loadWatcherConfig();
-  const store = await openWatcherStore(config.localState);
+  const config = await loadCommitteeConfig();
+  const startedAtMs = Date.now();
+  const store = await openCommitteeStore(config.localState);
   const signer =
     config.signerKeySource === undefined
       ? undefined
@@ -71,11 +72,11 @@ const main = async (): Promise<void> => {
   const provider = await providerFromConfig(config);
   const daChainReader = await daAttestationReaderFromConfig(config);
   if (config.daTransport.kind !== "libp2p") {
-    throw new Error("midgard-watcher requires libp2p DA transport mode");
+    throw new Error("da-committee-node requires libp2p DA transport mode");
   }
   if (config.libp2pPrivateKeySource === undefined) {
     throw new Error(
-      "midgard-watcher libp2p mode requires DA_LIBP2P_PRIVATE_KEY_SOURCE",
+      "da-committee-node libp2p mode requires DA_LIBP2P_PRIVATE_KEY_SOURCE",
     );
   }
   const daIdentity = await loadDaLibp2pIdentity(config.libp2pPrivateKeySource);
@@ -224,7 +225,7 @@ const main = async (): Promise<void> => {
           onChainCoordinator,
         })
       : undefined;
-  const service = new WatcherService({
+  const service = new CommitteeService({
     config,
     store,
     stateQueueProvider: provider,
@@ -257,37 +258,25 @@ const main = async (): Promise<void> => {
     }
   };
 
-  let retentionReadiness: WatcherRetentionReadinessSnapshot = {
+  let retentionReadiness: CommitteeRetentionReadinessSnapshot = {
     status: "not_checked",
     scanned: 0,
     retained: 0,
     prunable: 0,
     alerting: 0,
   };
-  const runRetention = async (): Promise<void> => {
-    // The live responder authenticates deployment capability. Payload deletion
-    // still needs current, finalized terminal evidence for each header.
-    const nowMs = Date.now();
+  const runRetention = async (view: RetentionL1View): Promise<void> => {
+    // The exemption sets come from the L1 view the poller accepted this tick.
     const options = {
-      nowMs,
+      nowMs: Date.now(),
       retentionDays: config.daTransport.retentionDays,
       deploymentFingerprint: config.deploymentFingerprint,
       minimumFinalityDepth: config.finalityDepth,
+      confirmedHeadHash: view.confirmedHeadHash,
+      liveQueueHeaderHashes: view.liveQueueHeaderHashes,
     };
     try {
-      const availabilityChallengeAuthority =
-        availabilityRuntime === undefined
-          ? undefined
-          : await availabilityRetentionSourceFromStore(
-              config,
-              store,
-              provider,
-              nowMs,
-            );
-      const { deadlines, prune } = await runRetentionCycle(store, {
-        ...options,
-        availabilityChallengeAuthority,
-      });
+      const { deadlines, prune } = await runRetentionCycle(store, options);
       retentionReadiness = {
         status: deadlines.alerting > 0 ? "alerting" : "ok",
         checkedAt: new Date(options.nowMs).toISOString(),
@@ -320,11 +309,37 @@ const main = async (): Promise<void> => {
     }
   };
 
+  let interval: ReturnType<typeof setInterval> | undefined;
+  let api: ReturnType<typeof createCommitteeApiServer> | undefined;
+  const shutdown = async (): Promise<void> => {
+    clearInterval(interval);
+    await api?.close();
+    await daLibp2pNode.stop();
+    availabilityRuntime?.close();
+    await store.close?.();
+  };
+  const tickRunner = createCommitteeTickRunner({
+    tick: () => service.tick(),
+    runAvailabilityResponse,
+    runRetention,
+    latestL1View: () => service.latestL1View(),
+    setRetentionReadiness: (snapshot) => {
+      retentionReadiness = snapshot;
+    },
+    l1ViewFatalMs: config.l1ViewFatalMs,
+    startedAtMs,
+    nowMs: () => Date.now(),
+    write: (stream, line) => process[stream].write(line),
+    shutdown,
+    exit: (code) => process.exit(code),
+  });
+
   if (process.argv.includes("--once")) {
     try {
+      const tickStartedAtMs = Date.now();
       const result = await service.tick();
       await runAvailabilityResponse();
-      await runRetention();
+      await tickRunner.runRetentionStep(tickStartedAtMs);
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     } finally {
       await daLibp2pNode.stop();
@@ -334,7 +349,7 @@ const main = async (): Promise<void> => {
     return;
   }
 
-  const api = createWatcherApiServer({
+  api = createCommitteeApiServer({
     deploymentFingerprint: config.deploymentFingerprint,
     signerIndex: config.signerIndex,
     signerValidation: committeeValidation,
@@ -353,44 +368,13 @@ const main = async (): Promise<void> => {
   });
   await api.listen(config.apiPort, config.apiHost);
   process.stdout.write(
-    `midgard-watcher listening on http://${config.apiHost}:${config.apiPort.toString()}\n`,
+    `da-committee-node listening on http://${config.apiHost}:${config.apiPort.toString()}\n`,
   );
 
-  let tickInFlight = false;
-  const runTick = async (): Promise<void> => {
-    if (tickInFlight) {
-      process.stderr.write(
-        `${JSON.stringify({ event: "watcher_tick_overlap_prevented" })}\n`,
-      );
-      return;
-    }
-    tickInFlight = true;
-    try {
-      const result = await service.tick();
-      await runAvailabilityResponse();
-      await runRetention();
-      if (result.errors.length > 0) {
-        process.stderr.write(`${JSON.stringify(result)}\n`);
-      }
-    } catch (error) {
-      process.stderr.write(
-        `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
-      );
-    } finally {
-      tickInFlight = false;
-    }
-  };
-  await runTick();
+  await tickRunner.runTick();
   // runTick contains its own error boundary and overlap guard.
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
-  const interval = setInterval(runTick, config.pollIntervalMs);
-  const shutdown = async (): Promise<void> => {
-    clearInterval(interval);
-    await api.close();
-    await daLibp2pNode.stop();
-    availabilityRuntime?.close();
-    await store.close?.();
-  };
+  interval = setInterval(tickRunner.runTick, config.pollIntervalMs);
   process.once("SIGINT", () => {
     void shutdown().then(() => process.exit(0));
   });
@@ -412,7 +396,7 @@ const runL1WalletPreflightCommand = async (
       `unknown l1-wallet-preflight arguments: ${unknownArgs.join(", ")}`,
     );
   }
-  const config = await loadWatcherConfig();
+  const config = await loadCommitteeConfig();
   const result = await l1SubmitterWalletPreflightFromConfig(config);
   process.stdout.write(
     `${JSON.stringify(l1SubmitterPreflightResultToJson(result), null, 2)}\n`,
@@ -423,12 +407,12 @@ const runL1WalletPreflightCommand = async (
 };
 
 const printHelp = (): void => {
-  process.stdout.write(`midgard-watcher
+  process.stdout.write(`da-committee-node
 
 Usage:
-  midgard-watcher --once                       scan once, verify finalized unattested headers, sign
-  midgard-watcher l1-wallet-preflight --json   print L1 submitter wallet readiness
-  midgard-watcher                              run API and polling loop
+  da-committee-node --once                       scan once, verify finalized unattested headers, sign
+  da-committee-node l1-wallet-preflight --json   print L1 submitter wallet readiness
+  da-committee-node                              run API and polling loop
 
 Required configuration follows demo/da-committee-node/docs/da-committee-node-architecture.md in the repository.
 L1 submission requires L1_SUBMITTER_KEY_SOURCE for a funded Cardano wallet.
@@ -452,7 +436,7 @@ L1 source modes:
 };
 
 const printL1WalletPreflightHelp = (): void => {
-  process.stdout.write(`midgard-watcher l1-wallet-preflight --json
+  process.stdout.write(`da-committee-node l1-wallet-preflight --json
 
 Prints DA L1 submitter wallet readiness as JSON using the normal environment
 configuration. Exits non-zero when readiness fails.

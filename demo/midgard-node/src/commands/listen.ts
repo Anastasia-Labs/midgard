@@ -646,7 +646,10 @@ export const runNode = (
         program,
         Effect.withSpan("midgard"),
         Effect.provide(MetricsLive),
-        Effect.catchAllCause(Effect.logError),
+        // One fiber's failure fails the whole group; the process must exit
+        // non-zero on it, so the cause is surfaced to the runtime, not logged
+        // and dropped.
+        Effect.orDie,
         Effect.ensuring(
           Effect.all(
             [
@@ -663,7 +666,7 @@ export const runNode = (
       yield* pipe(
         program,
         Effect.withSpan("midgard"),
-        Effect.catchAllCause(Effect.logError),
+        Effect.orDie,
         Effect.ensuring(
           Effect.all(
             [

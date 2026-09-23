@@ -12,13 +12,13 @@ import { tcp } from "@libp2p/tcp";
 import { createLibp2p, type Libp2pOptions } from "libp2p";
 
 import type { PublicRetainedDaConfig } from "../../config.js";
-import type { WatcherStore } from "../../store.js";
+import type { CommitteeStore } from "../../store.js";
 import type { DaLibp2pStream, DaLibp2pStreamHandler } from "./DaLibp2pNode.js";
 import { createDaLibp2pPublicRetainedDaPayloadRequestHandlers } from "./payload-source.js";
 import { createDaLibp2pProofRequestHandlers } from "./proof-protocols.js";
 
 type PublicRetainedDaStore = Pick<
-  WatcherStore,
+  CommitteeStore,
   "getDaPayload" | "getStateQueueHeader"
 >;
 type PublicRetainedDaPrivateKey = NonNullable<Libp2pOptions["privateKey"]>;

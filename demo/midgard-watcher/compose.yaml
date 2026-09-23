@@ -1,0 +1,90 @@
+# demo/midgard-watcher/compose.yaml: the watcher and its trusted-head authority
+# on one host, with host networking.
+#
+# Requires a Cardano L1 stack on this host publishing Ogmios 1337 and Kupo 1442
+# on 127.0.0.1, its node socket directory, and its node/genesis config directory.
+# Every endpoint the watcher dials or serves must be loopback, which is why both
+# services use the host network namespace. See README.md, "Running with compose".
+#
+# Copy the templates before the first `up`:
+#   config/authority.json        from authority.example.json
+#   config/watcher-process.json  from watcher-process.example.json
+#   config/watcher-runtime.json  the `watcherConfig` object of watcher-process.json
+#   bundles/                     the six release artifacts that config names
+x-image: &image
+  build: { context: .., dockerfile: midgard-watcher/Dockerfile }
+  image: midgard-watcher:${MIDGARD_WATCHER_IMAGE_TAG:-local}
+  network_mode: host
+  environment:
+    MALLOC_MMAP_THRESHOLD_: "131072"
+  # An authority crash makes `start` exit 70 by design; restarting is the
+  # supervision. `on-failure` with a retry cap would strand the watcher.
+  restart: unless-stopped
+  logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+
+services:
+  watcher-authority:
+    <<: *image
+    command: ["authority", "--config", "/etc/midgard/authority.json"]
+    volumes:
+      - ./config/authority.json:/etc/midgard/authority.json:ro
+      # `directory`: the append-only trusted-head record chain.
+      - watcher-authority-records:/var/lib/midgard-watcher/authority
+      # Regular files, not compose `secrets:`: the loader refuses a secret path
+      # that resolves through a symlink. The record key is mounted here only.
+      - ${WATCHER_RECORD_KEY_FILE:?}:/run/secrets/record_key:ro
+      - ${WATCHER_BEARER_FILE:?}:/run/secrets/bearer:ro
+    healthcheck:
+      # Liveness without the bearer: a 401 proves the server is up.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:${WATCHER_AUTHORITY_PORT:-7401}/v1/identity').then(r=>process.exit(r.status===200||r.status===401?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+
+  watcher:
+    <<: *image
+    # The image CMD is `start --config /etc/midgard/watcher-process.json`.
+    depends_on:
+      watcher-authority: { condition: service_healthy }
+    volumes:
+      - ./config/watcher-process.json:/etc/midgard/watcher-process.json:ro
+      # `watcherRuntimeConfigPath`
+      - ./config/watcher-runtime.json:/etc/midgard/watcher-runtime.json:ro
+      # deploymentAuthorityPath, ruleBundlePath, fundingProfileBundlePath and
+      # the fault-proof manifest, blueprint and deployment info.
+      - ./bundles:/etc/midgard/bundles:ro
+      # SQLite store, workflow journal, availability journal.
+      - watcher-state:/var/lib/midgard-watcher
+      # The L1 stack's node socket (`socketPath`) and config directory
+      # (`nodeConfigPath`, `genesisConfigPath`). The IPC default moves to
+      # ../l1-stack/ once the shared L1 stack lands there.
+      - ${MIDGARD_L1_IPC_DIR:-../midgard-node/cardano/ipc}:/ipc
+      - ${MIDGARD_L1_CONFIG_DIR:?}:/cardano-config:ro
+      # Everything but the record key; the bearer value is shared.
+      - ${WATCHER_ROLLBACK_KEY_FILE:?}:/run/secrets/rollback_key:ro
+      - ${WATCHER_PROVER_KEY_FILE:?}:/run/secrets/prover_key:ro
+      - ${WATCHER_AVAILABILITY_KEY_FILE:?}:/run/secrets/availability_key:ro
+      - ${WATCHER_BEARER_FILE:?}:/run/secrets/bearer:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:${WATCHER_OPERATIONS_PORT:-7402}/v1/status').then(r=>process.exit(r.status===200||r.status===401?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 120s
+
+volumes:
+  watcher-authority-records: {}
+  watcher-state: {}

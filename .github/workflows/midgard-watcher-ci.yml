@@ -50,7 +50,7 @@ jobs:
           test -x /tmp/midgard-chain-sync
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          package_json_file: demo/package.json
       - uses: actions/setup-node@v4
         with:
           node-version-file: demo/.nvmrc
@@ -70,6 +70,44 @@ jobs:
           pnpm --dir demo --filter midgard-watcher lint
           pnpm --dir demo --filter midgard-watcher test
           pnpm --dir demo --filter midgard-watcher build
+      # The operator launch surface: the compose file must render from
+      # `.env.example` alone, like the node stacks in midgard-node-ci.yml.
+      - name: Render the watcher compose stack from .env.example
+        working-directory: demo/midgard-watcher
+        run: |
+          set -euo pipefail
+          docker compose --env-file .env.example -f compose.yaml config --quiet
+          # Both services run the locally built image; any pulled image must
+          # carry a tag other than latest.
+          images="$(docker compose --env-file .env.example -f compose.yaml config --images)"
+          if grep -vE '^midgard-watcher:' <<<"$images" | grep -E ':latest$|^[^:@]+$'; then
+            echo "unpinned image in compose.yaml" >&2
+            exit 1
+          fi
       - name: Build watcher production image
         working-directory: demo
         run: docker build --file midgard-watcher/Dockerfile --tag midgard-watcher:ci .
+      # The only check of the image's `authority` path: start the compose
+      # service from the built image with throwaway secrets and the shipped
+      # template, then require 401 without the bearer and 200 with it.
+      - name: Smoke the trusted-head authority service from the built image
+        working-directory: demo/midgard-watcher
+        env:
+          MIDGARD_WATCHER_IMAGE_TAG: ci
+        run: |
+          set -euo pipefail
+          secrets="$RUNNER_TEMP/watcher-secrets"
+          mkdir -p "$secrets" config
+          openssl rand -hex 32 | tr -d '\n' >"$secrets/record_key"
+          bearer="$(openssl rand -hex 24)"
+          printf '%s' "$bearer" >"$secrets/bearer"
+          cp authority.example.json config/authority.json
+          export WATCHER_RECORD_KEY_FILE="$secrets/record_key"
+          export WATCHER_BEARER_FILE="$secrets/bearer"
+          compose() { docker compose --env-file .env.example -f compose.yaml "$@"; }
+          trap 'compose logs watcher-authority; compose down --volumes' EXIT
+          compose up --detach --no-build --wait --wait-timeout 90 watcher-authority
+          identity=http://127.0.0.1:7401/v1/identity
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$identity")" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $bearer" "$identity")" = 200

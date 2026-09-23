@@ -35,13 +35,14 @@ operator slash repeatedly.
   bond. It does not delete any local node state.
 </Callout>
 
-<Callout type="warn" title="Removal needs the state-queue mutation lease">
-  Removing a header mutates the state queue, which the node's own fibers also
-  mutate. For a non-tail target, the command requires `--await-confirmation` and
-  a live node lease coordinator; it acquires and manages the [state-queue
-  mutation lease](/docs/operators/node/server-http-api), and releases it after
-  successful completion. A busy lease returns `409`. Do not work around a busy
-  lease; find the job holding it.
+<Callout type="warn" title="Removal races other state-queue mutations">
+  Removing a header mutates the state queue, which operators' commitment and
+  merge transactions also mutate. Removal does not coordinate with any Midgard
+  node. For a non-tail target, the command requires `--await-confirmation`: each
+  successor removal is confirmed and the state-queue topology refetched before
+  the next one. A removal that loses a race to a competing commit or merge
+  fails; a bare CLI run must be re-run, while the watcher's workflow
+  orchestrator retries it from the fresh L1 view until it is confirmed.
 </Callout>
 
 ## Related

@@ -1010,8 +1010,7 @@ diagnostics never assert whole-watcher readiness.
 `journey.test.ts` lazily opens one `JourneySession` from `journey-session.ts` for
 the selected sequential families and closes it in the suite's `afterAll` hook.
 The session owns the deployment context, independent native recorder, retained
-DA server, authenticated history archives, mutation lease server, trusted-head
-authority and installed watcher. Later families reuse these running services.
+DA server, authenticated history archives, trusted-head authority and installed watcher. Later families reuse these running services.
 The native recorder replays from origin once per session; a new process still
 authenticates its history and resumes the existing durable runtime. A standalone
 runner call owns and closes its own session.

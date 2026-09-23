@@ -28,18 +28,18 @@ import type { DaPayloadRecord, PayloadRootSet } from "../../domain.js";
 import {
   hasPayloadBytes,
   libp2pSubmittedDaPayloadRecord,
-  type WatcherStore,
+  type CommitteeStore,
 } from "../../store.js";
 import { bytesToHex, hexToBytes, normalizeHex } from "../../utils/hex.js";
 
 export type DaLibp2pPayloadProtocolStore = Pick<
-  WatcherStore,
+  CommitteeStore,
   "getDaPayload" | "saveDaPayload"
 >;
 
 /** Read-only authority required by the public retained-DA listener. */
 export type DaLibp2pPublicRetainedDaPayloadStore = Pick<
-  WatcherStore,
+  CommitteeStore,
   "getDaPayload"
 >;
 

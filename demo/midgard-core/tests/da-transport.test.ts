@@ -117,23 +117,23 @@ describe("DA libp2p transport protocol freeze", () => {
       runtime_topology: { target: "producer" },
     });
 
-    const watcherFixture = runtimeManifestFixture();
-    watcherFixture.runtime_topology = {
-      target: "watcher",
+    const committeeFixture = runtimeManifestFixture();
+    committeeFixture.runtime_topology = {
+      target: "committee",
       profile: "public",
       producer_peer_id: "peer-producer",
       local_signer_index: 0,
     };
-    (watcherFixture.da_transport as Record<string, unknown>).retention_days =
+    (committeeFixture.da_transport as Record<string, unknown>).retention_days =
       DA_TRANSPORT_LIMITS.minimumRetentionDays + 1;
-    const watcher = parseDaLibp2pRuntimeManifest(watcherFixture);
-    expect(watcher.runtime_topology).toEqual({
-      target: "watcher",
+    const committee = parseDaLibp2pRuntimeManifest(committeeFixture);
+    expect(committee.runtime_topology).toEqual({
+      target: "committee",
       profile: "public",
       producer_peer_id: "peer-producer",
       local_signer_index: 0,
     });
-    expect(watcher.da_transport.retention_days).toBe(16);
+    expect(committee.da_transport.retention_days).toBe(16);
   });
 
   it("rejects every unknown or missing root and nested runtime-manifest key", () => {

@@ -14,7 +14,7 @@ import { writeJsonFileAtomic } from "../files/atomic-write.js";
 
 export const DA_LIBP2P_RUNTIME_PROFILES = [
   "host",
-  "producer-container-watcher-host",
+  "producer-container-committee-host",
   "compose",
   "public",
 ] as const;
@@ -22,7 +22,7 @@ export const DA_LIBP2P_RUNTIME_PROFILES = [
 export type DaLibp2pRuntimeProfile =
   (typeof DA_LIBP2P_RUNTIME_PROFILES)[number];
 
-export type DaLibp2pRuntimeManifestTarget = "producer" | "watcher";
+export type DaLibp2pRuntimeManifestTarget = "producer" | "committee";
 
 export type DaLibp2pRuntimeCommitteeMemberInput = {
   readonly signerIndex: number;
@@ -43,20 +43,20 @@ export type DaLibp2pRuntimeManifestOptions = {
   readonly threshold: number;
   readonly localSignerIndex?: number;
   readonly producerPort?: number;
-  readonly watcherPort?: number;
+  readonly committeePort?: number;
   readonly producerServiceName?: string;
-  readonly watcherServiceName?: string;
+  readonly committeeServiceName?: string;
   readonly producerPublicHost?: string;
-  readonly watcherPublicHost?: string;
+  readonly committeePublicHost?: string;
   readonly publicRetainedDaPort?: number;
   readonly publicRetainedDaPublicHost?: string;
 };
 
 const DEFAULT_PRODUCER_PORT = 39002;
-const DEFAULT_WATCHER_PORT = 39001;
+const DEFAULT_COMMITTEE_PORT = 39001;
 const DEFAULT_PUBLIC_RETAINED_DA_PORT = 39003;
 const DEFAULT_PRODUCER_SERVICE = "midgard-node";
-const DEFAULT_WATCHER_SERVICE = "da-committee-node";
+const DEFAULT_COMMITTEE_SERVICE = "da-committee-node";
 
 export const generateDaLibp2pRuntimeManifest = async (
   options: DaLibp2pRuntimeManifestOptions,
@@ -92,24 +92,24 @@ export const generateDaLibp2pRuntimeManifest = async (
   );
   validateCommittee(members, options.threshold);
   const localMember =
-    options.target === "watcher"
+    options.target === "committee"
       ? memberForSignerIndex(members, options.localSignerIndex)
       : undefined;
   const ports = {
     producer: options.producerPort ?? DEFAULT_PRODUCER_PORT,
-    watcher: options.watcherPort ?? DEFAULT_WATCHER_PORT,
+    committee: options.committeePort ?? DEFAULT_COMMITTEE_PORT,
     publicRetainedDa:
       options.publicRetainedDaPort ?? DEFAULT_PUBLIC_RETAINED_DA_PORT,
   };
   validatePort(ports.producer, "producer port");
-  validatePort(ports.watcher, "watcher port");
+  validatePort(ports.committee, "committee node port");
   validatePort(ports.publicRetainedDa, "public retained DA port");
   const hosts = hostsForProfile(options);
   if (options.profile === "public") {
     rejectLocalRuntimeHost(hosts.producer, "producer public host");
-    rejectLocalRuntimeHost(hosts.watcher, "watcher public host");
+    rejectLocalRuntimeHost(hosts.committee, "committee node public host");
     rejectLocalRuntimeHost(
-      options.publicRetainedDaPublicHost ?? options.watcherPublicHost!,
+      options.publicRetainedDaPublicHost ?? options.committeePublicHost!,
       "public retained DA host",
     );
   }
@@ -130,16 +130,16 @@ export const generateDaLibp2pRuntimeManifest = async (
   const memberMultiaddrs = members.map((member) =>
     isProducerMember(member, producerIdentity.peerId)
       ? producerAddr
-      : multiaddrForHost(hosts.watcher, ports.watcher, member.peerId),
+      : multiaddrForHost(hosts.committee, ports.committee, member.peerId),
   );
   const localListen =
     options.target === "producer"
       ? listenAddr(listenHostForProfile(options.profile), ports.producer)
-      : listenAddr(listenHostForProfile(options.profile), ports.watcher);
+      : listenAddr(listenHostForProfile(options.profile), ports.committee);
   const localAnnounce =
     options.target === "producer"
       ? producerAddr
-      : multiaddrForHost(hosts.watcher, ports.watcher, localMember!.peerId);
+      : multiaddrForHost(hosts.committee, ports.committee, localMember!.peerId);
   const bootstrapMultiaddrs =
     options.target === "producer"
       ? memberMultiaddrs.filter(
@@ -148,8 +148,8 @@ export const generateDaLibp2pRuntimeManifest = async (
       : [producerAddr];
   const publicRetainedDaHost =
     options.profile === "public"
-      ? (options.publicRetainedDaPublicHost ?? options.watcherPublicHost!)
-      : hosts.watcher;
+      ? (options.publicRetainedDaPublicHost ?? options.committeePublicHost!)
+      : hosts.committee;
   const publicRetainedDaAddr = multiaddrForHost(
     publicRetainedDaHost,
     ports.publicRetainedDa,
@@ -260,33 +260,33 @@ const hostsForProfile = (
     DaLibp2pRuntimeManifestOptions,
     | "profile"
     | "producerServiceName"
-    | "watcherServiceName"
+    | "committeeServiceName"
     | "producerPublicHost"
-    | "watcherPublicHost"
+    | "committeePublicHost"
   >,
-): { readonly producer: string; readonly watcher: string } => {
+): { readonly producer: string; readonly committee: string } => {
   switch (options.profile) {
     case "host":
-      return { producer: "127.0.0.1", watcher: "127.0.0.1" };
-    case "producer-container-watcher-host":
-      return { producer: "127.0.0.1", watcher: "host.docker.internal" };
+      return { producer: "127.0.0.1", committee: "127.0.0.1" };
+    case "producer-container-committee-host":
+      return { producer: "127.0.0.1", committee: "host.docker.internal" };
     case "compose":
       return {
         producer: options.producerServiceName ?? DEFAULT_PRODUCER_SERVICE,
-        watcher: options.watcherServiceName ?? DEFAULT_WATCHER_SERVICE,
+        committee: options.committeeServiceName ?? DEFAULT_COMMITTEE_SERVICE,
       };
     case "public":
       if (
         options.producerPublicHost === undefined ||
-        options.watcherPublicHost === undefined
+        options.committeePublicHost === undefined
       ) {
         throw new Error(
-          "public DA libp2p profile requires producer and watcher public hosts",
+          "public DA libp2p profile requires producer and committee node public hosts",
         );
       }
       return {
         producer: options.producerPublicHost,
-        watcher: options.watcherPublicHost,
+        committee: options.committeePublicHost,
       };
   }
 };
@@ -359,7 +359,7 @@ const memberForSignerIndex = (
       ? members[0]
       : members.find((member) => member.signerIndex === signerIndex);
   if (selected === undefined) {
-    throw new Error("watcher runtime manifest local signer index is unknown");
+    throw new Error("committee runtime manifest local signer index is unknown");
   }
   return selected;
 };

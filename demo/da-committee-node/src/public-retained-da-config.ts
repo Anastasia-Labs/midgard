@@ -3,7 +3,10 @@ import { readFile } from "node:fs/promises";
 import { parseDaLibp2pRuntimeManifest } from "@al-ft/midgard-core/da-transport";
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 
-import type { PublicRetainedDaRuntimeConfig } from "./config.js";
+import {
+  type PublicRetainedDaRuntimeConfig,
+  rejectRetiredWatcherEnvNames,
+} from "./config.js";
 import { normalizeHex } from "./utils/hex.js";
 
 type Env = Record<string, string | undefined>;
@@ -21,12 +24,13 @@ export const loadPublicRetainedDaRuntimeConfig = async (
       "DA_PUBLIC_RETAINED_DA_ENABLED=true is required for the public retained-DA process",
     );
   }
+  rejectRetiredWatcherEnvNames(env);
   if (
-    env.WATCHER_DB_PATH !== undefined ||
-    env.WATCHER_DATABASE_URL !== undefined
+    env.DA_COMMITTEE_DB_PATH !== undefined ||
+    env.DA_COMMITTEE_DATABASE_URL !== undefined
   ) {
     throw new Error(
-      "public retained-DA process requires DA_PUBLIC_RETAINED_DA_DATABASE_URL and must not receive WATCHER_DB_PATH or WATCHER_DATABASE_URL",
+      "public retained-DA process requires DA_PUBLIC_RETAINED_DA_DATABASE_URL and must not receive DA_COMMITTEE_DB_PATH or DA_COMMITTEE_DATABASE_URL",
     );
   }
   const deploymentManifestPath = requireEnv(
@@ -43,8 +47,8 @@ export const loadPublicRetainedDaRuntimeConfig = async (
       deploymentManifestPath,
     ),
   );
-  if (runtimeManifest.runtime_topology.target !== "watcher") {
-    throw new Error("runtime_topology.target must be watcher");
+  if (runtimeManifest.runtime_topology.target !== "committee") {
+    throw new Error("runtime_topology.target must be committee");
   }
   const contractDeployment = verifyContractDeployment(
     parseJsonObject(

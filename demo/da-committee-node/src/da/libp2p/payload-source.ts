@@ -11,7 +11,7 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 
 import type { Libp2pDaTransportLimits } from "../../config.js";
-import type { WatcherStore } from "../../store.js";
+import type { CommitteeStore } from "../../store.js";
 import { hexToBytes } from "../../utils/hex.js";
 import type {
   DaPayloadCandidate,
@@ -268,7 +268,7 @@ export const createDaLibp2pPayloadRequestHandlers = ({
   payloadSubmitAdmission = processWideDaPayloadSubmitAdmission,
 }: {
   readonly deploymentFingerprint: string;
-  readonly store: Pick<WatcherStore, "getDaPayload" | "saveDaPayload">;
+  readonly store: Pick<CommitteeStore, "getDaPayload" | "saveDaPayload">;
   readonly limits: Libp2pDaTransportLimits;
   readonly payloadSubmitAdmission?: DaPayloadSubmitAdmission;
 }): ReadonlyMap<string, DaLibp2pStreamHandler> => {

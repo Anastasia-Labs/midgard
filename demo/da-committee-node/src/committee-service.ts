@@ -9,7 +9,7 @@ import {
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 
-import { l1SourceAuthorityDigest, type WatcherConfig } from "./config.js";
+import { l1SourceAuthorityDigest, type CommitteeConfig } from "./config.js";
 import type { AttestationCoordinator } from "./coordinator/coordinator.js";
 import type { SubmitterReconciler } from "./coordinator/submitter-reconciler.js";
 import type {
@@ -42,6 +42,7 @@ import type {
 } from "./l1/provider.js";
 import {
   scanStateQueue,
+  type StateQueueL1View,
   type StateQueueProvider,
   type StateQueueReplayAnchor,
 } from "./l1/state-queue-scanner.js";
@@ -63,13 +64,13 @@ import {
   hasPayloadBytes,
   type L1ObservedDecision,
   type L1SourceState,
-  type WatcherStore,
+  type CommitteeStore,
 } from "./store.js";
 import { hexToBytes } from "./utils/hex.js";
 
-export type WatcherServiceDeps = {
-  readonly config: WatcherConfig;
-  readonly store: WatcherStore;
+export type CommitteeServiceDeps = {
+  readonly config: CommitteeConfig;
+  readonly store: CommitteeStore;
   readonly stateQueueProvider: StateQueueProvider;
   readonly payloadSource: DaPayloadSource;
   readonly signer?: DaSigner;
@@ -85,31 +86,38 @@ export type WatcherServiceDeps = {
   readonly now?: () => Date;
 };
 
-export type WatcherTickResult = {
+export type CommitteeTickResult = {
   readonly scannedHeaders: number;
   readonly signedHeaders: number;
   readonly reconciledHeaders: number;
   readonly skippedHeaders: number;
-  readonly payloadFetches: readonly WatcherPayloadFetchObservation[];
+  readonly payloadFetches: readonly CommitteePayloadFetchObservation[];
   readonly errors: readonly string[];
 };
 
-export type WatcherPayloadFetchObservation = {
+export type CommitteePayloadFetchObservation = {
   readonly headerHash: string;
   readonly status: "missing_da" | "available" | "fetch_failed";
   readonly sourcePeerIds: readonly string[];
   readonly detail?: string;
 };
 
-export type WatcherL1SubmitterPreflightSnapshot = {
+export type CommitteeL1SubmitterPreflightSnapshot = {
   readonly status: "ready" | "funded" | "failed" | "not_required" | "not_run";
   readonly detail?: unknown;
   readonly error?: string;
 };
 
-export type WatcherRetentionReadinessSnapshot = {
-  readonly status: "not_checked" | "ok" | "alerting" | "failed";
+export type CommitteeRetentionReadinessSnapshot = {
+  readonly status:
+    | "not_checked"
+    | "ok"
+    | "alerting"
+    | "failed"
+    | "l1_view_stale";
   readonly checkedAt?: string;
+  /** Age of the last fresh authenticated L1 view, when it is stale. */
+  readonly l1ViewAgeMs?: number;
   readonly scanned: number;
   readonly retained: number;
   readonly prunable: number;
@@ -117,7 +125,7 @@ export type WatcherRetentionReadinessSnapshot = {
   readonly error?: string;
 };
 
-export type WatcherReadinessPeerSnapshot = {
+export type CommitteeReadinessPeerSnapshot = {
   readonly localPeerId?: string;
   readonly signerIndex?: number;
   readonly producerPeerIds: readonly string[];
@@ -128,10 +136,10 @@ export type WatcherReadinessPeerSnapshot = {
   readonly l1SubmitterId?: string;
   readonly l1SubmitterIds: readonly string[];
   readonly l1SubmitterSignerIndexes: readonly number[];
-  readonly l1SubmitterPreflight: WatcherL1SubmitterPreflightSnapshot;
+  readonly l1SubmitterPreflight: CommitteeL1SubmitterPreflightSnapshot;
 };
 
-export type WatcherReadinessSnapshot = {
+export type CommitteeReadinessSnapshot = {
   readonly ready: boolean;
   readonly l1Source?: {
     readonly sourceMode: "local_node" | "external_providers";
@@ -158,7 +166,7 @@ export type WatcherReadinessSnapshot = {
     readonly committeeSignersHash: string;
     readonly threshold: number;
   };
-  readonly peer: WatcherReadinessPeerSnapshot;
+  readonly peer: CommitteeReadinessPeerSnapshot;
   readonly scanner: {
     readonly status: "not_started" | "ok" | "degraded" | "failed";
     readonly lastStartedAt?: string;
@@ -169,7 +177,7 @@ export type WatcherReadinessSnapshot = {
     readonly skippedHeaders: number;
     readonly errors: readonly string[];
   };
-  readonly retention?: WatcherRetentionReadinessSnapshot;
+  readonly retention?: CommitteeRetentionReadinessSnapshot;
   readonly counts: {
     readonly discoveredHeaders: number;
     readonly missingPayloads: number;
@@ -191,20 +199,31 @@ type CoordinatorPublishResult = {
   readonly error?: string;
 };
 
-export class WatcherService {
-  private readonly deps: WatcherServiceDeps;
-  private tickInFlight?: Promise<WatcherTickResult>;
+/**
+ * Retention exemption sets of the last tick whose L1 observation passed every
+ * source check, stamped with the time it was accepted.
+ */
+export type CommitteeL1View = {
+  readonly observedAtMs: number;
+  readonly confirmedHeadHash: string;
+  readonly liveQueueHeaderHashes: ReadonlySet<string>;
+};
+
+export class CommitteeService {
+  private readonly deps: CommitteeServiceDeps;
+  private tickInFlight?: Promise<CommitteeTickResult>;
+  private l1View: CommitteeL1View | undefined;
   private lastTick:
     | {
         readonly status: "ok" | "degraded" | "failed";
         readonly startedAt: string;
         readonly finishedAt: string;
-        readonly result?: WatcherTickResult;
+        readonly result?: CommitteeTickResult;
         readonly error?: string;
       }
     | undefined;
 
-  constructor(deps: WatcherServiceDeps) {
+  constructor(deps: CommitteeServiceDeps) {
     this.deps = deps;
     if (
       (deps.daLibp2pNode === undefined) !==
@@ -224,6 +243,11 @@ export class WatcherService {
         }),
       );
     }
+  }
+
+  /** Latest accepted L1 view, or undefined before the first healthy scan. */
+  latestL1View(): CommitteeL1View | undefined {
+    return this.l1View;
   }
 
   private nowIso(): string {
@@ -258,7 +282,7 @@ export class WatcherService {
         const daParams = await this.deps.daChainReader.fetchDaParams();
         if (daParams.committeeHex !== this.deps.config.daParams.committeeHex) {
           throw new Error(
-            "on-chain DA committee does not match watcher config",
+            "on-chain DA committee does not match committee node config",
           );
         }
         if (
@@ -266,12 +290,12 @@ export class WatcherService {
           this.deps.config.daParams.committeeSignersHash
         ) {
           throw new Error(
-            "on-chain DA committee_signers_hash does not match watcher config",
+            "on-chain DA committee_signers_hash does not match committee node config",
           );
         }
         if (daParams.threshold !== this.deps.config.daParams.threshold) {
           throw new Error(
-            "on-chain DA threshold does not match watcher config",
+            "on-chain DA threshold does not match committee node config",
           );
         }
       } catch (error) {
@@ -297,7 +321,7 @@ export class WatcherService {
     }
   }
 
-  async tick(): Promise<WatcherTickResult> {
+  async tick(): Promise<CommitteeTickResult> {
     if (this.tickInFlight !== undefined) {
       return this.tickInFlight;
     }
@@ -313,10 +337,10 @@ export class WatcherService {
   async readinessSnapshot(
     args: {
       readonly localPeerId?: string;
-      readonly l1SubmitterPreflight?: WatcherL1SubmitterPreflightSnapshot;
-      readonly retention?: WatcherRetentionReadinessSnapshot;
+      readonly l1SubmitterPreflight?: CommitteeL1SubmitterPreflightSnapshot;
+      readonly retention?: CommitteeRetentionReadinessSnapshot;
     } = {},
-  ): Promise<WatcherReadinessSnapshot> {
+  ): Promise<CommitteeReadinessSnapshot> {
     const deployment = await this.deps.store.getDeployment();
     const l1SourceState = await this.deps.store.getL1SourceState();
     const headers = await this.deps.store.listStateQueueHeaders();
@@ -362,7 +386,7 @@ export class WatcherService {
         ? { status: "not_run" as const }
         : { status: "not_required" as const });
     const tick = this.lastTick;
-    const scanner: WatcherReadinessSnapshot["scanner"] = {
+    const scanner: CommitteeReadinessSnapshot["scanner"] = {
       status: tick?.status ?? "not_started",
       ...(tick?.startedAt === undefined
         ? {}
@@ -411,7 +435,7 @@ export class WatcherService {
       reasons.push("last state queue scanner tick failed");
     }
     if (scanner.status === "degraded") {
-      reasons.push("last watcher tick completed with errors");
+      reasons.push("last committee node tick completed with errors");
     }
     if (
       l1SourceState?.status === "quarantined" &&
@@ -439,6 +463,11 @@ export class WatcherService {
     if (args.retention?.status === "failed") {
       reasons.push(
         `retention check failed: ${args.retention.error ?? "unknown error"}`,
+      );
+    }
+    if (args.retention?.status === "l1_view_stale") {
+      reasons.push(
+        `l1_view_stale:${(args.retention.l1ViewAgeMs ?? 0).toString()}`,
       );
     }
     if (args.retention?.status === "alerting") {
@@ -524,7 +553,7 @@ export class WatcherService {
     };
   }
 
-  private async tickOnceWithStatus(): Promise<WatcherTickResult> {
+  private async tickOnceWithStatus(): Promise<CommitteeTickResult> {
     const startedAt = new Date().toISOString();
     try {
       const result = await this.tickOnce();
@@ -546,13 +575,14 @@ export class WatcherService {
     }
   }
 
-  private async tickOnce(): Promise<WatcherTickResult> {
+  private async tickOnce(): Promise<CommitteeTickResult> {
     const priorL1State = await this.deps.store.getL1SourceState();
     if (priorL1State?.status === "quarantined") {
       return quarantinedTickResult(priorL1State);
     }
     let records: Awaited<ReturnType<typeof scanStateQueue>>;
     let replayAnchor: StateQueueReplayAnchor | undefined;
+    let scannedL1View: StateQueueL1View | undefined;
     try {
       const previousHeaders = await this.deps.store.listStateQueueHeaders();
       records = await scanStateQueue(this.deps.stateQueueProvider, {
@@ -563,15 +593,6 @@ export class WatcherService {
         finalityDepth: this.deps.config.finalityDepth,
         consensusProfile: this.deps.config.consensusProfile,
         previousHeaders,
-        availabilityRetentionAuthority: {
-          deploymentIdentityDigest: this.deps.config.deploymentFingerprint,
-          stateQueuePolicyId: this.deps.config.stateQueuePolicyId,
-          stateQueueAddress: this.deps.config.stateQueueAddress,
-          availabilityPolicyId:
-            this.deps.config.midgardNodeDeployment.availabilityChallenge
-              .policyId,
-          minimumFinalityDepth: BigInt(this.deps.config.finalityDepth),
-        },
         ...(priorL1State?.stateQueueReplayAnchor === undefined
           ? {}
           : {
@@ -579,6 +600,9 @@ export class WatcherService {
             }),
         recordReplayAnchor: (anchor) => {
           replayAnchor = anchor;
+        },
+        recordL1View: (view) => {
+          scannedL1View = view;
         },
       });
     } catch (error) {
@@ -633,8 +657,15 @@ export class WatcherService {
       );
       return quarantinedTickResult(quarantined);
     }
+    if (scannedL1View !== undefined) {
+      this.l1View = {
+        observedAtMs: (this.deps.now?.() ?? new Date()).getTime(),
+        confirmedHeadHash: scannedL1View.confirmedHeaderHash,
+        liveQueueHeaderHashes: new Set(scannedL1View.liveQueueHeaderHashes),
+      };
+    }
     const errors: string[] = [];
-    const payloadFetches: WatcherPayloadFetchObservation[] = [];
+    const payloadFetches: CommitteePayloadFetchObservation[] = [];
     let signedHeaders = 0;
     let reconciledHeaders = 0;
     let skippedHeaders = 0;
@@ -915,7 +946,7 @@ export class WatcherService {
 
   private async fetchVerifyAndSign(
     record: Awaited<ReturnType<typeof scanStateQueue>>[number],
-    payloadFetches: WatcherPayloadFetchObservation[],
+    payloadFetches: CommitteePayloadFetchObservation[],
   ): Promise<SignedHeaderResult | undefined> {
     const verified = await this.fetchVerifyPayload(record, payloadFetches);
     if (verified === undefined) {
@@ -965,7 +996,7 @@ export class WatcherService {
 
   private async fetchVerifyPayload(
     record: Awaited<ReturnType<typeof scanStateQueue>>[number],
-    payloadFetches: WatcherPayloadFetchObservation[],
+    payloadFetches: CommitteePayloadFetchObservation[],
   ): Promise<VerifiedDaPayload | undefined> {
     const existing = await this.deps.store.getDaPayload(record.headerHash);
     if (existing !== undefined && hasPayloadBytes(existing)) {
@@ -1192,7 +1223,7 @@ export class WatcherService {
   private async ensurePayloadForSubmitter(
     record: StateQueueHeaderRecord,
     errors: string[],
-    payloadFetches: WatcherPayloadFetchObservation[],
+    payloadFetches: CommitteePayloadFetchObservation[],
   ): Promise<void> {
     if (
       this.deps.submitterReconciler === undefined ||
@@ -1443,7 +1474,7 @@ export class WatcherService {
 export const createDaConflictEvidenceGossipHandler = (args: {
   readonly deploymentFingerprint: string;
   readonly registry: DaPeerRegistry;
-  readonly store: Pick<WatcherStore, "saveDaConflictEvidence">;
+  readonly store: Pick<CommitteeStore, "saveDaConflictEvidence">;
   readonly now?: () => Date;
 }): DaGossipMessageHandler => {
   const now = args.now ?? (() => new Date());
@@ -1459,7 +1490,7 @@ export const createDaConflictEvidenceGossipHandler = (args: {
 export const ingestDaConflictEvidence = async (args: {
   readonly deploymentFingerprint: string;
   readonly registry: DaPeerRegistry;
-  readonly store: Pick<WatcherStore, "saveDaConflictEvidence">;
+  readonly store: Pick<CommitteeStore, "saveDaConflictEvidence">;
   readonly context: DaGossipMessageHandlerContext;
   readonly receivedAt: Date;
 }): Promise<boolean> => {
@@ -1750,7 +1781,7 @@ const sameChainSyncCursor = (
   left.point.providerSource === right.point.providerSource &&
   left.point.observedAt === right.point.observedAt;
 
-const quarantinedTickResult = (state: L1SourceState): WatcherTickResult => ({
+const quarantinedTickResult = (state: L1SourceState): CommitteeTickResult => ({
   scannedHeaders: 0,
   signedHeaders: 0,
   reconciledHeaders: 0,
@@ -1764,7 +1795,7 @@ const quarantinedTickResult = (state: L1SourceState): WatcherTickResult => ({
 const payloadFetchObservation = (
   headerHash: string,
   attempts: DaPayloadFetchFailure["attempts"],
-): WatcherPayloadFetchObservation => {
+): CommitteePayloadFetchObservation => {
   const status = attempts.every((attempt) => attempt.status === "not_found")
     ? "missing_da"
     : "fetch_failed";

@@ -4,6 +4,7 @@ import {
   MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
   MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
 } from "@al-ft/midgard-core/cek-proof";
+import { resolveL1ViewFatalMs } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import {
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
@@ -212,6 +213,7 @@ export type NodeConfigDep = {
   STATE_QUEUE_CORRECTION_FINALITY_DEPTH: number;
   RETENTION_DAYS: number;
   WAIT_BETWEEN_RETENTION_SWEEPS: number;
+  L1_VIEW_FATAL_MS: number;
   HUB_ORACLE_ONE_SHOT_TX_HASH: string;
   HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: number;
   OPERATOR_REQUIRED_BOND_LOVELACE: bigint;
@@ -291,6 +293,36 @@ const positiveFiniteNumberConfig = (name: string, defaultValue: number) =>
   );
 
 /**
+ * Reads a wallet seed phrase that the node cannot start without. Fails config
+ * load with the variable named and the fix stated, instead of letting the
+ * wallet derivation surface a bare bip39 "invalid mnemonic" defect for an
+ * empty `.env` value.
+ */
+const requiredSeedPhrase = (name: string) =>
+  Config.string(name).pipe(
+    Config.mapAttempt((value) => validateSeedPhrase(name, value)),
+  );
+
+const validateSeedPhrase = (name: string, value: string): string => {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    throw new Error(
+      `${name} is required: set a wallet seed phrase in .env (see the "Required settings" block at the top of .env.example).`,
+    );
+  }
+  try {
+    // Address prefix depends on the network, mnemonic validity does not, so a
+    // fixed network is enough to reject a malformed phrase at config load.
+    walletFromSeed(trimmed, { network: "Preprod" });
+  } catch (cause) {
+    throw new Error(
+      `${name} is not a valid wallet seed phrase: ${String(cause)}`,
+    );
+  }
+  return trimmed;
+};
+
+/**
  * Loads and normalizes the node's runtime configuration from environment
  * variables.
  */
@@ -298,8 +330,10 @@ const makeConfig = Effect.gen(function* () {
   const provider = yield* Config.literal("Kupmios")("L1_PROVIDER");
   const ogmiosKey = yield* Config.string("L1_OGMIOS_KEY");
   const kupoKey = yield* Config.string("L1_KUPO_KEY");
-  const operatorSeedPhrase = yield* Config.string("L1_OPERATOR_SEED_PHRASE");
-  const operatorSeedPhraseForMergeTx = yield* Config.string(
+  const operatorSeedPhrase = yield* requiredSeedPhrase(
+    "L1_OPERATOR_SEED_PHRASE",
+  );
+  const operatorSeedPhraseForMergeTx = yield* requiredSeedPhrase(
     "L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX",
   );
   const network = yield* Config.literal(
@@ -367,7 +401,12 @@ const makeConfig = Effect.gen(function* () {
   );
   const referenceScriptSeedPhrase = yield* Config.string(
     "L1_REFERENCE_SCRIPT_SEED_PHRASE",
-  ).pipe(Config.withDefault(operatorSeedPhrase));
+  ).pipe(
+    Config.withDefault(operatorSeedPhrase),
+    Config.mapAttempt((value) =>
+      validateSeedPhrase("L1_REFERENCE_SCRIPT_SEED_PHRASE", value),
+    ),
+  );
   const configuredReferenceScriptAddress = yield* Config.string(
     "L1_REFERENCE_SCRIPT_ADDRESS",
   ).pipe(Config.withDefault(""));
@@ -758,14 +797,29 @@ const makeConfig = Effect.gen(function* () {
   const retentionDays = yield* Config.integer("RETENTION_DAYS").pipe(
     Config.withDefault(0),
     Config.mapAttempt(validateRetentionDays),
-    // Q54: enabled pruning must cover the deployment manifest's
+    // Q54: enabled wall-clock pruning must cover the deployment manifest's
     // da.transportProfile.retentionDays window; a shorter env value fails the
-    // config load rather than silently pruning challengeable evidence.
+    // config load. DA payload pruning does not follow RETENTION_DAYS.
     Config.mapAttempt((value) => assertRetentionDaysMatchesDeployment(value)),
   );
   const waitBetweenRetentionSweeps = yield* Config.integer(
     "WAIT_BETWEEN_RETENTION_SWEEPS",
-  ).pipe(Config.withDefault(3_600_000));
+  ).pipe(Config.withDefault(900_000));
+  // A node that has not read L1 for the DA attestation timeout can neither
+  // commit, merge, nor decide retention, so that is the default deadline; the
+  // default sweep interval (15 min) puts four sweeps inside it.
+  const l1ViewFatalMs = yield* Config.option(
+    Config.string("L1_VIEW_FATAL_MS"),
+  ).pipe(
+    Config.mapAttempt((value) =>
+      resolveL1ViewFatalMs({
+        value: Option.getOrUndefined(value),
+        defaultMs: Number(SDK.DA_ATTESTATION_TIMEOUT_MS),
+        pollIntervalMs: waitBetweenRetentionSweeps,
+        fieldName: "L1_VIEW_FATAL_MS",
+      }),
+    ),
+  );
   const hubOracleOneShotTxHash = yield* Config.string(
     "HUB_ORACLE_ONE_SHOT_TX_HASH",
   ).pipe(Config.withDefault(""));
@@ -1252,9 +1306,15 @@ const makeConfig = Effect.gen(function* () {
       return value;
     }),
   );
-  const seedA = yield* Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_A");
-  const seedB = yield* Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_B");
-  const seedC = yield* Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_C");
+  const seedA = yield* requiredSeedPhrase(
+    "TESTNET_GENESIS_WALLET_SEED_PHRASE_A",
+  );
+  const seedB = yield* requiredSeedPhrase(
+    "TESTNET_GENESIS_WALLET_SEED_PHRASE_B",
+  );
+  const seedC = yield* requiredSeedPhrase(
+    "TESTNET_GENESIS_WALLET_SEED_PHRASE_C",
+  );
   const addressA = walletFromSeed(seedA, { network }).address;
   const addressB = walletFromSeed(seedB, { network }).address;
   const addressC = walletFromSeed(seedC, { network }).address;
@@ -1414,6 +1474,7 @@ const makeConfig = Effect.gen(function* () {
     STATE_QUEUE_CORRECTION_FINALITY_DEPTH: stateQueueCorrectionFinalityDepth,
     RETENTION_DAYS: retentionDays,
     WAIT_BETWEEN_RETENTION_SWEEPS: waitBetweenRetentionSweeps,
+    L1_VIEW_FATAL_MS: l1ViewFatalMs,
     HUB_ORACLE_ONE_SHOT_TX_HASH: hubOracleOneShotTxHash,
     HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: hubOracleOneShotOutputIndex,
     OPERATOR_REQUIRED_BOND_LOVELACE: operatorRequiredBondLovelace,

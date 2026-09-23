@@ -4,7 +4,7 @@ import type {
 } from "../da/libp2p/attestations.js";
 import type { DaSignatureRecord } from "../domain.js";
 import type { DaCommitteeValidation } from "../signer.js";
-import type { WatcherStore } from "../store.js";
+import type { CommitteeStore } from "../store.js";
 import {
   buildDaSignatureConflictEvidence,
   type DaAvailabilityCommitmentAuthority,
@@ -21,7 +21,7 @@ export type PeerSignaturePollerDeps = {
   readonly signerValidation: DaCommitteeValidation;
   readonly availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthority;
   readonly store: Pick<
-    WatcherStore,
+    CommitteeStore,
     | "getDaPayload"
     | "saveDaSignature"
     | "listDaSignatures"
@@ -154,7 +154,7 @@ export class PeerSignaturePoller {
 }
 
 export const recordPeerSuccess = async (
-  store: Pick<WatcherStore, "savePeerHealth">,
+  store: Pick<CommitteeStore, "savePeerHealth">,
   peer: DaAttestationPeer,
 ): Promise<void> => {
   await store.savePeerHealth({
@@ -167,7 +167,7 @@ export const recordPeerSuccess = async (
 };
 
 export const recordPeerFailure = async (
-  store: Pick<WatcherStore, "listPeerHealth" | "savePeerHealth">,
+  store: Pick<CommitteeStore, "listPeerHealth" | "savePeerHealth">,
   peer: DaAttestationPeer,
   lastError: string,
 ): Promise<void> => {

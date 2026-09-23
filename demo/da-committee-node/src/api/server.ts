@@ -6,15 +6,15 @@ import {
 import type { AddressInfo } from "node:net";
 
 import { jsonBigIntStringReplacer } from "../json.js";
-import type { WatcherReadinessSnapshot } from "../watcher.js";
+import type { CommitteeReadinessSnapshot } from "../committee-service.js";
 
-export type WatcherApiServer = {
+export type CommitteeApiServer = {
   readonly listen: (port: number, host: string) => Promise<void>;
   readonly address: () => AddressInfo | string | null;
   readonly close: () => Promise<void>;
 };
 
-export const createWatcherApiServer = ({
+export const createCommitteeApiServer = ({
   readiness,
   manifest = {},
 }: {
@@ -23,14 +23,14 @@ export const createWatcherApiServer = ({
   readonly signerValidation?: unknown;
   readonly store: unknown;
   readonly readiness: () =>
-    | WatcherReadinessSnapshot
-    | Promise<WatcherReadinessSnapshot>;
+    | CommitteeReadinessSnapshot
+    | Promise<CommitteeReadinessSnapshot>;
   readonly manifest?: Record<string, unknown>;
   readonly peerReplayWindowMs?: number;
   readonly peerMaxBodyBytes?: number;
   readonly peerRateLimitWindowMs?: number;
   readonly peerRateLimitMaxRequests?: number;
-}): WatcherApiServer => {
+}): CommitteeApiServer => {
   const server = createServer((request, response) => {
     try {
       void routeRequest({
@@ -73,12 +73,12 @@ const routeRequest = ({
   readonly request: IncomingMessage;
   readonly response: ServerResponse;
   readonly readiness: () =>
-    | WatcherReadinessSnapshot
-    | Promise<WatcherReadinessSnapshot>;
+    | CommitteeReadinessSnapshot
+    | Promise<CommitteeReadinessSnapshot>;
   readonly manifest: Record<string, unknown>;
 }): Promise<void> => {
   const method = request.method ?? "GET";
-  const url = new URL(request.url ?? "/", "http://watcher.local");
+  const url = new URL(request.url ?? "/", "http://committee.local");
   if (method === "GET" && url.pathname === "/healthz") {
     json(response, 200, { ok: true });
     return Promise.resolve();

@@ -15,7 +15,7 @@ services:
       - ./dist/index.js
       - listen
     ports:
-      - "3000:3000" # api server
+      - "${PORT:-3000}:${PORT:-3000}" # api server (PORT from .env, default 3000)
     volumes:
       - ./db:/app/db
       - ./deploymentInfo:/app/deploymentInfo
@@ -47,7 +47,7 @@ services:
       midgard_net:
 
   postgres:
-    image: postgres:15-alpine
+    image: postgres:15.15-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}

@@ -486,11 +486,6 @@ describe("watcher decision-time predecessor ledger", () => {
           manifestPath: MANIFEST_PATH,
           blueprintPath: BLUEPRINT_PATH,
           deploymentInfoPath: DEPLOYMENT_INFO_PATH,
-          midgardNodeUrl: "http://127.0.0.1:3000",
-          midgardNodeAdminKeySource: {
-            kind: "environment",
-            variable: "MIDGARD_NODE_ADMIN_KEY",
-          },
           historicalNativeScriptHistory: {
             sourceMode: "external_provider_quorum",
             consistencyPolicy: "exact_bytes_all_providers_v1",
@@ -507,14 +502,12 @@ describe("watcher decision-time predecessor ledger", () => {
               },
             ],
           },
-          stateQueueLeaseTtlMs: 30_000,
         },
         unsafeTransportFactoryForTest: transportFactory(),
       },
       deps,
       {
         MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
-        MIDGARD_NODE_ADMIN_KEY: "admin-key",
       },
     );
   });
@@ -659,6 +652,12 @@ describe("watcher decision-time predecessor ledger", () => {
       expect(resolvedContractNames).toEqual(
         Object.values(FAMILY_APPLICATION_REGISTRY[category].roster).sort(),
       );
+      // The acting load builds its lease coordinator from nothing: removal is
+      // coordinated locally and no Midgard node admin key is read.
+      expect(deps.createLeaseCoordinator).toHaveBeenCalled();
+      for (const call of vi.mocked(deps.createLeaseCoordinator).mock.calls) {
+        expect(call).toEqual([]);
+      }
       application.retainDecisionAuthorities(null);
     },
   );

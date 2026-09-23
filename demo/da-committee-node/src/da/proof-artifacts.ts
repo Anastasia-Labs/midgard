@@ -23,7 +23,7 @@ import type {
   StateQueueHeaderRecord,
 } from "../domain.js";
 import { hashBlockHeader } from "../l1/state-queue-scanner.js";
-import type { WatcherStore } from "../store.js";
+import type { CommitteeStore } from "../store.js";
 import { hexToBytes, normalizeHex } from "../utils/hex.js";
 import {
   computeDaPayloadRoots,
@@ -65,7 +65,7 @@ export type DaProofArtifactDerivation<TResponse> = {
 };
 
 export type DaProofArtifactStore = Pick<
-  WatcherStore,
+  CommitteeStore,
   "getDaPayload" | "getStateQueueHeader"
 >;
 

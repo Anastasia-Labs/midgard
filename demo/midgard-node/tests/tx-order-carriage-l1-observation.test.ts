@@ -82,7 +82,7 @@ import {
  * mint-redeemer extraction → reference-input resolution.
  *
  * **What is not real, and why it cannot be here.** There is no local cardano-node
- * (`l1-services/docker-compose.yml` is a docker deployment, not a test fixture),
+ * (`docker-compose.kupmios.yaml` is a docker deployment, not a test fixture),
  * so slots and header hashes are the harness's and the tx-order minting policy is
  * the always-succeeds placeholder every emulator suite in this package uses. The
  * mint's own §8.11 walk is therefore not re-run here — it is covered in Aiken —

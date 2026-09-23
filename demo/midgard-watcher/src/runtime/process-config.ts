@@ -18,7 +18,6 @@ export const WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION =
   "midgard-watcher-trusted-head-authority-process-config-v1" as const;
 
 const ENVIRONMENT_VARIABLE = /^[A-Z][A-Z0-9_]{0,127}$/u;
-const HEX_28 = /^[0-9a-f]{56}$/u;
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
@@ -150,13 +149,10 @@ export type WatcherProcessConfig = Readonly<{
     journalPath: string;
     minimumFundingLovelace: string;
   }>;
-  readinessHeaderHash: string;
   faultProofInfrastructure: Readonly<{
     manifestPath: string;
     blueprintPath: string;
     deploymentInfoPath: string;
-    midgardNodeUrl: string;
-    midgardNodeAdminKeySource: WatcherWalletKeySource;
     historicalNativeScriptHistory: Readonly<{
       sourceMode: "external_provider_quorum";
       consistencyPolicy: "exact_bytes_all_providers_v1";
@@ -166,7 +162,6 @@ export type WatcherProcessConfig = Readonly<{
         authorityEndpoint: string;
       }>[];
     }>;
-    stateQueueLeaseTtlMs?: number;
   }>;
 }>;
 
@@ -253,53 +248,19 @@ const historicalNativeScriptHistory = (
   });
 };
 
-const loopbackServiceUrl = (value: unknown, label: string): string => {
-  if (typeof value !== "string") throw new Error(`${label} is invalid`);
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error(`${label} is invalid`);
-  }
-  if (
-    !["http:", "https:"].includes(url.protocol) ||
-    !LOOPBACK_HOSTS.has(url.hostname.toLowerCase()) ||
-    url.username.length !== 0 ||
-    url.password.length !== 0 ||
-    url.search.length !== 0 ||
-    url.hash.length !== 0
-  ) {
-    throw new Error(`${label} must be fixed loopback HTTP`);
-  }
-  return url.toString().replace(/\/$/u, "");
-};
-
 const faultProofInfrastructure = (
   value: unknown,
 ): WatcherProcessConfig["faultProofInfrastructure"] => {
-  const candidate = value as { readonly stateQueueLeaseTtlMs?: unknown };
   const input = exactRecord(
     value,
     [
       "manifestPath",
       "blueprintPath",
       "deploymentInfoPath",
-      "midgardNodeUrl",
-      "midgardNodeAdminKeySource",
       "historicalNativeScriptHistory",
-      ...(candidate?.stateQueueLeaseTtlMs === undefined
-        ? []
-        : ["stateQueueLeaseTtlMs"]),
     ],
     "watcher fault-proof infrastructure",
   );
-  if (
-    input.stateQueueLeaseTtlMs !== undefined &&
-    (!Number.isSafeInteger(input.stateQueueLeaseTtlMs) ||
-      (input.stateQueueLeaseTtlMs as number) <= 0)
-  ) {
-    throw new Error("watcher state-queue lease TTL is invalid");
-  }
   return Object.freeze({
     manifestPath: canonicalPath(input.manifestPath, "deployment manifest"),
     blueprintPath: canonicalPath(input.blueprintPath, "Aiken blueprint"),
@@ -307,20 +268,9 @@ const faultProofInfrastructure = (
       input.deploymentInfoPath,
       "contract deployment information",
     ),
-    midgardNodeUrl: loopbackServiceUrl(
-      input.midgardNodeUrl,
-      "Midgard node endpoint",
-    ),
-    midgardNodeAdminKeySource: secretSource(
-      input.midgardNodeAdminKeySource,
-      "Midgard node admin key source",
-    ),
     historicalNativeScriptHistory: historicalNativeScriptHistory(
       input.historicalNativeScriptHistory,
     ),
-    ...(input.stateQueueLeaseTtlMs === undefined
-      ? {}
-      : { stateQueueLeaseTtlMs: input.stateQueueLeaseTtlMs as number }),
   });
 };
 
@@ -342,7 +292,6 @@ export const parseWatcherProcessConfig = (
       "httpBearerSecretSource",
       "workflowJournalDirectory",
       "availability",
-      "readinessHeaderHash",
       "faultProofInfrastructure",
     ],
     "watcher production process config",
@@ -399,15 +348,8 @@ export const parseWatcherProcessConfig = (
     watcherConfig.storage.rollbackAuthorityKeySource,
     watcherConfig.proverWallet.keySource,
     httpBearerSecretSource,
-    infrastructure.midgardNodeAdminKeySource,
     availability.keySource,
   ]);
-  if (
-    typeof input.readinessHeaderHash !== "string" ||
-    !HEX_28.test(input.readinessHeaderHash)
-  ) {
-    throw new Error("watcher fault-proof readiness header hash is invalid");
-  }
   const trustedHeadAuthorityEndpoint = loopbackEndpoint(
     input.trustedHeadAuthorityEndpoint,
     "trusted-head endpoint",
@@ -451,7 +393,6 @@ export const parseWatcherProcessConfig = (
       input.workflowJournalDirectory,
       "workflow journal directory",
     ),
-    readinessHeaderHash: input.readinessHeaderHash,
     faultProofInfrastructure: infrastructure,
     availability,
   });

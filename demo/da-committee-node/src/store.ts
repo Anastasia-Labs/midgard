@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  access,
   type FileHandle,
   mkdir,
   open as openFile,
@@ -16,7 +17,6 @@ import {
   type DeploymentMarker,
   parseDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
 
 import type {
   DaAttestationCandidateRecord,
@@ -37,18 +37,23 @@ import {
   parseDaStoredPayloadRecord,
 } from "./domain.js";
 import type { StateQueueReplayAnchor } from "./l1/state-queue-scanner.js";
+import {
+  retentionBlockEndTimeMs,
+  retentionQueueReference,
+} from "./store/retention.js";
 
-export type RetainedPayloadDeletionAuthority = {
+export type RetainedPayloadPruneRequest = {
   readonly headerHash: string;
-  readonly transitionDigest: string;
-  readonly sourceAuthoritySha256: string;
-  readonly authority: SDK.DaAvailabilityRetentionAuthority;
   readonly nowMs: number;
-  readonly retentionDays: number;
+  readonly retentionDays?: number;
+  /** Header hash in the L1 `ConfirmedState` datum of the caller's view. */
+  readonly confirmedHeadHash: string;
+  /** Every header hash live in the L1 state queue of the caller's view. */
+  readonly liveQueueHeaderHashes: ReadonlySet<string>;
 };
 
 type StoreData = {
-  readonly deployment?: WatcherDeploymentRecord;
+  readonly deployment?: CommitteeDeploymentRecord;
   readonly chainCursor?: L1SourceState;
   readonly stateQueueHeaders: Record<string, StateQueueHeaderRecord>;
   readonly daPayloads: Record<string, DaStoredPayloadRecord>;
@@ -118,14 +123,14 @@ export type L1SourceState = {
   readonly quarantinedAt?: string;
 };
 
-export type WatcherDeploymentRecord = {
+export type CommitteeDeploymentRecord = {
   readonly marker: DeploymentMarker;
   readonly manifestSha256: string;
   readonly contractDeploymentInfoSha256: string;
   readonly manifestRaw: string;
 };
 
-export interface WatcherStore {
+export interface CommitteeStore {
   close?(): Promise<void>;
   initDeployment(args: {
     readonly marker: DeploymentMarker;
@@ -133,7 +138,7 @@ export interface WatcherStore {
     readonly contractDeploymentInfoSha256: string;
     readonly manifestRaw: string;
   }): Promise<void>;
-  getDeployment(): Promise<WatcherDeploymentRecord | undefined>;
+  getDeployment(): Promise<CommitteeDeploymentRecord | undefined>;
   getL1SourceState(): Promise<L1SourceState | undefined>;
   saveL1SourceState(state: L1SourceState): Promise<void>;
   getDecisionOutbox(
@@ -166,12 +171,11 @@ export interface WatcherStore {
   /** Q54 retention enforcement: full retained DA payload set. */
   listDaPayloads(): Promise<readonly DaStoredPayloadRecord[]>;
   /**
-   * Q54 retention enforcement: removes one retained DA payload. Returns whether
-   * a row existed. Callers must consult `daRetentionPruneDecisionV1` first.
+   * Removes one retained DA payload only if the core retention decision,
+   * re-evaluated inside the store's write boundary, still prunes it.
    */
-  deleteDaPayload(headerHash: string): Promise<boolean>;
-  deleteDaPayloadIfCurrentTerminal?(
-    authority: RetainedPayloadDeletionAuthority,
+  deleteDaPayloadIfPrunable(
+    request: RetainedPayloadPruneRequest,
   ): Promise<boolean>;
   saveDaSignature(record: DaSignatureRecord): Promise<void>;
   getDaSignature(args: {
@@ -209,7 +213,7 @@ export interface WatcherStore {
   recordPeerNonce(record: DaPeerNonceRecord): Promise<boolean>;
 }
 
-export class JsonFileWatcherStore implements WatcherStore {
+export class JsonFileCommitteeStore implements CommitteeStore {
   private readonly filePath: string;
   private readonly lockPath: string;
   private readonly lockHandle: FileHandle;
@@ -231,8 +235,10 @@ export class JsonFileWatcherStore implements WatcherStore {
     this.lockOwner = args.lockOwner;
   }
 
-  static async open(path: string): Promise<JsonFileWatcherStore> {
-    const filePath = path.endsWith(".json") ? path : join(path, "watcher.json");
+  static async open(path: string): Promise<JsonFileCommitteeStore> {
+    const filePath = path.endsWith(".json")
+      ? path
+      : await committeeStoreFilePath(path);
     await mkdir(dirname(filePath), { recursive: true });
     const lockPath = `${filePath}.lock`;
     const lockOwner = `${process.pid.toString()}:${randomUUID()}`;
@@ -242,12 +248,12 @@ export class JsonFileWatcherStore implements WatcherStore {
     } catch (error) {
       if (isNodeError(error) && error.code === "EEXIST") {
         throw new Error(
-          `watcher file store is already exclusively leased: ${lockPath}; close the active watcher or perform explicit stale-lock recovery`,
+          `committee node file store is already exclusively leased: ${lockPath}; close the active committee node or perform explicit stale-lock recovery`,
         );
       }
       throw error;
     }
-    const store = new JsonFileWatcherStore({
+    const store = new JsonFileCommitteeStore({
       filePath,
       lockPath,
       lockHandle,
@@ -298,7 +304,7 @@ export class JsonFileWatcherStore implements WatcherStore {
           );
         } catch {
           throw new Error(
-            `stale_deployment_state_requires_fresh_redeploy: stored_manifest_id=${data.deployment.marker.manifestId}, canonical_manifest_id=${marker.manifestId}, contract_deployment_info_sha256=${args.contractDeploymentInfoSha256}; refusing to reuse stale watcher state; perform an explicit fresh redeploy/reset before deleting local watcher state.`,
+            `stale_deployment_state_requires_fresh_redeploy: stored_manifest_id=${data.deployment.marker.manifestId}, canonical_manifest_id=${marker.manifestId}, contract_deployment_info_sha256=${args.contractDeploymentInfoSha256}; refusing to reuse stale committee node state; perform an explicit fresh redeploy/reset before deleting local committee node state.`,
           );
         }
       }
@@ -314,7 +320,7 @@ export class JsonFileWatcherStore implements WatcherStore {
     });
   }
 
-  async getDeployment(): Promise<WatcherDeploymentRecord | undefined> {
+  async getDeployment(): Promise<CommitteeDeploymentRecord | undefined> {
     const data = await this.read();
     return data.deployment;
   }
@@ -484,14 +490,13 @@ export class JsonFileWatcherStore implements WatcherStore {
             affectedHeaders.has(record.headerHash)
               ? {
                   ...record,
-                  availabilityRetention: undefined,
                   status: "conflicted",
                   validationErrors: [
                     ...new Set([...record.validationErrors, errorCode]),
                   ],
                   updatedAt: quarantined.quarantinedAt!,
                 }
-              : { ...record, availabilityRetention: undefined },
+              : record,
           ]),
         ),
         daPayloads: Object.fromEntries(
@@ -614,99 +619,28 @@ export class JsonFileWatcherStore implements WatcherStore {
     );
   }
 
-  async deleteDaPayload(headerHash: string): Promise<boolean> {
-    let deleted = false;
-    await this.mutate((data) => {
-      if (data.daPayloads[headerHash] === undefined) {
-        return data;
-      }
-      deleted = true;
-      const daPayloads = { ...data.daPayloads };
-      delete daPayloads[headerHash];
-      return { ...data, daPayloads };
-    });
-    return deleted;
-  }
-
-  async deleteDaPayloadIfCurrentTerminal(
-    args: RetainedPayloadDeletionAuthority,
+  async deleteDaPayloadIfPrunable(
+    request: RetainedPayloadPruneRequest,
   ): Promise<boolean> {
     let deleted = false;
     await this.mutate((data) => {
-      const source = data.chainCursor;
-      const header = data.stateQueueHeaders[args.headerHash];
-      const terminal = header?.availabilityRetention;
-      const payload = data.daPayloads[args.headerHash];
-      if (
-        source?.status !== "healthy" ||
-        source.sourceMode !== "local_node" ||
-        source.authoritySha256 !== args.sourceAuthoritySha256 ||
-        header === undefined ||
-        terminal === undefined ||
-        payload === undefined ||
-        payload.deploymentFingerprint !==
-          args.authority.deploymentIdentityDigest ||
-        header.deploymentFingerprint !==
-          args.authority.deploymentIdentityDigest ||
-        terminal.transition.transitionDigest !== args.transitionDigest
-      )
+      const payload = data.daPayloads[request.headerHash];
+      if (payload === undefined) {
         return data;
-      const transition = SDK.parseStateQueueAuthenticatedTransition(
-        terminal.transition,
-      );
-      const evidence =
-        transition === null
-          ? null
-          : SDK.parseDaAvailabilityRetentionEvidence(
-              terminal.evidence,
-              transition,
-              args.authority,
-            );
-      const observation = source.observations.find(
-        (item) => item.headerHash === args.headerHash,
-      );
-      if (
-        transition === null ||
-        evidence === null ||
-        evidence.headerHash !== args.headerHash ||
-        header.header.endTime.toString() !== evidence.blockEndTimeMs ||
-        header.computedHeaderHash !== args.headerHash ||
-        header.validationErrors.length !== 0 ||
-        !header.finalized ||
-        header.observedChainPoint.finalized !== true ||
-        header.observedChainPoint.providerSource !==
-          "authenticated_state_queue_transition_v1" ||
-        header.observedChainPoint.blockHash !== transition.blockHash ||
-        String(header.observedChainPoint.slot) !== transition.slot ||
-        String(header.observedChainPoint.blockHeight) !== transition.blockNo ||
-        !Number.isSafeInteger(header.observedChainPoint.depth) ||
-        BigInt(header.observedChainPoint.depth ?? -1) <
-          args.authority.minimumFinalityDepth ||
-        header.status !==
-          (transition.transitionKind === "merge" ? "merged" : "removed") ||
-        observation?.stateQueueStatus !== header.status ||
-        observation.blockHash !== transition.blockHash ||
-        String(observation.slot) !== transition.slot ||
-        !observation.finalized
-      )
+      }
+      const header = data.stateQueueHeaders[request.headerHash];
+      const decision = daRetentionPruneDecision({
+        nowMs: request.nowMs,
+        blockEndTimeMs: retentionBlockEndTimeMs(payload, header),
+        headerStatus: header?.status ?? "unobserved",
+        queueReference: retentionQueueReference(request.headerHash, request),
+        retentionDays: request.retentionDays,
+      });
+      if (decision.decision !== "prune") {
         return data;
-      const endTime = Number(evidence.blockEndTimeMs);
-      if (
-        !Number.isSafeInteger(endTime) ||
-        endTime < 0 ||
-        daRetentionPruneDecision(
-          { headerHash: args.headerHash, blockEndTimeMs: endTime },
-          {
-            nowMs: args.nowMs,
-            retentionDays: args.retentionDays,
-            headerStatus: header.status,
-            availabilityChallengeState: "inactive",
-          },
-        ).decision !== "prune"
-      )
-        return data;
+      }
       const daPayloads = { ...data.daPayloads };
-      delete daPayloads[args.headerHash];
+      delete daPayloads[request.headerHash];
       deleted = true;
       return { ...data, daPayloads };
     });
@@ -950,7 +884,7 @@ export class JsonFileWatcherStore implements WatcherStore {
 
   private async mutate(update: (data: StoreData) => StoreData): Promise<void> {
     if (this.closing || this.closed) {
-      throw new Error("watcher file store is closed");
+      throw new Error("committee node file store is closed");
     }
     const operation = this.writeQueue.then(async () => {
       const data = await this.read();
@@ -1104,13 +1038,13 @@ const emptyStoreData = (): StoreData => ({
 
 const normalizeStoreData = (value: unknown): StoreData => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("watcher store data must be an object");
+    throw new Error("committee node store data must be an object");
   }
   const record = value as Partial<StoreData>;
   return {
     ...(record.deployment === undefined
       ? {}
-      : { deployment: parseWatcherDeploymentRecord(record.deployment) }),
+      : { deployment: parseCommitteeDeploymentRecord(record.deployment) }),
     chainCursor:
       record.chainCursor === undefined
         ? undefined
@@ -1153,11 +1087,13 @@ const normalizeStoreData = (value: unknown): StoreData => {
   };
 };
 
-const parseWatcherDeploymentRecord = (
+const parseCommitteeDeploymentRecord = (
   value: unknown,
-): WatcherDeploymentRecord => {
+): CommitteeDeploymentRecord => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("watcher deployment marker record must be an object");
+    throw new Error(
+      "committee node deployment marker record must be an object",
+    );
   }
   const record = value as Record<string, unknown>;
   const expected = [
@@ -1171,21 +1107,21 @@ const parseWatcherDeploymentRecord = (
     expected.some((key) => !Object.prototype.hasOwnProperty.call(record, key))
   ) {
     throw new Error(
-      "watcher deployment marker record must contain exactly marker, manifestSha256, contractDeploymentInfoSha256, and manifestRaw",
+      "committee node deployment marker record must contain exactly marker, manifestSha256, contractDeploymentInfoSha256, and manifestRaw",
     );
   }
   const digest = (field: "manifestSha256" | "contractDeploymentInfoSha256") => {
     const entry = record[field];
     if (typeof entry !== "string" || !/^[0-9a-f]{64}$/u.test(entry)) {
       throw new Error(
-        `watcher deployment marker record ${field} must be lowercase SHA-256 hex`,
+        `committee node deployment marker record ${field} must be lowercase SHA-256 hex`,
       );
     }
     return entry;
   };
   if (typeof record.manifestRaw !== "string") {
     throw new Error(
-      "watcher deployment marker record manifestRaw must be a string",
+      "committee node deployment marker record manifestRaw must be a string",
     );
   }
   return {
@@ -1398,11 +1334,13 @@ export const mergeL1SourceState = (
     current.sourceMode !== proposed.sourceMode ||
     current.network !== proposed.network
   ) {
-    throw new Error("watcher L1 source authority changed without a reset");
+    throw new Error(
+      "committee node L1 source authority changed without a reset",
+    );
   }
   if (current.status === "quarantined") {
     if (proposed.status === "healthy") {
-      throw new Error("quarantined watcher L1 source state is terminal");
+      throw new Error("quarantined committee node L1 source state is terminal");
     }
     return current;
   }
@@ -1489,7 +1427,9 @@ export const mergeQuarantinedL1SourceState = (
     current.sourceMode !== proposed.sourceMode ||
     current.network !== proposed.network
   ) {
-    throw new Error("watcher L1 source authority changed without a reset");
+    throw new Error(
+      "committee node L1 source authority changed without a reset",
+    );
   }
   if (current.status === "quarantined") {
     return current;
@@ -1607,7 +1547,7 @@ const parseStateQueueReplayAnchor = (
 
 export const parseL1SourceState = (value: unknown): L1SourceState => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("watcher L1 source state must be an object");
+    throw new Error("committee node L1 source state must be an object");
   }
   const state = value as Partial<L1SourceState>;
   const stateKeys = new Set([
@@ -1637,7 +1577,7 @@ export const parseL1SourceState = (value: unknown): L1SourceState => {
     !isCanonicalIsoTimestamp(state.observedAt) ||
     !Array.isArray(state.observations)
   ) {
-    throw new Error("watcher L1 source state is malformed");
+    throw new Error("committee node L1 source state is malformed");
   }
   if (
     state.status === "quarantined" &&
@@ -1646,19 +1586,21 @@ export const parseL1SourceState = (value: unknown): L1SourceState => {
       typeof state.quarantinedAt !== "string" ||
       !isCanonicalIsoTimestamp(state.quarantinedAt))
   ) {
-    throw new Error("quarantined watcher L1 source state lacks evidence");
+    throw new Error(
+      "quarantined committee node L1 source state lacks evidence",
+    );
   }
   if (
     state.status === "healthy" &&
     (state.quarantineReason !== undefined || state.quarantinedAt !== undefined)
   ) {
     throw new Error(
-      "healthy watcher L1 source state contains quarantine fields",
+      "healthy committee node L1 source state contains quarantine fields",
     );
   }
   const observations = state.observations.map((entry) => {
     if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      throw new Error("watcher L1 source observation is malformed");
+      throw new Error("committee node L1 source observation is malformed");
     }
     const record = entry as Partial<L1ObservedDecision>;
     const observationKeys = new Set([
@@ -1690,7 +1632,7 @@ export const parseL1SourceState = (value: unknown): L1SourceState => {
         (typeof record.blockHash !== "string" ||
           !/^[0-9a-f]{64}$/u.test(record.blockHash)))
     ) {
-      throw new Error("watcher L1 source observation is malformed");
+      throw new Error("committee node L1 source observation is malformed");
     }
     return {
       headerHash: record.headerHash,
@@ -1711,7 +1653,9 @@ export const parseL1SourceState = (value: unknown): L1SourceState => {
     new Set(observations.map(({ headerHash }) => headerHash)).size !==
     observations.length
   ) {
-    throw new Error("watcher L1 source observations contain duplicate headers");
+    throw new Error(
+      "committee node L1 source observations contain duplicate headers",
+    );
   }
   const stateQueueReplayAnchor = parseStateQueueReplayAnchor(
     state.stateQueueReplayAnchor,
@@ -1720,7 +1664,7 @@ export const parseL1SourceState = (value: unknown): L1SourceState => {
     state.stateQueueReplayAnchor !== undefined &&
     stateQueueReplayAnchor === undefined
   ) {
-    throw new Error("watcher L1 source replay anchor is malformed");
+    throw new Error("committee node L1 source replay anchor is malformed");
   }
   return {
     schemaVersion: 1,
@@ -1768,6 +1712,29 @@ const parseStoredRecordMap = <T>(
   );
 };
 
+/**
+ * The committee node's file store was named `watcher.json` before the DA
+ * committee role was split out of the watcher.  Rename a legacy file in place
+ * so an existing directory store keeps its data.
+ */
+const committeeStoreFilePath = async (directory: string): Promise<string> => {
+  const filePath = join(directory, "committee.json");
+  const legacyPath = join(directory, "watcher.json");
+  try {
+    await access(filePath);
+    return filePath;
+  } catch {
+    // fall through: no current-name store yet
+  }
+  try {
+    await access(legacyPath);
+  } catch {
+    return filePath;
+  }
+  await rename(legacyPath, filePath);
+  return filePath;
+};
+
 const isNodeError = (error: unknown): error is NodeJS.ErrnoException =>
   error instanceof Error && "code" in error;
 
@@ -1792,7 +1759,7 @@ export const jsonReviver = (_key: string, value: unknown): unknown => {
       typeof record.value !== "string" ||
       !/^(?:0|-?[1-9][0-9]*)$/.test(record.value)
     ) {
-      throw new Error("invalid canonical watcher bigint encoding");
+      throw new Error("invalid canonical committee node bigint encoding");
     }
     return BigInt(record.value);
   }

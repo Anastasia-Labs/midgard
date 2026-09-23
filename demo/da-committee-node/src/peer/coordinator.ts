@@ -5,7 +5,7 @@ import type {
 } from "../da/libp2p/attestations.js";
 import type { DaSignatureRecord } from "../domain.js";
 import type { DaSigner, DaSignerValidation } from "../signer.js";
-import type { WatcherStore } from "../store.js";
+import type { CommitteeStore } from "../store.js";
 import {
   PeerSignaturePoller,
   recordPeerFailure,
@@ -22,7 +22,7 @@ export type PeerSignatureCoordinatorDeps = {
   readonly signerIndex: number;
   readonly signerValidation: DaSignerValidation;
   readonly availabilityCommitmentAuthority: import("./signatures.js").DaAvailabilityCommitmentAuthority;
-  readonly store: WatcherStore;
+  readonly store: CommitteeStore;
   readonly requestTimeoutMs?: number;
   readonly retryInitialDelayMs: number;
   readonly retryMaxDelayMs: number;

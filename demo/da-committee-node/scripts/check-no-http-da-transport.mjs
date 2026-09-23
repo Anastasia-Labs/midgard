@@ -12,7 +12,7 @@ const targets =
         join(packageRoot, "src/da/libp2p"),
         join(packageRoot, "src/da/payload.ts"),
         join(packageRoot, "src/da/source.ts"),
-        join(packageRoot, "src/watcher.ts"),
+        join(packageRoot, "src/committee-service.ts"),
         join(demoRoot, "midgard-node/src/da/libp2p-producer.ts"),
         join(demoRoot, "midgard-core/src/da-transport.ts"),
         join(demoRoot, "midgard-core/src/da-request-deadline.ts"),

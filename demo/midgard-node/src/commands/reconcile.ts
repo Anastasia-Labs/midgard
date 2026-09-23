@@ -896,7 +896,7 @@ export const classifyCanonicalDaAttestation = ({
       status: "ambiguous",
       reason: "canonical_header_absent",
       nextAction:
-        "The configured Cardano source has no exact canonical state-queue node for this header; do not claim DA attestation from local or watcher-only evidence.",
+        "The configured Cardano source has no exact canonical state-queue node for this header; do not claim DA attestation from local or committee-node-only evidence.",
     };
   }
   if (matches.length !== 1) {
@@ -936,7 +936,7 @@ export const classifyCanonicalDaAttestation = ({
     status: "pending",
     reason: "attestation_pending",
     nextAction:
-      "The exact canonical state-queue node is present but has no on-chain DA-attestation marker yet; wait for the canonical watcher/submitter pipeline.",
+      "The exact canonical state-queue node is present but has no on-chain DA-attestation marker yet; wait for the canonical committee/submitter pipeline.",
   };
 };
 
@@ -959,7 +959,7 @@ const fetchCanonicalDaAttestationObservations = Effect.gen(function* () {
 
 export const reconcileDaAttestedProgram = (options: {
   readonly headerHash: Buffer;
-  readonly watcherUrl?: string;
+  readonly committeeUrl?: string;
   readonly deploymentFingerprint?: string;
   readonly repair: boolean;
 }): Effect.Effect<

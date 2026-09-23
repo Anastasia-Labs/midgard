@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   buildRemoveFraudulentBlockCliConfig,
+  buildRemoveUnattestedBlockCliConfig,
   isCliEntrypoint,
   main,
   parseArgs,
@@ -263,7 +264,7 @@ describe("fault-proof CLI argument parsing", () => {
     ).toThrow("Unknown argument: --allow-incompatible-output");
   });
 
-  it("maps remove-fraudulent-block live-node lease flags into submission config", () => {
+  it("maps remove-fraudulent-block flags into submission config", () => {
     const parsed = parseArgs([
       "node",
       "midgard-fault-proofs",
@@ -286,12 +287,6 @@ describe("fault-proof CLI argument parsing", () => {
       "PROVER_WALLET",
       "--fraud-category",
       "invalidRange",
-      "--midgard-node-url",
-      "http://midgard-node.test/",
-      "--midgard-node-admin-key-env",
-      "NODE_ADMIN_KEY",
-      "--state-queue-lease-ttl-ms",
-      "45000",
       "--no-await-confirmation",
     ]);
 
@@ -307,11 +302,24 @@ describe("fault-proof CLI argument parsing", () => {
       ogmiosUrl: "ws://ogmios.test",
       walletSeedPhraseEnv: "PROVER_WALLET",
       fraudCategory: "invalidRange",
-      midgardNodeUrl: "http://midgard-node.test/",
-      midgardNodeAdminKeyEnv: "NODE_ADMIN_KEY",
-      stateQueueLeaseTtlMs: 45000,
       awaitConfirmation: false,
     });
+    expect(Object.keys(config)).not.toContain("midgardNodeUrl");
+  });
+
+  it.each([
+    ["--midgard-node-admin-key", "secret-admin-key"],
+    ["--midgard-node-admin-key-env", "NODE_ADMIN_KEY"],
+    ["--state-queue-lease-ttl-ms", "45000"],
+  ])("rejects the deleted removal lease flag %s as unknown", (flag, value) => {
+    for (const command of [
+      "remove-fraudulent-block",
+      "remove-unattested-block",
+    ]) {
+      expect(() =>
+        parseArgs(["node", "midgard-fault-proofs", command, flag, value]),
+      ).toThrow(`Unknown argument: ${flag}`);
+    }
   });
 
   it("parses invalid-range prepare arguments and the submit-init subject", () => {
@@ -715,28 +723,39 @@ describe("fault-proof CLI argument parsing", () => {
     });
   });
 
-  it("passes a direct midgard node admin key through only for removal", () => {
-    const config = buildRemoveFraudulentBlockCliConfig(
-      parseArgs([
-        "node",
-        "midgard-fault-proofs",
-        "remove-fraudulent-block",
-        "--blueprint",
-        "plutus.json",
-        "--deployment-info",
-        "deployment.json",
-        "--fraudulent-header-hash",
-        "22".repeat(28),
-        "--midgard-node-url",
-        "http://midgard-node.test",
-        "--midgard-node-admin-key",
-        "secret-admin-key",
-      ]),
-    );
-
-    expect(config.midgardNodeUrl).toBe("http://midgard-node.test");
-    expect(config.midgardNodeAdminKey).toBe("secret-admin-key");
-    expect(config.midgardNodeAdminKeyEnv).toBeUndefined();
+  it("refuses --midgard-node-url on both removal commands", () => {
+    expect(() =>
+      buildRemoveFraudulentBlockCliConfig(
+        parseArgs([
+          "node",
+          "midgard-fault-proofs",
+          "remove-fraudulent-block",
+          "--blueprint",
+          "plutus.json",
+          "--deployment-info",
+          "deployment.json",
+          "--fraudulent-header-hash",
+          "22".repeat(28),
+          "--midgard-node-url",
+          "http://midgard-node.test",
+        ]),
+      ),
+    ).toThrow("remove-fraudulent-block does not accept --midgard-node-url");
+    expect(() =>
+      buildRemoveUnattestedBlockCliConfig(
+        parseArgs([
+          "node",
+          "midgard-fault-proofs",
+          "remove-unattested-block",
+          "--deployment-info",
+          "deployment.json",
+          "--correction-journal",
+          "journal.json",
+          "--midgard-node-url",
+          "http://midgard-node.test",
+        ]),
+      ),
+    ).toThrow("remove-unattested-block does not accept --midgard-node-url");
   });
 
   it("requires the remove-fraudulent-block header hash before building config", () => {

@@ -245,16 +245,10 @@ const fixture = async () => {
       journalPath: join(directory, "availability.sqlite"),
       minimumFundingLovelace: "100000000",
     },
-    readinessHeaderHash: "77".repeat(28),
     faultProofInfrastructure: {
       manifestPath: join(directory, "deployment-manifest.json"),
       blueprintPath: join(directory, "plutus.json"),
       deploymentInfoPath: join(directory, "contract-deployment-info.json"),
-      midgardNodeUrl: "http://127.0.0.1:3000",
-      midgardNodeAdminKeySource: {
-        kind: "environment",
-        variable: "MIDGARD_NODE_ADMIN_KEY",
-      },
       historicalNativeScriptHistory: {
         sourceMode: "external_provider_quorum",
         consistencyPolicy: "exact_bytes_all_providers_v1",

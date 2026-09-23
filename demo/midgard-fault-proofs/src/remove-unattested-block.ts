@@ -34,7 +34,6 @@ import {
   parseContractDeploymentInfo,
 } from "./inspect-contracts.js";
 import {
-  createHttpStateQueueMutationLeaseCoordinator,
   STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS,
   STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS,
   type StateQueueMutationLeaseCoordinator,
@@ -70,8 +69,6 @@ import {
   type SignedTransactionRecoveryObservation,
   type SignedWorkflowTransaction,
 } from "./workflow/signed-transaction-reconciliation.js";
-
-const TIMEOUT_CORRECTION_LEASE_HOLDER = "attestation_timeout_removal";
 
 export type TimeoutCorrectionTxKind = "prune-descendant" | "remove-block";
 export type TimeoutCorrectionTxStatus =
@@ -1218,9 +1215,6 @@ export type RemoveUnattestedBlockCliConfig = SubmitProviderConfig &
     readonly deploymentInfoPath: string;
     readonly journalPath: string;
     readonly awaitConfirmation?: boolean;
-    readonly midgardNodeUrl?: string;
-    readonly midgardNodeAdminKey?: string;
-    readonly stateQueueLeaseTtlMs?: number;
   };
 
 export const submitUnattestedTimeoutCorrectionFromFiles = async (
@@ -1230,21 +1224,6 @@ export const submitUnattestedTimeoutCorrectionFromFiles = async (
     makeLucidForSubmit(config),
     readJsonFile(config.deploymentInfoPath),
   ]);
-  const stateQueueMutationLeaseCoordinator =
-    config.midgardNodeUrl === undefined
-      ? undefined
-      : createHttpStateQueueMutationLeaseCoordinator({
-          midgardNodeUrl: config.midgardNodeUrl,
-          adminKey:
-            config.midgardNodeAdminKey ??
-            (() => {
-              throw new Error(
-                "midgardNodeAdminKey is required when midgardNodeUrl is configured.",
-              );
-            })(),
-          ttlMs: config.stateQueueLeaseTtlMs,
-          holder: TIMEOUT_CORRECTION_LEASE_HOLDER,
-        });
   const kupoUrl = config.kupoUrl ?? process.env.L1_KUPO_KEY;
   const ogmiosUrl = config.ogmiosUrl ?? process.env.L1_OGMIOS_KEY;
   if (
@@ -1269,6 +1248,5 @@ export const submitUnattestedTimeoutCorrectionFromFiles = async (
     signer: resolveProverSigner(config),
     journalStore: createFileTimeoutCorrectionJournalStore(config.journalPath),
     awaitConfirmation: config.awaitConfirmation,
-    stateQueueMutationLeaseCoordinator,
   });
 };

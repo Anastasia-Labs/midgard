@@ -29,7 +29,7 @@ import {
   LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES,
   LIBP2P_DA_MIN_RETENTION_DAYS,
   LIBP2P_DA_TRANSPORT_LIMITS,
-  type WatcherConfig,
+  type CommitteeConfig,
 } from "../src/config.js";
 import { computeDaPayloadRoots } from "../src/da/payload.js";
 import type { DaPayloadSource } from "../src/da/source.js";
@@ -41,7 +41,7 @@ import type {
 import { hashBlockHeader } from "../src/l1/state-queue-scanner.js";
 
 export const tempDir = (): Promise<string> =>
-  mkdtemp(join(tmpdir(), "midgard-watcher-test-"));
+  mkdtemp(join(tmpdir(), "da-committee-node-test-"));
 
 export const fixtureHeaderBase = (): Omit<
   Header,
@@ -426,7 +426,7 @@ export const minimalConfig = ({
   readonly deploymentInfoPath: string;
   readonly signerSeed: string;
   readonly signerPublicKey: string;
-}): WatcherConfig => ({
+}): CommitteeConfig => ({
   network: "Preview",
   deploymentManifestPath: manifestPath,
   contractDeploymentInfoPath: deploymentInfoPath,
@@ -585,6 +585,7 @@ export const minimalConfig = ({
   apiHost: "127.0.0.1",
   apiPort: 0,
   pollIntervalMs: 1000,
+  l1ViewFatalMs: 3_600_000,
 });
 
 const MINIMAL_LIBP2P_PEER_ID =

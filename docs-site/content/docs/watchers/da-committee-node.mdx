@@ -13,11 +13,6 @@ A threshold signature is a committee commitment; it does not by itself prove
 that bytes remain publicly retrievable. Deployment and end-to-end acceptance
 remain subject to [Project Status](/docs/getting-started/status).
 
-The current consensus profile has `MIDGARD_RELEASE_EVIDENCE_DIGEST = null`, so
-both committee and public-reader startup fail their release-readiness assertion.
-The commands below describe the required configuration after release evidence
-is accepted and compiled into the profile.
-
 ## Contract boundary
 
 The DA params governor authenticates a sorted, unique packed committee of
@@ -90,16 +85,16 @@ Configure the dedicated reader's service environment with all of:
 | Variable                                   | Required value                                                                                         |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
 | `DA_PUBLIC_RETAINED_DA_ENABLED`            | `true`                                                                                                 |
-| `MIDGARD_DEPLOYMENT_MANIFEST_PATH`         | Runtime manifest with `runtime_topology.target = "watcher"` and `public_retained_da`.                  |
+| `MIDGARD_DEPLOYMENT_MANIFEST_PATH`         | Runtime manifest with `runtime_topology.target = "committee"` and `public_retained_da`.                |
 | `MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH`    | Matching finalized contract deployment manifest with the exact V1 consensus profile.                   |
 | `DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE` | Dedicated `seed:`, `hex:`, or `file:` libp2p key source matching the manifest's public reader peer id. |
 | `DA_PUBLIC_RETAINED_DA_DATABASE_URL`       | PostgreSQL connection using the dedicated reader credentials.                                          |
 | `DA_PUBLIC_RETAINED_DA_DATABASE_ROLE`      | Exact PostgreSQL reader role name.                                                                     |
 
 The database role must have `SELECT` and no DML privileges on
-`watcher_da_payloads` and `watcher_state_queue_headers`; startup verifies role and
+`committee_da_payloads` and `committee_state_queue_headers`; startup verifies role and
 privilege constraints. File stores are unsupported. Do not pass
-`WATCHER_DB_PATH` or `WATCHER_DATABASE_URL` to this process: the configuration
+`DA_COMMITTEE_DB_PATH` or `DA_COMMITTEE_DATABASE_URL` to this process: the configuration
 loader rejects either variable. Keep its environment separate from committee
 credentials.
 

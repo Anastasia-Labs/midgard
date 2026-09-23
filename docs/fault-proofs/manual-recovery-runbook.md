@@ -25,8 +25,7 @@ observation or recovery remains paused.
 ## 3. Re-read protocol state
 
 Read the challenged header, computation-thread token, permanent proof token,
-operator node, scheduler, correction lock, and state-queue mutation lease from
-L1. Re-fetch the retained payload and proof artifacts with the original
+operator node, scheduler and correction lock from L1. Re-fetch the retained payload and proof artifacts with the original
 deployment fingerprint.
 
 Completion: the next action follows from L1 plus immutable journal state. A

@@ -61,6 +61,11 @@ See [launch readiness](../../docs/public_testnet_readiness.md) and the
 [challenger runbook](../../docs/fault-proofs/challenger-runbook.md) for acceptance
 and operating boundaries.
 
+Non-tail removal, which peels the successor commitments stacked on a
+fraudulent block, is coordinated locally: the workflow orchestrator retries a
+lost peel against a fresh authenticated L1 view until the removal confirms. The
+watcher never talks to a Midgard node and holds no node credentials.
+
 Committed rollback snapshots bind completed validation to its schema, policy,
 deployment, blueprint, and authentication key. Restart authenticates that saved
 result and its independently protected head without replaying retained history.
@@ -94,6 +99,12 @@ The exact schemas and validation rules live in
 closed. Process configuration binds deployment identity, durable storage,
 trusted-head authority, transports, proof funding, and operational endpoints.
 Keep secrets in the supported environment/file references.
+
+[watcher-process.example.json](watcher-process.example.json) is a complete
+`start` configuration: configuration and bundles under `/etc/midgard`, state
+under `/var/lib/midgard-watcher`, secrets as files under `/run/secrets`. Copy it
+and replace every placeholder (genesis identity, DA peers, history providers)
+before use; a unit test keeps it parseable.
 
 Availability actuation requires an independent payment key and a durable journal:
 
@@ -159,6 +170,72 @@ Forced submissions are adjudicated per
 [the forced-submission decision](../../docs/midgard/decisions/forced-inclusion-submission-verdict.md):
 the L1 order authenticates the immutable submission and the operator's
 `OperatorVerdictV1` is the sole committed classification.
+
+A watcher that joins late, or restarts after its local state is lost, does not
+replay history from genesis. It bootstraps from the `ConfirmedState` datum at
+the root of the L1 state queue (confirmed header hash, UTxO root, end time), the
+DA payload of that confirmed head, and the DA payloads of every header still
+live in the L1 queue, then classifies from the confirmed state to the tip. The
+committee and the node never prune those payloads: their retention is exactly
+the L1 confirmed head, the headers live in the L1 queue, and payloads still
+inside the challengeability horizon. Merged blocks older than the horizon can no
+longer be challenged, so a late watcher needs nothing from before the confirmed
+state, with one exception: the `missing-native-script-tx` family still builds
+its historical native-script corpus by walking retained DA from genesis
+(`resolveHistoricalNativeScriptCorpus` in
+[historical-native-script-corpus.ts](../midgard-fault-proofs/src/workflow/historical-native-script-corpus.ts)),
+so that family depends on payloads outside the retained set until its redesign
+lands.
+
+## Running with compose
+
+[compose.yaml](compose.yaml) runs the two processes as two services from one
+image: `watcher-authority` (`authority --config /etc/midgard/authority.json`)
+and `watcher` (the image's default `start`). The split is a key-custody
+boundary: the authority holds the record key that chains trusted-head records,
+`start` holds the signing keys, and neither holds the other's. Both services
+use `network_mode: host` because the authority endpoint, the operations
+endpoint and every L1 query service must be loopback.
+
+Prerequisites on the host:
+
+- A Cardano L1 stack publishing Ogmios on `127.0.0.1:1337` and Kupo on
+  `127.0.0.1:1442`, with its node socket directory (default
+  `../midgard-node/cardano/ipc`, override with `MIDGARD_L1_IPC_DIR`) and a
+  directory holding the node config and Shelley genesis
+  (`MIDGARD_L1_CONFIG_DIR`), mounted at `/ipc` and `/cardano-config`.
+- `config/watcher-process.json` from
+  [watcher-process.example.json](watcher-process.example.json);
+  `config/watcher-runtime.json` holding exactly its `watcherConfig` object
+  (startup refuses any difference); `config/authority.json` from
+  [authority.example.json](authority.example.json). The authority's `policy`
+  must be the finality policy `start` derives from the same `watcherConfig`
+  and the verified deployment identity; the template's policy is built from
+  the start template with placeholder deployment hashes, and a unit test keeps
+  the two templates consistent.
+- `bundles/` holding the six release artifacts the process config names:
+  deployment authority, rule bundle, funding profiles, deployment manifest,
+  blueprint and contract deployment info.
+- Two disjoint secret sets, as regular files (the loader refuses a symlinked
+  secret, so compose `secrets:` are not used), without a trailing newline and
+  pairwise distinct. The authority gets the record key and the bearer; `start`
+  gets the rollback key, prover key, availability key and the same bearer
+  value. Copy [.env.example](.env.example) to `.env` and point each variable at
+  its file.
+
+Then `docker compose up -d`. `watcher` starts only once `watcher-authority`
+answers `/v1/identity`. Both restart `unless-stopped`: if the authority dies,
+`start` fails closed with exit 70, compose restarts it, and it keeps exiting
+70 at `/v1/identity` until the authority is healthy again, then re-reads the
+trusted head and resumes. Exit 70 is the intended failure signal, so do not
+cap restarts. The healthchecks treat a 401 as alive; they carry no bearer.
+
+Known gap (belongs to the shared L1 stack work): on public networks the
+Mithril-bootstrapped node image keeps its node config and genesis inside the
+image, so nothing on the host produces the genesis file the watcher hashes
+(`genesisIdentitySha256`). Until the L1 stack exports them, place them in
+`MIDGARD_L1_CONFIG_DIR` yourself. The devnet journeys have the file only
+because the harness generates the devnet genesis.
 
 ## Source and verification map
 
