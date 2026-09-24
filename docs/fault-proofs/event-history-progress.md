@@ -5613,3 +5613,13 @@ run/configs, protected stress wallets, archives and historical Codex references;
 agent checked staging/worktree sources. No match has been found in those scopes.
 No membership/quorum change or deployment transaction performed. Provider and
 runtime repair remain verified; this is a separate credential prerequisite.
+
+
+CP5 missing-key provenance resolved: the Windows-host task **Assess LIBp2p plan
+readiness**, June22 15:47UTC, generated the exact member1 public key with a random
+Node Ed25519 keypair. The command exported only the public key, never persisted
+the private key, and exited0. The next patch saved public committee configuration.
+Root and an independent agent verified this exact sequence; separate transport
+seeds do not derive the missing key. Earlier WSL/archive-only searches missed
+this Windows-host creation record. Existing member0 and submitter keys remain
+intact. No replacement identity or deployment transaction has been created.

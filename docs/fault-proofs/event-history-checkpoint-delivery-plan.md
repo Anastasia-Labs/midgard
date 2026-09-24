@@ -196,3 +196,27 @@ an explicit new committee identity for the already-required fresh deployment.
 A replacement committee is a governance identity change, not recovery of the
 missing key. Remaining DA writer/reader roles, dedicated transport identities,
 fresh manifests/state and the one coordinated campaign follow that disposition.
+
+
+### Missing signer origin established (2026-09-24)
+
+The later Windows-host archive search found the original command in the task
+**Assess LIBp2p plan readiness** (`019eea71-ade6-7cd3-ac6a-7174946a4ad9`). On
+2026-06-22 at15:47:40UTC, a Node command generated `producerDaKeyPair` using
+`generateKeyPairSync('ed25519')`, exported only its public key and printed the
+committee configuration. That public key exactly matches missing member1.
+The command never accessed/exported the private key or wrote it to a file, and
+its process exited0. The following successful patch saved the public committee
+configuration to the node environment, not the missing signing key.
+
+This supersedes the earlier search-only diagnosis: the keypair was generated,
+but its private key was not persisted by its creation command. The separately
+saved producer/watcher libp2p seeds are distinct keys; independent derivation
+confirms neither produces the missing DA public key. Member0's existing signer
+and the L1 submitter files remain present and unchanged. No replacement signer,
+committee membership or threshold was installed. Continuing a fresh deployment
+requires replacing the unavailable member while preserving governed quorum.
+Root and a second agent independently reviewed the command, exact public output,
+normal process exit and subsequent patch. Public-only provenance, record line
+numbers and hashes are in `cp5-missing-da-key-origin.json`; raw archival records
+are not copied into the repository because they contain other credentials.
