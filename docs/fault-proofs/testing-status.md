@@ -2,7 +2,7 @@
 
 Status: Active
 
-Last reviewed: 2026-09-17 (family assembly and emulator fixture acceptance).
+Last reviewed: 2026-09-24 (authenticated event-history checkpoint; earlier results retained below).
 
 ## What the evidence establishes
 
@@ -30,6 +30,43 @@ signed-publication and registered contract-lifecycle gates using the pinned
 mainnet protocol-11 cost model. Its operational challenger/watcher and live release
 acceptance remain open. Remeasure any release evidence whose source or blueprint
 binding changed; saved results do not replace the current-build gates.
+
+## Authenticated event-history delivery checkpoint (2026-09-24)
+
+The [checkpoint plan](event-history-checkpoint-delivery-plan.md) records the
+bounded CP1–5 goal and its current gates. Verification starts from pushed source
+`89427ff467736dc02c9084199920a5998fb0717f`, independently installed pinned
+Node22.22.2/pnpm9.15.4 dependencies, reproduced native/runtime builds, and
+source-hashed immutable fixture snapshots. Blueprint SHA256 is
+`7b7a0abae2db62e3ecb9e26e7907bbc1d4793eeee1a522470cc1c1014d1c8d74`,
+compiled with pinned `aiken v1.1.23+5adf783`; no production limit was raised.
+
+Current results: fabricated families16/16, opening/transition/installed milestone
+62/62, capture/output-claims25/25, retired-ID reuse2/2, and the actual production
+owner D/W journey1/1 at120000ms protection pass. Root independently checked163
+fabricated-family receipts,1340 installed-workflow receipts,22 retired-ID
+receipts and the owner/native/SQL evidence. Lucid175, SDK642, node transaction
+preparation125, tooling reliability51 and the complete node emulator64 pass.
+The final seven-file list/retention/builder selection passes109/109, including
+three combined maximum-shape journeys. Independently decoded signed receipts
+reach maxima15596bytes,12528579memory,5995600251steps and2380742lovelace fee,
+within unchanged protocol limits. The maximum withdrawal case establishes payout
+initialization; maximum reserve-add/final-payout spend remains unverified. The
+separate representative owner journey completes payout.
+
+Earlier failed key-width, protection-wait and token-bearing fee/collateral
+fixtures are retained with diagnoses. Corrected fixtures preserve refusal,
+state-conservation, maximum-shape and existing production-budget assertions.
+No test is removed, weakened or converted into a silent early return. Full
+package/release acceptance is not inferred from these targeted results.
+
+Live deployment has not begun: Docker Desktop remains stopped; an independent
+local engine is absent and noninteractive privileged installation is unavailable.
+The preparation route preserves legacy deployment/provider state. Actual local
+Kupmios genesis/history, new matching deployment/state, DA/public retrieval,
+funding and live inclusion/churn remain prerequisites. The unmodified full live
+finalizer and deferred recovery matrix remain open; no unrelated proof gap is
+closed by this checkpoint.
 
 ## Family assembly and funding-publisher verification (2026-09-17)
 

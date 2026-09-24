@@ -6,6 +6,23 @@ Last reviewed: 2026-09-12 against the current Aiken, SDK, watcher, node, and
 technical-specification sources. NIFP-01–03 closure recommendations aligned with
 the selected list proposal on 2026-09-21; findings and open status are unchanged.
 
+## Event-history implementation update (2026-09-24)
+
+The descriptions of the old live-event/exact-unspent-nonce model in NIFP-01–03
+below retain the original diagnosis. They are historical, not descriptions of
+current source. The integrated implementation uses two authenticated sorted
+UTxO lists, existing retained-data references, capture openings and finalized
+retirement. Current applied tests prove arbitrary absent deposit/withdrawal IDs,
+content substitution, direct honest Stage03 refusal and later retired-ID reuse.
+The production-owner deposit/withdrawal journey also passes locally.
+
+These entries remain **acceptance open**. Final parameter-bound maximum fit,
+public live deployment/visibility/churn evidence and the separately deferred
+recovery matrix must satisfy the closure rule; emulator receipts are not L1
+consensus authority. The [checkpoint plan](event-history-checkpoint-delivery-plan.md)
+is the current implementation, integrated-verification and live-verification
+checklist. NIFP-04–09 are unaffected; no closure is claimed for them.
+
 ## Purpose and closure rule
 
 This document tracks concrete protocol statements that remain impossible, only
@@ -33,9 +50,9 @@ The severities below describe protocol-coverage risk, not implementation effort.
 
 | ID      | Severity | Status                      | Gap                                                                                                 |
 | ------- | -------- | --------------------------- | --------------------------------------------------------------------------------------------------- |
-| NIFP-01 | High     | Open                        | `fabricatedWithdrawal` cannot prove every nonexistent withdrawal identity                           |
-| NIFP-02 | High     | Open                        | `fabricatedDeposit` has the same incomplete nonexistence witness                                    |
-| NIFP-03 | Medium   | Open                        | Event-backed proof evidence does not have a closed on-chain lifetime                                |
+| NIFP-01 | High     | Acceptance open             | Authenticated withdrawal nonexistence: final acceptance remains outstanding                           |
+| NIFP-02 | High     | Acceptance open             | Authenticated deposit nonexistence: final acceptance remains outstanding                                    |
+| NIFP-03 | Medium   | Acceptance open             | Authenticated evidence lifetime: deployment and recovery acceptance remain outstanding                                |
 | NIFP-04 | High     | Open                        | A fabricated or substituted forced transaction has no exact L1-to-block proof                       |
 | NIFP-05 | High     | Open                        | A forbidden auxiliary-data hash has no fault-proof route                                            |
 | NIFP-06 | Medium   | Open                        | Malformed MidgardV1 program envelopes have no direct total proof route                              |

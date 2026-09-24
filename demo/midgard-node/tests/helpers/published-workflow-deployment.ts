@@ -288,6 +288,7 @@ export const publishWorkflowDeploymentOnChain = async ({
   chain,
   protocolParameters,
   publicationMaxTargetsPerBatch = 8,
+  eventHistoryProtectionDurationMs,
   publicationJournalPath,
   publicationSchedule,
   publicationSynchronize,
@@ -311,6 +312,7 @@ export const publishWorkflowDeploymentOnChain = async ({
   publicationSchedule: PublicationSchedule;
   publicationSynchronize: () => Promise<number>;
   publicationMaxTargetsPerBatch?: number;
+  eventHistoryProtectionDurationMs?: bigint;
   resume?: PublishedWorkflowDeploymentResume;
   onPrepared?: (
     context: Pick<PublishedWorkflowDeploymentResume, "nonce" | "authPolicy">,
@@ -381,7 +383,11 @@ export const publishWorkflowDeploymentOnChain = async ({
     postTimelockAuditRequired: authPolicyMetadata.postTimelockAudit.required,
   });
   await onPrepared({ nonce, authPolicy });
-  const contracts = await loadRealMidgardContractsForTest(nonce, authPolicy);
+  const contracts = await loadRealMidgardContractsForTest(
+    nonce,
+    authPolicy,
+    eventHistoryProtectionDurationMs,
+  );
   const catalogue = await Effect.runPromise(
     buildFraudProofCatalogueDeploymentInfo(
       fraudProofsToIndexedValidators(contracts.fraudProofs),

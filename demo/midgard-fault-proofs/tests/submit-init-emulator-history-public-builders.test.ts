@@ -226,7 +226,15 @@ it.each([
     expect(before[0]!.utxo.txHash).toBe(txHash);
     // A real successor insertion consumes the Order and changes only its
     // location/link/protection. It must remain the same single user event.
-    h.emulator.awaitSlot(100);
+    h.emulator.awaitSlot(
+      Math.max(
+        0,
+        Math.ceil(
+          (Number(witness.anchor.node.protected_until) - h.emulator.now()) /
+            1000,
+        ),
+      ),
+    );
     const continuation = await insertHistoryFillerAfter(
       h,
       kind,

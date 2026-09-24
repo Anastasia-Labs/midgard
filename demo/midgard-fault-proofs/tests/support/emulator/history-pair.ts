@@ -47,7 +47,7 @@ export const index = (inputs: readonly UTxO[], target: UTxO) => {
 export const setupHistoryPair = async ({
   blueprint,
   records,
-  protectionDurationMs = 2_000n,
+  protectionDurationMs = 120_000n,
 }: {
   readonly blueprint: FaultProofBlueprint;
   readonly records: unknown[];

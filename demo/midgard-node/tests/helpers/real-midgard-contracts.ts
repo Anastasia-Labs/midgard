@@ -13,6 +13,7 @@ export type TestOneShotOutRef = {
 export const loadRealMidgardContractsForTest = (
   oneShotOutRef: TestOneShotOutRef,
   referenceScriptAuth?: SDK.MintingValidator,
+  eventHistoryProtectionDurationMs = 2_000n,
 ): Promise<SDK.MidgardValidators> =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -25,7 +26,7 @@ export const loadRealMidgardContractsForTest = (
           referenceScriptAuth:
             referenceScriptAuth ?? placeholder.referenceScriptAuth,
           availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
-          eventHistoryProtectionDurationMs: 2_000n,
+          eventHistoryProtectionDurationMs,
           eventHistoryBounds: {
             inlineLimitBytes: 512n,
             maxPayloadBytes: 5000n,

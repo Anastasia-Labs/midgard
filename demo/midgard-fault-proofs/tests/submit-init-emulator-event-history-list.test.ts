@@ -6,6 +6,7 @@ import { inspect } from "node:util";
 
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
+  __reservePayoutTest,
   addressDataFromBech32,
   applyEventHistoryValidators,
   buildEventHistoryAdmission,
@@ -84,6 +85,18 @@ const index = (xs: UTxO[], x: UTxO) => {
   const result = sorted(xs).findIndex((v) => same(v, x));
   if (result < 0) throw new Error("Missing indexed UTxO");
   return BigInt(result);
+};
+
+// Lucid's emulator advances one second per slot. Preserve at least the original
+// two-block confirmation interval and cross the actual node protection boundary.
+const awaitProtection = (emulator: Emulator, protectedUntil: bigint) => {
+  emulator.awaitSlot(
+    Math.max(
+      40,
+      Math.ceil((Number(protectedUntil) - emulator.now()) / 1000) + 1,
+    ),
+  );
+  expect(BigInt(emulator.now())).toBeGreaterThan(protectedUntil);
 };
 
 const candidateBounds = {
@@ -171,7 +184,7 @@ const setup = async (
       transactionId: initNonce.txHash,
       outputIndex: BigInt(initNonce.outputIndex),
     },
-    protectionDurationMs: 2_000n,
+    protectionDurationMs: 120_000n,
     ...payloadBounds,
   };
   const applied = applyEventHistoryValidators(blueprint, "Custom", recipe);
@@ -303,7 +316,7 @@ const setup = async (
       .validTo(b.validTo)
       .complete({ coinSelection: false, localUPLCEval: true }),
   );
-  emulator.awaitBlock(2);
+  awaitProtection(emulator, root.protected_until);
   const originalId: OutputReference = {
     transactionId: eventNonce.txHash,
     outputIndex: BigInt(eventNonce.outputIndex),
@@ -333,6 +346,17 @@ const setup = async (
   };
 };
 
+type RetirementFault = "before-inclusion" | "wrong-confirmed-token";
+
+type AdmissionFault =
+  | "hash-only"
+  | "same-transaction-publication"
+  | "wrong-retention-address"
+  | "mismatched-datum-hash"
+  | "backdated-inclusion"
+  | "short-key"
+  | "oversized-key";
+
 const journey = async (
   kind: EventHistoryKind,
   external: boolean,
@@ -352,8 +376,58 @@ const journey = async (
     | "withdrawal-target"
     | "withdrawal-payout"
     | "withdrawal-refund",
+  admissionFault?: AdmissionFault,
+  retirementFault?: RetirementFault,
+  maximumOriginalValue = false,
 ) => {
   const h = await setup(kind, bounds);
+  const wideAssets: Record<string, bigint> = {};
+  if (maximumOriginalValue) {
+    const quantity = 9_223_372_036_854_775_807n;
+    const policies = Array.from({ length: 9 }, (_, i) =>
+      scriptFromNative({
+        type: "all",
+        scripts: [
+          { type: "sig", keyHash: h.owner },
+          { type: "after", slot: i },
+        ],
+      }),
+    ).sort((a, b) => mintingPolicyToId(a).localeCompare(mintingPolicyToId(b)));
+    let mint = h.lucid.newTx().collectFrom(await h.funding());
+    for (const policy of policies) {
+      const unit = toUnit(mintingPolicyToId(policy), "ff".repeat(32));
+      wideAssets[unit] = quantity;
+      mint = mint.mintAssets({ [unit]: quantity }).attach.MintingPolicy(policy);
+    }
+    await h.submit(
+      "mint-nine-wide-original-assets",
+      await mint.validFrom(h.emulator.now()).complete({
+        coinSelection: false,
+        localUPLCEval: true,
+      }),
+    );
+    const funding = await h.funding();
+    for (const [unit, amount] of Object.entries(wideAssets))
+      expect(
+        funding.reduce((sum, utxo) => sum + (utxo.assets[unit] ?? 0n), 0n),
+      ).toBe(amount);
+    expect(
+      new Set(Object.keys(wideAssets).map((unit) => unit.slice(0, 56))).size,
+    ).toBe(9);
+    records.push({
+      kind,
+      label: "maximum-original-value",
+      assets: wideAssets,
+      quantity,
+      assetNameBytes: 32,
+      distinctPolicies: 9,
+      authorityScope:
+        kind === "Deposit"
+          ? "Actual minted original deposit Value, preserved through reserve absorption"
+          : "Actual minted wallet assets; withdrawal target obligation only, ADA-only history funding and payout initialization, not reserve fulfillment",
+    });
+  }
+  const orderTokens = kind === "Deposit" ? wideAssets : {};
   const buildContext = async () => ({
     lucid: h.lucid,
     applied: h.applied,
@@ -363,7 +437,10 @@ const journey = async (
     fundingInputs: await h.funding(),
   });
   const ownerAddress = Effect.runSync(addressDataFromBech32(h.wallet.address));
-  const makePayload = (datum: Data | null): EventHistoryPayload =>
+  const makePayload = (
+    datum: Data | null,
+    includeMaximumValue = maximumOriginalValue,
+  ): EventHistoryPayload =>
     kind === "Deposit"
       ? {
           DepositPayload: {
@@ -395,6 +472,14 @@ const journey = async (
                         ],
                       ]),
                     ],
+                    ...(includeMaximumValue
+                      ? Object.entries(wideAssets).map(
+                          ([unit, quantity]): [string, Map<string, bigint>] => [
+                            unit.slice(0, 56),
+                            new Map([[unit.slice(56), quantity]]),
+                          ],
+                        )
+                      : []),
                   ]),
                   l1_address: ownerAddress,
                   l1_datum:
@@ -527,14 +612,20 @@ const journey = async (
     event_payload: Data.from(Data.to(payload, EventHistoryPayload)),
     reclaim_auth: { PublicKeyCredential: [h.owner] },
   };
-  if (external) {
+  if (
+    external &&
+    admissionFault !== "hash-only" &&
+    admissionFault !== "same-transaction-publication"
+  ) {
     // Rejected-data cases deliberately bypass SDK preflight to test the validator.
     const publication = rejectAdmission
       ? h.lucid
           .newTx()
           .collectFrom(await h.funding())
           .pay.ToContract(
-            h.applied.retention.address,
+            admissionFault === "wrong-retention-address"
+              ? h.hubAddress
+              : h.applied.retention.address,
             { kind: "inline", value: encodeEventHistoryData(stored) },
             { lovelace: 30_000_000n },
           )
@@ -544,17 +635,30 @@ const journey = async (
             PublicKeyCredential: [h.owner],
           })
         ).tx;
-    await h.submit("prepublish-payload", await publication);
-    [externalRef] = await h.lucid.utxosAt(h.applied.retention.address);
+    const publicationHash = await h.submit(
+      "prepublish-payload",
+      await publication,
+    );
+    const publishedAddress =
+      admissionFault === "wrong-retention-address"
+        ? h.hubAddress
+        : h.applied.retention.address;
+    externalRef = (await h.lucid.utxosAt(publishedAddress)).find(
+      (utxo) =>
+        utxo.txHash === publicationHash &&
+        utxo.datum === encodeEventHistoryData(stored),
+    );
+    expect(externalRef).toBeDefined();
+    expect(externalRef!.datum).toBe(encodeEventHistoryData(stored));
   }
   if (maximumPredecessor) {
     let padding = 0;
-    let predecessorPayload = makePayload("");
+    let predecessorPayload = makePayload("", false);
     while (
       encodedPayload(predecessorPayload).length / 2 <
       Number(h.recipe.inlineLimitBytes)
     )
-      predecessorPayload = makePayload("ab".repeat(++padding));
+      predecessorPayload = makePayload("ab".repeat(++padding), false);
     const predecessorId = {
       transactionId: h.predecessorNonce.txHash,
       outputIndex: BigInt(h.predecessorNonce.outputIndex),
@@ -577,7 +681,7 @@ const journey = async (
       validTo: p.validTo,
     });
     await h.submit("admit-maximum-inline-predecessor", built.tx);
-    h.emulator.awaitBlock(2);
+    awaitProtection(h.emulator, p.protectedUntil);
   }
   const beforeInsert = await fetchEventHistoryWitness(
     h.lucid,
@@ -639,21 +743,37 @@ const journey = async (
       .validTo(b.validTo)
       .complete({ coinSelection: false, localUPLCEval: true }),
   );
-  h.emulator.awaitBlock(2);
+  awaitProtection(h.emulator, filler.protected_until);
   const fillerUtxo = (await h.lucid.utxosAt(h.applied.address)).find(
     (u) => u.assets[toUnit(h.applied.policyId, h.key)] === 1n,
   )!;
   const next = h.bounds();
   const node: EventHistoryNode = {
     ...filler,
+    position:
+      admissionFault === "short-key"
+        ? { Key: [h.key.slice(0, 62)] }
+        : admissionFault === "oversized-key"
+          ? { Key: [h.key + "00"] }
+          : filler.position,
     protected_until: next.protectedUntil,
     payload: {
       Order: {
         facts: {
           event_id: h.originalId,
-          inclusion_time: next.upper + 60_000n,
+          inclusion_time:
+            next.upper +
+            60_000n -
+            (admissionFault === "backdated-inclusion" ? 1n : 0n),
           location: external
-            ? { External: { storage_datum_hash: eventHistoryDataHash(stored) } }
+            ? {
+                External: {
+                  storage_datum_hash:
+                    admissionFault === "mismatched-datum-hash"
+                      ? "00".repeat(32)
+                      : eventHistoryDataHash(stored),
+                },
+              }
             : { Inline: { payload } },
           structural_lovelace:
             fundingFault === "deposit-reserve"
@@ -737,8 +857,31 @@ const journey = async (
     externalRef === undefined
       ? new Constr(1, [])
       : new Constr(0, [index(promotionRefs, externalRef)]);
-  const promotion = async () =>
-    h.lucid
+  const malformedKey =
+    admissionFault === "short-key"
+      ? h.key.slice(0, 62)
+      : admissionFault === "oversized-key"
+        ? h.key + "00"
+        : undefined;
+  let promotionDatum: string;
+  if (malformedKey === undefined) {
+    promotionDatum = Data.to(node, EventHistoryNode);
+  } else {
+    // Keep the genuine 32-byte authentication NFT. Only the datum position is
+    // malformed; raw Data bypasses SDK width validation to reach the validator.
+    const raw = Data.from(
+      Data.to({ ...node, position: filler.position }, EventHistoryNode),
+    );
+    if (!(raw instanceof Constr)) throw new Error("Expected node constructor");
+    promotionDatum = Data.to(
+      new Constr(raw.index, [
+        new Constr(1, [malformedKey]),
+        ...raw.fields.slice(1),
+      ]),
+    );
+  }
+  const promotion = async () => {
+    let tx = h.lucid
       .newTx()
       .collectFrom([...(await h.funding()), h.eventNonce])
       .collectFrom([fillerUtxo], Data.to(index(promotionInputs, fillerUtxo)))
@@ -761,16 +904,27 @@ const journey = async (
       )
       .pay.ToContract(
         h.applied.address,
-        { kind: "inline", value: Data.to(node, EventHistoryNode) },
-        { lovelace: orderLovelace, [toUnit(h.applied.policyId, h.key)]: 1n },
+        { kind: "inline", value: promotionDatum },
+        {
+          lovelace: orderLovelace,
+          ...orderTokens,
+          [toUnit(h.applied.policyId, h.key)]: 1n,
+        },
       )
       .pay.ToAddress(
         credentialToAddress("Custom", { type: "Key", hash: h.owner }),
         { lovelace: 5_000_000n },
       )
       .validFrom(next.lower)
-      .validTo(next.validTo)
-      .complete({ coinSelection: false, localUPLCEval: true });
+      .validTo(next.validTo);
+    if (admissionFault === "same-transaction-publication")
+      tx = tx.pay.ToContract(
+        h.applied.retention.address,
+        { kind: "inline", value: encodeEventHistoryData(stored) },
+        { lovelace: 30_000_000n },
+      );
+    return tx.complete({ coinSelection: false, localUPLCEval: true });
+  };
   if (rejectAdmission) {
     const refusal = await promotion().then(
       () => undefined,
@@ -781,10 +935,28 @@ const journey = async (
       kind,
       label: "admission-refusal",
       fundingFault: fundingFault ?? null,
+      admissionFault: admissionFault ?? null,
       cause: inspect(refusal, { depth: 10 }),
     });
     expect(await h.lucid.utxosByOutRef([h.eventNonce])).toHaveLength(1);
     expect(await h.lucid.utxosByOutRef([fillerUtxo])).toHaveLength(1);
+    if (admissionFault !== undefined) {
+      // Refusal must preserve the exact genuine filler and any prepublication.
+      expect((await h.lucid.utxosByOutRef([fillerUtxo]))[0]).toEqual(
+        fillerUtxo,
+      );
+      if (externalRef !== undefined)
+        expect((await h.lucid.utxosByOutRef([externalRef]))[0]).toEqual(
+          externalRef,
+        );
+      if (
+        admissionFault === "hash-only" ||
+        admissionFault === "same-transaction-publication" ||
+        admissionFault === "wrong-retention-address"
+      )
+        expect(await h.lucid.utxosAt(h.applied.retention.address)).toEqual([]);
+      return;
+    }
     if (!external) return;
     expect(externalRef).toBeDefined();
     if (externalRef === undefined)
@@ -815,7 +987,7 @@ const journey = async (
     payload,
     reclaimAuth: { PublicKeyCredential: [h.owner] },
     nonce: h.eventNonce,
-    assets: { lovelace: orderLovelace },
+    assets: { lovelace: orderLovelace, ...orderTokens },
     structuralLovelace: kind === "Deposit" ? 3_000_000n : 0n,
     structuralRefundKey: h.owner,
     externalData: externalRef,
@@ -828,6 +1000,11 @@ const journey = async (
     (u) => u.assets[toUnit(h.applied.policyId, h.key)] === 1n,
   )!;
   expect(Data.from(order.datum!, EventHistoryNode)).toEqual(node);
+  expect(order.assets).toEqual({
+    lovelace: orderLovelace,
+    ...orderTokens,
+    [toUnit(h.applied.policyId, h.key)]: 1n,
+  });
   expect(await h.lucid.utxosByOutRef([h.eventNonce])).toHaveLength(0);
   const deployment = {
     policyId: h.applied.policyId,
@@ -844,7 +1021,7 @@ const journey = async (
   if (before.kind !== "Present") throw new Error("Missing admitted event");
   expect(before.payload).toEqual(payload);
   expect(before.retainedDataUtxo !== undefined).toBe(external);
-  h.emulator.awaitBlock(2);
+  awaitProtection(h.emulator, node.protected_until);
   const continuedBounds = h.bounds();
   const successor = "ff".repeat(32);
   const continuationInputs = [order, ...(await h.funding())];
@@ -905,7 +1082,21 @@ const journey = async (
   expect(after.payloadCbor).toBe(before.payloadCbor);
   expect(after.retainedDataUtxo).toEqual(before.retainedDataUtxo);
   if (retirement !== undefined)
-    await retireJourney(h, after, payload, retirement, branchLevels);
+    await retireJourney(
+      h,
+      after,
+      payload,
+      retirement,
+      branchLevels,
+      retirementFault,
+    );
+  if (maximumOriginalValue && kind === "Withdrawal") {
+    const remaining = await h.funding();
+    for (const [unit, amount] of Object.entries(wideAssets))
+      expect(
+        remaining.reduce((sum, utxo) => sum + (utxo.assets[unit] ?? 0n), 0n),
+      ).toBe(amount);
+  }
 };
 
 const retireJourney = async (
@@ -914,6 +1105,7 @@ const retireJourney = async (
   payload: EventHistoryPayload,
   mode: "settle" | "refund",
   branchLevels: number,
+  retirementFault?: RetirementFault,
 ) => {
   const deposit = "DepositPayload" in payload;
   const keyBytes = Buffer.from(Data.to(h.originalId, OutputReference), "hex");
@@ -976,7 +1168,11 @@ const retireJourney = async (
   const retirementReward = h.applied.retirement.rewardAddress;
   const confirmedUnit = toUnit(
     h.hubPolicy,
-    fromText("MIDGARD_CONFIRMED_STATE"),
+    fromText(
+      retirementFault === "wrong-confirmed-token"
+        ? "FAKE_CONFIRMED_STATE"
+        : "MIDGARD_CONFIRMED_STATE",
+    ),
   );
   const settlementUnit = toUnit(
     h.hubPolicy,
@@ -995,7 +1191,9 @@ const retireJourney = async (
         prevHeaderHash: "02".repeat(28),
         utxoRoot: EMPTY_MERKLE_TREE_ROOT,
         startTime: 0n,
-        endTime: facts.inclusion_time,
+        endTime:
+          facts.inclusion_time -
+          (retirementFault === "before-inclusion" ? 1n : 0n),
         protocolVersion: 1n,
       },
       ConfirmedState,
@@ -1053,20 +1251,39 @@ const retireJourney = async (
       validatorToScriptHash(u.scriptRef) === retirementHash,
   )!;
   expect(retirementRef).toBeDefined();
-  h.emulator.awaitBlock(2);
   const allNodes = await h.lucid.utxosAt(h.applied.address);
   const predecessor = allNodes.find(
     (u) =>
       u.datum != null && Data.from(u.datum, EventHistoryNode).next === h.key,
   )!;
   const beforeRoot = Data.from(predecessor.datum!, EventHistoryNode);
+  // Match production retirement funding: create genuine disposable ADA inputs
+  // and leave unrelated native assets outside both fee and collateral selection.
+  await h.submit(
+    "prepare-disposable-retirement-funding",
+    await h.lucid
+      .newTx()
+      .collectFrom(await h.funding())
+      .pay.ToAddress(h.wallet.address, { lovelace: 100_000_000n })
+      .pay.ToAddress(h.wallet.address, { lovelace: 20_000_000n })
+      .complete({ coinSelection: false, localUPLCEval: true }),
+  );
+  const walletBeforeRetirement = await h.lucid.utxosAt(h.wallet.address);
+  const unrelatedTokenInputs = walletBeforeRetirement.filter((utxo) =>
+    Object.keys(utxo.assets).some((unit) => unit !== "lovelace"),
+  );
+  awaitProtection(
+    h.emulator,
+    beforeRoot.protected_until > present.anchor.node.protected_until
+      ? beforeRoot.protected_until
+      : present.anchor.node.protected_until,
+  );
   const b = h.bounds();
   const continued = {
     ...beforeRoot,
     next: present.anchor.node.next,
     protected_until: b.protectedUntil,
   };
-  const inputs = [predecessor, present.anchor.utxo, ...(await h.funding())];
   const refs = [
     h.hub,
     h.script,
@@ -1077,6 +1294,36 @@ const retireJourney = async (
       ? []
       : [present.retainedDataUtxo]),
   ];
+  const fundingExclusions = [
+    predecessor,
+    present.anchor.utxo,
+    h.eventNonce,
+    h.predecessorNonce,
+    ...refs,
+  ];
+  const feeInput = await Effect.runPromise(
+    __reservePayoutTest.selectFeeInputProgram(
+      h.lucid,
+      undefined,
+      fundingExclusions,
+    ),
+  );
+  const collateralInputs = __reservePayoutTest.disposableFeeInputCandidates(
+    walletBeforeRetirement,
+    [...fundingExclusions, feeInput],
+  );
+  expect(Object.keys(feeInput.assets)).toEqual(["lovelace"]);
+  expect(collateralInputs.length).toBeGreaterThan(0);
+  for (const utxo of collateralInputs)
+    expect(Object.keys(utxo.assets)).toEqual(["lovelace"]);
+  const inputs = [predecessor, present.anchor.utxo, feeInput];
+  records.push({
+    kind: deposit ? "Deposit" : "Withdrawal",
+    label: "disposable-retirement-funding",
+    feeInput,
+    collateralInputs,
+    unrelatedTokenInputs,
+  });
   const witness: EventHistoryRetirementWitness = {
     predecessor_input_index: index(inputs, predecessor),
     order_input_index: index(inputs, present.anchor.utxo),
@@ -1102,7 +1349,7 @@ const retireJourney = async (
   };
   let tx = h.lucid
     .newTx()
-    .collectFrom(await h.funding())
+    .collectFrom([feeInput])
     .collectFrom([predecessor], Data.to(index(inputs, predecessor)))
     .collectFrom(
       [present.anchor.utxo],
@@ -1139,12 +1386,13 @@ const retireJourney = async (
     )
     .validFrom(b.lower)
     .validTo(b.validTo);
+  const { [toUnit(h.applied.policyId, h.key)]: historyNft, ...originalAssets } =
+    present.anchor.utxo.assets;
+  expect(historyNft).toBe(1n);
+  originalAssets.lovelace -= facts.structural_lovelace;
   if (deposit) {
     tx = tx.pay
-      .ToAddress(h.hubAddress, {
-        lovelace:
-          present.anchor.utxo.assets.lovelace - facts.structural_lovelace,
-      })
+      .ToAddress(h.hubAddress, originalAssets)
       .pay.ToAddress(
         credentialToAddress("Custom", { type: "Key", hash: h.owner }),
         { lovelace: facts.structural_lovelace },
@@ -1188,16 +1436,83 @@ const retireJourney = async (
       { [toUnit(h.applied.policyId, h.key)]: -1n },
       Data.void(),
     );
-  await h.submit(
+  if (retirementFault !== undefined) {
+    // Settlement membership, funds and list inputs remain genuine for this
+    // applied-script fixture; change only CT timing or its authentication token.
+    const refusal = await tx
+      .complete({
+        coinSelection: false,
+        localUPLCEval: true,
+        presetWalletInputs: [...collateralInputs],
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(inspect(refusal, { depth: 10 })).toMatch(/failed script execution/);
+    expect((await h.lucid.utxosByOutRef([present.anchor.utxo]))[0]).toEqual(
+      present.anchor.utxo,
+    );
+    expect((await h.lucid.utxosByOutRef([predecessor]))[0]).toEqual(
+      predecessor,
+    );
+    expect((await h.lucid.utxosByOutRef([settlementRef]))[0]).toEqual(
+      settlementRef,
+    );
+    expect((await h.lucid.utxosByOutRef([confirmedRef]))[0]).toEqual(
+      confirmedRef,
+    );
+    if (present.retainedDataUtxo !== undefined)
+      expect(
+        (await h.lucid.utxosByOutRef([present.retainedDataUtxo]))[0],
+      ).toEqual(present.retainedDataUtxo);
+    expect((await h.lucid.utxosByOutRef([feeInput]))[0]).toEqual(feeInput);
+    for (const untouched of unrelatedTokenInputs)
+      expect((await h.lucid.utxosByOutRef([untouched]))[0]).toEqual(untouched);
+    records.push({
+      kind: deposit ? "Deposit" : "Withdrawal",
+      label: "retirement-refusal",
+      retirementFault,
+      inclusionTime: facts.inclusion_time,
+      confirmedDatum: rootDatum,
+      confirmedUnit,
+      cause: inspect(refusal, { depth: 10 }),
+      authorityScope:
+        "Actual applied list/retirement scripts; native fixture-issued CT and settlement authority, not a production merge proof",
+    });
+    return;
+  }
+  const retirementTxHash = await h.submit(
     mode === "refund" ? "refund-and-unlink" : "settle-and-unlink",
     await tx
-      .complete({ coinSelection: false, localUPLCEval: true })
+      .complete({
+        coinSelection: false,
+        localUPLCEval: true,
+        presetWalletInputs: [...collateralInputs],
+      })
       .catch((error: unknown) => {
         throw new Error(
           `Retirement completion: ${inspect(error, { depth: 10 })}`,
         );
       }),
   );
+  for (const untouched of unrelatedTokenInputs)
+    expect((await h.lucid.utxosByOutRef([untouched]))[0]).toEqual(untouched);
+  const [fundsOutput] = await h.lucid.utxosByOutRef([
+    { txHash: retirementTxHash, outputIndex: 1 },
+  ]);
+  expect(fundsOutput?.assets).toEqual(
+    deposit || mode === "refund"
+      ? originalAssets
+      : { ...originalAssets, [toUnit(h.hubPolicy, h.key)]: 1n },
+  );
+  records.push({
+    kind: deposit ? "Deposit" : "Withdrawal",
+    label: "retirement-funds-preserved",
+    mode,
+    originalAssets,
+    fundsOutput,
+  });
   const absence = await fetchEventHistoryWitness(
     h.lucid,
     {
@@ -1233,6 +1548,8 @@ const retireJourney = async (
       await h.lucid.utxosByOutRef([present.retainedDataUtxo]),
     ).toHaveLength(0);
   }
+  for (const untouched of unrelatedTokenInputs)
+    expect((await h.lucid.utxosByOutRef([untouched]))[0]).toEqual(untouched);
 };
 
 afterAll(() => {
@@ -1360,6 +1677,28 @@ describe("applied authenticated event lists", { timeout: 60_000 }, () => {
         true,
       ),
   );
+  it.each([
+    { kind: "Deposit", mode: "settle" },
+    { kind: "Withdrawal", mode: "settle" },
+    { kind: "Withdrawal", mode: "refund" },
+  ] as const)(
+    "CP3 combined maximum $kind $mode preserves nine wide assets through retirement and reclaim",
+    async ({ kind, mode }) =>
+      journey(
+        kind,
+        true,
+        mode,
+        "combined-boundary",
+        false,
+        64,
+        candidateBounds,
+        true,
+        undefined,
+        undefined,
+        undefined,
+        true,
+      ),
+  );
   it.each(["Deposit", "Withdrawal"] as const)(
     "refuses a %s node funded only for its admission output",
     async (kind) =>
@@ -1424,3 +1763,72 @@ describe("applied authenticated event lists", { timeout: 60_000 }, () => {
       "withdrawal-refund",
     ));
 });
+
+// Bypass SDK preflight only to exercise the applied validator's independent
+// authentication rules. Existing positive journeys use the public builders.
+describe(
+  "CP3 applied admission authentication refusals",
+  { timeout: 60_000 },
+  () => {
+    for (const kind of ["Deposit", "Withdrawal"] as const) {
+      for (const fault of [
+        "hash-only",
+        "same-transaction-publication",
+        "wrong-retention-address",
+        "mismatched-datum-hash",
+        "backdated-inclusion",
+        "short-key",
+        "oversized-key",
+      ] as const) {
+        it(`${kind} refuses ${fault} without consuming its nonce, filler or retained data`, async () => {
+          const external =
+            fault === "hash-only" ||
+            fault === "same-transaction-publication" ||
+            fault === "wrong-retention-address" ||
+            fault === "mismatched-datum-hash";
+          await journey(
+            kind,
+            external,
+            undefined,
+            undefined,
+            true,
+            0,
+            candidateBounds,
+            false,
+            undefined,
+            fault,
+          );
+        });
+      }
+    }
+  },
+);
+
+describe(
+  "CP3 applied finalized-frontier retirement refusals",
+  { timeout: 60_000 },
+  () => {
+    for (const kind of ["Deposit", "Withdrawal"] as const) {
+      for (const fault of [
+        "before-inclusion",
+        "wrong-confirmed-token",
+      ] as const) {
+        it(`${kind} refuses retirement with ${fault} despite valid settlement membership`, async () => {
+          await journey(
+            kind,
+            true,
+            "settle",
+            undefined,
+            false,
+            0,
+            candidateBounds,
+            false,
+            undefined,
+            undefined,
+            fault,
+          );
+        });
+      }
+    }
+  },
+);

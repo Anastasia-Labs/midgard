@@ -73,7 +73,9 @@ const label = (value: { txHash: string; outputIndex: number }) =>
 
 /** Actual published deployment adapted to the existing node pipeline; it is
  * initialized exactly once and uses its own configured DA cosigner. */
-export const openHistorySourceOwnerLifecycle = async () => {
+export const openHistorySourceOwnerLifecycle = async (
+  eventHistoryProtectionDurationMs?: bigint,
+) => {
   await resetActiveRuntimePaths();
   await initializeNodeRuntime();
   const accounts = createPublishedWorkflowDeploymentAccounts();
@@ -104,6 +106,7 @@ export const openHistorySourceOwnerLifecycle = async () => {
     | ReturnType<typeof captureConfirmedHistoryObservations>
     | undefined;
   const published = await publishWorkflowDeploymentOnChain({
+    eventHistoryProtectionDurationMs,
     accounts,
     network: "Preprod",
     operatorLucid,
@@ -140,6 +143,7 @@ export const openHistorySourceOwnerLifecycle = async () => {
       preparedContracts = await loadRealMidgardContractsForTest(
         nonce,
         authPolicy,
+        eventHistoryProtectionDurationMs,
       );
     },
     onPublication: ({ signedCbor, outRef }) => {

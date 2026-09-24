@@ -4382,24 +4382,17 @@ The original owner wiring, canonical incarnation eligibility, producer fencing,
 L2 descendant/published correction, below-anchor recovery and full acceptance
 matrix gates remain open. Main retains its unrelated dirty work.
 
-### Active critical path — delivery checkpoint (updated 2026-09-24)
+### Active critical path — user-authorized checkpoints 1–5 (2026-09-24)
 
-This is the single current critical-path checklist; preceding and subsequent dated
-entries retain historical evidence. The user stopped recovery expansion after the
-current observed-header case. That case passed; all agent implementation is now
-frozen. Root owns consolidation and final verification. See
-[event-history-delivery-checkpoint.md](event-history-delivery-checkpoint.md) for
-the concrete delivered flow, commands, evidence and full-acceptance blockers.
-
-| Gate | Implementation | Integrated verification | Live verification |
-| --- | --- | --- | --- |
-| Current recovery variant | Complete: authenticated full-range absence/expiry/finality, retained native plan, atomic journal/SQL inverse and exact lease release, cache/Globals before Ready. No further variants started | Checkpoint28 observed-header 1/1 and noEmit PASS. Checkpoint27 dependent spend, descendant and pending service restart PASS; reference case fails before the reference path at duplicate admission | Not run |
-| Deposit AND withdrawal journey | Combined two sorted authenticated UTxO lists and affected validators, SDK, watcher, proof and production-owner consumers are in original checkout | Checkpoint25 actual D/W plus spend/descendant 3/3 PASS; root independently verified 41 signed receipts, exact refund/payout, retirements/reclaims and native/SQL agreement | Not run |
-| Consolidation and preservation | APPLIED: 435 source paths, 413 verified build outputs and one native executable. Other work, Git HEAD/index and both conflicting ledgers retained | Root independently rehashed all 7,937 manifest paths; zero application/preservation mismatches. Original checkout dependency graph verified; noEmit and normal node/worker build PASS | Not applicable |
-| Named required checks | Existing fixture defects corrected without removing assertions | Checkpoint28 node 125/125, emulator64/64, observed1/1 and noEmit PASS; source/dependencies unchanged. Final docs links PASS:543 Markdown/MDX files | Not applicable |
-| Full recovery/crash matrix | Deferred at user delivery boundary; other signed/mixed/multi-header/published/merged/below-anchor shapes remain fenced or unverified | Reference fixture, OS-process crash and additional interruption/race acceptance remain open; service restart is not OS crash evidence | Not run |
-| Final-identity proof/consumer and ABI readiness | Two sorted lists selected; no ABI freeze. Existing contract/proof work retained | Acceptance29 fresh pinned blueprint reproduces delivery; Aiken history195/195, proof noEmit and installed transition13/13 PASS. Ledger regenerated and1,340 receipts independently verified. Other installed families/packages, missing proof polarities and maximum-size/accounting/authentication/eligibility/retirement/deadline/pointer churn gates remain | Not run |
-| Existing durable-state migration and one verified deployment | No DB reset, config change, service start or deployment performed | Initial-schema checksum change requires a reviewed existing-DB path. Docker/provider/config/parameter/manifest/reference-script prerequisites remain open | Both live lifecycles, contention/economics and recovery acceptance remain incomplete |
+The checkpoint was committed/pushed as `89427ff46`. The user now authorizes
+checkpoints1–3, parallel checkpoint4/live preparation, then one checkpoint5 live
+campaign on one verified deployment. Checkpoint6 recovery expansion stays parked.
+The single active implementation/integration/live checklist and explicit ownership
+are in [event-history-checkpoint-delivery-plan.md](event-history-checkpoint-delivery-plan.md).
+Existing verification remains in the delivery report and historical records below.
+The old paused unfinished app goal prevented creating the requested bounded
+replacement; no false completion was recorded. Work proceeds under the explicit
+user instruction with this durable objective.
 
 Historical context (superseded by the delivery checklist above). Proof snapshot: `artifacts/event-history/parallel/root-raw-proof-funding-fixed-source.json`;
 exact checks: `root-raw-proof-checkpoint-run.json` (preserved failure) and
@@ -5555,3 +5548,45 @@ passed. Expected unified-patch blank context whitespace is retained in the
 integrity-bound vendored patch; all Aiken source trailing whitespace normalized.
 Commit message explicitly records incomplete full acceptance and references the
 delivery report. No recovery variants, deployment or live transactions added.
+
+### Checkpoints1–5 delivery started (2026-09-24)
+
+Four existing contributors reassigned with nonoverlapping isolated scopes: CP1
+fresh dependency realization (sole initial heavy lane); CP2 proof acceptance;
+CP3 ABI/list fixtures; CP4 live preflight/containment preparation. Root retains
+shared interfaces, production state and integration/deployment ownership. Schemas,
+builders and ABI start frozen at89427ff46; any required shared change is coordinated
+before consumers depend on it. No services, live transactions, schema migrations
+or additional recovery variants started.
+
+### Checkpoints1–5 local delivery and live disposition (2026-09-24)
+
+CP1 fresh frozen installation/build and actual production-owner D/W journey
+passed. CP2 fabricated16, opening/transition/installed62, retired-ID2 and
+capture/output25 passed. CP3 final list/retention/public-builder selection109,
+including combined maximum3, passed with unchanged production limits. The owner
+journey also passed at the selected120000ms protection. Root independently
+verified signed receipts, funds, native/SQL evidence and source identity.
+Broad milestone: Lucid175, SDK642, node125, tools51 and node emulator64 passed.
+Typechecks, changed-file formatting/lint, docs links563 and live skill/runbook
+validators passed. Exact commands, failures and terminal results remain under
+`artifacts/event-history/parallel/`; the checkpoint plan is the authoritative
+current checklist, with implementation/integrated/live verification separated.
+
+All eleven code changes are test/fixture-only and match immutable snapshot4.
+All701 reused build outputs match fresh CP1 outputs; changed test helpers are
+absent from the normal build entrypoint graph and all84 source maps. The new
+1340-receipt fit ledger was independently verified before application. No
+production validator, runtime, schema, protocol limit or acceptance assertion
+was weakened. Earlier fixture failures and the verifier schema correction remain
+recorded rather than discarded.
+
+CP4 commands and state-preserving isolation are prepared and statically checked.
+CP5 is NOT STARTED: the dedicated Docker socket is absent and `sudo -n true`
+requires a password; rootless prerequisites are also absent. There have been zero
+new deployments, live campaigns or live transactions. Provider/genesis/history,
+matching deployment/state, funding, DA/public retrieval and live finalizer gates
+remain open. Maximum withdrawal reserve-add/final payout and the deferred recovery
+matrix are not claimed complete. No additional recovery variant was implemented.
+The app goal remains paused because the goal API rejected replacing the existing
+unfinished goal; the bounded authorized objective is durable in the plan.

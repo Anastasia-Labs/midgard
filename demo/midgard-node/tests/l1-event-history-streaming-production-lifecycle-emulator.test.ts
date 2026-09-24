@@ -44,7 +44,9 @@ import { openHistoryProductionOwnerLifecycle } from "./helpers/history-productio
 /** Successful node classification and actual mature merge establish both
  * settlement frontiers. The observation transport labels remain synthetic. */
 it("streams public raw events through production reconciliation, native commitment, refund, payout and reclaim", async () => {
-  const h = await openHistoryProductionOwnerLifecycle();
+  const h = await openHistoryProductionOwnerLifecycle({
+    eventHistoryProtectionDurationMs: 120_000n,
+  });
   const { fixture, lucidService, globals } = h;
   const context = { fixture, lucidService, globals, production: h.production };
   const lucid = fixture.operatorLucid;

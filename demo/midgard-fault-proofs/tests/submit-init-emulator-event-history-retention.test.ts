@@ -6,6 +6,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { inspect } from "node:util";
 
 import {
   addressDataFromBech32,
@@ -191,7 +192,17 @@ const setup = async (
     }
     return tx.complete({ localUPLCEval: true });
   };
-  return { lucid, stored, reference, applied, submit, reclaim };
+  return {
+    lucid,
+    emulator,
+    issuer,
+    rewardAddress,
+    stored,
+    reference,
+    applied,
+    submit,
+    reclaim,
+  };
 };
 
 afterAll(() => {
@@ -258,6 +269,51 @@ describe("event history retained data", () => {
   it("refuses script-owner reclamation without a rewarding invocation", async () => {
     const h = await setup("root", true);
     await expect(h.reclaim(false)).rejects.toThrow();
+  });
+
+  it("refuses nonzero script withdrawal even with real available rewards and preserves retained data", async () => {
+    const h = await setup("root", true);
+    await h.submit(
+      "delegate-script-owner-for-real-rewards",
+      await h.lucid
+        .newTx()
+        .delegate.ToPool(
+          h.rewardAddress,
+          CML.Ed25519KeyHash.from_hex("77".repeat(28)).to_bech32("pool"),
+        )
+        .attach.CertificateValidator(h.issuer)
+        .complete({ localUPLCEval: true }),
+    );
+    h.emulator.distributeRewards(1_000_000n);
+    expect((await h.lucid.delegationAt(h.rewardAddress)).rewards).toBe(
+      1_000_000n,
+    );
+    const refusal = await h.reclaim(true, 1_000_000n).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(inspect(refusal, { depth: 10 })).toMatch(/failed script execution/);
+    expect((await h.lucid.utxosByOutRef([h.stored]))[0]).toEqual(h.stored);
+    expect((await h.lucid.delegationAt(h.rewardAddress)).rewards).toBe(
+      1_000_000n,
+    );
+    // The nonzero withdrawal itself is ledger-valid: execute it separately,
+    // without reclaiming data, then use the same credential at exact zero.
+    await h.submit(
+      "withdraw-rewards-without-retained-data",
+      await h.lucid
+        .newTx()
+        .withdraw(h.rewardAddress, 1_000_000n)
+        .attach.WithdrawalValidator(h.issuer)
+        .complete({ localUPLCEval: true }),
+    );
+    expect((await h.lucid.delegationAt(h.rewardAddress)).rewards).toBe(0n);
+    expect((await h.lucid.utxosByOutRef([h.stored]))[0]).toEqual(h.stored);
+    await h.submit(
+      "reclaim-script-zero-after-nonzero-refusal",
+      await h.reclaim(true, 0n),
+    );
+    expect(await h.lucid.utxosByOutRef([h.stored])).toEqual([]);
   });
 
   it("publishes and separately reclaims a 10000-byte payload within production limits", async () => {

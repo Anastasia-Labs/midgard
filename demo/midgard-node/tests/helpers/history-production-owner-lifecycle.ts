@@ -55,6 +55,7 @@ import { nativeOwnerBinaryPath } from "./native-owner-binary.js";
 /** One actual deployment, real production reconciliation and native MPF owner.
  * Only the network transport's genesis, point identifiers and ancestry are synthetic. */
 type ProductionOwnerFixtureOptions = {
+  readonly eventHistoryProtectionDurationMs?: bigint;
   readonly transportFactory?: (
     recorded: Parameters<typeof makeStreamingHistoryTransport>[0],
   ) => Omit<ReturnType<typeof makeStreamingHistoryTransport>, "options"> & {
@@ -73,7 +74,9 @@ type ProductionOwnerFixtureOptions = {
 export const openHistoryProductionOwnerLifecycle = async (
   options: ProductionOwnerFixtureOptions = {},
 ) => {
-  const recorded = await openHistorySourceOwnerLifecycle();
+  const recorded = await openHistorySourceOwnerLifecycle(
+    options.eventHistoryProtectionDurationMs,
+  );
   const { fixture, lucidService, binding } = recorded;
   const identity = fixture.runtimeOverrides!.deploymentIdentity;
   const binarySha256 = createHash("sha256")
